@@ -1,6 +1,6 @@
 """Runs one test file under `sys.settrace` and dumps the executed lines of the traced prefixes as JSON for
 `scripts/_render_coverage.py` (SPECIFICATION.md E.5), on every path; its own build-settrace binary, the flag not being
-inert (Part E.5.2). Exit rules as tests/_threshold_runner.py's; not a test_*.py file, so the suite's glob never runs it."""
+inert (Part E.5.2). Exit rules as tests/_threshold_runner.py's; not a test_*.py file, so the suite's glob skips it."""
 
 import errno
 import json

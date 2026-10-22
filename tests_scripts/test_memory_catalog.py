@@ -41,6 +41,7 @@ _RUN_PHASE_ALLOWED: "dict[tuple[str, str, str], str]" = {
     ("asy_system_service.py", "SystemService.start_tasks", "_tasks"): "the task-start list's slots: once per boot",
     ("asy_system_service.py", "SystemService.supervise_tasks", "_supervisor_task"): "the supervisor's own task, started once at boot",
     ("asy_uart_driver.py", "UART.init", "_uart"): "construction: init() runs from __init__ only",
+    ("asy_uart_link_driver.py", "UARTLinkDriver._run_hazards", "_hazard_facts"): "the last hazard run's verdicts, replaced per run of dev's on-demand route",
     ("asy_webserver_service.py", "_PieceWriter.add", "_group"): "per response",
     ("asy_webserver_service.py", "_PieceWriter.flush", "_group"): "per response",
     ("asy_wifi_service.py", "WifiService._configure_hotspot_ap", "_dns_server_task"): "the hotspot's DNS task: the hotspot is a run-phase mode",

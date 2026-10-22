@@ -2,6 +2,7 @@
 concurrent API load - the realistic deployed condition, where link work and request handling have
 to coexist rather than each merely work alone (SPECIFICATION.md Part E.6)."""
 
+import ast
 import threading
 import time
 from typing import TYPE_CHECKING
@@ -10,7 +11,7 @@ import _load
 import http_client
 import pytest
 from error_log_helpers import assert_no_task_ended, errcount_entry, get_errcount, reset_all_error_logs
-from harness import DEVICE_SCRIPTS_DIR, parse_facts, restore_board_to_serving, wait_for_script_server, wait_until
+from harness import DEVICE_SCRIPTS_DIR, SRC_DIR, parse_facts, restore_board_to_serving, wait_for_script_server, wait_until
 
 if TYPE_CHECKING:
     from bench_control import BenchBridge
@@ -52,6 +53,11 @@ _SHORT_JOIN_TIMEOUT_S = 60.0
 _BURST_WORKERS = 6
 # @tunable l4.uart_link_under_api_load_echo_script_timeout_s = 240.0
 _ECHO_SCRIPT_TIMEOUT_S = 240.0
+# The hazard run (owner, 2026-10-21, asked "Leave the UART hazards under API load untested?": "b - system shall be
+# proven stable unter max load allover"): 208 s at dev's 1000 ms reply budget on the twin's driven clock; the bound
+# leaves silicon's own load room (agent, 2026-10-21).
+# @tunable l4.uart_link_under_api_load_hazard_run_timeout_s = 600.0
+_HAZARD_RUN_TIMEOUT_S = 600.0
 _TOML_HINT = "check the bench device's TOML still declares its uart_link instances and this build used it"
 
 
@@ -91,6 +97,10 @@ def test_a_multi_chunk_set_echoes_intact_under_serving_load(board: "Board", benc
     assert not load.findings, f"torn reads during the echoes: {load.findings[:10]}"
 
 
+def test_a_hazard_run_under_the_readers_load_reports_every_verdict(board: "Board", dut_ip: str, request: pytest.FixtureRequest) -> None:
+    check_hazard_run_under_load(dut_ip, request.node.name)
+
+
 def _assert_link_logs_empty(dut_ip: str, context: str) -> None:
     counts = get_errcount(dut_ip)
     for name in _uart_modules():
@@ -121,6 +131,14 @@ def _echo_load(dut_ip: str, stop: threading.Event, load: _load.Load) -> None:
         load.finding(f"{alive} still running after the echo load")
 
 
+def _gets_until(dut_ip: str, path: str, worker_id: int, stop: threading.Event, load: _load.Load) -> None:
+    # One worker: GET `path` back to back until `stop` is set, each as _timed_gets() sends it.
+    i = 0
+    while not stop.is_set():
+        _timed_get(dut_ip, path, f"worker {worker_id} iter {i}", load)
+        i += 1
+
+
 def _hammer(dut_ip: str, path: str) -> _load.Load:
     # _GET_WORKERS timed workers on `path`, joined on every path; the record they filled.
     load = _load.Load()
@@ -134,6 +152,47 @@ def _hammer(dut_ip: str, path: str) -> _load.Load:
         alive = _load.join(threads, _JOIN_TIMEOUT_S)
     assert not alive, f"{alive} never finished within {_JOIN_TIMEOUT_S:g}s - possible real deadlock under load"
     return load
+
+
+def _hazard_fields() -> "list[tuple[str, list[int]]]":
+    # Each swept field and its values, read from src/asy_uart_link_driver.py's text as the board runs them.
+    for node in ast.parse((SRC_DIR / "asy_uart_link_driver.py").read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.Assign) and [getattr(target, "id", None) for target in node.targets] == ["_HAZARD_FIELDS"]:
+            return [(name, list(values)) for name, _offset, values in ast.literal_eval(node.value)]
+    pytest.fail("src/asy_uart_link_driver.py defines no _HAZARD_FIELDS")
+
+
+def _hazard_findings(last: "JSONObject") -> "list[str]":
+    # The run's facts judged as the twin judges them: one of two initiations completes, the crossing SET fails and the
+    # link recovers, and each swept value is ACKed exactly when J.3/J.4 accept it (tests_hardware/flash/test_uart_crossover.py).
+    cmd_set, uid_max = _load.src_number("asy_uart_comm.py", "CMD_SET"), _load.src_number("asy_uart_comm.py", "_UID_MAX")
+    legal = {"cmd": lambda v: v == cmd_set, "size": lambda v: v == 1, "chunks": lambda v: v >= 2, "cur_chunk": lambda v: v == 1, "uid": lambda v: v <= uid_max}
+    attempts = range(1, int(_load.src_number("asy_uart_link_driver.py", "_HAZARD_RECOVERY_ATTEMPTS")) + 1)
+    findings: list[str] = []
+    two = last.get("TwoInitiations")
+    if two not in ([True, False], [False, True]):  # None: an initiation raised, logged at its task's top
+        findings.append(f"two initiations at once were not one completion and one refusal: {two!r}")
+    crossing = last.get("Crossed")
+    if not (isinstance(crossing, list) and len(crossing) == 4 and crossing[:2] == [True, False] and crossing[2] in attempts and crossing[3] is True):
+        findings.append(f"the SET crossing the peer's answer did not fail and recover within {len(attempts)} attempts: {crossing!r}")
+    expected = [[name, [legal[name](value) for value in values], True] for name, values in _hazard_fields()]
+    if last.get("FieldSweep") != expected:
+        findings.append(f"the field sweep's ACKs against J.3/J.4 (None: its raw write failed), or the clean exchange after each field: {last.get('FieldSweep')!r}, not {expected!r}")
+    return findings
+
+
+def _hazard_report(dut_ip: str) -> "JSONObject":
+    # The initiator's hazard report: the one /status "sensors" entry carrying Runs, Pending and Last.
+    sensors: JSONObject = _load.as_object(_load.get_object(dut_ip, "/status", _REQUEST_BUDGET_S).get("sensors"), "GET /status sensors")
+    reports = [entry for entry in sensors.values() if isinstance(entry, dict) and {"Runs", "Pending", "Last"} <= entry.keys()]
+    if len(reports) != 1:
+        pytest.fail(f"this firmware exposes {len(reports)} hazard reports, not one ({sorted(sensors)}) - {_TOML_HINT}")
+    return reports[0]
+
+
+def _hazard_run_ended(dut_ip: str, runs: int) -> bool:
+    report = _hazard_report(dut_ip)
+    return report.get("Runs") == runs + 1 and report.get("Pending") is False
 
 
 def _link_counters(dut_ip: str) -> "dict[str, int]":
@@ -154,20 +213,25 @@ def _require_uart_modules(dut_ip: str) -> None:
         pytest.fail(f"this firmware exposes no {', '.join(missing)} error source - {_TOML_HINT}")
 
 
+def _timed_get(dut_ip: str, path: str, label: str, load: _load.Load) -> None:
+    # One GET of `path`, answered within the request budget or recorded as a failure, never raised.
+    started = time.monotonic()
+    try:
+        res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=_REQUEST_BUDGET_S)
+    except (OSError, http_client.HTTP_ERROR) as e:
+        load.failure(f"{label}: {type(e).__name__}: {e}")
+        return
+    elapsed = time.monotonic() - started
+    if res.status_code != 200 or elapsed > _REQUEST_BUDGET_S:
+        load.failure(f"{label}: GET {path} answered {res.status_code} in {elapsed:.1f}s")
+    else:
+        load.answered.append(1)
+
+
 def _timed_gets(dut_ip: str, path: str, worker_id: int, load: _load.Load) -> None:
     # One worker: GET `path` repeatedly, each answer within the request budget; a failure is recorded, never raised.
     for i in range(_GET_ITERATIONS_PER_WORKER):
-        started = time.monotonic()
-        try:
-            res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=_REQUEST_BUDGET_S)
-        except (OSError, http_client.HTTP_ERROR) as e:
-            load.failure(f"worker {worker_id} iter {i}: {type(e).__name__}: {e}")
-            continue
-        elapsed = time.monotonic() - started
-        if res.status_code != 200 or elapsed > _REQUEST_BUDGET_S:
-            load.failure(f"worker {worker_id} iter {i}: GET {path} answered {res.status_code} in {elapsed:.1f}s")
-        else:
-            load.answered.append(1)
+        _timed_get(dut_ip, path, f"worker {worker_id} iter {i}", load)
 
 
 def _uart_modules() -> "list[str]":
@@ -176,6 +240,41 @@ def _uart_modules() -> "list[str]":
     if not names:
         pytest.fail(f"the bench device declares no uart_link instance - {_TOML_HINT}")
     return names
+
+
+def check_hazard_run_under_load(dut_ip: str, reason: str) -> None:
+    # PUT /status's dispatch-only UartHazards starts one run while readers GET /status until it ends: every verdict as
+    # the twin judges it, every read answered, the echo resumed with no failure counted, no webserver error and no task ended.
+    _require_uart_modules(dut_ip)
+    reset_all_error_logs(dut_ip, reason)
+    runs = _hazard_report(dut_ip).get("Runs")
+    assert isinstance(runs, int), f"the hazard report counts no runs: {runs!r}"
+    before = _link_counters(dut_ip)
+    load = _load.Load()
+    stop = threading.Event()
+    threads = [threading.Thread(target=_gets_until, args=(dut_ip, "/status", n, stop, load), name=f"hazard-get-{n}") for n in range(_ECHO_READERS)]
+    try:
+        for thread in threads:
+            thread.start()
+        put = http_client.fetch(dut_ip, 80, "PUT", "/status", {"UartHazards": True}, timeout_s=_REQUEST_BUDGET_S)
+        assert put.status_code == 200 and put.json().get("result") == {"UartHazards": "Valid"}, f"PUT /status did not start the hazard run: {put.status_code} {put.body[:120]!r}"
+        wait_until(lambda: _hazard_run_ended(dut_ip, runs), timeout_s=_HAZARD_RUN_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description="the hazard run's end under the readers' load")
+    finally:
+        stop.set()
+        alive = _load.join(threads, _JOIN_TIMEOUT_S)
+    assert not alive, f"{alive} never finished within {_JOIN_TIMEOUT_S:g}s - possible real deadlock under load"
+    assert not load.failures, f"{len(load.failures)} API issue(s) during the hazard run: {'; '.join(load.failures[:10])}"
+    last = _hazard_report(dut_ip).get("Last")
+    assert isinstance(last, dict), f"the ended hazard run left no facts: {last!r}"
+    findings = _hazard_findings(last)
+    assert not findings, "; ".join(findings)
+    ended = _link_counters(dut_ip)
+    wait_until(lambda: _link_counters(dut_ip)["Transfers"] > ended["Transfers"], timeout_s=_WAIT_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description="the echo resuming after the hazard run")
+    after = _link_counters(dut_ip)
+    assert after["Failures"] == before["Failures"], f"the hazard run counted into the echo's failures: {before!r} -> {after!r}"
+    web = errcount_entry(get_errcount(dut_ip), "WEBSERVER")
+    assert web["counter"] == 0, f"the webserver logged errors under the hazard run: {web!r}"
+    assert_no_task_ended(dut_ip, "UART hazard run under API load")
 
 
 def check_link_healthy_under_load(dut_ip: str, reason: str) -> None:

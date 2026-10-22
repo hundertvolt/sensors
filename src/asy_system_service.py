@@ -1,10 +1,16 @@
-"""Generic system-housekeeping service shared by every generated sensortask_<device>.py: uptime, boot signature, reset reason, the system commands and their controlled shutdown, the boot setup list, the staggered timer start, the task supervisor, and a persisted system-settings store (config_SYSTEM.cfg).
-Every method returns a well-defined value, never raises.
-Reset reason and boot phase live in machine.mem_backup() regions 0/1 - RAM that survives a reset, never flash or FRAM (owner, 2026-09-26).
+"""Generic system-housekeeping service shared by every generated sensortask_<device>.py: uptime, boot signature, reset
+reason, the system commands and their controlled shutdown, the boot setup list, the staggered timer start, the task
+supervisor, and a persisted system-settings store (config_SYSTEM.cfg).
+
+Every method returns a well-defined value, never raises. Reset reason and boot phase live in machine.mem_backup()
+regions 0/1 - RAM that survives a reset, never flash or FRAM (owner, 2026-09-26).
 """
 # A live debug-level change is pushed through the other loggers' own set_level() methods (the level_setters provider,
-# resolved once in setup()), not a shared mutable value (owner, 2026-08-11, paraphrase: SharedLevel was reverted for breaking encapsulation).
-# The real reset a system command takes, after the controlled shutdown and _RESET_DELAY (SPECIFICATION.md Part A.8), is the intent, not a failure.
+# resolved once in setup()), not a shared mutable value (owner, 2026-08-11, paraphrase: SharedLevel was reverted for
+# breaking encapsulation).
+#
+# The real reset a system command takes, after the controlled shutdown and _RESET_DELAY (SPECIFICATION.md Part A.8), is
+# the intent, not a failure.
 
 import asyncio
 import gc
@@ -27,7 +33,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from typing import Any, Protocol
+    from typing import Protocol
 
     from _mpy_shed.time_mp import _TicksMs
 
@@ -225,9 +231,9 @@ class SystemService:
         self._supervisor_task: asyncio.Task[None] | None = None
         self._supervisor_parked = asyncio.Event()  # set by the supervisor once it parks for a command under way
         self._never = asyncio.Event()  # never set: supervise_tasks() and a parked supervisor wait on it for good
-        # Task[Any], not the TaskStarter alias, until every reader's task returns None (its read loop still returns bool).
-        self._task_starters: list[Callable[[], asyncio.Task[Any]]] = []
-        self._tasks: list[asyncio.Task[Any] | None] = []
+        # Slot n of these three lists is one supervised task; its Task is None between its end and a started restart.
+        self._task_starters: list[TaskStarter] = []
+        self._tasks: list[asyncio.Task[None] | None] = []
         self._task_names: list[str] = []  # one per starter, given with them: the name in its slot's lines and task-end record
         # The last task end, fixed-size: its slot's name (a reference, never a copy) and the uptime then, so recording an
         # end allocates nothing; get_last_task_end() builds the reply.
@@ -294,7 +300,7 @@ class SystemService:
                 step_done()
         return ok
 
-    async def _log_dead_task(self, task: "asyncio.Task[Any]", n: int) -> None:
+    async def _log_dead_task(self, task: asyncio.Task[None], n: int) -> None:
         # A finished Task has no .exception()/.result() (Part F.1): awaiting it again is how to learn why it
         # ended, giving the restart line below real diagnostic content.
         name = self._task_names[n]
@@ -477,7 +483,7 @@ class SystemService:
             report_if_fatal(e)
             await self.pr.err_s("Shutdown sequence failed:", e, errno=_ERR_UNEXPECTED)
 
-    async def _start_task(self, starter: "Callable[[], asyncio.Task[Any]]", n: int) -> "asyncio.Task[Any] | None":
+    async def _start_task(self, starter: "TaskStarter", n: int) -> asyncio.Task[None] | None:
         try:
             return starter()
         except Exception as e:  # driver-supplied starter (get_task_starters()) - could legitimately misbehave
@@ -571,7 +577,7 @@ class SystemService:
                         )
                         await asyncio.wait_for_ms(entry, _ESCALATION_ENTRY_WAIT_MS)
                     except asyncio.TimeoutError:
-                        self.pr.err(message, "- its entry not persisted within", _ESCALATION_ENTRY_WAIT_MS, "ms, its write is held up")
+                        self.pr.err(message, "- its entry write did not finish within", _ESCALATION_ENTRY_WAIT_MS, "ms and was cancelled")
                     except MemoryError as e:  # building the entry, its wait or its write found no room: the reset still arms
                         console(self.pr.name, "Reboot entry not written:", e)
                     # Re-checked after the log write, which yields: a system command that passed the gate meanwhile owns
@@ -741,7 +747,7 @@ class SystemService:
                 await self._apply_level(level[0])
         return self.cfgmgr.valid
 
-    async def start_tasks(self, task_starters: "list[Callable[[], asyncio.Task[Any]]]", task_names: list[str]) -> None:
+    async def start_tasks(self, task_starters: "list[TaskStarter]", task_names: list[str]) -> None:
         # The boot placement reset (SPECIFICATION.md I.4(f.1)): the second of the two one-time boot lists that get a
         # placement reset between their units - each collect puts the allocator's free-scan index back to zero.
         # Not hygiene, not compaction, and never in the supervisor.

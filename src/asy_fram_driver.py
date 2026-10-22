@@ -2,12 +2,16 @@
 # SPDX-License-Identifier: MIT
 # From adafruit_fram (CircuitPython), restructured for asyncio + MicroPython - see THIRD_PARTY_LICENSES.md.
 
-"""Async SPI driver for one Fujitsu FRAM chip (MB85RS64V 8KB or MB85RS2MTA 256KB, the part max_size names, checked by RDID against _KNOWN_PRODUCT_IDS): raw byte-addressed get_values()/set_values() plus write protection.
-Opcode/register-constant naming and the write-enable/write/write-disable method shape follow Adafruit's Adafruit_CircuitPython_FRAM; RDID checking and the two-part table are this project's own addition, verified against the Fujitsu MB85RS64V (DS501-00015) and MB85RS2MTA (DS501-00032) datasheets.
+"""Async SPI driver for one Fujitsu FRAM chip (MB85RS64V 8KB or MB85RS2MTA 256KB, the part max_size names, checked by
+RDID against _KNOWN_PRODUCT_IDS): raw byte-addressed get_values()/set_values() plus write protection.
+
+Opcode/register-constant naming and the write-enable/write/write-disable method shape follow Adafruit's
+Adafruit_CircuitPython_FRAM; RDID checking and the two-part table are this project's own addition, verified against the
+Fujitsu MB85RS64V (DS501-00015) and MB85RS2MTA (DS501-00032) datasheets.
 """
-# CRC/dual-copy recovery lives one layer up in asy_fram_manager.py. This file detects a device-ID mismatch, a write-enable
-# latch that did not set (retried once) or clear, a partly protected status register, an unavailable bus and
-# a chip lost mid-run, never raising (except __init__()/setup()'s one-time setup errors).
+# CRC/dual-copy recovery lives one layer up in asy_fram_manager.py. This file detects a device-ID mismatch, a
+# write-enable latch that did not set (retried once) or clear, a partly protected status register, an unavailable bus
+# and a chip lost mid-run, never raising (except __init__()/setup()'s one-time setup errors).
 
 import asyncio
 
@@ -272,9 +276,9 @@ class FRAM_SPI(Lockable):
         finally:
             spidev.session_end()
 
-    # The _send_*() helpers are one CS cycle each, on a bus lock the caller already holds, and every
-    # single-underscore method is synchronous: the chip is driven by blocking register writes, so a
-    # coroutine per CS cycle bought only allocations. Scheduling points live in the public coroutines (SPECIFICATION.md Part C.3.1).
+    # The _send_*() helpers are one CS cycle each, on a bus lock the caller already holds, and every single-underscore
+    # method is synchronous: the chip is driven by blocking register writes, so a coroutine per CS cycle bought only
+    # allocations. Scheduling points live in the public coroutines (SPECIFICATION.md Part C.3.1).
     def _send_command(self, command: bytes | bytearray) -> None:
         # WREN/WRDI are each a complete, standalone one-byte command (datasheet timing diagrams
         # show CS low only for the opcode); WRSR is the one two-byte command that ends here too.

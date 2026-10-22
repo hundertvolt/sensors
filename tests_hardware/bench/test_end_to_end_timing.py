@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import _load
 import http_client
 import pytest
-from error_log_helpers import assert_module_error_log_empty, assert_no_task_ended, reset_all_error_logs
+from error_log_helpers import assert_module_error_log_clean, assert_module_error_log_empty, assert_no_task_ended, code, reset_all_error_logs
 from harness import Board, configured_max_connections, kick_then_reset, recover_by_reset, wait_until
 
 if TYPE_CHECKING:
@@ -156,7 +156,10 @@ def test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly(bo
 
         # Full health check, not just "reachable" - the FRAM subsystem specifically must still work.
         assert_module_error_log_empty(dut_ip, "SGP40")
-        assert_module_error_log_empty(dut_ip, "FRAM")
+        # Three hard resets inside real SPI writes are meant to tear some: only a status byte left neither idle nor
+        # uninitialised and the block-invalid repair warning are allowed, and a fresh backup must still complete below
+        # (owner, 2026-09-13, on the torn-write trace: "Settled as acceptable degradation rather than a robustness gap").
+        assert_module_error_log_clean(dut_ip, "FRAM", allowed_warnings=(code("W", "FRAM_BLOCK_INVALID"),), allowed_errors=(code("E", "FRAM_STATUS_BYTE"),))
 
         # One more real backup completing cleanly after all three resets proves the FRAM subsystem
         # itself is still genuinely functional, not merely "board reachable".

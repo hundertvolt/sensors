@@ -605,6 +605,20 @@ describe.each(DEVICE_IDS)("%s's generated code fields", (device) => {
     });
 });
 
+describe.each(DEVICE_IDS)("%s's generated stale-time flag", (device) => {
+    const fields = (GENERATED_DEFINITIONS.get(device)?.sections ?? []).flatMap((section) => section.groups.flatMap((group) => ("fields" in group ? group.fields : [])));
+    const field = fields.find((candidate) => candidate.key === "TimeStale");
+
+    it("shows true or false read-only under its label, says what it means, and a dash until the clock is set", () => {
+        if (field === undefined) {
+            throw new Error("no TimeStale field in the generated definitions");
+        }
+        expect([field.label, field.kind]).toEqual(["Time May Be Stale", "readonly"]);
+        expect(hintText(fieldCard(field, true))).toContain("The times shown may then have drifted.");
+        expect([true, false, null].map((value) => mustQuery(fieldCard(field, value), '[data-field-key="TimeStale"]').textContent)).toEqual(["true", "false", "—"]);
+    });
+});
+
 describe("codes and timestamps on read-only values", () => {
     it("shows a code as a button with its number, whose click shows and hides its description after it", () => {
         const el = fieldCard(RESET_REASON_FIELD, 3);
@@ -738,6 +752,25 @@ describe("a group whose source is unavailable", () => {
         const source = { error: "unavailable", MeasInterval: 5 };
         const card = mount(buildFieldGroupCard(GROUP, source, 0, displayFor(source)));
         expect(mustQuery(card, '[data-current-value-for="MeasInterval"]').textContent).toBe("Current value: 5");
+    });
+});
+
+describe.each(DEVICE_IDS)("%s's generated status commands", (device) => {
+    const status = (GENERATED_DEFINITIONS.get(device)?.sections ?? []).find((section) => section.key === "status");
+    const groups = (status?.groups ?? []).flatMap((group) => ("fields" in group && group.fields.some((field) => field.dispatch === true) ? [group] : []));
+
+    it("render each command group off, with its own toggle labels and submit label", () => {
+        expect(groups.map((group) => group.key)).toContain("resetErrors");
+        for (const group of groups) {
+            const card = mount(buildFieldGroupCard(group, {}, 0, AVAILABLE));
+            expect(mustQuery(card, ".apply-button").textContent, group.key).toBe(group.submitLabel ?? "Apply");
+            for (const field of group.fields) {
+                const toggle = mustQuery(card, `[data-field-key="${field.key}"]`);
+                expect([field.kind, field.confirm, toggle.dataset.value, toggle.textContent], field.key).toEqual(["toggle", true, "false", field.offLabel ?? "Off"]);
+                toggle.click();
+                expect([toggle.dataset.value, toggle.textContent], field.key).toEqual(["true", field.onLabel ?? "On"]);
+            }
+        }
     });
 });
 

@@ -12,6 +12,7 @@ from collections import namedtuple
 import machine
 import micropython
 from _async_harness import run
+from _cancel_sweep import assert_unlocked, cancel_at_each_await
 from _error_codes import code
 from _fake_time import DrivenTime
 from _fake_timer_arm import RaiseOnArm
@@ -72,13 +73,13 @@ class _RaisingFramChunk:
     def get_buffer(self) -> RegionBuffer:
         return RegionBuffer(6, data_start=0, data_length=6)
 
-    async def write_into(self, buf: RegionBuffer) -> bool:
-        if self.raise_on_write:
+    async def read_into(self, buf: RegionBuffer) -> bool:
+        if self.raise_on_read:
             raise MemoryError("simulated allocation failure")
         return True
 
-    async def read_into(self, buf: RegionBuffer) -> bool:
-        if self.raise_on_read:
+    async def write_into(self, buf: RegionBuffer) -> bool:
+        if self.raise_on_write:
             raise MemoryError("simulated allocation failure")
         return True
 
@@ -114,18 +115,112 @@ _TEST_SCHEMA_BOOL: "cm.ConfigSchema" = (("SelfCal", "bool", False, None, None, N
 _TEST_SCHEMA_SPECIAL: "cm.ConfigSchema" = (("Trigger", "bool", None, None, None, True),)  # special-alone, mirrors asy_sgp40_driver.py's ResetVOC
 
 
+class _DividingReader(SensorReader):
+    # The divider attributes a dividing driver (BMP3XX, ISL29125) sets, over the fake Timer.
+    def __init__(self, period: int) -> None:
+        super().__init__(Meas(None, 50), "DIVIDER", max_module_error=3)
+        self._base_trigger_event = asyncio.ThreadSafeFlag()
+        self._read_event = asyncio.ThreadSafeFlag()
+        self._trigger_period = LockedValue(init_value=period)
+        self._trigger_counter = 0
+        self._trigger_timer = machine.Timer()
+
+    def start_timer(self) -> None:
+        try:
+            self._trigger_timer.init(period=1000, mode=machine.Timer.PERIODIC, callback=lambda _b: self._base_trigger_event.set())
+        except (MemoryError, OSError) as e:
+            self._timer_failed(e, self._base_trigger_event)
+
+
+class _ChipStoreReader(SensorReaderConfig):
+    # A store whose _set_mgr_cfg() writes a chip before the file (SCD30's shape); every call and snapshot recorded.
+    chip_writes: "list[JsonMapping]"
+    snapshot_reads: "list[list[str]]"
+
+    async def _get_mgr_cfg(self, cfg: "list[str]") -> "dict[str, int | float | str | bool | None] | None":
+        self.snapshot_reads.append(cfg)
+        return await super()._get_mgr_cfg(cfg)
+
+    async def _set_mgr_cfg(self, data: "JsonMapping", cfg_vals: "cm.ConfigSchema") -> "tuple[bool, cm.WriteValidity]":
+        self.chip_writes.append(data)
+        return await super()._set_mgr_cfg(data, cfg_vals)
+
+
+def _ambient_rounds() -> int:
+    # The control: the same loop and calls with no buffer involved.
+    done = 0
+    for _ in range(_PIECE_ROUNDS):
+        done += 1 if len(b"") == 0 else 0
+    return done
+
+
+def _assert_balanced(lock: Lockable) -> None:
+    # The sweep's lock-balance invariant: the session lock free, and no release of it refused on the way.
+    session_lock = lock.session_lock
+    assert isinstance(session_lock, _BalanceLock)
+    assert_unlocked(session_lock=session_lock)
+    if session_lock.refused:
+        raise AssertionError(f"the session lock refused {session_lock.refused} release(s): a double release")
+
+
+def _built_and_dropped_rounds() -> int:
+    done = 0
+    for _ in range(_PIECE_ROUNDS):
+        done += 1 if len(PieceBuffer(40, 16)) == 40 else 0
+    return done
+
+
+def _chip_store_reader(name: str, schema: "cm.ConfigSchema") -> _ChipStoreReader:
+    _remove(_SHARED_CFG_DIR + "config_" + name + ".cfg")
+    reader = _ChipStoreReader(Meas(20.0, 50), name, schema, max_module_error=3, cfg_path=_SHARED_CFG_DIR)
+    reader.chip_writes = []
+    reader.snapshot_reads = []
+    run(reader.cfgmgr.setup())
+    return reader
+
+
+def _copied(buf: PieceBuffer, start: int = 0) -> bytes:
+    dest = bytearray(len(buf) - start)
+    assert buf.copy_into(dest, start)
+    return bytes(dest)
+
+
+async def _end(task: "asyncio.Task[None]") -> None:
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
+def _entries(reader: SensorReader, kind: str, name: str) -> int:
+    log = run(reader.pr.get_log())[reader.pr.name]
+    return sum(1 for i in range(len(log["ErrNum"])) if log["ErrType"][i] == kind and log["ErrNum"][i] == code(kind, name))
+
+
+def _fail(reader: SensorReader) -> bool:
+    return run(reader._error_check(Meas(None, 50)))
+
+
+def _file_value(path: str) -> object:
+    with open(path) as f:
+        return json.load(f)
+
+
+def _newest(reader: "SensorReader") -> "tuple[int, str]":
+    log = run(reader.pr.get_log())[reader.pr.name]
+    return log["ErrNum"][-1], log["ErrType"][-1]
+
+
+def _pass(reader: SensorReader) -> bool:
+    return run(reader._error_check(Meas(20.0, 50)))
+
+
 async def _put_flushed(reader: "SensorReaderConfig", data: "dict[str, int | float | str | bool | None]") -> "cm.WriteValidity":
     # One PUT and the flush it released, in one coroutine: deferred work never outlives a run() call.
     results = await reader._set_dict_cfg(data, reader.get_cfg_schema())
     await reader.cfgmgr.flush_pending()
     return results
-
-
-async def _write_flushed(mgr: "cm.ConfigManager", data: "dict[str, int | float | str | bool | None]") -> "tuple[bool, cm.WriteValidity]":
-    # One write and its flush in one coroutine: deferred work never outlives a run() call.
-    result = await mgr.write_config(data)
-    await mgr.flush_pending()
-    return result
 
 
 def _remove(path: str) -> None:
@@ -135,9 +230,68 @@ def _remove(path: str) -> None:
         pass  # already gone
 
 
+def _restore_time() -> None:
+    asy_base_classes.time = time
+
+
+async def _run_briefly(reader: _DividingReader) -> bool:
+    # One task run of the trigger loop, cancelled after a few rounds; True when it ended by itself.
+    task = asyncio.create_task(reader._trigger_loop())
+    await _settle()
+    ended = task.done()
+    await _end(task)
+    return ended
+
+
+async def _settle(n: int = 5) -> None:
+    for _ in range(n):
+        await asyncio.sleep(0)
+
+
+def _timer_count(reader: SensorReader) -> int:
+    return run(reader.pr.get_log())[reader.pr.name]["ErrCount"]
+
+
+def _with_fake_ticks(start_ms: int = 0) -> "_WallTime":
+    fake = _WallTime(start_ms)
+    fake.__enter__()  # undone by _restore_time()
+    return fake
+
+
+async def _write_flushed(mgr: "cm.ConfigManager", data: "dict[str, int | float | str | bool | None]") -> "tuple[bool, cm.WriteValidity]":
+    # One write and its flush in one coroutine: deferred work never outlives a run() call.
+    result = await mgr.write_config(data)
+    await mgr.flush_pending()
+    return result
+
+
+def _written_and_copied_rounds() -> int:
+    buf = _ROUNDS_BUF
+    src = memoryview(_ROUNDS_SRC)
+    done = 0
+    for i in range(_PIECE_ROUNDS):
+        done += 1 if buf.write_at(i % 7, src) and buf.copy_into(_ROUNDS_DEST) else 0
+    return done
+
+
 # ---------------------------------------------------------------------------
 # Lockable / RegionBuffer
 # ---------------------------------------------------------------------------
+
+
+class _BalanceLock(asyncio.Lock):
+    # A session lock that counts the releases it refused (extmod/asyncio/lock.py:22-23 raises each one), so a double
+    # release Lockable.__aexit__ swallows still shows in the lock-balance invariant.
+    def __init__(self) -> None:
+        super().__init__()
+        self.refused = 0
+
+    def release(self) -> None:
+        try:
+            super().release()
+        except RuntimeError:
+            self.refused += 1
+            raise
 
 
 def test_lockable_context_manager_acquires_and_releases() -> None:
@@ -159,7 +313,8 @@ def test_lockable_accepts_a_preexisting_lock() -> None:
 
 
 def test_lockable_aexit_swallows_already_released_lock() -> None:
-    lock = Lockable()
+    # The swallow stands (it raises nothing), yet the double release stays visible to the lock-balance invariant.
+    lock = Lockable(_BalanceLock())
 
     async def scenario() -> None:
         async with lock:
@@ -167,6 +322,33 @@ def test_lockable_aexit_swallows_already_released_lock() -> None:
 
     run(scenario())  # must not raise despite the double release
     assert not lock.session_lock.locked()
+    try:
+        _assert_balanced(lock)
+        seen = False
+    except AssertionError as e:
+        seen = "refused 1 release(s)" in str(e)
+    assert seen, "the lock-balance invariant missed the double release __aexit__ swallowed"
+
+
+def test_lockable_stays_balanced_when_cancelled_at_each_await() -> None:
+    # Cancelled queued behind a holder, handed the lock but not yet resumed (lock.py:41-45), or inside its hold: every
+    # count leaves the lock free with no release refused, so __aexit__ releases exactly once per entry.
+    async def build() -> Lockable:
+        return Lockable(_BalanceLock())
+
+    async def hold(lock: Lockable) -> None:
+        async with lock:
+            await asyncio.sleep(0)
+
+    async def contend(lock: Lockable) -> None:
+        first = asyncio.create_task(hold(lock))
+        try:
+            await asyncio.sleep(0)  # the first holder takes the lock, so this entry queues behind it
+            await hold(lock)
+        finally:
+            await first  # a holder still running would leave the lock held for a reason of its own
+
+    assert cancel_at_each_await(build, contend, _assert_balanced) >= 4
 
 
 def test_lockable_aexit_never_suppresses_the_real_exception() -> None:
@@ -337,12 +519,6 @@ def test_regionbuffer_holds_no_lock() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _copied(buf: PieceBuffer, start: int = 0) -> bytes:
-    dest = bytearray(len(buf) - start)
-    assert buf.copy_into(dest, start)
-    return bytes(dest)
-
-
 def test_piecebuffer_holds_its_size_in_pieces_of_at_most_piece_bytes() -> None:
     buf = PieceBuffer(10, 4)
     assert len(buf) == 10
@@ -450,30 +626,6 @@ def test_piecebuffer_allocates_no_block_larger_than_one_piece() -> None:
     assert sum(sizes) == size  # one piece per piece_bytes, nothing joined or copied besides
     assert bytes(dest) == payload
     assert max(len(piece) for piece in buf.pieces()) <= piece_bytes
-
-
-def _ambient_rounds() -> int:
-    # The control: the same loop and calls with no buffer involved.
-    done = 0
-    for _ in range(_PIECE_ROUNDS):
-        done += 1 if len(b"") == 0 else 0
-    return done
-
-
-def _built_and_dropped_rounds() -> int:
-    done = 0
-    for _ in range(_PIECE_ROUNDS):
-        done += 1 if len(PieceBuffer(40, 16)) == 40 else 0
-    return done
-
-
-def _written_and_copied_rounds() -> int:
-    buf = _ROUNDS_BUF
-    src = memoryview(_ROUNDS_SRC)
-    done = 0
-    for i in range(_PIECE_ROUNDS):
-        done += 1 if buf.write_at(i % 7, src) and buf.copy_into(_ROUNDS_DEST) else 0
-    return done
 
 
 def test_piecebuffer_retains_nothing_after_construction() -> None:
@@ -795,16 +947,6 @@ class _WallTime(DrivenTime):
         return t[0]
 
 
-def _with_fake_ticks(start_ms: int = 0) -> "_WallTime":
-    fake = _WallTime(start_ms)
-    fake.__enter__()  # undone by _restore_time()
-    return fake
-
-
-def _restore_time() -> None:
-    asy_base_classes.time = time
-
-
 def test_tickseconds_counts_up_in_whole_seconds_keeping_the_remainder() -> None:
     fake = _with_fake_ticks()
     try:
@@ -1054,11 +1196,6 @@ def test_sensorreader_history_length_zero_is_forwarded_and_never_raises() -> Non
     assert list(reader.pr.history) == []  # nothing to hold, but the count still tracked
 
 
-def _newest(reader: "SensorReader") -> "tuple[int, str]":
-    log = run(reader.pr.get_log())[reader.pr.name]
-    return log["ErrNum"][-1], log["ErrType"][-1]
-
-
 def test_error_check_max_module_error_zero_gives_up_on_first_failure() -> None:
     # Zero tolerance is a legitimate, if unusual, config value - not a caller mistake to guard
     # against like a negative max_module_error would be (see BACKLOG.md's structural-pass note).
@@ -1183,19 +1320,6 @@ class _LadderReader(SensorReader):
         if self._outcome is False:
             await self.pr.err_s("participant recovery failed", errno=code("E", "CHIP_SET"))
         return self._outcome
-
-
-def _fail(reader: SensorReader) -> bool:
-    return run(reader._error_check(Meas(None, 50)))
-
-
-def _pass(reader: SensorReader) -> bool:
-    return run(reader._error_check(Meas(20.0, 50)))
-
-
-def _entries(reader: SensorReader, kind: str, name: str) -> int:
-    log = run(reader.pr.get_log())[reader.pr.name]
-    return sum(1 for i in range(len(log["ErrNum"])) if log["ErrType"][i] == kind and log["ErrNum"][i] == code(kind, name))
 
 
 def test_the_ladder_fires_each_rung_once_in_order() -> None:
@@ -1358,36 +1482,6 @@ def test_a_reader_without_a_recovery_bus_skips_the_bus_rungs() -> None:
 # every n-th tick; a failed arm wakes the waiting task, which persists one TIMER entry and ends, and re-arms on restart.
 
 
-class _DividingReader(SensorReader):
-    # The divider attributes a dividing driver (BMP3XX, ISL29125) sets, over the fake Timer.
-    def __init__(self, period: int) -> None:
-        super().__init__(Meas(None, 50), "DIVIDER", max_module_error=3)
-        self._base_trigger_event = asyncio.ThreadSafeFlag()
-        self._read_event = asyncio.ThreadSafeFlag()
-        self._trigger_period = LockedValue(init_value=period)
-        self._trigger_counter = 0
-        self._trigger_timer = machine.Timer()
-
-    def start_timer(self) -> None:
-        try:
-            self._trigger_timer.init(period=1000, mode=machine.Timer.PERIODIC, callback=lambda _b: self._base_trigger_event.set())
-        except (MemoryError, OSError) as e:
-            self._timer_failed(e, self._base_trigger_event)
-
-
-async def _settle(n: int = 5) -> None:
-    for _ in range(n):
-        await asyncio.sleep(0)
-
-
-async def _end(task: "asyncio.Task[None]") -> None:
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-
-
 def test_trigger_loop_sets_the_read_event_on_every_nth_tick() -> None:
     for period, expected in ((1, [1, 1, 1, 1, 1, 1]), (3, [0, 0, 1, 0, 0, 1])):
         reader = _DividingReader(period)
@@ -1423,19 +1517,6 @@ def test_a_failed_timer_wakes_the_reader_and_logs_once() -> None:
     assert run(reader._timer_fault()) is True
     assert _entries(reader, "E", "TIMER") == 1
     assert run(reader.pr.get_log())["DIVIDER"]["ErrCount"] == 1
-
-
-def _timer_count(reader: SensorReader) -> int:
-    return run(reader.pr.get_log())[reader.pr.name]["ErrCount"]
-
-
-async def _run_briefly(reader: _DividingReader) -> bool:
-    # One task run of the trigger loop, cancelled after a few rounds; True when it ended by itself.
-    task = asyncio.create_task(reader._trigger_loop())
-    await _settle()
-    ended = task.done()
-    await _end(task)
-    return ended
 
 
 def test_trigger_loop_persists_an_arm_failure_no_task_saw_once_then_re_arms() -> None:
@@ -2446,11 +2527,6 @@ def test_set_dict_cfg_push_callback_returning_false_marks_the_field_failed() -> 
         _remove(path_prefix + "config_pushfail.cfg")
 
 
-def _file_value(path: str) -> object:
-    with open(path) as f:
-        return json.load(f)
-
-
 def test_concurrent_puts_keep_the_later_value() -> None:
     # The first PUT's push is held, then fails; a second PUT arrives meanwhile. One PUT per module at a time:
     # the second waits, so the first's recovery can never overwrite the value the second stored.
@@ -3216,29 +3292,6 @@ def test_set_dict_cfg_push_callbacks_default_to_empty_and_are_per_instance() -> 
 # ---------------------------------------------------------------------------
 # A store closed for a commanded reset: the module's PUT answers "Failed" before any chip or flash write.
 # ---------------------------------------------------------------------------
-
-
-class _ChipStoreReader(SensorReaderConfig):
-    # A store whose _set_mgr_cfg() writes a chip before the file (SCD30's shape); every call and snapshot recorded.
-    chip_writes: "list[JsonMapping]"
-    snapshot_reads: "list[list[str]]"
-
-    async def _get_mgr_cfg(self, cfg: "list[str]") -> "dict[str, int | float | str | bool | None] | None":
-        self.snapshot_reads.append(cfg)
-        return await super()._get_mgr_cfg(cfg)
-
-    async def _set_mgr_cfg(self, data: "JsonMapping", cfg_vals: "cm.ConfigSchema") -> "tuple[bool, cm.WriteValidity]":
-        self.chip_writes.append(data)
-        return await super()._set_mgr_cfg(data, cfg_vals)
-
-
-def _chip_store_reader(name: str, schema: "cm.ConfigSchema") -> _ChipStoreReader:
-    _remove(_SHARED_CFG_DIR + "config_" + name + ".cfg")
-    reader = _ChipStoreReader(Meas(20.0, 50), name, schema, max_module_error=3, cfg_path=_SHARED_CFG_DIR)
-    reader.chip_writes = []
-    reader.snapshot_reads = []
-    run(reader.cfgmgr.setup())
-    return reader
 
 
 def test_a_plain_sensorreader_never_reports_its_writes_closed() -> None:

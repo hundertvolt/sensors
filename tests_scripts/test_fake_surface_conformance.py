@@ -36,9 +36,15 @@ def _class(tree: ast.Module, name: str) -> ast.ClassDef:
     return found[0]
 
 
+def _assigned_names(node: "ast.Assign | ast.AnnAssign") -> "set[str]":
+    # A plain or an annotated assignment (`TEST_API: "tuple[str, ...]" = (...)`) alike.
+    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+    return {target.id for target in targets if isinstance(target, ast.Name)}
+
+
 def _declared_test_api(cls: ast.ClassDef) -> "set[str] | None":
     for node in cls.body:
-        if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "TEST_API" for target in node.targets):
+        if isinstance(node, ast.Assign | ast.AnnAssign) and node.value is not None and "TEST_API" in _assigned_names(node):
             names = ast.literal_eval(node.value)
             assert isinstance(names, tuple), f"{cls.name}.TEST_API is not a tuple literal"
             return {str(name) for name in names}

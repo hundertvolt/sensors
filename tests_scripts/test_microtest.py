@@ -1,5 +1,5 @@
-"""tests/microtest.py's contract, which scripts/test.sh's summary reads (run under the real Unix port, as tests/ is), and
-the conventions of tests/ it relies on, read by AST: the canonical trailer, asyncio.run() only in the harness,
+"""tests/microtest.py's contract, which scripts/test.sh's summary reads (run under the real Unix port, as tests/ is),
+and the conventions of tests/ it relies on, read by AST: the canonical trailer, asyncio.run() only in the harness,
 json.loads() only where no response body is read, private doubles and builders, unique scratch keys."""
 
 import ast

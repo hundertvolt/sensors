@@ -1,4 +1,7 @@
-"""Derives the digital twin's per-device wiring plan (which chip fake sits at which bus address, the FRAM on its SPI bus, each bus's pins, the UART crossover pair, every declared driver) from a validated `DeviceModel` - the same shape `digital_twin/machine.py`'s `configure_wiring()` consumes at twin-boot time (SPECIFICATION.md Part L.4).
+"""Derives the digital twin's per-device wiring plan (which chip fake sits at which bus address, the FRAM on its SPI
+bus, each bus's pins, the UART crossover pair, every declared driver) from a validated `DeviceModel` - the same shape
+`digital_twin/machine.py`'s `configure_wiring()` consumes at twin-boot time (SPECIFICATION.md Part L.4).
+
 See `digital_twin/README.md`'s "Booting a generated device" section for the twin-side half of this mechanism."""
 
 from typing import NotRequired, TypedDict, cast
@@ -87,8 +90,9 @@ def _validated_int(spec: InstanceSpec, field: str) -> int:
 
 
 def compute_twin_wiring(model: DeviceModel) -> TwinWiringPlan:
-    # A JSON-serializable wiring plan covering everything `machine.py`'s `_wire_i2c_devices()`/`_wire_spi_device()`/`configure_wiring()` need, derived straight from `model`'s own validated facts rather than a second hand-maintained table.
-    # Trusts an already-`build_model()`-validated `model` (no duplicate address within one bus, no more than one initiator/responder pair).
+    # A JSON-serializable wiring plan with everything `machine.py`'s `_wire_i2c_devices()`, `_wire_spi_device()` and
+    # `configure_wiring()` need, derived from `model`'s own validated facts, not a second hand-maintained table. Trusts an
+    # already-`build_model()`-validated `model` (no duplicate address within one bus, at most one initiator/responder pair).
     buses: dict[str, list[I2CAttachment]] = {}
     spi: dict[str, SpiAttachment] = {}
     for spec in model.instances.values():

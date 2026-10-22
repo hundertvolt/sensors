@@ -28,9 +28,9 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from typing import Any
 
     from _bus_hazard_catalog import BusOccupant
+    from _twin_devices import I2CAttachment, SpiAttachment, TwinWiringPlan
     from machine import I2C as FakeI2C
 
 
@@ -41,7 +41,7 @@ def _generated_src_dir() -> str:
     return "build/generated_src"
 
 
-def _all_device_wiring_plans() -> "list[tuple[str, dict[str, Any]]]":
+def _all_device_wiring_plans() -> "list[tuple[str, TwinWiringPlan]]":
     # (device, plan) for every generated device: whichever wiring plans the generator wrote, never a hand-kept list.
     # os.listdir() and "/" joins: the Unix-port test build has no glob module and its os no os.path.
     require_fresh()
@@ -64,7 +64,7 @@ def _port_id_for_bus(bus_name: str) -> int:
     return int(bus_name[len(kind) :])
 
 
-def _make_build_fresh(bus_name: str, attachments: "list[dict[str, Any]]") -> "Callable[[], tuple[FakeI2C, list[BusOccupant]]]":
+def _make_build_fresh(bus_name: str, attachments: "list[I2CAttachment]") -> "Callable[[], tuple[FakeI2C, list[BusOccupant]]]":
     port_id = _port_id_for_bus(bus_name)
 
     def build_fresh() -> "tuple[FakeI2C, list[BusOccupant]]":
@@ -74,7 +74,7 @@ def _make_build_fresh(bus_name: str, attachments: "list[dict[str, Any]]") -> "Ca
     return build_fresh
 
 
-def _writers(attachments: "list[dict[str, Any]]") -> "list[str]":
+def _writers(attachments: "list[I2CAttachment]") -> "list[str]":
     # Each occupant whose catalog adapter has a safe write; an occupant missing from the catalog fails in its test.
     writers = []
     for attachment in attachments:
@@ -84,7 +84,7 @@ def _writers(attachments: "list[dict[str, Any]]") -> "list[str]":
     return writers
 
 
-def _register_write_tests(namespace: "dict[str, object]", prefix: str, bus_name: str, attachments: "list[dict[str, Any]]") -> None:
+def _register_write_tests(namespace: "dict[str, object]", prefix: str, bus_name: str, attachments: "list[I2CAttachment]") -> None:
     # One test per writer; a bus with no writer gets the one test that reports SKIP with the catalog's reason.
     writers: list[str | None] = list(_writers(attachments))
     for writer in writers or [None]:
@@ -96,7 +96,7 @@ def _register_write_tests(namespace: "dict[str, object]", prefix: str, bus_name:
         namespace[f"{prefix}_a_{name}_write_does_not_disturb_concurrent_sibling_reads_across_timing_offsets"] = test_a_write_does_not_disturb_concurrent_sibling_reads_across_timing_offsets
 
 
-def _register_bus_tests(namespace: "dict[str, object]", device: str, bus_name: str, attachments: "list[dict[str, Any]]") -> None:
+def _register_bus_tests(namespace: "dict[str, object]", device: str, bus_name: str, attachments: "list[I2CAttachment]") -> None:
     prefix = f"test_{device}_{bus_name}"
     port_id = _port_id_for_bus(bus_name)
 
@@ -145,7 +145,7 @@ def _register_bus_tests(namespace: "dict[str, object]", device: str, bus_name: s
     namespace[f"{prefix}_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets"] = test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets
 
 
-def _register_spi_bus_tests(namespace: "dict[str, object]", device: str, bus_name: str, attachments: "list[dict[str, Any]]") -> None:
+def _register_spi_bus_tests(namespace: "dict[str, object]", device: str, bus_name: str, attachments: "list[SpiAttachment]") -> None:
     # A lone SPI occupant's same-device hazards live with its driver (test_asy_fram_driver.py); a shared SPI bus
     # needs every occupant in SPI_HAZARD_CATALOG first, and this test names the one missing.
     _port_id_for_bus(bus_name)
@@ -162,11 +162,11 @@ def _register_spi_bus_tests(namespace: "dict[str, object]", device: str, bus_nam
 for _device, _plan in _all_device_wiring_plans():
     for _bus_name, _attachments in _plan["buses"].items():
         _register_bus_tests(globals(), _device, _bus_name, _attachments)
-    _spi_buses: "dict[str, list[dict[str, Any]]]" = {}
+    _spi_buses: "dict[str, list[SpiAttachment]]" = {}
     for _bus_name, _attachment in _plan.get("spi", {}).items():
         _spi_buses.setdefault(_bus_name, []).append(_attachment)
-    for _bus_name, _attachments in _spi_buses.items():
-        _register_spi_bus_tests(globals(), _device, _bus_name, _attachments)
+    for _bus_name, _spi_attachments in _spi_buses.items():
+        _register_spi_bus_tests(globals(), _device, _bus_name, _spi_attachments)
 
 
 # ---------------------------------------------------------------------------
@@ -175,7 +175,7 @@ for _device, _plan in _all_device_wiring_plans():
 # "tested to the same bar as src/ code: ... full error-handling-path coverage" bar, applied here).
 # ---------------------------------------------------------------------------
 
-_UNKNOWN_ATTACHMENT = {"driver": "not_a_real_driver", "name_ext": "", "address": 0x50}
+_UNKNOWN_ATTACHMENT: "I2CAttachment" = {"driver": "not_a_real_driver", "name_ext": "", "address": 0x50}
 
 
 def test_build_bus_occupants_fails_loud_for_a_driver_with_no_catalog_adapter() -> None:

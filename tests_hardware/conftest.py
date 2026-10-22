@@ -8,7 +8,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple, NoReturn
+from typing import TYPE_CHECKING, NamedTuple, NoReturn, Protocol
 
 import pytest
 
@@ -76,6 +76,16 @@ _BOARD_STATE_EXEC = (
 )
 
 
+class _ResultNote(Protocol):
+    # The result_note fixture: keyword-only `recovery`, which a Callable alias cannot express.
+    def __call__(self, text: str, *, recovery: bool = False) -> None: ...
+
+
+class _SessionNote(Protocol):
+    # The session_note fixture: record_session_note() bound to this session.
+    def __call__(self, text: str, *, recovery: bool = False, source: str) -> None: ...
+
+
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption("--device", default=None, help="Serial device path for the flash-tier board (default: $MPREMOTE_DEVICE, else the board's stable /dev/serial/by-id symlink - see harness.resolve_board_device())")
     parser.addoption("--bench-device", default=None, metavar="NAME", help="the board on the bench; default $BENCH_DEVICE, else the one devices/*.toml with [device].bench = true")
@@ -97,6 +107,9 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 def pytest_configure(config: pytest.Config) -> None:
     markers.register(config)
+    # A thread that dies fails the test it ran under instead of leaving only pytest's warning, so no reader's death
+    # goes unseen (agent, 2026-10-22); a -W option or a filterwarnings mark, applied after this line, still overrides it.
+    config.addinivalue_line("filterwarnings", "error::pytest.PytestUnhandledThreadExceptionWarning")
     # The bench board by name: every default-taking harness helper reads $BENCH_DEVICE, so the option is exported for
     # this session and the previous value restored at its end (an in-process pytest.main() loop must not inherit it).
     chosen = config.getoption("--bench-device") or os.environ.get("BENCH_DEVICE")
@@ -146,7 +159,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 
 @pytest.fixture
-def result_note(request: pytest.FixtureRequest) -> "Callable[..., None]":
+def result_note(request: pytest.FixtureRequest) -> _ResultNote:
     # A note on the test's own report, which the run record keeps for a passing test too (a print
     # is dropped by capture). recovery=True marks a pass that needed a recovery step.
     def _note(text: str, *, recovery: bool = False) -> None:
@@ -182,7 +195,7 @@ def report_to_console(config: pytest.Config, message: str) -> None:
 
 
 @pytest.fixture(scope="session")
-def session_note(request: pytest.FixtureRequest) -> "Callable[..., None]":
+def session_note(request: pytest.FixtureRequest) -> _SessionNote:
     # record_session_note() bound to this session, for a subdirectory's conftest (it cannot import this module).
     def _note(text: str, *, recovery: bool = False, source: str) -> None:
         record_session_note(request.config, text, recovery=recovery, source=source)
@@ -515,7 +528,7 @@ def report_recovery_events(request: pytest.FixtureRequest) -> "Iterator[None]":
         record_session_note(request.config, event, recovery=True, source="mpremote")
 
 
-def _recover_stale_dut_credentials(bench: BenchBridge, note: "Callable[..., None]") -> None:
+def _recover_stale_dut_credentials(bench: BenchBridge, note: _ResultNote) -> None:
     # Last-resort recovery for dut_ip(): the DUT's own hotspot is joined and the bench AP's current credentials PUT to
     # it. The single radio scans only with the AP down, so the AP goes down first; every path restores the bridge.
     ssid, password = bench.ap_ssid(), bench.ap_password()

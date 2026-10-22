@@ -56,18 +56,11 @@ _TIMEOUT_S = 60
 _USAGE_LINE = re.compile(r"^usage:", re.IGNORECASE | re.MULTILINE)
 
 
-@pytest.fixture(scope="module")
-def safe_path(tmp_path_factory: pytest.TempPathFactory) -> str:
-    bin_dir = tmp_path_factory.mktemp("safe_bin")
-    targets = {name: shutil.which(name) for name in _SAFE_COMMANDS}
-    targets["python3"] = sys.executable
-    for name, target in targets.items():
-        if target is not None:
-            # A wrapper, not a symlink: a venv's python finds its packages only through its own path.
-            wrapper = bin_dir / name
-            wrapper.write_text(f'#!/bin/sh\nexec "{target}" "$@"\n', encoding="utf-8")
-            wrapper.chmod(0o755)
-    return str(bin_dir)
+def _command(tool: str, micropython_bin: Path) -> list[str]:
+    if tool.startswith("digital_twin/"):
+        return [str(micropython_bin), tool, "--help"]
+    interpreter = {".sh": "bash", ".mjs": "node", ".py": sys.executable}[Path(tool).suffix]
+    return [interpreter, tool, "--help"]
 
 
 def _tree_state() -> dict[str, tuple[int, int]]:
@@ -96,11 +89,18 @@ def _tree_state() -> dict[str, tuple[int, int]]:
     return state
 
 
-def _command(tool: str, micropython_bin: Path) -> list[str]:
-    if tool.startswith("digital_twin/"):
-        return [str(micropython_bin), tool, "--help"]
-    interpreter = {".sh": "bash", ".mjs": "node", ".py": sys.executable}[Path(tool).suffix]
-    return [interpreter, tool, "--help"]
+@pytest.fixture(scope="module")
+def safe_path(tmp_path_factory: pytest.TempPathFactory) -> str:
+    bin_dir = tmp_path_factory.mktemp("safe_bin")
+    targets = {name: shutil.which(name) for name in _SAFE_COMMANDS}
+    targets["python3"] = sys.executable
+    for name, target in targets.items():
+        if target is not None:
+            # A wrapper, not a symlink: a venv's python finds its packages only through its own path.
+            wrapper = bin_dir / name
+            wrapper.write_text(f'#!/bin/sh\nexec "{target}" "$@"\n', encoding="utf-8")
+            wrapper.chmod(0o755)
+    return str(bin_dir)
 
 
 def test_every_listed_tool_exists() -> None:

@@ -1,6 +1,7 @@
 """Isolated-driver device script: the real-hardware counterpart to the mock tier's
 scenario_a_write_does_not_disturb_concurrent_sibling_reads, with the ISL29125's volatile configure() as the writer
-across _WRITE_DELAYS_MS. Why delays, not yields: SPECIFICATION.md Part C.8. Reports facts; the host gives the verdict."""
+across _WRITE_DELAYS_MS. Why delays, not yields: SPECIFICATION.md Part C.8. Reports facts; the host gives the verdict.
+"""
 
 import asyncio
 import time

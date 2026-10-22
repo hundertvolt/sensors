@@ -1,5 +1,8 @@
-"""Registration-based Microdot REST/API service — modules hand it named callback groups and it auto-constructs the six external endpoints plus connection hardening (timeouts, reject-when-full, a bounded request head).
-`ext/microdot.py` is never edited; every behavior change wraps/calls it instead (CLAUDE.md hard rule). See SPECIFICATION.md Part A.5 (Microdot layer) and A.8 (full endpoint reference) for the complete design."""
+"""Registration-based Microdot REST/API service — modules hand it named callback groups and it auto-constructs the six
+external endpoints plus connection hardening (timeouts, reject-when-full, a bounded request head).
+
+`ext/microdot.py` is never edited; every behavior change wraps/calls it instead (CLAUDE.md hard rule). See
+SPECIFICATION.md Part A.5 (Microdot layer) and A.8 (full endpoint reference) for the complete design."""
 
 import asyncio
 import json
@@ -93,6 +96,7 @@ if TYPE_CHECKING:
     StatusSourceFct = Callable[[], Awaitable[JsonDict]]
     SystemCmdFct = Callable[[str], Awaitable[bool]]
     ResetRefusalFct = Callable[[], bool]
+    StatusCommandFct = Callable[[], bool]
     NotificationLedFct = Callable[[int, int, int, float], Awaitable[bool]]
     NotificationPauseFct = Callable[[int], Awaitable[bool]]
     HotspotActiveFct = Callable[[], bool]
@@ -565,6 +569,7 @@ class WebserverService:
         self._build_info = routes.build_info
         self._system_cmd = routes.system_cmd
         self._reset_refusals = tuple(routes.reset_refusals or ())
+        self._status_commands: dict[str, StatusCommandFct] = {}  # add_status_command()'s dispatch-only keys
         self._notification_led = routes.notification_led
         self._notification_pause = routes.notification_pause
         self._status_sources: dict[str, StatusSourceFct] = dict(routes.status_sources or {})
@@ -794,7 +799,7 @@ class WebserverService:
     async def _note_drop(self, wrnno: int, what: str) -> None:
         # One entry per event; a run of identical codes spends one history slot (print_log's newest-entry rule).
         self._dropped.add(await self._uptime_s())
-        await self.pr.wrn_s(what, wrnno=wrnno)
+        await self._trace_before_close(self.pr.wrn_s(what, wrnno=wrnno))
 
     def _print_exception(self, exc: BaseException) -> None:
         # Microdot's own exception print (rebound in __init__), all its request-read catch does: level-gated like every
@@ -847,6 +852,10 @@ class WebserverService:
             return ar.make_response(1)
         result: dict[str, str] = {}
         for key, value in body.items():
+            command = self._status_commands.get(key)
+            if command is not None and value is True:
+                result[key] = await self._run_status_cmd(key, command)  # dispatch-only: nothing is persisted
+                continue
             if key != "ResetErrors" or value is not True:
                 result[key] = INVALID  # {"ResetErrors": true} is the one request (SPECIFICATION.md A.8)
                 continue
@@ -880,6 +889,15 @@ class WebserverService:
             results["SystemCmd"] = await self._dispatch_system_cmd(body["SystemCmd"])
         return ar.make_response(0, result=results)
 
+    async def _run_status_cmd(self, key: str, command: "StatusCommandFct") -> str:
+        try:  # caller-supplied callback, guarded as _run_system_cmd() guards its own (Part G.2)
+            ok = command()
+        except Exception as e:
+            report_if_fatal(e)
+            await self.pr.err_s("status command failed:", key, e, errno=_ERR_CALLBACK)
+            return FAILED
+        return VALID if ok is True else FAILED
+
     async def _run_system_cmd(self, name: str) -> str:
         if self._system_cmd is None:
             return INVALID
@@ -900,8 +918,8 @@ class WebserverService:
                 current = await self._open_conns.increment()
                 counted = True
                 if current > self._max_connections:
-                    # Reject-when-full (owner, 2026-08-12; SPEC A.8): accepted by asyncio, then closed with no response ever
-                    # written - cheapest, doesn't risk the rejection path itself becoming a resource consumer.
+                    # Reject-when-full (owner, 2026-08-12; SPEC A.8): counted at once, then closed with no response written once
+                    # its trace lands or one per-call timeout has passed; the trace before the close paces a refused client.
                     await self._open_conns.decrement()
                     counted = False
                     await self._note_drop(_WRN_HTTP_REFUSED, "Connection refused at the ceiling")
@@ -921,13 +939,13 @@ class WebserverService:
                     # Either the outer wait_for_ms() above (bounds a Slowloris-paced client no per-call
                     # timeout alone would catch) or a write-phase proxy timeout, logged only here - a
                     # read-phase one logged inside the proxy, and microdot swallowed it.
-                    await self.pr.wrn_s("Connection reclaimed (timed out):", e, wrnno=_WRN_HTTP_CALL_TIMEOUT if timed_out[0] else _WRN_HTTP_REQUEST_CAP)
+                    await self._trace_before_close(self.pr.wrn_s("Connection reclaimed (timed out):", e, wrnno=_WRN_HTTP_CALL_TIMEOUT if timed_out[0] else _WRN_HTTP_REQUEST_CAP))
                 except OSError as e:  # a socket error Microdot does not mute (e.g. EHOSTUNREACH on a response
                     # write); the resets it mutes end in peer_gone instead, traced below.
-                    await self.pr.wrn_s("Connection reclaimed (socket error):", e, wrnno=_WRN_HTTP_SOCKET_ERROR)
+                    await self._trace_before_close(self.pr.wrn_s("Connection reclaimed (socket error):", e, wrnno=_WRN_HTTP_SOCKET_ERROR))
                 except Exception as e:  # a fault the request raised (SPECIFICATION.md A.5)
                     report_if_fatal(e)
-                    await self.pr.err_s("Unexpected error serving connection:", e, errno=_ERR_UNEXPECTED)
+                    await self._trace_before_close(self.pr.err_s("Unexpected error serving connection:", e, errno=_ERR_UNEXPECTED))
                 else:  # no arm persisted this connection's one entry, so a drop trace may (C.7)
                     if head_refused[0]:
                         await self._note_drop(_WRN_HTTP_BAD_HEAD, "Request head refused")
@@ -972,6 +990,14 @@ class WebserverService:
                 # holds its pcb until a collection, up to two across the retries. The last failure ends the task (A.5).
                 await asyncio.sleep(_START_RETRY_S)
         await server.wait_closed()
+
+    async def _trace_before_close(self, trace: "Awaitable[None]") -> None:
+        # A trace _serve() awaits before its close, held at most one per-call timeout (SPECIFICATION.md A.8). One cut short is
+        # not lost: wrn_s()/err_s() kept its entry in RAM before their first await, and the logger's next write persists it.
+        try:
+            await asyncio.wait_for_ms(trace, self._per_call_timeout_ms)
+        except asyncio.TimeoutError:
+            pass  # the entry kept in RAM is this cut's evidence
 
     async def _write_errcount_entry(self, writer: _PieceWriter, get_log_fct: "Callable[[], Awaitable[ErrorLog]]", name: str) -> None:
         try:  # see _write_guarded()'s own comment - identical reasoning, different source kind.
@@ -1032,6 +1058,11 @@ class WebserverService:
         return [self.pr]
 
     # -- others ------------------------------------------------------------
+
+    def add_status_command(self, key: str, command: "StatusCommandFct") -> None:
+        # A dispatch-only PUT /status key beside ResetErrors, which the generated module registers where its driver is
+        # wired: {key: true} answers Valid when command() takes it, else Failed. A RouteSources field would change its arity.
+        self._status_commands[key] = command
 
     async def reset_error_counter(self) -> bool:
         self._dropped.reset()  # ResetErrors clears the drop window too (owner, 2026-10-01)

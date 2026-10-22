@@ -17,6 +17,15 @@ import { renderSection } from "./render.js";
 const DEVICE_WATCH_INTERVAL_MS = 60000;
 
 /**
+ * The page's own build stamp, which a firmware build writes as `<meta name="build-date">`; null for a site built on its own.
+ * @param {Document} doc
+ * @returns {string | null}
+ */
+export function buildDateOf(doc) {
+    return doc.querySelector('meta[name="build-date"]')?.getAttribute("content") || null; // an empty stamp is none
+}
+
+/**
  * The open section as the URL's `#<key>`, one entry per selection from the menu, so Back and Forward walk the sections.
  * @param {Window} win
  * @returns {SectionHistory}
@@ -36,7 +45,8 @@ export function historyOf(win) {
 
 /**
  * Starts the nav, the section the history names (else the landing one) and the device watch: the device's clock
- * offset, and a reload once the device reports another build, deferred while an Apply is pending.
+ * offset, and a reload once the device reports another build than the page's own or the first one seen, deferred while
+ * an Apply is pending.
  * @param {{
  *   defs: SiteDefinitions,
  *   elements: {appShellEl: HTMLElement, mainEl: HTMLElement, drawerEl: HTMLElement, hamburgerEl: HTMLElement, backdropEl: HTMLElement},
@@ -44,10 +54,11 @@ export function historyOf(win) {
  *   visibility: Visibility,
  *   history: SectionHistory,
  *   reload: () => void,
+ *   pageBuildDate?: string | null,
  * }} options
  * @returns {() => void} stop: ends the section, the watch and every listener the shell added.
  */
-export function startShell({ defs, elements, keyTarget, visibility, history, reload }) {
+export function startShell({ defs, elements, keyTarget, visibility, history, reload, pageBuildDate = null }) {
     const { mainEl, ...navElements } = elements;
     const watchAbort = new AbortController();
     let stopped = false;
@@ -104,7 +115,10 @@ export function startShell({ defs, elements, keyTarget, visibility, history, rel
         }
         const seen = JSON.stringify(build);
         firstBuild ??= seen;
-        if (seen !== firstBuild) {
+        // GET /system's "build" carries the BuildDate the firmware build also stamped into its page (SPECIFICATION.md Part L.7).
+        const buildDate = /** @type {{BuildDate?: unknown}} */ (build).BuildDate;
+        const pageStale = pageBuildDate !== null && typeof buildDate === "string" && buildDate !== pageBuildDate;
+        if (seen !== firstBuild || pageStale) {
             reloadPending = true;
             reloadIfDue();
         }

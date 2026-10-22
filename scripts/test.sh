@@ -190,8 +190,8 @@ fi
 # against the interpreter there and pinned to this copy by tests_scripts/test_test_sh.py.
 qstr_max_bytes=255
 # _uninternable: each string run_test_file's launches hand the interpreter to intern before a file starts and that it
-# cannot, "<what> <string> (<bytes> bytes)" per line, once each: the script's real directory, every MICROPYPATH entry but
-# a ~/ one it builds from $HOME, every argument from the script on (ports/unix/main.c:412, :560, :688).
+# cannot, "<what> <string> (<bytes> bytes)" per line, once each: the script's real directory, every MICROPYPATH entry
+# but a ~/ one it builds from $HOME, every argument from the script on (ports/unix/main.c:412, :560, :688).
 _uninternable() {
     local LC_ALL=C file tag device value i files=() scripts=() resolved=() entries=() strings=()
     local -A per_device=() seen=()
@@ -398,8 +398,8 @@ echo "== Generating buildgen device modules into build/generated_src/"
 uv run scripts/_generate_sensortask_modules.py
 
 # Every twin boot binds privileged ports (its NTP responder's 123, a hotspot's DNS 53), the tests_scripts/ tier's twins
-# too, so the grant comes before that tier, for the build it boots (build-standard) and this run's own interpreter; fresh
-# every invocation, for the reason run_digital_twin_ci.sh's identical grant gives (xattrs).
+# too, so the grant comes before that tier, for the build it boots (build-standard) and this run's own interpreter;
+# fresh every invocation, for the reason run_digital_twin_ci.sh's identical grant gives (xattrs).
 cap_bins=("$(unix_port_bin standard)")
 [ "$micropython_bin" = "${cap_bins[0]}" ] || cap_bins+=("$micropython_bin")
 for cap_bin in "${cap_bins[@]}"; do
@@ -539,8 +539,8 @@ _job_tag() {
 }
 
 # _run_with_retries <tag> <what> <status_file> <timeout_s> <after> <command...>: one job's timeout+retry loop, writing
-# PASS, RETRIED-PASS <k>/<n> or FAIL to status_file; <after> runs after every attempt with the tag, the log and the
-# attempt number. Never returns nonzero itself, so backgrounding a job and reaping it with `wait -n` cannot trip `set -e`.
+# PASS, RETRIED-PASS <k>/<n> or FAIL to status_file; <after> runs after every attempt with the tag, log and attempt
+# number. Never returns nonzero itself, so backgrounding a job and reaping it with `wait -n` cannot trip `set -e`.
 _run_with_retries() {
     local tag="$1" what="$2" status_file="$3" timeout_s="$4" after="$5" attempt attempt_start ec log_file attempt_pidfile
     shift 5

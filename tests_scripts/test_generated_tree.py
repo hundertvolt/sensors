@@ -1,6 +1,6 @@
-"""tests/_generated_tree.py's require_fresh(), run under the real Unix port over a stand-in repo the generator wrote:
-a fresh tree passes; an input edited after the generation (a TOML, the generator itself, even within the same second),
-a TOML added or a missing stamp is refused naming the generator, and regenerating clears it. A zz_test_ fixture is none."""
+"""tests/_generated_tree.py's require_fresh(), run under the real Unix port over a stand-in repo the generator wrote: a
+fresh tree passes; an input edited after generation (a TOML, the generator itself, even within the same second), a TOML
+added or a missing stamp is refused naming the generator, and regenerating clears it. A zz_test_ fixture is none."""
 
 import ast
 import json

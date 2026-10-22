@@ -92,8 +92,8 @@ done
 [ "$device_given" = "1" ] || _usage_error "error: --device is required"
 require_device "$device"
 
-# The one Unix-port probe (scripts/_unix_port.sh), sourced here for the twin layout: the launch is refused before the lock,
-# a build or setcap when it hands the interpreter a string it cannot intern ("FATAL: uncaught NLR", exit 1, at start).
+# The one Unix-port probe (scripts/_unix_port.sh), sourced for the twin layout: the launch is refused before the lock, a
+# build or setcap if it hands the interpreter a string it cannot intern ("FATAL: uncaught NLR", exit 1, at start).
 # shellcheck source=/dev/null  # linted on its own, as one of scripts/*.sh
 source scripts/_unix_port.sh
 module="sensortask_${device}"

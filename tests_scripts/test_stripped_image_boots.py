@@ -1,6 +1,6 @@
-"""Boots every derived device's shipped form under the digital twin: its staged modules stripped and compiled by
-mpy-cross, nothing of src/ or ext/ on the path, asserting what the source boot asserts (test_digital_twin_generated_boot.py,
-which stays: the two runs over the same checks are the differential). SPECIFICATION.md B.11."""
+"""Boots every derived device's shipped form under the digital twin (SPECIFICATION.md B.11): its staged modules stripped
+and compiled by mpy-cross, nothing of src/ or ext/ on the path, asserting what the source boot asserts
+(test_digital_twin_generated_boot.py, which stays: the two runs over the same checks are the differential)."""
 
 import contextlib
 import functools

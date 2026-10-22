@@ -1,8 +1,20 @@
-// Tests js/shell.js: section switching, the stop handle, the device clock and the build watch's reload rule.
+// Tests js/shell.js: section switching, the stop handle, the device clock and the build watch's reload rule, which both
+// entries feed with the page's own build stamp.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { historyOf, startShell, visibilityOf } from "../js/shell.js";
+import { startApp as startPrototypeApp } from "../js/app.js";
+import { startApp as startProductionApp } from "../js/main.js";
+import { buildDateOf, historyOf, startShell, visibilityOf } from "../js/shell.js";
 import shellSource from "../js/shell.js?raw";
+import CODEGEN_SOURCE from "../buildgen/codegen.py?raw";
+import STAGER_SOURCE from "../scripts/_stage_website.py?raw";
+import { buildElements as buildPageElements } from "./_dom_helpers.js";
 import { readIntConst } from "./_source_constants.js";
+
+// The entries run the real shell; only the reload a test hands it is a spy, so a reload is seen and never done.
+vi.mock("../js/shell.js", async (importOriginal) => {
+    const real = /** @type {typeof import("../js/shell.js")} */ (await importOriginal());
+    return { ...real, startShell: vi.fn(real.startShell) };
+});
 
 const WATCH_INTERVAL_MS = readIntConst(shellSource, "DEVICE_WATCH_INTERVAL_MS");
 
@@ -259,12 +271,12 @@ describe("startShell", () => {
     /**
      * @param {{
      *   defs?: import("../js/definitions.js").SiteDefinitions, visibility?: ReturnType<typeof fakeVisibility>,
-     *   history?: ReturnType<typeof fakeHistory>, reload?: () => void, keyTarget?: EventTarget,
+     *   history?: ReturnType<typeof fakeHistory>, reload?: () => void, keyTarget?: EventTarget, pageBuildDate?: string | null,
      * }} [parts]
      */
-    function start({ defs = DEFS, visibility = fakeVisibility(), history = fakeHistory(), reload = vi.fn(), keyTarget = new EventTarget() } = {}) {
+    function start({ defs = DEFS, visibility = fakeVisibility(), history = fakeHistory(), reload = vi.fn(), keyTarget = new EventTarget(), pageBuildDate = null } = {}) {
         elements = buildElements();
-        stop = startShell({ defs, elements, keyTarget, visibility: visibility.source, history: history.source, reload });
+        stop = startShell({ defs, elements, keyTarget, visibility: visibility.source, history: history.source, reload, pageBuildDate });
         return { elements, visibility, history, reload, keyTarget };
     }
 
@@ -339,6 +351,36 @@ describe("startShell", () => {
         await vi.advanceTimersByTimeAsync(WATCH_INTERVAL_MS);
         await vi.waitFor(() => expect(requests.count("/system")).toBe(3));
         await vi.waitFor(() => expect(requests.read("/system")).toBe(3));
+
+        expect(reload).not.toHaveBeenCalled();
+    });
+
+    it("reloads once the first build the watch reads differs from the page's own: a reflash before the first watch", async () => {
+        vi.useFakeTimers();
+        let rebooting = true;
+        const requests = installFetchStub({
+            system: () => Promise.resolve(rebooting ? json({ res: "ERR", code: 503, descr: "Rebooting", result: {} }, 503) : json({ build: { BuildDate: "2026-02-02T00:00:00Z" } })),
+        });
+        const { reload } = start({ pageBuildDate: "2026-01-01T00:00:00Z" });
+        await vi.waitFor(() => expect(requests.count("/system")).toBe(1));
+        rebooting = false;
+
+        await vi.advanceTimersByTimeAsync(WATCH_INTERVAL_MS);
+        await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+        expect(requests.count("/system")).toBe(2);
+    });
+
+    it.each([
+        ["the page's build date matches the device's", "2026-01-01T00:00:00Z", { BuildDate: "2026-01-01T00:00:00Z" }],
+        ["the page carries none", null, { BuildDate: "2026-02-02T00:00:00Z" }],
+        ["the device sends none", "2026-01-01T00:00:00Z", { FirmwareVersion: "1.0.0" }],
+    ])("never reloads for the page's build when %s", async (_case, pageBuildDate, build) => {
+        vi.useFakeTimers();
+        const requests = installFetchStub({ builds: () => build });
+        const { reload } = start({ pageBuildDate });
+        await vi.waitFor(() => expect(requests.read("/system")).toBe(1));
+        await vi.advanceTimersByTimeAsync(WATCH_INTERVAL_MS);
+        await vi.waitFor(() => expect(requests.read("/system")).toBe(2));
 
         expect(reload).not.toHaveBeenCalled();
     });
@@ -551,11 +593,28 @@ describe("startShell", () => {
     });
 });
 
-describe("historyOf and visibilityOf", () => {
+describe("buildDateOf, historyOf and visibilityOf", () => {
     const originalUrl = window.location.href;
 
     afterEach(() => {
         window.history.replaceState(null, "", originalUrl);
+    });
+
+    it("reads the page's build stamp the stager writes, and null without one", () => {
+        expect(STAGER_SOURCE).toContain('<meta name="build-date" content="{build_date}">');
+        expect(CODEGEN_SOURCE).toContain('"BuildDate": _BUILD_DATE');
+        expect(buildDateOf(document)).toBeNull();
+        const meta = document.createElement("meta");
+        meta.name = "build-date";
+        meta.content = "2026-01-01T00:00:00Z";
+        document.head.append(meta);
+        try {
+            expect(buildDateOf(document)).toBe("2026-01-01T00:00:00Z");
+            meta.content = "";
+            expect(buildDateOf(document)).toBeNull();
+        } finally {
+            meta.remove();
+        }
     });
 
     it("reads the section from the URL hash, pushes one entry per key and reports a Back as a pop", async () => {
@@ -589,4 +648,59 @@ describe("historyOf and visibilityOf", () => {
 
         expect(changes).toHaveBeenCalledTimes(1);
     });
+});
+
+describe("the entries' page stamp", () => {
+    const originalFetch = window.fetch;
+    const PAGE_BUILD = "2026-01-01T00:00:00Z";
+    const BUILD_GROUP = { key: "build", label: "Build", fields: [{ key: "BuildDate", label: "Build Date", kind: "readonly", path: ["build", "BuildDate"] }] };
+    const ENTRY_DEFS = { ...DEFS, sections: [...DEFS.sections, { key: "system", label: "System", rest: { get: "/system" }, pollGroup: "settings", groups: [BUILD_GROUP] }] };
+    const DEVICE_BUILD = { BuildDate: "2026-02-02T00:00:00Z" };
+    const SAMPLES = {
+        measurements: {}, sensorsConfig: {}, networkingConfig: {}, systemConfig: { build: DEVICE_BUILD }, notificationConfig: {},
+        status: { networking: {}, system: {}, sensors: {}, notification: {} }, errcount: {},
+    };
+    // Each entry with the files it fetches: the production one asks the device itself, the prototype its mock backend.
+    const ENTRIES = [
+        { entry: "js/main.js", startApp: startProductionApp, files: { "definitions.json": ENTRY_DEFS, "/measurements": {}, "/status": {}, "/system": { build: DEVICE_BUILD } } },
+        { entry: "js/app.js", startApp: startPrototypeApp, files: { "../build/generated_src/definitions/index.json": { devices: ["fixture-device"] }, "../build/generated_src/definitions/fixture-device.json": ENTRY_DEFS, "../mockdata/samples.json": SAMPLES } },
+    ];
+    /** @type {(() => void)[]} */
+    const cleanups = [];
+
+    afterEach(() => {
+        for (const cleanup of cleanups.splice(0).reverse()) {
+            cleanup();
+        }
+        window.fetch = originalFetch;
+    });
+
+    for (const { entry, startApp, files } of ENTRIES) {
+        it(`${entry} reloads once its device reports another build than the page's own stamp: a reflash before the first watch`, async () => {
+            const meta = document.createElement("meta");
+            meta.name = "build-date";
+            meta.content = PAGE_BUILD;
+            document.head.append(meta);
+            cleanups.push(() => meta.remove());
+            window.fetch = vi.fn((/** @type {RequestInfo | URL} */ input) => {
+                const body = /** @type {Record<string, unknown>} */ (files)[String(input)];
+                return Promise.resolve(body === undefined ? new Response("not found", { status: 404 }) : new Response(JSON.stringify(body), { status: 200 }));
+            });
+            const real = /** @type {typeof import("../js/shell.js")} */ (await vi.importActual("../js/shell.js"));
+            const reload = vi.fn();
+            vi.mocked(startShell).mockImplementationOnce((options) => real.startShell({ ...options, reload }));
+            const elements = buildPageElements();
+            cleanups.push(() => {
+                for (const el of Object.values(elements)) {
+                    el.remove();
+                }
+            });
+
+            const stop = await startApp(elements);
+            cleanups.push(stop);
+
+            expect(elements.errorBannerEl.dataset.shown).toBe("false");
+            await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+        });
+    }
 });

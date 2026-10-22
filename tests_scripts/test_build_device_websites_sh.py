@@ -1,6 +1,6 @@
-"""scripts/build_device_websites.sh builds every derived device's site from its generated definitions:
-one frozen module per device under the given root (or with --stage-only one staged page and bundle, frozen
-nowhere), each index.html's inlined definitions naming that device; a zz_test_ fixture is never built (SPECIFICATION.md H.2)."""
+"""scripts/build_device_websites.sh builds every derived device's site from its generated definitions: one frozen module
+per device under the given root (or with --stage-only one staged page and bundle, frozen nowhere), each index.html's
+inlined definitions naming that device; a zz_test_ fixture is never built (SPECIFICATION.md H.2)."""
 
 import ast
 import gzip

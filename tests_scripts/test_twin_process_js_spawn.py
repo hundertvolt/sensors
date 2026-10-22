@@ -1,6 +1,6 @@
-"""Tests tests_js/_twin_process.js's spawnTwin(): a string the Unix port interns before the runner starts and cannot (an
-argument, the runner's directory, a MICROPYPATH entry) is refused before anything is probed, locked or started, naming it
-and the limit, which is scripts/_twin_process.py's. Driven by Node on a copy in a throwaway tree with a stub interpreter."""
+"""tests_js/_twin_process.js's spawnTwin(): a string the Unix port interns before the runner starts and cannot (an
+argument, the runner's directory, a MICROPYPATH entry) is refused before anything is probed, locked or started, naming
+it and the limit (scripts/_twin_process.py's). Driven by Node on a copy in a throwaway tree with a stub interpreter."""
 
 import json
 import os

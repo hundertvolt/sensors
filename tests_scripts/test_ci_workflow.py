@@ -1,6 +1,6 @@
-"""The workflow's standing rules over .github/workflows/ci.yml and its two composite actions, read as text (pyyaml is no
-dependency here): gating, the web filter, pins, the composite actions, the derived device matrices, values reaching a
-`run:` only through `env:`, executable scripts, the bounded installs and the Playwright caches' runner identity. Each failure names the job and the fix (SPECIFICATION.md B.10.1)."""
+"""Standing rules over .github/workflows/ci.yml and both composite actions, read as text (no pyyaml): gating, web
+filter, pins, composite actions, derived device matrices, values reaching `run:` only via `env:`, executable scripts,
+bounded installs, Playwright caches' runner identity. Each failure names its job and fix (SPECIFICATION.md B.10.1)."""
 
 import re
 from pathlib import Path

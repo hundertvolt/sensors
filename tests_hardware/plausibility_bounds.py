@@ -1,6 +1,6 @@
 """Plausibility bounds, one (min, max, source) per quantity, each source naming its datasheet page or the src/ constant
-it is read from: host tests import BOUNDS, device scripts receive it as a render extra. A bound that would fail a healthy
-board is no plausibility bound."""
+it is read from: host tests import BOUNDS, device scripts receive it as a render extra. A bound that would fail a
+healthy board is no plausibility bound."""
 
 import ast
 from pathlib import Path

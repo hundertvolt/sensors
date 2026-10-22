@@ -1,6 +1,6 @@
-"""The website's visual/mechanics split (SPECIFICATION.md Part H.3) over every js/*.js: elements built in templates.js only,
-`document` read by the entries only, controllers writing only the documented data-* hooks, key selectors escaped, HTML sinks
-banned. Text-based, with no JS parser offline: an aliased or computed call evades it. Each rule bites on a planted copy."""
+"""The website's visual/mechanics split (SPECIFICATION.md Part H.3) over js/*.js: elements built in templates.js only,
+`document` read by entries only, controllers writing only documented data-* hooks, key selectors escaped, HTML sinks
+banned. Text-based, no JS parser offline: an aliased or computed call evades it. Each rule bites on a planted copy."""
 
 import re
 import shutil

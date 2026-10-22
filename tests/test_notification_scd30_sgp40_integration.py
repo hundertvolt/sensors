@@ -1,18 +1,23 @@
-"""Cross-module integration: a real SCD30_Reader AND a real SGP40_Reader simultaneously feeding ONE shared NotificationService/NeopixelDriver (matching the generated build_system()'s single notification/pixel wiring).
-Fills the gap test_notification_scd30_integration.py/test_notification_sgp40_integration.py each leave (their own separate coordinator/pixel pair): proves both chains trigger correctly without cross-contaminating, and a hardware fault on one sensor stays isolated to its own error log."""
+"""Cross-module integration: a real SCD30_Reader AND a real SGP40_Reader simultaneously feeding ONE shared
+NotificationService/NeopixelDriver (matching the generated build_system()'s single notification/pixel wiring).
 
-import asyncio
+Fills the gap test_notification_scd30_integration.py/test_notification_sgp40_integration.py each leave (their own
+separate service/pixel pair): proves both chains trigger correctly without cross-contaminating, and a hardware fault on
+one sensor stays isolated to its own error log."""
+
 import errno
 import struct
 from collections import namedtuple
 
 from _async_harness import cancel_all, run
 from _error_codes import code
-from _fake_time import FakeTime, UTCValid
+from _fake_time import DrivenTime, FakeTime, UTCValid
 from _fast_sleep import FastAsyncSleep
 from _tmp_scratch import TmpScratch
 from machine import I2C as FakeI2C
 
+import asy_neopixel_driver
+import asy_notification_service
 from asy_base_classes import ValueRef
 from asy_crc_checks import CRC8
 from asy_i2c_driver import I2C
@@ -33,7 +38,7 @@ if TYPE_CHECKING:
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
 # own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage. `label`
-# (e.g. "scd30"/"sgp40") keeps this file's two-sensors-in-one-coordinator directories readable.
+# (e.g. "scd30"/"sgp40") keeps this file's two-sensors-in-one-service directories readable.
 _scratch = TmpScratch("notify_dual")
 
 
@@ -46,6 +51,32 @@ def _crc8(data: bytes) -> int:
     return crc
 
 
+async def _cycle(clock: DrivenTime, notify: NotificationService, flashes: int) -> None:
+    # The monitor's first cycle by the service's own rule: 2 x FlashDur after each triggered flash, so 1 ms before that
+    # end nothing is stored yet; then the loop parks on its next cycle, FlashInterval after its start.
+    cfg = (await notify.get_dict_cfg())["NOTIFY"]
+    flash_dur, interval = cfg["FlashDur"], cfg["FlashInterval"]
+    assert isinstance(flash_dur, float) and isinstance(interval, float), cfg
+    start = clock.now
+    end = start + flashes * round(flash_dur * 2000)
+    if end > start:
+        await clock.elapse(end - 1 - start)
+        assert notify._datastruct[1] is None, f"the cycle was stored by virtual t={clock.now} ms"  # State: None until stored
+    await clock.elapse(end - clock.now)
+    assert notify._datastruct[1] is not None, f"no cycle stored at virtual t={clock.now} ms"
+    assert clock.wakes()[-1] == start + round(interval * 1000), f"at virtual t={clock.now} ms the loop waits for {clock.wakes()}"
+
+
+def _drive_scd_cycle(reader: SCD30_Reader) -> "SCDResults":
+    # Exactly what _read_loop() itself does per cycle (see asy_scd30_driver.py) - driven directly
+    # instead of through the full irq/timer machinery, same convention as the sibling files.
+    with UTCValid():
+        results, new_data = run(reader._read_scd())
+    run(reader._error_check(results))
+    run(reader._store_scd(results, new_data))
+    return results
+
+
 def _drive_sgp_cycle(reader: SGP40_Reader, fake_bus: "FakeI2C", raw: int) -> "SGP40":
     fake_bus.read_queue.append(_word(raw))
     with UTCValid():
@@ -56,6 +87,12 @@ def _drive_sgp_cycle(reader: SGP40_Reader, fake_bus: "FakeI2C", raw: int) -> "SG
 
 
 # --- SCD30 side: register/data frame builders, verbatim from test_notification_scd30_integration.py ---
+
+
+def _driven() -> DrivenTime:
+    # The driver's and the service's time and asyncio on one driven clock for the block: every frame, settle, overlay
+    # and pause wait parks on it, and time moves only when the test moves it.
+    return DrivenTime(asy_neopixel_driver, asy_notification_service, sleeps=True)
 
 
 async def _local_time() -> FakeTime:
@@ -159,19 +196,6 @@ def data_frame(co2: float, temperature: float, humidity: float) -> bytes:
     return bytes(frame)
 
 
-def drive_scd_cycle(reader: SCD30_Reader) -> "SCDResults":
-    # Exactly what _read_loop() itself does per cycle (see asy_scd30_driver.py) - driven directly
-    # instead of through the full irq/timer machinery, same convention as the sibling files.
-    with UTCValid():
-        results, new_data = run(reader._read_scd())
-    run(reader._error_check(results))
-    run(reader._store_scd(results, new_data))
-    return results
-
-
-# --- shared downstream stack: one NeopixelDriver, one NotificationService, both signals ---
-
-
 def register_frame(value: int) -> bytes:
     payload = struct.pack(">H", value)
     return payload + bytes([crc8_byte(payload)])
@@ -187,19 +211,17 @@ def test_both_sensors_crossing_threshold_together_trigger_their_own_signal_witho
         elevated = _settle_and_spike(sgp_reader, sgp_i2c)
     assert elevated.VOC is not None and elevated.VOC > 350
 
-    drive_scd_cycle(scd_reader)
+    _drive_scd_cycle(scd_reader)
     pixel, notify = _make_dual_stack(scd_reader, sgp_reader)
 
-    async def scenario() -> None:
+    async def scenario(clock: DrivenTime) -> None:
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
-        # Both signals' own ramps (2*0.5=1.0s each) may run one after another rather than
-        # simultaneously, depending on NeopixelDriver's own arbitration (unit-tested elsewhere,
-        # not re-derived here) - generous margin covers either ordering.
-        await asyncio.sleep(2.6)
-        await cancel_all(tasks)
+        await _cycle(clock, notify, 2)  # both signals flash, one settle after the other
+        await cancel_all(tasks, settle_yields=1)
 
-    run(scenario())
+    with _driven() as clock:
+        run(scenario(clock))
     writes = [w[0] for w in pixel._pixel.writes]
     assert (200, 0, 0) in writes  # WarnCO2's own color, scaled by the default FlashBri=200
     assert (0, 200, 0) in writes  # WarnVOC's own color, scaled by the default FlashBri=200
@@ -228,17 +250,18 @@ def test_one_sensor_i2c_fault_stays_isolated_and_the_healthy_sibling_still_trigg
         elevated = _settle_and_spike(sgp_reader, sgp_i2c)
     assert elevated.VOC is not None and elevated.VOC > 350
 
-    faulted = drive_scd_cycle(scd_reader)  # the bus fault happens inside here
+    faulted = _drive_scd_cycle(scd_reader)  # the bus fault happens inside here
     assert faulted[0] is None  # (co2, temp, hum, ts) - a no-op store, get_co2 will return None
     pixel, notify = _make_dual_stack(scd_reader, sgp_reader)
 
-    async def scenario() -> None:
+    async def scenario(clock: DrivenTime) -> None:
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
-        await asyncio.sleep(1.3)  # one triggered cycle's real settle time (2*0.5=1.0s) + margin
-        await cancel_all(tasks)
+        await _cycle(clock, notify, 1)
+        await cancel_all(tasks, settle_yields=1)
 
-    run(scenario())
+    with _driven() as clock:
+        run(scenario(clock))
     writes = [w[0] for w in pixel._pixel.writes]
     assert (0, 200, 0) in writes  # the healthy SGP40 chain still triggers normally
     assert (200, 0, 0) not in writes  # the faulted SCD30 chain never triggers - data.CO2 was None

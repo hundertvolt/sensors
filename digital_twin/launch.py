@@ -1,6 +1,6 @@
 """Standalone CLI launcher for the twin (micropython digital_twin/launch.py --wiring-plan PATH [options]), src/-free: it
-builds the buses of the device whose plan it is given and periodically reads each wired sensor, attempts one WLAN connect
-and feeds a WDT. --fault/--hang expose each chip fake's FaultInjector (owner, 2026-08-12: chosen over a probabilistic flaky mode)."""
+builds the buses of the plan's device, periodically reads each wired sensor, attempts one WLAN connect and feeds a WDT.
+--fault/--hang expose each chip fake's FaultInjector (owner, 2026-08-12: chosen over a probabilistic flaky mode)."""
 
 import asyncio
 import errno

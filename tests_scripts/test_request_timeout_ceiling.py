@@ -1,6 +1,6 @@
-"""Pins the product's own request timeouts (asy_webserver_service.py's `_DEFAULT_OUTER_CAP_S`/`_DEFAULT_PER_CALL_TIMEOUT_S`)
-to every place that mirrors or must stay inside them - the web UI's give-up time, both tiers' ResetErrors
-timeouts, the bench's connection-holding instruments. Read with ast, since src/ can't be imported here."""
+"""Pins the product's own request timeouts (asy_webserver_service.py's `_DEFAULT_OUTER_CAP_S` and
+`_DEFAULT_PER_CALL_TIMEOUT_S`) to every place that mirrors or must stay inside them - the web UI's give-up time, both
+tiers' ResetErrors timeouts, the bench's connection-holding instruments. Read with ast; src/ can't be imported here."""
 
 import ast
 import re

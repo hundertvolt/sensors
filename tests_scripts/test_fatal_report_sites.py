@@ -1,6 +1,6 @@
-"""Every broad handler in src/ and the generated modules records a C-stack overflow first (SPECIFICATION.md F.1): its first
-statement is report_if_fatal(<its name>), the asy_print_log primitive, unless it ends in a bare raise; so is the first statement
-of each function Microdot hands an exception it caught: the one errorhandler(Exception) registers and its rebound print_exception."""
+"""Every broad handler in src/ and the generated modules records a C-stack overflow first (SPECIFICATION.md F.1): its
+first statement is report_if_fatal(<its name>), the asy_print_log primitive, unless it ends in a bare raise; so is that
+of each function Microdot hands a caught exception: the errorhandler(Exception) one, its rebound print_exception."""
 
 import ast
 from pathlib import Path

@@ -1,6 +1,6 @@
 """The tick rollover survived on silicon, observed over REST only (owner, 2026-10-01): the tick-offset test image starts
-its millisecond count 15 minutes short of 2**32, so time.ticks_ms()'s 2**30 period, the soft timers' and lwIP's 32-bit
-counts all wrap soon after boot; polled for two hours, nothing reboots, stalls or stops syncing (RP2040 datasheet 4.6.2)."""
+its ms count 15 minutes short of 2**32, so time.ticks_ms()'s 2**30 period, the soft timers' and lwIP's 32-bit counts all
+wrap soon after boot; polled for two hours, nothing reboots, stalls or stops syncing (RP2040 datasheet 4.6.2)."""
 
 import json
 import time

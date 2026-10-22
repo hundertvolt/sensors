@@ -1,6 +1,8 @@
-"""Every ruff exemption in pyproject.toml still fires: one ruff run with every exemption lifted, over the eight lint scopes and a
-device tree generated here, must show each global code, each per-file code in a file its glob matches, each allowed confusable
-and an F401 naming each allowed-unused-imports module - else the entry goes (SPECIFICATION.md D.6). A policy entry with no site is listed with its reason."""
+"""Every ruff exemption in pyproject.toml still fires: one ruff run, every exemption lifted, over the eight lint scopes
+and a device tree generated here, must show each global code, each per-file code in a file its glob matches, each
+allowed confusable and an F401 naming each allowed-unused-imports module, else the entry goes (SPECIFICATION.md D.6).
+
+A policy entry with no site is listed with its reason."""
 
 import fnmatch
 import json

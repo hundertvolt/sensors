@@ -3,8 +3,10 @@
 import { describe, expect, it } from "vitest";
 import samples from "../mockdata/samples.json";
 import { resolveFieldValue } from "../js/definitions.js";
+import DEFINITIONS_SOURCE from "../js/definitions.js?raw";
 import { composeMockData } from "../js/mock-server.js";
 import { DEVICE_IDS, GENERATED_DEFINITIONS } from "./_generated_definitions.js";
+import { readStringSetConst } from "./_source_constants.js";
 
 /** @typedef {import("../js/definitions.js").SiteDefinitions} SiteDefinitions */
 /** @typedef {import("../js/definitions.js").FieldDef} FieldDef */
@@ -63,6 +65,17 @@ function isTaskEndRecord(value) {
 }
 
 /**
+ * Each readonly format's check of a composed value: one row per format js/definitions.js's FIELD_FORMATS accepts (a
+ * test below holds the two equal), so a format added to the pinned sets cannot pass here unjudged.
+ * @type {Record<string, (field: FieldDef, value: unknown) => string | null>}
+ */
+const FORMAT_PROBLEMS = {
+    epoch: (field, value) => (typeof value === "number" || (field.specialValues ?? []).some((special) => special.value === value) ? null : "neither a timestamp nor one of its special values"),
+    gmtimestruct: (_field, value) => (typeof value === "object" && value !== null ? null : "not a time struct"),
+    lasttaskend: (_field, value) => (value === null || isTaskEndRecord(value) ? null : "neither null nor a task-end record"),
+};
+
+/**
  * What is wrong with one field's composed value, or null: a command carries none, an always-executed
  * setting may have none (GET cannot always report it), everything else a value of its kind.
  * @param {FieldDef} field
@@ -89,13 +102,11 @@ function valueProblem(field, values) {
     if (field.kind === "enum") {
         return (field.options ?? []).some((option) => option.value === value) ? null : "not one of its options";
     }
-    if (field.format === "gmtimestruct") {
-        return typeof value === "object" && value !== null ? null : "not a time struct";
+    if (field.format !== undefined) {
+        const check = Object.hasOwn(FORMAT_PROBLEMS, field.format) ? FORMAT_PROBLEMS[field.format] : undefined;
+        return check === undefined ? `format ${field.format} has no check of its own` : check(field, value);
     }
-    if (field.format === "lasttaskend") {
-        return value === null || isTaskEndRecord(value) ? null : "neither null nor a task-end record";
-    }
-    return null; // readonly: present is all a value of any shape needs
+    return null; // readonly without a format: present is all a value of any shape needs
 }
 
 /**
@@ -277,5 +288,22 @@ describe("composeMockData", () => {
             { Task: "SCD30.start_asy_read", Uptime: 3600, Extra: 1 },
         ];
         expect(wrong.map((value) => valueProblem(field, { LastTaskEnd: value }))).toEqual(wrong.map(() => "neither null nor a task-end record"));
+    });
+
+    it("takes an epoch field as a timestamp or one of its special values and reports any other value", () => {
+        const field = {
+            key: "TS", label: "Last Cycle Time", kind: /** @type {const} */ ("readonly"), format: /** @type {const} */ ("epoch"),
+            specialValues: [{ value: null, meaning: "never" }],
+        };
+        expect([1_700_000_000, null].map((value) => valueProblem(field, { TS: value }))).toEqual([null, null]);
+        const wrong = ["1700000000", { s: 1 }, false];
+        expect(wrong.map((value) => valueProblem(field, { TS: value }))).toEqual(wrong.map(() => "neither a timestamp nor one of its special values"));
+    });
+
+    it("judges a readonly value by a check of its own for every format js/definitions.js accepts", () => {
+        const formats = readStringSetConst(DEFINITIONS_SOURCE, "FIELD_FORMATS");
+        expect(formats.length).toBeGreaterThan(0);
+        expect(formats.filter((format) => !Object.hasOwn(FORMAT_PROBLEMS, format)), "formats the compose check has no check for").toEqual([]);
+        expect(Object.keys(FORMAT_PROBLEMS).filter((format) => !formats.includes(format)), "checks for no accepted format").toEqual([]);
     });
 });

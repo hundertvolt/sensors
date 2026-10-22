@@ -4,7 +4,7 @@ import { commands } from "vitest/browser";
 import { describe, expect, it } from "vitest";
 import { DEVICE_IDS, GENERATED_DEFINITIONS } from "./_generated_definitions.js";
 
-// Real subprocess boot + real HTTP + real browser navigation, well past the suite's 20000ms backstop (vitest.config.js).
+// Real subprocess boot, real HTTP, real browser navigation, well past the suite's 20000ms backstop (vitest.config.js).
 // Each command takes its test's timeout and ends its own waits one twin stop before it: Vitest never cancels a command.
 // The boot's 20 s bound, two Applies and the stop; measured 6.2-7.2 s on each of the six devices (agent, 2026-10-14).
 // @tunable l0.live_smoke_timeout_ms = 45000

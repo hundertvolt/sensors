@@ -1,6 +1,6 @@
-"""The product-fixed port lock, scripts/_port_lock.sh and its CPython reader scripts/_port_lock.py: a port a live runner
-holds refuses every other runner at once, naming the holder; a dead holder's lock is taken over; the holder's descendants
-pass, in either language; a runner removes only its own locks. Every lock lives under tmp_path, never a real runner's."""
+"""The product-fixed port lock (scripts/_port_lock.sh, its CPython reader scripts/_port_lock.py): a live runner's port
+refuses every other runner at once, naming the holder; a dead holder's lock is taken over; the holder's descendants pass
+in either language; a runner removes only its own locks. Every lock lives under tmp_path, never a real runner's."""
 
 import errno
 import os

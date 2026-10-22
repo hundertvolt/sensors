@@ -1,6 +1,6 @@
 """Every PEP 723 script block in the repo asks for pyproject.toml's own Python and pins each dependency exactly as its
-dependency groups do, so `uv run` on a script resolves the tool the venv holds, offline from a warm cache included (agent,
-2026-10-15)."""
+dependency groups do, so `uv run` on a script resolves the tool the venv holds, offline from a warm cache included
+(agent, 2026-10-15)."""
 
 import re
 

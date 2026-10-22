@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: MIT
 # From adafruit_bmp3xx (CircuitPython), restructured for asyncio + MicroPython - see THIRD_PARTY_LICENSES.md.
 
-"""Async I2C driver for the Bosch BMP384/BMP388/BMP390 (Sparkfun breakout, forced-mode reads only).
-BMP3XX_I2C is the protocol layer; BMP3XX_Reader is the asyncio task/config layer (see SPECIFICATION.md Part C).
-Verified against BST-BMP384-DS003, BST-BMP388-DS001, BST-BMP390-DS002 and the self-test note BST-MPS-AN006 (datasheets/bmp3xx/); one register map, chip ID 0x50 (BMP384/388) or 0x60 (BMP390).
+"""Async I2C driver for the Bosch BMP384/BMP388/BMP390 (Sparkfun breakout, forced-mode reads only). BMP3XX_I2C is the
+protocol layer; BMP3XX_Reader is the asyncio task/config layer (see SPECIFICATION.md Part C).
+
+Verified against BST-BMP384-DS003, BST-BMP388-DS001, BST-BMP390-DS002 and the self-test note BST-MPS-AN006
+(datasheets/bmp3xx/); one register map, chip ID 0x50 (BMP384/388) or 0x60 (BMP390).
 """
 
 import asyncio

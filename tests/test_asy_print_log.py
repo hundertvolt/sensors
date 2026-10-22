@@ -783,7 +783,7 @@ def test_the_resets_image_packs_without_allocating() -> None:
     allocated = [False]
     micropython.heap_lock()
     try:
-        store._pack_reset(dbuf, kept, counted)
+        store._pack_reset(dbuf, kept, counted, 1)  # a bit no repeat marked
     except MemoryError:  # the locked heap's refusal, never printed: its text is what the memory gates match
         allocated[0] = True
     finally:
@@ -962,8 +962,8 @@ class _ResultRecordingStore(PrintLogHistoryStore):
         super().__init__(fram, history_length=history_length)
         self.results: list[bool] = []
 
-    async def _write(self, kept: int = -1, counted: int = 0) -> bool:
-        ok = await PrintLogHistoryStore._write(self, kept, counted)
+    async def _write(self, kept: int = -1, counted: int = 0, bit: int = 0) -> bool:
+        ok = await PrintLogHistoryStore._write(self, kept, counted, bit)
         self.results.append(ok)
         return ok
 
@@ -1172,6 +1172,158 @@ def test_a_repeat_logged_while_a_refused_resets_write_was_in_flight_takes_no_slo
     assert run(scenario()) is False
     assert (store._err_count, list(store.history)) == (3, [0, 0, 3, 4])
     assert chunk.payloads[-1] == bytes((3, 0, 0, 0, 3, 4)), chunk.payloads
+
+
+class _PausingFramChunk(_GatedFramChunk):
+    # A write numbered in failing_writes lands the manager's pause as it arrives and is refused under it, as the real
+    # chunk refuses a write the pause reaches at its op lock; the store then reads the refusal as the pause's.
+    def __init__(self, size: int) -> None:
+        super().__init__(size)
+        self.manager = _CountingFramManager(self)
+
+    async def write_into(self, buf: "RegionBuffer") -> bool:
+        if len(self.payloads) + 1 in self.failing_writes:
+            self.manager.paused = True
+        return await super().write_into(buf)
+
+
+async def _two_resets(store: "PrintLogHistoryStore", chunk: "_GatedFramChunk", between: "tuple[int, ...]") -> "tuple[bool, bool]":
+    # The earlier reset's write waits at the gate, the codes in `between` are logged, then the later reset starts.
+    earlier = asyncio.create_task(store.reset())
+    for _ in range(3):
+        await asyncio.sleep(0)
+    logged = [asyncio.create_task(store.err_s("between", errno=errno)) for errno in between]
+    for _ in range(3):
+        await asyncio.sleep(0)
+    later = asyncio.create_task(store.reset())
+    for _ in range(3):
+        await asyncio.sleep(0)
+    chunk.gate.set()
+    await asyncio.gather(*logged)
+    return await earlier, await later
+
+
+def _overlapping_resets(between: "tuple[int, ...]", *, refuse_later: bool) -> "tuple[tuple[bool, bool], int, list[int], list[bytes]]":
+    # Codes 3 then 4 stored, then two resets at once; the later reset's write is the third and, when asked, the pause's.
+    chunk = _PausingFramChunk(2 + 4)
+    store = PrintLogHistoryStore(chunk.manager, history_length=4)
+    chunk.gate.set()
+    assert run(store.setup()) is True
+    run(store.err_s("first", errno=3))
+    run(store.err_s("second", errno=4))
+    chunk.gate.clear()
+    chunk.payloads.clear()
+    chunk.failing_writes = (3,) if refuse_later else ()  # 1: the earlier reset's write, 2: the first logged code's
+    outcome = run(_two_resets(store, chunk, between))
+    return outcome, store._err_count, list(store.history), chunk.payloads
+
+
+def test_a_later_reset_refused_by_a_pause_leaves_the_repeat_the_earlier_reset_kept() -> None:
+    # Two resets at once on one store, the newest code repeating between their starts, a pause refusing the later
+    # reset's write: the earlier keeps the repeated slot with its count, and the refused later one clears nothing.
+    outcome, count, ring, payloads = _overlapping_resets((4,), refuse_later=True)
+    assert (outcome, count, ring) == ((True, False), 1, [0, 0, 0, 4]), (outcome, count, ring)
+    assert payloads[:2] == [bytes(6), bytes((1, 0, 0, 0, 0, 4))], payloads
+
+
+def test_a_later_reset_begun_after_a_new_code_leaves_the_earlier_resets_repeat_kept() -> None:
+    # The same with a new code logged after the repeat, so something was kept between the starts: the earlier reset
+    # still keeps the repeated slot beside the new one.
+    outcome, count, ring, payloads = _overlapping_resets((4, 5), refuse_later=True)
+    assert (outcome, count, ring) == ((True, False), 2, [0, 0, 4, 5]), (outcome, count, ring)
+    assert payloads[:2] == [bytes(6), bytes((2, 0, 0, 0, 4, 5))], payloads
+
+
+def test_a_later_reset_that_lands_clears_the_repeat_logged_before_it_began() -> None:
+    # Both resets land: the repeat came before the later one began, so the later clears it, slot and count.
+    outcome, count, ring, payloads = _overlapping_resets((4,), refuse_later=False)
+    assert (outcome, count, ring) == ((True, True), 0, [0, 0, 0, 0]), (outcome, count, ring)
+    assert payloads == [bytes(6), bytes((1, 0, 0, 0, 0, 4)), bytes(6)], payloads
+
+
+def test_a_repeat_of_a_code_new_since_the_reset_began_keeps_no_older_slot() -> None:
+    # A new code and its repeat arrive while the reset's write is in flight: the new code's one slot and both counts
+    # stay, and the slot that was newest when the reset began is cleared, since nothing repeated it.
+    chunk = _GatedFramChunk(2 + 4)
+    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=4)
+    chunk.gate.set()
+    assert run(store.setup()) is True
+    run(store.err_s("before", errno=4))
+    chunk.gate.clear()
+
+    async def scenario() -> bool:
+        reset = asyncio.create_task(store.reset())
+        for _ in range(3):  # the reset's write now waits at the gate
+            await asyncio.sleep(0)
+        logged = [asyncio.create_task(store.err_s("new", errno=5)), asyncio.create_task(store.err_s("again", errno=5))]
+        for _ in range(3):
+            await asyncio.sleep(0)
+        chunk.gate.set()
+        await asyncio.gather(*logged)
+        return await reset
+
+    assert run(scenario()) is True
+    assert store._err_count == 2, store._err_count
+    assert list(store.history) == [0, 0, 0, 5], list(store.history)
+
+
+def _resets_bound() -> int:
+    # How many resets one store holds in flight at once: one per bit of the module's mask.
+    mask, n = src_const("src/asy_print_log.py", "_RESETS_ALL"), 0
+    assert isinstance(mask, int), mask
+    while mask:
+        n, mask = n + (mask & 1), mask >> 1
+    return n
+
+
+def _bound_store() -> "PrintLogHistoryStore":
+    chunk = _GatedFramChunk(2 + 4)
+    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=4)
+    chunk.gate.set()
+    assert run(store.setup()) is True
+    run(store.err_s("first", errno=3))
+    return store
+
+
+def test_a_reset_past_the_bound_in_flight_at_once_is_refused_and_clears_nothing() -> None:
+    # Each reset in flight holds one bit: one past the bound is refused at once with nothing cleared, the rest land.
+    limit, store = _resets_bound(), _bound_store()
+
+    async def scenario() -> "tuple[object, list[int], list[object]]":
+        await store._write_lock.acquire()
+        resets = [asyncio.create_task(store.reset()) for _ in range(limit)]
+        extra = asyncio.create_task(store.reset())
+        for _ in range(3):
+            await asyncio.sleep(0)
+        refused = await extra if extra.done() else None  # answered with the lock still held, never queued behind it
+        ring = list(store.history)
+        store._write_lock.release()
+        await asyncio.gather(extra, return_exceptions=True)
+        return refused, ring, list(await asyncio.gather(*resets))
+
+    refused, ring, landed = run(scenario())
+    assert (refused, ring) == (False, [0, 0, 0, 3]), (refused, ring)
+    assert (len(landed), all(ok is True for ok in landed), list(store.history)) == (limit, True, [0, 0, 0, 0]), landed
+
+
+def test_a_cancelled_reset_frees_its_place_for_a_later_reset() -> None:
+    # As many resets as the bound holds are cancelled while their writes wait on the lock: each frees its bit, so a
+    # later reset still lands.
+    limit, store = _resets_bound(), _bound_store()
+
+    async def scenario() -> bool:
+        await store._write_lock.acquire()
+        resets = [asyncio.create_task(store.reset()) for _ in range(limit)]
+        for _ in range(3):
+            await asyncio.sleep(0)
+        for task in resets:
+            task.cancel()
+        await asyncio.gather(*resets, return_exceptions=True)
+        store._write_lock.release()
+        return await store.reset()
+
+    assert run(scenario()) is True
+    assert list(store.history) == [0, 0, 0, 0]
 
 
 def test_an_entry_logged_while_a_reset_waits_on_the_write_lock_rides_its_write() -> None:

@@ -1,6 +1,6 @@
 """Manual tests, an execution mode of L4 (manual/runner.py): a real phone/laptop joining the DUT's fallback hotspot,
-loading its website end to end, and the captive-portal observation - the hotspot answers DNS with its own address
-and redirects an unknown HTTP path to `/` (SPECIFICATION.md A.5, src/asy_captive_dns.py); what an OS makes of it is open."""
+loading its website end to end, and the captive-portal observation - the hotspot answers DNS with its own address and
+redirects an unknown HTTP path to `/` (SPECIFICATION.md A.5, src/asy_captive_dns.py); what an OS makes of it is open."""
 
 import evidence
 from harness import hotspot_password

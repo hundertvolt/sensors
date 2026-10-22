@@ -1,6 +1,6 @@
-"""Shared scenario library: digital-twin-tier construction, wiring and boot across every generated device (SPECIFICATION.md
-Part L.4), fast, no real wall-clock waits. Not a test file - the export is register_for_device() and load_device(), after
-the caller's own prewarm and UDP shim (tests/test_digital_twin_construction.py); Part E.2.1 has the per-device split."""
+"""Shared scenario library: twin-tier construction, wiring and boot across every generated device (SPECIFICATION.md Part
+L.4), fast, no wall-clock waits. Not a test file: it exports register_for_device() and load_device(), after the caller's
+prewarm and UDP shim (tests/test_digital_twin_construction.py); Part E.2.1 has the per-device split."""
 
 import asyncio
 import json

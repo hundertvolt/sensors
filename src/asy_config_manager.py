@@ -1,5 +1,8 @@
-"""Per-sensor JSON config storage - each sensor gets its own `config_<name>.cfg` file (see asy_base_classes.py's SensorReaderConfig), validated against a schema of `_VAL_*` `const()` tuples: (name, type, default, min, max, special).
-Every public function/method returns a documented "invalid" sentinel, never raises (for typed inputs; a malformed schema fails the static schema check).
+"""Per-sensor JSON config storage - each sensor gets its own `config_<name>.cfg` file (see asy_base_classes.py's
+SensorReaderConfig), validated against a schema of `_VAL_*` `const()` tuples: (name, type, default, min, max, special).
+
+Every public function/method returns a documented "invalid" sentinel, never raises (for typed inputs; a malformed schema
+fails the static schema check).
 """
 # `__init__` only stashes constructor args (cheap, synchronous); the file is read once, in
 # `async def setup()`, into `self._cache`, and every later `get_*`/`write_config` works on `_cache`
@@ -397,9 +400,7 @@ class ConfigManager:
                 try:
                     if staged != self._cache:  # equal: the file already holds it, nothing to write
                         text = json.dumps(staged)  # serialised before the open: a failure leaves the file intact
-                        with open(self._config_file, "w") as f:
-                            f.write(text)
-                        self.unpersisted = False
+                        self._write_file(text)
                         self.pr.evt(self._config_file, "- Config data was written.")
                 except (MemoryError, OSError, ValueError) as e:  # file errors, or the serialisation
                     # exhausting the heap: logged, never re-raised, and never retried here.
@@ -424,6 +425,13 @@ class ConfigManager:
         starts = not self._read_failing
         self._read_failing = True
         return starts
+
+    def _write_file(self, text: str) -> None:
+        # The one flash write, setup()'s and _flush_staged()'s: opened for writing, written and closed with no yield, so
+        # littlefs commits the whole text at its close (lfs2.c:3473, v1.29.0), and a failed write commits none of it.
+        with open(self._config_file, "w") as f:
+            f.write(text)
+        self.unpersisted = False
 
     async def get_bool_values(self, keys: "ConfigSchema") -> list[bool] | None:
         return await self._get_typed_values(keys, _as_bool)
@@ -582,8 +590,8 @@ class ConfigManager:
             self.pr.one(self._config_file, "- Writing configuration file!")
             try:
                 text = json.dumps(valid_cfg)  # serialised before the open: a failure leaves the file intact
-                with open(self._config_file, "w") as f:
-                    f.write(text)
+                async with self._config_lock:  # as every flush: a reset's delete_file() takes the same lock
+                    self._write_file(text)
                 self.pr.one("Default data was written in", self._config_file, "- config is ready.")
             except (MemoryError, OSError) as e:  # One attempt per setup(), never retried (C.7.3).
                 self.unpersisted = True

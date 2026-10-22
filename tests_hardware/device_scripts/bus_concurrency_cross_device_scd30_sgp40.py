@@ -1,6 +1,7 @@
 """Isolated-driver device script: SCD30 and SGP40 on one I2C bus interleave rather than serialise (SPECIFICATION.md
 Part C.8's per-transaction bus lock), then two participant rungs mid-traffic: an SCD30 soft reset among the SGP40 and
-ISL29125 reads, and the SGP40 heater-off among the SCD30 and ISL29125 reads. Reports facts; the host gives the verdict."""
+ISL29125 reads, and the SGP40 heater-off among the SCD30 and ISL29125 reads. Reports facts; the host gives the verdict.
+"""
 
 import asyncio
 import time

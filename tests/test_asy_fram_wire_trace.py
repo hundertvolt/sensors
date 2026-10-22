@@ -1,6 +1,12 @@
-"""Golden wire traces for the FRAM path: every SPI.init(), every CS edge and every transfer's bytes, recorded from the real src/ chain against tests/_fram_chip_fake.py's chip.
-A restructure of asy_spi_driver.py/asy_fram_driver.py/asy_fram_manager.py must leave these byte-identical - the contract the 2026-09-18 heap restructure was held to (agent, 2026-09-18); what each protocol element is for is SPECIFICATION.md A.4 (owner, 2026-09-18).
-Deliberate changes since: a blank block is read without a busy marker (agent, 2026-09-29); each chunk's CRC is seeded by its owner (agent, 2026-10-06)."""
+"""Golden wire traces for the FRAM path: every SPI.init(), every CS edge and every transfer's bytes, recorded from the
+real src/ chain against tests/_fram_chip_fake.py's chip.
+
+A restructure of asy_spi_driver.py/asy_fram_driver.py/asy_fram_manager.py must leave these byte-identical - the contract
+the 2026-09-18 heap restructure was held to (agent, 2026-09-18); what each protocol element is for is
+SPECIFICATION.md A.4 (owner, 2026-09-18).
+
+Deliberate changes since: a blank block is read without a busy marker (agent, 2026-09-29); each chunk's CRC is seeded by
+its owner (agent, 2026-10-06); a blank verdict probes the chip's RDID (agent, 2026-10-21)."""
 # The recorder decomposes a trace into CS cycles. Every cycle is asserted to be framed by exactly
 # one SPI.init() at the fixed bus config and one CS low/high pair, so the goldens below need hold
 # only the transfers inside each cycle - the envelope is checked, not dropped (see _cycles()).
@@ -199,31 +205,8 @@ w:03000d r:00
 w:03000e r:00
 w:03001c r:00
 w:03001d r:00
-w:06
-w:05 r:02
-w:02000d w:02
-w:04
-w:05 r:00
-w:06
-w:05 r:02
-w:02000e w:02
-w:04
-w:05 r:00
-w:06
-w:05 r:02
-w:020000 w:000000000000000000000000{store_crc}
-w:04
-w:05 r:00
-w:06
-w:05 r:02
-w:02000d w:01
-w:04
-w:05 r:00
-w:06
-w:05 r:02
-w:02000e w:01
-w:04
-w:05 r:00
+w:9f r:047f0302
+w:03001c r:0000
 w:06
 w:05 r:02
 w:02001c w:02
@@ -247,6 +230,31 @@ w:05 r:00
 w:06
 w:05 r:02
 w:02001d w:01
+w:04
+w:05 r:00
+w:06
+w:05 r:02
+w:02000d w:02
+w:04
+w:05 r:00
+w:06
+w:05 r:02
+w:02000e w:02
+w:04
+w:05 r:00
+w:06
+w:05 r:02
+w:020000 w:000000000000000000000000{store_crc}
+w:04
+w:05 r:00
+w:06
+w:05 r:02
+w:02000d w:01
+w:04
+w:05 r:00
+w:06
+w:05 r:02
+w:02000e w:01
 w:04
 w:05 r:00
 """
@@ -302,31 +310,7 @@ w:05 r:00
 """
 
 _GOLDEN_TS_WRITE_INTO = """\
-w:06
-w:05 r:02
-w:020032 w:02
-w:04
-w:05 r:00
-w:06
-w:05 r:02
-w:020033 w:02
-w:04
-w:05 r:00
-w:06
-w:05 r:02
-w:02001e w:00000000000000001122334455667788{value_crc}
-w:04
-w:05 r:00
-w:06
-w:05 r:02
-w:020032 w:01
-w:04
-w:05 r:00
-w:06
-w:05 r:02
-w:020033 w:01
-w:04
-w:05 r:00
+w:030048 r:0000
 w:06
 w:05 r:02
 w:020048 w:02
@@ -350,6 +334,31 @@ w:05 r:00
 w:06
 w:05 r:02
 w:020049 w:01
+w:04
+w:05 r:00
+w:06
+w:05 r:02
+w:020032 w:02
+w:04
+w:05 r:00
+w:06
+w:05 r:02
+w:020033 w:02
+w:04
+w:05 r:00
+w:06
+w:05 r:02
+w:02001e w:00000000000000001122334455667788{value_crc}
+w:04
+w:05 r:00
+w:06
+w:05 r:02
+w:020032 w:01
+w:04
+w:05 r:00
+w:06
+w:05 r:02
+w:020033 w:01
 w:04
 w:05 r:00
 """
@@ -486,13 +495,13 @@ def test_timestamped_clear_wire_trace_matches_the_golden() -> None:
 
 # --------------------------------------------------------------------------- the shape of the traces
 def test_cs_cycle_counts_are_the_measured_figures() -> None:
-    # Every one of these cycles stays by design (owner, 2026-09-18; SPECIFICATION.md A.4).
-    # The restructure removed allocations, not CS cycles, so a change here is a protocol change and not an
-    # optimisation.
+    # Every one of these cycles stays by design (owner, 2026-09-18; SPECIFICATION.md A.4), so a change here is a
+    # protocol change and not an optimisation. A write's read of block 1's status, which picks the block it takes first,
+    # is one such change, made on the owner's behalf for review (agent, 2026-10-22).
     traces = run(_collect())
-    assert len(traces["blank"][0]) == 54
+    assert len(traces["blank"][0]) == 56
     assert len(traces["valid"][0]) == 47
-    assert len(traces["ts_write"][0]) == 50
+    assert len(traces["ts_write"][0]) == 51
     assert len(traces["ts_read"][0]) == 48
     assert len(traces["clear"][0]) == 30
 

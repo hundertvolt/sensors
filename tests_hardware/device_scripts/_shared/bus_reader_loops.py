@@ -78,7 +78,8 @@ async def device_reader(bench: "BenchFacts", label: str, i2c: "asy_i2c_driver.I2
 
         async def read_scd30() -> "str | None":
             await scd.read_measurement()  # without new data the cache stays as it was: no measurement prerequisite
-            return None
+            co2, temperature, humidity = await scd.get_CO2(), await scd.get_temperature(), await scd.get_relative_humidity()
+            return outside(bench["bounds"], "co2_ppm", co2) or outside(bench["bounds"], "scd30_temp_c", temperature) or outside(bench["bounds"], "humidity_rh", humidity)
 
         return read_scd30
     if driver == "bmp3xx":

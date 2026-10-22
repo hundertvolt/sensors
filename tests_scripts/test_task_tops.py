@@ -1,6 +1,6 @@
-"""Every create_task() in src/ outside the task starters, and every start_server() callback, runs a coroutine ending in a top of its own: its last
-statement is a `try` with no else/finally whose `except Exception as e:` calls report_if_fatal(e) and awaits self.pr.err_s() with e, raising nothing,
-or a `while True:` whose whole body is one, either in a cleanup-only `try`; earlier statements are unchecked (SPECIFICATION.md C.9). No generated module calls either."""
+"""Every create_task() in src/ outside the task starters, and every start_server() callback, runs a coroutine ending in
+a top of its own (its shape: _is_top() and ends_in_a_top() below); earlier statements are unchecked (SPECIFICATION.md
+C.9). No generated module calls either."""
 
 import ast
 import functools
@@ -24,6 +24,8 @@ def _is_self(node: ast.expr) -> bool:
 
 
 def _is_top(stmt: ast.stmt) -> bool:
+    # A top: a `try` with no else/finally whose `except Exception as e:` calls report_if_fatal(e) and awaits
+    # self.pr.err_s() with e, raising nothing.
     if not isinstance(stmt, ast.Try) or stmt.orelse or stmt.finalbody:  # either arm runs outside the handler
         return False
     for handler in stmt.handlers:
@@ -161,6 +163,7 @@ def _server_sites(tree: ast.Module) -> "tuple[tuple[int, int], ...]":
 
 
 def ends_in_a_top(fn: Function) -> bool:
+    # The last statement is a top, or a `while True:` whose whole body is one, either in a cleanup-only `try`.
     last = fn.body[-1]
     while isinstance(last, ast.Try) and not last.handlers and not last.orelse:
         last = last.body[-1]  # a cleanup-only try: what it wraps is the task's end

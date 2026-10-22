@@ -1,6 +1,6 @@
-"""The C-stack peak of the bench build's await chains on silicon: every bus and FRAM leaf is wrapped from outside to record
-micropython.stack_use() over a fed window of the started tasks and timers, then one GET /status, the top of the deepest
-chain tests_scripts/test_await_depth.py finds; the host holds the peak to half the 7,936 B limit, the Unix port's apart."""
+"""The C-stack peak of the bench build's await chains on silicon: every bus and FRAM leaf is wrapped from outside to
+record micropython.stack_use() over a fed window of the started tasks and timers, then one GET /status; the host holds
+the peak to half the 7,936 B limit, the Unix port's apart."""
 
 import asyncio
 import errno
@@ -74,6 +74,7 @@ async def _main() -> None:
         assert webserver is not None, "the generated build constructs the webserver unconditionally"
         app = webserver._app
         assert isinstance(app, Microdot)
+        # One GET /status: the top of the deepest chain tests_scripts/test_await_depth.py finds.
         res = await app.dispatch_request(Request(app, ("127.0.0.1", 0), "GET", "/status", "1.0", {}))  # the app's real dispatch
         assert res.status_code == 200, "Microdot answers a raising handler with a 500: only a 200 ran the handler to its end"
         wdt.feed()

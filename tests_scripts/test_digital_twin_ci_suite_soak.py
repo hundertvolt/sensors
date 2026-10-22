@@ -1,11 +1,12 @@
-"""Tests scripts/_digital_twin_ci_suite.py's Run 11 (soak) and main(): _parse_mem_samples(), _mem_trend(), the warm-up that
-ends once the sampled floor holds, _run_11_soak()'s one-boot verdict over a stubbed twin, a missing API reference, a held
-port and the log default. The real twin runs it in scripts/run_digital_twin_ci.sh (SPECIFICATION.md Part E.9)."""
+"""Tests scripts/_digital_twin_ci_suite.py's Run 11 (soak) and main(): _parse_mem_samples(), _mem_trend(), the warm-up
+that ends once the sampled floor holds, _run_11_soak()'s one-boot verdict over a stubbed twin, a missing API reference,
+a held port and the log default. The real twin runs it in scripts/run_digital_twin_ci.sh (SPECIFICATION.md Part E.9)."""
 
 import subprocess
 import sys
+import time
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
@@ -21,30 +22,43 @@ _SETTLED_AT = 30  # the cycle from which the settling fixture's floor holds
 # ---------------------------------------------------------------------------
 # _parse_mem_samples(): the log-scraping half of the "gc.mem_free() has no other source"
 # exception (Part I.4(e)), reading _mem_sampler()'s MEM_SAMPLE lines back out of the twin's
-# captured stdout - the pattern _would_have_triggered_count() already uses.
+# captured stdout, each with the byte offset its line starts at: Run 11's window is a log span.
 # ---------------------------------------------------------------------------
 
+# A preamble longer in bytes than in characters, so a character offset would miss each line's start.
+_PREAMBLE = "digital_twin/run_generic_integration.py starting - device='fixture_device' ...\nBMP3XX: temp=21.5°C\n"
 
-def test_parse_mem_samples_extracts_timestamp_and_byte_count_pairs(ci_suite: ModuleType) -> None:
-    log_text = (
-        "digital_twin/run_generic_integration.py starting - device='fixture_device' ...\n"
-        "MEM_SAMPLE 1789361162.123 1355680\n"
-        "SYSTEM some other verbose log line\n"
-        "MEM_SAMPLE 1789361162.456 1348800"
-    )
-    assert ci_suite._parse_mem_samples(log_text) == [(1789361162.123, 1355680), (1789361162.456, 1348800)]
+
+def test_parse_mem_samples_returns_each_samples_byte_offset_and_byte_count(ci_suite: ModuleType) -> None:
+    log = f"{_PREAMBLE}MEM_SAMPLE 1200 1355680\nSYSTEM some other verbose log line\nMEM_SAMPLE 1225 1348800\n".encode()
+    assert ci_suite._parse_mem_samples(log) == [(log.index(b"MEM_SAMPLE 1200"), 1355680), (log.index(b"MEM_SAMPLE 1225"), 1348800)]
+
+
+def test_parse_mem_samples_counts_offsets_from_the_given_base(ci_suite: ModuleType) -> None:
+    # A read that starts part-way into the log: each offset is still the line's position in the whole file.
+    tail = b"MEM_SAMPLE 1200 1355680\nMEM_SAMPLE 1225 1348800\n"
+    assert ci_suite._parse_mem_samples(tail, base=4096) == [(4096, 1355680), (4096 + 24, 1348800)]
+
+
+def test_parse_mem_samples_keeps_file_order_across_a_backwards_stamp(ci_suite: ModuleType) -> None:
+    # The stamp is diagnostics only: one that steps back (a clock step, a ticks wrap) neither reorders nor drops a line.
+    assert ci_suite._parse_mem_samples(b"MEM_SAMPLE 5000 100\nMEM_SAMPLE 10 200\n") == [(0, 100), (20, 200)]
 
 
 def test_parse_mem_samples_returns_empty_list_when_sampler_was_never_armed(ci_suite: ModuleType) -> None:
-    log_text = "digital_twin/run_generic_integration.py starting - device='fixture_device' ...\nOK: something"
-    assert ci_suite._parse_mem_samples(log_text) == []
+    log = b"digital_twin/run_generic_integration.py starting - device='fixture_device' ...\nOK: something\n"
+    assert ci_suite._parse_mem_samples(log) == []
 
 
 def test_parse_mem_samples_skips_a_malformed_line_instead_of_raising(ci_suite: ModuleType) -> None:
-    # A truncated write (process killed mid-line) must not crash the whole parse - the surrounding
-    # well-formed samples are still worth having.
-    log_text = "MEM_SAMPLE 1789361162.123 1355680\nMEM_SAMPLE not-a-timestamp not-a-number\nMEM_SAMPLE 1789361162.456 1348800"
-    assert ci_suite._parse_mem_samples(log_text) == [(1789361162.123, 1355680), (1789361162.456, 1348800)]
+    # A line not in the sampler's "MEM_SAMPLE <ticks_ms> <free>" form, the old time.time() stamp included, is no sample.
+    log = b"MEM_SAMPLE 1200 1355680\nMEM_SAMPLE not-a-stamp not-a-number\nMEM_SAMPLE 1789361162.123 1352000\nMEM_SAMPLE 1250 1348800\n"
+    assert [free for _offset, free in ci_suite._parse_mem_samples(log)] == [1355680, 1348800]
+
+
+def test_parse_mem_samples_skips_a_last_line_still_being_written(ci_suite: ModuleType) -> None:
+    # A read while the twin runs can end inside a line, whose digits so far would read as a smaller free count.
+    assert ci_suite._parse_mem_samples(b"MEM_SAMPLE 1200 1355680\nMEM_SAMPLE 1225 13") == [(0, 1355680)]
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +245,7 @@ _SHUTDOWN_LINE = (
     " No. of 1-blocks: 14, 2-blocks: 4, max blk sz: 9, max free sz: 64730\n"
     "digital_twin/run_generic_integration.py [fixture_device] shutdown: would_have_triggered_count=0 feed_count=1 largest_feed_gap_ms=1 "
     "wdt_timeout_ms=8000 mem_backup: r0=0x00000000,0x00000000,0x00000000,0x00000000 public_destinations_refused=0 flash_stall_longest_ms=0 "
-    "gc_block_bytes=32"
+    "gc_block_bytes=32 fram_writes=0 fram_writes_by=- fram_silent_writes=0 fram_silent_wrens=0"
 )
 
 
@@ -244,9 +258,10 @@ def _settling(i: int) -> int:
     return 1_000_000 - 1_000 * min(i, _SETTLED_AT * _PER_CYCLE)
 
 
-def _soak_with_boots(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boots: "list[Callable[[int], int]]", *, warmup_cycles: int = 1) -> "tuple[object, list[Path], int]":
+def _soak_with_boots(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boots: "list[Callable[[int], int]]", *, warmup_cycles: int = 1, stamp: "Callable[[int], int] | None" = None) -> "tuple[object, list[Path], int]":
     # Runs _run_11_soak() over stubbed boots: boot k's request i, warm-up included, prints a MEM_SAMPLE of boots[k](i)
-    # free bytes, as the twin's sampler does; returns the summary, the boots and the requests sent.
+    # free bytes stamped stamp(i), as the twin's sampler does; a given stamp is also the suite's clock (one host clock,
+    # read after i requests). Returns the summary, the boots and the requests sent.
     summary = _fresh_summary(ci_suite, monkeypatch)
     monkeypatch.setattr(ci_suite, "_SOAK_WARMUP_CYCLES", warmup_cycles)
     monkeypatch.setattr(ci_suite, "_SOAK_CYCLES", 8)
@@ -263,8 +278,11 @@ def _soak_with_boots(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.M
         calls["n"] += 1
         free = boots[min(len(spawned), len(boots)) - 1](calls["n"])
         with spawned[-1].open("a", encoding="utf-8") as log:
-            log.write(f"MEM_SAMPLE {ci_suite.time.time()} {free}\n")
+            log.write(f"MEM_SAMPLE {stamp(calls['n']) if stamp else calls['n']} {free}\n")
         return ci_suite._HTTP_OK, {}
+
+    if stamp is not None:
+        monkeypatch.setattr(ci_suite, "time", SimpleNamespace(time=lambda: stamp(calls["n"]), monotonic=time.monotonic, sleep=time.sleep))
 
     def shutdown(_proc: object, _label: str) -> int:
         with spawned[-1].open("a", encoding="utf-8") as log:
@@ -312,6 +330,22 @@ def test_a_trend_within_tolerance_passes_on_its_one_boot(ci_suite: ModuleType, t
     assert spawned == [tmp_path / "run11_soak.log"]
     assert summary.failed == []  # type: ignore[attr-defined]
     assert any("trend" in name for name, _ in summary.passed), summary.passed  # type: ignore[attr-defined]
+
+
+def test_a_backwards_clock_step_mid_soak_still_selects_the_cycles_samples(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    # The host clock and the stamps step back an hour mid-cycles. The window is the cycles' log span, so it holds every
+    # measured request's sample and none of the warm-up's (5 bytes free, which would show as the minimum).
+    warm = _PER_CYCLE  # one warm-up cycle
+
+    def stamp(i: int) -> int:
+        return 1_800_000_000 + i - (3600 if i > warm + 12 else 0)
+
+    summary, _spawned, sent = _soak_with_boots(ci_suite, tmp_path, monkeypatch, [lambda i: 5 if i <= warm else _flat(i)], stamp=stamp)
+    measured = ci_suite._SOAK_CYCLES * _PER_CYCLE
+    assert sent == warm + measured
+    assert summary.failed == [], summary.failed  # type: ignore[attr-defined]
+    out = capsys.readouterr().out
+    assert "min=1000000 max=1000010 " in out and f"samples={measured}\n" in out, out
 
 
 def test_the_warm_up_ends_once_the_sampled_floor_holds_for_its_window(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

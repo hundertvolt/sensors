@@ -9,7 +9,8 @@ BSD-3-Clause C source (see "Ported, kept literal"); and the `UDPSocket` class in
 "Author-permitted, no formal license"). `arduino/` (the Arduino C implementation of the UART
 protocol) is outside this file and every lint, test, license and secret review: post-audit only
 (owner, 2026-09-25: 'the C port stays out of scope, anything there is post-audit only'; the
-secret scan too, owner, 2026-09-30).
+secret scan too, owner, 2026-09-30: 'No, it stays fully out of the audit', asked, paraphrase:
+whether the history secret scan reads arduino/).
 
 Parts of this codebase were written with AI assistance (Claude). No specific reuse of another
 project's code beyond what's documented below is known, but this is disclosed rather than assumed

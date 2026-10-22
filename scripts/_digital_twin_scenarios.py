@@ -4,7 +4,8 @@
 # ///
 """Host-side L2 scenarios: each boots the device's generated graph in the twin (digital_twin/run_generic_integration.py)
 and drives it from this CPython process over HTTP, the runner's stdout lines and its --test- flags - no request is built
-in the DUT heap. Run order is (shared group, name): the scenarios that may share run first, then each on its own boot."""
+in the DUT heap. Run order is (shared group, name): the scenarios that may share run first, then each on its own boot.
+"""
 
 import argparse
 import ast
@@ -138,6 +139,30 @@ _TEST_WARN_CO2 = 1800  # a WarnCO2 the defaults do not hold
 _DNS_UDP_MAX = 512  # RFC 1035's UDP message limit
 _SITE_MIN_BYTES = 1000  # a whole page or bundle, not a truncated or empty body
 _ISL_RESOLUTIONS = (12, 16)  # asy_isl29125_driver.py's _RESOLUTIONS
+
+_OUTER_CAP_S = module_float_const(SRC_DIR, _WEBSERVER, "_DEFAULT_OUTER_CAP_S")  # the per-call cap a recovered request answers within
+# What the UART load's requests are owed: an admitted one closes by its outer cap and then a reclaim trace held at most
+# one per-call timeout, each timer late by at most one flash hold; a refused one within a per-call timeout and a hold.
+_UART_LOAD_REQUEST_S = _OUTER_CAP_S + module_float_const(SRC_DIR, _WEBSERVER, "_DEFAULT_PER_CALL_TIMEOUT_S") + 2 * module_int_const(SRC_DIR, "asy_uart_comm.py", "_FLASH_HOLD_MAX_MS") / 1000
+_WATCHDOG_FAULT_LINE = "WDT_AT_FAULT "  # the runner's fault instant, with the feed count the watchdog starves from
+_ZERO_THINK_READERS = 4  # F18's four zero-think-time readers
+# @tunable l2.zero_think_reads_per_reader = 20
+_ZERO_THINK_READS = 20  # a fixed count per reader, not a duration
+# @tunable l2.zero_think_reader_floor = 10
+_ZERO_THINK_FLOOR = 10  # degradation, not starvation: each reader is answered at least this often
+# @tunable l2.zero_think_writer_period_s = 0.5
+_ZERO_THINK_WRITER_PERIOD_S = 0.5
+# The storm's chunk writes are counted per event by the product's rules, not per second of a run the host sets the
+# length of (agent, 2026-10-22): each failed read cycle persists its failure and _error_check()'s streak entry, and each
+# rung of the episode's recovery ladder one more (asy_base_classes.py, SPECIFICATION.md C.7).
+_CHUNK_COPIES = 2  # a persisted entry writes both block copies of its logger's chunk; a fresh chunk's setup() writes it once
+_ENTRIES_PER_FAILED_CYCLE = 2
+_STORM_RUNGS_AT = tuple(module_int_const(SRC_DIR, "asy_base_classes.py", f"_RECOVER_{rung}_AT") for rung in ("DEVICE", "BUS", "CONTROLLER"))
+_NTP_NOT_SENT = module_int_const(SRC_DIR, "asy_ntp_client.py", "_ERR_NTP_NOT_SENT")
+_NTP_NO_REPLY = module_int_const(SRC_DIR, "asy_ntp_client.py", "_ERR_NTP_NO_REPLY")
+_NTP_SERVER_PORT = module_int_const(SRC_DIR, "asy_ntp_client.py", "_NTP_UDP_PORT")
+# @tunable l2.ntp_unreachable_write_period_s = 1.0
+_NTP_UNREACHABLE_WRITE_PERIOD_S = 1.0  # one stored GMTOffset write a second beside the readers, each its own flash write
 
 
 class RefusedError(Exception):
@@ -551,6 +576,34 @@ def _beyond_max_rejected_cleanly(ctx: Context) -> None:
         _still_serving(twin.port)
 
 
+@scenario("a_bounded_fault_storm_persists_only_what_its_events_allow", family="fault_storm")
+def _bounded_fault_storm(ctx: Context) -> None:
+    """A fault storm below the escalation threshold persists per FRAM-backed logger only the entries its events allow and resets nothing."""
+    sgp40 = next((key for key, driver, _ext in ctx.instances if driver == "sgp40"), None)
+    fault = ("--fault", f"{sgp40}:readfrom_into:{_LOOP_LAG_FAULTS}:{_SGP40_MEASURE_RAW:04X}") if sgp40 else ()
+    with ctx.boot(*_CONN, *fault) as twin:
+        streak = twin.wait_line(f"SGP40 Error counter increased to {_LOOP_LAG_FAULTS}", 0, _SERVING_TIMEOUT_S) if sgp40 else "no SGP40"
+        _expect(twin.drained(), "the readiness probe's slot never came back")
+        burst = _together(ctx.ceiling() + 2, lambda _i: _status_of(twin.port, "/measurements"))  # WEBSERVER logs each refusal
+        _expect(twin.drained(), "the burst's slots never came back")
+    text = read_log(twin.run.log_path)
+    line = parse_shutdown_line(text)
+    if line is None:
+        raise AssertionError("the twin printed no shutdown line")
+    failed = _LOOP_LAG_FAULTS if sgp40 else 0
+    # Each refusal at the ceiling is one WEBSERVER entry (_note_drop()); a served connection persists none.
+    events = {"SGP40": _ENTRIES_PER_FAILED_CYCLE * failed + sum(at <= failed for at in _STORM_RUNGS_AT), "WEBSERVER": sum(r != HTTPStatus.OK for r in burst)}
+    bound = {name: _CHUNK_COPIES * (1 + events.get(name, 0)) for name in line.fram_writes_by}
+    over = {name: (n, bound[name]) for name, n in line.fram_writes_by.items() if n > bound[name]}
+    _expect(not over, f"loggers over the chunk writes their setup and the storm's events allow, (writes, bound): {over}")
+    _expect(line.fram_writes_unattributed == 0, f"fram_writes_unattributed={line.fram_writes_unattributed}: the per-logger proof is incomplete")
+    _expect(sum(line.fram_writes_by.values()) <= line.fram_writes, f"the loggers' {sum(line.fram_writes_by.values())} writes exceed the chip's fram_writes={line.fram_writes}")
+    _expect(parse_machine_reset_line(text) is None, "a storm below the escalation threshold reset the device")
+    _expect(streak is not None, f"the SGP40 storm never reached its {_LOOP_LAG_FAULTS}-read streak")
+    _expect(not sgp40 or "SGP40" in line.fram_writes_by, f"the storm persisted no SGP40 entry (fram_writes_by {line.fram_writes_by})")
+    _expect("rejected" in burst, f"the burst above the ceiling was never refused: {_statuses(burst)}")
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--device", required=True, type=_device, help="the generated device to boot")
@@ -629,10 +682,10 @@ def _commanded_reset_deadline_s() -> float:
     return _src_int(_SYSTEM, "_RESET_DELAY") + _src_int(_SYSTEM, "_TASK_CHECK_TIME") + _COMMANDED_RESET_MARGIN_S
 
 
-def _config_write(port: int, index: int) -> "tuple[int, JSONValue]":
+def _config_write(port: int, index: int, timeout_s: float = _REQUEST_TIMEOUT_S) -> "tuple[int, JSONValue]":
     # A real stored write: GMTOffset is the NTP client's config-backed field, NTP being in every device's mandatory
     # set; a distinct value per call, the default answering "Unchanged".
-    answer = _request(port, "PUT", "/system", {"GMTOffset": _GMT_OFFSET_DEFAULT + 60 * (index + 1)})
+    answer = _request(port, "PUT", "/system", {"GMTOffset": _GMT_OFFSET_DEFAULT + 60 * (index + 1)}, timeout_s=timeout_s)
     return answer.status, _result(answer, "GMTOffset")
 
 
@@ -986,7 +1039,7 @@ def _key_tree(value: JSONValue) -> JSONValue:
     return None
 
 
-def _lag_load(ctx: Context, twin: Twin) -> "dict[str, int]":
+def _lag_load(ctx: Context, twin: Twin, readers: "int | None" = None) -> "dict[str, int]":
     # A ceiling of readers, each cycling every GET route of the service's table, for the load window; returns how many
     # answers each route served. A clean refusal counts as no answer and the reader goes on.
     stop = threading.Event()
@@ -1000,7 +1053,7 @@ def _lag_load(ctx: Context, twin: Twin) -> "dict[str, int]":
             index += 1
         return served
 
-    readers = ctx.ceiling()
+    readers = ctx.ceiling() if readers is None else readers
     results: list[object] = [None] * readers
     threads = [threading.Thread(target=_record_into, args=(results, i, reader)) for i in range(readers)]
     for thread in threads:
@@ -1023,6 +1076,53 @@ def _link_roles(device: str) -> "dict[str, str]":
     model = load_device(REPO_ROOT / "devices" / f"{device}.toml")
     return {instance_label(spec.key): str(spec.fields.get("role", "")) for spec in model.instances.values() if spec.driver == "uart_link"}
 
+
+def _load_while_ntp_is_unreachable(ctx: Context, *, writes: bool) -> None:
+    # Boot 1 stores station credentials and an NTP host routed nowhere; boot 2 starts on that state, so its station's
+    # syncs fail from the first while every sensor reads and readers cycle every GET route (one slot left to a writer).
+    state = ctx.logs_dir / "state_shared"
+    host = _ntp_config_const("_OFFLINE_HOST")
+    with ctx.boot(state_dir=state) as twin:
+        answer = _request(twin.port, "PUT", "/networking", {"SSID": _SSID, "NTPHost": host})
+        _expect([_result(answer, "SSID"), _result(answer, "NTPHost")] == ["Valid", "Valid"], f"the station and NTP host PUT answered {answer.status}: {answer.body[:300]!r}")
+        _expect(_wait_stored(state, "NTP", "NTPHost", host) and _wait_stored(state, "WIFI", "SSID", _SSID), "the station or the NTP host never reached its config file")
+        before = _counter(_errcount(twin.port, "NTP"))
+    with ctx.boot(state_dir=state) as twin:
+        for name in ctx.sensors:
+            _expect(_wait_reading(twin.port, name), f"{name} never read, so its task is not on the bus yet")
+        system = _counter(_errcount(twin.port, "SYSTEM"))
+        stop = threading.Event()
+        written: list[object] = []
+
+        def writer(_i: int) -> None:
+            while not stop.is_set():
+                written.append(_write_until_answered(twin.port, len(written) - 1))  # written[0] is the writer's own slot
+                stop.wait(_NTP_UNREACHABLE_WRITE_PERIOD_S)
+
+        thread = threading.Thread(target=_record_into, args=(written, 0, writer)) if writes else None
+        if thread is not None:
+            written.append(None)  # the writer's own slot: None while it runs, its exception if it raised
+            thread.start()
+        try:
+            served = _lag_load(ctx, twin, ctx.ceiling() - 1 if writes else None)
+        finally:
+            stop.set()
+            if thread is not None:
+                thread.join(timeout=_REQUEST_TIMEOUT_S * 2)
+        _expect(all(served.values()), f"a GET route went unserved for the whole load: {served}")
+        entry = _errcount(twin.port, "NTP")
+        expected, other = (_NTP_NO_REPLY, _NTP_NOT_SENT) if _route_out(host) else (_NTP_NOT_SENT, _NTP_NO_REPLY)
+        _expect(_counter(entry) > before and _has_entry(entry, "E", expected) and not _has_entry(entry, "E", other), f"NTP logged no errno {expected} for {host} past boot 1's count {before}, or errno {other}, which the route rules out: {_counter(entry)}, {_newest_entries(entry, 4)}")
+        _expect(_counter(_errcount(twin.port, "SYSTEM")) == system, "a task ended under the load")
+        if writes:
+            _expect(thread is not None and not thread.is_alive(), "the writer never ended, so its answers are not all in")
+            _expect(written[0] is None and len(written) > 1, f"the writer raised or never wrote: {_statuses(written[:1])}")
+            answers = written[1:]
+            _expect(answers == [(HTTPStatus.OK, "Valid")] * len(answers), f"a config write under the load was not Valid: {_statuses(answers)}")
+            last = _GMT_OFFSET_DEFAULT + 60 * len(answers)
+            _expect(_wait_stored(state, "NTP", "GMTOffset", last), f"the last write's GMTOffset {last} never reached the config file")
+        _still_serving(twin.port)
+    _expect(parse_machine_reset_line(read_log(twin.run.log_path)) is None, "the device reset under the load")
 
 def _log_at_error_level(state: Path) -> "tuple[str, ...]":
     # A boot's loggers at error level, so a caught allocation failure's line reaches the memory gate (agent, 2026-10-20,
@@ -1191,6 +1291,26 @@ def _not_self_wrapped(payload: JSONValue, expected: "set[str]") -> None:
         fields = payload[name] if isinstance(payload, dict) else None
         _expect(isinstance(fields, dict) and bool(fields) and name not in fields, f"{name}'s block is self-wrapped or empty: {fields!r}")
 
+
+def _ntp_config_const(name: str) -> str:
+    # A host the runner writes into a twin's NTP config (digital_twin/unixport/_offline_ntp_config.py), read by ast.
+    tree = ast.parse((REPO_ROOT / "digital_twin" / "unixport" / "_offline_ntp_config.py").read_text(encoding="utf-8"))
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and node.targets[0].id == name:
+            return str(ast.literal_eval(node.value))
+    raise RuntimeError(f"_offline_ntp_config.py defines no {name}")
+
+
+@scenario("survives_bus_and_api_load_while_ntp_is_unreachable", family="ntp_unreachable_load")
+def _ntp_unreachable_under_load(ctx: Context) -> None:
+    """A station whose NTP host is unreachable from its boot keeps serving every GET route while every sensor reads: no task ends, no reset."""
+    _load_while_ntp_is_unreachable(ctx, writes=False)
+
+
+@scenario("survives_bus_and_api_load_while_ntp_is_unreachable_with_concurrent_config_writes", family="ntp_unreachable_load")
+def _ntp_unreachable_under_load_and_writes(ctx: Context) -> None:
+    """The same load beside a stored config write every second: every write Valid and the last one in the file."""
+    _load_while_ntp_is_unreachable(ctx, writes=True)
 
 def _object(answer: Answer) -> JSONObject:
     parsed = _json(answer)
@@ -1381,12 +1501,17 @@ def _reset_errors_under_the_escalation(ctx: Context) -> None:
     errno = _src_int(_SYSTEM, "_ERR_STACK_EXHAUSTED")
     with ctx.boot("--fault", f"{key}:readfrom_into:stack", "--test-hold-system-entry", str(errno), state_dir=state) as twin:
         held = twin.wait_line("ENTRY_HELD", 0, _src_int(_SYSTEM, "_TASK_CHECK_TIME") + _COMMANDED_RESET_MARGIN_S)
+        held_at = time.monotonic()
         _expect(held is not None, "the supervisor's escalation never reached its entry write")
         before = _error_table(twin.port)
         _expect(_counter(before.get(name)) > 0, f"the stack fault logged no {name} entry, so there is nothing to clear ({before.get(name)!r})")
         _refused_reset_errors(twin.port, before, "while the escalation writes its entry")
+        # Held past the entry's own bound on every host, as the knob starts that bound at the release: one path however
+        # fast this host is, and a hold the bound counted loses the entry on every run (agent, 2026-10-22).
+        time.sleep(max(0.0, held_at + _src_int(_SYSTEM, "_ESCALATION_ENTRY_WAIT_MS") / 1000 - time.monotonic()))
+        held_s = time.monotonic() - held_at
         twin.trigger("ENTRY_RELEASE")
-        _exits_with(twin, 3, "the escalation after a refused ResetErrors")
+        _exits_with(twin, 3, f"the escalation after a refused ResetErrors, its entry held {held_s:.1f} s")
     with ctx.boot(state_dir=state) as twin:
         status = _status(twin.port)
         reason = _group(status, "system").get("ResetReason")
@@ -1428,12 +1553,7 @@ def _reset_fire_dropped(ctx: Context) -> None:
 
 
 def _responder_host() -> str:
-    # The NTP host the runner writes for its local responder (digital_twin/unixport/_offline_ntp_config.py), read by ast.
-    tree = ast.parse((REPO_ROOT / "digital_twin" / "unixport" / "_offline_ntp_config.py").read_text(encoding="utf-8"))
-    for node in tree.body:
-        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and node.targets[0].id == "_RESPONDER_HOST":
-            return str(ast.literal_eval(node.value))
-    raise RuntimeError("_offline_ntp_config.py defines no _RESPONDER_HOST")
+    return _ntp_config_const("_RESPONDER_HOST")
 
 
 def _result(answer: Answer, *keys: str) -> JSONValue:
@@ -1443,6 +1563,16 @@ def _result(answer: Answer, *keys: str) -> JSONValue:
         node = node.get(key) if isinstance(node, dict) else None
     return node
 
+
+def _route_out(host: str) -> bool:
+    # Whether a route to `host` leaves this host: a UDP connect() sends nothing and fails (ENETUNREACH) where none does,
+    # the lookup the twin's own UDP socket makes (the suite's Run 9 asks the same).
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        try:
+            probe.connect((host, _NTP_SERVER_PORT))
+        except OSError:
+            return False
+    return True
 
 def _run_one(item: Scenario, ctx: Context, *, group_ends: bool = True) -> Outcome:
     # One scenario's verdict; on a shared boot its idle check, and the shutdown its failure or the group's end needs.
@@ -1725,10 +1855,10 @@ def _status(port: int) -> JSONObject:
     return _object(answer)
 
 
-def _status_of(port: int, path: str) -> "int | str":
+def _status_of(port: int, path: str, timeout_s: float = _REQUEST_TIMEOUT_S) -> "int | str":
     # A status, or "rejected" for a clean refusal at the ceiling.
     try:
-        return _request(port, "GET", path).status
+        return _request(port, "GET", path, timeout_s=timeout_s).status
     except RefusedError:
         return "rejected"
 
@@ -1802,14 +1932,14 @@ def _uart_load(ctx: Context, twin: Twin) -> None:
     def hammer(_i: int) -> int:
         served = 0
         while not stop.is_set():
-            served += _status_of(twin.port, "/status") == HTTPStatus.OK
+            served += _status_of(twin.port, "/status", _UART_LOAD_REQUEST_S) == HTTPStatus.OK
         return served
 
     def flusher(_i: int) -> int:
         index = 0
         while not stop.is_set():  # each a stored change, so each a config flush and its flash stall
             try:
-                puts.append(_config_write(twin.port, index % 30)[1])
+                puts.append(_config_write(twin.port, index % 30, _UART_LOAD_REQUEST_S)[1])
             except RefusedError:  # the hammer holds the ceiling: a clean refusal, sent again
                 time.sleep(_LINE_POLL_S)
                 continue
@@ -1825,7 +1955,7 @@ def _uart_load(ctx: Context, twin: Twin) -> None:
     time.sleep(_UART_LOAD_S)
     stop.set()
     for thread in threads:
-        thread.join(timeout=_REQUEST_TIMEOUT_S * 2)
+        thread.join(timeout=_UART_LOAD_REQUEST_S * 2)
     _expect(all(isinstance(r, int) for r in results) and sum(int(str(r)) for r in results[:hammers]) > 0, f"a load thread raised or never ran: {_statuses(results)}")
     _expect(bool(puts) and all(word in ("Valid", "Unchanged") for word in puts), f"config PUTs under load answered {puts!r}")
 
@@ -1897,6 +2027,135 @@ def _wait_reading(port: int, name: str, timeout_s: float = _SERVING_TIMEOUT_S) -
             return True
         time.sleep(0.25)
     return False
+
+
+def _wait_stored(state: Path, store: str, key: str, value: JSONValue, timeout_s: float = _DRAIN_WAIT_S) -> bool:
+    # Whether a store's config file under the twin's state holds `value` at `key` by the deadline: its deferred flush ran.
+    path = state_paths(state).config_dir / f"config_{store}.cfg"
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        try:
+            if json.loads(path.read_text(encoding="utf-8")).get(key) == value:
+                return True
+        except (OSError, ValueError, AttributeError):
+            pass  # not written yet: the next poll reads it again
+        time.sleep(_LINE_POLL_S)
+    return False
+
+def _watchdog_fault(ctx: Context, kind: str) -> None:
+    # One --test-watchdog-fault after the supervisor's first feed: the starved watchdog engages with the twin still up.
+    # Past a raise or main()'s end nothing feeds again; a blocked loop's own supervisor feeds once it resumes.
+    with ctx.boot("--test-watchdog-fault", kind) as twin:
+        twin.starves_watchdog = True
+        at = twin.wait_line(_WATCHDOG_FAULT_LINE, 0, _SERVING_TIMEOUT_S)
+        if at is None:
+            raise AssertionError(f"{kind}: the runner never reached its fault (no {_WATCHDOG_FAULT_LINE.strip()} line)")
+        engaged = twin.wait_line("WATCHDOG_WOULD_TRIGGER", 0, _WATCHDOG_WINDOW_S + _COMMANDED_RESET_MARGIN_S)
+        _expect(twin.run.proc.poll() is None, f"{kind}: the twin ended under the fault ({exit_reason(twin.run.proc.returncode or 0)})")
+        _expect(engaged is not None, f"{kind}: the watchdog did not engage within {_WATCHDOG_WINDOW_S:g} s of the fault and its margin")
+    fed = int(at.split(_WATCHDOG_FAULT_LINE, 1)[1].split()[0])
+    line = parse_shutdown_line(read_log(twin.run.log_path))
+    _expect(line is not None and line.would_have_triggered_count >= 1, f"{kind}: the shutdown line records no engagement ({line!r})")
+    if kind != "block" and line is not None:
+        _expect(line.feed_count == fed, f"{kind}: fed {line.feed_count} times by the exit, {fed} at the fault: a feed outlived the supervisor")
+
+
+@scenario("watchdog_fault_block", family="watchdog_fault")
+def _watchdog_fault_block(ctx: Context) -> None:
+    """A loop blocked past the watchdog timeout after the supervisor's first feed makes the starved watchdog engage."""
+    _watchdog_fault(ctx, "block")
+
+
+@scenario("watchdog_fault_main_exit", family="watchdog_fault")
+def _watchdog_fault_main_exit(ctx: Context) -> None:
+    """The product's main() ending under a live loop stops every feed, and the starved watchdog engages."""
+    _watchdog_fault(ctx, "main-exit")
+
+
+@scenario("watchdog_fault_supervisor_raise", family="watchdog_fault")
+def _watchdog_fault_supervisor_raise(ctx: Context) -> None:
+    """A raise escaping the supervisor's dead-task report stops every feed, and the starved watchdog engages."""
+    _watchdog_fault(ctx, "supervisor-raise")
+
+
+def _write_until_answered(port: int, index: int) -> "tuple[int, JSONValue]":
+    # One stored config write, retried past a clean refusal at the ceiling (a reader's slot still closing) until answered.
+    deadline = time.monotonic() + _STILL_SERVING_S
+    while True:
+        try:
+            return _config_write(port, index)
+        except RefusedError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(_LINE_POLL_S)
+
+@scenario("zero_think_time_readers_saturate_then_recover", family="reader_saturation")
+def _zero_think_readers(ctx: Context) -> None:
+    """Four zero-think-time /status readers beside an unchanged write degrade the service, never break it, and it answers within its cap after."""
+    with ctx.boot() as twin:
+        level = _object(_request(twin.port, "GET", "/system")).get("DebugLevel")
+        _expect(isinstance(level, int), f"GET /system holds no DebugLevel ({level!r})")
+        system = _counter(_errcount(twin.port, "SYSTEM"))
+        stop = threading.Event()
+
+        def reader(_i: int) -> "tuple[int, int, list[str]]":
+            # Re-requests the moment each answer lands: a clean refusal is no answer, any other unusable one is kept.
+            answered, refused, bad = 0, 0, []
+            for _n in range(_ZERO_THINK_READS):
+                try:
+                    answer = _request(twin.port, "GET", "/status")
+                except RefusedError:
+                    refused += 1
+                    continue
+                if answer.status == HTTPStatus.OK and isinstance(_json(answer), dict):
+                    answered += 1
+                else:
+                    bad.append(f"{answer.status}, {len(answer.body)} B")
+            return answered, refused, bad
+
+        def writer(_i: int) -> "dict[str, int]":
+            # The current DebugLevel at a fixed cadence: answered "Unchanged", it writes no flash.
+            words: dict[str, int] = {}
+            while not stop.wait(_ZERO_THINK_WRITER_PERIOD_S):
+                try:
+                    word = str(_result(_request(twin.port, "PUT", "/system", {"DebugLevel": level}), "DebugLevel"))
+                except RefusedError:
+                    word = "refused"
+                words[word] = words.get(word, 0) + 1
+            return words
+
+        results: list[object] = [None] * (_ZERO_THINK_READERS + 1)
+        threads = [threading.Thread(target=_record_into, args=(results, i, reader if i < _ZERO_THINK_READERS else writer)) for i in range(_ZERO_THINK_READERS + 1)]
+        for thread in threads:
+            thread.start()
+        for thread in threads[:-1]:
+            thread.join(timeout=_ZERO_THINK_READS * _REQUEST_TIMEOUT_S)
+        stop.set()
+        threads[-1].join(timeout=2 * _REQUEST_TIMEOUT_S)
+        began = time.monotonic()
+        recovered = _status_of(twin.port, "/status")  # a refusal reads "rejected"
+        get_s, began = time.monotonic() - began, time.monotonic()
+        try:
+            word: JSONValue = _result(_request(twin.port, "PUT", "/system", {"DebugLevel": level}, timeout_s=_OUTER_CAP_S), "DebugLevel")
+        except RefusedError:
+            word = "refused"
+        put_s = time.monotonic() - began
+        try:
+            after: int | None = _counter(_errcount(twin.port, "SYSTEM"))
+        except RefusedError:
+            after = None  # judged after the readers' own verdict
+        reset = parse_machine_reset_line(read_log(twin.run.log_path))
+    readers = results[:-1]
+    print(f"   {ctx.device}: each reader's (answered, refused) {[r[:2] if isinstance(r, tuple) else r for r in readers]}; the writer's answers {results[-1]!r}", flush=True)
+    _expect(all(isinstance(r, tuple) for r in readers), f"a reader raised or never ended: {_statuses(readers)}")
+    answered = [int(r[0]) for r in readers if isinstance(r, tuple)]
+    _expect(min(answered, default=0) >= _ZERO_THINK_FLOOR, f"a reader was answered {min(answered, default=0)} times of {_ZERO_THINK_READS}, under the floor of {_ZERO_THINK_FLOOR}")
+    bad = [b for r in readers if isinstance(r, tuple) for b in r[2]]
+    _expect(not bad, f"answers incomplete or unparseable under the load: {bad[:3]}")
+    _expect(recovered == HTTPStatus.OK and get_s <= _OUTER_CAP_S, f"after the load GET /status answered {recovered} in {get_s:.1f} s (cap {_OUTER_CAP_S:g} s)")
+    _expect(word == "Unchanged" and put_s <= _OUTER_CAP_S, f"after the load the PUT answered {word!r} in {put_s:.1f} s (cap {_OUTER_CAP_S:g} s)")
+    _expect(after == system, f"the SYSTEM error count moved {system} -> {after} under the load: a task ended")
+    _expect(reset is None, f"the device reset under the load ({reset!r})")
 
 
 def main(argv: "list[str] | None" = None) -> int:

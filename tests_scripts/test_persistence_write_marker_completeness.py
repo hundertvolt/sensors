@@ -446,6 +446,7 @@ _PREREQUISITE_DEVICE_SCRIPTS = {
     "serving_at_default_gc.py": _SERVING_REASON,
     "heap_under_connection_ceiling.py": _SERVING_REASON,
     "uart_link_echo_under_serving_load.py": _SERVING_REASON,
+    "loop_lag_under_combined_load.py": _SERVING_REASON,
 }
 # Persisting scripts a manual step runs: the operator confirms the stated writes before the run.
 _MANUAL_PERSISTING_STEPS = {

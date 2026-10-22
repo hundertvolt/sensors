@@ -1,6 +1,6 @@
 """Every retry count tuned in testing is in one table (owner, 2026-10-20: "Simply put, do the consistent rule adaptation
-to tests only and only for those running into timeout."): a timeout retry takes three attempts, two retries (E.3.1); an
-event retry keeps its recorded count; a bound is no retry. An unclassified count fails by name; both tiers read theirs."""
+to tests only and only for those running into timeout."): a timeout retry: three attempts, two retries (E.3.1); an event
+retry keeps its recorded count; a bound is no retry. An unclassified count fails by name; both tiers read theirs."""
 
 import os
 import re

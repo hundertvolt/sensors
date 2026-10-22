@@ -1,6 +1,6 @@
-"""The shared test doubles and readers no consumer test pins yet: the src const() reader, the fast sleep, the timer-arm
-failure, the fake time sources, the FRAM manager builder, the NTP frames and server, the print recorder and the fixed
-random source, each against the behaviour its former copies had."""
+"""The shared test doubles and readers no consumer test pins yet: the src const() reader, the cancel sweep, the fast
+sleep, the timer-arm failure, the fake time sources, the FRAM manager builder, the NTP frames and server, the print
+recorder and the fixed random source, each against the behaviour its former copies had."""
 
 import asyncio
 import errno
@@ -11,6 +11,7 @@ import struct
 import time
 
 from _async_harness import run
+from _cancel_sweep import SocketLedger, assert_unlocked, cancel_at_each_await
 from _fake_time import DrivenTime, FakeTime, Rp2Gmtime, tick
 from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep, check_sleep_ms
@@ -37,6 +38,8 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Coroutine
+
     from _protocols import I2CLike, UARTLike, WLANLike
     from machine import I2C, UART
     from network import WLAN
@@ -57,8 +60,50 @@ class _Holder:
         self.time: object = time
 
 
+class _Net:
+    # A module stand-in opening its sockets through its own `socket` name, as asy_udp_socket does.
+    def __init__(self) -> None:
+        self.socket = socket
+
+
+_NET = _Net()  # the one stand-in every path opens through, so a ledger over it sees each socket
+
+
+class _Clocked:
+    # A module stand-in whose `time` and `asyncio` a DrivenTime with sleeps replaces for the block.
+    def __init__(self) -> None:
+        self.time = time
+        self.asyncio = asyncio
+
+
+class _Path:
+    # One cancel-sweep fixture: the lock the path takes, the sockets it opens and the turns it reached.
+    def __init__(self) -> None:
+        self.lock = asyncio.Lock()
+        self.net = _NET
+        self.reached = 0
+
+
 class _BigChip(FakeMB85RS64V):
     SIZE = 0x8000
+
+
+async def _clean_path(path: _Path) -> None:
+    async with path.lock:
+        sock = path.net.socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            path.reached = 1
+            await asyncio.sleep(0)
+            path.reached = 2
+            await asyncio.sleep(0)
+        finally:
+            sock.close()
+    path.reached = 3
+    await asyncio.sleep(0)
+
+
+async def _fresh_path() -> _Path:
+    return _Path()
 
 
 async def _refused_sleep_ms(ms: float) -> str:
@@ -68,6 +113,20 @@ async def _refused_sleep_ms(ms: float) -> str:
     except (TypeError, OverflowError) as e:
         return f"{type(e).__name__}: {e}"
     return "no error"
+
+
+def _swept(path: "Callable[[_Path], Coroutine[object, object, None]]", max_steps: int = 200, endless: bool = False) -> str:
+    # What a sweep of the path over fresh _Path fixtures answered: its cancel-point count or its failure.
+    with SocketLedger(_NET) as ledger:
+
+        def invariants(fixture: _Path) -> None:
+            assert_unlocked(lock=fixture.lock)
+            ledger.assert_closed()
+
+        try:
+            return f"swept {cancel_at_each_await(_fresh_path, path, invariants, max_steps=max_steps, endless=endless)}"
+        except AssertionError as e:
+            return str(e)
 
 
 def _times(*holders: _Holder) -> "list[object]":
@@ -141,6 +200,111 @@ def test_devices_are_the_tomls_but_a_zz_test_fixture_sorted() -> None:
 
 def test_the_ntp_epoch_delta_is_rfc_5905s() -> None:
     assert NTP_EPOCH_DELTA == 2208988800
+
+
+# ---------------------------------------------------------------------------
+# _cancel_sweep
+# ---------------------------------------------------------------------------
+
+
+def test_cancel_sweep_cancels_a_clean_path_at_each_await_until_it_completes() -> None:
+    seen: list[int] = []
+    with SocketLedger(_NET) as ledger:
+
+        def invariants(path: _Path) -> None:
+            assert_unlocked(lock=path.lock)
+            ledger.assert_closed()
+            seen.append(path.reached)
+
+        assert cancel_at_each_await(_fresh_path, _clean_path, invariants) == 4
+        assert len(ledger.opened) <= 1, ledger.opened  # the closed ones are dropped as each check reads them
+    assert seen == [0, 1, 2, 3], seen  # before the start, at each of its three awaits
+
+
+def test_cancel_sweep_fails_on_a_path_that_leaks_its_socket_when_cancelled() -> None:
+    async def leaky(path: _Path) -> None:
+        sock = path.net.socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        await asyncio.sleep(0)
+        sock.close()  # planted: no finally, so a cancel at the await leaves it open
+
+    assert _swept(leaky) == "cancelled after 1 turns: 1 socket(s) left open"
+
+
+def test_cancel_sweep_fails_on_a_path_that_leaves_its_lock_held_when_cancelled() -> None:
+    async def unbalanced(path: _Path) -> None:
+        await path.lock.acquire()
+        await asyncio.sleep(0)
+        path.lock.release()  # planted: no finally, so a cancel at the await leaves it held
+
+    assert _swept(unbalanced) == "cancelled after 1 turns: lock is still locked"
+
+
+def test_cancel_sweep_fails_on_a_path_that_swallows_its_cancellation() -> None:
+    async def swallowing(path: _Path) -> None:
+        try:
+            await asyncio.sleep(0)
+        except asyncio.CancelledError:
+            path.reached = -1
+
+    assert _swept(swallowing) == "cancelled after 1 turns, the path returned instead of raising CancelledError"
+
+
+def test_cancel_sweep_fails_on_a_path_that_never_completes_unless_it_is_endless() -> None:
+    async def forever(path: _Path) -> None:
+        while True:
+            await asyncio.sleep(0)
+
+    assert _swept(forever, max_steps=5) == "the path was still running after 5 turns"
+    assert _swept(forever, max_steps=5, endless=True) == "swept 5"
+
+
+def test_cancel_sweep_keeps_the_counts_own_failure_when_its_teardown_fails_too() -> None:
+    torn: list[_Path] = []
+
+    async def teardown(path: _Path) -> None:
+        torn.append(path)
+        if len(torn) == 2:  # the count that fails
+            raise OSError("teardown refused")
+
+    async def unbalanced(path: _Path) -> None:
+        await path.lock.acquire()
+        await asyncio.sleep(0)
+        path.lock.release()  # planted: no finally, so a cancel at the await leaves it held
+
+    try:
+        cancel_at_each_await(_fresh_path, unbalanced, lambda path: assert_unlocked(lock=path.lock), teardown=teardown)
+        said = "swept"
+    except AssertionError as e:
+        said = str(e)
+    except OSError as e:
+        said = f"the teardown's {e}"
+    assert (said, len(torn)) == ("cancelled after 1 turns: lock is still locked", 2), (said, torn)
+
+
+def test_cancel_sweep_steps_a_driven_path_with_the_given_turn_and_tears_each_fixture_down() -> None:
+    # A turn shorter than the path's shortest sleep, so each await is a cancel point: one at each, one more mid-sleep.
+    clocked = _Clocked()
+    built: list[_Path] = []
+    torn: list[_Path] = []
+    seen: list[int] = []
+
+    async def build() -> _Path:
+        built.append(_Path())
+        return built[-1]
+
+    async def teardown(path: _Path) -> None:
+        torn.append(path)
+
+    async def driven(path: _Path) -> None:
+        path.reached = 1
+        await clocked.asyncio.sleep_ms(10)
+        path.reached = 2
+        await clocked.asyncio.sleep_ms(10)
+
+    with DrivenTime(clocked, sleeps=True) as clock:
+        count = cancel_at_each_await(build, driven, lambda path: seen.append(path.reached), turn=lambda: clock.elapse(5), teardown=teardown)
+        assert clock.wakes() == [], clock.wakes()
+    assert (count, seen, len(built), torn == built) == (4, [0, 1, 2, 2], 5, True), (count, seen, built, torn)
 
 
 # ---------------------------------------------------------------------------
@@ -384,23 +548,32 @@ def test_the_fake_ntp_server_answers_one_request_or_drops_it() -> None:
     target = socket.getaddrinfo("127.0.0.1", _NTP_PORT)[0][-1]
     reply = make_ntp_reply(1_790_000_000)
 
-    async def exchange(answer: "bytes | None") -> "bytes | None":
+    async def exchange(answer: "bytes | None") -> "tuple[bool, bytes | None]":
         served = asyncio.create_task(server.serve_once(answer))
         await asyncio.sleep(0)
         client.sendto(b"\x23" + bytes(47), target)
-        await served
+        took = await served
         for _ in range(20):
             # ipoll(0) returns an always-truthy iterator on this port - iterate and check the flags.
             if any(event & select.POLLIN for _obj, event in poller.ipoll(0)):
-                return client.recv(64)
+                return took, client.recv(64)
             await asyncio.sleep_ms(5)
-        return None
+        return took, None
 
     try:
-        assert run(exchange(reply), 10) == reply
-        assert run(exchange(None), 10) is None
+        assert run(exchange(reply), 10) == (True, reply)
+        assert run(exchange(None), 10) == (True, None)  # taken and dropped is still served
     finally:
         client.close()
+        server.close()
+
+
+def test_the_fake_ntp_server_answers_false_once_its_poll_budget_runs_out() -> None:
+    # No request arrives: serve_once() gives up after poll_tries rounds of poll_ms and says so.
+    server = FakeNtpServer(_NTP_PORT, poll_ms=1, poll_tries=3)
+    try:
+        assert run(server.serve_once(make_ntp_reply(1_790_000_000)), 5) is False
+    finally:
         server.close()
 
 

@@ -693,6 +693,58 @@ def test_ema_step_converges_toward_a_held_constant_sample() -> None:
     assert approx(value, 100.0, tol=1e-3)  # gap shrinks by (1-0.2) per step: 100*0.8**60 ~ 1.5e-4
 
 
+# ---------------------------------------------------------------------------
+# The residual catches, each reached through a stand-in math module
+# ---------------------------------------------------------------------------
+
+
+class _RaisingMath:
+    # Stands in for math_helpers' math: every function the five residual catches guard raises a fresh error_type.
+    def __init__(self, error_type: "type[Exception]") -> None:
+        self._error_type = error_type
+
+    def _fail(self) -> float:
+        raise self._error_type("stand-in domain error")
+
+    def atan(self, _x: float) -> float:
+        return self._fail()
+
+    def exp(self, _x: float) -> float:
+        return self._fail()
+
+    def log(self, _x: float) -> float:
+        return self._fail()
+
+    def pow(self, _x: float, _y: float) -> float:
+        return self._fail()
+
+    def sqrt(self, _x: float) -> float:
+        return self._fail()
+
+
+def _residual_results() -> "list[float | None]":
+    # In-domain arguments for each function with a residual catch, so every call reaches its try body.
+    return [
+        mh.abs_humidity(20.0, 50.0),
+        mh.dew_point(20.0, 50.0),
+        mh.pressure_at_height(1013.25, 100.0, 15.0),
+        mh.rel_humidity(20.0, 8.0),
+        mh.wet_bulb_temperature(20.0, 50.0),
+    ]
+
+
+def test_residual_math_errors_return_none() -> None:
+    assert None not in _residual_results()  # the real math computes all five
+    real = mh.math
+    try:
+        for error_type in (ValueError, OverflowError):  # OverflowError stands for the ArithmeticError half
+            mh.math = _RaisingMath(error_type)  # type: ignore[assignment]  # a stand-in for the module's math, restored below
+            results = _residual_results()
+            assert results == [None, None, None, None, None], (error_type, results)
+    finally:
+        mh.math = real
+
+
 if __name__ == "__main__":
     import microtest
 

@@ -1,6 +1,6 @@
-"""Every key of the radio shape corpus (tests/_radio_shape_cases.json) has a product judge: the judge files' module-level
-_JUDGED_SHAPES tuples, read by ast, together name exactly the corpus keys, and each file's own test iterates its tuple,
-so a key no product check reads fails here (SPECIFICATION.md G.2)."""
+"""Every key of the radio shape corpus (tests/_radio_shape_cases.json) has a product judge: the judge files'
+module-level _JUDGED_SHAPES tuples, read by ast, together name exactly the corpus keys, and each file's own test
+iterates its tuple, so a key no product check reads fails here (SPECIFICATION.md G.2)."""
 
 import ast
 import json

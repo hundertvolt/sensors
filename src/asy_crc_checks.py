@@ -5,9 +5,9 @@ documented CRC-8), CRC16 (CRC-16/CCITT-FALSE), CRC32 (CRC-32/MPEG-2), plus CRCPa
 # returns None/False on invalid input rather than raising, except add()/check(), which allocate and
 # let MemoryError propagate. run_inc()/check_inc() hold per-instance state - never share one.
 
-# Zero-padding limitation inherent to this CRC class (CRC linearity; agent, 2026-07-15): a register at 0 stays 0 through further 0x00
-# bytes, so check()/check_from()/check_inc() can't detect trailing zero-padding past the buffer's
-# true end - callers must supply an accurate length.
+# Zero-padding limitation inherent to this CRC class (CRC linearity; agent, 2026-07-15): a register at 0 stays 0 through
+# further 0x00 bytes, so check()/check_from()/check_inc() can't detect trailing zero-padding past the buffer's true end
+# - callers must supply an accurate length.
 
 import asyncio
 from struct import pack_into
@@ -21,11 +21,12 @@ class CRCBase:
     def __init__(self, num_bytes: int, poly: int | None, fmt: str) -> None:
         # An invalid config (negative num_bytes, poly out of range for the width) silently
         # degrades to pass-through mode rather than raising - see module docstring's contract.
-        self._num_bytes = 0 if poly is None or num_bytes < 0 else num_bytes
-        self._all_set = 0 if self._num_bytes <= 0 else (1 << (self._num_bytes * 8)) - 1
-        self._msb_set = 0 if self._num_bytes <= 0 else 1 << ((self._num_bytes * 8) - 1)
-        self._crc_shift = 0 if self._num_bytes <= 0 else 8 * (self._num_bytes - 1)
-        self._poly = None if poly is None or self._num_bytes == 0 or not (0 <= poly <= self._all_set) else poly
+        mask = (1 << (num_bytes * 8)) - 1 if num_bytes > 0 else 0
+        self._poly = poly if poly is not None and num_bytes > 0 and 0 <= poly <= mask else None
+        self._num_bytes = 0 if self._poly is None else num_bytes  # every width field follows the checked polynomial
+        self._all_set = 0 if self._poly is None else mask
+        self._msb_set = 0 if self._poly is None else 1 << ((self._num_bytes * 8) - 1)
+        self._crc_shift = 0 if self._poly is None else 8 * (self._num_bytes - 1)
         self._fmt = fmt
         self._inc_crc: int | None = None
         self._inc_count = 0
@@ -34,8 +35,6 @@ class CRCBase:
         # Core polynomial-division loop (see the module docstring for the algorithm identity per
         # width), over the polynomial the caller has already checked; yields after every byte so a large buffer
         # can't stall other tasks.
-        if self._poly is None:
-            return crc
         if self._num_bytes > _WORD_BYTES:
             return await self._crc_wide(buf, crc, poly)
         for c in buf:
@@ -88,11 +87,8 @@ class CRCBase:
             return None
         crc = await self._crc(bytearr, init, self._poly)
         crc_b = bytearray(self._num_bytes)
-        try:
-            pack_into(self._fmt, crc_b, 0, crc)
-            return bytearr + crc_b
-        except ValueError:
-            return None
+        pack_into(self._fmt, crc_b, 0, crc)
+        return bytearr + crc_b
 
     async def add_into(self, buffer: bytearray, size: int, start: int = 0, init: int | None = None) -> int | None:
         # Like add(), but writes the CRC directly into a slice of an existing buffer instead of
@@ -106,11 +102,8 @@ class CRCBase:
             return None
         mv = memoryview(buffer)[start : (start + size + self._num_bytes)]
         crc = await self._crc(mv[0:size], init, self._poly)
-        try:
-            pack_into(self._fmt, mv, size, crc)
-            return size + self._num_bytes
-        except ValueError:
-            return None
+        pack_into(self._fmt, mv, size, crc)
+        return size + self._num_bytes
 
     async def check(self, bytearr: bytearray, init: int | None = None) -> bytearray | None:
         # Verifies a buffer's trailing CRC; returns the payload with the CRC stripped on success.
@@ -154,7 +147,7 @@ class CRCBase:
 
     def length(self) -> int:
         # CRC width in bytes; 0 in pass-through mode (CRCPass, or any width constructed with
-        # poly=None).
+        # poly=None or a polynomial out of range for it).
         return self._num_bytes
 
     # Feeds one chunk of data into an in-progress incremental CRC computation. Call once per

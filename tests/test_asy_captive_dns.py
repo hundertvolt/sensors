@@ -10,6 +10,7 @@ import time
 sys.path.insert(0, "digital_twin/unixport")  # the Unix-port UDP address shim (SPECIFICATION.md F.7 row 1)
 
 from _async_harness import cancel, run
+from _cancel_sweep import cancel_at_each_await
 from _error_codes import code
 from _fast_sleep import check_sleep_ms
 from _port_bands import PortAllocator
@@ -411,8 +412,9 @@ class _FakeUDPS:
         self.connected = True  # run() reads it to tell a socket that never bound from a failed receive
         self.sent: list[tuple[bytes, tuple[str, int]]] = []
         self.sendto_results: list[int | None] = []
-        self.disconnect_called = False
+        self.disconnects = 0
         self.disconnect_ok = True  # real UDPSocket.disconnect()'s success return, see Step 6 note
+        self.reads_after_disconnect = 0  # a receive once the socket was released
         self.bufsizes: list[int] = []
         # One ticks_ms() value per recvfrom() call, for backoff-timing assertions: opaque, only ever fed back into
         # time.ticks_diff().
@@ -422,14 +424,20 @@ class _FakeUDPS:
         self.loop_turns = 0
 
     async def disconnect(self) -> bool:
-        self.disconnect_called = True
+        self.disconnects += 1
         return self.disconnect_ok
+
+    @property
+    def disconnect_called(self) -> bool:
+        return self.disconnects > 0
 
     # CaptiveDNS calls recvfrom(512)/sendto(packet, addr): the fake records the buffer size; the timeout is never passed.
     async def recvfrom(self, bufsize: int, _timeout_ms: int = -1) -> tuple[bytes | None, tuple[str, int] | None]:
         self.bufsizes.append(bufsize)
         self.calls.append(("recv", self.loop_turns))
         self.recv_call_times_ms.append(time.ticks_ms())
+        if self.disconnects:
+            self.reads_after_disconnect += 1
         if self._incoming:
             data, addr = self._incoming.pop(0)
             await asyncio.sleep(0)
@@ -511,7 +519,6 @@ def test_run_ignores_source_address_that_is_not_a_valid_ipv4_string() -> None:
     fake = _FakeUDPS(
         [
             (query, ("not-an-ip", 5000)),
-            (query, (0x7F000005, 5002)),  # type: ignore[list-item]  # a non-str host: ipv4_to_int() raises, read as off-subnet
             (query, ("127.0.0.5", 5001)),
         ],
     )
@@ -529,6 +536,31 @@ def test_run_ignores_source_address_that_is_not_a_valid_ipv4_string() -> None:
     sent = run(scenario())
     assert len(sent) == 1
     assert sent[0][1] == ("127.0.0.5", 5001)
+
+
+def test_run_reads_every_malformed_str_host_as_off_subnet_with_nothing_logged() -> None:
+    # run() calls ipv4_to_int() on the sender's host bare: a str of any shape must come back None, never raise into the
+    # catch-all's logged error and 3 s pause. Non-ASCII digits: MicroPython's isdigit() is ASCII-only (py/unicode.c:133).
+    hosts = ["", "127.0.0", "127.0.0.5.1", "127..0.5", "127.0.0.256", "127.0.0.-5", "127.0.0.+5", " 127.0.0.5", "127.0.0.5 ", "127.0.0.5\x00", "127.0.0.\u0665", "127.0.0.\uff15", "127.0.0." + "9" * 64]
+    query = _make_query(["a", "io"])
+    incoming: list[tuple[bytes | None, tuple[str, int] | None]] = [(query, (host, 5000)) for host in hosts]
+    incoming.append((query, ("127.0.0.5", 5001)))  # the one on-subnet sender, last
+    fake = _FakeUDPS(incoming)
+
+    async def scenario() -> "tuple[bool, list[tuple[int, str]]]":
+        server = CaptiveDNS()
+        server._udps = fake  # type: ignore[assignment]
+        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
+        try:
+            answered = await _wait_until(lambda: len(fake.sent) >= 1)
+            await asyncio.sleep_ms(_STRAY_REPLY_WAIT_MS)  # a stray reply to a malformed host gets its chance to show up
+            return answered, await _used_slots(server)
+        finally:
+            await cancel(task)
+
+    answered, slots = run(scenario())
+    assert slots == [], f"a malformed str host reached the catch-all: {slots}"
+    assert answered and [addr for _, addr in fake.sent] == [("127.0.0.5", 5001)], fake.sent
 
 
 def test_run_ignores_malformed_query_without_stalling() -> None:
@@ -614,6 +646,32 @@ def test_awaiting_a_cancelled_run_raises_after_disconnect() -> None:
     raised, disconnected_first = run(scenario())
     assert raised is True
     assert disconnected_first is True
+
+
+def test_cancelling_run_at_each_await_disconnects_and_logs_nothing() -> None:
+    # One query, then the fake's endless wait: each count's cancel leaves run() through its finally, which releases the
+    # socket once and reads no more. A task cancelled before its first step runs no code, so it has nothing to release.
+    replies: list[int] = []  # the replies sent by each count's cancel: the sweep crosses the answer
+
+    async def build() -> "tuple[CaptiveDNS, _FakeUDPS]":
+        server = CaptiveDNS()
+        fake = _FakeUDPS([(_make_query(["a", "io"]), ("127.0.0.5", 5000))])
+        server._udps = fake  # type: ignore[assignment]
+        return server, fake
+
+    async def serve(fixture: "tuple[CaptiveDNS, _FakeUDPS]") -> None:
+        await fixture[0].run("127.0.0.1", "255.0.0.0")
+
+    def invariants(fixture: "tuple[CaptiveDNS, _FakeUDPS]") -> None:
+        server, fake = fixture
+        began = 1 if fake.bufsizes else 0
+        assert fake.disconnects == began, f"disconnect() called {fake.disconnects} times, run() began {began}"
+        assert fake.reads_after_disconnect == 0, "recvfrom() called after the disconnect"
+        assert server.pr._err_count == 0, "the cancel was logged"
+        replies.append(len(fake.sent))
+
+    assert cancel_at_each_await(build, serve, invariants, max_steps=6, endless=True) == 6
+    assert replies == [0, 0, 0, 1, 1, 1], replies
 
 
 def test_run_continues_after_sendto_reports_failure() -> None:
@@ -1225,7 +1283,7 @@ class _RaisingDisconnectUDPS(_FakeUDPS):
         self._exc = exc
 
     async def disconnect(self) -> bool:
-        self.disconnect_called = True
+        self.disconnects += 1
         raise self._exc
 
 

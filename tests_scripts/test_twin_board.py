@@ -1,6 +1,6 @@
 """tests_hardware/twin_board.py keeps harness.Board's shape (ast) and runs a device script under the real Unix-port twin
-through digital_twin/run_device_script.py: output back, a raising or starving script or one it cannot intern failing, a
-reset's output kept, both GC stages, the twin layout and the probe's binary (micropypath.toml, _unix_port.sh), conformance."""
+via digital_twin/run_device_script.py: output back, a raising or starving script or one it cannot intern failing, a
+reset's output kept, both GC stages, twin layout and probe binary (micropypath.toml, _unix_port.sh), conformance."""
 
 import ast
 import os

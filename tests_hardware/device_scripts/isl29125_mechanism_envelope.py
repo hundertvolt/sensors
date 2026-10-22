@@ -1,6 +1,7 @@
 """The ISL29125 module's mechanisms across the whole illumination envelope the board's own NeoPixel can produce -
 ambient, both ranges, the switch point, cross-range continuity, saturation, fixed range, both resolutions and the
-calibration trigger - over a scratch config file. Reports every sample and setting result; the host gives the verdict."""
+calibration trigger - over a scratch config file. Reports every sample and setting result; the host gives the verdict.
+"""
 
 import asyncio
 import errno

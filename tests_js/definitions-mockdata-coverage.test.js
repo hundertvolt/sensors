@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import samples from "../mockdata/samples.json";
 import { resolveFieldValue } from "../js/definitions.js";
-import { composeMockData } from "../js/mock-server.js";
+import { composeMockData, installMockFetch } from "../js/mock-server.js";
 import { DEVICE_IDS, GENERATED_DEFINITIONS } from "./_generated_definitions.js";
 
 /** @typedef {import("../js/definitions.js").FieldDef} FieldDef */
@@ -109,6 +109,33 @@ describe("definitions and mockdata agree", () => {
         const defs = /** @type {import("../js/definitions.js").SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device));
         const data = composeMockData(defs, /** @type {import("../js/definitions.js").MockSamples} */ (samples));
         expect(unrenderableReadonlyFields(defs, data)).toEqual([]);
+    });
+
+    // G.3's mirror of _put_status(): every dispatch key the status section lists answers {key: true} "Valid" and any
+    // other value "Invalid", as the device answers ResetErrors and each registered command outside its "Failed" windows.
+    it.each(DEVICE_IDS)("answers every status command %s's definitions list as the device does", async (device) => {
+        const defs = /** @type {import("../js/definitions.js").SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device));
+        const status = defs.sections.find((section) => section.key === "status");
+        const put = status?.rest.put ?? "";
+        const keys = (status?.groups ?? []).flatMap((group) => ("fields" in group ? group.fields : [])).filter((field) => field.dispatch === true).map((field) => field.key);
+        expect(keys).toContain("ResetErrors");
+        const uninstall = installMockFetch(defs, composeMockData(defs, /** @type {import("../js/definitions.js").MockSamples} */ (samples)));
+        /** @type {(body: Record<string, unknown>) => Promise<unknown>} */
+        const answer = async (body) => (await (await fetch(put, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json()).result;
+        try {
+            const answers = await Promise.all(keys.flatMap((key) => [true, false, 1].map((value) => answer({ [key]: value }))));
+            expect(answers).toEqual(keys.flatMap((key) => [{ [key]: "Valid" }, { [key]: "Invalid" }, { [key]: "Invalid" }]));
+            expect(await answer({ Unlisted: true })).toEqual({ Unlisted: "Invalid" });
+        } finally {
+            uninstall();
+        }
+    });
+
+    it("gives the mock's stale-time flag the value its NTP sync implies once the clock is set", () => {
+        // The generated module publishes TimeStale as NTPSynced inverted while UnixTime is set.
+        const { networking, system } = samples.status;
+        expect(typeof system.UnixTime).toBe("number");
+        expect(system.TimeStale).toBe(!networking.NTPSynced);
     });
 
     // Guards the check itself: a resolver that silently returned a value for everything would make

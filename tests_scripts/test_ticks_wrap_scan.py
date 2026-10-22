@@ -1,6 +1,6 @@
-"""Every tick value in src/, digital_twin/ and the generated device modules reaches arithmetic or an ordering only
-through time.ticks_diff()/ticks_add(), and no literal ticks_add() delta reaches 2**29 (SPECIFICATION.md F.1): an ast
-scan per function. Its known users are tests/test_ticks_rollover.py's _KNOWN_TICKS_USERS, the one list both tiers read."""
+"""Every tick value in src/, digital_twin/ and the generated device modules reaches arithmetic or an ordering only via
+time.ticks_diff()/ticks_add(), and no literal ticks_add() delta reaches 2**29 (SPECIFICATION.md F.1): an ast scan per
+function. Its known users are tests/test_ticks_rollover.py's _KNOWN_TICKS_USERS, the one list both tiers read."""
 
 import ast
 import operator

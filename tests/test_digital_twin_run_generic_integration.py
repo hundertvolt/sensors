@@ -1,6 +1,9 @@
-"""Unit tests for digital_twin/run_generic_integration.py: parse_args(), the grouped config and test flags, the reset and shutdown lines,
-the shared chip lookup and fault plumbing, and one smoke boot of a generated module through the generic entry point (every
-device's own boot is tests_scripts/test_digital_twin_generated_boot.py's; the soak check is the CI suite's Run 11)."""
+"""Unit tests for digital_twin/run_generic_integration.py: parse_args(), the grouped config and test flags, the reset
+and shutdown lines, the shared chip lookup and fault plumbing, and one smoke boot of a generated module through the
+generic entry point.
+
+Every device's own boot is tests_scripts/test_digital_twin_generated_boot.py's; the soak check is the CI suite's
+Run 11."""
 
 import asyncio
 import io
@@ -121,14 +124,14 @@ def test_parse_args_takes_the_config_dir_the_online_ntp_switch_and_in_memory_sta
 
 
 def test_every_test_only_flag_is_off_by_default_and_parses_when_named() -> None:
-    assert runner.TestFlags(False, None, None, None, None, False, False, None, False, None, None) == runner._NO_TEST_FLAGS
+    assert runner.TestFlags(False, None, None, None, None, False, False, None, False, None, None, None) == runner._NO_TEST_FLAGS
     config = _parse(
         "--test-hold-closing-slot", "--test-stall-loop-ms", "40", "--test-conn-status-interval-ms", "50",
         "--test-fault-status-interval-ms", "60", "--test-shutdown-hang", "S5erase", "--test-flash-stall-max", "--test-uart-over-cap",
-        "--test-hold-system-entry", "25", "--test-kbd-traceback", "--test-loop-lag-ms", "10", "--test-drop-timer-fire", "sequencer",
+        "--test-hold-system-entry", "25", "--test-kbd-traceback", "--test-loop-lag-ms", "10", "--test-drop-timer-fire", "sequencer", "--test-watchdog-fault", "block",
     )
-    assert config.instrumentation == runner.TestFlags(True, 40, 50, 60, "S5erase", True, True, 25, True, 10, "sequencer")
-    refused = (("--test-shutdown-hang", "S7"), ("--test-stall-loop-ms", "0"), ("--test-conn-status-interval-ms", "x"), ("--test-hold-system-entry", "0"), ("--test-loop-lag-ms", "0"), ("--test-drop-timer-fire", "ntp"))
+    assert config.instrumentation == runner.TestFlags(True, 40, 50, 60, "S5erase", True, True, 25, True, 10, "sequencer", "block")
+    refused = (("--test-shutdown-hang", "S7"), ("--test-stall-loop-ms", "0"), ("--test-conn-status-interval-ms", "x"), ("--test-hold-system-entry", "0"), ("--test-loop-lag-ms", "0"), ("--test-drop-timer-fire", "ntp"), ("--test-watchdog-fault", "reboot"))
     for flags in refused:
         _refused(_parse, *flags)
 

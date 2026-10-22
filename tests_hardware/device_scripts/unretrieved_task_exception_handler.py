@@ -1,6 +1,7 @@
 """Isolated-driver device script: SYSTEM's unretrieved-task-exception report on real silicon, at both GC stages. It
 reports the locked-heap report's allocations at DebugLevel 0 and 1, the USB console path, and the collected heap across
-detached deaths through the real loop; the host gives the verdict. No FRAM, no flash write (SPECIFICATION.md Part F.1)."""
+detached deaths through the real loop; the host gives the verdict. No FRAM, no flash write (SPECIFICATION.md Part F.1).
+"""
 
 import asyncio
 import asyncio.core as asyncio_core  # type: ignore[import-not-found]  # asyncio's own context dict, read back below

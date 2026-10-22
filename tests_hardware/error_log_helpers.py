@@ -132,9 +132,9 @@ def errcount_entry(counts: "Mapping[str, object]", name: str) -> ErrcountEntry:
 
 
 def new_task_raised(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]") -> int:
-    # SYSTEM TASK_RAISED/SUPERVISOR_RAISED entries between two errcount reads, an empty `before` (a log cleared first) counting all as
-    # new. Counted over the newest entries the counter grew by, so a repeat into the newest slot still counts; reaching
-    # past a collapsed repeat into an older entry can only fail a run.
+    # SYSTEM TASK_RAISED/SUPERVISOR_RAISED entries between two errcount reads, an empty `before` (a log cleared first)
+    # counting all as new. Counted over the newest entries the counter grew by, so a repeat into the newest slot still
+    # counts; reaching past a collapsed repeat into an older entry can only fail a run.
     old = errcount_entry(before, "SYSTEM") if before else ErrcountEntry(counter=0, history=[])
     new = errcount_entry(after, "SYSTEM")
     used = [h for h in new["history"] if h.get("type") != "N"]

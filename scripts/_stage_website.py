@@ -8,8 +8,8 @@ inlined, and js/main.js's import closure bundled into js/app.js, each module aft
 drift from the bundling rules or from the site's file set stops the build (SPECIFICATION.md H.2, H.7)."""
 
 # Usage: scripts/_stage_website.py [--build-date STAMP] <definitions.json> <stage_dir>
-# Reads html/ and js/ of the tree this script sits in; writes only <stage_dir>/index.html and <stage_dir>/js/app.js,
-# creating <stage_dir> if absent (its caller wipes it). An error exits 1 naming the rule, the file and line, and the fix.
+# Reads html/ and js/ of this script's own tree; writes only <stage_dir>/index.html and <stage_dir>/js/app.js, creating
+# <stage_dir> if absent (its caller wipes it). An error exits 1 naming the rule, the file and line, and the fix.
 
 import argparse
 import base64

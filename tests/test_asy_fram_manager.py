@@ -2,8 +2,10 @@
 chunks, and every fault failing cleanly and logged."""
 
 import asyncio
+import time
 
 from _async_harness import run
+from _cancel_sweep import assert_unlocked, cancel_at_each_await
 from _error_codes import code
 from _fake_time import UTCValid
 from _fram_builders import make_fram_manager
@@ -22,6 +24,19 @@ from asy_spi_driver import SPI
 # Same one-process-per-test-file swap as test_asy_fram_driver.py - see its own comment.
 asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
 
+
+class _NoSettle:
+    # asy_spi_driver's `time` for this file: sleep_us(), the CS settle (a busy-wait, never an await; the fake chip has no
+    # timing to need it, test_asy_spi_driver.py pins it), returns at once; every other name is the real module's.
+    def __getattr__(self, name: str) -> object:
+        return getattr(time, name)
+
+    def sleep_us(self, _us: int) -> None:
+        pass
+
+
+asy_spi_driver.time = _NoSettle()  # type: ignore[assignment]  # a module attribute swap for this file's process
+
 try:
     from typing import TYPE_CHECKING
 except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
@@ -37,6 +52,9 @@ if TYPE_CHECKING:
 _STATUS_UNINIT: int = src_int("src/asy_fram_manager.py", "_STATUS_UNINIT")
 _STATUS_IDLE: int = src_int("src/asy_fram_manager.py", "_STATUS_IDLE")
 _STATUS_BUSY: int = src_int("src/asy_fram_manager.py", "_STATUS_BUSY")
+_CUT_SLOTS = 3  # the cancel sweep's ring: the entry before, the one cut short and the next; each slot adds CRC yields
+# The states one cut write or read leaves a chunk in: both blocks IDLE, or one block BUSY (a lone byte: the order test).
+_CUT_STARTS = (None, (0, (_STATUS_BUSY, _STATUS_BUSY)), (1, (_STATUS_BUSY, _STATUS_BUSY)))
 
 # A status bit no real set_values_sync()/get_values_sync() return uses, so an injected failure
 # is distinguishable from every genuine one - see _fail_set_values_at() below.
@@ -52,6 +70,12 @@ def _assert_one_check_buffer_failure(lines: "list[tuple[object, ...]]") -> None:
     heads = [line[:2] for line in lines]  # never the exception in a message: its text and class name trip the memory gates
     assert heads == [("FRAM", "check buffer allocation failed:")], heads
     assert len(lines[0]) == 3 and type(lines[0][2]) is MemoryError, len(lines[0])
+
+
+def _block_statuses(chip: FakeMB85RS64V, chunk: FRAMChunk) -> "list[tuple[int, int]]":
+    # Each block's two status bytes as the chip holds them; a block is [data][crc][status 1][status 2].
+    end = chunk.size + chunk.crc.length()
+    return [(chip.memory[addr + end], chip.memory[addr + end + 1]) for addr in chunk._block_addr]
 
 
 def _degraded_buffer() -> FRAMChunkBuffer:
@@ -387,6 +411,34 @@ def test_one_chunk_write_is_five_driver_transfers_in_seam_order() -> None:
     assert len(calls) == 10, calls
 
 
+
+def test_a_write_takes_block_1_first_unless_both_its_status_bytes_read_idle() -> None:
+    # Block 0 goes first only on proof that block 1 holds a whole copy: a BUSY pair, either byte alone, or a status read
+    # that failed (no proof, and its entry kept) sends block 1 first; the write lands either way.
+    def first_payload(case: str) -> "tuple[int, bool, bool]":
+        manager, chip, chunk = _make_written_chunk()
+        status = chunk._block_addr[1] + chunk.size + chunk.crc.length()
+        if case == "unreadable":
+            _fail_get_values_at(chunk, status)
+        elif case != "idle":
+            chip.memory[status + int(case == "byte 2")] = _STATUS_BUSY
+        payloads: list[int] = []
+        original_sync = chunk.fram.set_values_sync
+
+        def recording(buf: bytes | bytearray | memoryview, addr_start: int) -> int:
+            if len(buf) > 1:
+                payloads.append(chunk._block_addr.index(addr_start))
+            return original_sync(buf, addr_start)
+
+        chunk.fram.set_values_sync = recording  # type: ignore[method-assign]
+        landed = run(chunk.write(b"next")) is True and run(chunk.read()) == bytearray(b"next")
+        logged = code("E", "FRAM_STATUS_READ") in run(manager.get_error_counter())["FRAM"]["ErrNum"]
+        assert len(payloads) == 2, (case, payloads)
+        return payloads[0], landed, logged
+
+    seen = [first_payload(case) for case in ("idle", "byte 1", "byte 2", "unreadable")]
+    assert seen == [(0, True, False), (1, True, False), (1, True, False), (1, True, True)], seen
+
 # ---------------------------------------------------------------------------
 # Dual-copy self-healing and torn-write detection - the actual data-loss-prevention machinery
 # ---------------------------------------------------------------------------
@@ -617,7 +669,8 @@ def test_a_planted_fault_leaves_an_entry_at_every_layer_it_reaches() -> None:
         return code("E", name), "E"
 
     invalid = (code("W", "FRAM_BLOCK_INVALID"), "W")
-    assert entries_after(not_initialised, "write", CRCPass()) == [e_("NOT_INIT"), e_("FRAM_STATUS_WRITE"), e_("FRAM_BLOCK_WRITE")]
+    # The write's status read of block 1 is the first layer an uninitialised driver refuses.
+    assert entries_after(not_initialised, "write", CRCPass()) == [e_("NOT_INIT"), e_("FRAM_STATUS_READ"), e_("NOT_INIT"), e_("FRAM_STATUS_WRITE"), e_("FRAM_BLOCK_WRITE")]
     assert entries_after(wel_not_set, "write", CRCPass()) == [(code("W", "FRAM_WEL_NOT_SET"), "W"), e_("FRAM_STATUS_WRITE"), e_("FRAM_BLOCK_WRITE")]
     assert entries_after(busy_block_0, "read", CRCPass()) == [e_("FRAM_STATUS_BYTE"), invalid]
     assert entries_after(crc_block_0, "read", CRC8()) == [e_("FRAM_DATA_CRC"), invalid]
@@ -2080,13 +2133,14 @@ def test_get_chunk_size_1_still_needs_status_byte_overhead_at_the_capacity_bound
 
 
 def test_write_fails_cleanly_when_block_1s_write_itself_fails() -> None:
-    # _write()'s own block-1-write-failure path, distinct from block 0's (its own console line) -
-    # isolated the same way the self-heal write-failure tests are, by patching _write_chunk
-    # per-address so only block 1's own write call fails.
+    # _write()'s own second-block-write-failure path, distinct from the first block's (its own console line) -
+    # isolated the same way the self-heal write-failure tests are, by patching _write_chunk per address: a written
+    # chunk's block 1 reads IDLE, so block 0 goes first and only block 1's own write, the second, fails.
     manager, _chip = _make_manager()
     run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
     assert chunk is not None
+    assert run(chunk.write(b"init")) is True
     _addr0, addr1 = chunk._block_addr
     original_write_chunk = chunk._write_chunk
 
@@ -2610,6 +2664,14 @@ def test_an_overrun_leaves_the_spi_bus_itself_reusable_rather_than_wedged() -> N
     assert untouched == bytearray(payload)  # the bus itself is fine
 
 
+def test_a_history_write_cancelled_at_each_await_keeps_one_readable_copy() -> None:
+    # A wait_for_ms() over a logging call cancels its chunk write wherever it stands, from each state one earlier cut
+    # leaves: CS deasserted, every lock free, the entry kept in RAM and at most one block BUSY; a relaunch restores the
+    # old or the new state, logging and repairing a BUSY block, and the next write lands the entry (SPECIFICATION.md C.7).
+    for start in _CUT_STARTS:
+        _sweep_cut_write(start)
+
+
 def test_an_overrun_mid_read_leaves_the_chunk_unreadable_until_it_is_rewritten() -> None:
     # Intended behavior, not a defect (Part A.4): _read_chunk marks a block BUSY before reading
     # and restores IDLE only on the way out, so an interruption leaves both copies marked.
@@ -2774,7 +2836,7 @@ def test_a_concurrent_task_observes_a_block_operation_in_progress() -> None:
     run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
-    byte1, _byte2 = _status_byte_addrs(chunk)
+    byte1 = chunk._block_addr[1] + chunk.size + chunk.crc.length()  # block 1: a blank chunk's write takes it first
     seen: set[int] = set()
 
     async def observer() -> None:
@@ -2987,6 +3049,67 @@ def test_every_chunk_operation_stays_silent_while_the_chip_is_lost() -> None:
     assert run(manager.get_error_counter())["FRAM"]["ErrCount"] == 0
 
 
+def test_a_blank_read_of_a_silent_chip_finds_the_loss_and_reads_none() -> None:
+    # An undriven bus reads every status byte blank, as a never-written chunk does; the RDID probe after a blank verdict
+    # tells them apart (MB85RS64V p10), so a silent chip takes the lost path at its first read, not at its next write.
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
+    ts_chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC8(), owner="T2")
+    assert chunk is not None and ts_chunk is not None
+    stored = bytearray(chip.memory)
+    chip.silent = 0x00
+    assert run(chunk.read_into(chunk.get_buffer())) is None
+    assert manager.fram.lost.is_set()
+    assert manager.fram.initialized is False
+    assert run(ts_chunk.read_into(ts_chunk.get_buffer())) == (None, None, None)
+    assert chip.memory == stored
+    assert _entries(run(manager.get_error_counter())) == [(code("E", "FRAM_CHIP_LOST"), "E")]
+
+
+def test_every_blank_read_probes_once_so_a_chip_that_stops_answering_is_found_at_the_next() -> None:
+    # Unbounded on purpose: an undriven bus reads every chunk blank, so any skipped probe would hide a chip that
+    # answered one blank read and then went silent. A chip that answers keeps its blank chunk; a valid read never probes.
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
+    assert chunk is not None
+    for _read in range(2):
+        rdids = chip.rdid_count
+        assert run(chunk.read_into(chunk.get_buffer())) is False
+        assert chip.rdid_count == rdids + 1
+    assert run(chunk.write(b"data")) is True
+    rdids = chip.rdid_count
+    assert run(chunk.read_into(chunk.get_buffer())) is True
+    assert chip.rdid_count == rdids
+    assert run(chunk.clear()) is True
+    assert run(chunk.read_into(chunk.get_buffer())) is False
+    assert not manager.fram.lost.is_set()
+    chip.silent = 0x00
+    assert run(chunk.read_into(chunk.get_buffer())) is None
+    assert manager.fram.lost.is_set()
+    assert _entries(run(manager.get_error_counter())) == [(code("E", "FRAM_CHIP_LOST"), "E")]
+
+
+def test_a_probe_that_cannot_take_the_lock_keeps_the_blank_verdict() -> None:
+    # verify_present() gives up on a busy lock without finding a loss: the chunk stays blank (False), as before the
+    # probe, and only a probe that found the loss turns the read into None.
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
+    assert chunk is not None
+    probes = [0]
+
+    async def busy() -> bool:
+        probes[0] += 1
+        return False
+
+    manager.fram.verify_present = busy  # type: ignore[method-assign]
+    assert run(chunk.read_into(chunk.get_buffer())) is False
+    assert probes == [1]
+    assert not manager.fram.lost.is_set()
+
+
 class _SteppedTime:
     # A wall clock a test sets: utc_now() reads time.mktime(time.gmtime()), so mktime returns the setting.
     now = 1_000_000
@@ -3080,6 +3203,20 @@ def _recorded_warnings(manager: FRAMManager) -> list[str]:
     return seen
 
 
+async def _relaunched(chip: FakeMB85RS64V) -> "tuple[tuple[list[int], int] | None, bool, bool]":
+    # A reboot over a copy of chip's bytes, store "T" set up as the boot batch does: the state it restored (None for
+    # none), whether both blocks end IDLE, and whether the FRAM log holds a block found not IDLE.
+    manager, fresh = _make_manager()
+    fresh.memory[:] = chip.memory
+    store = PrintLogHistoryStore(manager, _CUT_SLOTS, None, name="T")
+    await manager.setup()
+    await store.setup()
+    assert isinstance(store.fram, FRAMChunk)
+    repaired = all(pair == (_STATUS_IDLE, _STATUS_IDLE) for pair in _block_statuses(fresh, store.fram))
+    logged = code("E", "FRAM_STATUS_BYTE") in (await manager.get_error_counter())["FRAM"]["ErrNum"]
+    return ((list(store.history), store._err_count) if store.restored else None), repaired, logged
+
+
 async def _setup_manager(manager: FRAMManager) -> bool:
     return await manager.setup()
 
@@ -3087,6 +3224,71 @@ async def _setup_manager(manager: FRAMManager) -> bool:
 def _status_byte_addrs(chunk: "FRAMChunk") -> tuple[int, int]:
     base = chunk._block_addr[0] + chunk.size + chunk.crc.length()
     return base, base + 1
+
+
+def _sweep_cut_write(start: "tuple[int, tuple[int, int]] | None") -> None:
+    # One history write cancelled after every scheduler turn, over a chip whose block start[0] holds the status pair
+    # start[1] a cut write or read left (None: both IDLE).
+    states: list[tuple[list[int], int]] = []  # the state before the write, then the state it writes
+    cut_blocks: list[int] = []
+    awaits: list[int] = []  # the write's own yields: one per CRC byte and two more per block
+    landed: list[int] = []  # the ring after the next write, its newest slot left out: the cut entry newest among them
+
+    class Cut:
+        def __init__(self, chip: FakeMB85RS64V, store: PrintLogHistoryStore, chunk: FRAMChunk) -> None:
+            self.chip, self.store, self.chunk, self.began = chip, store, chunk, False
+
+    async def build() -> Cut:
+        manager, chip = _make_manager()
+        store = PrintLogHistoryStore(manager, _CUT_SLOTS, None, name="T")
+        await manager.setup()
+        await store.setup()
+        await store.err_s("before", errno=9)
+        assert isinstance(store.fram, FRAMChunk)
+        if start is not None:
+            status = store.fram._block_addr[start[0]] + store.fram.size + store.fram.crc.length()
+            chip.memory[status : status + 2] = bytes(start[1])
+        return Cut(chip, store, store.fram)
+
+    async def write(cut: Cut) -> None:
+        cut.began = True  # a count cancelled before its first turn never logs at all
+        await cut.store.wrn_s("cut", wrnno=3)
+
+    def unlocked(cut: Cut) -> None:
+        fram = cut.chunk.fram
+        assert_unlocked(write=cut.store._write_lock, chunk=cut.chunk._op_lock, driver=fram.session_lock, bus=fram._bus_lock)
+
+    def invariants(cut: Cut) -> None:
+        spidev = cut.chunk.fram._spidev
+        assert bool(spidev._cs_pin.value()) == (not spidev._cs_active_value), "CS left asserted"
+        unlocked(cut)
+        assert (list(cut.store.history), cut.store._err_count) == states[int(cut.began)], "the entry cut short left RAM"
+        busy = [n for n, pair in enumerate(_block_statuses(cut.chip, cut.chunk)) if pair != (_STATUS_IDLE, _STATUS_IDLE)]
+        assert len(busy) <= 1, f"from start {start}: blocks {busy} both left BUSY"
+        cut_blocks.extend(busy)
+
+    async def relaunch_then_write(cut: Cut) -> None:
+        unlocked(cut)  # also after a failed count: its next write would otherwise wait on a held lock for good
+        busy = any(pair != (_STATUS_IDLE, _STATUS_IDLE) for pair in _block_statuses(cut.chip, cut.chunk))
+        restored, repaired, logged = await _relaunched(cut.chip)
+        assert restored in states, f"from start {start}: the relaunch restored {restored}"
+        assert repaired and logged == busy, (start, repaired, logged, busy)  # a BUSY block is logged, then rewritten
+        await cut.store.wrn_s("next", wrnno=4)
+        assert await cut.store._read() == (cut.store._err_count, tuple(cut.store.history))  # on the chip, as in RAM
+        assert not cut.began or list(cut.store.history)[: len(landed)] == landed  # the cut entry landed with the next write
+
+    async def control() -> None:
+        cut = await build()
+        states.append((list(cut.store.history), cut.store._err_count))
+        await write(cut)
+        states.append((list(cut.store.history), cut.store._err_count))
+        awaits.append(2 * (cut.chunk.size + 2))
+        landed.extend(cut.store.history[n] for n in range(1, len(cut.store.history)))
+
+    run(control())
+    turns = cancel_at_each_await(build, write, invariants, teardown=relaunch_then_write)
+    assert turns >= awaits[0], (start, turns, awaits)  # each of them a cancel point
+    assert 0 in cut_blocks and 1 in cut_blocks, (start, cut_blocks)  # cuts landed inside each block's write
 
 
 def test_erase_chip_zeroes_every_byte_in_ascending_units() -> None:

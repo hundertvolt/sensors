@@ -131,7 +131,7 @@ def _header_size(prefix: str) -> "int | None":
 
 
 class FRAMChip:
-    TEST_API = ("drop_next_wren", "fault", "rdid_once", "silent", "write_count", "writes_at", "writes_at_dropped")
+    TEST_API = ("drop_next_wren", "fault", "rdid_once", "silent", "silent_wren_count", "silent_write_count", "write_count", "writes_at", "writes_at_dropped")
 
     def __init__(self, size: int, rdid_response: bytes, state_path: "str | None" = None) -> None:
         self.size = size
@@ -149,6 +149,9 @@ class FRAMChip:
         self.write_count = 0
         self.writes_at: dict[int, int] = {}
         self.writes_at_dropped = 0  # writes at a new address once writes_at holds _WRITES_AT_MAX_KEYS
+        self.silent_write_count = 0  # payload WRITEs issued while silent, by write_count's filter: Run 3's rate check reads it
+        self._silent_write_open = False  # a WRITE header arrived while silent, so the next write() is its data phase
+        self.silent_wren_count = 0  # WRENs while silent: the write attempts a latch check stops before their data phase
         self.memory = _PagedMemory(size)
         self._pending_op: int | None = None
         self._pending_addr: int | None = None
@@ -284,7 +287,12 @@ class FRAMChip:
 
     def write(self, buf: bytes) -> None:
         self.fault.maybe_hang("write")
-        if self.silent:
+        if self.silent:  # the chip acts on nothing, but the wire still carries every write the product issues
+            if self._silent_write_open and len(buf) > 1:
+                self.silent_write_count = saturating_add(self.silent_write_count)
+            elif not self._silent_write_open and len(buf) == 1 and buf[0] == _OPCODE_WREN:
+                self.silent_wren_count = saturating_add(self.silent_wren_count)
+            self._silent_write_open = not self._silent_write_open and len(buf) > 0 and buf[0] == _OPCODE_WRITE
             return
         data = bytes(buf)
         if self._pending_op == _OPCODE_WRITE and self._pending_addr is not None:

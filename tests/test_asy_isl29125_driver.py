@@ -70,18 +70,53 @@ if TYPE_CHECKING:
     from asy_print_log import ErrorLog
 
 
-async def _push(callback: "PushFct", value: "CfgValue") -> bool:
-    # A push callback is typed to return an Awaitable (asy_base_classes' PushFct); run() takes a coroutine.
-    return await callback(value)
-
-
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
 # own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
 _scratch = TmpScratch("isl29125")
 
 
-def _tmp_cfg_path(name: str) -> str:
-    return _scratch.dir(name)
+def _chip_thresholds(i2c: I2C) -> bytes:
+    return bytes(fake(i2c).registers[(_ADDR, _REG_THRESHOLDS)])
+
+
+def _config2_bursts(i2c: I2C) -> "list[bytes]":
+    return [payload for register, payload in register_writes(i2c) if register == _REG_CONFIG2]
+
+
+def _cycle(reader: ISL29125_Reader, i2c: I2C, counts: "tuple[int, int, int]", status: int = 0x00, *, irq: bool = False) -> None:
+    # One read cycle whose conversion has completed; irq stands for the INT edge the pin handler records.
+    seed_cycle(i2c, counts[0], counts[1], counts[2], status=status)
+    reader._isl._settle_until_ms = time.ticks_ms()
+    reader._irq_fired = irq
+    with FastAsyncSleep():
+        run(reader._read_isl())
+
+
+def _drain_flag(flag: "asyncio.ThreadSafeFlag") -> bool:
+    # Reads ThreadSafeFlag's own state and clears it: a wait_for_ms() probe registers a poll object
+    # per call (SPECIFICATION.md F.7 row 12).
+    was_set = bool(flag.state)
+    flag.clear()
+    return was_set
+
+
+def _expected_thresholds(reader: ISL29125_Reader) -> bytes:
+    if reader._active_range == _RANGE_LOW_LUX:
+        return struct.pack("<HH", 0, ISL29125_I2C.fraction_to_counts(reader._ar_thresh))
+    return struct.pack("<HH", ISL29125_I2C.fraction_to_counts(reader._ar_thresh / _AR_DOWN_DIVISOR), 65535)
+
+
+async def _gather(a: "Coroutine[object, object, object]", b: "Coroutine[object, object, object]") -> None:
+    # asyncio.gather() itself returns a Future, not a Coroutine - mypy rejects passing it straight
+    # to run() (same call-shape convention test_asy_i2c_driver.py's own scenario() wrapping uses).
+    await asyncio.gather(a, b)
+
+
+def _isl_group(body: "JsonDict") -> "JsonDict":
+    # The REST body's one measurement group, narrowed from the JSON value type.
+    group = body["ISL29125"]
+    assert isinstance(group, dict)
+    return group
 
 
 def _make_i2c() -> I2C:
@@ -94,66 +129,93 @@ def _make_i2c() -> I2C:
     return i2c
 
 
-def fake(i2c: I2C) -> FakeI2C:
-    return i2c._i2c  # type: ignore[return-value]
+def _make_protocol() -> "tuple[I2C, ISL29125_I2C]":
+    i2c = _make_i2c()
+    return i2c, ISL29125_I2C(i2c)
 
 
-def seed(i2c: I2C, register: int, payload: "bytes | bytearray", address: int = _ADDR) -> None:
-    fake(i2c).registers[(address, register)] = bytearray(payload)
+def _make_reader(
+    name: str,
+    *,
+    max_module_error: int = 5,
+    healthy: bool = True,
+    irq_pull_up: bool = True,
+) -> "tuple[I2C, ISL29125_Reader]":
+    i2c = _make_i2c()
+    if healthy:
+        seed_healthy_chip(i2c)
+    reader = ISL29125_Reader(
+        i2c,
+        6,
+        max_module_error=max_module_error,
+        cfg_path=_tmp_cfg_path(name),
+        irq_pull_up=irq_pull_up,
+    )
+    run(reader.setup())
+    return i2c, reader
 
 
-def seed_healthy_chip(i2c: I2C, address: int = _ADDR) -> None:
-    # The minimum a real ISL29125 has to answer for setup() to succeed: the device ID, the three
-    # config registers reading back zero after the reset write, and a status byte.
-    seed(i2c, _REG_ID, bytes([_DEVICE_ID]), address)
-    seed(i2c, _REG_CONFIG1, bytes([0x00, 0x00, 0x00]), address)
-    seed(i2c, _REG_STATUS, bytes([0x00]), address)
-    seed(i2c, _REG_DATA, bytes(6), address)
+def _parked(reader: ISL29125_Reader) -> bool:
+    # Read through a call: mypy keeps a narrowed attribute across the cycles that change it.
+    return reader._int_held
+
+
+async def _push(callback: "PushFct", value: "CfgValue") -> bool:
+    # A push callback is typed to return an Awaitable (asy_base_classes' PushFct); run() takes a coroutine.
+    return await callback(value)
+
+
+def _record_reads(i2c: I2C) -> "list[object]":
+    # Every buffer object the fake bus's readfrom_into() is handed, in call order; the reads themselves unchanged.
+    received: list[object] = []
+    real_read = fake(i2c).readfrom_into
+
+    def recording(address: int, buf: object, stop: bool = True) -> None:
+        received.append(buf)
+        real_read(address, buf, stop)
+
+    fake(i2c).readfrom_into = recording  # type: ignore[method-assign]
+    return received
+
+
+def _stack_overflow() -> RuntimeError:
+    # The interpreter's own C-stack exhaustion, from a real one (py/runtime.c:1786, v1.29.0).
+    def dive(depth: int) -> int:
+        return dive(depth + 1)
+
+    try:
+        dive(0)
+    except RuntimeError as e:
+        return e
+    raise AssertionError("no recursion limit reached")
+
+
+def _threshold_bursts(i2c: I2C) -> "list[bytes]":
+    return [payload for register, payload in register_writes(i2c) if register == _REG_THRESHOLDS]
+
+
+def _tmp_cfg_path(name: str) -> str:
+    return _scratch.dir(name)
+
+
+def calibrating_reader(name: str) -> "tuple[I2C, ISL29125_Reader]":
+    i2c, reader = ready_reader(name)
+    assert run(reader.start_calibration(flag=True)) is True
+    return i2c, reader
 
 
 def counts_burst(green: int, red: int, blue: int) -> bytes:
     return struct.pack("<HHH", green, red, blue)
 
 
-def _make_protocol() -> "tuple[I2C, ISL29125_I2C]":
-    i2c = _make_i2c()
-    return i2c, ISL29125_I2C(i2c)
+def err_count(counters: "ErrorLog", name: str = "ISL29125") -> int:
+    count = counters[name]["ErrCount"]
+    assert isinstance(count, int)
+    return count
 
 
-def ready_protocol() -> "tuple[I2C, ISL29125_I2C]":
-    i2c, isl = _make_protocol()
-    seed_healthy_chip(i2c)
-    return i2c, isl
-
-
-def protocol_at(bits: int) -> ISL29125_I2C:
-    # Parks the shadow through the real write path, so normalise()/set_thresholds() run against a
-    # shadow the driver set itself. A value configure() rejects goes straight onto the shadow:
-    # normalise()'s unknown-resolution fallback is defence in depth, tested as such (Part E.4).
-    _i2c, isl = _make_protocol()
-    if bits in (12, 16):
-        run(isl.configure(resolution=bits))
-    else:
-        isl._resolution = bits
-    return isl
-
-
-def register_writes(i2c: I2C) -> "list[tuple[int, bytes]]":
-    # A register write is one writeto() of the register byte and the payload, with a stop.
-    return [(entry[2][0], entry[2][1:]) for entry in fake(i2c).log if entry[0] == "writeto" and entry[3] and len(entry[2]) > 1]
-
-
-def register_reads(i2c: I2C) -> "list[tuple[int, int]]":
-    # A register read is a no-stop writeto() of the register byte, then readfrom_into(): (register, length).
-    reads: list[tuple[int, int]] = []
-    pointer = None
-    for entry in fake(i2c).log:
-        if entry[0] == "writeto" and not entry[3] and len(entry[2]) == 1:
-            pointer = entry[2][0]
-        elif entry[0] == "readfrom_into" and pointer is not None:
-            reads.append((pointer, len(entry[2])))
-            pointer = None
-    return reads
+def errors(counters: "ErrorLog", name: str = "ISL29125") -> "list[int]":
+    return logged(counters, "E", name)
 
 
 def fail_register_writes(i2c: I2C, times: int = 1) -> None:
@@ -174,6 +236,17 @@ def fail_register_writes(i2c: I2C, times: int = 1) -> None:
     bus.writeto = failing  # type: ignore[method-assign]
 
 
+def fake(i2c: I2C) -> FakeI2C:
+    return i2c._i2c  # type: ignore[return-value]
+
+
+async def init_reader(reader: ISL29125_Reader, i2c: I2C) -> bool:
+    # tests/machine.py's I2C is a plain dict of registers with no reset semantics, so the
+    # chip-side clear that the real 0x46 command performs is seeded here before every init.
+    seed(i2c, _REG_CONFIG1, bytes(3))
+    return await reader._init_isl()
+
+
 def logged(counters: "ErrorLog", kind: str, name: str = "ISL29125") -> "list[int]":
     # asy_print_log.py keeps errors and warnings in ONE history list, discriminated by the parallel
     # ErrType entry ("E"/"W") - so asserting on ErrNum alone would let warning 13 satisfy a test
@@ -184,14 +257,94 @@ def logged(counters: "ErrorLog", kind: str, name: str = "ISL29125") -> "list[int
     return [number for number, entry_kind in zip(entry["ErrNum"], entry["ErrType"]) if entry_kind == kind]
 
 
-def err_count(counters: "ErrorLog", name: str = "ISL29125") -> int:
-    count = counters[name]["ErrCount"]
-    assert isinstance(count, int)
-    return count
+def protocol_at(bits: int) -> ISL29125_I2C:
+    # Parks the shadow through the real write path, so normalise()/set_thresholds() run against a
+    # shadow the driver set itself. A value configure() rejects goes straight onto the shadow:
+    # normalise()'s unknown-resolution fallback is defence in depth, tested as such (Part E.4).
+    _i2c, isl = _make_protocol()
+    if bits in (12, 16):
+        run(isl.configure(resolution=bits))
+    else:
+        isl._resolution = bits
+    return isl
 
 
-def errors(counters: "ErrorLog", name: str = "ISL29125") -> "list[int]":
-    return logged(counters, "E", name)
+def queue_legs(reader: ISL29125_Reader, *triples: "tuple[int, int, int]") -> None:
+    # A sandwich reads three scenes (this range, the other, this one again) while seed() sets one
+    # static register, so the legs are driven through read_counts() itself. The last triple repeats
+    # once the queue drains, which is what a steady scene looks like.
+    pending = list(triples)
+
+    async def _read_counts() -> "tuple[int, int, int]":
+        # Cycles rather than repeating the last triple: a run takes several sandwiches, and each
+        # one has to see the same pair of scenes again for the readings to agree.
+        if not pending:
+            pending.extend(triples)
+        return pending.pop(0)
+
+    reader._isl.read_counts = _read_counts  # type: ignore[method-assign]
+
+
+def ready_protocol() -> "tuple[I2C, ISL29125_I2C]":
+    i2c, isl = _make_protocol()
+    seed_healthy_chip(i2c)
+    return i2c, isl
+
+
+def ready_reader(name: str, **kwargs: "object") -> "tuple[I2C, ISL29125_Reader]":
+    import time as _time
+
+    i2c, reader = _make_reader(name, **kwargs)  # type: ignore[arg-type]  # **object forwarding, checked at each call site
+    with FastAsyncSleep():
+        assert run(init_reader(reader, i2c)) is True
+    # init's CONFIG1 burst legitimately leaves a settle pending, and these tests run in zero wall
+    # clock - so the first conversion is marked complete here rather than every test sleeping 303ms.
+    # The settle behaviour has its own tests (test_no_sample_is_reported_during_the_settle_window).
+    reader._isl._settle_until_ms = _time.ticks_ms()
+    # 0x00 is read-only as the device ID and write-only as the reset command on real hardware, a
+    # split tests/machine.py's flat register dict cannot model - so setup()'s reset write leaves
+    # 0x46 where the ID should be. Restored so a later device-ID re-read sees a real chip.
+    seed(i2c, _REG_ID, bytes([_DEVICE_ID]))
+    fake(i2c).log.clear()
+    return i2c, reader
+
+
+def register_reads(i2c: I2C) -> "list[tuple[int, int]]":
+    # A register read is a no-stop writeto() of the register byte, then readfrom_into(): (register, length).
+    reads: list[tuple[int, int]] = []
+    pointer = None
+    for entry in fake(i2c).log:
+        if entry[0] == "writeto" and not entry[3] and len(entry[2]) == 1:
+            pointer = entry[2][0]
+        elif entry[0] == "readfrom_into" and pointer is not None:
+            reads.append((pointer, len(entry[2])))
+            pointer = None
+    return reads
+
+
+def register_writes(i2c: I2C) -> "list[tuple[int, bytes]]":
+    # A register write is one writeto() of the register byte and the payload, with a stop.
+    return [(entry[2][0], entry[2][1:]) for entry in fake(i2c).log if entry[0] == "writeto" and entry[3] and len(entry[2]) > 1]
+
+
+def seed(i2c: I2C, register: int, payload: "bytes | bytearray", address: int = _ADDR) -> None:
+    fake(i2c).registers[(address, register)] = bytearray(payload)
+
+
+def seed_cycle(i2c: I2C, green: int, red: int, blue: int, status: int = 0x00) -> None:
+    seed(i2c, _REG_STATUS, bytes([status]))
+    seed(i2c, _REG_DATA, counts_burst(green, red, blue))
+
+
+
+
+def seed_healthy_chip(i2c: I2C, address: int = _ADDR) -> None:
+    # The minimum a real ISL29125 has to answer for setup() to succeed: the device ID, the three
+    # config registers reading back zero after the reset write, and a status byte.
+    seed(i2c, _REG_ID, bytes([_DEVICE_ID]), address)
+    seed(i2c, _REG_CONFIG1, bytes([0x00, 0x00, 0x00]), address)
+    seed(i2c, _REG_STATUS, bytes([0x00]), address)
+    seed(i2c, _REG_DATA, bytes(6), address)
 
 
 def warnings(counters: "ErrorLog", name: str = "ISL29125") -> "list[int]":
@@ -244,19 +397,6 @@ def test_decode_rgb_burst_unpacks_the_buffer_in_place_without_copying_it() -> No
     finally:
         del asy_isl29125_driver.bytes  # type: ignore[attr-defined]
     assert copies == []
-
-
-def _record_reads(i2c: I2C) -> "list[object]":
-    # Every buffer object the fake bus's readfrom_into() is handed, in call order; the reads themselves unchanged.
-    received: list[object] = []
-    real_read = fake(i2c).readfrom_into
-
-    def recording(address: int, buf: object, stop: bool = True) -> None:
-        received.append(buf)
-        real_read(address, buf, stop)
-
-    fake(i2c).readfrom_into = recording  # type: ignore[method-assign]
-    return received
 
 
 # ---------------------------------------------------------------------------
@@ -896,59 +1036,6 @@ def test_construction_performs_no_bus_transactions() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _make_reader(
-    name: str,
-    *,
-    max_module_error: int = 5,
-    healthy: bool = True,
-    irq_pull_up: bool = True,
-) -> "tuple[I2C, ISL29125_Reader]":
-    i2c = _make_i2c()
-    if healthy:
-        seed_healthy_chip(i2c)
-    reader = ISL29125_Reader(
-        i2c,
-        6,
-        max_module_error=max_module_error,
-        cfg_path=_tmp_cfg_path(name),
-        irq_pull_up=irq_pull_up,
-    )
-    run(reader.setup())
-    return i2c, reader
-
-
-async def init_reader(reader: ISL29125_Reader, i2c: I2C) -> bool:
-    # tests/machine.py's I2C is a plain dict of registers with no reset semantics, so the
-    # chip-side clear that the real 0x46 command performs is seeded here before every init.
-    seed(i2c, _REG_CONFIG1, bytes(3))
-    return await reader._init_isl()
-
-
-def ready_reader(name: str, **kwargs: "object") -> "tuple[I2C, ISL29125_Reader]":
-    import time as _time
-
-    i2c, reader = _make_reader(name, **kwargs)  # type: ignore[arg-type]  # **object forwarding, checked at each call site
-    with FastAsyncSleep():
-        assert run(init_reader(reader, i2c)) is True
-    # init's CONFIG1 burst legitimately leaves a settle pending, and these tests run in zero wall
-    # clock - so the first conversion is marked complete here rather than every test sleeping 303ms.
-    # The settle behaviour has its own tests (test_no_sample_is_reported_during_the_settle_window).
-    reader._isl._settle_until_ms = _time.ticks_ms()
-    # 0x00 is read-only as the device ID and write-only as the reset command on real hardware, a
-    # split tests/machine.py's flat register dict cannot model - so setup()'s reset write leaves
-    # 0x46 where the ID should be. Restored so a later device-ID re-read sees a real chip.
-    seed(i2c, _REG_ID, bytes([_DEVICE_ID]))
-    fake(i2c).log.clear()
-    return i2c, reader
-
-
-def seed_cycle(i2c: I2C, green: int, red: int, blue: int, status: int = 0x00) -> None:
-    seed(i2c, _REG_STATUS, bytes([status]))
-    seed(i2c, _REG_DATA, counts_burst(green, red, blue))
-
-
-
-
 def test_reader_construction_performs_no_bus_transactions() -> None:
     # Requirement 20, satisfied here or nowhere: every generated device's object graph is built against a fake
     # holding no ISL registers.
@@ -1178,13 +1265,6 @@ def test_no_exception_escapes_the_reader_layer() -> None:
 # ---------------------------------------------------------------------------
 # Read path and derived outputs - R4-R7, R11
 # ---------------------------------------------------------------------------
-
-
-def _isl_group(body: "JsonDict") -> "JsonDict":
-    # The REST body's one measurement group, narrowed from the JSON value type.
-    group = body["ISL29125"]
-    assert isinstance(group, dict)
-    return group
 
 
 def test_a_read_before_the_first_sync_publishes_with_ts_none_and_steps_no_streak() -> None:
@@ -1879,24 +1959,6 @@ def test_the_interrupt_is_rearmed_once_per_dead_line_episode() -> None:
         run(reader._note_decision_source(threshold_fired=True))
         run(periodic(5))
     assert config1_bursts() == 2
-
-
-def _config2_bursts(i2c: I2C) -> "list[bytes]":
-    return [payload for register, payload in register_writes(i2c) if register == _REG_CONFIG2]
-
-
-def _parked(reader: ISL29125_Reader) -> bool:
-    # Read through a call: mypy keeps a narrowed attribute across the cycles that change it.
-    return reader._int_held
-
-
-def _cycle(reader: ISL29125_Reader, i2c: I2C, counts: "tuple[int, int, int]", status: int = 0x00, *, irq: bool = False) -> None:
-    # One read cycle whose conversion has completed; irq stands for the INT edge the pin handler records.
-    seed_cycle(i2c, counts[0], counts[1], counts[2], status=status)
-    reader._isl._settle_until_ms = time.ticks_ms()
-    reader._irq_fired = irq
-    with FastAsyncSleep():
-        run(reader._read_isl())
 
 
 def test_an_int_the_peak_rule_overrules_is_parked_until_green_is_back_in_its_window() -> None:
@@ -2954,14 +3016,6 @@ def test_base_trigger_produces_one_read_event_per_sample_interval() -> None:
     assert run(scenario()) == 3
 
 
-def _drain_flag(flag: "asyncio.ThreadSafeFlag") -> bool:
-    # Reads ThreadSafeFlag's own state and clears it: a wait_for_ms() probe registers a poll object
-    # per call (SPECIFICATION.md F.7 row 12).
-    was_set = bool(flag.state)
-    flag.clear()
-    return was_set
-
-
 def test_changing_the_sample_interval_takes_effect_on_the_next_boundary() -> None:
     _i2c, reader = _make_reader("divider_live")
 
@@ -3075,10 +3129,6 @@ def test_get_data_returns_the_all_none_namedtuple_before_the_first_read() -> Non
 # ---------------------------------------------------------------------------
 
 
-def _threshold_bursts(i2c: I2C) -> "list[bytes]":
-    return [payload for register, payload in register_writes(i2c) if register == _REG_THRESHOLDS]
-
-
 def test_a_diverged_configuration_re_arms_the_range_thresholds_too() -> None:
     # configure(force=True) rewrites CONFIG1-3 and nothing else, but the threshold registers are
     # separate and a brownout or stray write zeroes them just the same. Without the re-arm the
@@ -3163,18 +3213,6 @@ def test_a_failed_status_read_drops_the_whole_sample_without_storing_or_raising(
     assert code("E", "ISL_STATUS_READ") in errors(counters)
     assert run(reader.get_data()).Lux is None, "a sample was stored from a cycle whose status read never succeeded"
     assert _threshold_bursts(i2c) == [], "the range was evaluated on data that was never read"
-
-
-def _stack_overflow() -> RuntimeError:
-    # The interpreter's own C-stack exhaustion, from a real one (py/runtime.c:1786, v1.29.0).
-    def dive(depth: int) -> int:
-        return dive(depth + 1)
-
-    try:
-        dive(0)
-    except RuntimeError as e:
-        return e
-    raise AssertionError("no recursion limit reached")
 
 
 def test_a_stack_overflow_caught_by_either_read_handler_is_reported_for_the_supervisor() -> None:
@@ -3680,28 +3718,6 @@ def test_the_colour_temperature_chain_gives_up_instead_of_dividing_by_a_collapse
 # ---------------------------------------------------------------------------
 
 
-def queue_legs(reader: ISL29125_Reader, *triples: "tuple[int, int, int]") -> None:
-    # A sandwich reads three scenes (this range, the other, this one again) while seed() sets one
-    # static register, so the legs are driven through read_counts() itself. The last triple repeats
-    # once the queue drains, which is what a steady scene looks like.
-    pending = list(triples)
-
-    async def _read_counts() -> "tuple[int, int, int]":
-        # Cycles rather than repeating the last triple: a run takes several sandwiches, and each
-        # one has to see the same pair of scenes again for the readings to agree.
-        if not pending:
-            pending.extend(triples)
-        return pending.pop(0)
-
-    reader._isl.read_counts = _read_counts  # type: ignore[method-assign]
-
-
-def calibrating_reader(name: str) -> "tuple[I2C, ISL29125_Reader]":
-    i2c, reader = ready_reader(name)
-    assert run(reader.start_calibration(flag=True)) is True
-    return i2c, reader
-
-
 def test_no_calibration_runs_until_the_user_starts_one() -> None:
     # The whole point of the redesign: nothing measures, and nothing is published, on its own.
     _i2c, reader = ready_reader("cal_idle")
@@ -4021,12 +4037,6 @@ def test_a_leg_whose_range_switch_fails_abandons_the_sandwich_without_a_candidat
 # ---------------------------------------------------------------------------
 
 
-async def _gather(a: "Coroutine[object, object, object]", b: "Coroutine[object, object, object]") -> None:
-    # asyncio.gather() itself returns a Future, not a Coroutine - mypy rejects passing it straight
-    # to run() (same call-shape convention test_asy_i2c_driver.py's own scenario() wrapping uses).
-    await asyncio.gather(a, b)
-
-
 def test_concurrent_read_and_write_never_interleave_on_the_wire() -> None:
     # The ISL's same-device hazard is sharper than its siblings': the status read at 0x08 is DESTRUCTIVE,
     # clearing the interrupt flag and releasing the INT line, and the data burst after it belongs to the
@@ -4034,16 +4044,27 @@ def test_concurrent_read_and_write_never_interleave_on_the_wire() -> None:
     i2c, isl = ready_protocol()
     seed(i2c, _REG_DATA, counts_burst(0x2000, 0x1800, 0x1000))
     read_iterations = 6
+    first_status = asyncio.Event()
+    device = isl._i2c_isl29125.i2c_device
+    real_burst = device.get_register_into
+
+    async def yielding_burst(reg_addr: int, buf: bytearray, addrsize: "int | None" = None) -> bool:
+        await asyncio.sleep(0)  # the burst's hold yields once: a configure() that skipped the session lock lands here
+        return await real_burst(reg_addr, buf, addrsize)
+
+    device.get_register_into = yielding_burst  # type: ignore[method-assign]
+    mark = len(fake(i2c).log)
 
     async def reader() -> None:
         for _ in range(read_iterations):
             await isl.read_status()
+            first_status.set()
             counts = await isl.read_counts()
             assert counts == (0x2000, 0x1800, 0x1000), f"a concurrent write tore the data burst: {counts}"
             await asyncio.sleep(0)
 
     async def writer() -> None:
-        await asyncio.sleep(0)  # let the reader get partway into its first cycle first
+        await first_status.wait()  # the gate: the reader has read its first status and is inside that cycle
         for adjust in (10, 20, 30):
             await isl.configure(ir_adjust=adjust)
             await asyncio.sleep(0)
@@ -4056,6 +4077,12 @@ def test_concurrent_read_and_write_never_interleave_on_the_wire() -> None:
     assert touched == {_ADDR}
     config_writes = [register for register, _payload in register_writes(i2c) if register == _REG_CONFIG2]
     assert len(config_writes) == 3
+    # Each data burst directly follows its own status read: no config write landed inside a read cycle.
+    pointers = [(entry[2][0], entry[3]) for entry in list(fake(i2c).log)[mark:] if entry[0] == "writeto"]
+    bursts = [index for index, pointer in enumerate(pointers) if pointer == (_REG_DATA, False)]
+    assert len(bursts) == read_iterations
+    for index in bursts:
+        assert pointers[index - 1] == (_REG_STATUS, False), f"{pointers[index - 1]} landed inside a read cycle"
 
 
 def test_configure_never_exposes_the_shadow_ahead_of_a_write_still_in_flight() -> None:
@@ -4072,7 +4099,7 @@ def test_configure_never_exposes_the_shadow_ahead_of_a_write_still_in_flight() -
         await lock.acquire()  # simulate another operation already in flight on this sensor
         writer = asyncio.get_event_loop().create_task(change_resolution())
         try:
-            await asyncio.sleep(0)  # let configure() run up to where it must wait for the lock
+            await asyncio.sleep(0)  # one yield lets configure() park on the held lock (a limit, not an interleaving claim)
             assert isl.resolution() == 16, "the shadow changed before the write could even be attempted"
         finally:
             # Always released, even if the assertion above fails - a held lock would leave
@@ -4103,16 +4130,6 @@ def test_set_thresholds_scales_to_the_resolution_live_when_it_gets_the_session()
 
     run(scenario())
     assert register_writes(i2c) == [(_REG_THRESHOLDS, struct.pack("<HH", 0, 32768 >> 4))]
-
-
-def _chip_thresholds(i2c: I2C) -> bytes:
-    return bytes(fake(i2c).registers[(_ADDR, _REG_THRESHOLDS)])
-
-
-def _expected_thresholds(reader: ISL29125_Reader) -> bytes:
-    if reader._active_range == _RANGE_LOW_LUX:
-        return struct.pack("<HH", 0, ISL29125_I2C.fraction_to_counts(reader._ar_thresh))
-    return struct.pack("<HH", ISL29125_I2C.fraction_to_counts(reader._ar_thresh / _AR_DOWN_DIVISOR), 65535)
 
 
 def test_a_threshold_push_racing_a_range_switch_leaves_chip_and_cache_agreeing() -> None:

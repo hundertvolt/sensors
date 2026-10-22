@@ -3,6 +3,7 @@ debug level, reset reasons and the watchdog."""
 
 import asyncio
 import asyncio.core as asyncio_core  # type: ignore[import-not-found]  # asyncio's own context dict, read back below
+import errno
 import gc
 import json
 import os
@@ -22,7 +23,7 @@ from _fake_time import DrivenTime
 from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep, check_sleep_ms
 from _fram_builders import make_fram_manager
-from _fram_chip_fake import FakeMB85RS64V
+from _fram_chip_fake import _OPCODE_RDSR, _OPCODE_READ, _OPCODE_WREN, _OPCODE_WRITE, FakeMB85RS2MTA, FakeMB85RS64V
 from _recording_print import record_prints
 from _src_const import py_value, src_const, src_int
 from _src_schema import src_schema
@@ -1033,7 +1034,6 @@ def test_a_write_accepted_inside_the_countdown_is_on_flash_before_the_reset() ->
 # System commands: one gate, one controlled shutdown, the watchdog the sequence owns (SPECIFICATION.md Part A.8)
 # ---------------------------------------------------------------------------
 
-_WRITE_OPCODE = 0x02  # keep in sync with tests/_fram_chip_fake.py's _OPCODE_WRITE (MB85RS64V DS501-00015 p.6)
 _ERASE_UNIT: int = src_int("src/asy_fram_manager.py", "_ERASE_UNIT")
 _HANG_WATCH_MS = 1000  # real time a hung step is watched: a fed step feeds well inside it
 _PURPOSES = ("_RR_REBOOT", "_RR_BOOTLOADER", "_RR_CONFIG_RESET", "_RR_FRAM_ERASED")
@@ -1045,8 +1045,8 @@ class PowerCut(BaseException):
 
 
 class _CutChip(FakeMB85RS64V):
-    # The FRAM fake counting its erase-unit writes in place (fixed-size state: no record grows with the chip), with a
-    # power cut after `cut_after_bytes` more data bytes (those land, then PowerCut ends the run) and drop_wren_at_unit.
+    # The FRAM fake counting its erase-unit writes in place (fixed-size state: no record grows with the chip), with
+    # drop_wren_at_unit; once the fake's own power cut (`cut_after_bytes`) has landed, PowerCut ends the run.
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
         self.units = 0  # erase-unit (256-byte) writes
@@ -1054,11 +1054,10 @@ class _CutChip(FakeMB85RS64V):
         self.status_after_unit = 0  # one-byte (status) writes after the first unit write
         self.watch: tuple[int, ...] = ()  # addresses read as the first unit write arrives
         self.watched: list[int] | None = None
-        self.cut_after_bytes: int | None = None
         self.drop_wren_at_unit = False
 
     def write(self, buf: object) -> None:
-        if self._pending_op != _WRITE_OPCODE or self._pending_addr is None:
+        if self._pending_op != _OPCODE_WRITE or self._pending_addr is None:
             super().write(buf)
             return
         data = bytes(buf)  # type: ignore[call-overload]
@@ -1071,18 +1070,14 @@ class _CutChip(FakeMB85RS64V):
             self.units += 1
         elif len(data) == 1 and self.units:
             self.status_after_unit += 1
-        cut = self.cut_after_bytes
-        if cut is not None and len(data) >= cut:
-            super().write(data[:cut])
-            raise PowerCut
-        if cut is not None:
-            self.cut_after_bytes = cut - len(data)
         super().write(data)
+        if self.cut_after_bytes == 0:
+            raise PowerCut
 
 
 class _CutChip2MTA(_CutChip):
-    SIZE = 0x40000
-    RDID = bytes([0x04, 0x7F, 0x48, 0x03])  # MB85RS2MTA (datasheets/fram/MB85RS2MTA-DS501-00032-3v0-E.pdf p.10)
+    SIZE = FakeMB85RS2MTA.SIZE
+    RDID = FakeMB85RS2MTA.RDID
 
 
 class _Outcome:
@@ -1129,7 +1124,7 @@ def _sleeping(events: "list[str]", name: str, *, stubborn_until: "asyncio.Event 
     return starter
 
 
-async def _retire(task: "asyncio.Task[object] | None") -> None:
+async def _retire(task: "asyncio.Task[None] | None") -> None:
     # Cancels a task a scenario leaves behind and waits it out, however it ends.
     if task is None:
         return
@@ -1204,7 +1199,7 @@ class _Rig:
         self.stores: list[_Store | cm.ConfigManager] = doubles if isinstance(stores, int) else list(stores)
         self.svc = _make_service(watchdog=self.wdt, storage=self.manager, log=log, cfg_path=_tmp_cfg_dir(), config_stores=lambda: self.stores)  # type: ignore[arg-type, return-value]  # a _Store stands in for a ConfigManager
         run(self.svc.setup())
-        self.starters: list[Callable[[], asyncio.Task[object]]] = [_sleeping(self.events, "t" + str(n)) for n in range(tasks)]
+        self.starters: list[Callable[[], asyncio.Task[None]]] = [_sleeping(self.events, "t" + str(n)) for n in range(tasks)]
         if self.manager is not None:
             self._record_quiesce(self.manager)
 
@@ -1513,6 +1508,60 @@ def test_two_commands_at_once_start_one_sequence_and_one_reset() -> None:
             run(scenario())
 
 
+def _yielding(rig: _Rig) -> list[int]:
+    assert rig.manager is not None
+    sequences: list[int] = []
+    start, ready = rig.svc._shutdown_sequence, rig.manager.erase_ready
+
+    def counted(purpose: int) -> "Coroutine[object, object, None]":
+        sequences.append(purpose)
+        return start(purpose)
+
+    async def yielding_ready() -> bool:
+        await asyncio.sleep(0)  # the chip-loss window: get_write_protected()'s err_s() suspends
+        return await ready()
+
+    rig.svc._shutdown_sequence = counted  # type: ignore[method-assign]
+    rig.manager.erase_ready = yielding_ready  # type: ignore[method-assign]
+    return sequences
+
+
+def test_a_command_in_its_preflight_refuses_a_mempause_and_another_word_and_the_same_word_waits() -> None:
+    rig = _Rig(tasks=0)
+    sequences = _yielding(rig)
+
+    async def scenario() -> None:
+        sup = await rig.start()
+
+        async def mempause() -> bool:
+            return rig.svc.pause_permanent_storage(300)
+
+        answers = await asyncio.gather(rig.svc.erase_fram(), mempause(), rig.svc.reboot_system(), rig.svc.erase_fram())
+        assert list(answers) == [True, False, False, True], answers
+        assert sequences == [_const("_RR_FRAM_ERASED")], sequences
+        await rig.settle()
+        assert machine.mem_backup(0)[1] == _const("_RR_FRAM_ERASED")
+        await rig.stop(sup)
+
+    with FastAsyncSleep():
+        run(scenario())
+
+
+def test_a_refused_preflight_answers_the_same_word_waiting_on_it_with_its_own_outcome() -> None:
+    rig = _Rig(tasks=0, protect=True)
+    sequences = _yielding(rig)
+
+    async def scenario() -> None:
+        sup = await rig.start()
+        answers = await asyncio.gather(rig.svc.erase_fram(), rig.svc.erase_fram())
+        assert list(answers) == [False, False], answers
+        assert (sequences, rig.svc._shutdown, rig.svc._shutdown_task) == ([], 0, None)
+        await rig.stop(sup)
+
+    with FastAsyncSleep():
+        run(scenario())
+
+
 def test_a_raising_flush_reaches_the_reset_and_reads_9_unless_a_config_reset_deletes_it() -> None:
     for purpose in _PURPOSES:
         rig = _Rig(stores=0)
@@ -1565,6 +1614,9 @@ class _RemoveRefusingOs:
         self._cut_after = cut_after
         self.removed = 0
 
+    def __getattr__(self, name: str) -> object:
+        return getattr(os, name)
+
     def remove(self, path: str) -> None:
         if path == self._refused:
             raise OSError(5, "EIO")
@@ -1572,9 +1624,6 @@ class _RemoveRefusingOs:
             raise PowerCut
         os.remove(path)
         self.removed += 1
-
-    def __getattr__(self, name: str) -> object:
-        return getattr(os, name)
 
 
 def test_a_file_that_cannot_be_deleted_ends_the_reset_in_code_9() -> None:
@@ -1706,6 +1755,64 @@ def _cut_erase(chip: _CutChip, cut: int) -> bool:
     finally:
         chip.cut_after_bytes = None
     return False
+
+
+def _bare_chip() -> FakeMB85RS64V:
+    return FakeMB85RS64V(0, sck=machine.Pin(2), mosi=machine.Pin(3), miso=machine.Pin(4))
+
+
+def _raw_write(chip: FakeMB85RS64V, addr: int, data: bytes, *, enable: bool = True) -> None:
+    # One WRITE as FRAM_SPI clocks it: WREN (unless `enable` is False), the opcode with its address, then the data.
+    if enable:
+        chip.write(bytes([_OPCODE_WREN]))
+    chip.write(bytes([_OPCODE_WRITE, addr >> 8, addr & 0xFF]))
+    chip.write(data)
+
+
+def test_the_chip_fakes_power_cut_lands_its_bytes_and_then_none() -> None:
+    chip = _bare_chip()
+    chip.cut_after_bytes = 5
+    _raw_write(chip, 0x10, b"\x11" * 3)
+    _raw_write(chip, 0x20, b"\x22" * 4)  # the cut falls inside this write: two of its bytes land
+    _raw_write(chip, 0x30, b"\x33" * 2)  # the power is gone: nothing lands
+    assert bytes(chip.memory[0x10:0x34]) == b"\x11" * 3 + bytes(13) + b"\x22" * 2 + bytes(18), bytes(chip.memory[0x10:0x34])
+    assert (chip.cut_after_bytes, chip.write_transactions) == (0, 3)
+
+
+def test_the_chip_fake_counts_only_the_data_bytes_that_land() -> None:
+    chip = _bare_chip()
+    _raw_write(chip, 0x10, b"\x11" * 3)
+    _raw_write(chip, 0x20, b"\x22" * 4, enable=False)  # no WEL: the WRITE is not performed (p.7)
+    chip.silent = 0xFF
+    _raw_write(chip, 0x30, b"\x33" * 2)  # a silent chip acts on nothing
+    chip.silent = None
+    chip.corrupt_next_write_data = b"\x55"
+    _raw_write(chip, 0x40, b"\x44" * 2)  # what lands is the disturbed payload
+    assert (chip.bytes_written, chip.write_transactions) == (4, 4)
+
+
+def test_a_chip_read_fault_names_the_command_it_hits() -> None:
+    chip = _bare_chip()
+    buf = bytearray(64)  # at or above the DMA threshold, the only reads that can raise
+    chip.inject_fault("readinto", OSError, errno.EIO, "planted", match=_OPCODE_RDSR)
+    chip.write(bytes([_OPCODE_READ, 0, 0]))
+    chip.readinto(buf)  # a READ, not the RDSR the fault names
+    assert chip.pending("readinto") == 1
+    chip.inject_fault("readinto", OSError, errno.EIO, "planted", match=_OPCODE_READ)
+    chip.write(bytes([_OPCODE_READ, 0, 0]))
+    raised = 0
+    try:
+        chip.readinto(buf)
+    except OSError as e:
+        raised = e.args[0]
+    assert (raised, chip.pending("readinto")) == (errno.EIO, 1)
+
+
+def test_the_chip_fake_declares_every_test_only_name_it_adds() -> None:
+    # Every public name the chip adds to machine.SPI's, on the instance or the class, is listed in its TEST_API.
+    own = {name for name in list(_bare_chip().__dict__) + list(FakeMB85RS64V.__dict__) if not name.startswith("_")}
+    assert "TEST_API" in FakeMB85RS64V.__dict__
+    assert sorted(own - set(machine.SPI.TEST_API) - {"TEST_API", "readinto", "write"}) == sorted(FakeMB85RS64V.TEST_API)
 
 
 def test_a_power_cut_anywhere_in_the_erase_leaves_each_ring_whole_or_blank() -> None:
@@ -1919,7 +2026,7 @@ def test_tasks_dying_while_a_command_runs_never_escalate() -> None:
         real_log = rig.svc._log_dead_task
 
         async def held_log(
-            task: "asyncio.Task[object]", n: int, real: "Callable[[asyncio.Task[object], int], Coroutine[object, object, None]]" = real_log, release: asyncio.Event = release,
+            task: "asyncio.Task[None]", n: int, real: "Callable[[asyncio.Task[None], int], Coroutine[object, object, None]]" = real_log, release: asyncio.Event = release,
             entered: asyncio.Event = entered,
         ) -> None:
             await real(task, n)
@@ -2115,7 +2222,7 @@ def test_after_the_takeover_no_other_site_feeds() -> None:
             sup = await rig.start()
             real_log = rig.svc._log_dead_task
 
-            async def gated_log(task: "asyncio.Task[object]", n: int) -> None:
+            async def gated_log(task: "asyncio.Task[None]", n: int) -> None:
                 entered.set()
                 await release.wait()  # a supervisor pass held before its feed
                 await real_log(task, n)
@@ -2224,7 +2331,7 @@ def test_a_hang_in_any_step_is_never_fed() -> None:
     async def stuck_pass(rig: _Rig = rig) -> None:
         inside = asyncio.Event()
 
-        async def held(task: "asyncio.Task[object]", n: int) -> None:
+        async def held(task: "asyncio.Task[None]", n: int) -> None:
             inside.set()
             await never.wait()
 
@@ -3028,7 +3135,7 @@ def test_an_escalating_pass_retires_the_dead_task_so_no_later_pass_awaits_it_aga
 
         return asyncio.create_task(_c())
 
-    async def recording_log(task: "asyncio.Task[object]", n: int) -> None:
+    async def recording_log(task: "asyncio.Task[None]", n: int) -> None:
         # A repeat is recorded and never awaited, so the defect reads as a failure here rather than a segfault.
         if any(seen is task for seen in first):
             again.append(task)

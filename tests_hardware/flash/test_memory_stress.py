@@ -2,14 +2,15 @@
 one flash write's span, the loop lag and the C-stack peak on the real 133 MHz core, and single-core timing headroom
 under normal full task load (SPECIFICATION.md Parts I and F.3). The real-HTTP-soak variants live in bench/."""
 
+import threading
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ParamSpec
 
 import heap_map
+import http_client
 import pytest
-from bench_control import BenchBridge
 from error_log_helpers import assert_no_new_task_raised, read_live_system_log
-from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, SRC_DIR, boot_lines, crash_lines, device_toml, parse_facts, wait_until
+from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, SRC_DIR, boot_lines, configured_max_connections, crash_lines, device_toml, get_routes, parse_facts, wait_until
 from heap_bounds import WORST_CASE_ALLOCATION
 from soak_durations import SOAK_DURATION_SECONDS
 
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
     from harness import Board
 
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("construction", "loop_lag")
+_P = ParamSpec("_P")
 
 # @tunable l3.memory_stress_headroom_script_timeout_s = 120.0
 _HEADROOM_SCRIPT_TIMEOUT_S = 120.0
@@ -42,6 +44,56 @@ _LOOP_LAG_SCRIPT_TIMEOUT_S = 90.0
 # The C-stack script's own 10 s window plus the build, its setup batch and the timer stagger.
 # @tunable l3.memory_stress_c_stack_script_timeout_s = 60.0
 _C_STACK_SCRIPT_TIMEOUT_S = 60.0
+# The twin run's server: the script's scratch-config main() binds it inside the run's own network namespace.
+_TWIN_SERVER = ("127.0.0.1", 8080)
+
+
+def _lag_load(stop: threading.Event, served: "dict[str, int]", failures: "list[str]") -> None:
+    # Once the twin script's server answers, a ceiling of readers cycles every JSON GET route from its own offset until
+    # `stop`, each 200 counted per route: the twin scenario's load (scripts/_digital_twin_scenarios.py, _lag_load()).
+    host, port = _TWIN_SERVER
+    routes = list(served)
+    lock = threading.Lock()
+
+    def status(path: str) -> int:
+        try:
+            return http_client.fetch(host, port, "GET", path).status_code
+        except (OSError, http_client.HTTP_ERROR):  # a refusal at the ceiling is no answer, as the twin scenario counts it
+            return 0
+
+    def reader(index: int) -> None:
+        while not stop.is_set():
+            route = routes[index % len(routes)]
+            index += 1
+            if status(route) == 200:
+                with lock:
+                    served[route] += 1
+
+    try:
+        wait_until(lambda: stop.is_set() or status("/status") == 200, _LOOP_LAG_SCRIPT_TIMEOUT_S, description="the loop-lag script's own server answering")
+    except TimeoutError as e:  # recorded for the test's verdict, never a dead thread's warning
+        failures.append(str(e))
+        return
+    threads = [threading.Thread(target=_recording(failures, reader), args=(i,), name=f"lag-reader-{i}") for i in range(configured_max_connections())]
+    try:
+        for thread in threads:
+            thread.start()
+    finally:  # the readers end at `stop`, which the test sets once the script has ended
+        for thread in threads:
+            if thread.ident is not None:  # started
+                thread.join(_LOOP_LAG_SCRIPT_TIMEOUT_S)
+    failures.extend(f"{thread.name} still running after the load" for thread in threads if thread.is_alive())
+
+
+def _recording(failures: "list[str]", target: "Callable[_P, None]") -> "Callable[_P, None]":
+    # The thread target with its death recorded for the test's verdict, naming the exception: never only pytest's warning.
+    def run(*args: _P.args, **kwargs: _P.kwargs) -> None:
+        try:
+            target(*args, **kwargs)
+        except Exception as e:  # any death is recorded: the test fails on it
+            failures.append(f"{threading.current_thread().name} died: {type(e).__name__}: {e}")
+
+    return run
 
 
 def _run(board: "Board", script: str, timeout_s: float) -> "tuple[str, dict[str, object]]":
@@ -101,13 +153,25 @@ def test_flash_write_loop_gap_is_recorded(board: "Board", result_note: "Callable
 
 
 def test_loop_lag_under_combined_load_stays_under_the_uart_reply_budget(board: "Board", request: pytest.FixtureRequest, result_note: "Callable[[str], None]") -> None:
-    # The shipped main() writes production FRAM chunks, so it runs on the bench round only, after the session's evidence save.
-    if not request.config.getoption("--twin") and not BenchBridge().is_configured():
-        pytest.skip("the bench round's instrument: the shipped main() runs, so the round's FRAM evidence is saved first and the bench bridge is set up")
-    _output, facts = _run(board, "loop_lag_under_combined_load.py", _LOOP_LAG_SCRIPT_TIMEOUT_S)
+    # The twin's run, under a ceiling of GETs on every route as the twin scenario loads it. Silicon's is the bench tier's
+    # test: only the bench network reaches the script's server on the board, and its main() writes production FRAM chunks.
+    if not request.config.getoption("--twin"):
+        pytest.skip("silicon runs this instrument in bench/test_memory_stress_bench.py: only the bench network reaches the script's server on the board")
+    served = dict.fromkeys(get_routes(), 0)
+    failures: list[str] = []
+    stop = threading.Event()
+    load = threading.Thread(target=_recording(failures, _lag_load), args=(stop, served, failures), name="lag-load")
+    try:
+        load.start()
+        _output, facts = _run(board, "loop_lag_under_combined_load.py", _LOOP_LAG_SCRIPT_TIMEOUT_S)
+    finally:
+        stop.set()
+        load.join(2 * _LOOP_LAG_SCRIPT_TIMEOUT_S)
     bound_us = smallest_hard_consumer(load_device(device_toml()), SRC_DIR).ms * 1000  # the build rule's and the twin scenario's one source
     lag_max, lag_p99 = facts.get("lag_max_us"), facts.get("lag_p99_us")
-    result_note(f"loop lag under combined load: max {lag_max} us, p99 {lag_p99} us over {facts.get('samples')} samples (bound {bound_us} us)")
+    result_note(f"loop lag under combined load: max {lag_max} us, p99 {lag_p99} us over {facts.get('samples')} samples (bound {bound_us} us); answers per route {served}")
+    assert not load.is_alive() and not failures, f"the HTTP load did not end cleanly: {failures}"
+    assert served and all(served.values()), f"GET routes never served under the load: {sorted(route for route, count in served.items() if not count)} of {len(served)} routes"
     assert facts.get("main_running") is True, f"the shipped main() ended inside the window: {facts}"
     writes = facts.get("fram_writes")
     assert facts.get("fram_write_failures") == 0 and isinstance(writes, int) and writes > 0, f"the FRAM load did not run cleanly: {facts}"

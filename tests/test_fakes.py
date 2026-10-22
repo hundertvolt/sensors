@@ -406,6 +406,34 @@ def test_a_pin_irq_registration_reads_back_per_gpio() -> None:
     assert (Pin(6).irq_handler, Pin(6).irq_trigger, Pin(6).irq_hard) == (handler, Pin.IRQ_RISING, True)
 
 
+def test_an_external_pin_refuses_an_irq_before_reading_an_argument() -> None:
+    # machine_pin.c:464-466: the WLAN chip's GPIOs raise on irq(), the bare call included, and keep no registration.
+    def handler(_pin: Pin) -> None:
+        pass
+
+    led = Pin("LED", Pin.OUT)
+    assert _raises(ValueError, lambda: led.irq(handler), "expecting a regular GPIO Pin")
+    assert _raises(ValueError, led.irq, "expecting a regular GPIO Pin")
+    assert led.irq_handler is None
+
+
+def test_a_bare_irq_call_returns_the_registration_unchanged() -> None:
+    # machine_pin.c:473: only a call with an argument rewrites the GPIO's handler, trigger and hard flag, every
+    # argument it omits taking its default, so an explicit None (positional or keyword) still clears the handler.
+    def handler(_pin: Pin) -> None:
+        pass
+
+    pin = Pin(6, Pin.IN)
+    pin.irq(handler, Pin.IRQ_RISING, hard=True)
+    assert pin.irq() is pin
+    assert (pin.irq_handler, pin.irq_trigger, pin.irq_hard) == (handler, Pin.IRQ_RISING, True)
+    pin.irq(None)
+    assert (pin.irq_handler, pin.irq_trigger, pin.irq_hard) == (None, Pin.IRQ_FALLING | Pin.IRQ_RISING, False)
+    pin.irq(handler, Pin.IRQ_RISING, hard=True)
+    pin.irq(trigger=Pin.IRQ_FALLING)
+    assert (pin.irq_handler, pin.irq_trigger, pin.irq_hard) == (None, Pin.IRQ_FALLING, False)
+
+
 # ---- I2C ------------------------------------------------------------------------------------
 
 

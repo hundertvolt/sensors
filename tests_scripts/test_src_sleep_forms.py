@@ -1,6 +1,6 @@
 """Every src/ sleep takes whole milliseconds (SPECIFICATION.md D.4): asyncio.sleep() an int literal or a module
-`const(<int>)` name, every timeout wait_for_ms(), no float literal or float constant and no true division in a sleep_ms()/
-wait_for_ms() delay, and a synchronous time.sleep*() only at the named waits of Part N's `loop.sync_wait_max_us`, each in place."""
+`const(<int>)` name, every timeout wait_for_ms(), no float literal, float constant or true division in a sleep_ms() or
+wait_for_ms() delay, a synchronous time.sleep*() only at Part N's `loop.sync_wait_max_us` named waits, each in place."""
 
 import ast
 import shutil

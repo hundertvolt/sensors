@@ -1,6 +1,8 @@
 """Twin-side fix for the Unix port's sockaddr quirks (micropython#6924: bind/connect/sendto take a packed sockaddr,
 recvfrom returns one), so src/ only ever sees (host, port) tuples; it also refuses any UDP destination outside loopback
-and TEST-NET-1, and binds a server's wildcard on the loopback. Applied once, before any UDPSocket exists (digital_twin/README.md "_unix_port_udp_addr_shim.py")."""
+and TEST-NET-1, and binds a server's wildcard on the loopback.
+
+Applied once, before any UDPSocket exists (digital_twin/README.md "_unix_port_udp_addr_shim.py")."""
 
 import socket
 import struct

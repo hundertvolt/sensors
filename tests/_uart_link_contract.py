@@ -1,5 +1,5 @@
-"""Backend-agnostic semantic assertions for a byte-stream UART crossover link (Part J.7).
-Each check takes a factory returning (uart_a, uart_b, link); tests/machine.py and digital_twin/machine.py supply their own, so the two models diverge in fidelity but never in semantics.
+"""Backend-agnostic semantic assertions for a byte-stream UART crossover link (Part J.7). tests/machine.py and
+digital_twin/machine.py each supply their own factory, so the two models diverge in fidelity but never in semantics.
 link.settle() is that one fidelity seam - a no-op on the mock, a wait for pending wire time on the twin."""
 
 import select
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
     from typing import Any, Protocol
 
-    LinkFactory = Callable[[], tuple[Any, Any, Any]]
+    LinkFactory = Callable[[], tuple[Any, Any, Any]]  # what each check takes: it returns (uart_a, uart_b, link)
 
     class _BoundedRecord(Protocol):
         # What both fakes' bounded logs offer a reader: a size, a drop count, entries oldest first.

@@ -165,9 +165,9 @@ export function sleep(ms) {
 }
 
 /**
- * Boots `device`'s twin on `port` under the captive-DNS lock: build/generated_src first, sensortask_<device>.py's one home
- * (SPECIFICATION.md Part L.2), its own site (build/generated_html/<device>, package.json's "pretest" hooks), the caller's
- * config directory (makeConfigDir()), the rest in memory; a string the interpreter cannot intern throws before any of it.
+ * Boots `device`'s twin on `port` under the captive-DNS lock: build/generated_src first, sensortask_<device>.py's one
+ * home (SPECIFICATION.md Part L.2), its own site (build/generated_html/<device>, package.json's "pretest" hooks), the
+ * caller's config directory (makeConfigDir()), the rest in memory; an uninternable string throws before any of it.
  * @param {{device: string, port: number, configDir: string}} twin
  * @returns {import("node:child_process").ChildProcess}
  */

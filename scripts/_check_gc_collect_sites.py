@@ -4,8 +4,8 @@
 # dependencies = []
 # ///
 """The gc policy check (SPECIFICATION.md I.4(e)/(f.1)): every gc.collect(), gc.threshold(<value>), gc.disable() and
-gc.enable() reached through a name bound to gc or to one of them, in src/, tests/, digital_twin/, tests_hardware/ and the
-generated modules, outside the one allowance table is reported with its enclosing function; nothing unreadable passes."""
+gc.enable() reached via a name bound to gc or one of them, in src/, tests/, digital_twin/, tests_hardware/ and generated
+modules, outside the one allowance table is reported with its enclosing function; nothing unreadable passes."""
 
 # Usage: python3 scripts/_check_gc_collect_sites.py [--root DIR]
 # Exit 0 when clean, 1 naming each site outside the table (or a row with no site), 2 when a file or a device cannot be

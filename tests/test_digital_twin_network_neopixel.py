@@ -1,19 +1,41 @@
-"""Tests for digital_twin/network.py and digital_twin/neopixel.py. neopixel.py is a near-verbatim duplicate of tests/neopixel.py, already proven correct there - this file only locks in its basic shape.
-network.py's WLAN has real behavioral differences (a real, bounded connect() delay instead of instant/inert) exercised for real here, the one genuine wall-clock wait in this file."""
+"""Tests for digital_twin/network.py and digital_twin/neopixel.py. neopixel.py is a near-verbatim duplicate of
+tests/neopixel.py, already proven correct there - this file only locks in its basic shape.
+
+network.py's WLAN has real behavioral differences (a real, bounded connect() delay instead of instant/inert) exercised
+for real here, the one genuine wall-clock wait in this file.
+
+One test boots the first generated device wiring a NeoPixel, for its supervised signal task's restart after a write
+fault."""
 
 import asyncio
 import errno
 import sys
 
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
+sys.path.insert(0, "digital_twin/unixport")  # the UDP shim's directory (digital_twin/README.md "_unix_port_udp_addr_shim.py")
 
-import microtest
-import network
-from _async_harness import run
-from _src_const import src_int
-from _twin_common import COUNTER_CAP, LOG_MAXLEN
-from neopixel import NeoPixel
-from network import (
+from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
+from unix_port_poll_prewarm import prewarm_poll_set
+
+prewarm_poll_set()  # before any poll object is registered: one test boots a whole device (digital_twin/README.md "Known gaps")
+patch_asy_udp_socket_for_unix_port()  # before any UDPSocket is constructed (digital_twin/README.md "_unix_port_udp_addr_shim.py")
+
+import machine  # noqa: E402 - imported after the prewarm and the UDP shim
+import microtest  # noqa: E402 - imported after the prewarm and the UDP shim
+import network  # noqa: E402 - imported after the prewarm and the UDP shim
+from _async_harness import cancel_all, run  # noqa: E402 - imported after the prewarm and the UDP shim
+from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim
+from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
+from _fake_time import DrivenTime  # noqa: E402 - imported after the prewarm and the UDP shim
+from _fast_sleep import check_sleep_ms  # noqa: E402 - imported after the prewarm and the UDP shim
+from _generated_module import boot_generated  # noqa: E402 - imported after the prewarm and the UDP shim
+from _src_const import src_int  # noqa: E402 - imported after the prewarm and the UDP shim
+from _task_names import task_names_of  # noqa: E402 - imported after the prewarm and the UDP shim
+from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
+from _twin_common import COUNTER_CAP, LOG_MAXLEN  # noqa: E402 - imported after the prewarm and the UDP shim
+from _twin_devices import device_with, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
+from neopixel import NeoPixel  # noqa: E402 - imported after the prewarm and the UDP shim
+from network import (  # noqa: E402 - imported after the prewarm and the UDP shim
     AP_IF,
     STA_IF,
     STAT_CONNECT_FAIL,
@@ -26,13 +48,49 @@ from network import (
     set_access_point_up,
 )
 
+import asy_neopixel_driver  # noqa: E402 - imported after the prewarm and the UDP shim
+import asy_system_service  # noqa: E402 - imported after the prewarm and the UDP shim
+from asy_neopixel_driver import NeopixelDriver  # noqa: E402 - imported after the prewarm and the UDP shim
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 # @tunable l2.network_neopixel_wait_timeout_s = 5.0
 _WAIT_TIMEOUT_S = 5.0
 # @tunable l2.network_neopixel_poll_ms = 20
 _POLL_MS = 20
 _UNSET = ("0.0.0.0", "0.0.0.0", "0.0.0.0", "0.0.0.0")
 
+_scratch = TmpScratch("dtnn")  # the booted device's config directory
+microtest.after_each(machine.reset_test_state)
 microtest.after_each(network.reset_test_state)
+
+
+def _active_sta() -> WLAN:
+    # cyw43_wifi_join() refuses an inactive STA (cyw43_ctrl.c:637-640, v1.29.0): every connecting case activates first.
+    wlan = WLAN(STA_IF)
+    wlan.active(True)
+    return wlan
+
+
+async def _disconnect_pending(wlan: WLAN) -> None:
+    # disconnect() of a pending connect, shown structurally: one yield later the kept connect task has ended cancelled,
+    # so no later wake can flip the link.
+    pending = wlan._connect_task
+    assert pending is not None
+    wlan.disconnect()
+    await asyncio.sleep(0)
+    assert pending.done()
+    try:
+        await pending
+    except asyncio.CancelledError:
+        return
+    raise AssertionError("the connect task ran on after disconnect()")
 
 
 def _raised(call: "object") -> "BaseException | None":
@@ -49,13 +107,6 @@ def _value_error(call: "object") -> str:
     except ValueError as e:
         return str(e)
     raise AssertionError("expected ValueError")
-
-
-def _active_sta() -> WLAN:
-    # cyw43_wifi_join() refuses an inactive STA (cyw43_ctrl.c:637-640, v1.29.0): every connecting case activates first.
-    wlan = WLAN(STA_IF)
-    wlan.active(True)
-    return wlan
 
 
 def test_one_connect_phase_fits_the_services_poll_budget() -> None:
@@ -193,8 +244,7 @@ def test_wlan_disconnect_before_connecting_finishes_cancels_the_pending_connecti
     async def scenario() -> None:
         wlan = _active_sta()
         wlan.connect("ssid", "password")
-        wlan.disconnect()
-        await asyncio.sleep(1.0)  # longer than _CONNECT_DELAY_S - must never flip to connected
+        await _disconnect_pending(wlan)
         assert wlan.isconnected() is False
         assert wlan.status() == STAT_IDLE
 
@@ -274,7 +324,7 @@ def test_a_joined_link_with_no_address_holds_status_two() -> None:
         wlan.script_connect_outcomes([2])
         wlan.connect("ssid", "password")
         await _wait_until_settled(wlan)
-        await asyncio.sleep_ms(_POLL_MS * 2)
+        assert wlan._connect_task is not None and wlan._connect_task.done()  # the attempt has ended: nothing left moves the link
         assert (wlan.status(), wlan.isconnected(), wlan.ifconfig()) == (2, False, _UNSET)
         set_access_point_up(up=False)  # the joined link goes down with it, to cyw43's join state (LINK_JOIN)
         assert (wlan.status(), wlan.isconnected(), wlan.ifconfig()) == (STAT_CONNECTING, False, _UNSET)
@@ -375,8 +425,7 @@ def test_wlan_disconnect_of_a_pending_attempt_does_not_consume_a_scripted_outcom
         wlan = _active_sta()
         wlan.script_connect_outcomes([STAT_WRONG_PASSWORD])
         wlan.connect("ssid", "password")
-        wlan.disconnect()  # cancels before _run_connect() ever completes - nothing "used"
-        await asyncio.sleep(1.0)  # longer than _CONNECT_DELAY_S - must never resolve at all
+        await _disconnect_pending(wlan)  # cancels before _run_connect() ever completes - nothing "used"
         assert wlan.isconnected() is False
         assert wlan.status() == STAT_IDLE
 
@@ -505,6 +554,128 @@ def test_a_power_dip_blanks_what_the_pixel_shows_until_the_next_write() -> None:
     assert (pixel.displayed(), pixel[0]) == ([(0, 0, 0)], (5, 6, 7))
     pixel.write()
     assert pixel.displayed() == [(5, 6, 7)]
+
+
+def test_the_driver_rewrites_a_dipped_pixel_at_its_next_overlay_refresh() -> None:
+    # The driver over this pixel, as on a `neopixel` device: after a supply dip the overlay task's own refresh wait, on
+    # the driven clock, shows the overlay colour again at its end and not 1 ms before.
+    refresh_ms = src_int("src/asy_neopixel_driver.py", "_OVERLAY_REFRESH_MS")
+    grey = (src_int("src/asy_neopixel_driver.py", "_LED_OVERL_BRI"),) * 3
+    driver = NeopixelDriver(0)
+    run(driver.setup())
+    driver.on()
+
+    async def scenario(clock: DrivenTime) -> "list[list[tuple[int, ...]]]":
+        task = driver.start_asy_overlay()
+        await clock.elapse(0)
+        shown = [driver._pixel.displayed()]
+        driver._pixel.power_dip()
+        await clock.elapse(refresh_ms - 1)
+        shown.append(driver._pixel.displayed())
+        await clock.elapse(1)
+        shown.append(driver._pixel.displayed())
+        await cancel_all([task], settle_yields=1)
+        return shown
+
+    with DrivenTime(asy_neopixel_driver, sleeps=True) as clock:
+        assert run(scenario(clock)) == [[grey], [(0, 0, 0)], [grey]]
+
+
+class _SupervisorPasses:
+    # asy_system_service's asyncio for the block: each supervisor pass ends parked in its sleep until one_pass(), and
+    # start_tasks()'s stagger is one yield; every other name, and every other module, keeps the real asyncio.
+    def __init__(self) -> None:
+        self._go = asyncio.Event()
+        self.parked = asyncio.Event()
+
+    def __enter__(self) -> "_SupervisorPasses":
+        asy_system_service.asyncio = self  # type: ignore[assignment, attr-defined]  # swapped back on exit
+        return self
+
+    def __exit__(self, *_exc_info: object) -> None:
+        asy_system_service.asyncio = asyncio  # type: ignore[attr-defined]
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(asyncio, name)
+
+    async def one_pass(self) -> None:
+        # From a parked supervisor to its next park: one whole pass, a task-end entry and its restart included.
+        self.parked.clear()
+        self._go.set()
+        await self.parked.wait()
+
+    async def sleep(self, _seconds: float) -> None:
+        self.parked.set()
+        await self._go.wait()
+        self._go.clear()
+
+    async def sleep_ms(self, ms: int) -> None:
+        check_sleep_ms(ms)
+        await asyncio.sleep(0)
+
+
+async def _yields_until(predicate: "Callable[[], bool]", max_yields: int) -> bool:
+    # A bound in scheduler yields, for an interleaving inside one instant: a fault cleared before the next task writes.
+    for _ in range(max_yields):
+        if predicate():
+            return True
+        await asyncio.sleep(0)
+    return predicate()
+
+
+def test_a_restarted_signal_task_ends_dark_with_the_overlay_restored() -> None:
+    # The first generated device wiring a NeoPixel, booted: a write fault mid-ramp ends its signal task and the real
+    # supervisor restarts it. The restart writes black, the overlay answers, no wait of the old ramp is left, and SYSTEM
+    # persists one task-end entry. The driver's clock is driven, and the test releases each supervisor pass.
+    device = device_with("neopixel")
+    module = load_device(device)
+    machine.reset_peripherals()
+    network.reset_interfaces()
+    machine.configure_wiring(wiring_plan(device))
+    refresh_ms = src_int("src/asy_neopixel_driver.py", "_OVERLAY_REFRESH_MS")
+    grey = (src_int("src/asy_neopixel_driver.py", "_LED_OVERL_BRI"),) * 3
+    ended = [code("E", name) for name in ("TASK_RAISED", "TASK_CANCELLED", "TASK_RETURNED")]
+    handler = asyncio.get_event_loop().get_exception_handler()
+
+    async def scenario() -> None:
+        await boot_generated(module, device, cfg_path=_scratch.dir(), log_errors=True)
+        sysfunct, driver = module.sysfunct, module.neopixel
+        frames = driver._pixel.writes
+        supervisors: list[asyncio.Task[None]] = []
+        with DrivenTime(asy_neopixel_driver, sleeps=True) as clock, _SupervisorPasses() as passes:
+            try:
+                await sysfunct.start_tasks(driver.get_task_starters(), task_names=task_names_of(driver))
+                overlay, signal = sysfunct._tasks
+                supervisors.append(asyncio.create_task(sysfunct.supervise_tasks()))
+                await passes.parked.wait()
+                driver.on()
+                await clock.run_until(lambda: frames[-1] == [grey], 0)
+                assert await driver.request_signal(255, 0, 0, 0.5)
+                await clock.run_until(lambda: frames[-1][0][0] > 0 and frames[-1][0][1] == 0, 0)  # the ramp's first red frame
+                driver._pixel.raise_on_write = OSError(errno.EIO, "injected pixel write fault")
+                clock.advance(driver._frame_ms)  # the ramp's next frame falls due; the overlay's wait is a refresh away
+                assert await _yields_until(signal.done, 20), "the write fault did not end the signal task"
+                driver._pixel.raise_on_write = None  # before the overlay answers the ended task's flag
+                await clock.run_until(lambda: frames[-1] == [grey], 0)
+                n = len(frames)
+                await passes.one_pass()
+                await clock.run_until(lambda: len(frames) > n, 0)  # the restart's first frame; the overlay's answer settles too
+                after = [frame[0] for frame in list(frames)[n:]]
+                assert [c for c in after if c[0] > 0 and c[1] == 0] == [], f"the restarted task resumed the old ramp: {after}"
+                assert after == [(0, 0, 0), grey], f"the restart did not leave the pixel dark with the overlay restored: {after}"
+                assert clock.wakes() == [clock.now + refresh_ms], f"a wait of the old ramp outlived the restart: {clock.wakes()}"
+                restarted = sysfunct._tasks[1]
+                assert restarted not in (None, signal) and not restarted.done() and not overlay.done()
+                stored = await sysfunct.pr._read()
+                assert isinstance(stored, tuple), stored
+                assert [entry for entry in stored[1] if entry in ended] == [ended[0]], f"SYSTEM persisted {stored}"
+            finally:
+                if sysfunct._supervisor_task is not None:
+                    supervisors.append(sysfunct._supervisor_task)
+                await cancel_all(supervisors + [t for t in sysfunct._tasks if t is not None and not t.done()], settle_yields=1)
+                asyncio.get_event_loop().set_exception_handler(handler)  # start_tasks() installs SYSTEM's where none is set
+
+    run(scenario())
 
 
 def test_neopixel_writes_stays_bounded_across_many_writes() -> None:

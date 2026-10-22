@@ -1,6 +1,6 @@
-"""FastAsyncSleep: for the `with` block, asyncio.sleep() and sleep_ms() are one scheduler yield each, so a product wait costs no real
-time; each request is recorded with its task, in seconds and in its form (the first CAP, the rest in `dropped`), and advances a given
-clock; both names are restored however the block exits. check_sleep_ms() is the real sleep_ms()'s float refusal (the Unix port's tick range, not rp2's 2**29 ms), for every stand-in."""
+"""FastAsyncSleep: for the `with` block, asyncio.sleep() and sleep_ms() are one scheduler yield each, so a product wait
+costs no real time; each request is recorded with its task, in seconds and in its form (the first CAP, the rest in
+`dropped`), and advances a given clock; both names are restored however the block exits."""
 
 import asyncio
 import time
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
 
 def check_sleep_ms(ms: int) -> None:
+    # The real sleep_ms()'s float refusal (the Unix port's tick range, not rp2's 2**29 ms), for every stand-in.
     # sleep_ms() and wait_for_ms()'s bound pass the delay to ticks_add() (extmod/asyncio/core.py:55-57, v1.29.0), whose
     # mp_obj_get_int() refuses a float: one raises here as on rp2, where MicroPython's 500.0 == 500 would pass an int pin.
     time.ticks_add(time.ticks_ms(), max(0, ms))

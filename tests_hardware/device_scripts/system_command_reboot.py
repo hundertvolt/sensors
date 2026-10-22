@@ -1,6 +1,7 @@
 """Isolated-driver device script: "reboot" or "bootloader" (COMMAND) through the webserver's dispatch over the bench
-build's scratch config at DebugLevel 4, so the shutdown's step lines print, with a logger-write loop and an I2C read loop
-in flight and a recording proxy in SystemService's watchdog slot; the product reset ends the run, the facts first."""
+build's scratch config at DebugLevel 4, so the shutdown's step lines print, with a logger-write loop and an I2C read
+loop in flight and a recording proxy in SystemService's watchdog slot; the product reset ends the run, the facts first.
+"""
 
 import asyncio
 import errno

@@ -1,6 +1,6 @@
-"""The WiFi radio re-init rung on silicon (SPECIFICATION.md C.7/F.2): the WiFi service, primed in RAM from the production
-config_WIFI.cfg read only, connects, runs _recover_device() - deinit() powers the CYW43 off, the next active(True)
-reloads its firmware - and connects again; facts out, no config write, the credentials never printed."""
+"""The WiFi radio re-init rung on silicon (SPECIFICATION.md C.7/F.2): the WiFi service, primed in RAM from the
+production config_WIFI.cfg read only, connects, runs _recover_device() - deinit() powers the CYW43 off, the next
+active(True) reloads its firmware - and connects again; facts out, no config write, the credentials never printed."""
 
 import asyncio
 import json

@@ -33,6 +33,7 @@ from _async_harness import run
 from _crc8 import crc8, word
 from _fault_injection import FaultInjector
 from _machine_contract import ALL_CHECKS, FAULT_CHECKS
+from _ticks30 import Ticks30Time
 from _tmp_scratch import TmpScratch
 from _twin_common import COUNTER_CAP, LOG_MAXLEN, BoundedLog, StatePaths, fill_buffer, saturating_add
 from _twin_random import FixedRandom
@@ -47,6 +48,7 @@ from machine import (
     SimulatedRebootError,
     SimulatedResetError,
     Timer,
+    UARTLink,
     bootloader,
     reset,
 )
@@ -93,6 +95,7 @@ _SHORT_PERIOD_MS = 5
 _REARM_WINDOW_MS = 18
 # @tunable l2.machine_spi_wire_time_us_per_byte = 200
 _WIRE_US_PER_BYTE = 200
+_RSR_OE = 0x08  # UARTRSR's overrun bit (RP2040 datasheet Table 427)
 
 _scratch = TmpScratch("dtmachine")
 # The shared contract's checks this twin still fails, each with the twin change that closes it; the list only shrinks.
@@ -138,6 +141,22 @@ def _inside_one_run(test: "Callable[[], None]") -> "Callable[[], None]":
     return wrapper
 
 
+def _on_the_2_30_clock(drive: "Callable[[Ticks30Time, UART, UART], None]") -> None:
+    # A link built at zero on rp2's 2**30 tick period (tests/_ticks30.py), the stalls' clock on it from the same zero.
+    machine.reset_peripherals()
+    a, b = UART(0, tx=Pin(0), rx=Pin(1)), UART(1, tx=Pin(8), rx=Pin(9))
+    clock, stall_time = Ticks30Time(), _flash_stall._time  # type: ignore[attr-defined]
+    machine.time, _flash_stall._time = clock, clock  # type: ignore[assignment, attr-defined]  # module attribute swaps, restored below
+    _flash_stall.restart(0, 0)
+    try:
+        UARTLink(a, b)
+        drive(clock, a, b)
+    finally:
+        machine.time, _flash_stall._time = time, stall_time  # type: ignore[attr-defined]
+        _flash_stall.restart(time.ticks_us(), time.ticks_ms())
+        _flash_stall.windows.clear()
+
+
 def _reports_during(scenario: "Callable[[], object]") -> "list[tuple[str, bool]]":
     # Runs `scenario` with machine's uncaught-callback report recorded rather than printed.
     reported: list[tuple[str, bool]] = []
@@ -176,6 +195,16 @@ def test_pin_rejects_invalid_id() -> None:
         raise AssertionError("expected ValueError")
     except ValueError:
         pass
+
+
+def _stall_on(clock: Ticks30Time) -> None:
+    # One flush of 13 page programs and no erase (5.2 ms) on the 2**30 clock, _flash_stall's reads stepping it.
+    stall_time, erases, extra = _flash_stall._time, _flash_stall.FLUSH_ERASES, _flash_stall.FLUSH_EXTRA_PAGES  # type: ignore[attr-defined]
+    _flash_stall._time, _flash_stall.FLUSH_ERASES, _flash_stall.FLUSH_EXTRA_PAGES = _StallClock(clock), 0, 13  # type: ignore[assignment, attr-defined]
+    try:
+        _flash_stall.stall(0)
+    finally:
+        _flash_stall._time, _flash_stall.FLUSH_ERASES, _flash_stall.FLUSH_EXTRA_PAGES = stall_time, erases, extra  # type: ignore[attr-defined]
 
 
 def _twin_injector() -> "tuple[Callable[[int], None], Callable[[], object], Callable[[], int]]":
@@ -263,6 +292,28 @@ def test_pin_irq_fires_on_simulate_edge_rising() -> None:
     pin.simulate_edge(1)
     assert fired == [1]
     pin.simulate_edge(0)  # falling edge - not registered, handler must not fire again
+    assert fired == [1]
+
+
+def test_pin_irq_refuses_an_external_pin_and_a_bare_call_keeps_the_handler() -> None:
+    # ports/rp2/machine_pin.c:464-476: a WLAN-chip GPIO raises before any argument is read; a call with no argument
+    # returns the IRQ object unchanged, while an explicit None clears the handler.
+    fired: list[int] = []
+    try:
+        Pin("LED").irq(handler=lambda _p: None)
+    except ValueError as e:
+        assert str(e) == "expecting a regular GPIO Pin"
+    else:
+        raise AssertionError("an external pin took an irq")
+    pin = Pin(27)
+    pin.off()
+    pin.irq(handler=lambda _p: fired.append(1), trigger=Pin.IRQ_RISING)
+    assert pin.irq() is pin
+    pin.simulate_edge(1)
+    assert fired == [1]
+    pin.simulate_edge(0)
+    pin.irq(None)
+    pin.simulate_edge(1)
     assert fired == [1]
 
 
@@ -1543,6 +1594,63 @@ def test_the_fram_table_names_both_chips_and_refuses_an_unknown_size() -> None:
         assert "no FRAM RDID for size 0x8000" in str(e)
     expected = {0x2000: bytes([0x04, 0x7F, 0x03, 0x02]), 0x40000: bytes([0x04, 0x7F, 0x48, 0x03])}  # the two RDIDs the driver knows
     assert expected == machine._FRAM_RDID_BY_MAX_SIZE
+
+
+class _StallClock:
+    # _flash_stall's own clock for one stall: each ticks_us() read moves the shared 2**30 clock 1 ms on, so its wait ends.
+    def __init__(self, clock: Ticks30Time) -> None:
+        self.clock = clock
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self.clock, name)
+
+    def ticks_us(self) -> int:
+        value = self.clock.ticks_us()
+        self.clock.advance(1)
+        return value
+
+
+def test_a_link_keeps_its_wire_time_past_half_the_2_30_tick_period() -> None:
+    # ticks_diff() misreads past 2**29 us (about 537 s) on rp2's period: a byte still takes its wire time, with traffic
+    # every 100 s, then after idle gaps past half and past the whole period.
+    def drive(clock: Ticks30Time, a: UART, b: UART) -> None:
+        for at_ms in (0, 100_000, 200_000, 300_000, 400_000, 500_000, 600_000, 700_000, 1_400_000, 3_000_000):
+            clock.now = at_ms
+            a.write(b"\x5a")
+            assert b.any() == 0, f"a byte arrived before its wire time {at_ms} ms into the link's life"
+            clock.advance(1)
+            assert b.read() == b"\x5a", f"a byte sent {at_ms} ms into the link's life never arrived"
+
+    _on_the_2_30_clock(drive)
+
+
+def test_a_link_finds_a_flash_stall_past_half_the_2_30_tick_period() -> None:
+    # 600 s in, a burst due inside a stall meets no RX interrupt: the 32-byte FIFO keeps 32 and sets OE.
+    def drive(clock: Ticks30Time, a: UART, b: UART) -> None:
+        clock.now = 600_000
+        a.write(bytes(40))  # 3.5 ms of wire time at 115200 baud
+        _stall_on(clock)  # from the burst's start
+        b.any()
+        got = (len(b.read() or b""), b.rx_fifo_dropped, b.rsr & _RSR_OE)
+        assert got == (32, 8, _RSR_OE), f"(kept, dropped, OE) {got}: the burst missed the stall's window"
+
+    _on_the_2_30_clock(drive)
+
+
+def test_a_link_misses_a_flash_stall_one_whole_2_30_tick_period_later() -> None:
+    # A burst one whole 2**30 us period (about 1074 s) after a stall, at the stall's phase on the tick clock, meets a
+    # running RX interrupt: all 40 bytes kept, none dropped, no OE.
+    def drive(clock: Ticks30Time, a: UART, b: UART) -> None:
+        clock.now = 600_000
+        _stall_on(clock)
+        clock.now = 1_673_742  # 600 s plus 2**30 us, to the ms: 176 us past the stall's start on the tick clock
+        a.write(bytes(40))
+        clock.advance(5)
+        b.any()
+        got = (len(b.read() or b""), b.rx_fifo_dropped, b.rsr & _RSR_OE)
+        assert got == (40, 0, 0), f"(kept, dropped, OE) {got}: a burst one period after the stall met its window"
+
+    _on_the_2_30_clock(drive)
 
 
 if __name__ == "__main__":

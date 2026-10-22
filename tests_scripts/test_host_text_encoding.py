@@ -1,15 +1,17 @@
-"""Every host text read or write in scripts/, toolchain/ and tests_scripts/ names its encoding - open() and Path.open()
+"""Every host text read or write (host_typecheck.ini's trees) names its encoding as a literal - open() and Path.open()
 in text mode, Path.read_text() and Path.write_text() - so a non-UTF-8 locale cannot fail or misdecode this repo's own
 UTF-8 text (agent, 2026-10-15); subprocess text streams stay out of scope, as in ruff's PLW1514."""
 
 import ast
+import configparser
+from functools import cache
 
 import pytest
-from _repo_scan import REPO_ROOT, repo_files
+from _repo_scan import REPO_ROOT, repo_files, statement_nodes
 
-SCOPES = ("scripts/", "toolchain/", "tests_scripts/")
-# Inputs a test reads, not host code.
-_DATA_FIXTURES = ("tests_scripts/buildgen_fixtures/",)
+SCOPES = ("buildgen/", "scripts/", "toolchain/", "tests_scripts/", "tests_hardware/")
+# Inputs a test reads, and the device scripts the board runs: not host code.
+_NOT_HOST = ("tests_scripts/buildgen_fixtures/", "tests_hardware/device_scripts/")
 _PATH_TEXT_METHODS = frozenset({"read_text", "write_text"})
 
 
@@ -21,7 +23,7 @@ def _is_text_mode(call: ast.Call, mode_index: int) -> bool:
 
 def _module_names(tree: ast.Module) -> set[str]:
     # Names an `import` binds: `os.open()` or a helper module's own `read_text()` is a module function, not a Path method.
-    return {(alias.asname or alias.name).split(".")[0] for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names}
+    return {(alias.asname or alias.name).split(".")[0] for node in statement_nodes(tree) if isinstance(node, ast.Import) for alias in node.names}
 
 
 def _opens_text(call: ast.Call, modules: set[str]) -> bool:
@@ -39,12 +41,16 @@ def _opens_text(call: ast.Call, modules: set[str]) -> bool:
     return _is_text_mode(call, 0) if module is None else module == "io" and _is_text_mode(call, 1)
 
 
-def scoped_files() -> list[str]:
-    return [p for p in repo_files() if p.endswith(".py") and p.startswith(SCOPES) and not p.startswith(_DATA_FIXTURES)]
+@cache
+def scoped_files() -> tuple[str, ...]:
+    return tuple(p for p in repo_files() if p.endswith(".py") and p.startswith(SCOPES) and not p.startswith(_NOT_HOST))
 
 
 def text_io_calls(source: str, rel: str) -> list[tuple[str, bool]]:
-    # (file:line and the call, whether it passes encoding=) for every text-mode open, read_text and write_text.
+    # (file:line and the call, whether it names a literal encoding=) for every text-mode open, read_text and write_text;
+    # None or a name passed through decodes by whatever its caller chose, the locale included.
+    if source.isascii() and not any(name in source for name in ("open", *_PATH_TEXT_METHODS)):
+        return []  # an ASCII name is spelled out where it is called, so there is no call to find
     tree = ast.parse(source, rel)
     modules = _module_names(tree)
     found = []
@@ -52,21 +58,36 @@ def text_io_calls(source: str, rel: str) -> list[tuple[str, bool]]:
         if isinstance(node, ast.Call) and _opens_text(node, modules):
             call = ast.unparse(node)
             site = f"{rel}:{node.lineno}: {call if len(call) <= 100 else call[:97] + '...'}"
-            found.append((node.lineno, node.col_offset, site, any(kw.arg == "encoding" for kw in node.keywords)))
+            encoding = next((kw.value for kw in node.keywords if kw.arg == "encoding"), None)
+            found.append((node.lineno, node.col_offset, site, isinstance(encoding, ast.Constant) and isinstance(encoding.value, str)))
     return [(site, encoded) for _, _, site, encoded in sorted(found)]
 
 
 def test_every_host_text_read_and_write_names_its_encoding() -> None:
     sites = [site for rel in scoped_files() for site, encoded in text_io_calls((REPO_ROOT / rel).read_text(encoding="utf-8"), rel) if not encoded]
-    assert not sites, 'add encoding="utf-8" to each host text read or write:\n' + "\n".join(sites)
+    assert not sites, 'give each host text read or write a literal encoding="utf-8":\n' + "\n".join(sites)
 
 
 def test_the_scan_is_not_empty() -> None:
     # A scope that lists no file, or a tree with no matched call, is a scan that silently stopped looking.
     files = scoped_files()
     assert not [scope for scope in SCOPES if not any(p.startswith(scope) for p in files)], f"no Python file under one of {SCOPES}"
-    assert all((REPO_ROOT / prefix).is_dir() for prefix in _DATA_FIXTURES), f"a data-fixture exclusion names no directory: {_DATA_FIXTURES}"
+    assert all((REPO_ROOT / prefix).is_dir() for prefix in _NOT_HOST), f"an exclusion names no directory: {_NOT_HOST}"
     assert any(text_io_calls((REPO_ROOT / rel).read_text(encoding="utf-8"), rel) for rel in files), "no text read or write matched"
+
+
+def test_the_scopes_are_the_host_type_check_pass_files() -> None:
+    # Every host Python tree host_typecheck.ini checks is host code here too; the device scripts run on the board.
+    parser = configparser.ConfigParser()
+    parser.read(REPO_ROOT / "host_typecheck.ini", encoding="utf-8")
+    assert sorted(SCOPES) == sorted(f"{name.strip()}/" for name in parser["mypy"]["files"].split(","))
+    assert any(p.startswith("tests_hardware/") for p in scoped_files())
+    assert not [p for p in scoped_files() if p.startswith("tests_hardware/device_scripts/")]
+
+
+def test_a_non_ascii_source_is_always_parsed() -> None:
+    # Python folds a name to NFKC, so a fullwidth open is open although the text never spells it.
+    assert text_io_calls("def f(p):\n    return \uff4f\uff50\uff45\uff4e(p)\n", "planted.py") == [("planted.py:2: open(p)", False)]
 
 
 @pytest.mark.parametrize(
@@ -87,6 +108,9 @@ def test_the_scan_is_not_empty() -> None:
         ("p.read_text(encoding='utf-8')", False),
         ("p.write_text(text)", True),
         ("p.write_text(text, encoding='utf-8')", False),
+        ("open(p, 'w', encoding=None)", True),
+        ("p.read_text(encoding=mode)", True),
+        ("p.open('w', encoding=options['encoding'])", True),
         ("io.open(p, 'w')", True),
         ("os.open(p, os.O_RDONLY)", False),
         ("helpers.read_text(p)", False),

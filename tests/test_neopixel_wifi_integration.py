@@ -1,6 +1,6 @@
-"""Cross-module seams of a real NeopixelDriver: asy_wifi_service.py's ext_led= on WifiService (the LEDControl Protocol and
-its flash task's hotspot patterns), a real WebserverService's error_sources (the _ModuleLike shape) and a generated device's
-timer-starter collection. Only tests/neopixel.py's fake write surface is mocked (and, for the patterns, the sleeps)."""
+"""Cross-module seams of a real NeopixelDriver: asy_wifi_service.py's ext_led= on WifiService (the LEDControl Protocol
+and its flash task's hotspot patterns), a real WebserverService's error_sources (the _ModuleLike shape) and a generated
+device's timer-starter collection. Only tests/neopixel.py's fake write surface is mocked (and the patterns' sleeps)."""
 
 import asyncio
 import json
@@ -40,24 +40,11 @@ if TYPE_CHECKING:
 _scratch = TmpScratch("neopixel_wifi")
 
 
-def _tmp_cfg_dir() -> str:
-    return _scratch.dir()
-
-
-async def _run_until(predicate: "Callable[[], bool]", max_yields: int) -> bool:
-    # A bound in yields, not milliseconds: an overlay write follows its flag through three tasks, one turn each
-    # (the flag's waiter, the bounded wait's runner, the overlay task).
-    for _ in range(max_yields):
-        if predicate():
-            return True
-        await asyncio.sleep(0)
-    return predicate()
-
-
 def test_real_neopixel_driver_on_off_toggle_through_wifi_service_ext_led() -> None:
     pixel = NeopixelDriver(0)
     pixel.neopixel_freq = 100  # the driver's own fixed state, set from outside
     pixel._frame_ms = 10
+    run(pixel.setup())  # the boot batch's setup(), before any task starts
     conn = WifiService(WifiConfig("SensorNode", "12345678", 5, 5), ext_led=pixel, cfg_path=_tmp_cfg_dir())
 
     def last_is(colour: "tuple[int, int, int]") -> "Callable[[], bool]":
@@ -118,9 +105,23 @@ class _FlashSleeps:
         asyncio.sleep, asyncio.sleep_ms = self._real
 
 
-async def _yields(count: int) -> None:
-    for _ in range(count):
-        await asyncio.sleep(0)
+def _a_device_with_a_neopixel() -> str:
+    # The device comes from the generated wiring plans, chosen by its neopixel instance, never by name.
+    require_fresh()
+    for name in sorted(os.listdir("build/generated_src")):
+        if name.endswith("_wiring_plan.json"):
+            with open("build/generated_src/" + name) as f:
+                plan = json.load(f)
+            if "neopixel" in plan["instances"]:
+                return str(plan["device"])
+    raise AssertionError("no generated device declares a neopixel instance")
+
+
+def _blocked_dir() -> str:
+    # A config path whose WIFI file is a directory: the store's setup() fails, as with no readable Wi-Fi configuration.
+    path = _tmp_cfg_dir()
+    os.mkdir(path + "config_WIFI.cfg")
+    return path
 
 
 def _frames(pixel: NeopixelDriver, start: int) -> "list[tuple[int, ...]]":
@@ -132,15 +133,25 @@ def _frames(pixel: NeopixelDriver, start: int) -> "list[tuple[int, ...]]":
     return frames
 
 
+def _hotspot_conn(pixel: NeopixelDriver) -> WifiService:
+    conn = WifiService(WifiConfig("SensorNode", "12345678", 5, 5), ext_led=pixel, cfg_path=_tmp_cfg_dir())
+    run(conn.setup())
+    return conn
+
+
 def _pairs(durations: "list[int]") -> "set[tuple[int, int]]":
     # The (on, off) pairs in ms a flash task slept, starting from its first on phase.
     return {(durations[i], durations[i + 1]) for i in range(0, len(durations) - 1, 2)}
 
 
-def _hotspot_conn(pixel: NeopixelDriver) -> WifiService:
-    conn = WifiService(WifiConfig("SensorNode", "12345678", 5, 5), ext_led=pixel, cfg_path=_tmp_cfg_dir())
-    run(conn.setup())
-    return conn
+async def _run_until(predicate: "Callable[[], bool]", max_yields: int) -> bool:
+    # A bound in yields, not milliseconds: an overlay write follows its flag through three tasks, one turn each
+    # (the flag's waiter, the bounded wait's runner, the overlay task).
+    for _ in range(max_yields):
+        if predicate():
+            return True
+        await asyncio.sleep(0)
+    return predicate()
 
 
 async def _stop_flash(conn: WifiService) -> None:
@@ -153,6 +164,7 @@ async def _stop_flash(conn: WifiService) -> None:
 
 def test_the_hotspot_pattern_blinks_a_real_neopixel_driver_through_the_flash_task() -> None:
     pixel = NeopixelDriver(0)
+    run(pixel.setup())  # the boot batch's setup(), before any task starts
     conn = _hotspot_conn(pixel)
     with _FlashSleeps() as sleeps:
 
@@ -176,6 +188,7 @@ def test_the_hotspot_pattern_blinks_a_real_neopixel_driver_through_the_flash_tas
 
 def test_a_station_on_the_hotspot_swaps_the_real_pixels_pattern_and_its_leaving_restores_it() -> None:
     pixel = NeopixelDriver(0)
+    run(pixel.setup())  # the boot batch's setup(), before any task starts
     conn = _hotspot_conn(pixel)
     with _FlashSleeps() as sleeps:
 
@@ -208,6 +221,7 @@ def test_a_station_on_the_hotspot_swaps_the_real_pixels_pattern_and_its_leaving_
 
 def test_with_the_wifi_led_off_both_hotspot_patterns_leave_the_real_pixel_dark() -> None:
     pixel = NeopixelDriver(0)
+    run(pixel.setup())  # the boot batch's setup(), before any task starts
     conn = _hotspot_conn(pixel)
     with _FlashSleeps():
 
@@ -230,6 +244,7 @@ def test_the_silent_mode_leaves_a_real_neopixel_driver_dark_until_a_link() -> No
     # The second failed streak after a hotspot phase goes silent (owner, 2026-10-08: "It should look like turned off."):
     # the flash task ends and no frame lights the pixel, through a silent attempt's LED calls and LEDWifiOn, until a link.
     pixel = NeopixelDriver(0)
+    run(pixel.setup())  # the boot batch's setup(), before any task starts
     conn = _hotspot_conn(pixel)
     with _FlashSleeps():
 
@@ -266,17 +281,11 @@ def test_the_silent_mode_leaves_a_real_neopixel_driver_dark_until_a_link() -> No
     assert linked == [_ON]  # the link lights the LED as LEDWifiOn says
 
 
-def _blocked_dir() -> str:
-    # A config path whose WIFI file is a directory: the store's setup() fails, as with no readable Wi-Fi configuration.
-    path = _tmp_cfg_dir()
-    os.mkdir(path + "config_WIFI.cfg")
-    return path
-
-
 def test_the_no_configuration_pattern_blinks_a_real_neopixel_driver_and_obeys_led_wifi_on() -> None:
     # Guard: with no readable configuration the connect loop shows its own pattern on the real pixel, a short blink
     # (the hotspot's inverted), dark while LEDWifiOn is off and shown again once it is on (owner, 2026-10-02).
     pixel = NeopixelDriver(0)
+    run(pixel.setup())  # the boot batch's setup(), before any task starts
     conn = WifiService(WifiConfig("SensorNode", "12345678", 5, 5), ext_led=pixel, cfg_path=_blocked_dir())
     assert run(conn.setup()) is False
     with _FlashSleeps(conn) as sleeps:
@@ -309,12 +318,22 @@ def test_the_no_configuration_pattern_blinks_a_real_neopixel_driver_and_obeys_le
     assert _ON in back
 
 
+def _tmp_cfg_dir() -> str:
+    return _scratch.dir()
+
+
 async def _uptime_s() -> int:  # the drop window's clock; no connection is served here
     return 0
 
 
+async def _yields(count: int) -> None:
+    for _ in range(count):
+        await asyncio.sleep(0)
+
+
 def test_a_neopixel_driver_is_an_error_source_of_the_webserver() -> None:
     pixel = NeopixelDriver(0)
+    run(pixel.setup())  # the boot batch's setup(), before any task starts
     app = Microdot()
     routes = RouteSources((), None, None, None, None, None, None, None, (), [pixel])
     serving = ServingLimits(2048, 256, 3, None, 0.2, 0.5, "0.0.0.0", 80)
@@ -345,18 +364,6 @@ def test_a_neopixel_driver_is_an_error_source_of_the_webserver() -> None:
     counter, history = neopixel_entry()
     assert counter == 0
     assert {"num": 1, "type": "E"} not in history
-
-
-def _a_device_with_a_neopixel() -> str:
-    # The device comes from the generated wiring plans, chosen by its neopixel instance, never by name.
-    require_fresh()
-    for name in sorted(os.listdir("build/generated_src")):
-        if name.endswith("_wiring_plan.json"):
-            with open("build/generated_src/" + name) as f:
-                plan = json.load(f)
-            if "neopixel" in plan["instances"]:
-                return str(plan["device"])
-    raise AssertionError("no generated device declares a neopixel instance")
 
 
 def test_the_drivers_empty_timer_list_reaches_a_generated_device() -> None:

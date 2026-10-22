@@ -14,6 +14,7 @@ import time
 sys.path.insert(0, "digital_twin/unixport")  # the Unix-port UDP address shim (SPECIFICATION.md F.7 row 1)
 
 from _async_harness import cancel, cancel_all, run
+from _cancel_sweep import assert_unlocked, cancel_at_each_await
 from _error_codes import code
 from _fake_time import DrivenTime, tick
 from _fake_timer_arm import RaiseOnArm
@@ -117,6 +118,8 @@ _RETRY_ARMED_POLL_TRIES = 300
 
 
 _PORTS = PortAllocator("test_asy_ntp_client")  # this file's band (tests/_port_bands.py)
+# A literal NTPHost, so an attempt resolves without a DNS query.
+_INTEGRATION_CFG = '{"NTPHost": "127.0.0.1", "NTPOffset": 0, "NTPInterval": 12, "GMTOffset": 0, "DSTOffset": 0, "DNSFallback": ""}'
 
 
 def _against_responder(client: NTPClient, responder: NtpResponder, modes: "list[str]") -> "list[_Seen]":
@@ -295,8 +298,7 @@ def _make_client_with_json(json_text: str) -> NTPClient:
 
 
 def _make_integration_client() -> NTPClient:
-    json_text = '{"NTPHost": "127.0.0.1", "NTPOffset": 0, "NTPInterval": 12, "GMTOffset": 0, "DSTOffset": 0, "DNSFallback": ""}'
-    return _make_client_with_json(json_text)
+    return _make_client_with_json(_INTEGRATION_CFG)
 
 
 def _make_invalid_cfg_client() -> NTPClient:
@@ -1000,6 +1002,44 @@ def test_a_forced_resync_reports_unsynced_until_the_next_success() -> None:
         asy_base_classes.set_utc_valid(valid=False)
 
 
+def test_the_clock_turns_valid_at_a_successful_sync() -> None:
+    # ntp_clock_valid() is the gate UTCTime and the VOC backups read: unset until a sync this boot.
+    client = _make_client()
+
+    async def scenario() -> "list[bool]":
+        seen = [await client.ntp_clock_valid()]
+        await client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0))
+        seen.append(await client.ntp_clock_valid())
+        return seen
+
+    try:
+        assert run(scenario()) == [False, True]
+    finally:
+        asy_base_classes.set_utc_valid(valid=False)
+
+
+def test_a_settings_change_unsets_the_clock_until_the_next_sync() -> None:
+    # ntp_force_sync() clears it together with Synced; the next success sets both again.
+    client = _make_client()
+
+    async def state() -> "tuple[bool, bool]":
+        return await client.ntp_issynced(), await client.ntp_clock_valid()
+
+    async def scenario() -> "list[tuple[bool, bool]]":
+        await client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0))
+        seen = [await state()]
+        await client.ntp_force_sync()
+        seen.append(await state())
+        await client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0))
+        seen.append(await state())
+        return seen
+
+    try:
+        assert run(scenario()) == [(True, True), (False, False), (True, True)]
+    finally:
+        asy_base_classes.set_utc_valid(valid=False)
+
+
 # ---------------------------------------------------------------------------
 # Configuration: every valid field, plus single/multiple invalid recombinations from a real
 # on-disk config_NTP.cfg, through the real ConfigManager this client owns - proving this module's
@@ -1280,18 +1320,34 @@ class _FakeUDPSocket:
         if self.script.park is not None:
             self.script.parked.set()
             await self.script.park.wait()
+        if self.script.gate_ms:
+            await _SOCKET_CLOCK.asyncio.sleep_ms(self.script.gate_ms)
         return self.script.reply, (None if self.script.reply is None else self.addr)
 
     async def write(self, msg: "bytes | bytearray", timeout_ms: int = -1) -> "int | None":
         self.calls.append(("write", len(msg), timeout_ms))
         self.script.requests.append(msg)  # the object itself: the test checks which one was sent
+        if self.script.gate_ms:
+            await _SOCKET_CLOCK.asyncio.sleep_ms(self.script.gate_ms)
         return self.script.sent
 
 
+class _Clocked:
+    # A module stand-in for the fake socket's waits: a DrivenTime with sleeps replaces its `time` and `asyncio`.
+    def __init__(self) -> None:
+        self.time = time
+        self.asyncio = asyncio
+
+
+_SOCKET_CLOCK = _Clocked()  # the real modules, but inside a cancel sweep's block
+
+
 class _SocketScript:
-    # What every _FakeUDPSocket it makes answers; its make() replaces asy_ntp_client.UDPSocket.
-    def __init__(self, *, sent: "int | None" = 48, reply: "bytes | None" = None, teardown_ok: bool = True, park: bool = False) -> None:
+    # What every _FakeUDPSocket it makes answers; its make() replaces asy_ntp_client.UDPSocket. `gate_ms`: each send and
+    # receive first waits that long on _SOCKET_CLOCK.
+    def __init__(self, *, sent: "int | None" = 48, reply: "bytes | None" = None, teardown_ok: bool = True, park: bool = False, gate_ms: int = 0) -> None:
         self.sent, self.reply, self.teardown_ok = sent, reply, teardown_ok
+        self.gate_ms = gate_ms
         self.park = asyncio.Event() if park else None
         self.parked = asyncio.Event()
         self.sockets: list[_FakeUDPSocket] = []
@@ -1850,21 +1906,23 @@ _STALE_AFTER_S = _ASYNC_INTERVALS * 3600  # NTPInterval 1 h
 
 
 def test_refresh_marks_the_sync_stale_three_intervals_after_the_last_success() -> None:
+    # Staleness clears only Synced: UTCTime and the VOC backups keep the clock this boot's sync set.
     with _SteppedClock() as clock:
         client = _hourly_client()
 
-        async def scenario() -> "list[tuple[int, bool]]":
+        async def scenario() -> "tuple[list[tuple[int, bool]], bool]":
             await client._handle_ntp_sync_success(_TM)
             task = asyncio.create_task(client._refresh_loop())
             seen = await _drive_refresh(client, clock, _STALE_AFTER_S // _CHECK_INTERVAL_S + 1)
             await cancel(task)
-            return seen
+            return seen, await client.ntp_clock_valid()
 
         try:
-            changes = run(scenario())
+            changes, valid = run(scenario())
         finally:
             asy_base_classes.set_utc_valid(valid=False)
     assert changes == [(_CHECK_INTERVAL_S, True), (_STALE_AFTER_S, False)]  # synced until the age reaches 3 h, not before
+    assert valid is True  # the clock stays valid through the stale sync
 
 
 def test_ntp_goes_stale_when_every_due_resync_fails() -> None:
@@ -2523,6 +2581,60 @@ def test_asy_ntp_time_releases_the_wifi_lock_even_if_the_attempt_raises() -> Non
     assert run(scenario())
 
 
+class _SweptSync:
+    # One sweep count's fixture: a fresh client over the shared config, its trigger set, and the fake sockets it opens.
+    def __init__(self, client: NTPClient, script: _SocketScript) -> None:
+        self.client = client
+        self.script = script
+
+
+def test_the_sync_task_survives_a_cancel_at_every_await() -> None:
+    # The real _sync_loop() and attempt over the fake socket, its send and receive each a driven 5 ms wait; cancelled at
+    # each 1 ms turn, through the sync and into the next trigger wait, every lock is free and every socket torn down.
+    cfg_path = _tmp_cfg_dir()
+    with open(cfg_path + "config_NTP.cfg", "w") as f:
+        f.write(_INTEGRATION_CFG)  # written once: each count's client only reads it
+    reply = make_ntp_reply(int(time.time()))
+    built: list[_SweptSync] = []
+    phases: list[tuple[int, bool]] = []
+
+    async def build() -> _SweptSync:
+        client = NTPClient(asyncio.Lock(), lambda: True, lambda: None, _timing(), cfg_path=cfg_path)
+        await client.setup()
+        client._ntp_sync_trigger_event.set()
+        built.append(_SweptSync(client, _SocketScript(reply=reply, gate_ms=5)))
+        return built[-1]
+
+    async def start(swept: _SweptSync) -> None:
+        await swept.client._sync_loop()
+
+    def invariants(swept: _SweptSync) -> None:
+        client = swept.client
+        assert_unlocked(wifi_mode_lock=client.wifi_mode_lock, data_lock=client._data_lock, config_lock=client.cfgmgr._config_lock)
+        left = [sock for sock in swept.script.sockets if not sock.disconnected]
+        assert not left, f"{len(left)} socket(s) left open"
+        data = client._datastruct
+        assert isinstance(data, ntpmod.NTP)
+        phase = (sum(len(sock.calls) for sock in swept.script.sockets), data.Synced)
+        if not phases or phases[-1] != phase:
+            phases.append(phase)
+
+    def make(addr: "tuple[str, int]", mode: str = "client") -> _FakeUDPSocket:
+        return built[-1].script.make(addr, mode)
+
+    original = ntpmod.UDPSocket
+    ntpmod.UDPSocket = make  # type: ignore[assignment, misc]
+    try:
+        with DrivenTime(_SOCKET_CLOCK, sleeps=True) as clock:
+            counts = cancel_at_each_await(build, start, invariants, max_steps=16, turn=lambda: clock.elapse(1), endless=True)
+            assert clock.wakes() == [], clock.wakes()
+    finally:
+        ntpmod.UDPSocket = original  # type: ignore[misc]
+        asy_base_classes.set_utc_valid(valid=False)  # the sync this sweep completes sets the process-wide flag
+    assert counts == len(built) == 16
+    assert phases == [(0, False), (1, False), (2, False), (2, True)], phases  # before the socket, in each wait, after the sync
+
+
 def test_setup_initialises_the_logger_before_any_task() -> None:
     # The boot batch's setup() readies the logger; the sync task never sets it up itself (SPECIFICATION.md A.7).
     client = NTPClient(asyncio.Lock(), lambda: True, lambda: None, _timing(), cfg_path=_tmp_cfg_dir())
@@ -2718,9 +2830,8 @@ def test_integration_full_task_reaches_synced_state_on_a_real_successful_reply()
         try:
             with redirect_udp_port(ntpmod, 123, server.port):
                 task = asyncio.create_task(client._sync_loop())
-                server_task = asyncio.create_task(server.serve_once(reply))
                 client._ntp_sync_trigger_event.set()
-                await asyncio.wait_for(server_task, 5)
+                assert await server.serve_once(reply) is True
                 for _ in range(_SYNCED_POLL_TRIES):
                     if await client.ntp_issynced():
                         break
@@ -2770,9 +2881,8 @@ def test_integration_full_task_stays_not_synced_on_a_malformed_reply() -> None:
         try:
             with redirect_udp_port(ntpmod, 123, server.port):
                 task = asyncio.create_task(client._sync_loop())
-                server_task = asyncio.create_task(server.serve_once(garbage_reply))
                 client._ntp_sync_trigger_event.set()
-                await asyncio.wait_for(server_task, 5)
+                assert await server.serve_once(garbage_reply) is True
                 await asyncio.sleep(_REPLY_PROCESS_S)
                 synced = await client.ntp_issynced()
                 task.cancel()
@@ -2809,13 +2919,12 @@ def test_integration_recovers_on_retry_after_one_dropped_request() -> None:
             with redirect_udp_port(ntpmod, 123, server.port):
                 task = asyncio.create_task(client._sync_loop())
                 client._ntp_sync_trigger_event.set()
-                first_reply_task = asyncio.create_task(server.serve_once(reply))
-                await asyncio.wait_for(first_reply_task, 5)
+                assert await server.serve_once(reply) is True
                 await _wait_synced(target=True)
                 assert await client.ntp_issynced() is True  # confirmed synced once via a real round trip
 
                 client._ntp_sync_trigger_event.set()  # the due resync's trigger: Synced stays set
-                await server.serve_once(None)  # drop it entirely
+                assert await server.serve_once(None) is True  # taken and dropped entirely
                 for _ in range(_RETRY_ARMED_POLL_TRIES):  # wait for the real fetch timeout to elapse and arm a retry
                     if client._ntp_retry_timer.callback is not None:
                         break
@@ -2823,8 +2932,7 @@ def test_integration_recovers_on_retry_after_one_dropped_request() -> None:
                 assert client._ntp_retry_timer.callback is not None  # retry genuinely armed this time
 
                 client._ntp_retry_timer.trigger()  # fire the scheduled retry immediately, not after 15s
-                second_reply_task = asyncio.create_task(server.serve_once(reply))
-                await asyncio.wait_for(second_reply_task, 5)
+                assert await server.serve_once(reply) is True
                 await _wait_synced(target=True)
                 synced = await client.ntp_issynced()
                 task.cancel()
@@ -3085,9 +3193,8 @@ def test_integration_self_heals_after_an_outage_through_the_real_task_and_socket
             with redirect_udp_port(ntpmod, 123, server.port):
                 task = asyncio.create_task(client._sync_loop())
                 for answer in (None, None, None, reply):
-                    served = asyncio.create_task(server.serve_once(answer))
                     client._ntp_sync_trigger_event.set()
-                    await asyncio.wait_for(served, 5)
+                    assert await server.serve_once(answer) is True
                     await asyncio.sleep_ms(_PAST_FETCH_TIMEOUT_MS)  # past the 100ms fetch timeout either way
                 still_running = not task.done()
                 task.cancel()
@@ -3118,7 +3225,7 @@ def test_integration_a_successful_exchange_persists_nothing() -> None:
                 served = asyncio.create_task(server.serve_once(reply))
                 # 123 is a const() in the product, not a module attribute; the redirect maps it.
                 assert await client._fetch_ntp_reply(("127.0.0.1", 123)) is not None
-                await asyncio.wait_for(served, 5)
+                assert await served is True
                 return await client.get_error_counter()
         finally:
             server.close()

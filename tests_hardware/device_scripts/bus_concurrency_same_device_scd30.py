@@ -1,6 +1,7 @@
 """Isolated-driver device script: the SCD30 device-session lock serialises two concurrent multi-transaction sequences
 against the same device (real-hardware counterpart to SPECIFICATION.md Part C.8). Both paths are CRC-8 protected, so
-interleaving corruption trips a CRC or NAK rather than succeeding silently. Reports facts; the host gives the verdict."""
+interleaving corruption trips a CRC or NAK rather than succeeding silently. Reports facts; the host gives the verdict.
+"""
 
 import asyncio
 

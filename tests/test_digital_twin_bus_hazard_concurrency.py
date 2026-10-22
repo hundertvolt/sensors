@@ -24,6 +24,7 @@ from _async_harness import cancel, run_timed  # noqa: E402 - imported after the 
 from _crc8 import crc8  # noqa: E402 - imported after the prewarm and the UDP shim; the twin's own CRC-8, independent of src/
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
+from _fake_time import DrivenTime  # noqa: E402 - imported after the prewarm and the UDP shim
 from _fast_sleep import FastAsyncSleep  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -33,6 +34,7 @@ from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm a
 from _twin_devices import device_with, devices_with_shared_bus, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
 
 import asy_i2c_driver  # noqa: E402 - imported after the prewarm and the UDP shim
+import asy_wifi_service  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_crc_checks import CRC8  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_isl29125_driver import ISL29125_I2C, ISL29125_Reader  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_scd30_driver import SCD30_I2C  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -50,9 +52,10 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from types import ModuleType
-    from typing import Any, TypeVar
+    from typing import TypeVar
 
     from _fram_chip import FRAMChip
+    from _scd30_chip import SCD30Chip
     from _twin_common import BoundedLog
     from _twin_devices import I2CAttachment, TwinWiringPlan
     from launch import _Plan
@@ -91,8 +94,11 @@ _SEED = bytes(range(5, 45))  # 40 bytes: over rp2's 32-byte DMA threshold, the o
 _DROPPED_WRENS = 8  # more WRENs than one write's retry sends: the write fails rather than recovering inside the driver
 _RUNG_OFFSETS = 6  # as many offsets as each loop has reads, the recovery case's own count
 _CANCEL_TURNS = 40  # scheduler turns into the SGP40's setup and measurement, which end well before
+_HOLD_SCD30_CYCLES = 3  # whole SCD30 cycles of real bus load the driven 60 s retry is held open for
 _POLL_S = 0.1  # how often the ladder runs and the command waits look again
 _ERASE_UNIT: int = src_int("src/asy_fram_manager.py", "_ERASE_UNIT")
+_STA_RETRY_S: int = src_int("src/asy_wifi_service.py", "_STA_RETRY_AFTER_LOSS_S")
+_STA_ESTABLISHED: int = src_int("src/asy_wifi_service.py", "_PHASE_STA_ESTABLISHED")
 _ERASE_US_PER_BYTE = 8  # the erase's real wire time at the 1 MHz bus (asy_fram_manager.py's _ERASE_UNIT comment)
 _GENERAL_CALL_ENTRY = ("writeto", 0x00, b"\x06", True)
 # Which get_data() field, per driver, proves that driver produced a real reading under load - the twin tier's much
@@ -109,6 +115,19 @@ _scratch = TmpScratch("dtbh")
 _ports = PortAllocator("test_digital_twin_bus_hazard_concurrency")
 microtest.after_each(machine.reset_test_state)
 microtest.after_each(network.reset_test_state)
+
+
+class _RetryOnDrivenClock:
+    # asy_wifi_service's asyncio with only the 60 s loss retry's sleep on a driven clock (tests/_fake_time.py): every other
+    # sleep, the connect polls and the loop's refresh among them, stays real, as do the bus load and the task graph.
+    def __init__(self, clock: DrivenTime) -> None:
+        self._clock = clock
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(asyncio, name)
+
+    def sleep(self, seconds: float) -> "Coroutine[object, object, None]":
+        return self._clock._sleep_ms(int(seconds * 1000)) if seconds == _STA_RETRY_S else asyncio.sleep(seconds)  # as core.sleep() hands it on
 
 
 async def _armed(sysfunct: "SystemService") -> None:
@@ -207,7 +226,7 @@ async def _ladder_run(device: str, faults: "dict[int, str]", until_recoveries: i
         for name in calls:
             real = getattr(bus, name)
 
-            async def counted(real: "Callable[[], Coroutine[Any, Any, int]]" = real, name: str = name) -> int:
+            async def counted(real: "Callable[[], Coroutine[object, object, int]]" = real, name: str = name) -> int:
                 calls[name] += 1
                 return await real()
 
@@ -290,7 +309,7 @@ async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", watchdog
         await _cancel_started_tasks(module)
 
 
-def _rung_across_offsets(device: str, bus_name: str, siblings: "tuple[str, ...]", rung: "Callable[[asy_i2c_driver.I2C], Coroutine[Any, Any, object]]", check: "Callable[[asy_i2c_driver.I2C], None]") -> None:
+def _rung_across_offsets(device: str, bus_name: str, siblings: "tuple[str, ...]", rung: "Callable[[asy_i2c_driver.I2C], Coroutine[object, object, object]]", check: "Callable[[asy_i2c_driver.I2C], None]") -> None:
     for offset in range(_RUNG_OFFSETS):
         failures: list[str] = []
         built: list[asy_i2c_driver.I2C] = []
@@ -310,6 +329,18 @@ def _rung_across_offsets(device: str, bus_name: str, siblings: "tuple[str, ...]"
             run_timed(scenario(), timeout_s=_RUN_BOUND_S)
         assert not failures, f"{device} offset {offset}: a sibling read failed beside the rung: {failures}"
         check(built[0])
+
+
+async def _scd30_cycle(chip: "SCD30Chip", count: int = 1) -> None:
+    # Returns once the twin SCD30 has produced `count` readings inside the wait and the driver has read each out, each
+    # within the four feed intervals the healthy window used to sleep: pending one read out first, then a new one made and read.
+    for _ in range(count):
+        waited = 0.0
+        for ready in (False, True, False):
+            while chip._data_ready is not ready:
+                assert waited < _WDT_FEED_INTERVAL_S * 4, "no whole SCD30 measurement cycle inside the healthy window"
+                await asyncio.sleep(_POLL_S)
+                waited += _POLL_S
 
 
 def _sgp40_measure_command(temperature: int, relative_humidity: int) -> bytes:
@@ -332,7 +363,7 @@ def _shared_bus(device: str, bus_name: str) -> "asy_i2c_driver.I2C":
     return asy_i2c_driver.I2C(int(bus_name[3:]), pins["scl"], pins["sda"], frequency=50000, timeout=200000)  # type: ignore[typeddict-item]  # an I2C bus's pins
 
 
-def _sibling_read(device: str, sibling: str, bus: "asy_i2c_driver.I2C") -> "Callable[[], Coroutine[Any, Any, object]]":
+def _sibling_read(device: str, sibling: str, bus: "asy_i2c_driver.I2C") -> "Callable[[], Coroutine[object, object, object]]":
     # One read of `sibling` through a protocol instance of its own: None for a failed one, a BMP3XX's a wrong chip ID.
     if sibling == "bmp3xx":
         address = next(a["address"] for attachments in wiring_plan(device)["buses"].values() for a in attachments if a["driver"] == sibling)
@@ -343,7 +374,7 @@ def _sibling_read(device: str, sibling: str, bus: "asy_i2c_driver.I2C") -> "Call
             return raw[0] if raw is not None and raw[0] in (0x50, 0x60) else None
 
         return chip_id
-    reads: dict[str, Callable[[], Coroutine[Any, Any, object]]] = {
+    reads: dict[str, Callable[[], Coroutine[object, object, object]]] = {
         "scd30": SCD30_I2C(bus).get_measurement_interval,
         "sgp40": SGP40_I2C(bus).measure_raw,
         "isl29125": ISL29125_I2C(bus).read_counts,
@@ -475,9 +506,11 @@ def test_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun() -> None:
 
 def test_the_system_survives_concurrent_bus_load_and_a_real_established_wifi_disconnect() -> None:
     # Recombination test (owner, 2026-09-04, paraphrase): the fully wired system tolerates a genuine 60 s wifi_mode_lock
-    # hold (the real ESTABLISHED-branch retry) while concurrent bus load is in flight, on the first shared-bus device;
-    # its ~75 s are unavoidable (see _wait_established_then_flap_once()).
-    device = _SHARED[0][0]
+    # hold (the real ESTABLISHED-branch retry) under concurrent bus load, on the first shared-bus device. The retry waits
+    # outside the lock; a forced failed reconnect runs it, its sleep driven over real SCD30 cycles (agent, 2026-10-21).
+    device, bus_name = _SHARED[0][0], _SHARED[0][1]
+    scd30s = [a["address"] for a in wiring_plan(device)["buses"][bus_name] if a["driver"] == "scd30"]
+    assert scd30s, f"{device}: no SCD30 on {bus_name} to count the retry's real bus cycles by"
 
     async def scenario() -> None:
         module, watchdog = await _boot(device, port=_ports.next())
@@ -486,11 +519,18 @@ def test_the_system_survives_concurrent_bus_load_and_a_real_established_wifi_dis
         assert persisted
 
         feeder = asyncio.get_event_loop().create_task(_feed_watchdog_periodically(watchdog))
-        flap_task = asyncio.get_event_loop().create_task(_wait_established_then_flap_once(module.conn))
+        bus = getattr(module, bus_name)._i2c
+        flap_task = asyncio.get_event_loop().create_task(_wait_established_then_flap_once(module.conn, bus.devices[scd30s[0]], bus.log))
         try:
             await module.sysfunct.start_tasks(module._collect_task_starters(), task_names=module._collect_task_names())
             await module.sysfunct.start_timers(module._collect_trigger_starters(), module._collect_timer_starters())
-            await asyncio.sleep(_FLAP_WINDOW_S)
+            try:  # the reconnect ends the window, never later than its old fixed length
+                retry_ms, bus_work, held, polls = await asyncio.wait_for(flap_task, _FLAP_WINDOW_S)
+            except asyncio.TimeoutError:
+                raise AssertionError("WiFi never recovered from the real established-connection disconnect after its 60 s retry") from None
+            assert retry_ms == _STA_RETRY_S * 1000, f"{device}: the link was back after a {retry_ms} ms retry on the driven clock: the {_STA_RETRY_S} s retry never ran"
+            assert bus_work > 0, f"{device}: no {bus_name} transaction during the {_STA_RETRY_S} s retry"
+            assert held * 2 < polls, f"{device}: wifi_mode_lock held through {held} polls in a row of the {polls} the {_STA_RETRY_S} s retry was open"
             assert watchdog.would_have_triggered_count == 0
             # Not _run_real_task_graph_and_assert_healthy(): its bus-log window check assumes a short run, and at this
             # length the bounded log wraps under ordinary traffic. The per-occupant health check is the same.
@@ -931,15 +971,40 @@ async def _w15(*readers: "SensorReader") -> int:
     return total
 
 
-async def _wait_established_then_flap_once(conn: "WifiService") -> None:
-    # A single disconnect, not repeated flapping: the ESTABLISHED retry branch is a genuine, non-fast-
-    # forwardable 60s sleep (Part E.5.1), so repeated flapping is not CI-time-reasonable here.
-    # tests_hardware/bench/test_network_resilience.py covers that on real hardware instead.
-    while not conn._wlan.isconnected():
+async def _wait_established_then_flap_once(conn: "WifiService", chip: "SCD30Chip", bus_log: "BoundedLog[tuple[object, ...]]") -> "tuple[int, int, int, int]":
+    # One loss of the ESTABLISHED link, its reconnect scripted to fail so the 60 s retry runs (Part E.5.1), parked on a
+    # driven clock for _HOLD_SCD30_CYCLES real SCD30 cycles, then advanced by exactly its length.
+    #
+    # Returns that length, the bus log's growth and wifi_mode_lock's longest held run while it was open, and the polls;
+    # real hardware: test_network_resilience.py.
+    while not (conn._wlan.isconnected() and conn._conn_phase == _STA_ESTABLISHED):  # the service's phase, not just the link
         await asyncio.sleep(_ESTABLISHED_POLL_S)
-    conn._wlan.disconnect()
-    while not conn._wlan.isconnected():
-        await asyncio.sleep(_RECONNECT_POLL_S)
+    clock, cycles = DrivenTime(), None
+    asy_wifi_service.asyncio = _RetryOnDrivenClock(clock)  # type: ignore[assignment, attr-defined]  # a module attribute swap, restored below
+    try:
+        conn._wlan.script_connect_outcomes([network.STAT_CONNECT_FAIL])
+        conn._wlan.disconnect()
+        while not clock.wakes():  # the failed reconnect not yet judged: the retry parks next
+            if conn._wlan.isconnected() and not conn._wlan._scripted_outcomes:
+                return 0, 0, 0, 0  # back without any retry
+            await asyncio.sleep(_RECONNECT_POLL_S)
+        logged, run, longest, polls = len(bus_log) + bus_log.dropped, 0, 0, 0
+        cycles = asyncio.get_event_loop().create_task(_scd30_cycle(chip, _HOLD_SCD30_CYCLES))
+        while not cycles.done():
+            run = run + 1 if conn.wifi_mode_lock.locked() else 0
+            longest, polls = max(longest, run), polls + 1
+            await asyncio.sleep(_RECONNECT_POLL_S)
+        await cycles  # its own bound's failure, if it had one
+        bus_work, retry_ms = len(bus_log) + bus_log.dropped - logged, clock.wakes()[0] - clock.now
+        clock.advance(retry_ms)
+        while not conn._wlan.isconnected():
+            assert not clock.wakes(), "the retry parked again after its 60 s: it never ended"
+            await asyncio.sleep(_RECONNECT_POLL_S)
+        return retry_ms, bus_work, longest, polls
+    finally:
+        asy_wifi_service.asyncio = asyncio  # type: ignore[attr-defined]  # the swap restored
+        if cycles is not None:
+            await cancel(cycles)
 
 
 def test_the_erase_racing_a_logger_write_never_tears_a_chunk() -> None:
@@ -1016,9 +1081,9 @@ def test_no_scd30_write_reaches_the_chip_while_a_system_command_runs() -> None:
             body[name] = True if kind == "bool" else (low + 1.0 if kind == "float" else low + 1)
         supervisor = await _supervised_graph(module)
         try:
-            if word == words[0]:  # once: the healthy window, every SCD30 cycle writing no NVM at all
+            if word == words[0]:  # once: the healthy window, a whole SCD30 cycle writing no NVM at all
                 writes = chip.nvm_writes
-                await asyncio.sleep(_WDT_FEED_INTERVAL_S * 4)
+                await _scd30_cycle(chip)
                 assert chip.nvm_writes == writes, f"{device}: the SCD30 wrote its NVM in an ordinary cycle"
             _keep_evidence(_chip(module), "fram_before_" + word + ".bin")
             writes = chip.nvm_writes

@@ -192,6 +192,7 @@ class NTPClient(SensorReaderConfig):
         self._ntp_sec_count = 0
         self._ntp_retries = 0
         self._sync_age = TickSeconds()
+        self._clock_valid = False  # ntp_clock_valid(): set by each successful sync, unset by a settings change
         self._ntp_sync_trigger_event = asyncio.ThreadSafeFlag()
         self._ntp_timer_trigger_event = asyncio.ThreadSafeFlag()
         self._time_counter_trigger_event = asyncio.ThreadSafeFlag()
@@ -295,6 +296,7 @@ class NTPClient(SensorReaderConfig):
 
     async def _handle_ntp_sync_success(self, tm: tuple[int, ...]) -> None:
         set_utc_valid()  # the RTC was just set (_parse_ntp_reply()): every later utc_now() is a real time
+        self._clock_valid = True
         self._ntp_retry_timer.deinit()
         self._ntp_retries = 0
         self._reset_backoff()
@@ -365,8 +367,9 @@ class NTPClient(SensorReaderConfig):
                 await self.pr.err_s("Missing NTP configuration, defaulting interval to 12h!", errno=_ERR_CFG_READ)
 
             if await self.ntp_issynced():
-                # Stale once the last success is _NTP_ASYNC_INTERV intervals old; a failed due resync resets only the due cadence, never this age
-                # (agent, 2026-09-27; owner-reviewed, 2026-10-02; legacy's intent, legacy/firmware/python/CommonDrivers/async_connect.py:450-461).
+                # Stale once the last success is _NTP_ASYNC_INTERV intervals old; a failed due resync resets only the due cadence, never
+                # this age (agent, 2026-09-27; owner-reviewed, 2026-10-02; legacy's intent,
+                # legacy/firmware/python/CommonDrivers/async_connect.py:450-461).
                 if self._sync_age.read() >= _NTP_ASYNC_INTERV * ntp_interv[0] * 3600:
                     await self._set_synced(value=False)
                 else:
@@ -548,10 +551,16 @@ class NTPClient(SensorReaderConfig):
             return GMTimeStruct(*cet)
         return None
 
+    async def ntp_clock_valid(self) -> bool:
+        # The clock UTCTime and the VOC backups read: set by each successful sync, unset only by a settings change
+        # (ntp_force_sync()). Staleness clears Synced alone, so a clock set this boot stays in use through it.
+        return self._clock_valid
+
     async def ntp_force_sync(self) -> None:
         # A settings change clears Synced, as legacy did: nothing runs on a sync taken under the old settings (owner, 2026-09-29).
         data = await self.get_data()
         await self._set_meas_data(NTP(Synced=False, LastSyncAge=None, TS=data.TS))
+        self._clock_valid = False  # UTCTime and the VOC backups wait for the next sync too
         self._ntp_retry_timer.deinit()
         self._ntp_retries = 0
         self._reset_backoff()  # an operator's resync must not wait out a long backoff step

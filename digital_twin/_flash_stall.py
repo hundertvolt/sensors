@@ -1,5 +1,5 @@
-"""Models a flash write on the twin: rp2 programs its flash with interrupts off (ports/rp2/rp2_flash.c:168-174, v1.29.0),
-so a config flush holds the whole loop for the chip's erase and program time; installed from outside src/, as
+"""Models a flash write on the twin: rp2 programs its flash with interrupts off (ports/rp2/rp2_flash.c:168-174,
+v1.29.0), so a config flush holds the whole loop for the chip's erase and program time; installed from outside src/, as
 _wall_clock.py is."""
 
 import time as _time
@@ -14,6 +14,8 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from typing import IO
 
+    from _mpy_shed.time_mp import _TicksMs, _TicksUs
+
 # W25Q16JV AC timing, typical then maximum (datasheets/pico w/Winbond_W25Q16JV_Datasheet_RevF.pdf, AC Electrical
 # Characteristics): tSE, one 4 KB sector erase, and tPP, one 256-byte page program.
 _SECTOR_ERASE_US = (45_000, 400_000)
@@ -27,10 +29,15 @@ use_max = False  # twin-only test knob: each operation at its datasheet maximum
 stalls = 0
 stalled_ms = 0
 longest_ms = 0
-# The interrupts-off windows the stalls left, (start, end) in microseconds since EPOCH_US, newest last: the twin UART
-# routes a byte whose wire time ends inside one past its RX interrupt (machine.UARTLink._advance()). CPython, which
-# imports this through machine for the host tests, has no ticks clock and never reads the epoch.
-EPOCH_US = _time.ticks_us() if hasattr(_time, "ticks_us") else 0
+# A gap between two clock readings up to this is taken from ticks_us(), a longer one from ticks_ms(): 2**28 us keeps the
+# us reading well inside ticks_diff()'s 2**29 reach on a 2**30-period build.
+_US_GAP_MAX_MS = (1 << 28) // 1000
+# The twin's plain clock (plain_us()), microseconds that never wrap: its last reading and the sum so far. CPython, which
+# imports this through machine for the host tests, has no ticks clock and never reads it.
+_last_us, _last_ms = (_time.ticks_us(), _time.ticks_ms()) if hasattr(_time, "ticks_us") else (0, 0)
+_plain_us = 0
+# The interrupts-off windows the stalls left, (start, length) on the plain clock, newest last: machine.UARTLink, whose
+# wire time is read off the same clock, routes a byte due inside one past its RX interrupt.
 windows: "BoundedLog[tuple[int, int]]" = BoundedLog(16)
 
 
@@ -75,8 +82,19 @@ def install(module: object) -> None:
 
 
 def irqs_were_off(at_us: int) -> bool:
-    # Whether `at_us` (microseconds since EPOCH_US) fell inside a stall's interrupts-off window.
-    return any(start <= at_us < end for start, end in windows)
+    # Whether `at_us`, on the plain clock, fell inside a stall's interrupts-off window: neither wraps, so a window holds
+    # past any tick wrap and a time one whole tick period on misses it.
+    return any(start <= at_us < start + length for start, length in windows)
+
+
+def plain_us(us: "_TicksUs | int", ms: "_TicksMs | int") -> int:
+    # A ticks_us() and ticks_ms() reading of this module's clock in plain microseconds: the sum moves on from the last
+    # reading by the us ones across a gap up to _US_GAP_MAX_MS, by the ms ones across a longer one.
+    global _last_us, _last_ms, _plain_us
+    gap_ms = _time.ticks_diff(ms, _last_ms)
+    _plain_us += _time.ticks_diff(us, _last_us) if gap_ms <= _US_GAP_MAX_MS else gap_ms * 1000
+    _last_us, _last_ms = us, ms
+    return _plain_us
 
 
 def reset_test_state() -> None:
@@ -88,14 +106,20 @@ def reset_test_state() -> None:
     windows.clear()
 
 
+def restart(us: "_TicksUs | int", ms: "_TicksMs | int") -> None:
+    # Test-only: the plain clock reads zero at the reading (us, ms), for a test that runs the twin on its own clock.
+    global _last_us, _last_ms, _plain_us
+    _last_us, _last_ms, _plain_us = us, ms, 0
+
+
 def stall(nbytes: int) -> None:
     # Busy-waits the flush's time, nothing else running, and leaves its window to the UART model.
     global stalls, stalled_ms, longest_ms
     us = flush_us(nbytes)
-    start = _time.ticks_us()
+    start, start_ms = _time.ticks_us(), _time.ticks_ms()
     while _time.ticks_diff(_time.ticks_us(), start) < us:
         pass
-    windows.append((_time.ticks_diff(start, EPOCH_US), _time.ticks_diff(_time.ticks_us(), EPOCH_US)))
+    windows.append((plain_us(start, start_ms), _time.ticks_diff(_time.ticks_us(), start)))
     ms = us // 1000
     stalls = saturating_add(stalls)
     stalled_ms = saturating_add(stalled_ms, ms)

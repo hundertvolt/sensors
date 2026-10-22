@@ -55,7 +55,7 @@ class _CountingLevel:
 
 async def _count_rounds(wdt: "machine.WDT", bus: "BusFacts", idle_ms: int) -> "tuple[bool, int, bool]":
     # The responder's UART alone: nothing drives the other end, so the line is genuinely silent and the listener
-    # parks in the one deadline-less wait this protocol issues. The third value: the listener outlived comm.clear().
+    # parks in the one deadline-less wait this protocol issues. The third value: the listener outlived clear()'s resync.
     gc.collect()
     uart = asy_uart_driver.UART(
         bus["id"], bus["tx_pin"], bus["rx_pin"], baudrate=bus["baudrate"], rxbuf=bus["rxbuf"], txbuf=bus["txbuf"], rx_ring=bus["rx_ring"],
@@ -71,7 +71,8 @@ async def _count_rounds(wdt: "machine.WDT", bus: "BusFacts", idle_ms: int) -> "t
     await fed_sleep_ms(wdt, _SAMPLE_MS)
     rounds = counter.rounds
     await comm.clear()
-    outlived = not await _until(wdt, listener.done, _CANCEL_SETTLE_MS)
+    # The cancelled listen resyncs (J.5: drain until quiet), so it ends one quiet window after clear(), not at once.
+    outlived = not await _until(wdt, listener.done, comm._resync_window_ms() + _CANCEL_SETTLE_MS)
     if outlived:
         listener.cancel()
         await _until(wdt, listener.done, _CANCEL_SETTLE_MS)

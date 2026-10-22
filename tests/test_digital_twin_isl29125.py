@@ -1,5 +1,8 @@
-"""Deterministic unit tests for digital_twin/_isl29125_chip.py's own transaction-response logic - matches the register-addressed shape src/asy_isl29125_driver.py's ISL29125_I2C sends.
-Real-time INT-pin scheduling is exercised only through the synchronous set_illumination()/_produce_new_reading() hooks here; the real-time-firing check lives in test_digital_twin_machine.py."""
+"""Deterministic unit tests for digital_twin/_isl29125_chip.py's own transaction-response logic - matches the
+register-addressed shape src/asy_isl29125_driver.py's ISL29125_I2C sends.
+
+Real-time INT-pin scheduling is exercised only through the synchronous set_illumination()/_produce_new_reading() hooks
+here; the real-time-firing check lives in test_digital_twin_machine.py."""
 
 import errno
 import sys

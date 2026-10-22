@@ -175,7 +175,15 @@ information):
   `buildgen/driver_registry.py`'s `_OVERRIDES` table like `fram`/`neopixel`/`notification`, since it
   isn't a `SensorReader`/`SensorReaderConfig` subclass either — but unlike those three it is not a
   singleton (`SINGLETON_SERVICE_DRIVERS` excludes it), since a device wires exactly one initiator +
-  one responder.
+  one responder. **The exerciser is test machinery inside a product module, a deliberate exception**
+  (owner, 2026-10-22, asked whether its hazard mode, test code inside the product module, stays:
+  "the link module is a necessity for testing, and it's testing code inside a module, but for a
+  good reason, and the guard from being included in real deployed firmware is the fact that the
+  module is never included in the config files for deployment boards. So this is a substantial
+  exception from the usual scheme, but for good reasons."). That guard is checked:
+  `tests_scripts/test_uart_link_bench_only.py` fails when a board other than the
+  `[device] bench = true` one declares `uart_link`, or another device's firmware imports or
+  freezes the driver.
 - **`dev` meets every device's bar**: its generated config is held to the same standard as every
   device's; a quirk is a defect (owner, 2026-09-26).
 - **WoZi is the exemplary/base variant the whole `src/` promotion is built and validated against —
@@ -295,6 +303,21 @@ information):
   Full checklist, plus the two real-hardware write-safety constraints any new device's own on-chip
   NVM or the RP2040's own flash filesystem must respect: SPECIFICATION.md Part C.8's own standing
   rule, right after its general-call hazard finding.
+- **Least wear in the production code: the central wear rule, ahead of the test rule below**
+  (owner, 2026-10-22: "The least wear rule is even more important for the production code than for
+  the tests, as it will run potentially for years. This is something to be added to our pillars, a
+  completely central important rule."). Every write the firmware makes to a limited-endurance store,
+  the RP2040's flash filesystem (each littlefs file create, write, rename or remove) and the SCD30's
+  on-chip NVM, is the fewest the job needs: a file is written directly, once per change, with no
+  temporary or sibling file and no rename or copy step, and an unchanged value is never written
+  (compare-before-write, SPECIFICATION.md G.2). FRAM writes are not wear (owner, 2026-09-26). A
+  change that adds, multiplies or reshapes such a write, in `src/`, buildgen's templates, the
+  generated modules or a test, is the owner's question and is never decided on the owner's behalf
+  (owner, 2026-10-22: "a condition strictly to be avoided by rule and nothing you were allowed to
+  decide without even asking"). `tests_scripts/test_firmware_write_sites.py` pins every flash and
+  SCD30-NVM write site in `src/` and every device's generated modules by file, function and
+  construct, so a new, moved or vanished site fails as the owner's decision; it reads constructs,
+  so an aliased `open` or a command passed through a local is beyond it (SPECIFICATION.md D.3).
 - **No test may inflict avoidable wear on real hardware — the host's own SSD included, not just the
   target's flash/NVM** (project owner's explicit, standing direction, 2026-09-17). FRAM writes are
   not wear (owner, 2026-09-26: 'FRAM writes do not count as wear.'). On the *target* this is already
@@ -305,8 +328,11 @@ information):
   on-chip NVM **and** the RP2040's flash filesystem, which every accepted config-persisting `PUT`
   writes through `asy_config_manager.py`'s `json.dump()`; a *dispatch-only* PUT persists nothing and is
   deliberately outside the gate, and FRAM is out of scope (effectively unbounded endurance here) —
-  `scd30_extra_write` (`--allow-scd30-extra-write`) AND-gated on top for the further SCD30 NVM
-  writes beyond those `persistence_write` admits, plus `soak_duration` (`--soak-duration`)/`multi_day_rollover`
+  `scd30_extra_write` (`--allow-scd30-extra-write`) AND-gated on top for the up to 12 further SCD30
+  NVM writes its four tests own (with both flags up to 13 owned writes per session on `dev`'s SCD30,
+  and at most one start command; owner, 2026-10-21: "option a", asked "Cap the SCD30 NVM writes the
+  extra-write flag admits?", option (a) keeping what the tests carry), plus `soak_duration`
+  (`--soak-duration`)/`multi_day_rollover`
   (`--allow-multi-day-rollover`) (`tests_hardware/conftest.py`,
   `tests_hardware/README.md`). Because that gate DESELECTS rather than skips, the hardware verdict
   (`scripts/_hardware_verdict.py`, reading the run record) lists every deselected test with the gate
@@ -539,7 +565,10 @@ information):
   rather than joining them, while a rule of `=`, `~`, `*` or `#` is prose; a docstring's own lone
   `"""` line is punctuation; a tag line leaves the count line by line, the other lines of its block
   still counting; PEP 723 lines are punctuation only between `# /// script` and the closing `# ///`;
-  and a trailing comment annotates its own code line, so it never starts a block.
+  a line counts as its stripped length over 120 characters, rounded up, so a paragraph packed onto
+  one long line counts by its length (owner, 2026-10-21: "6: c", asked "Count a long comment line as
+  several?", option (c) "the same at 120 characters"); and a trailing comment annotates its own code
+  line, so it never starts a block.
   `tests_scripts/test_comment_block_cap.py` gates exactly that at zero for Python and shell in all
   eight scopes and the generated device modules, and checks every file's header is there: a module
   docstring in Python (ruff's D100/D104 fail a module or package without one too), a comment after the

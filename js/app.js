@@ -7,7 +7,7 @@ import { loadDefinitions } from "./definitions.js";
 import { composeMockData, installMockFetch } from "./mock-server.js";
 import { pollManager } from "./poll-manager.js";
 import { showBanner } from "./render.js";
-import { historyOf, startShell, visibilityOf } from "./shell.js";
+import { buildDateOf, historyOf, startShell, visibilityOf } from "./shell.js";
 
 /** @typedef {import("./definitions.js").SiteDefinitions} SiteDefinitions */
 
@@ -91,6 +91,7 @@ export async function startApp(elements) {
         visibility: visibilityOf(document),
         history: historyOf(window),
         reload: () => window.location.reload(),
+        pageBuildDate: buildDateOf(document),
     });
     return () => {
         stopShell();

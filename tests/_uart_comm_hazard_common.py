@@ -22,8 +22,8 @@ if TYPE_CHECKING:
     CrcMaker = Callable[[], CRCBase] | None
 
 # A short timeout keeps each recovery cycle cheap: this tier is about which frames pass validation and what is
-# emitted, not about real-world durations, and every value still clears the module's own floor of 2 x
-# poll_wait_ms + poll_idle_ms plus the worst-case GC pause - 24ms here, the harness setting poll_idle_ms equal to poll_wait_ms.
+# emitted, not about real-world durations, and every value still clears the module's own floor of 2 x poll_wait_ms +
+# poll_idle_ms plus the worst-case GC pause - 24ms here, the harness setting poll_idle_ms equal to poll_wait_ms.
 # @tunable l1.uart_comm_hazard_timeout_ms = 30
 _TIMEOUT_MS = 30
 _PAYLOAD = 8

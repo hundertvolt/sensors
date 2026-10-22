@@ -64,7 +64,6 @@ SPECIFICATION.md	Removing it (2026-09-14, auditing the now-retired in-process `_
 SPECIFICATION.md	Self-healing follows from the same two sites: the next accepted change writes th
 SPECIFICATION.md	That is **accepted** — no recovery scheme is wanted for a reboot that catches th
 SPECIFICATION.md	That makes it a host-dependency wherever a test asserts that every one of a long
-SPECIFICATION.md	The accepted trade-off is that neither test would now catch a *latency* regressi
 SPECIFICATION.md	The corrected value writes back through `_set_mgr_cfg`, deliberately **not** thr
 SPECIFICATION.md	The final chunk's acknowledgement is deliberately deferred until after the total
 SPECIFICATION.md	The two are deliberately allowed to overlap in what they prove (layered coverage
@@ -290,15 +289,12 @@ tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypa
 tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
 tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
 tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
-tests/test_bus_hazard_multi_device.py	And BMP3xx's own address must never appear mixed into a general-call entry - the
 tests/test_bus_hazard_multi_device.py	Parallel sessions: multiple concurrent CALLERS hitting the SAME device instance,
 tests/test_digital_twin_bus_hazard_concurrency.py	A persistent one degrades to None instead of propagating, and leaves the chunk m
 tests/test_digital_twin_bus_hazard_concurrency.py	Twin-tier parity for the mock tier's pair of write-protect tests, and the accept
 tests/test_digital_twin_http_client.py	_soak() and _wait_until_serving() never look at a fetched body, so they must nev
 tests/test_digital_twin_http_client.py	deliberately not a multiple of the scratch buffer
 tests/test_digital_twin_isl29125_autorange.py	BOUTF is HIGH at power-up by design (p12, Table 18), so setup() has to clear it
-tests/test_digital_twin_network_neopixel.py	longer than _CONNECT_DELAY_S - must never flip to connected
-tests/test_digital_twin_network_neopixel.py	longer than _CONNECT_DELAY_S - must never resolve at all
 tests/test_digital_twin_poll_prewarm.py	Twin-tier coverage for digital_twin/unix_port_poll_prewarm.py's own port handlin
 tests/test_digital_twin_scd30.py	_FixedRandom itself asserts a <= value <= b for every uniform() call - if _produ
 tests/test_digital_twin_sgp40.py	CRC trailer deliberately wrong

@@ -8,6 +8,7 @@ from collections import namedtuple
 
 from _async_harness import run
 from _error_codes import code
+from _littlefs_fake import LittlefsOpen
 from _recording_print import record_prints
 from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen
@@ -937,9 +938,6 @@ def test_an_absent_or_valid_file_is_no_config_fault() -> None:
 class _LittlefsOs:
     # The Unix port's os.remove() is unlink(), which refuses a directory; littlefs's remove (vfs_lfsx.c's
     # remove) deletes an empty one and refuses a non-empty one. This stand-in gives the test that semantics.
-    def stat(self, path: str) -> object:
-        return os.stat(path)
-
     def remove(self, path: str) -> None:
         try:
             os.remove(path)
@@ -947,6 +945,9 @@ class _LittlefsOs:
             if e.errno != 21:  # EISDIR
                 raise
             os.rmdir(path)
+
+    def stat(self, path: str) -> object:
+        return os.stat(path)
 
 
 def test_a_config_path_that_is_a_directory_is_a_file_fault() -> None:
@@ -2520,11 +2521,11 @@ class _FailingOs:
     def __init__(self, errno_value: int) -> None:
         self.errno_value = errno_value
 
-    def stat(self, path: str) -> object:
-        raise OSError(self.errno_value)
-
     def remove(self, path: str) -> None:
         os.remove(path)
+
+    def stat(self, path: str) -> object:
+        raise OSError(self.errno_value)
 
 
 class _ReadFailingOpen(WriteCountingOpen):
@@ -2831,13 +2832,14 @@ def test_an_unserialisable_snapshot_ends_the_flush_task_with_one_unexpected_entr
 
 
 def test_the_only_flash_writes_in_config_manager_are_the_two_known_sites() -> None:
-    # Structural half of the write-loop guarantee: exactly setup()'s and _flush_staged()'s opens
-    # for writing, and nothing in the module that could re-run one on its own - no timer, no sleep,
+    # Structural half of the write-loop guarantee: exactly one open for writing, _write_file()'s, called by setup() and
+    # _flush_staged(), and nothing in the module that could re-run one on its own - no timer, no sleep,
     # no loop that waits. A new write site or retry mechanism has to come through here.
     with open(cm.__file__) as f:
         source = f.read()
-    assert source.count('open(self._config_file, "w")') == 2
-    assert source.count('"w"') == 2
+    assert source.count('open(self._config_file, "w")') == 1
+    assert source.count("self._write_file(text)") == 2
+    assert source.count('"w"') == 1
     assert source.count("json.dump(") == 0  # every write serialises first, then opens
     code = [line.split("#")[0] for line in source.split("\n")]  # comments may say anything
     for forbidden in ("Timer", "sleep", "while "):
@@ -3021,14 +3023,14 @@ class _RemoveFailingOs:
         self.failures = failures
         self.calls = 0
 
-    def stat(self, path: str) -> object:
-        return os.stat(path)
-
     def remove(self, path: str) -> None:
         self.calls += 1
         if self.calls <= self.failures:
             raise OSError(5)
         os.remove(path)
+
+    def stat(self, path: str) -> object:
+        return os.stat(path)
 
 
 def _exists(path: str) -> bool:
@@ -3180,6 +3182,149 @@ def test_a_write_queued_behind_the_lock_at_close_time_is_refused() -> None:
     finally:
         _remove(path)
 
+
+# ---------------------------------------------------------------------------
+# The one direct write: every filesystem call the store makes, recorded
+# ---------------------------------------------------------------------------
+
+
+class _FsCalls(WriteCountingOpen):
+    # While entered, asy_config_manager's `open` and `os`, every call the real one: `calls` holds each as (operation,
+    # path, ...), a file opened for writing adding its writes and its close.
+    def __init__(self) -> None:
+        super().__init__(cm)
+        self.calls: list[tuple[object, ...]] = []
+
+    def __call__(self, path: str, mode: str = "r") -> object:
+        self.calls.append(("open", path, mode))
+        f = super().__call__(path, mode)
+        return _RecordedFile(self.calls, path, f) if "w" in mode else f
+
+    def __enter__(self) -> "_FsCalls":
+        super().__enter__()
+        cm.os = _RecordedOs(self.calls)  # type: ignore[assignment]
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        cm.os = os
+        super().__exit__(*exc)
+
+
+class _RecordedFile:
+    # A file the store opened for writing: each write and the close is recorded, then run on the real file.
+    def __init__(self, calls: "list[tuple[object, ...]]", path: str, f: object) -> None:
+        self._calls = calls
+        self._path = path
+        self._f = f
+
+    def __enter__(self) -> "_RecordedFile":
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+    def close(self) -> None:
+        self._calls.append(("close", self._path))
+        self._f.close()  # type: ignore[attr-defined]
+
+    def write(self, data: str) -> int:
+        self._calls.append(("write", self._path))
+        written: int = self._f.write(data)  # type: ignore[attr-defined]
+        return written
+
+
+class _RecordedOs:
+    # asy_config_manager's `os` inside _FsCalls: each function it calls is recorded with its arguments, then run.
+    def __init__(self, calls: "list[tuple[object, ...]]") -> None:
+        self._calls = calls
+
+    def __getattr__(self, name: str) -> object:
+        real = getattr(os, name)
+
+        def call(*args: object) -> object:
+            self._calls.append((name,) + args)
+            return real(*args)
+
+        return call
+
+
+def test_a_put_that_changes_a_value_is_one_open_one_write_and_its_close() -> None:
+    mgr, path = _make("fs_put.cfg", cfg_vals=_VAL_INT)
+    try:
+        with _FsCalls() as fs:
+            assert run(_write_flushed(mgr, {"Count": 8})) == (True, {"Count": "Valid"})
+        assert fs.calls == [("open", path, "w"), ("write", path), ("close", path)], fs.calls
+        with open(path) as f:
+            assert json.load(f) == {"Count": 8}
+    finally:
+        _remove(path)
+
+
+def test_a_put_that_changes_nothing_makes_no_filesystem_call() -> None:
+    mgr, path = _make("fs_put_same.cfg", cfg_vals=_VAL_INT)
+    try:
+        with _FsCalls() as fs:
+            assert run(_write_flushed(mgr, {"Count": 5})) == (True, {"Count": "Unchanged"})
+        assert fs.calls == [], fs.calls
+    finally:
+        _remove(path)
+
+
+def test_a_boot_over_a_valid_file_reads_it_and_writes_nothing() -> None:
+    path = _tmp_path("fs_boot_valid.cfg")
+    _remove(path)
+    try:
+        assert run(cm.ConfigManager(path, _VAL_INT, "TEST").setup())
+        with _FsCalls() as fs:
+            assert run(cm.ConfigManager(path, _VAL_INT, "TEST").setup())
+        assert fs.calls == [("stat", path), ("open", path, "r")], fs.calls
+    finally:
+        _remove(path)
+
+
+def test_a_boot_over_an_absent_file_writes_it_once() -> None:
+    path = _tmp_path("fs_boot_absent.cfg")
+    _remove(path)
+    try:
+        with _FsCalls() as fs:
+            assert run(cm.ConfigManager(path, _VAL_INT, "TEST").setup())
+        assert fs.calls == [("stat", path), ("open", path, "w"), ("write", path), ("close", path)], fs.calls
+    finally:
+        _remove(path)
+
+
+def test_a_reset_removes_each_stores_file_once_and_nothing_else() -> None:
+    # Two stores, one file present and one already absent: one os.remove() each, and no other call.
+    present, path = _make("fs_reset_present.cfg", cfg_vals=_VAL_INT)
+    absent_path = _tmp_path("fs_reset_absent.cfg")
+    _remove(absent_path)
+    absent = cm.ConfigManager(absent_path, _VAL_INT, "TEST")
+    try:
+        with _FsCalls() as fs:
+            assert run(present.delete_file()) is True
+            assert run(absent.delete_file()) is True
+        assert fs.calls == [("remove", path), ("remove", absent_path)], fs.calls
+        assert not _exists(path)
+    finally:
+        _remove(path)
+
+
+def test_a_write_error_is_not_retried_and_keeps_the_old_document() -> None:
+    # On littlefs a file opened "w" is committed at its close, and the close after a failed write commits nothing
+    # (lfs2.c:3250-3253, v1.29.0): the one write's error leaves the old document, logged and never retried.
+    mgr, path = _make("fs_write_error.cfg", cfg_vals=_VAL_INT)
+    try:
+        old_text = json.dumps(mgr._cache)
+        files = LittlefsOpen(cm, {path: old_text})
+        files.fail_at = 1
+        with files:
+            assert run(_write_flushed(mgr, {"Count": 8})) == (True, {"Count": "Valid"})
+        assert (files.writes, files.write_calls) == (1, 1), (files.writes, files.write_calls)
+        assert files.docs[path] == old_text
+        assert mgr.unpersisted
+        assert _newest_code(mgr) == code("E", "CFG_FILE_WRITE")
+    finally:
+        _remove(path)
 
 if __name__ == "__main__":
     import microtest

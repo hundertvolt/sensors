@@ -1,4 +1,7 @@
-"""Full-stack integration tests: the real chain from tests/_fram_chip_fake.py's simulated MB85RS64V chip, through asy_spi_driver.py/asy_fram_driver.py/asy_fram_manager.py, up into asy_print_log.py/asy_base_classes.py's real consumers - mocked down to SPI bus interaction, not just FRAMManager's own boundary.
+"""Full-stack integration tests: the real chain from tests/_fram_chip_fake.py's simulated MB85RS64V chip, through
+asy_spi_driver.py/asy_fram_driver.py/asy_fram_manager.py, up into asy_print_log.py/asy_base_classes.py's real consumers
+- mocked down to SPI bus interaction, not just FRAMManager's own boundary.
+
 See SPECIFICATION.md Part E.4 for the mocking-boundary plan."""
 # No bus-level fault here: rp2 SPI's only one, an RX overrun raising OSError(EIO) on a 32+ byte read (SPECIFICATION.md
 # F.5.2), is modelled by tests/machine.py's rx_overrun and driven through this same stack in test_asy_fram_manager.py.

@@ -7,7 +7,7 @@ import math
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import TypedDict
 
 import pytest
 from _devices import DEVICE_NAMES, device_toml
@@ -20,6 +20,45 @@ _MODULE_URL = (_REPO_ROOT / "scripts" / "_cross_browser_probe.mjs").as_uri()
 _MIN_SPAN = 64
 
 
+class _Field(TypedDict, total=False):
+    # The definitions keys pickProbe() reads; JSON gives no static type, so these name the shape the rule walks.
+    key: str
+    kind: str
+    min: object
+    max: object
+    float: bool
+
+
+class _Group(TypedDict, total=False):
+    key: str
+    submit: bool
+    fields: list[_Field]
+
+
+class _Section(TypedDict):
+    key: str
+    groups: list[_Group]
+
+
+class _Definitions(TypedDict):
+    sections: list[_Section]
+
+
+class _Outcome(TypedDict, total=False):
+    # engineVerdict()'s answer, an entry of its results or skips.
+    label: str
+    ok: bool
+    detail: str
+
+
+class _Verdict(TypedDict):
+    results: list[_Outcome]
+    skips: list[_Outcome]
+    passed: int
+    ran: int
+    skipped: int
+
+
 def _pick(definitions_path: Path) -> "subprocess.CompletedProcess[str]":
     node = shutil.which("node")
     assert node is not None, "node is not on PATH - the cross-browser smoke this pins cannot run without it either"
@@ -30,7 +69,7 @@ def _pick(definitions_path: Path) -> "subprocess.CompletedProcess[str]":
     return subprocess.run([node, "--input-type=module", "-e", script], cwd=_REPO_ROOT, capture_output=True, text=True, check=False, timeout=120)
 
 
-def _expected_probe(definitions: "dict[str, Any]") -> "dict[str, Any] | None":
+def _expected_probe(definitions: _Definitions) -> "dict[str, object] | None":
     # The rule restated independently: the first number field, not float, with finite bounds at least
     # _MIN_SPAN apart, in a submitting group, in definitions order.
     for section in definitions["sections"]:
@@ -54,7 +93,7 @@ def test_every_device_yields_an_in_range_integer_probe(tmp_path: Path, device: s
     done = _pick(path)
     assert done.returncode == 0, done.stderr
     probe = json.loads(done.stdout.strip().splitlines()[-1])
-    expected = _expected_probe(definitions)
+    expected = _expected_probe(json.loads(path.read_text(encoding="utf-8")))
     assert expected is not None, f"{device}'s definitions carry no editable integer field the smoke could probe"
     assert probe == expected
 
@@ -135,7 +174,7 @@ _VERDICT_CASES = {
 
 
 @pytest.fixture(scope="module")
-def verdicts() -> "dict[str, dict[str, Any]]":
+def verdicts() -> "dict[str, _Verdict]":
     node = shutil.which("node")
     assert node is not None, "node is not on PATH"
     cases = {name: [available, results, {"requireAllEngines": required}] for name, (available, results, required) in _VERDICT_CASES.items()}
@@ -146,11 +185,11 @@ def verdicts() -> "dict[str, dict[str, Any]]":
     )
     done = subprocess.run([node, "--input-type=module", "-e", script], cwd=_REPO_ROOT, capture_output=True, text=True, check=False, timeout=120)
     assert done.returncode == 0, done.stderr
-    answered: dict[str, dict[str, Any]] = json.loads(done.stdout.strip().splitlines()[-1])
+    answered: dict[str, _Verdict] = json.loads(done.stdout.strip().splitlines()[-1])
     return answered
 
 
-def test_with_the_flag_a_missing_engine_fails_naming_its_binary_and_the_installer(verdicts: "dict[str, dict[str, Any]]") -> None:
+def test_with_the_flag_a_missing_engine_fails_naming_its_binary_and_the_installer(verdicts: "dict[str, _Verdict]") -> None:
     verdict = verdicts["missing, required"]
     failed = [result for result in verdict["results"] if not result["ok"]]
     assert [result["label"] for result in failed] == ["WebKit"], verdict
@@ -160,7 +199,7 @@ def test_with_the_flag_a_missing_engine_fails_naming_its_binary_and_the_installe
     assert (verdict["passed"], verdict["ran"], verdict["skipped"], verdict["skips"]) == (2, 3, 0, [])
 
 
-def test_without_the_flag_a_missing_engine_is_skipped_and_counted(verdicts: "dict[str, dict[str, Any]]") -> None:
+def test_without_the_flag_a_missing_engine_is_skipped_and_counted(verdicts: "dict[str, _Verdict]") -> None:
     verdict = verdicts["missing, not required"]
     assert verdict["results"] == _CHROMIUM_PASSED
     assert [skip["label"] for skip in verdict["skips"]] == ["WebKit"]
@@ -169,13 +208,13 @@ def test_without_the_flag_a_missing_engine_is_skipped_and_counted(verdicts: "dic
     assert (verdict["passed"], verdict["ran"], verdict["skipped"]) == (2, 2, 1)
 
 
-def test_an_engine_missing_two_binaries_names_both(verdicts: "dict[str, dict[str, Any]]") -> None:
+def test_an_engine_missing_two_binaries_names_both(verdicts: "dict[str, _Verdict]") -> None:
     verdict = verdicts["two binaries missing"]
     assert all(path in verdict["results"][0]["detail"] for path in _FIREFOX_BINS), verdict
 
 
 @pytest.mark.parametrize("case", ["present, required", "present, not required"])
-def test_with_every_engine_present_only_the_checks_decide(verdicts: "dict[str, dict[str, Any]]", case: str) -> None:
+def test_with_every_engine_present_only_the_checks_decide(verdicts: "dict[str, _Verdict]", case: str) -> None:
     verdict = verdicts[case]
     assert verdict["results"] == _ONE_FAILED
     assert (verdict["passed"], verdict["ran"], verdict["skipped"], verdict["skips"]) == (2, 3, 0, [])

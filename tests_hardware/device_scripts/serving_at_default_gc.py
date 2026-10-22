@@ -21,7 +21,8 @@ except ImportError:  # typing has no runtime presence on MicroPython
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Awaitable
+    from typing import Protocol
 
     from _shared.facts import done, fact
     from _shared.map_dump import dump
@@ -29,7 +30,9 @@ if TYPE_CHECKING:
     from bench_facts import BenchFacts
     from machine import WDT
 
-    _Route = Callable[..., Awaitable[object]]
+    class _Route(Protocol):
+        # A GET handler as the class holds it, unbound: the owner first, then microdot's request and URL parts.
+        def __call__(self, owner: object, *args: object, **kwargs: object) -> Awaitable[object]: ...
 
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
@@ -65,9 +68,9 @@ _REPORT = PrintLog(level=1, name="UNRETRIEVED TASK EXCEPTION:")
 def _dumping_on_failure(route: "_Route") -> "_Route":
     # Re-raises unchanged, so the served outcome is exactly production's; no collect before the
     # dump - MicroPython already ran one before it raised.
-    async def wrapped(self: object, *args: object, **kwargs: object) -> object:
+    async def wrapped(owner: object, *args: object, **kwargs: object) -> object:
         try:
-            return await route(self, *args, **kwargs)  # kwargs: microdot passes URL parts by name
+            return await route(owner, *args, **kwargs)  # kwargs: microdot passes URL parts by name
         except MemoryError:
             if _failure_maps[0] < _MAX_FAILURE_MAPS:
                 _failure_maps[0] += 1

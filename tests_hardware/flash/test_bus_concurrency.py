@@ -236,6 +236,7 @@ def test_bus_topology_autodetect_address_and_reserved_range_sweep(board: Board, 
     assert not any(_table(facts, "reserved_hits").values()), f"reserved addresses acknowledged: {facts['reserved_hits']}"
     for bus_id, hazard in _table(facts, "self_hazard").items():
         assert isinstance(hazard, dict), facts
+        assert hazard["broadcasts"] >= 1, f"{bus_id}: no general call reached the bus ({hazard['broadcasts']} of {hazard['broadcasts_planned']} sent, {hazard['naks']} NAKed), so the lone {hazard['device']}'s reads raced nothing"
         assert hazard["clean_reads"] == hazard["planned"], f"{bus_id}: the lone {hazard['device']} read clean {hazard['clean_reads']} of {hazard['planned']} times through general calls"
     assert all(status == 0 for status in _table(facts, "recover_status").values()), f"recover() on a healthy bus: {facts['recover_status']}"
     assert not any(_table(facts, "recover_sibling_errors").values()), f"reads failed beside recover(): {facts['recover_sibling_errors']}"

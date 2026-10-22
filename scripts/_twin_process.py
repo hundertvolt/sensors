@@ -80,12 +80,15 @@ class TwinLaunch:
 
 @dataclass
 class TwinRun:
-    # One launched twin: its process, the log it writes and whether this module killed it.
+    # One launched twin: its process, the log it writes, the stop file shutdown() ends it through, whether that stop
+    # went unanswered (SIGINT then ended it) and whether this module killed it.
     proc: "subprocess.Popen[str]"
     log_path: Path
     log_file: IO[str]
     device: str
     state_dir: Path
+    stop_file: Path | None = None
+    stop_ignored: bool = False
     killed: bool = False
 
 
@@ -115,8 +118,13 @@ class ShutdownLine:
     mem_backup_r0: tuple[int, ...]
     public_destinations_refused: int
     flash_stall_longest_ms: int
+    fram_writes: int  # the twin FRAM chip's payload writes; fram_writes_by counts both copies of each logger's chunk
+    fram_writes_by: dict[str, int]
+    fram_silent_writes: int  # the payload writes issued while the chip was silent, and the WRENs: the attempts
+    fram_silent_wrens: int
     largest_free_block_bytes: int
     uart: dict[str, UartCounts] = field(default_factory=dict)
+    fram_writes_unattributed: int = 0  # writes past the chip's per-address bound: fram_writes_by is short by these
 
 
 class ResetLine(NamedTuple):
@@ -127,8 +135,9 @@ class ResetLine(NamedTuple):
 
 
 _SHUTDOWN_RE = re.compile(r"\] shutdown: (.*)$")
-_SHUTDOWN_INTS = ("would_have_triggered_count", "feed_count", "largest_feed_gap_ms", "wdt_timeout_ms", "public_destinations_refused", "flash_stall_longest_ms", "gc_block_bytes")
+_SHUTDOWN_INTS = ("would_have_triggered_count", "feed_count", "largest_feed_gap_ms", "wdt_timeout_ms", "public_destinations_refused", "flash_stall_longest_ms", "gc_block_bytes", "fram_writes", "fram_silent_writes", "fram_silent_wrens")
 _MAX_FREE_RE = re.compile(r"\bmax free sz: (\d+)\s*$")  # micropython.mem_info()'s GC summary, in heap blocks (py/gc.c)
+_FRAM_BY_RE = re.compile(r"^(\w+):(\d+)$")
 _UART_RE = re.compile(r"^(\w+):transfers=(-?\d+),failures=(-?\d+),overruns=(-?\d+)$")
 _MEM_BACKUP_WORDS = 4
 _RESET_RE = re.compile(r"\] machine reset: kind=(reset|bootloader) reset_count=(\d+) bootloader_count=(\d+)\s*$")
@@ -139,6 +148,20 @@ def _close(run: TwinRun) -> None:
         with contextlib.suppress(OSError):
             run.proc.stdin.close()
     run.log_file.close()
+
+
+def _fram_writes_by(fields: dict[str, str]) -> dict[str, int]:
+    # "-" when no FRAM-backed logger wrote, else <LOGGER>:<n> entries joined by commas, each logger named once.
+    if "fram_writes_by" not in fields:
+        raise ValueError("the shutdown line carries no fram_writes_by= field")
+    value = fields["fram_writes_by"]
+    found: dict[str, int] = {}
+    for entry in [] if value == "-" else value.split(","):
+        match = _FRAM_BY_RE.match(entry)
+        if match is None or match.group(1) in found:
+            raise ValueError(f"the shutdown line's fram_writes_by={value!r} is not '-' or <logger>:<n>,... with each logger once")
+        found[match.group(1)] = int(match.group(2))
+    return found
 
 
 def _int_field(fields: dict[str, str], name: str) -> int:
@@ -339,11 +362,13 @@ def parse_shutdown_line(log_text: str) -> ShutdownLine | None:
     if len(r0) != _MEM_BACKUP_WORDS:
         raise ValueError(f"the shutdown line's mem_backup r0 holds {len(r0)} words, not {_MEM_BACKUP_WORDS}")
     ints = {name: _int_field(fields, name) for name in _SHUTDOWN_INTS}
+    unattributed = _int_field(fields, "fram_writes_unattributed") if "fram_writes_unattributed" in fields else 0
     return ShutdownLine(
         would_have_triggered_count=ints["would_have_triggered_count"], feed_count=ints["feed_count"], largest_feed_gap_ms=ints["largest_feed_gap_ms"],
         wdt_timeout_ms=ints["wdt_timeout_ms"], mem_backup_r0=r0, public_destinations_refused=ints["public_destinations_refused"],
-        flash_stall_longest_ms=ints["flash_stall_longest_ms"], largest_free_block_bytes=int(max_free.group(1)) * ints["gc_block_bytes"],
-        uart=_uart_counts(uart_tokens),
+        flash_stall_longest_ms=ints["flash_stall_longest_ms"], fram_writes=ints["fram_writes"], fram_writes_by=_fram_writes_by(fields),
+        fram_silent_writes=ints["fram_silent_writes"], fram_silent_wrens=ints["fram_silent_wrens"],
+        largest_free_block_bytes=int(max_free.group(1)) * ints["gc_block_bytes"], uart=_uart_counts(uart_tokens), fram_writes_unattributed=unattributed,
     )
 
 
@@ -363,10 +388,17 @@ def send_line(run: TwinRun, line: str) -> None:
     run.proc.stdin.flush()
 
 
-def shutdown(run: TwinRun, label: str, timeout_s: float = 15.0) -> int:
-    # SIGINT, never SIGTERM: only the runner's KeyboardInterrupt path flushes its persisted state. A twin that ignores it
-    # is described (/proc fields, a second SIGINT's outcome, the log tail), then killed if still running; run.killed and
-    # the SIGKILL code say so however the second SIGINT ended it, so the verdict is the ignored first one's.
+def shutdown(run: TwinRun, label: str, timeout_s: float = 15.0, *, interrupt: bool = False) -> int:
+    # The stop file first: the runner ends on main()'s clean path, which flushes the persisted state as its SIGINT handler
+    # does (never SIGTERM). SIGINT is the fallback (run.stop_ignored), or the first step with interrupt=True; a twin that
+    # ignores it is described (/proc, a second SIGINT's outcome, the log tail), then killed: run.killed, the SIGKILL code.
+    if run.proc.poll() is None and run.stop_file is not None and not interrupt:
+        run.stop_file.touch()
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            run.proc.wait(timeout=timeout_s)
+        if run.proc.poll() is None:
+            run.stop_ignored = True
+            print(f"DIAG: {label}: the stop file was not acted on within {timeout_s}s - falling back to SIGINT")
     if run.proc.poll() is None:
         run.proc.send_signal(signal.SIGINT)
         start = time.monotonic()
@@ -389,22 +421,27 @@ def shutdown(run: TwinRun, label: str, timeout_s: float = 15.0) -> int:
 
 def spawn(launch: TwinLaunch, *, state_dir: Path, log_path: Path, args: "tuple[str, ...] | list[str]" = ()) -> TwinRun:
     # Every state path goes inside state_dir, so a launch never writes the manual run's defaults in digital_twin/; one the
-    # interpreter would die on before the runner starts is refused before anything is created.
+    # interpreter would die on before the runner starts is refused before anything is created. The stop file is spawn()'s.
+    if "--stop-file" in args:
+        raise ValueError("spawn() owns --stop-file: shutdown() ends the twin through it")
     paths = state_paths(state_dir)
+    stop_file = state_dir / "stop"
     env = dict(os.environ, MICROPYPATH=launch.micropypath, TZ="UTC")
     cmd = [
         launch.micropython_bin, RUNNER, "--module", launch.module, "--wiring-plan", str(launch.wiring_plan), "--device", launch.device,
         "--host", launch.host, "--port", str(launch.port), "--fram-state-path", str(paths.fram), "--scd30-state-path", str(paths.scd30),
-        "--mem-backup-state-path", str(paths.mem_backup), "--config-dir", str(paths.config_dir) + "/", "--gc-threshold", str(launch.gc_threshold), *args,
+        "--mem-backup-state-path", str(paths.mem_backup), "--config-dir", str(paths.config_dir) + "/", "--gc-threshold", str(launch.gc_threshold),
+        "--stop-file", str(stop_file), *args,
     ]
     refused = _uninternable(cmd[1:], env)
     if refused:
         raise ValueError(f"the twin was not started: {', '.join(refused)} - the Unix port interns each as a qstr of at most {_QSTR_MAX_BYTES} bytes and dies before the runner starts")
     paths.config_dir.mkdir(parents=True, exist_ok=True)
+    stop_file.unlink(missing_ok=True)  # a previous launch's on the same state would end this one at once
     print(f"== Launching: {' '.join(cmd)} (log: {log_path})")
     log_file = log_path.open("w", encoding="utf-8")  # closed by shutdown()/wait_exit(), which end the process first
     proc = subprocess.Popen(cmd, cwd=REPO_ROOT, env=env, stdin=subprocess.PIPE, stdout=log_file, stderr=subprocess.STDOUT, text=True)
-    return TwinRun(proc=proc, log_path=log_path, log_file=log_file, device=launch.device, state_dir=state_dir)
+    return TwinRun(proc=proc, log_path=log_path, log_file=log_file, device=launch.device, state_dir=state_dir, stop_file=stop_file)
 
 
 def state_paths(state_dir: Path) -> StatePaths:

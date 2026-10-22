@@ -1,6 +1,6 @@
-"""Manual tests, an execution mode of L3 (manual/runner.py): bus and electrical behaviour that needs a human's hands on
-the breadboard - the recovery ladder under a pulled or held line, the FRAM's and the UART link's return after a pull,
-and the WS2812 and FRAM chip-select timings only an instrument can see; each judged against /status, then by the operator."""
+"""Manual tests, an execution mode of L3 (manual/runner.py): bus and electrical behaviour needing a human's hands on the
+breadboard - the recovery ladder under a pulled or held line, the FRAM's and UART link's return after a pull, and the
+WS2812 and FRAM chip-select timings only an instrument can see; each judged against /status, then by the operator."""
 
 import time
 from typing import TYPE_CHECKING

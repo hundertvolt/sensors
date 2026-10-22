@@ -1,6 +1,6 @@
-"""CLAUDE.md's 3-line cap on every header and inline comment block, measured rather than swept by hand, and every file's
-header present. Python and shell blocks are counted (the generated device modules too); JS, CSS, HTML and config files
-are checked for a header, their content cap review-enforced (_REVIEW_ENFORCED). This file defines CLAUDE.md's counting."""
+"""CLAUDE.md's 3-line cap on every header and inline comment block, measured, not swept by hand, and every file's header
+present. Python and shell blocks are counted (the generated device modules too); JS, CSS, HTML and config files are
+checked for a header, their content cap review-enforced (_REVIEW_ENFORCED). This file defines CLAUDE.md's counting."""
 
 import ast
 import io
@@ -19,9 +19,10 @@ from _repo_scan import REPO_ROOT, is_shared_excluded, repo_files
 
 SCOPES = ("src", "buildgen", "digital_twin", "toolchain", "scripts", "tests", "tests_scripts", "tests_hardware")
 CAP = 3
-# Once set, a line counts ceil(len / _WRAP_WIDTH) lines (110, the hand-wrap width), so a paragraph packed onto one long
-# line counts by its length; off, every line counts one (agent, 2026-10-15). The one switch for the length rule.
-_WRAP_WIDTH: int | None = None
+# A line counts its stripped length over _WRAP_WIDTH, rounded up, so a paragraph packed onto one long line counts by
+# its length (owner, 2026-10-21: "6: c", asked "Count a long comment line as several?", option (c) "the same at 120
+# characters"). None counts every line as one; the one switch for the length rule.
+_WRAP_WIDTH: int | None = 120
 
 # Data, not commentary: a tag line leaves the count, its block's other lines count. CLAUDE.md names the buildgen tags;
 # the last is the tunable register's (tests_scripts/test_tunables_register.py). The list grows only on the owner's word.
@@ -321,12 +322,14 @@ def test_a_tag_line_leaves_the_count_and_its_block_still_counts() -> None:
     assert _comment_blocks(["# a prose line naming @requires mid-sentence", "# two", "# three", "# four"]) == [(1, 4)]
 
 
-def test_a_long_line_counts_by_its_length_once_the_wrap_width_is_set(monkeypatch: pytest.MonkeyPatch) -> None:
-    long_line = "# " + "x" * 228  # 230 characters: three lines at 110
-    assert _comment_blocks([long_line, "# two"]) == []
-    monkeypatch.setitem(globals(), "_WRAP_WIDTH", 110)
+def test_a_long_line_counts_its_length_over_120_rounded_up(monkeypatch: pytest.MonkeyPatch) -> None:
+    long_line = "# " + "x" * 239  # 241 characters: three lines at 120
+    assert _comment_blocks([long_line[:-1], "# two"]) == []
     assert _comment_blocks([long_line, "# two"]) == [(1, 4)]
-    assert _docstrings(['"""' + "y" * 400 + '"""']) == [(1, 4)]  # 406 characters: four lines
+    assert _docstrings(['"""' + "y" * 354 + '"""']) == []  # 360 characters: three lines
+    assert _docstrings(['"""' + "y" * 355 + '"""']) == [(1, 4)]
+    monkeypatch.setitem(globals(), "_WRAP_WIDTH", None)
+    assert _comment_blocks([long_line, "# two"]) == []
 
 
 def test_a_trailing_comment_does_not_start_a_block_but_its_continuation_lines_do() -> None:

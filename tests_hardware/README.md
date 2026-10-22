@@ -342,7 +342,7 @@ scripts/run_flash_hardware_suite.sh --allow-flash-cycle
 
 # Limited-endurance writes a test owns are off by default; --allow-persistence-write runs them, and
 # --allow-scd30-extra-write on top of it (AND-gated, never alone) the further SCD30 NVM writes
-# ("Persistence-write gating" holds the budget table):
+# (up to 12, 13 a session with both; "Persistence-write gating" holds the budget table):
 scripts/run_flash_hardware_suite.sh --allow-persistence-write
 scripts/run_flash_hardware_suite.sh --allow-persistence-write --allow-scd30-extra-write
 
@@ -535,7 +535,7 @@ named beside it; a script runs rendered (`harness.render_device_script()`), and 
 | A script that boots the firmware's `main()` installs an always-printing unretrieved-task report first (the product's `PrintLog` report at level 1, or a script-local one) | `tests_scripts/test_exception_handler_contract.py` |
 | A heap-measuring script sets `gc.threshold` itself and reports it as its first fact | `tests_scripts/test_device_script_gc_threshold.py` |
 | A STATE-dispatched script needs the `persistence_write` marker only on the runs that pass a writing STATE | `tests_scripts/test_persistence_write_marker_completeness.py` |
-| Run it in the twin first (`scripts/record_twin_instrument_runs.py`), then commit the record | `tests_scripts/test_twin_record.py` |
+| Run it in the twin first, at both GC stages (`scripts/record_twin_instrument_runs.py`; the flash tier once per stage, refused if its twin board never took the stage): each entry's `stages` holds `"-1"` and `"32768"`, each `pass` or `exception`, and its `result` is `exception` if any stage failed; a script a flash test runs is charged with the outcomes of the flash tests that run it, not its whole module's. Then commit the record | `tests_scripts/test_twin_record.py` |
 | Park the shared rig (the NeoPixel) dark in a `finally` | `tests_scripts/test_device_script_rig_parking.py` |
 | Feed the watchdog in short steps: `_shared/watchdog.py`'s fed waits, at most 2 s a step (`l3.device_script_feed_step_ms`) | `tests_scripts/test_device_script_watchdog.py` |
 | Shared code lives in `_shared/`, inlined at render by `# @include _shared/<name>.py` | `tests_scripts/test_hardware_clones.py` |
@@ -823,15 +823,20 @@ file the session fixtures' standard-state check names ("Prerequisites" item 4). 
 never failed on the figure: the host records it for SPECIFICATION.md Part F.3's
 `stall.flash_program` row.
 
-**The loop lag under combined load**
-(`flash/test_memory_stress.py::test_loop_lag_under_combined_load_stays_under_the_uart_reply_budget`,
-`device_scripts/loop_lag_under_combined_load.py`, L3, the bench round only) runs the bench build's
-shipped `main()` beside a 10 ms lag probe, an allocation-churn task and FRAM block writes in the
-script's own scratch region (`fram_max_size - 0x200`). The shipped `main()` writes production FRAM
-chunks, so it runs after the round's FRAM evidence is saved, and without `--twin` it is skipped
-unless the bench bridge is configured. The script emits facts only; the host holds the worst lag to
-the device's smallest hard consumer (Part F.3's `lag.loop`) and checks that `main()` kept running
-and the FRAM load ran without a failed write.
+**The loop lag under combined load** (`device_scripts/loop_lag_under_combined_load.py`) runs the
+bench build's shipped `main()` beside a 10 ms lag probe, an allocation-churn task and FRAM block
+writes in the script's own scratch region (`fram_max_size - 0x200`), while the host's readers
+cycle every JSON GET route. The flash test
+(`flash/test_memory_stress.py::test_loop_lag_under_combined_load_stays_under_the_uart_reply_budget`)
+runs in the twin only (`--twin`: the script's scratch config, serving on 127.0.0.1:8080, under a
+ceiling of readers), since only the bench network reaches the script's server on the board.
+Silicon's run is the bench tier's
+`bench/test_memory_stress_bench.py::test_loop_lag_under_http_load_on_every_route_stays_under_the_smallest_hard_consumer`
+(BENCH mode `"production"`: `main()` on the board's own config and address); the shipped `main()`
+writes production FRAM chunks, so the board's error log is saved first. The script emits facts
+only; the host holds the worst lag to the device's smallest hard consumer (Part F.3's `lag.loop`)
+and checks that every route was served, `main()` kept running and the FRAM load ran without a
+failed write.
 
 Four of Part F.3's timing rows wait on these instruments' silicon figures: the flash stretch
 (`stall.flash_program`), the on-target stretches (`stall.voc_process`, `stall.crc_byte`) and the
@@ -983,7 +988,9 @@ check" paragraph.
   port and `block_udp_ports_from()` by source port, both in the bridge's FORWARD chain, and a
   `tc netem` qdisc on the AP radio adds loss, delay, jitter, corruption, duplication or reordering.
   The four netem tests prove REST reachability under the impairment and recovery after it, which
-  their names state; none waits for an NTP exchange inside the window.
+  their names state; none waits for an NTP exchange inside the window. A CYW43-level fault such as
+  `wlan.connect()` itself raising is no network-path fault `tc` or `iptables` can express; the
+  twin's `--fault wlan:...` hook (`digital_twin/launch.py`) injects it.
 - **Every garbage injection proves it was delivered.** The NTP and DNS garbage tests redirect the
   port with a `nat` PREROUTING DNAT to a `RogueUdpResponder` on 127.0.0.1, and each asserts the
   responder answered the DUT's address at least once (`answered_from`), so a redirect that never
@@ -1055,6 +1062,13 @@ a live question:
   and resets right after that transfer (`LANDED seam=<n>`), and the verify phase accepts only the
   whole history lost, the seeded three, or the seeded three plus the raced entry - so a history
   seeded by another run fails - then clears the chunk.
+- **A real hard reset can cut a FRAM chunk write part-way, and the bench test that lands them expects
+  it.** `bench/test_end_to_end_timing.py::test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly`
+  resets the board at uncontrolled points of SGP40's natural VOC backups, so the next boot may find a
+  block status byte neither idle nor uninitialised (`E FRAM_STATUS_BYTE`) or a block holding invalid
+  data, repaired from the other copy (`W FRAM_BLOCK_INVALID`): the chunk's all-or-nothing loss the
+  owner accepted (owner, 2026-09-13, paraphrase). The test allows exactly those two entries in FRAM's
+  log, saves the log, then clears it (`reset_all_error_logs()`).
 - **The UART link's coverage on silicon is 11 flash-tier tests and 5 bench-tier tests**
   (`flash/test_uart_crossover.py`; `bench/test_uart_link_under_api_load.py`,
   `bench/test_uart_link_crc16.py`), none run since the receive path moved onto the DMA ring. Each
@@ -1080,8 +1094,14 @@ a live question:
   - The bench tier carries a multi-chunk SET under serving load (`uart_link_echo_under_serving_load.py`
     driving the initiator's public `uart_set()`), with no `src/` change, besides the link's
     transfer/failure count in `/status`'s `UARTLINK`, asserted advancing while the API is hammered.
-    The comm hazards under API load are not written: the hazard script drives the raw UART pair,
-    which a serving `main()` owns (SPECIFICATION.md E.6.6).
+    The comm hazards run under API load through `/status`'s dispatch-only `UartHazards` on `dev`
+    (SPECIFICATION.md A.8 and E.6.6): the bench tier's
+    `test_a_hazard_run_under_the_readers_load_reports_every_verdict` starts one hazard run while 3
+    readers GET `/status` until it ends, judges every verdict as the twin does, and checks the echo's
+    `Failures` unchanged, the echo resumed, the WEBSERVER counter at 0 and no task ended; it is
+    collected, its silicon run owed. Read and save both UART logs (`UART_init`, `UART_resp`)
+    first: the faults the run provokes land in both, and one run fills `UART_resp`'s 10-entry log,
+    overwriting its older history (agent, 2026-10-22). The stalled TX stays with the raw hazard script.
   - The UART fault catalog (~20 scenarios: corruption, drop, truncate, duplicate, overrun, lost
     final ACK, peer reset mid-transaction, ...) is mock-only, a listed structural exception: no
     injection hardware will be bought (owner, 2026-09-22), and a second raw UART is not used as a
@@ -1735,8 +1755,13 @@ mock-tier generic scenario type against what real hardware actually covers for d
     (per-driver same-device scripts, all three occupants), all-occupants-concurrent-reads
     (`isl29125_cross_device_concurrency.py` already runs all three of i2c1's occupants at once), and
     the "rogue general call against a lone occupant with no real broadcaster" case (i2c0's own
-    BMP3xx-alone bus) - the topology script's own self-hazard branch already covered this before this
-    pass, for whichever known device turns out to be the bus's sole occupant.
+    BMP3xx-alone bus): the topology script's self-hazard branch checks that a bus's sole known
+    device reads clean while the broadcasts race its reads, and
+    `flash/test_bus_concurrency.py::test_bmp3xx_alone_survives_a_general_call`
+    (`device_scripts/bmp3xx_alone_survives_a_general_call.py`, L3, ungated; no write, no flash cycle:
+    volatile registers only, restored by a soft reset at the end) checks that the BMP3xx keeps its
+    configuration, chip ID, power-control bits and readings through them, with no power-on flag
+    raised. It has no bench counterpart (SPECIFICATION.md Part E.6.6, row `flash-only-bus-checks`).
 
 **Flash-tier -> bench-tier parity**: added
 `test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load`
@@ -1899,7 +1924,7 @@ or `--soak-duration` for the one valued gate):
 | marker | flag | gate | what it spends |
 |---|---|---|---|
 | `persistence_write` | `--allow-persistence-write` | deselected at collection | the owned flash-filesystem and SCD30 NVM writes of the budget table below |
-| `scd30_extra_write` | `--allow-scd30-extra-write`, only together with `--allow-persistence-write` | deselected at collection | the further SCD30 NVM writes the budget table lists under it; always carried with `persistence_write` |
+| `scd30_extra_write` | `--allow-scd30-extra-write`, only together with `--allow-persistence-write` | deselected at collection | the four tests' further SCD30 NVM writes, up to 12 (the budget table's row): with both flags a session spends up to 13 owned writes on `dev`'s SCD30, plus at most one start command, what the tests carry (owner, 2026-10-21: "option a", asked "Cap the SCD30 NVM writes the extra-write flag admits?"); always carried with `persistence_write` |
 | `flash_cycle` | `--allow-flash-cycle` | skipped by the test | one or more reflashes (the flash-cycle rows below) |
 | `soak_duration` | `--soak-duration {short,mid,long}` | skipped by the test | time only |
 | `multi_day_rollover` | `--allow-multi-day-rollover` | skipped by the test | about 2 h on the tick-offset test image; no write of its own |
@@ -1933,7 +1958,7 @@ directory, removed on every path; a store's absent file gets one defaults write 
 | `--allow-persistence-write`, flash tier | SCD30 NVM | `test_scd30_same_device_read_write_concurrency`: 1 (the ambient pressure the chip already holds, re-sent) |
 | `--allow-persistence-write`, flash tier | flash filesystem | `test_config_floats_round_trip_unchanged`: 1 scratch write (its repeat answers `Unchanged`); `test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration`: 7 scratch writes (also needs `--allow-neopixel-sweep`); `test_a_real_config_write_during_traffic_loses_no_frame`: 1 scratch flush per CRC mode (2 modes); `test_link_transactions_during_config_writes_are_recorded`: 5 scratch writes per CRC mode; `test_config_value_survives_a_genuine_hard_reset`: 2 (the scratch file's defaults, then the marker); `test_config_reset_deletes_every_config_file_and_reboots`: the scratch build's defaults per store, one damaged file, `resetconfig`'s deletions; `test_a_hung_shutdown_step_ends_in_a_watchdog_reset`: per command, the scratch build's defaults per store and the deletions until the hung step; `test_flash_write_loop_gap_is_recorded`: 1 scratch write (create, 1 KiB, close, remove) |
 | `--allow-persistence-write`, bench tier | flash filesystem | 2 each (the change and its restore): `test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value`, `test_representative_put_round_trips_over_the_hotspot_link`, `test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly`, `test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly`, `test_garbage_ssid_via_rest_config_is_handled_gracefully`, `test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog` (`DebugLevel` 0, then 5), `test_a_flash_write_holding_interrupts_off_keeps_the_wifi_link`, `test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback`, `test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback`; up to 5 each (4 changes and the restore): the ISL29125 and BMP3xx config-write arms of `bench/test_bus_concurrency_under_api_load.py`; 1: `test_a_wrong_password_over_the_hotspot_reopens_the_hotspot` (a well-formed wrong password, which the next test restores); 1: `test_real_credentials_put_succeeds_and_confirms_accepted_values`; 0: `test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt` (the marker is its AND-gate on the previous test's write); `test_config_reset_over_rest_brings_back_the_defaults`: `resetconfig`'s deletions, the reboot's one defaults write per file, one restore write per saved file |
-| `--allow-scd30-extra-write` (with `--allow-persistence-write`) | SCD30 NVM | flash `test_scd30_config_write_does_not_disturb_concurrent_sibling_reads`: 2 (the offset and its restore); flash `test_scd30_argument_reaction_is_recorded`: up to 3, restored in the script; bench `test_scd30_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load`: up to 3 (2 offsets and the restore); bench `test_scd30_altitude_takes_effect_while_ambient_pressure_is_zero`: 4 (`AmbPres` 0, the stepped `Altitude`, and both restores) |
+| `--allow-scd30-extra-write` (with `--allow-persistence-write`) | SCD30 NVM | flash `test_scd30_config_write_does_not_disturb_concurrent_sibling_reads`: 2 (the offset and its restore); flash `test_scd30_argument_reaction_is_recorded`: up to 3, restored in the script; bench `test_scd30_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load`: up to 3 (2 offsets and the restore); bench `test_scd30_altitude_takes_effect_while_ambient_pressure_is_zero`: 4 (`AmbPres` 0, the stepped `Altitude`, and both restores); up to 12 in all |
 | manual (`scripts/run_manual_hardware_tests.sh`; each step states its writes before its `confirm()`) | flash filesystem | the flash config across a power cycle: 2 (`WarnCO2` and its restore); the power cut mid config write: up to 20 scratch writes and 1 removal per round, 3 rounds; the shutdown-command power cuts: `resetconfig`'s deletions, the next boot's one defaults write per file, one restore write per saved file (`config_files_restore.py`; `erasefram` is FRAM, outside the budget) |
 | manual | SCD30 NVM | the NVM across a power cycle: 2 (`MeasInterval` and its restore); the power cut mid NVM write: up to 21 (20 changes and the restore), plus 1 for the `PUT` that puts `MeasInterval` back after the boot when the cut left it changed |
 | `--allow-flash-cycle` | flash (reflash) | `test_real_uf2_reflash_and_boot_smoke_test`: 1; `bench/test_uart_link_crc16.py`: 2 (the CRC16 image and back); `test_send_stall_on_the_unpatched_image`: 2 (the control image and back); `test_ticks_ms_rollover_is_survived`: 1 (the tick-offset test image; the next round flashes its own image), counted in the rollover round's budget |

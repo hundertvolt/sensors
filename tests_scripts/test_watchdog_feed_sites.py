@@ -1,6 +1,6 @@
 """The watchdog is fed only at the pinned sites (SPECIFICATION.md G.2): `feed_watchdog()`'s and `_own_feed()`'s latched
-`.feed()`, the supervisor loop's two calls, `run_setups()`'s one per unit, and `_own_feed()`'s shutdown-sequence callers -
-never in a Timer/IRQ callback, in another loop, or anywhere else in src/; a generated module or boot entry feeds nowhere."""
+`.feed()`, the supervisor loop's two calls, `run_setups()`'s one per unit, `_own_feed()`'s shutdown-sequence callers -
+never in a Timer/IRQ callback, another loop or anywhere else in src/; a generated module or boot entry feeds nowhere."""
 
 import ast
 import shutil

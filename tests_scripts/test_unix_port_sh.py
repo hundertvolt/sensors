@@ -1,6 +1,6 @@
-"""scripts/_unix_port.sh, the one Unix-port probe: each binary is named by the build flavour it reports within a kill bound,
-`check` fails on a mismatch and builds nothing, `ensure` runs one setup on a missing or wrong binary or a missing or stale
-record, the shared toolchain lock refuses a run while a setup holds it, and the two layouts come from one file."""
+"""scripts/_unix_port.sh, the one Unix-port probe: each binary is named by the build flavour it reports within a kill
+bound, `check` fails on a mismatch and builds nothing, `ensure` runs one setup on a missing or wrong binary or a missing
+or stale record, the shared toolchain lock refuses a run while a setup holds it; the two layouts come from one file."""
 
 import ast
 import json

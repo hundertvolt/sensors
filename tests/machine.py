@@ -33,6 +33,11 @@ _PIN_NAMES["LED"] = _NUM_BANK0_GPIOS  # LED,EXT_GPIO0
 _OMITTED: int = object()  # type: ignore[assignment]
 
 
+def _absent_handler(_pin: "Pin") -> None:
+    # Pin.irq()'s handler default: a call that names no argument is told apart from an explicit None (machine_pin.c:473).
+    pass
+
+
 class _PinState:
     # One GPIO's configuration, shared by every Pin object naming it: rp2's pins are static table entries
     # (machine_pin_find(), machine_pin.c:188). mode and pull read None until a construction or init() sets them.
@@ -52,7 +57,7 @@ class Pin:
     # attribute for.
     TEST_API = (
         "id", "mode", "pull", "alt", "irq_handler", "irq_hard", "irq_trigger", "set_external_level", "value_log",
-        "reset_registry", "trigger_irq",
+        "reset_registry", "trigger_irq", "wired_irqs",
     )  # fmt: skip
     IN = 0  # ports/rp2/machine_pin.h:34-37 (v1.29.0), as OUT, OPEN_DRAIN and ALT
     OUT = 1
@@ -147,19 +152,17 @@ class Pin:
             # Set unconditionally, None meaning no pull (machine_pin.c:300-306): rp2 keeps the PULL_UP/PULL_DOWN bits.
             state.pull = 0 if pull is None else pull & (self.PULL_UP | self.PULL_DOWN)
 
-    def irq(
-        self,
-        handler: "Callable[[Pin], None] | None" = None,
-        trigger: int = IRQ_FALLING | IRQ_RISING,
-        *,
-        hard: bool = False,
-    ) -> "Pin":
-        # Real rp2 Pin.irq() replaces the GPIO's previous handler outright, fires on every matching edge until called
-        # again, and returns the IRQ object (stood in for here by the Pin). trigger_irq() simulates one edge.
+    def irq(self, handler: "Callable[[Pin], None] | None" = _absent_handler, trigger: int = _OMITTED, *, hard: object = _OMITTED) -> "Pin":
+        # rp2 (machine_pin.c:464-476): an external pin raises first; a bare call returns the IRQ object (the Pin stands
+        # in) unchanged; any argument replaces handler, trigger and hard outright. trigger_irq() simulates one edge.
+        if self.id >= _NUM_BANK0_GPIOS:
+            raise ValueError("expecting a regular GPIO Pin")
+        if handler is _absent_handler and trigger is _OMITTED and hard is _OMITTED:
+            return self
         state = self._state
-        state.irq_handler = handler
-        state.irq_trigger = trigger
-        state.irq_hard = hard
+        state.irq_handler = None if handler is _absent_handler else handler
+        state.irq_trigger = self.IRQ_FALLING | self.IRQ_RISING if trigger is _OMITTED else trigger
+        state.irq_hard = hard is not _OMITTED and bool(hard)
         return self
 
     @property
@@ -228,6 +231,11 @@ class Pin:
         if log is None:
             log = cls._value_logs[id] = _CallLog(_VALUE_LOG_MAXLEN)
         return log
+
+    @classmethod
+    def wired_irqs(cls) -> "list[Pin]":
+        # Test-only: a Pin on every GPIO whose irq() holds a handler, oldest wiring first, for trigger_irq() to fire.
+        return [cls(n) for n, state in cls._states.items() if state.irq_handler is not None]
 
 
 _LOG_MAXLEN = 4096  # entries kept per fake call log; see _CallLog for why it is bounded at all
@@ -595,7 +603,7 @@ class SPI:
     # SPI has no ACK/NAK, so write() cannot raise; a reading transfer of 32+ bytes takes the DMA path, whose RX-overrun
     # check raises OSError(EIO) (F.5.2) - modelled by rx_overrun and inject_fault(). read_queue primes what a read gets.
     # Not modelled: baudrate rounding, pin muxing rules, rp2's static object per id.
-    TEST_API = (
+    TEST_API: "tuple[str, ...]" = (
         "id", "sck", "mosi", "miso", "baudrate", "polarity", "phase", "bits", "firstbit", "deinit_called", "deinit_count",
         "log", "read_queue", "rx_overrun", "rx_overrun_remaining", "inject_fault", "pending",
     )  # fmt: skip

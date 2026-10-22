@@ -72,8 +72,10 @@ microtest.after_each(network.reset_test_state)
 
 
 async def _set_clock(module: "ModuleType") -> None:
-    # The clock as an NTP sync leaves it: Synced, and every utc_now() a real time from here on.
+    # The clock as an NTP sync leaves it (_handle_ntp_sync_success()): Synced, the clock valid for UTCTime and the
+    # VOC backups, and every utc_now() a real time from here on.
     await module.ntp._set_synced(value=True)
+    module.ntp._clock_valid = True
     asy_base_classes.set_utc_valid()
 
 

@@ -52,7 +52,7 @@ class UDPSocket:
 
     async def _connect(self) -> None:
         # Lazy, one-shot-per-socket setup, serialized against disconnect() via self._connect_lock.
-        # Self-heals via _disconnect_locked() on any failure so the next call gets a fresh attempt.
+        # Self-heals via _disconnect_locked() on any failure, a cancel in the backoff included, so the next call gets a fresh attempt.
         async with self._connect_lock:
             if self._sock is None:
                 try:
@@ -71,9 +71,9 @@ class UDPSocket:
                         console("UDPSocket", e)  # the class has no logger; the memory gates read this text (CLAUDE.md)
                     # setup, connect or bind failed
                     await asyncio.sleep_ms(_RETRY_BACKOFF_MS)
-
-                if not self.connected:
-                    await self._disconnect_locked()
+                finally:
+                    if not self.connected:
+                        await self._disconnect_locked()
 
     async def _disconnect_locked(self) -> bool:
         # Actual teardown, assuming self._connect_lock is already held - split out so _connect()'s
@@ -120,9 +120,9 @@ class UDPSocket:
             return await self._disconnect_locked()
 
     async def ready(self, mask: int, timeout_ms: int = -1) -> bool:
-        # Polls ipoll(0), sleeping _POLL_WAIT_MS inside an exchange (a deadline is set) and _POLL_IDLE_MS while listening with none (SPECIFICATION.md F.5.9's shape).
-        # A real POLLERR/POLLHUP is always reported; returning True lets the caller's socket call surface it.
-        # A malformed mask or timeout_ms returns False: callers' excepts wrap only their own socket call.
+        # Polls ipoll(0), sleeping _POLL_WAIT_MS in an exchange (a deadline is set) and _POLL_IDLE_MS while listening with none
+        # (SPECIFICATION.md F.5.9's shape). A real POLLERR/POLLHUP is always reported; returning True lets the caller's socket
+        # call surface it. A malformed mask or timeout_ms returns False: callers' excepts wrap only their own socket call.
         await self._connect()
         if not self.connected or self.poller is None:
             return False
@@ -140,8 +140,8 @@ class UDPSocket:
     async def recvfrom(self, buf: int, timeout_ms: int = -1) -> tuple[bytes | None, tuple[str, int] | None]:
         if await self.ready(select.POLLIN, timeout_ms=timeout_ms) and self._sock is not None:
             try:
-                # A datagram longer than buf arrives cut to buf bytes, the rest dropped (extmod/modlwip.c:719-721, v1.29.0).
-                # The 1.29 stub types the address as socket's full _Address union; this AF_INET socket (_connect()) only returns a 2-tuple.
+                # A datagram longer than buf arrives cut to buf bytes, the rest dropped (extmod/modlwip.c:719-721, v1.29.0). The 1.29
+                # stub types the address as socket's full _Address union; this AF_INET socket (_connect()) only returns a 2-tuple.
                 # Remove the ignore once the stub narrows it (warn_unused_ignores then flags it).
                 return self._sock.recvfrom(buf)  # type: ignore[return-value]
             except (MemoryError, OSError, TypeError) as e:  # TypeError: a malformed buf (e.g. a str)

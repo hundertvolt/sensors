@@ -37,9 +37,9 @@ def _bind_free_listener(port: int, ceiling: int, window: int = _PORT_SCAN_WINDOW
 
 
 def prewarm_poll_set(ceiling: int = _DEFAULT_CEILING, port: int = _PORT_SCAN_BASE) -> "tuple[str, int] | tuple[str, int, int, int]":
-    # Grow asyncio's shared `select.poll()` pollfds array to `ceiling` slots via real loopback connections, then release them. Must run before any other code registers a poll object.
-    # `port` is the first of _PORT_SCAN_WINDOW candidates tried and only has to be free while this runs.
-    # Returns the sockaddr it bound as getaddrinfo() gave it: typed as the stubs declare, packed bytes on the Unix port.
+    # Grow asyncio's shared `select.poll()` pollfds array to `ceiling` slots via real loopback connections, then release
+    # them. Must run before any other code registers a poll object. `port` is the first of _PORT_SCAN_WINDOW candidates
+    # tried and only has to be free while this runs.
     _core.get_event_loop()  # idempotent - ensures _io_queue exists without assuming it already does
     poller = _core._io_queue.poller
     listener, addr = _bind_free_listener(port, ceiling)
@@ -60,4 +60,5 @@ def prewarm_poll_set(ceiling: int = _DEFAULT_CEILING, port: int = _PORT_SCAN_BAS
             poller.unregister(s)
             s.close()
         listener.close()
+    # Returns the sockaddr it bound as getaddrinfo() gave it: typed as the stubs declare, packed bytes on the Unix port.
     return addr

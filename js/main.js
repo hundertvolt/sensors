@@ -6,7 +6,7 @@
 
 import { loadDefinitions } from "./definitions.js";
 import { showBanner } from "./render.js";
-import { historyOf, startShell, visibilityOf } from "./shell.js";
+import { buildDateOf, historyOf, startShell, visibilityOf } from "./shell.js";
 
 /** @typedef {import("./definitions.js").SiteDefinitions} SiteDefinitions */
 
@@ -38,5 +38,6 @@ export async function startApp(elements) {
         visibility: visibilityOf(document),
         history: historyOf(window),
         reload: () => window.location.reload(),
+        pageBuildDate: buildDateOf(document),
     });
 }

@@ -1,6 +1,6 @@
-"""The serving board's own UART initiator carries a multi-chunk SET under HTTP load: the generated device module's main()
-boots as a task, and once the host's load reaches its webserver the initiator SETs a multi-chunk echo and GETs it back
-round after round, each answer compared byte for byte; facts out, the host test judges (SPECIFICATION.md J.7)."""
+"""The serving board's own UART initiator carries a multi-chunk SET under HTTP load: the generated device module's
+main() boots as a task, and once the host's load reaches its webserver the initiator SETs a multi-chunk echo and GETs it
+back round after round, each answer compared byte for byte; facts out, the host test judges (SPECIFICATION.md J.7)."""
 
 import asyncio
 import time

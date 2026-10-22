@@ -20,12 +20,13 @@ from _bus_hazard_catalog import (
     recover_marking_the_clear,
     seed_bmp_ready,
     seed_isl_ready,
+    sibling_inside_window,
 )
 from _bus_hazard_catalog import sgp_word as _sgp_word
 from _error_codes import code
 from _fast_sleep import FastAsyncSleep
 from _fram_builders import make_fram_manager
-from _fram_chip_fake import _OPCODE_RDSR, _OPCODE_WRDI, _OPCODE_WREN, _OPCODE_WRITE, FakeMB85RS64V
+from _fram_chip_fake import _OPCODE_RDSR, _OPCODE_READ, _OPCODE_WRDI, _OPCODE_WREN, _OPCODE_WRITE, FakeMB85RS64V
 from _src_const import src_const
 from _tmp_scratch import TmpScratch
 
@@ -34,8 +35,9 @@ from asy_config_manager import ConfigManager
 from asy_crc_checks import CRC8, CRC16
 from asy_i2c_driver import I2C
 from asy_isl29125_driver import ISL29125_I2C, ISL29125_Reader
+from asy_scd30_driver import SCD30_I2C
 from asy_sgp40_driver import SGP40_I2C
-from asy_spi_driver import SPI, SPIDevice
+from asy_spi_driver import SPIDevice
 
 try:
     from typing import TYPE_CHECKING
@@ -44,17 +46,9 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
-    from typing import Any
 
     from asy_config_manager import ConfigSchema
     from asy_fram_manager import FRAMChunk, FRAMManager
-
-
-async def _gather(a: "Coroutine[object, object, object]", b: "Coroutine[object, object, object]") -> None:
-    # asyncio.gather() itself returns a Future, not a Coroutine - mypy rejects passing it straight
-    # to run() (which declares a Coroutine[...] parameter), same as test_asy_i2c_driver.py's own
-    # scenario()-wrapping convention for this exact call shape.
-    await asyncio.gather(a, b)
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +60,9 @@ _BMP_ADDR = 0x77
 _SGP_ADDR = 0x59
 _ISL_ADDR = 0x44  # hard-wired (FN8424 p15), sharing i2c1 with SCD30 and SGP40 where a TOML puts it there
 _GENERAL_CALL_ADDR = 0x00
+# How long a sibling's loop may take to finish beside a faulting device; a lock the fault stranded never finishes.
+# @tunable l1.bus_fault_isolation_bound_s = 5
+_ISOLATION_BOUND_S = 5
 # The BMP3XX pressure the catalog's planted calibration and ADC bytes give, by hand: BMP388 datasheet §9.1 and §9.3
 # (its temperature is the catalog's BMP_EXPECTED_TEMPERATURE).
 _BMP_EXPECTED_PRESSURE_HPA = 713.765147356092
@@ -121,14 +118,9 @@ def test_cross_device_bmp3xx_and_sgp40_interleave_and_both_stay_correct() -> Non
         assert _register_reads_unbroken(log, _BMP_ADDR) > 0  # every register read, the EVENT read included, atomic
         assert sum(1 for entry in log if entry[:3] == ("writeto", _BMP_ADDR, b"\x10")) == bmp_iterations  # one EVENT read per cycle
 
-        # Genuine interleaving proof: addressed log entries must not form two separate contiguous
-        # blocks (one fully before the other). BMP3xx's register access (an address writeto, then
-        # readfrom_into) and SGP40's raw words both log as writeto/readfrom_into.
-        addressed = [entry[1] for entry in fake_bus.log if entry[0] in ("writeto", "readfrom_into")]
-        # Plain index-based comparison, not zip(strict=...): MicroPython's builtin zip() doesn't accept
-        # keyword arguments (confirmed against the pinned Unix-port interpreter).
-        switches = sum(1 for i in range(len(addressed) - 1) if addressed[i] != addressed[i + 1])
-        assert switches >= 2, f"only {switches} address switch(es) across the whole run - looks fully serialized, not interleaved: {addressed}"
+        # Genuine interleaving proof: a BMP3xx transfer lands between an SGP40 command and its reply, the conversion
+        # wait the driver frees the bus for.
+        assert sibling_inside_window(log, _SGP_ADDR), "no sibling transaction landed inside an SGP40 conversion window - the bus was held across the delay"
 
 
 def test_cross_device_isl29125_and_sgp40_interleave_and_both_stay_correct() -> None:
@@ -169,15 +161,13 @@ def test_cross_device_isl29125_and_sgp40_interleave_and_both_stay_correct() -> N
     assert snapshots == [bytes(3)] * isl_iterations  # the seeded post-reset CONFIG1-3, never torn
     assert _register_reads_unbroken(list(fake_bus.log), _ISL_ADDR) == 3 * isl_iterations  # status, snapshot and counts, each atomic
     assert sgp_results == [0x8000] * sgp_iterations
-    addressed = [entry[1] for entry in fake_bus.log if entry[0] in ("writeto", "readfrom_into")]
-    switches = sum(1 for i in range(len(addressed) - 1) if addressed[i] != addressed[i + 1])
-    assert switches >= 2, f"only {switches} address switch(es) - looks fully serialized, not interleaved: {addressed}"
+    assert sibling_inside_window(fake_bus.log, _SGP_ADDR), "no sibling transaction landed inside an SGP40 conversion window - the bus was held across the delay"
 
 
 # ---------------------------------------------------------------------------
 # 2. General-call broadcast hazard: a true I2C general call landing concurrently with a sibling's
-#    own multi-step read must not corrupt or interrupt it - including the case where the bus's
-#    lone occupant has no broadcaster of its own at all.
+#    own multi-step read must not corrupt or interrupt it. A BMP3xx alone on its bus is checked on
+#    silicon: tests_hardware/device_scripts/bmp3xx_alone_survives_a_general_call.py.
 # ---------------------------------------------------------------------------
 
 
@@ -214,9 +204,6 @@ def test_sgp40_general_call_reset_does_not_disturb_a_concurrent_bmp3xx_read() ->
     general_calls = [entry for entry in fake_bus.log if entry[0] == "writeto" and entry[1] == _GENERAL_CALL_ADDR]
     assert len(general_calls) == reset_count
     assert all(entry[2] == b"\x06" for entry in general_calls)
-    # And BMP3xx's own address must never appear mixed into a general-call entry - the broadcast
-    # is its own, separate log entry, not something that silently merged into BMP3xx's own bus ops.
-    assert all(entry[1] != _BMP_ADDR for entry in general_calls)
 
 
 def test_sgp40_general_call_reset_does_not_disturb_a_concurrent_isl29125_read() -> None:
@@ -243,43 +230,6 @@ def test_sgp40_general_call_reset_does_not_disturb_a_concurrent_isl29125_read() 
 
     assert all(counts == (0x2000, 0x1800, 0x1000) for counts in results)
     assert any(entry[0] == "writeto" and entry[1] == 0x00 for entry in fake_bus.log), "the general call never fired - this test isn't exercising the hazard"
-
-
-def test_general_call_absent_sibling_bmp3xx_alone_on_the_bus_survives_a_broadcast_too() -> None:
-    # BMP3xx is the only device on this bus, as where a TOML puts it alone on i2c0, and the broadcast is issued
-    # directly against the raw I2C wrapper to prove BMP3xx alone tolerates a general call whoever issues it.
-    #
-    # This is the ROGUE-broadcast case tests/_bus_hazard_catalog.py's TOML-driven scheme cannot generate, it
-    # only ever firing a general call a catalog occupant's own adapter issues, so it stays hand-written.
-    i2c = make_i2c(0)
-    bmp = BMP3XX_I2C(i2c, address=_BMP_ADDR)
-    fake_bus = fake(i2c)
-    seed_bmp_ready(i2c)
-    run(bmp.setup())  # populates _temp_calib/_pressure_calib from the seeded CAL_DATA - required before any real _read()
-    fake_bus.nak_addresses.add(_GENERAL_CALL_ADDR)  # BMP3xx doesn't ack general calls (datasheet-confirmed)
-
-    bmp_results: list[tuple[float, float]] = []
-
-    async def bmp_loop() -> None:
-        for _ in range(5):
-            bmp_results.append(await bmp.get_pressure_and_temperature())
-            await asyncio.sleep(0)
-
-    async def rogue_broadcast_loop() -> None:
-        for _ in range(3):
-            try:
-                i2c.writeto(_GENERAL_CALL_ADDR, b"\x06")
-            except OSError:
-                pass  # expected - nothing acks it, same as SGP40_I2C._reset()'s own tolerance
-            await asyncio.sleep(0)
-
-    with FastAsyncSleep():
-        run(_gather(bmp_loop(), rogue_broadcast_loop()))
-
-    assert len(bmp_results) == 5
-    for pressure, temperature in bmp_results:
-        assert abs(pressure - _BMP_EXPECTED_PRESSURE_HPA) < 1e-6
-        assert abs(temperature - BMP_EXPECTED_TEMPERATURE) < 1e-6
 
 
 # ---------------------------------------------------------------------------
@@ -315,23 +265,19 @@ def test_sgp40_bus_fault_does_not_corrupt_or_stall_a_concurrent_isl29125_read() 
                 sgp_errors += 1
             await asyncio.sleep(0)
 
-    with FastAsyncSleep():
-        run(_gather(isl_loop(), sgp_loop()))
+    async def bounded() -> None:
+        try:
+            await asyncio.wait_for(_gather(isl_loop(), sgp_loop()), _ISOLATION_BOUND_S)
+        except asyncio.TimeoutError:
+            raise AssertionError("the shared I2C lock was not released after the SGP40's EIO - the ISL29125 loop never finished") from None
 
+    with FastAsyncSleep():
+        run(bounded())
+
+    assert not i2c.bus_lock.locked(), "the SGP40's EIO left the shared I2C lock held"
     assert len(isl_results) == isl_iterations
     assert all(counts == (0x2000, 0x1800, 0x1000) for counts in isl_results), "SGP40's own bus fault corrupted a concurrent ISL29125 read"
     assert sgp_errors == sgp_attempts, f"expected every faulted SGP40 call to raise, got {sgp_errors}/{sgp_attempts}"
-
-
-def _register_reads_unbroken(log: "list[Any]", address: int) -> int:
-    # Every no-stop register-address write to `address` is followed at once by its readfrom_into, never by
-    # a sibling's transfer between the two. Returns how many such reads the log holds.
-    count = 0
-    for i, entry in enumerate(log):
-        if entry[0] == "writeto" and entry[1] == address and not entry[3] and entry[2]:
-            assert i + 1 < len(log) and log[i + 1][0:2] == ("readfrom_into", address), f"a transfer landed inside a register read at log index {i}: {log[i : i + 2]}"
-            count += 1
-    return count
 
 
 def test_a_register_read_is_two_transfers_with_no_sibling_transfer_between_them() -> None:
@@ -395,40 +341,6 @@ def test_a_short_ack_on_one_device_fails_only_that_device_and_leaves_sibling_rea
     assert log[stop - 1][0:2] == ("writeto", _BMP_ADDR), "the STOP follows the short write at once"
 
 
-async def _recover_between_halves(i2c: I2C, target: int, trigger: bytes, read: "Coroutine[Any, Any, None]", after_recovery: "Callable[[], None] | None" = None) -> None:
-    # Runs `read`, and i2c.recover() the moment `trigger` (its first half's write) has reached the bus.
-    bus = fake(i2c)
-    real_writeto = bus.writeto
-    fired = asyncio.Event()
-
-    def watching(address: int, buf: object, stop: bool = True) -> int:
-        n = real_writeto(address, buf, stop)
-        if address == target and bytes(buf) == trigger:  # type: ignore[call-overload]
-            fired.set()
-        return n
-
-    async def recovery() -> None:
-        await fired.wait()
-        await i2c.recover()
-        if after_recovery is not None:
-            after_recovery()
-
-    bus.writeto = watching  # type: ignore[method-assign]
-    try:
-        await asyncio.gather(read, recovery())
-    finally:
-        bus.writeto = real_writeto  # type: ignore[method-assign]
-
-
-def _assert_recovery_between(i2c: I2C, address: int, trigger: bytes) -> None:
-    # The second half ends with the transaction's last read (BMP3XX: the data burst after its STATUS polls).
-    log = list(fake(i2c).log)  # a snapshot of the ring log, oldest first
-    first = log.index(("writeto", address, trigger, True))
-    init = next(i for i in range(first, len(log)) if log[i][0] == "init")
-    last = max(i for i in range(first + 1, len(log)) if log[i][0] == "readfrom_into" and log[i][1] == address)
-    assert first < init < last, f"the recovery did not land between the two halves: {log[first : last + 1]}"
-
-
 def test_a_recovery_between_a_split_session_still_returns_a_valid_value() -> None:
     # SCD30 command -> read, SGP40 command -> read, BMP3XX trigger -> read: each releases the bus between
     # its halves, where a bus clear and controller re-construction may land; the idle slave sees no
@@ -443,7 +355,7 @@ def test_a_recovery_between_a_split_session_still_returns_a_valid_value() -> Non
         i2c = make_i2c(1)
         instance = adapter.construct(i2c, address)
         after = None
-        if driver == "bmp3xx":
+        if isinstance(instance, BMP3XX_I2C):
             with FastAsyncSleep():
                 run(instance.setup())
             fake(i2c).registers[(address, 0x03)] = bytearray([0x00])  # STATUS not ready: the poll yields
@@ -519,46 +431,15 @@ _SHARED_I2C1 = (("scd30", _SCD_ADDR), ("sgp40", _SGP_ADDR), ("isl29125", _ISL_AD
 _scratch = TmpScratch("bus_hazard_multi_device")
 
 
-def _shared_i2c1() -> "tuple[I2C, dict[str, Any]]":
-    i2c = make_i2c(1)
-    return i2c, {driver: I2C_HAZARD_CATALOG[driver].construct(i2c, address) for driver, address in _SHARED_I2C1}
-
-
-async def _rung_beside_sibling_reads(i2c: I2C, instances: "dict[str, Any]", siblings: "tuple[str, ...]", rung: "Callable[[], Coroutine[Any, Any, object]]", offset: int) -> None:
-    for driver, address in _SHARED_I2C1:
-        if driver in siblings:
-            I2C_HAZARD_CATALOG[driver].seed(fake(i2c), address, _RUNG_OFFSETS)
-
-    async def reads(driver: str) -> None:
-        for _ in range(_RUNG_OFFSETS):
-            await I2C_HAZARD_CATALOG[driver].read_once(instances[driver])
-            await asyncio.sleep(0)
-
-    async def fire() -> None:
-        for _ in range(offset):
-            await asyncio.sleep(0)
-        await rung()
-
-    await asyncio.gather(*(reads(driver) for driver in siblings), fire())
-
-
-def _across_offsets(scenario: "Callable[[int], None]") -> None:
-    failures = []
-    for offset in range(_RUNG_OFFSETS):
-        try:
-            scenario(offset)
-        except AssertionError as e:
-            failures.append(f"offset={offset}: {e}")
-    assert not failures, f"{len(failures)}/{_RUNG_OFFSETS} timing offset(s) reproduced a hazard: {failures}"
-
-
 def test_an_scd30_soft_reset_mid_read_leaves_every_sibling_read_valid() -> None:
     # The SCD30's participant rung is its soft reset (0xD304, Interface Description 1.4.10); its 2.5 s restart
     # wait runs outside the bus lock, so the siblings keep reading through it.
     def scenario(offset: int) -> None:
         i2c, instances = _shared_i2c1()
+        scd30 = instances["scd30"]
+        assert isinstance(scd30, SCD30_I2C)
         with FastAsyncSleep():
-            run(_rung_beside_sibling_reads(i2c, instances, ("sgp40", "isl29125"), instances["scd30"].reset, offset))
+            run(_rung_beside_sibling_reads(i2c, instances, ("sgp40", "isl29125"), scd30.reset, offset))
         to_scd = [entry for entry in fake(i2c).log if entry[0] == "writeto" and entry[1] == _SCD_ADDR]
         assert to_scd == [("writeto", _SCD_ADDR, b"\xd3\x04", True)], to_scd
 
@@ -569,8 +450,10 @@ def test_sgp40_heater_off_does_not_disturb_a_concurrent_scd30_read_loop() -> Non
     # The SGP40's participant rung, 0x3615 to 0x59 alone (datasheet Table 14), beside the SCD30 and ISL29125 loops.
     def scenario(offset: int) -> None:
         i2c, instances = _shared_i2c1()
+        sgp40 = instances["sgp40"]
+        assert isinstance(sgp40, SGP40_I2C)
         with FastAsyncSleep():
-            run(_rung_beside_sibling_reads(i2c, instances, ("scd30", "isl29125"), instances["sgp40"].turn_heater_off, offset))
+            run(_rung_beside_sibling_reads(i2c, instances, ("scd30", "isl29125"), sgp40.turn_heater_off, offset))
         to_sgp = [entry for entry in fake(i2c).log if entry[0] in ("writeto", "readfrom_into") and entry[1] == _SGP_ADDR]
         assert to_sgp == [("writeto", _SGP_ADDR, b"\x36\x15", True)], to_sgp
 
@@ -636,17 +519,6 @@ def test_an_isl29125_reapply_mid_read_leaves_every_sibling_read_valid() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _sgp40_measure_command(temperature: int, relative_humidity: int) -> bytes:
-    # Independent oracle from the SGP40 datasheet, not the driver's tick helpers: command 0x260F, then the
-    # RH word and the T word each with its CRC-8 (Table 9); ticks per Table 10's formulas, rounded half up,
-    # which its own 50 % -> 0x8000 row requires; CRC-8 poly 0x31, init 0xFF (Table 7).
-    rh_ticks = (relative_humidity * 65535 * 2 + 100) // 200
-    t_ticks = ((temperature + 45) * 65535 * 2 + 175) // 350
-    rh_word = bytes([rh_ticks >> 8, rh_ticks & 0xFF])
-    t_word = bytes([t_ticks >> 8, t_ticks & 0xFF])
-    return b"\x26\x0f" + rh_word + bytes([crc8(rh_word)]) + t_word + bytes([crc8(t_word)])
-
-
 def test_three_concurrent_sessions_on_the_same_sgp40_instance_never_scramble_each_others_reads() -> None:
     i2c = make_i2c(1)
     sgp = SGP40_I2C(i2c)
@@ -687,103 +559,93 @@ def test_three_concurrent_sessions_on_the_same_sgp40_instance_never_scramble_eac
 
 
 def test_no_reserved_i2c_address_collides_with_any_promoted_devices_own_address() -> None:
-    for name, address in (("SCD30", _SCD_ADDR), ("BMP3xx", _BMP_ADDR), ("SGP40", _SGP_ADDR), ("ISL29125", _ISL_ADDR)):
-        assert not is_reserved(address), f"{name}'s own address {address:#x} falls inside a reserved I2C range"
+    # Every catalog driver's own default, read from the driver itself, never a hand-kept copy of it.
+    for driver, adapter in I2C_HAZARD_CATALOG.items():
+        address = adapter.default_address(make_i2c(1))
+        assert not is_reserved(address), f"{driver}'s own default address {address:#x} falls inside a reserved I2C range"
 
 
-# SPI: two devices on one bus, one through the async session and one through the synchronous one.
-# The generated TOML-driven scheme cannot produce this shape (every device TOML puts the FRAM alone
-# on spi0), and it is what "future multi-device SPI compatibility" has to mean concretely.
+# SPI: a real FRAM_SPI, whose block session runs each transfer synchronously under the bus lock, beside another
+# device's async session on one bus. The generated TOML-driven scheme cannot produce this shape (every device TOML
+# puts the FRAM alone on spi0); it is what "future multi-device SPI compatibility" has to mean concretely.
 
 
 def test_spi_async_and_synchronous_sessions_share_one_bus_without_cs_overlap() -> None:
-    bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
-    async_device = SPIDevice(bus, 1)
-    sync_device = SPIDevice(bus, 6)
+    manager, chip = make_fram_manager()  # the FRAM on CS 1, as every FRAM-backed test builds it
+    fram = manager.fram
+    bus = fram._spidev.spi
+    async_device = SPIDevice(bus, 6)
+    assert run(fram.setup()) is True
     run(async_device.setup())
-    run(sync_device.setup())
+    chip.memory[0:4] = b"\x11\x22\x33\x44"
     rounds = 12
     overlap_observed = False
-    async_done = sync_done = 0
-
-    def both_asserted() -> bool:
-        return (
-            async_device._cs_pin.value() == async_device._cs_active_value
-            and sync_device._cs_pin.value() == sync_device._cs_active_value
-        )
+    async_done = fram_done = 0
+    reads: list[bytes] = []
 
     async def async_worker() -> None:
-        nonlocal overlap_observed, async_done
+        nonlocal async_done
         for _ in range(rounds):
             async with async_device:
-                overlap_observed = overlap_observed or both_asserted()
-                await async_device.write(b"\x05")
+                await async_device.write(_NEIGHBOUR_BYTE)
+                await asyncio.sleep(0)  # its CS stays asserted across a scheduler turn
             async_done += 1
 
-    async def sync_worker() -> None:
-        # The pattern asy_fram_driver.py's own command bodies use: take the bus lock, run the
-        # whole CS cycle synchronously, release, then yield - never yielding with CS asserted.
-        nonlocal overlap_observed, sync_done
+    async def fram_worker() -> None:
+        # Only FRAM_SPI.__aenter__ taking the bus lock keeps this block out of the other device's CS window.
+        nonlocal overlap_observed, fram_done
+        buf = bytearray(4)
         for _ in range(rounds):
-            await bus.bus_lock.acquire()
-            try:
-                sync_device.session_begin()
-                try:
-                    overlap_observed = overlap_observed or both_asserted()
-                    sync_device.write_sync(b"\x06")
-                finally:
-                    sync_device.session_end()
-            finally:
-                bus.bus_lock.release()
-            sync_done += 1
+            async with fram:
+                overlap_observed = overlap_observed or async_device._cs_pin.value() == async_device._cs_active_value
+                fram._read_address(0, buf)
+            reads.append(bytes(buf))
+            fram_done += 1
             await asyncio.sleep(0)
 
-    async def scenario() -> None:
-        await asyncio.gather(async_worker(), sync_worker())
-
-    run(scenario())
-    assert not overlap_observed
-    assert async_done == rounds
-    assert sync_done == rounds
+    run(_gather(async_worker(), fram_worker()))
+    assert not overlap_observed, "the FRAM's block session ran while another device held its CS asserted"
+    assert (async_done, fram_done) == (rounds, rounds)
+    assert reads == [b"\x11\x22\x33\x44"] * rounds
     assert async_device._cs_pin.value() == 1  # both back to inactive afterwards
-    assert sync_device._cs_pin.value() == 1
+    assert fram._spidev._cs_pin.value() == 1
     assert not bus.bus_lock.locked()
 
 
 def test_spi_synchronous_session_never_leaves_the_bus_locked_when_a_transfer_raises() -> None:
-    # Fault isolation across the two session styles: an rx overrun inside the synchronous
-    # session must not strand the shared lock or the other device's access to the bus.
-    bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
-    faulting = SPIDevice(bus, 1)
+    # Fault isolation across the two session styles: an rx overrun inside the FRAM's block session must not strand
+    # the shared lock or the other device's access to the bus.
+    manager, chip = make_fram_manager()
+    fram = manager.fram
+    bus = fram._spidev.spi
     neighbour = SPIDevice(bus, 6)
-    run(faulting.setup())
+    assert run(fram.setup()) is True
     run(neighbour.setup())
-    bus._spi.rx_overrun = True  # type: ignore[union-attr]  # the fake SPI behind the wrapper
-    neighbour_ok = False
+    chip.rx_overrun = True
+    chip.opcodes = []
+
+    async def neighbour_writes() -> None:
+        async with neighbour:
+            await neighbour.write(_NEIGHBOUR_BYTE)
 
     async def scenario() -> bool:
         raised = False
-        await bus.bus_lock.acquire()
         try:
-            faulting.session_begin()
-            try:
-                faulting.readinto_sync(bytearray(32))  # 32+ bytes: the DMA path, the only one that can raise
-            except OSError:
-                raised = True
-            finally:
-                faulting.session_end()
-        finally:
-            bus.bus_lock.release()
-        nonlocal neighbour_ok
-        async with neighbour:
-            neighbour_ok = True
-            await neighbour.write(b"\x05")
+            async with fram:
+                fram._read_address(0, bytearray(32))  # 32+ bytes: the DMA path, the only one that can raise
+        except OSError:
+            raised = True
+        try:
+            await asyncio.wait_for(neighbour_writes(), _ISOLATION_BOUND_S)
+        except asyncio.TimeoutError:
+            raise AssertionError("the shared SPI lock was not released after the FRAM's overrun - the neighbour never wrote") from None
         return raised
 
     assert run(scenario())
-    assert neighbour_ok
+    assert chip.opcodes == [_OPCODE_READ, _NEIGHBOUR_BYTE[0]], f"the neighbour's write did not reach the bus: {chip.opcodes}"
+    assert fram._spidev._cs_pin.value() == 1
     assert not bus.bus_lock.locked()
-    assert faulting._cs_pin.value() == 1
+    assert not fram.session_lock.locked()
 
 
 # ---------------------------------------------------------------------------
@@ -797,13 +659,6 @@ _ERASE_OFFSETS = range(0, 100, 10)  # turns the write and the read get before th
 _NEIGHBOUR_BYTE = b"\xa5"  # another device's traffic on the FRAM's bus: no MB85RS opcode, so the chip fake ignores it
 _CANCEL_OFFSETS = 40  # scheduler turns into the SGP40's setup and measurement; the cycle ends at 26
 _COUNT_SCHEMA: "ConfigSchema" = (("Count", "int", 7, 0, 100, None),)
-
-
-def _fram_const(module: str, name: str) -> int:
-    # A folded const() of src/<module>.py, read from its source.
-    value = src_const(f"src/{module}.py", name)
-    assert isinstance(value, int), (name, value)
-    return value
 
 
 class _EraseWire(FakeMB85RS64V):
@@ -865,6 +720,16 @@ class _EraseWireMB85RS2MTA(_EraseWire):
     HEADER = 4
 
 
+def _across_offsets(scenario: "Callable[[int], None]") -> None:
+    failures = []
+    for offset in range(_RUNG_OFFSETS):
+        try:
+            scenario(offset)
+        except AssertionError as e:
+            failures.append(f"offset={offset}: {e}")
+    assert not failures, f"{len(failures)}/{_RUNG_OFFSETS} timing offset(s) reproduced a hazard: {failures}"
+
+
 def _arm_wire(manager: "FRAMManager", chip: _EraseWire) -> "Callable[[], None]":
     # Starts the check at pass 1 and returns erase_chip()'s step_done, which turns it to pass 2 after the last chunk.
     steps = [0]
@@ -878,63 +743,34 @@ def _arm_wire(manager: "FRAMManager", chip: _EraseWire) -> "Callable[[], None]":
     return step_done
 
 
+def _assert_recovery_between(i2c: I2C, address: int, trigger: bytes) -> None:
+    # The second half ends with the transaction's last read (BMP3XX: the data burst after its STATUS polls).
+    log = list(fake(i2c).log)  # a snapshot of the ring log, oldest first
+    first = log.index(("writeto", address, trigger, True))
+    init = next(i for i in range(first, len(log)) if log[i][0] == "init")
+    last = max(i for i in range(first + 1, len(log)) if log[i][0] == "readfrom_into" and log[i][1] == address)
+    assert first < init < last, f"the recovery did not land between the two halves: {log[first : last + 1]}"
+
+
 def _blocks(chip: _EraseWire, chunk: "FRAMChunk") -> "list[bytes]":
     span = chunk._block_addr[1] - chunk._block_addr[0]
     return [bytes(chip.memory[addr : addr + span]) for addr in chunk._block_addr]
 
 
-def _erase_rig(part: "type[_EraseWire]") -> "tuple[FRAMManager, _EraseWire, list[FRAMChunk]]":
-    # A set-up manager over `part` with three chunks of different sizes and CRCs, each written once (status bytes idle).
-    manager, chip = make_fram_manager(part.SIZE, part)
-    assert isinstance(chip, _EraseWire)
-    assert run(manager.setup()) is True
-    chunks = []
-    for n, (size, crc) in enumerate(_CHUNKS):
-        chunk = manager.get_chunk(size, crc=crc(), owner=_CHUNK_OWNERS[n])
-        assert chunk is not None
-        assert run(chunk.write(bytes([n + 1]) * size)) is True
-        chunks.append(chunk)
-    return manager, chip, chunks
-
-
-def _record_write_statuses(manager: "FRAMManager") -> "list[int]":
-    # Every set_values_sync() status from now on, OR-ed into the one element returned.
-    seen = [0]
-    real = manager.fram.set_values_sync
-
-    def recording(buf: "bytes | bytearray | memoryview", addr_start: int) -> int:
-        status = real(buf, addr_start)
-        seen[0] |= status
-        return status
-
-    manager.fram.set_values_sync = recording  # type: ignore[method-assign]
-    return seen
-
-
-def _status_bytes() -> "list[int]":
-    # Each chunk is two equal blocks [payload][CRC][status 1][status 2], allocated upward from 0, in request order.
-    status_bytes = _fram_const("asy_fram_manager", "_NUM_STATUS_BYTES")
-    expected = []
-    top = 0
-    for size, crc in _CHUNKS:
-        for _block in range(2):
-            top += size + crc().length() + status_bytes
-            expected += list(range(top - status_bytes, top))
-    return expected
-
-
-def test_the_erase_writes_each_status_byte_then_every_unit_once_ascending_at_the_parts_address_width() -> None:
-    # Pass 1 writes exactly the status bytes of each allocated block, pass 2 every 256-byte unit of the chip once,
-    # ascending from 0; every WRITE carries the part's address width and no write status bit is ever set.
-    for part in (_EraseWire, _EraseWireMB85RS2MTA):
-        manager, chip, _chunks = _erase_rig(part)
-        statuses = _record_write_statuses(manager)
-        assert run(manager.erase_chip(_arm_wire(manager, chip))) is True
-        chip.erase_pass = 0
-        assert (chip.faults, chip.foreign) == (0, 0), part
-        assert sorted(chip.status_writes) == _status_bytes(), (part, chip.status_writes)
-        assert chip.next_unit == part.SIZE, (part, chip.next_unit)
-        assert statuses[0] == 0, f"a write status {statuses[0]:#x} (_SV_BAD_RANGE is {_fram_const('asy_fram_driver', '_SV_BAD_RANGE'):#x})"
+async def _cancel_sgp40_after(i2c: I2C, isl: ISL29125_I2C, sgp: SGP40_I2C, turns: int) -> "tuple[bool, bool, bool]":
+    # Cancels the SGP40's setup and measurement `turns` turns in, an ISL29125 read queued behind whatever it holds;
+    # returns which locks the SGP40 held at the cancel and whether its cycle had already ended.
+    cycle = asyncio.create_task(_sgp40_setup_and_measure(sgp))
+    for _ in range(turns):
+        await asyncio.sleep(0)
+    held_bus, held_device, ended = i2c.bus_lock.locked(), sgp._i2c_sgp40.session_lock.locked(), cycle.done()
+    sibling = asyncio.create_task(isl.read_counts())
+    await cancel(cycle)
+    assert not i2c.bus_lock.locked(), f"turns={turns}: the bus lock outlived the cancelled session"
+    assert not sgp._i2c_sgp40.session_lock.locked(), f"turns={turns}: the SGP40's session lock outlived its cancel"
+    assert sgp._command_buffer is sgp._default_command_buffer, f"turns={turns}: the measure command stayed staged"
+    assert await sibling == (0x2000, 0x1800, 0x1000), f"turns={turns}: the sibling's read after the cancel"
+    return held_bus, held_device, ended
 
 
 async def _erase_in_flight(manager: "FRAMManager", chip: _EraseWire, chunks: "list[FRAMChunk]", turns: int) -> "list[object] | None":
@@ -984,72 +820,32 @@ async def _erase_in_flight(manager: "FRAMManager", chip: _EraseWire, chunks: "li
     return [begun, both_in_flight, torn_if_cut, settled, finished, whole, refused, erased]
 
 
-def test_an_erase_lets_a_write_and_a_read_in_flight_finish_whole_refuses_later_ones_and_holds_each_unit_whole() -> None:
-    # At offsets into a chunk write and a chunk read: each one begun finishes, each chunk's two copies end equal and
-    # idle, one not begun and later ones are refused, and each erase write's five CS cycles stay contiguous while the
-    # chip's probe and another device on its bus land between them (the unit holds both FRAM locks).
-    failures = []
-    in_flight = torn = 0
-    for turns in _ERASE_OFFSETS:
-        manager, chip, chunks = _erase_rig(_EraseWire)
-        facts = run(_erase_in_flight(manager, chip, chunks, turns))
-        if facts is None:
-            break
-        begun, both_in_flight, torn_if_cut, settled, finished, whole, refused, erased = facts
-        in_flight += bool(both_in_flight)
-        torn += bool(torn_if_cut)
-        wire = [chip.faults, chip.foreign > 0, chip.next_unit, sorted(chip.status_writes) == _status_bytes()]
-        if [settled, finished, whole, refused, erased, wire] != [begun, begun, True, [False, None], True, [0, True, _EraseWire.SIZE, True]]:
-            failures.append(f"turns={turns}: begun={begun} settled={settled} finished={finished} whole={whole} refused={refused} erased={erased} wire={wire}")
-    else:
-        raise AssertionError(f"the write and the read were still in flight after {max(_ERASE_OFFSETS)} turns")
-    assert not failures, failures
-    assert in_flight > 0, "no offset caught the write and the read both in flight"
-    assert torn > 0, "no offset caught the write between its two copies"
+def _erase_rig(part: "type[_EraseWire]") -> "tuple[FRAMManager, _EraseWire, list[FRAMChunk]]":
+    # A set-up manager over `part` with three chunks of different sizes and CRCs, each written once (status bytes idle).
+    manager, chip = make_fram_manager(part.SIZE, part)
+    assert isinstance(chip, _EraseWire)
+    assert run(manager.setup()) is True
+    chunks = []
+    for n, (size, crc) in enumerate(_CHUNKS):
+        chunk = manager.get_chunk(size, crc=crc(), owner=_CHUNK_OWNERS[n])
+        assert chunk is not None
+        assert run(chunk.write(bytes([n + 1]) * size)) is True
+        chunks.append(chunk)
+    return manager, chip, chunks
 
 
-async def _sgp40_setup_and_measure(sgp: SGP40_I2C) -> "int | None":
-    await sgp.setup()
-    return await sgp.measure_raw(temperature=25, relative_humidity=50)
+def _fram_const(module: str, name: str) -> int:
+    # A folded const() of src/<module>.py, read from its source.
+    value = src_const(f"src/{module}.py", name)
+    assert isinstance(value, int), (name, value)
+    return value
 
 
-async def _cancel_sgp40_after(i2c: I2C, isl: ISL29125_I2C, sgp: SGP40_I2C, turns: int) -> "tuple[bool, bool, bool]":
-    # Cancels the SGP40's setup and measurement `turns` turns in, an ISL29125 read queued behind whatever it holds;
-    # returns which locks the SGP40 held at the cancel and whether its cycle had already ended.
-    cycle = asyncio.create_task(_sgp40_setup_and_measure(sgp))
-    for _ in range(turns):
-        await asyncio.sleep(0)
-    held_bus, held_device, ended = i2c.bus_lock.locked(), sgp._i2c_sgp40.session_lock.locked(), cycle.done()
-    sibling = asyncio.create_task(isl.read_counts())
-    await cancel(cycle)
-    assert not i2c.bus_lock.locked(), f"turns={turns}: the bus lock outlived the cancelled session"
-    assert not sgp._i2c_sgp40.session_lock.locked(), f"turns={turns}: the SGP40's session lock outlived its cancel"
-    assert sgp._command_buffer is sgp._default_command_buffer, f"turns={turns}: the measure command stayed staged"
-    assert await sibling == (0x2000, 0x1800, 0x1000), f"turns={turns}: the sibling's read after the cancel"
-    return held_bus, held_device, ended
-
-
-def test_a_sensor_cancelled_inside_its_session_leaves_the_bus_free_and_the_sibling_read_valid() -> None:
-    # The shutdown cancels each supervised task where it waits: the SGP40 at every turn of its setup and measurement,
-    # inside its bus session (the presence probe) and its device session (the measurement wait) among them.
-    held = set()
-    for turns in range(_CANCEL_OFFSETS):
-        i2c = make_i2c(1)
-        isl = ISL29125_I2C(i2c)
-        sgp = SGP40_I2C(i2c)
-        seed_isl_ready(i2c)
-        fake(i2c).attached.add(_SGP_ADDR)
-        serial, self_test = _sgp_word(0x0000) + _sgp_word(0x1234) + _sgp_word(0x5678), _sgp_word(0xD400)
-        fake(i2c).read_queue_by_address[_SGP_ADDR] = [serial, self_test, _sgp_word(0x8000)]
-        with FastAsyncSleep():
-            held_bus, held_device, ended = run(_cancel_sgp40_after(i2c, isl, sgp, turns))
-        if ended:
-            break
-        held.add((held_bus, held_device))
-    else:
-        raise AssertionError(f"the SGP40's cycle was still running after {_CANCEL_OFFSETS} turns")
-    assert (True, True) in held, f"no cancel landed inside the bus session: {held}"
-    assert (False, True) in held, f"no cancel landed inside the device session alone: {held}"
+async def _gather(a: "Coroutine[object, object, object]", b: "Coroutine[object, object, object]") -> None:
+    # asyncio.gather() itself returns a Future, not a Coroutine - mypy rejects passing it straight
+    # to run() (which declares a Coroutine[...] parameter), same as test_asy_i2c_driver.py's own
+    # scenario()-wrapping convention for this exact call shape.
+    await asyncio.gather(a, b)
 
 
 async def _read_while_storing(store: ConfigManager, path: str) -> "tuple[int, int, set[str | None]]":
@@ -1085,6 +881,168 @@ async def _read_while_storing(store: ConfigManager, path: str) -> "tuple[int, in
     done.set()
     await task
     return counts[0], counts[1], seen
+
+
+def _record_write_statuses(manager: "FRAMManager") -> "list[int]":
+    # Every set_values_sync() status from now on, OR-ed into the one element returned.
+    seen = [0]
+    real = manager.fram.set_values_sync
+
+    def recording(buf: "bytes | bytearray | memoryview", addr_start: int) -> int:
+        status = real(buf, addr_start)
+        seen[0] |= status
+        return status
+
+    manager.fram.set_values_sync = recording  # type: ignore[method-assign]
+    return seen
+
+
+async def _recover_between_halves(i2c: I2C, target: int, trigger: bytes, read: "Coroutine[object, object, None]", after_recovery: "Callable[[], None] | None" = None) -> None:
+    # Runs `read`, and i2c.recover() the moment `trigger` (its first half's write) has reached the bus.
+    bus = fake(i2c)
+    real_writeto = bus.writeto
+    fired = asyncio.Event()
+
+    def watching(address: int, buf: object, stop: bool = True) -> int:
+        n = real_writeto(address, buf, stop)
+        if address == target and bytes(buf) == trigger:  # type: ignore[call-overload]
+            fired.set()
+        return n
+
+    async def recovery() -> None:
+        await fired.wait()
+        await i2c.recover()
+        if after_recovery is not None:
+            after_recovery()
+
+    bus.writeto = watching  # type: ignore[method-assign]
+    try:
+        await asyncio.gather(read, recovery())
+    finally:
+        bus.writeto = real_writeto  # type: ignore[method-assign]
+
+
+def _register_reads_unbroken(log: "list[tuple[object, ...]]", address: int) -> int:
+    # Every no-stop register-address write to `address` is followed at once by its readfrom_into, never by
+    # a sibling's transfer between the two. Returns how many such reads the log holds.
+    count = 0
+    for i, entry in enumerate(log):
+        if entry[0] == "writeto" and entry[1] == address and not entry[3] and entry[2]:
+            assert i + 1 < len(log) and log[i + 1][0:2] == ("readfrom_into", address), f"a transfer landed inside a register read at log index {i}: {log[i : i + 2]}"
+            count += 1
+    return count
+
+
+async def _rung_beside_sibling_reads(i2c: I2C, instances: "dict[str, object]", siblings: "tuple[str, ...]", rung: "Callable[[], Coroutine[object, object, object]]", offset: int) -> None:
+    for driver, address in _SHARED_I2C1:
+        if driver in siblings:
+            I2C_HAZARD_CATALOG[driver].seed(fake(i2c), address, _RUNG_OFFSETS)
+
+    async def reads(driver: str) -> None:
+        for _ in range(_RUNG_OFFSETS):
+            await I2C_HAZARD_CATALOG[driver].read_once(instances[driver])
+            await asyncio.sleep(0)
+
+    async def fire() -> None:
+        for _ in range(offset):
+            await asyncio.sleep(0)
+        await rung()
+
+    await asyncio.gather(*(reads(driver) for driver in siblings), fire())
+
+
+def _sgp40_measure_command(temperature: int, relative_humidity: int) -> bytes:
+    # Independent oracle from the SGP40 datasheet, not the driver's tick helpers: command 0x260F, then the
+    # RH word and the T word each with its CRC-8 (Table 9); ticks per Table 10's formulas, rounded half up,
+    # which its own 50 % -> 0x8000 row requires; CRC-8 poly 0x31, init 0xFF (Table 7).
+    rh_ticks = (relative_humidity * 65535 * 2 + 100) // 200
+    t_ticks = ((temperature + 45) * 65535 * 2 + 175) // 350
+    rh_word = bytes([rh_ticks >> 8, rh_ticks & 0xFF])
+    t_word = bytes([t_ticks >> 8, t_ticks & 0xFF])
+    return b"\x26\x0f" + rh_word + bytes([crc8(rh_word)]) + t_word + bytes([crc8(t_word)])
+
+
+async def _sgp40_setup_and_measure(sgp: SGP40_I2C) -> "int | None":
+    await sgp.setup()
+    return await sgp.measure_raw(temperature=25, relative_humidity=50)
+
+
+def _shared_i2c1() -> "tuple[I2C, dict[str, object]]":
+    i2c = make_i2c(1)
+    return i2c, {driver: I2C_HAZARD_CATALOG[driver].construct(i2c, address) for driver, address in _SHARED_I2C1}
+
+
+def _status_bytes() -> "list[int]":
+    # Each chunk is two equal blocks [payload][CRC][status 1][status 2], allocated upward from 0, in request order.
+    status_bytes = _fram_const("asy_fram_manager", "_NUM_STATUS_BYTES")
+    expected = []
+    top = 0
+    for size, crc in _CHUNKS:
+        for _block in range(2):
+            top += size + crc().length() + status_bytes
+            expected += list(range(top - status_bytes, top))
+    return expected
+
+
+def test_the_erase_writes_each_status_byte_then_every_unit_once_ascending_at_the_parts_address_width() -> None:
+    # Pass 1 writes exactly the status bytes of each allocated block, pass 2 every 256-byte unit of the chip once,
+    # ascending from 0; every WRITE carries the part's address width and no write status bit is ever set.
+    for part in (_EraseWire, _EraseWireMB85RS2MTA):
+        manager, chip, _chunks = _erase_rig(part)
+        statuses = _record_write_statuses(manager)
+        assert run(manager.erase_chip(_arm_wire(manager, chip))) is True
+        chip.erase_pass = 0
+        assert (chip.faults, chip.foreign) == (0, 0), part
+        assert sorted(chip.status_writes) == _status_bytes(), (part, chip.status_writes)
+        assert chip.next_unit == part.SIZE, (part, chip.next_unit)
+        assert statuses[0] == 0, f"a write status {statuses[0]:#x} (_SV_BAD_RANGE is {_fram_const('asy_fram_driver', '_SV_BAD_RANGE'):#x})"
+
+
+def test_an_erase_lets_a_write_and_a_read_in_flight_finish_whole_refuses_later_ones_and_holds_each_unit_whole() -> None:
+    # At offsets into a chunk write and a chunk read: each one begun finishes, each chunk's two copies end equal and
+    # idle, one not begun and later ones are refused, and each erase write's five CS cycles stay contiguous while the
+    # chip's probe and another device on its bus land between them (the unit holds both FRAM locks).
+    failures = []
+    in_flight = torn = 0
+    for turns in _ERASE_OFFSETS:
+        manager, chip, chunks = _erase_rig(_EraseWire)
+        facts = run(_erase_in_flight(manager, chip, chunks, turns))
+        if facts is None:
+            break
+        begun, both_in_flight, torn_if_cut, settled, finished, whole, refused, erased = facts
+        in_flight += bool(both_in_flight)
+        torn += bool(torn_if_cut)
+        wire = [chip.faults, chip.foreign > 0, chip.next_unit, sorted(chip.status_writes) == _status_bytes()]
+        if [settled, finished, whole, refused, erased, wire] != [begun, begun, True, [False, None], True, [0, True, _EraseWire.SIZE, True]]:
+            failures.append(f"turns={turns}: begun={begun} settled={settled} finished={finished} whole={whole} refused={refused} erased={erased} wire={wire}")
+    else:
+        raise AssertionError(f"the write and the read were still in flight after {max(_ERASE_OFFSETS)} turns")
+    assert not failures, failures
+    assert in_flight > 0, "no offset caught the write and the read both in flight"
+    assert torn > 0, "no offset caught the write between its two copies"
+
+
+def test_a_sensor_cancelled_inside_its_session_leaves_the_bus_free_and_the_sibling_read_valid() -> None:
+    # The shutdown cancels each supervised task where it waits: the SGP40 at every turn of its setup and measurement,
+    # inside its bus session (the presence probe) and its device session (the measurement wait) among them.
+    held = set()
+    for turns in range(_CANCEL_OFFSETS):
+        i2c = make_i2c(1)
+        isl = ISL29125_I2C(i2c)
+        sgp = SGP40_I2C(i2c)
+        seed_isl_ready(i2c)
+        fake(i2c).attached.add(_SGP_ADDR)
+        serial, self_test = _sgp_word(0x0000) + _sgp_word(0x1234) + _sgp_word(0x5678), _sgp_word(0xD400)
+        fake(i2c).read_queue_by_address[_SGP_ADDR] = [serial, self_test, _sgp_word(0x8000)]
+        with FastAsyncSleep():
+            held_bus, held_device, ended = run(_cancel_sgp40_after(i2c, isl, sgp, turns))
+        if ended:
+            break
+        held.add((held_bus, held_device))
+    else:
+        raise AssertionError(f"the SGP40's cycle was still running after {_CANCEL_OFFSETS} turns")
+    assert (True, True) in held, f"no cancel landed inside the bus session: {held}"
+    assert (False, True) in held, f"no cancel landed inside the device session alone: {held}"
 
 
 def test_a_concurrent_reader_never_sees_a_config_file_half_written_or_half_deleted() -> None:

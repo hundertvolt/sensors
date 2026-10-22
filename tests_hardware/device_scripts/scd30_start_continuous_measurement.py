@@ -1,6 +1,6 @@
 """Isolated-driver device script, the flash tier's one possible SCD30 NVM write: reads the 0x0010 ambient-pressure word
-back and re-sends it once - the continuous-measurement start, so a valid setting is kept. The driver refuses a value
-outside 0 or 700..1400 mbar before any send; a non-zero value overwrites altitude compensation (Interface Description 1.4.1)."""
+back and re-sends it once - the continuous-measurement start, so a valid setting is kept. A non-zero value overwrites
+altitude compensation (Interface Description 1.4.1)."""
 
 import asyncio
 
@@ -33,6 +33,7 @@ async def _main() -> None:
         await scd.setup()
         ambient = await scd.get_ambient_pressure()
         fact("ambient", ambient)
+        # The driver refuses a value outside 0 or 700..1400 mbar before any send.
         try:
             await scd.set_ambient_pressure(ambient)
             sent = True

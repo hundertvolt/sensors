@@ -1,6 +1,6 @@
 """A device script's ConfigManager over a production config file passes that module's full production
 schema (SPECIFICATION.md C.5): a narrower one makes setup() drop every sibling field on its repair
-write. Reads the scripts and src/ by AST; config_HWTEST_* scratch files are exempt."""
+write. Reads the scripts and src/ by AST; config_HWTEST_* scratch is exempt, any other unread site is named."""
 
 import ast
 import re
@@ -26,33 +26,12 @@ _OWNERS = {
     "ISL29125": "asy_isl29125_driver.py",
 }
 _PRODUCTION_RE = re.compile(r"^config_(" + "|".join(_OWNERS) + r")(?:_\w+)?\.cfg$")
+_SCRATCH_RE = re.compile(r"^config_HWTEST_\w+\.cfg$")
+# (script, its file-name expression): the reason a site this check cannot read is not checked. Empty: none today.
+_UNREAD: "dict[tuple[str, str], str]" = {}
 _RENDERED_SCHEMA = ("BENCH", "system_schema")  # rendered from schema_ast by the harness: production by construction
 
 Schema = frozenset[tuple[object, ...]]
-
-
-def production_schema(name: str, repo_root: Path = REPO_ROOT) -> Schema:
-    fields = {(field, *spec) for field, spec in extract_field_schemas(repo_root / "src" / _OWNERS[name]).items()}
-    if name == "NOTIFY":
-        # The notification signals' thresholds join its schema at construction (buildgen/signals.py's WARN_SIGNALS).
-        fields |= {(s.name, s.field_type, s.default, s.min, s.max, None) for s in WARN_SIGNALS.values()}
-    return frozenset(fields)
-
-
-def _module_consts(tree: ast.Module) -> "dict[str, ast.expr]":
-    consts: dict[str, ast.expr] = {}
-    for node in tree.body:
-        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-            consts[node.targets[0].id] = node.value
-        elif isinstance(node, ast.AnnAssign) and node.value is not None and isinstance(node.target, ast.Name):
-            consts[node.target.id] = node.value
-    return consts
-
-
-def _argument(call: ast.Call, index: int, keyword: str) -> "ast.expr | None":
-    if len(call.args) > index:
-        return call.args[index]
-    return next((k.value for k in call.keywords if k.arg == keyword), None)
 
 
 def _is_bench_schema(node: ast.expr) -> bool:
@@ -88,6 +67,12 @@ def _is_rendered(node: ast.expr, assigned: "dict[str, list[ast.expr]]") -> bool:
     if isinstance(node, ast.Name) and assigned.get(node.id):
         return all(_is_rendered(value, {}) for value in assigned[node.id])
     return _is_bench_schema(node) or _is_field_tuples(node)
+
+
+def _argument(call: ast.Call, index: int, keyword: str) -> "ast.expr | None":
+    if len(call.args) > index:
+        return call.args[index]
+    return next((k.value for k in call.keywords if k.arg == keyword), None)
 
 
 def _assignments(tree: ast.Module) -> "dict[str, list[ast.expr]]":
@@ -126,14 +111,30 @@ def _literal(node: ast.expr, consts: "dict[str, ast.expr]") -> object:
         return None  # computed at run time: nothing this check can name
 
 
+def _module_consts(tree: ast.Module) -> "dict[str, ast.expr]":
+    consts: dict[str, ast.expr] = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            consts[node.targets[0].id] = node.value
+        elif isinstance(node, ast.AnnAssign) and node.value is not None and isinstance(node.target, ast.Name):
+            consts[node.target.id] = node.value
+    return consts
+
+
 @cache
 def _parse(source: str) -> ast.Module:
     # One parse per distinct script text: several checks read the same scripts, a bite's rewritten copy parses afresh.
     return ast.parse(source)
 
 
-def findings(scripts: Path, repo_root: Path = REPO_ROOT) -> "list[str]":
+def _write(scripts: Path, name: str, body: str) -> None:
+    (scripts / name).write_text(body, encoding="utf-8")
+
+
+def findings(scripts: Path, repo_root: Path = REPO_ROOT, unread: "dict[tuple[str, str], str] | None" = None) -> "list[str]":
+    listed = _UNREAD if unread is None else unread
     found: list[str] = []
+    reached: set[tuple[str, str]] = set()
     for path in sorted(scripts.rglob("*.py")):
         tree = _parse(path.read_text(encoding="utf-8"))
         consts, assigned = _module_consts(tree), _assignments(tree)
@@ -145,6 +146,12 @@ def findings(scripts: Path, repo_root: Path = REPO_ROOT) -> "list[str]":
             filename = _file_name(path_node, consts)
             match = _PRODUCTION_RE.match(filename) if filename is not None else None
             if match is None:
+                site = (path.relative_to(scripts).as_posix(), ast.unparse(path_node) if path_node is not None else "<no file name>")
+                reached.add(site)
+                if (filename is not None and _SCRATCH_RE.match(filename)) or site in listed:
+                    continue
+                problem = f"{site[1]}: its config file name is computed at run time" if filename is None else f"{filename} has no schema owner in _OWNERS"
+                found.append(f"{where}: {problem}, so this check cannot read it - add it, or list it in _UNREAD with its reason")
                 continue
             if schema_node is not None and _is_rendered(schema_node, assigned):
                 continue
@@ -160,16 +167,21 @@ def findings(scripts: Path, repo_root: Path = REPO_ROOT) -> "list[str]":
             if given != expected:
                 missing = sorted(str(f[0]) for f in expected - given)
                 found.append(f"{where}: {filename} is built with a schema that is not {match.group(1)}'s full production one (missing or different: {missing})")
+    found.extend(f"{script}: {expr} is listed as unread but no ConfigManager builds it any more" for script, expr in sorted(set(listed) - reached))
     return found
+
+
+def production_schema(name: str, repo_root: Path = REPO_ROOT) -> Schema:
+    fields = {(field, *spec) for field, spec in extract_field_schemas(repo_root / "src" / _OWNERS[name]).items()}
+    if name == "NOTIFY":
+        # The notification signals' thresholds join its schema at construction (buildgen/signals.py's WARN_SIGNALS).
+        fields |= {(s.name, s.field_type, s.default, s.min, s.max, None) for s in WARN_SIGNALS.values()}
+    return frozenset(fields)
 
 
 @pytest.fixture
 def scripts_copy(tmp_path: Path) -> Path:
     return Path(shutil.copytree(DEVICE_SCRIPTS, tmp_path / "device_scripts"))
-
-
-def _write(scripts: Path, name: str, body: str) -> None:
-    (scripts / name).write_text(body, encoding="utf-8")
 
 
 def test_every_script_manager_over_a_production_file_takes_the_full_schema() -> None:
@@ -234,3 +246,20 @@ def test_a_computed_production_path_is_checked_too(tmp_path: Path, path_expr: st
     _write(tmp_path, "zz_probe.py", f'import asy_config_manager as cm\n_NAME = "WIFI"\n_S = (("SSID", "str", "", 0, 32, None),)\ncm.ConfigManager({path_expr}, _S, "WIFI")\n')
     result = findings(tmp_path)
     assert len(result) == 1 and result[0].startswith("zz_probe.py:4: config_WIFI.cfg") and "'Hostname'" in result[0], result
+
+
+def test_a_computed_file_name_is_named_until_listed_with_its_reason(tmp_path: Path) -> None:
+    # A name this check cannot evaluate is a site it cannot check: named, unless listed with why; a stale listing fails.
+    _write(tmp_path, "zz_probe.py", 'import asy_config_manager as cm\n_S = (("SSID", "str", "", 0, 32, None),)\ncm.ConfigManager(make_path(), _S, "WIFI")\n')
+    result = findings(tmp_path)
+    assert len(result) == 1 and result[0].startswith("zz_probe.py:3: make_path()") and "computed at run time" in result[0], result
+    assert findings(tmp_path, unread={("zz_probe.py", "make_path()"): "a planted site"}) == []
+    (tmp_path / "zz_probe.py").unlink()
+    assert findings(tmp_path, unread={("zz_probe.py", "make_path()"): "a planted site"}) == ["zz_probe.py: make_path() is listed as unread but no ConfigManager builds it any more"]
+
+
+def test_a_config_name_with_no_schema_owner_is_named(tmp_path: Path) -> None:
+    # Only config_HWTEST_* scratch is exempt by name: any other file this check has no owner for is named.
+    _write(tmp_path, "zz_probe.py", 'import asy_config_manager as cm\ncm.ConfigManager("config_PLANTED.cfg", (), "PLANTED")\n')
+    result = findings(tmp_path)
+    assert len(result) == 1 and result[0].startswith("zz_probe.py:2: config_PLANTED.cfg") and "no schema owner" in result[0], result

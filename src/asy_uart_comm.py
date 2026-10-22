@@ -572,7 +572,7 @@ class UARTComm:
             await self._fault(device, _ERR_TIMEOUT, "listen read dropped a corrupted or incomplete frame" if dropped else "listen read failed or was cancelled")
             return _LISTEN_FAILED
         rx = self._rx.get_buf()
-        if rx is None:
+        if rx is None:  # Unreachable: _read_frame() already failed on a missing RX buffer - kept to narrow the Optional for the type checker
             return _LISTEN_FAILED
         cmd = rx[_MSG_CMD]
         exp = _CMD_GET if cmd == _CMD_GET else CMD_SET
@@ -709,7 +709,7 @@ class UARTComm:
             return None
         rx = self._rx.get_buf()
         err = self._validate(rx, CMD_SET, 1, None, None)
-        if err or rx is None:
+        if err or rx is None:  # Unreachable in its rx half: _read_frame() already failed on a missing RX buffer - kept to narrow the Optional for the type checker
             await self._fault(device, err or _ERR_UART_FRAME_INVALID, "invalid answer to GET", get_id)
             return None
         if rx[_MSG_PAYLOAD] != get_id:
@@ -755,7 +755,7 @@ class UARTComm:
                 return None
             rx = self._rx.get_buf()
             err = self._validate(rx, CMD_SET, cur, chunks, _next_uid(prev_uid))
-            if err or rx is None:
+            if err or rx is None:  # Unreachable in its rx half: _read_frame() already failed on a missing RX buffer - kept to narrow the Optional for the type checker
                 await self._fault(device, err or _ERR_UART_FRAME_INVALID, "invalid frame at chunk", cur)
                 return None
             prev_uid = rx[_MSG_UID]
@@ -780,7 +780,7 @@ class UARTComm:
                     fits = written + size <= len(dest)
                     if fits:
                         dest[written : written + size] = data
-                if not fits:
+                if not fits:  # Unreachable: the destination was sized or checked against _dest_size() before the first ACK - kept: it guards the copy into a caller's buffer
                     await self._fault(device, _ERR_UART_SIZE_MISMATCH, "destination too small at chunk", cur)
                     return None
             written += size
@@ -1004,7 +1004,7 @@ class UARTComm:
             return False
         self._uid = uid  # only advanced once the frame is genuinely going out
         buf = self._tx.get_buf()
-        if buf is None:
+        if buf is None:  # Unreachable: _prepare_tx() returned False if the TX buffer were missing - kept to narrow the Optional for the type checker
             await self._err(_ERR_ALLOC, "no TX buffer")
             return False
         if not await device.writefrom(buf, self._frame_size, timeout_ms=self._timeout):
@@ -1107,7 +1107,7 @@ class UARTComm:
         if result is None:
             return None
         written, own = result
-        if own is None:  # Unreachable: _run_get() returns a buffer whenever neither dest nor push was given
+        if own is None:  # Unreachable: _run_get() returns a buffer whenever neither dest nor push was given - kept to narrow the Optional for the type checker
             return PieceBuffer(0, self._chunk_bytes)
         return own if own.trim(written) else None
 

@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT
 # From adafruit_sgp40, restructured for asyncio + MicroPython - see THIRD_PARTY_LICENSES.md.
 
-"""Sensirion SGP40 VOC sensor driver: SGP40_I2C (chip protocol) and SGP40_Reader (async wrapper - trigger timer, read loop, error counting, config schema, FRAM backup/restore of voc_algorithm.py's VOCAlgorithm state).
-Same shape as asy_scd30_driver.py/asy_bmp3xx_driver.py (see SPECIFICATION.md Part C).
+"""Sensirion SGP40 VOC sensor driver: SGP40_I2C (chip protocol) and SGP40_Reader (async wrapper - trigger timer, read
+loop, error counting, config schema, FRAM backup/restore of voc_algorithm.py's VOCAlgorithm state). Same shape as
+asy_scd30_driver.py/asy_bmp3xx_driver.py (see SPECIFICATION.md Part C).
+
 Verified against Sensirion's SGP40 datasheet (datasheets/sgp40/, v1.2 - Feb 2022).
 """
 
@@ -36,8 +38,8 @@ if TYPE_CHECKING:
     from asy_i2c_driver import I2C
     from asy_print_log import ErrorLog
 
-    # The VOC backup's two parts: the FRAM store its chunk comes from and the NTP-sync check that
-    # timestamps it (the generated module passes ntp.ntp_issynced).
+    # The VOC backup's two parts: the FRAM store its chunk comes from and the NTP clock check that
+    # timestamps it (the generated module passes ntp.ntp_clock_valid).
     class SgpBackup(NamedTuple):
         store: FRAMManager
         ntp_synced: NtpSyncFct

@@ -1,5 +1,8 @@
-"""Deterministic unit tests for digital_twin/_bmp3xx_chip.py's own transaction-response logic - matches the register-addressed shape src/asy_bmp3xx_driver.py's BMP3XX_I2C sends (no CRC framing, unlike SGP40/SCD30).
-The fixed calibration block round-trips exactly through the real driver's own compensation formula for every target in the twin's default sensible range."""
+"""Deterministic unit tests for digital_twin/_bmp3xx_chip.py's own transaction-response logic - matches the
+register-addressed shape src/asy_bmp3xx_driver.py's BMP3XX_I2C sends (no CRC framing, unlike SGP40/SCD30).
+
+The fixed calibration block round-trips exactly through the real driver's own compensation formula for every target in
+the twin's default sensible range."""
 
 import errno
 import struct

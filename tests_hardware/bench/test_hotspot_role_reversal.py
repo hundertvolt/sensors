@@ -404,9 +404,9 @@ def test_real_credentials_put_succeeds_and_confirms_accepted_values(bench: "Benc
 @pytest.mark.soak_duration
 @pytest.mark.persistence_write
 def test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt(bench: "BenchBridge", joined_hotspot: str, hotspot_ssid: str, dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
-    # The second failed streak goes silent and a later attempt links (owner, 2026-10-08, paraphrase), on the preceding test's stored
-    # credentials with the bench AP still down. Writes nothing: persistence_write is the AND-gate on that test's write; about
-    # two hotspot_time_min windows long, it runs in a soak whose duration covers them, with the module whole.
+    # The second failed streak goes silent and a later attempt links (owner, 2026-10-08, paraphrase), on the preceding
+    # test's stored credentials with the bench AP still down. Writes nothing: persistence_write is the AND-gate on that
+    # test's write; about two hotspot_time_min windows long, it runs in a soak that covers them, with the module whole.
     window_s = _wifi_settings()[1] * 60.0
     duration = request.config.getoption("--soak-duration")
     if duration is None or SOAK_DURATION_SECONDS[duration] < 2 * window_s:

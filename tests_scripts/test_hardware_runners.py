@@ -1,6 +1,6 @@
 """The L3/L4 runners with every callee stubbed (scripts/test.sh, the twin CI runner, npm, uv): every lower level runs
 first and a failing one stops before any board is touched, the device loop is derived, a skipped lower level is never
-clean, bench runs flash as its own step, a caller's -m narrows each floor, and the soak and rollover runs stand alone."""
+clean, bench runs flash as its own step, a caller's -m narrows each floor; the soak and rollover runs stand alone."""
 
 import os
 import shlex

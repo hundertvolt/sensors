@@ -870,9 +870,9 @@ def derive_pico_sdk_commit(micropython_dir: Path, mpy_ref: str) -> str:
 
 
 def derive_picotool_ref(pico_sdk_dir: Path, pico_sdk_commit: str) -> tuple[str, str]:
-    # pico-sdk accepts a picotool of its own major version and at least its picotool_VERSION_REQUIRED (pico-sdk
-    # tools/CMakeLists.txt; picotool's SameMajorVersion config file); an older same-major or another major fails the build. The
-    # newest tag sharing pico-sdk's major.minor is this installer's own narrower choice (agent, 2026-09-22), always inside that range.
+    # pico-sdk accepts a picotool of its own major and at least picotool_VERSION_REQUIRED (pico-sdk tools/CMakeLists.txt;
+    # picotool's SameMajorVersion config file); an older same-major or another major fails the build. The newest tag sharing
+    # pico-sdk's major.minor is this installer's own narrower choice (agent, 2026-09-22), always inside that range.
     described = run(["git", "describe", "--tags", pico_sdk_commit], cwd=pico_sdk_dir, env=network_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S).strip()
     match = re.match(r"^(\d+)\.(\d+)\.", described)
     if not match:

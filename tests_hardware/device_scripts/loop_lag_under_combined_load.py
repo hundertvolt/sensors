@@ -1,6 +1,6 @@
-"""Event-loop lag of the bench build's shipped main() under in-process load: a 10 ms lag probe beside an
-allocation-churn task and FRAM block writes inside this script's own scratch region; the firmware's tasks run as
-shipped. Facts only: the host holds the lag to the device's smallest hard consumer (SPECIFICATION.md Part F.3)."""
+"""Event-loop lag of the bench build's shipped main() under load: a 10 ms lag probe beside an allocation-churn task,
+FRAM block writes in this script's own scratch region and the host's GETs on the script's server. Facts only: the host
+holds the lag to the device's smallest hard consumer (SPECIFICATION.md Part F.3) and its own load to every route."""
 
 import asyncio
 import errno
@@ -31,7 +31,9 @@ _REPORT = PrintLog(level=1, name="UNRETRIEVED TASK EXCEPTION:")
 
 # The part's second-highest 256 B, above every chunk and apart from the command-hold script's top 256 B.
 _SCRATCH_REGIONS = ((BENCH["fram_max_size"] - 0x200, 0x100),)
-# A scratch directory: every setup() finds its file absent here and writes its defaults once, never a production file.
+# BENCH["mode"] "production": main() on the board's own config, serving on the board's address for the bench host's
+# load. Otherwise a scratch directory, where every setup() writes its defaults once, serving on 127.0.0.1:8080.
+_PRODUCTION = BENCH.get("mode") == "production"
 _SCRATCH_CFG_PATH = "hwtest-scratch/"
 # @tunable l3.loop_lag_window_s = 30
 _WINDOW_S = 30
@@ -70,14 +72,15 @@ async def _fram_writes(counts: "list[int]") -> None:
 async def _main() -> None:
     asyncio.get_event_loop().set_exception_handler(_REPORT.report_unretrieved)  # before main(): the firmware keeps it
     wdt = arm()
-    try:  # an aborted run's leftover first (none: ENOENT)
-        for name in os.listdir(_SCRATCH_CFG_PATH):
-            os.remove(_SCRATCH_CFG_PATH + name)
-        os.rmdir(_SCRATCH_CFG_PATH)
-    except OSError as e:
-        if e.errno != errno.ENOENT:
-            fact("leftover_errno", e.errno)
-    os.mkdir(_SCRATCH_CFG_PATH)
+    if not _PRODUCTION:
+        try:  # an aborted run's leftover first (none: ENOENT)
+            for name in os.listdir(_SCRATCH_CFG_PATH):
+                os.remove(_SCRATCH_CFG_PATH + name)
+            os.rmdir(_SCRATCH_CFG_PATH)
+        except OSError as e:
+            if e.errno != errno.ENOENT:
+                fact("leftover_errno", e.errno)
+        os.mkdir(_SCRATCH_CFG_PATH)
     buckets = [0] * _BUCKETS
     lag_max = [0]
     fram_writes = [0, 0]
@@ -91,7 +94,8 @@ async def _main() -> None:
             lag_max[0] = max(lag_max[0], lag)
             buckets[min(lag // 1000, _BUCKETS - 1)] += 1
 
-    shipped = asyncio.create_task(device.main(watchdog=wdt, cfg_path=_SCRATCH_CFG_PATH, web_host="127.0.0.1", web_port=8080))
+    boot = device.main(watchdog=wdt) if _PRODUCTION else device.main(watchdog=wdt, cfg_path=_SCRATCH_CFG_PATH, web_host="127.0.0.1", web_port=8080)
+    shipped = asyncio.create_task(boot)
     loads = [asyncio.create_task(probe()), asyncio.create_task(_churn()), asyncio.create_task(_fram_writes(fram_writes))]
     try:
         await fed_sleep_ms(wdt, _WINDOW_S * 1000)
@@ -104,9 +108,10 @@ async def _main() -> None:
         pixel = getattr(device, "neopixel", None)  # the build constructs the rig's NeoPixel where the TOML wires one
         if pixel is not None:
             pixel.off()
-        for name in os.listdir(_SCRATCH_CFG_PATH):
-            os.remove(_SCRATCH_CFG_PATH + name)
-        os.rmdir(_SCRATCH_CFG_PATH)
+        if not _PRODUCTION:
+            for name in os.listdir(_SCRATCH_CFG_PATH):
+                os.remove(_SCRATCH_CFG_PATH + name)
+            os.rmdir(_SCRATCH_CFG_PATH)
         # The boot-phase mark main() left: cleared, so the next reset does not read as a boot failure.
         phase = machine.mem_backup(1)
         for i in range(len(phase)):

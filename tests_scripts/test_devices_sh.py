@@ -1,6 +1,6 @@
-"""scripts/_devices.sh, the shell runners' derived device set: derived_devices lists what tests_scripts/_devices.py's
-DEVICE_NAMES lists, drops the zz_test_ fixtures and fails on an empty devices/, and require_device refuses every name
-outside that set with exit 2, listing the valid ones. Every case but the first runs on a copy beside its own devices/."""
+"""scripts/_devices.sh, the shell runners' derived device set: derived_devices lists tests_scripts/_devices.py's
+DEVICE_NAMES, drops the zz_test_ fixtures and fails on an empty devices/, and require_device refuses every name outside
+that set with exit 2, listing the valid ones. Every case but the first runs on a copy beside its own devices/."""
 
 import shlex
 import shutil

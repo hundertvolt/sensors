@@ -69,6 +69,8 @@ _LINK_POLL_GAP_S = 3.0  # between the two link-counter reads: a few exercise rou
 _RESET_WAIT_S = 120.0  # a sustained SGP40 fault spending the supervisor's restart budget, then the reset
 _RESET_EXIT = 3  # digital_twin/run_generic_integration.py's _EXIT_SIMULATED_RESET
 _RESET_LINE = re.compile(r"\] machine reset: kind=reset reset_count=1 ")
+_BOOT_PHASE_LINE = re.compile(r"\] boot phase: (\S+)$")  # digital_twin/run_generic_integration.py's _print_boot_phases()
+_BUILD_SYSTEM_MARK = "BOOT_CONSTRUCTION"  # begin_boot()'s mark, made inside build_system (src/asy_system_service.py)
 
 # Discovered, never listed: a device TOML added to devices/ is covered by every test below with no
 # edit here, which is the whole point of a generated build chain. Same for a new synthetic fixture,
@@ -126,15 +128,27 @@ def _boot_generated_device(root: "Path | None", generated: "GeneratedDevice", mi
                 failures.extend(_errcount_parity_failures(definitions, body))
                 failures.extend(_status_field_parity_failures(definitions, body))
                 failures.extend(_maintenance_key_failures(generated.model, body))
+                failures.extend(_normal_boot_log_failures(body))
             elif path == "/system":
                 failures.extend(_system_path_failures(definitions, body))
         stop_file.touch()  # done: the twin leaves its serving on the same clean path its duration ends on
         return failures
 
     failures, output = _run_twin(cmd, _REPO_ROOT, env, smoke)
+    failures.extend(_boot_order_failures(generated.expected_facts, output))
     if _STOP_SEEN not in output:
         failures.append(f"the twin did not end on its stop file - it served out its whole {_TWIN_DURATION_S} s bound")
     return failures
+
+
+def _boot_order_failures(facts: "JsonDict", output: str) -> list[str]:
+    # The booted twin's boot-phase lines against the generated main()'s marks in order (expected_facts()'s "phases"),
+    # build_system's own mark first; a run logging none fails too.
+    sequence = facts.get("boot_sequence")
+    phases = sequence.get("phases") if isinstance(sequence, dict) else None
+    expected = [_BUILD_SYSTEM_MARK, *(p for p in (phases if isinstance(phases, list) else []) if isinstance(p, str) and p.startswith("BOOT_"))]
+    logged = [m.group(1) for m in map(_BOOT_PHASE_LINE.search, output.splitlines()) if m]
+    return [] if logged == expected else [f"the twin logged the boot phases {logged}, not main()'s order {expected}"]
 
 
 def _dicts(value: "JsonValue") -> "list[JsonDict]":
@@ -209,6 +223,20 @@ def _no_duplicate_keys(pairs: "list[tuple[str, JsonValue]]") -> "JsonDict":
     if duplicated:
         raise ValueError(f"not strict JSON: duplicate keys {duplicated}")
     return dict(pairs)
+
+
+def _normal_boot_log_failures(status_body: object) -> list[str]:
+    # A normal boot logs no E and no W entry, NTP's included, and needs no NTPSynced: no SSID is set here (agent,
+    # 2026-10-21). Read within _BOOT_TIMEOUT_S of the spawn, before SGP40's untimestamped-backup W can land.
+    errcount = status_body.get("errcount") if isinstance(status_body, dict) else None
+    failures: list[str] = []
+    for module, entry in sorted(errcount.items()) if isinstance(errcount, dict) else ():
+        history = entry.get("history") if isinstance(entry, dict) else None
+        if not isinstance(history, list):
+            failures.append(f"{module}'s errcount entry carries no history list")
+            continue
+        failures += [f"{module} logged {item.get('type')}{item.get('num')} on a normal boot" for item in history if isinstance(item, dict) and item.get("type") in ("E", "W")]
+    return failures
 
 
 def _path(field: "JsonDict") -> "list[str] | None":
@@ -310,6 +338,22 @@ def test_a_get_route_the_service_gains_is_smoked(tmp_path: Path) -> None:
     planted = tmp_path / "asy_webserver_service.py"
     planted.write_text(source.replace(anchor, anchor + '    ("GET", "/zz_planted", "_get_zz_planted"),\n'), encoding="utf-8")
     assert "/zz_planted" in _get_routes(planted)
+
+
+def test_an_error_or_warning_logged_on_a_normal_boot_fails_naming_it() -> None:
+    body = {"errcount": {"SGP40": {"counter": 1, "history": [{"type": "E", "num": 102}]}, "NTP": {"counter": 1, "history": [{"type": "N", "num": 0}, {"type": "W", "num": 5}]}, "WIFI": {"counter": 0, "history": []}}}
+    assert _normal_boot_log_failures(body) == ["NTP logged W5 on a normal boot", "SGP40 logged E102 on a normal boot"]
+    assert _normal_boot_log_failures({"errcount": {"WIFI": {"counter": 0, "history": [{"type": "N", "num": 0}]}}}) == []
+    assert _normal_boot_log_failures({"errcount": {"WIFI": {"counter": 0}}}) == ["WIFI's errcount entry carries no history list"]
+
+
+def test_a_boot_phase_logged_out_of_main_s_order_fails_naming_both_orders() -> None:
+    facts: JsonDict = {"boot_sequence": {"phases": ["build_system", "BOOT_SETUP", "run_setups", "BOOT_TASKS", "start_tasks"]}}
+    line = "digital_twin/run_generic_integration.py [d] boot phase: {}\n".format
+    assert _boot_order_failures(facts, "".join(map(line, ("BOOT_CONSTRUCTION", "BOOT_SETUP", "BOOT_TASKS")))) == []
+    swapped = "".join(map(line, ("BOOT_CONSTRUCTION", "BOOT_TASKS", "BOOT_SETUP")))
+    assert _boot_order_failures(facts, swapped) == ["the twin logged the boot phases ['BOOT_CONSTRUCTION', 'BOOT_TASKS', 'BOOT_SETUP'], not main()'s order ['BOOT_CONSTRUCTION', 'BOOT_SETUP', 'BOOT_TASKS']"]
+    assert _boot_order_failures(facts, "serving\n") == ["the twin logged the boot phases [], not main()'s order ['BOOT_CONSTRUCTION', 'BOOT_SETUP', 'BOOT_TASKS']"]
 
 
 @pytest.mark.parametrize("raw", [b'{"a": 1, "a": 2}', b'{"a": {"b": 1, "b": 1}}', b'{"a": NaN}', b"[Infinity]"])
@@ -502,9 +546,8 @@ def test_synthetic_fixture_boots_and_serves_over_real_http(
 def test_real_device_boots_its_generated_module_and_serves_over_real_http(
     micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device: str,
 ) -> None:
-    # Every real device's own TOML, generated fresh here - the actual proof that Session 3's
-    # generator produces a module that runs, for every real device, not just ast.parse()s
-    # (SPECIFICATION.md Part L.4: "ideally every" entry point).
+    # Every real device's own TOML, generated fresh here: proof the generator's module runs for every device, not just
+    # ast.parse()s (SPECIFICATION.md Part L.4).
     generated = generate_device(device_toml_path(device), src_dir, ext_dir)
     assert _boot_generated_device(None, generated, micropython_bin, tmp_path, _free_port()) == []
 

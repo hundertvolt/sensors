@@ -617,6 +617,19 @@ def test_a_blank_chunk_reads_false_and_takes_no_busy_marker() -> None:
     assert run(manager.get_error_counter())["FRAM"]["ErrCount"] == 0
 
 
+def test_a_blank_read_of_a_silent_twin_chip_finds_the_loss_and_reads_none() -> None:
+    # The twin's undriven read is all zeros, so a silent chip's status bytes read blank, as a never-written chunk's do:
+    # the RDID probe after the blank verdict finds the loss, and the read is None, not False.
+    manager, _bus, chip = _twin_manager()
+    chunk, ts_chunk = _chunks(manager)
+    chip.silent = True
+    assert run(chunk.read_into(chunk.get_buffer())) is None
+    assert manager.fram.lost.is_set()
+    assert run(ts_chunk.read_into(ts_chunk.get_buffer())) == (None, None, None)
+    assert bytes(chip.memory) == bytes(len(chip.memory)), "a read of a silent chip wrote to it"
+    assert _errnums(manager).count(code("E", "FRAM_CHIP_LOST")) == 1
+
+
 def test_a_persistent_chip_read_fault_reads_none_then_the_leftover_busy_markers_read_false() -> None:
     # rp2 raises only on a read of 32+ bytes: the status bytes still read, the payload read fails after its busy
     # marker landed - the same outcome as the bus overrun below, the payload kept and False until the next write.
@@ -794,6 +807,41 @@ def test_payload_writes_are_counted_by_address() -> None:
     _write_mem(chip, 0x0100, b"\x01\x02")
     assert chip.writes_at_dropped == 1
     assert len(chip.writes_at) == _fram_chip._WRITES_AT_MAX_KEYS
+
+
+def test_a_silent_chip_counts_the_payload_writes_issued_to_it() -> None:
+    # write_count stays 0 while the chip is silent, so the payload writes still issued to it are counted apart, by
+    # write_count's filter (a data phase over one byte) with or without a WREN; nothing else changes.
+    chip = FRAMChip(0x2000, _MB85RS64V_RDID)
+    chip.silent = True
+    _wren(chip)
+    _write_mem(chip, 0x0100, b"\x01\x02")
+    _write_mem(chip, 0x0200, b"\x01\x02")  # no WREN
+    _write_mem(chip, 0x0300, b"\x01")  # a one-byte status write
+    assert _rdsr(chip) == 0x00
+    assert _rdid(chip) == bytes(4)
+    assert (chip.silent_write_count, chip.write_count, chip.writes_at) == (2, 0, {})
+    chip.silent = False
+    assert _read_mem(chip, 0x0100, 2) == bytes(2)
+    _wren(chip)
+    _write_mem(chip, 0x0400, b"\x01\x02")
+    assert (chip.silent_write_count, chip.write_count) == (2, 1)
+    assert "silent_write_count" in FRAMChip.TEST_API
+
+
+def test_a_silent_chip_counts_the_write_enables_sent_to_it() -> None:
+    # The driver's latch check reads a silent chip's zero status and stops before the data phase, so the WRENs are the
+    # one trace of its write attempts on the wire; a one-byte data phase holding 0x06 is no WREN.
+    chip = FRAMChip(0x2000, _MB85RS64V_RDID)
+    chip.silent = True
+    _wren(chip)
+    _wren(chip)
+    _write_mem(chip, 0x0100, bytes([_OPCODE_WREN]))
+    assert (chip.silent_wren_count, chip.silent_write_count, chip.write_count) == (2, 0, 0)
+    chip.silent = False
+    _wren(chip)
+    assert chip.silent_wren_count == 2
+    assert "silent_wren_count" in FRAMChip.TEST_API
 
 
 def test_a_chunk_write_survives_one_dropped_wren() -> None:

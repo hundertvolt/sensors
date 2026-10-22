@@ -1,3 +1,6 @@
-# Deliberately invalid buildgen fixture: no [device] table at all (a plausible hand-edit mistake -
-# an accidentally deleted table, or a bad merge). Used only by test_build_website_sh.py to prove scripts/build_website.sh's
-# buildgen generation step fails loud when a devices/<device>.toml exists but fails validation; it is copied into devices/ under a test-only name for that one test, then removed.
+# Deliberately invalid buildgen fixture: no [device] table at all (a plausible hand-edit mistake - an accidentally
+# deleted table, or a bad merge).
+#
+# test_build_website_sh.py copies it into a sandbox copy's devices/ to prove scripts/build_website.sh's buildgen
+# generation step fails loud when a devices/<device>.toml exists but fails validation; test_build_device_websites_sh.py
+# plants it in devices/ under a reserved zz_test_ name for its one build-and-stage window, then removes it.

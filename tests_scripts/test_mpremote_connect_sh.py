@@ -1,6 +1,6 @@
 """scripts/mpremote_connect.sh with a stub `uv` on PATH: one retried sync first, then $MPREMOTE_DEVICE wins and no
-resolver runs, else the board `toolchain/setup_toolchain.py board` prints is the one connected, and a resolver that finds
-none or several stops the run with its own message before mpremote starts."""
+resolver runs, else the board `toolchain/setup_toolchain.py board` prints is the one connected, and a resolver that
+finds none or several stops the run with its own message before mpremote starts."""
 
 import os
 import subprocess

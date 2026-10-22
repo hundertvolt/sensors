@@ -1,5 +1,10 @@
-"""Test suite for src/asy_webserver_service.py's WebserverService/SettingsGroup - see SPECIFICATION.md Part A.8 for the full endpoint design and the real class signatures for the current API contract (this file predates the implementation and no longer mirrors it exactly).
-GET routes return the bare shaped dict; PUT routes return the existing asy_api_response.py envelope - see SPECIFICATION.md Part A.8 for the PUT-shapes decision. Connection-lifecycle internals are exercised with hand-scripted fake reader/writer doubles, never a real select.poll()."""
+"""Test suite for src/asy_webserver_service.py's WebserverService/SettingsGroup - see SPECIFICATION.md Part A.8 for the
+full endpoint design and the real class signatures for the current API contract (this file predates the implementation
+and no longer mirrors it exactly).
+
+GET routes return the bare shaped dict; PUT routes return the existing asy_api_response.py envelope - see
+SPECIFICATION.md Part A.8 for the PUT-shapes decision. Connection-lifecycle internals are exercised with hand-scripted
+fake reader/writer doubles, never a real select.poll()."""
 
 import asyncio
 import errno
@@ -90,11 +95,17 @@ if TYPE_CHECKING:
         debug: int | None
 
 
-def status_body(res: "Response") -> bytes:
-    # GET /status streams a list of already-json.dumps()-encoded fragments (see
-    # asy_webserver_service.py's _build_status_pieces()); draining it the way a real client would
-    # gives every streamed body to _json() whole.
-    return drain_json_response_body(res.body)
+def _get_on_the_wire(service: "WebserverService", path: str) -> "tuple[str, dict[str, str], list[bytes]]":
+    # These tests pin write bounds, not timeouts: _make_service()'s 0.5s outer cap cut a 37 KB body
+    # short on a loaded CI runner. 4s stays under run_timed()'s 5s, so a hang still fails the test.
+    service._per_call_timeout_ms, service._outer_cap_ms = 2000, 4000
+    writer = _ChunkRecordingWriter()
+    run_timed(service._serve(_ScriptedReader([(0, _request_bytes("GET", path))], eof=True), writer), timeout_s=5.0)
+    head = writer.chunks[0]  # the whole header block is one write (_TimeoutStreamProxy.awrite)
+    assert head.endswith(b"\r\n\r\n") and head.count(b"\r\n\r\n") == 1, head
+    lines = head.decode().split("\r\n")
+    headers = dict(line.split(": ", 1) for line in lines[1:] if line)
+    return lines[0].split(" ")[1], {k.lower(): v for k, v in headers.items()}, writer.chunks[1:]
 
 
 _PARSED: "dict[bytes | str, object]" = {}  # bodies already checked, with their parse; emptied when it reaches _PARSED_MAX
@@ -102,14 +113,21 @@ _PARSED_MAX = 16
 microtest.after_each(_PARSED.clear)  # no parse outlives its test: kept, it would weigh on every later test's collections
 
 
-def _json(body: "bytes | str") -> object:
-    # Every response body is read through the strict RFC 8259 recogniser (tests/_strict_json.py): a duplicate key fails.
-    # A body read before reuses its checked parse: the hammers read each route's few bodies hundreds of times over.
-    if body not in _PARSED:
-        if len(_PARSED) >= _PARSED_MAX:
-            _PARSED.clear()
-        _PARSED[body] = strict_loads(body)
-    return _PARSED[body]
+def _assert_body_is_bounded_stream(res: "Response", path: str) -> bytes:
+    # status_body()/drain_json_response_body() accepts both a streamed and a single-json.dumps()
+    # body so pre-existing tests need no branching - which means a route reverted to `return
+    # result` still passes every other hammer test here. Hence this explicit check.
+
+    # res.body must be a real streamed iterator, never a plain str/bytes, and every piece it yields
+    # must stay under the same per-piece budget _stream_dict_response() itself enforces.
+    body: Iterable[bytes | str] = res.body  # type: ignore[assignment]  # a streamed body yields pieces; the stub types Response.body as bytes - removal trigger: SPECIFICATION.md B.15
+    assert not isinstance(body, (str, bytes)), f"{path}: response body is not a streamed iterator (regressed to a single json.dumps() aggregate)"
+    chunks = []
+    for chunk in body:
+        encoded = chunk.encode() if isinstance(chunk, str) else chunk
+        assert len(encoded) <= _HAMMER_PIECE_BUDGET, f"{path}: piece of {len(encoded)} bytes exceeds the per-piece budget"
+        chunks.append(encoded)
+    return b"".join(chunks)
 
 
 def _at(value: object, *path: "str | int") -> object:
@@ -123,10 +141,12 @@ def _at(value: object, *path: "str | int") -> object:
     return value
 
 
-def _obj(value: object) -> "dict[str, object]":
-    # A parsed JSON object, checked as one before an assertion reads its keys.
-    assert isinstance(value, dict), value
-    return value
+def _body_service() -> "tuple[WebserverService, Microdot, _FakeModule]":
+    mod = _FakeModule("NETWORKING", values={"Interval": 5, "Offset": 0})
+    service, app = _make_service(
+        settings={"networking": [SettingsGroup(mod, ("Interval", "Offset"))]}, per_call_timeout_s=2.0, outer_cap_s=2.0,
+    )
+    return service, app, mod
 
 
 # The shipped serving defaults and the longest NTPHost, read from source (tests/_src_const.py).
@@ -395,15 +415,13 @@ class _VirtualClock:
         return asyncio.wait_for(aw, timeout_ms, self.sleep_ms)  # type: ignore[call-arg]
 
 
-def _on_virtual_clock(clock: "_VirtualClock", scenario: "Coroutine[object, object, T]", timeout_s: float = 5.0) -> "T":
-    # Runs scenario with the module's bounds on clock: one fires only when the test moves the clock, so a host
-    # stall can neither cut a response short nor reorder two bounds. Called at synchronous test scope only.
-    real_asyncio = asy_webserver_service.asyncio
-    asy_webserver_service.asyncio = clock.timers()  # type: ignore[assignment]  # a stand-in module, restored below
-    try:
-        return run_timed(scenario, timeout_s)  # a hang bound only: the virtual clock makes the pass itself instant
-    finally:
-        asy_webserver_service.asyncio = real_asyncio
+def _body_service_with_connections(max_connections: int) -> "tuple[WebserverService, Microdot, _FakeModule]":
+    mod = _FakeModule("NETWORKING", values={"Interval": 5, "Offset": 0})
+    service, app = _make_service(
+        settings={"networking": [SettingsGroup(mod, ("Interval", "Offset"))]},
+        max_connections=max_connections, per_call_timeout_s=2.0, outer_cap_s=5.0, debug=_ERROR_LEVEL,
+    )
+    return service, app, mod
 
 
 class _Entered(_OneStream):
@@ -438,16 +456,15 @@ class _Entered(_OneStream):
         await self._inner.wait_closed()
 
 
-def _request_bytes(method: str, path: str, body: bytes = b"", extra_headers: "dict[str, str] | None" = None) -> bytes:
-    headers = {"Content-Length": str(len(body)), "Content-Type": "application/json", "Host": "device.local"}
-    if extra_headers:
-        headers.update(extra_headers)
-    header_lines = "".join(f"{k}: {v}\r\n" for k, v in headers.items())
-    return f"{method} {path} HTTP/1.1\r\n{header_lines}\r\n".encode() + body
+def _const_source(value: "JsonDict") -> "StatusSourceFct":
+    async def _source() -> "JsonDict":
+        return value
+
+    return _source
 
 
-async def _no_uptime() -> int:  # the drop window's clock, held at boot
-    return 0
+def _errcount_log(name: str, count: int, nums: "list[int]", types: "list[str]") -> "ErrorLog":
+    return {name: {"ErrCount": count, "ErrNum": nums, "ErrType": types}}
 
 
 class _NoopHolder:
@@ -456,36 +473,25 @@ class _NoopHolder:
         pass
 
 
-def _make_service(**kwargs: "Unpack[_ServiceKeywords]") -> "tuple[WebserverService, Microdot]":
-    # Builds the config objects from the keywords a test sets; every other field keeps the default below.
-    app = Microdot()
-    routes = RouteSources(
-        kwargs.pop("sensors", ()), kwargs.pop("settings", None), kwargs.pop("build_info", None), kwargs.pop("system_cmd", None),
-        kwargs.pop("reset_refusals", None), kwargs.pop("notification_led", None), kwargs.pop("notification_pause", None), kwargs.pop("status_sources", None),
-        kwargs.pop("maintenance_sensors", ()), kwargs.pop("error_sources", ()),
-    )
-    serving = ServingLimits(
-        kwargs.pop("max_content_length", _DEFAULT_MAX_CONTENT_LENGTH),  # tracks the shipped default, so these tests exercise it
-        kwargs.pop("chunk_bytes", _DEFAULT_CHUNK_BYTES),
-        kwargs.pop("max_connections", 3),
-        kwargs.pop("backlog", None),
-        kwargs.pop("per_call_timeout_s", 0.2),
-        kwargs.pop("outer_cap_s", 0.5),
-        kwargs.pop("host", "0.0.0.0"),  # the shipped default; a test that serves overrides it
-        kwargs.pop("port", 80),
-    )
-    mount, index, hotspot = kwargs.pop("static_mount", None), kwargs.pop("static_index", "index.html"), kwargs.pop("is_hotspot_active", None)
-    static = None if mount is None else StaticSite(mount, index, hotspot)
-    log = LogConfig(None, kwargs.pop("history_length", 10), kwargs.pop("debug", None))
-    assert not kwargs, f"_make_service() got keywords no config object has: {sorted(kwargs)}"
-    return WebserverService(app, routes, serving, _no_uptime, static, log), app
+def _file_or_none(path: str) -> object:
+    # The file's JSON, or None when it is absent (ENOENT); any other failure to read it propagates.
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except OSError as e:
+        if e.errno != errno.ENOENT:
+            raise
+        return None
 
 
-def _make_request(app: "Microdot", method: str, path: str, json_body: object) -> Request:
-    body = b"" if json_body is None else json.dumps(json_body).encode()
-    headers = {"Content-Length": str(len(body)), "Content-Type": "application/json"}
-    sock = (_NoopHolder(), _NoopHolder())
-    return Request(app, ("127.0.0.1", 12345), method, path, "1.1", headers, body=body, sock=sock)  # type: ignore[arg-type]  # the stub types sock as the two asyncio streams; a static route only calls hold() on it - removal trigger: SPECIFICATION.md B.15
+async def _hammer_all_routes(app: "Microdot", rounds: int) -> None:
+    async def _one(path: str) -> None:
+        res = await app.dispatch_request(_make_request(app, "GET", path, None))
+        assert res.status_code == 200, path
+        _json(_assert_body_is_bounded_stream(res, path))  # well-formed JSON, no exception, and
+        # genuinely streamed in bounded pieces (not a reverted single json.dumps() aggregate)
+
+    await asyncio.gather(*(_one(path) for _ in range(rounds) for path in _ALL_MEMORY_BOUNDED_GET_ROUTES))
 
 
 # ---------------------------------------------------------------------------
@@ -697,8 +703,18 @@ def test_networking_put_partial_field_update_triggers_only_relevant_post_hook() 
     assert resync_calls == []  # NTPHost wasn't in this body - its own post_asy_fct must not fire
 
 
-async def _record_async(sink: "list[int]") -> None:
-    sink.append(1)
+def _hammer_mixed_bodies(service: "WebserverService", sizes: "list[int]") -> "list[_BodySizeReader]":
+    readers = [_BodySizeReader(_head_then_body(_sized_put(size))) for size in sizes]
+    writers = [_ScriptedWriter() for _ in sizes]
+
+    async def _all() -> None:  # index-based, not zip(): MicroPython's zip() has no strict= (B905)
+        await asyncio.gather(*(service._serve(readers[i], writers[i]) for i in range(len(sizes))))
+
+    run_timed(_all(), timeout_s=10.0)
+    for i, size in enumerate(sizes):
+        expected = b" 200 " if size <= _BODY_CAP else b"413"
+        assert expected in writers[i].written, (size, writers[i].written[:80])
+    return readers
 
 
 def test_networking_put_raising_post_fct_marks_every_attempted_field_in_that_group_failed() -> None:
@@ -916,12 +932,31 @@ _CmdData = namedtuple("_CmdData", ("TS",))
 _SEQUENCE_YIELDS = 500  # a limit, not a timing claim: every shutdown step here completes in far fewer yields
 
 
-def _system_const(name: str) -> int:
-    return src_int("src/asy_system_service.py", name)  # a private const() of asy_system_service (tests/_src_const.py)
+async def _hammer_route(app: "Microdot", path: str, n: int, expected_keys: "set[str]") -> None:
+    async def _one() -> None:
+        res = await app.dispatch_request(_make_request(app, "GET", path, None))
+        assert res.status_code == 200, path
+        body = _json(_assert_body_is_bounded_stream(res, path))
+        assert set(_obj(body)) == expected_keys
+
+    await asyncio.gather(*(_one() for _ in range(n)))
 
 
-async def _never_synced() -> bool:
-    return False
+async def _hammer_routes_with_concurrent_writes(app: "Microdot", rounds: int) -> None:
+    async def _get_one(path: str) -> None:
+        res = await app.dispatch_request(_make_request(app, "GET", path, None))
+        assert res.status_code == 200, path
+        _json(_assert_body_is_bounded_stream(res, path))
+
+    async def _put_one(round_num: int) -> None:
+        target = f"SENSOR{round_num % 17}"
+        res = await app.dispatch_request(_make_request(app, "PUT", "/sensors", {target: {"Interval": 5 + (round_num % 10)}}))
+        assert res.status_code == 200, "/sensors PUT"
+        assert _at(_json(res.body), "result") == {target: {"Interval": "Valid"}}
+
+    gets = (_get_one(path) for _ in range(rounds) for path in ("/measurements", "/sensors"))
+    puts = (_put_one(i) for i in range(rounds))
+    await asyncio.gather(*gets, *puts)
 
 
 class _CmdReader(SensorReaderConfig):
@@ -985,15 +1020,14 @@ class _CommandBench:
         assert await self.reader.setup()
 
 
-def _file_or_none(path: str) -> object:
-    # The file's JSON, or None when it is absent (ENOENT); any other failure to read it propagates.
-    try:
-        with open(path) as f:
-            return json.load(f)
-    except OSError as e:
-        if e.errno != errno.ENOENT:
-            raise
-        return None
+async def _hammer_settings_route(app: "Microdot", path: str, n: int, expected_key_count: int) -> None:
+    async def _one() -> None:
+        res = await app.dispatch_request(_make_request(app, "GET", path, None))
+        assert res.status_code == 200, path
+        body = _json(_assert_body_is_bounded_stream(res, path))
+        assert len(_obj(body)) == expected_key_count, path  # every group's fields present exactly once
+
+    await asyncio.gather(*(_one() for _ in range(n)))
 
 
 def test_each_system_command_over_put_system_reaches_its_reset_arm_without_a_lock_held() -> None:
@@ -1150,6 +1184,45 @@ def test_status_put_answers_unknown_keys() -> None:
     assert mod.pr.reset_calls == 1
 
 
+def test_status_put_answers_a_registered_command_and_writes_nothing() -> None:
+    # A dispatch-only key: {key: true} answers by the command's own word; any other value, or an unregistered key, is
+    # Invalid and runs nothing; no answer reaches the flash.
+    outcomes = [True, False]
+    calls: list[bool] = []
+
+    def command() -> bool:
+        calls.append(True)
+        return outcomes.pop(0)
+
+    service, app = _make_service()
+    service.add_status_command("Go", command)
+    answers = []
+    with WriteCountingOpen(cm) as cfg, WriteCountingOpen(asy_webserver_service) as web:
+        for body_in in ({"Go": True}, {"Go": True}, {"Go": False}, {"Go": 1}, {"Go": "true"}, {"Other": True}):
+            res = run(app.dispatch_request(_make_request(app, "PUT", "/status", body_in)))
+            answers.append((res.status_code, _at(_json(res.body), "result")))
+    expected = [(200, {"Go": "Valid"}), (200, {"Go": "Failed"})] + [(200, {k: "Invalid"}) for k in ("Go", "Go", "Go", "Other")]
+    assert answers == expected, answers
+    assert len(calls) == 2, calls
+    assert (cfg.writes, web.writes) == (0, 0), (cfg.writes, web.writes)
+
+
+def test_status_put_a_raising_registered_command_answers_failed_and_is_persisted() -> None:
+    # A caller-supplied callback, guarded as _run_system_cmd() guards its own (Part G.2): a raise is the key's
+    # "Failed" with a persisted errno, never a 500 out of the route handler.
+    def command() -> bool:
+        raise RuntimeError("injected for the command")
+
+    service, app = _make_service()
+    service.add_status_command("Go", command)
+    res = run(app.dispatch_request(_make_request(app, "PUT", "/status", {"Go": True, "ResetErrors": False})))
+    assert res.status_code == 200, res.status_code
+    assert _at(_json(res.body), "result") == {"Go": "Failed", "ResetErrors": "Invalid"}
+    log = run(service.get_error_counter())["WEBSERVER"]
+    assert log["ErrCount"] == 1, log
+    assert log["ErrNum"].count(code("E", "CALLBACK")) == 1, log
+
+
 def test_status_put_reset_errors_true_resets_every_module_counter_and_history() -> None:
     mod = _FakeModule("SGP40")
     run(mod.pr.err_s("boom", errno=1))
@@ -1257,23 +1330,33 @@ def test_reset_errors_runs_every_source_at_once() -> None:
     assert [m.started_before_finish for m in mods] == [3, 3, 3]
 
 
-def _put_result(app: "Microdot", path: str, body: object) -> "dict[str, object]":
-    return _obj(_at(_json(run(app.dispatch_request(_make_request(app, "PUT", path, body))).body), "result"))
+async def _hammer_status(app: "Microdot", n: int) -> None:
+    async def _one() -> None:
+        res = await app.dispatch_request(_make_request(app, "GET", "/status", None))
+        # _assert_body_is_bounded_stream() (defined below) also confirms res.body is a genuinely
+        # bounded stream: status_body()/drain_json_response_body() tolerates either body shape, so
+        # this test alone would still pass with /status's streaming reverted to one plain dict.
+        body = _json(_assert_body_is_bounded_stream(res, "/status"))
+        assert set(_obj(body)) == {"networking", "system", "notification", "sensors", "errcount"}
+        assert len(_obj(_at(body, "errcount"))) == 18  # 17 fake modules + this service's own WEBSERVER entry
+
+    await asyncio.gather(*(_one() for _ in range(n)))
 
 
-def _seeded_bench() -> "_CommandBench":
-    # A set-up bench whose reader log holds one entry and whose webserver holds one entry and one dropped connection.
-    bench = _CommandBench()
-    run(bench.setup())
-    run(bench.reader.pr.err_s("x", errno=code("E", "CALLBACK")))
-    run(bench.service._note_drop(code("W", "HTTP_REFUSED"), "seeded"))
-    return bench
+def _head_then_body(request: bytes) -> "list[tuple[float, bytes]]":
+    # Two segments: the reader proxy reads the head in pieces, so a body arriving apart is read whole by readexactly().
+    head, blank, body = request.partition(b"\r\n\r\n")
+    return [(0, head + blank), (0, body)]
 
 
-def _kept(bench: "_CommandBench") -> "tuple[int, int, int]":
-    # The reader's and the webserver's entry counts and the dropped connections: what a refused ResetErrors keeps.
-    reader = run(bench.reader.get_error_counter())["CMDSENS"]["ErrCount"]
-    return reader, run(bench.service.get_error_counter())["WEBSERVER"]["ErrCount"], run(bench.service.get_dropped_count())
+def _json(body: "bytes | str") -> object:
+    # Every response body is read through the strict RFC 8259 recogniser (tests/_strict_json.py): a duplicate key fails.
+    # A body read before reuses its checked parse: the hammers read each route's few bodies hundreds of times over.
+    if body not in _PARSED:
+        if len(_PARSED) >= _PARSED_MAX:
+            _PARSED.clear()
+        _PARSED[body] = strict_loads(body)
+    return _PARSED[body]
 
 
 def test_reset_errors_is_refused_and_clears_nothing_once_a_command_owns_the_reset() -> None:
@@ -1534,6 +1617,12 @@ def test_notification_put_light_cmd_led_reported_invalid_when_payload_is_not_a_d
     assert _at(body, "result", "LightCmdLED") == "Invalid"
 
 
+def _kept(bench: "_CommandBench") -> "tuple[int, int, int]":
+    # The reader's and the webserver's entry counts and the dropped connections: what a refused ResetErrors keeps.
+    reader = run(bench.reader.get_error_counter())["CMDSENS"]["ErrCount"]
+    return reader, run(bench.service.get_error_counter())["WEBSERVER"]["ErrCount"], run(bench.service.get_dropped_count())
+
+
 def _led_service(outcome: "list[object]", calls: "list[tuple[int, int, int, float]]") -> "tuple[WebserverService, Microdot]":
     # A LightCmdLED callback recording what it receives and answering outcome[0]: a bool, or an exception it raises.
     async def notification_led(r: int, g: int, b: int, t: float) -> bool:
@@ -1543,11 +1632,6 @@ def _led_service(outcome: "list[object]", calls: "list[tuple[int, int, int, floa
         return outcome[0] is True
 
     return _make_service(notification_led=notification_led)
-
-
-def _put_led(app: "Microdot", payload: object) -> "dict[str, object]":
-    res = run(app.dispatch_request(_make_request(app, "PUT", "/notification", {"LightCmdLED": payload})))
-    return _obj(_json(res.body))
 
 
 def test_a_malformed_led_command_is_invalid_and_never_dispatched() -> None:
@@ -1636,10 +1720,30 @@ def test_notification_put_light_cmd_led_raising_callback_returns_failed_not_an_e
 _SETTINGS_ENDPOINTS = ("networking", "system", "notification")
 
 
-def _settings_service(endpoint: str) -> "tuple[WebserverService, Microdot, _FakeModule]":
-    mod = _FakeModule(endpoint.upper(), values={"Interval": 5, "Offset": 0})
-    service, app = _make_service(settings={endpoint: [SettingsGroup(mod, ("Interval", "Offset"))]})
-    return service, app, mod
+def _make_combined_hammer_service() -> "tuple[WebserverService, Microdot]":
+    sensor_modules = [_NestedCfgModule(f"SENSOR{i}", values={"Interval": 5, "Offset": 0}, data={"Value": i}) for i in range(17)]
+    error_modules = []
+    for i in range(17):
+        m = _FakeModule(f"MODULE{i}")
+        m.pr.err_count = 5
+        m.pr.history = [(1, "E")] * 5
+        error_modules.append(m)
+    net_mod = _FakeModule("WIFI", schema=(("SSID", "str", "", 0, 32, None),), values={"SSID": "MyNet"})
+    sys_mod = _FakeModule("SYSTEM", schema=(("DebugLevel", "int", 0, 0, 5, None),), values={"DebugLevel": 2})
+    notif_mod = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
+    return _make_service(
+        sensors=sensor_modules,
+        settings={
+            "networking": [SettingsGroup(net_mod, ("SSID",))],
+            "system": [SettingsGroup(sys_mod, ("DebugLevel",))],
+            "notification": [SettingsGroup(notif_mod, ("OnH",))],
+        },
+        status_sources={"networking": _const_source({"A": 1}), "system": _const_source({"B": 2})},
+        maintenance_sensors=[("SGP40", _const_source({"BackupTS": 1}))],
+        error_sources=error_modules,
+        history_length=0,
+        debug=_ERROR_LEVEL,
+    )
 
 
 def test_b_missing_field_or_sub_object_left_untouched_on_every_settings_endpoint() -> None:
@@ -2230,34 +2334,57 @@ class _BodySizeReader(_ScriptedReader):
 _BODY_CAP = _DEFAULT_MAX_CONTENT_LENGTH  # what _make_service() sets: the shipped default
 
 
-def _sized_put(payload_bytes: int, interval: int = 7) -> bytes:
-    # A /networking PUT of exactly payload_bytes, carrying a REAL field ("Interval") next to the
-    # padding - so an accepted one has to be genuinely applied, not merely not-rejected, and the
-    # padding key is one no driver registers so it can never validate as real config.
-    envelope = len(json.dumps({"Interval": interval, "Padding": ""}).encode())
-    body = json.dumps({"Interval": interval, "Padding": "x" * (payload_bytes - envelope)}).encode()
-    return _request_bytes("PUT", "/networking", body)
-
-
-def _body_service() -> "tuple[WebserverService, Microdot, _FakeModule]":
-    mod = _FakeModule("NETWORKING", values={"Interval": 5, "Offset": 0})
-    service, app = _make_service(
-        settings={"networking": [SettingsGroup(mod, ("Interval", "Offset"))]}, per_call_timeout_s=2.0, outer_cap_s=2.0,
+def _make_hammer_service() -> "tuple[WebserverService, Microdot]":
+    modules = []
+    for i in range(17):  # matches the real registered-module count found on real hardware
+        m = _FakeModule(f"MODULE{i}")
+        m.pr.err_count = 5
+        m.pr.history = [(1, "E")] * 5
+        modules.append(m)
+    return _make_service(
+        status_sources={"networking": _const_source({"A": 1}), "system": _const_source({"B": 2})},
+        maintenance_sensors=[("SGP40", _const_source({"BackupTS": 1}))],
+        error_sources=modules,
+        history_length=0,
+        debug=_ERROR_LEVEL,
     )
-    return service, app, mod
 
 
-def _head_then_body(request: bytes) -> "list[tuple[float, bytes]]":
-    # Two segments: the reader proxy reads the head in pieces, so a body arriving apart is read whole by readexactly().
-    head, blank, body = request.partition(b"\r\n\r\n")
-    return [(0, head + blank), (0, body)]
+def _make_request(app: "Microdot", method: str, path: str, json_body: object) -> Request:
+    body = b"" if json_body is None else json.dumps(json_body).encode()
+    headers = {"Content-Length": str(len(body)), "Content-Type": "application/json"}
+    sock = (_NoopHolder(), _NoopHolder())
+    return Request(app, ("127.0.0.1", 12345), method, path, "1.1", headers, body=body, sock=sock)  # type: ignore[arg-type]  # the stub types sock as the two asyncio streams; a static route only calls hold() on it - removal trigger: SPECIFICATION.md B.15
 
 
-def _serve_one(service: "WebserverService", body_bytes: int, interval: int = 7) -> "tuple[_BodySizeReader, _ScriptedWriter]":
-    reader = _BodySizeReader(_head_then_body(_sized_put(body_bytes, interval)))
-    writer = _ScriptedWriter()
-    run_timed(service._serve(reader, writer), timeout_s=3.0)
-    return reader, writer
+def _make_sensor_hammer_service() -> "tuple[WebserverService, Microdot]":
+    modules = [_NestedCfgModule(f"SENSOR{i}", values={"Interval": 5, "Offset": 0}, data={"Value": i}) for i in range(17)]
+    return _make_service(sensors=modules, history_length=0, debug=_ERROR_LEVEL)
+
+
+def _make_service(**kwargs: "Unpack[_ServiceKeywords]") -> "tuple[WebserverService, Microdot]":
+    # Builds the config objects from the keywords a test sets; every other field keeps the default below.
+    app = Microdot()
+    routes = RouteSources(
+        kwargs.pop("sensors", ()), kwargs.pop("settings", None), kwargs.pop("build_info", None), kwargs.pop("system_cmd", None),
+        kwargs.pop("reset_refusals", None), kwargs.pop("notification_led", None), kwargs.pop("notification_pause", None), kwargs.pop("status_sources", None),
+        kwargs.pop("maintenance_sensors", ()), kwargs.pop("error_sources", ()),
+    )
+    serving = ServingLimits(
+        kwargs.pop("max_content_length", _DEFAULT_MAX_CONTENT_LENGTH),  # tracks the shipped default, so these tests exercise it
+        kwargs.pop("chunk_bytes", _DEFAULT_CHUNK_BYTES),
+        kwargs.pop("max_connections", 3),
+        kwargs.pop("backlog", None),
+        kwargs.pop("per_call_timeout_s", 0.2),
+        kwargs.pop("outer_cap_s", 0.5),
+        kwargs.pop("host", "0.0.0.0"),  # the shipped default; a test that serves overrides it
+        kwargs.pop("port", 80),
+    )
+    mount, index, hotspot = kwargs.pop("static_mount", None), kwargs.pop("static_index", "index.html"), kwargs.pop("is_hotspot_active", None)
+    static = None if mount is None else StaticSite(mount, index, hotspot)
+    log = LogConfig(None, kwargs.pop("history_length", 10), kwargs.pop("debug", None))
+    assert not kwargs, f"_make_service() got keywords no config object has: {sorted(kwargs)}"
+    return WebserverService(app, routes, serving, _no_uptime, static, log), app
 
 
 def test_f2b_none_above_the_cap_every_body_is_buffered_and_applied() -> None:
@@ -2325,27 +2452,20 @@ def test_f2b_the_two_microdot_caps_are_bound_together_so_the_band_cannot_reopen(
     assert Request.max_body_length == 777
 
 
-def _body_service_with_connections(max_connections: int) -> "tuple[WebserverService, Microdot, _FakeModule]":
-    mod = _FakeModule("NETWORKING", values={"Interval": 5, "Offset": 0})
-    service, app = _make_service(
-        settings={"networking": [SettingsGroup(mod, ("Interval", "Offset"))]},
-        max_connections=max_connections, per_call_timeout_s=2.0, outer_cap_s=5.0, debug=_ERROR_LEVEL,
-    )
-    return service, app, mod
+def _make_settings_hammer_service(endpoint: str) -> "tuple[WebserverService, Microdot, set[str]]":
+    # _get_settings_flat() merges every group's fields into one flat top-level dict with no
+    # per-group namespacing (matching real production wiring), so each group here must contribute
+    # distinct field names or later groups would overwrite earlier ones.
+    groups = [
+        SettingsGroup(_FakeModule(f"GROUP{i}", values={f"F{i}A": i, f"F{i}B": 0}), (f"F{i}A", f"F{i}B")) for i in range(17)
+    ]
+    service, app = _make_service(settings={endpoint: groups}, debug=_ERROR_LEVEL)
+    return service, app, {f"F{i}{s}" for i in range(17) for s in ("A", "B")}
 
 
-def _hammer_mixed_bodies(service: "WebserverService", sizes: "list[int]") -> "list[_BodySizeReader]":
-    readers = [_BodySizeReader(_head_then_body(_sized_put(size))) for size in sizes]
-    writers = [_ScriptedWriter() for _ in sizes]
-
-    async def _all() -> None:  # index-based, not zip(): MicroPython's zip() has no strict= (B905)
-        await asyncio.gather(*(service._serve(readers[i], writers[i]) for i in range(len(sizes))))
-
-    run_timed(_all(), timeout_s=10.0)
-    for i, size in enumerate(sizes):
-        expected = b" 200 " if size <= _BODY_CAP else b"413"
-        assert expected in writers[i].written, (size, writers[i].written[:80])
-    return readers
+def _make_write_hammer_service() -> "tuple[WebserverService, Microdot]":
+    modules = [_FakeModule(f"SENSOR{i}") for i in range(17)]
+    return _make_service(sensors=modules, history_length=0, debug=_ERROR_LEVEL)
 
 
 def test_f2b_hammer_concurrent_mixed_bodies_bound_the_total_buffered_bytes() -> None:
@@ -2550,9 +2670,13 @@ def test_a_write_phase_timeout_is_logged_once_not_twice() -> None:
     assert run(service._open_conns.get_value()) == 0
 
 
-def _newest_entry(service: "WebserverService") -> "tuple[int, str]":  # WEBSERVER's newest (ErrNum, ErrType)
-    entry = run(service.get_error_counter())["WEBSERVER"]
-    return entry["ErrNum"][-1], entry["ErrType"][-1]
+def _mount_recording_fixture(files: "dict[str, bytes]") -> "tuple[str, _RecordingVfs]":
+    global _next_static_mount
+    _next_static_mount += 1
+    mount_point = f"/test_recording_{_next_static_mount}"
+    vfs = _RecordingVfs({name + ".gz": data for name, data in files.items()})
+    os.mount(vfs, mount_point, readonly=True)
+    return mount_point, vfs
 
 
 def test_a_read_phase_per_call_timeout_logs_the_call_timeout_code() -> None:
@@ -3066,13 +3190,8 @@ class _RecordingVfs:
         return opened
 
 
-def _mount_recording_fixture(files: "dict[str, bytes]") -> "tuple[str, _RecordingVfs]":
-    global _next_static_mount
-    _next_static_mount += 1
-    mount_point = f"/test_recording_{_next_static_mount}"
-    vfs = _RecordingVfs({name + ".gz": data for name, data in files.items()})
-    os.mount(vfs, mount_point, readonly=True)
-    return mount_point, vfs
+async def _never_synced() -> bool:
+    return False
 
 
 def test_a_head_request_closes_the_opened_static_stream() -> None:
@@ -3133,21 +3252,13 @@ class _ChunkRecordingWriter(_ScriptedWriter):
         await super().awrite(data)
 
 
-def _get_on_the_wire(service: "WebserverService", path: str) -> "tuple[str, dict[str, str], list[bytes]]":
-    # These tests pin write bounds, not timeouts: _make_service()'s 0.5s outer cap cut a 37 KB body
-    # short on a loaded CI runner. 4s stays under run_timed()'s 5s, so a hang still fails the test.
-    service._per_call_timeout_ms, service._outer_cap_ms = 2000, 4000
-    writer = _ChunkRecordingWriter()
-    run_timed(service._serve(_ScriptedReader([(0, _request_bytes("GET", path))], eof=True), writer), timeout_s=5.0)
-    head = writer.chunks[0]  # the whole header block is one write (_TimeoutStreamProxy.awrite)
-    assert head.endswith(b"\r\n\r\n") and head.count(b"\r\n\r\n") == 1, head
-    lines = head.decode().split("\r\n")
-    headers = dict(line.split(": ", 1) for line in lines[1:] if line)
-    return lines[0].split(" ")[1], {k.lower(): v for k, v in headers.items()}, writer.chunks[1:]
+def _newest_entry(service: "WebserverService") -> "tuple[int, str]":  # WEBSERVER's newest (ErrNum, ErrType)
+    entry = run(service.get_error_counter())["WEBSERVER"]
+    return entry["ErrNum"][-1], entry["ErrType"][-1]
 
 
-def _patterned(size: int) -> bytes:
-    return bytes((i * 7 + size) & 0xFF for i in range(size))  # distinct per size, so no two files match
+async def _no_uptime() -> int:  # the drop window's clock, held at boot
+    return 0
 
 
 def test_g3_every_static_file_arrives_whole_with_its_length_in_writes_of_at_most_256_bytes() -> None:
@@ -3417,16 +3528,10 @@ def test_h1_a_second_unhandled_exception_from_a_different_route_is_logged_indepe
     assert entry["ErrType"].count("E") == 1
 
 
-def _stack_overflow() -> RuntimeError:
-    # The interpreter's own C-stack exhaustion, from a real recursion (py/runtime.c:1786, v1.29.0).
-    def dive(depth: int) -> int:
-        return dive(depth + 1)
-
-    try:
-        dive(0)
-    except RuntimeError as e:
-        return e
-    raise AssertionError("no recursion limit reached")
+def _obj(value: object) -> "dict[str, object]":
+    # A parsed JSON object, checked as one before an assertion reads its keys.
+    assert isinstance(value, dict), value
+    return value
 
 
 class _OverflowingSensorModule(_FakeModule):
@@ -3484,15 +3589,19 @@ def test_h1_abort_driven_404_is_unaffected_by_the_catch_all() -> None:
 # when driven past an await, as body_iter() would. SPECIFICATION.md Part F.1.
 
 
-def _const_source(value: "JsonDict") -> "StatusSourceFct":
-    async def _source() -> "JsonDict":
-        return value
+def _on_virtual_clock(clock: "_VirtualClock", scenario: "Coroutine[object, object, T]", timeout_s: float = 5.0) -> "T":
+    # Runs scenario with the module's bounds on clock: one fires only when the test moves the clock, so a host
+    # stall can neither cut a response short nor reorder two bounds. Called at synchronous test scope only.
+    real_asyncio = asy_webserver_service.asyncio
+    asy_webserver_service.asyncio = clock.timers()  # type: ignore[assignment]  # a stand-in module, restored below
+    try:
+        return run_timed(scenario, timeout_s)  # a hang bound only: the virtual clock makes the pass itself instant
+    finally:
+        asy_webserver_service.asyncio = real_asyncio
 
-    return _source
 
-
-async def _raising_source() -> "JsonDict":
-    raise RuntimeError("simulated status stream source failure")
+def _patterned(size: int) -> bytes:
+    return bytes((i * 7 + size) & 0xFF for i in range(size))  # distinct per size, so no two files match
 
 
 class _RaisingErrorCounterModule(_FakeModule):
@@ -3714,16 +3823,13 @@ def test_h2_stream_many_error_sources_are_coalesced_into_size_bounded_batches_no
         assert _at(body, "errcount", f"MODULE{i}") == {"counter": 10, "history": [{"num": 1, "type": "E"}] * 10}
 
 
-def _errcount_log(name: str, count: int, nums: "list[int]", types: "list[str]") -> "ErrorLog":
-    return {name: {"ErrCount": count, "ErrNum": nums, "ErrType": types}}
+def _put_led(app: "Microdot", payload: object) -> "dict[str, object]":
+    res = run(app.dispatch_request(_make_request(app, "PUT", "/notification", {"LightCmdLED": payload})))
+    return _obj(_json(res.body))
 
 
-def _written(value: object, max_bytes: int = _DEFAULT_CHUNK_BYTES) -> "list[bytes]":
-    pieces: list[bytes] = []
-    writer = _PieceWriter(pieces, max_bytes=max_bytes)
-    writer.add_value(value)
-    writer.flush()
-    return pieces
+def _put_result(app: "Microdot", path: str, body: object) -> "dict[str, object]":
+    return _obj(_at(_json(run(app.dispatch_request(_make_request(app, "PUT", path, body))).body), "result"))
 
 
 def test_h2_add_value_is_byte_identical_to_json_dumps() -> None:
@@ -3844,33 +3950,12 @@ def test_h2_piece_writer_flush_is_idempotent_and_an_empty_writer_adds_nothing() 
 # 32768 (SPECIFICATION.md I.4(e)/(f)).
 
 
-def _make_hammer_service() -> "tuple[WebserverService, Microdot]":
-    modules = []
-    for i in range(17):  # matches the real registered-module count found on real hardware
-        m = _FakeModule(f"MODULE{i}")
-        m.pr.err_count = 5
-        m.pr.history = [(1, "E")] * 5
-        modules.append(m)
-    return _make_service(
-        status_sources={"networking": _const_source({"A": 1}), "system": _const_source({"B": 2})},
-        maintenance_sensors=[("SGP40", _const_source({"BackupTS": 1}))],
-        error_sources=modules,
-        history_length=0,
-        debug=_ERROR_LEVEL,
-    )
+async def _raising_source() -> "JsonDict":
+    raise RuntimeError("simulated status stream source failure")
 
 
-async def _hammer_status(app: "Microdot", n: int) -> None:
-    async def _one() -> None:
-        res = await app.dispatch_request(_make_request(app, "GET", "/status", None))
-        # _assert_body_is_bounded_stream() (defined below) also confirms res.body is a genuinely
-        # bounded stream: status_body()/drain_json_response_body() tolerates either body shape, so
-        # this test alone would still pass with /status's streaming reverted to one plain dict.
-        body = _json(_assert_body_is_bounded_stream(res, "/status"))
-        assert set(_obj(body)) == {"networking", "system", "notification", "sensors", "errcount"}
-        assert len(_obj(_at(body, "errcount"))) == 18  # 17 fake modules + this service's own WEBSERVER entry
-
-    await asyncio.gather(*(_one() for _ in range(n)))
+async def _record_async(sink: "list[int]") -> None:
+    sink.append(1)
 
 
 def test_h3_hammer_concurrent_status_requests_stay_valid() -> None:
@@ -3949,21 +4034,12 @@ def test_i1_a_key_with_special_characters_is_correctly_escaped_not_hand_concaten
 
 
 
-def _assert_body_is_bounded_stream(res: "Response", path: str) -> bytes:
-    # status_body()/drain_json_response_body() accepts both a streamed and a single-json.dumps()
-    # body so pre-existing tests need no branching - which means a route reverted to `return
-    # result` still passes every other hammer test here. Hence this explicit check.
-
-    # res.body must be a real streamed iterator, never a plain str/bytes, and every piece it yields
-    # must stay under the same per-piece budget _stream_dict_response() itself enforces.
-    body: Iterable[bytes | str] = res.body  # type: ignore[assignment]  # a streamed body yields pieces; the stub types Response.body as bytes - removal trigger: SPECIFICATION.md B.15
-    assert not isinstance(body, (str, bytes)), f"{path}: response body is not a streamed iterator (regressed to a single json.dumps() aggregate)"
-    chunks = []
-    for chunk in body:
-        encoded = chunk.encode() if isinstance(chunk, str) else chunk
-        assert len(encoded) <= _HAMMER_PIECE_BUDGET, f"{path}: piece of {len(encoded)} bytes exceeds the per-piece budget"
-        chunks.append(encoded)
-    return b"".join(chunks)
+def _request_bytes(method: str, path: str, body: bytes = b"", extra_headers: "dict[str, str] | None" = None) -> bytes:
+    headers = {"Content-Length": str(len(body)), "Content-Type": "application/json", "Host": "device.local"}
+    if extra_headers:
+        headers.update(extra_headers)
+    header_lines = "".join(f"{k}: {v}\r\n" for k, v in headers.items())
+    return f"{method} {path} HTTP/1.1\r\n{header_lines}\r\n".encode() + body
 
 
 # -- Hammering /measurements and /sensors specifically - the owner's named top
@@ -3971,19 +4047,18 @@ def _assert_body_is_bounded_stream(res: "Response", path: str) -> bytes:
 # foreseeable - at the real registered-module count found on real hardware (17, the /status hammers' scale).
 
 
-def _make_sensor_hammer_service() -> "tuple[WebserverService, Microdot]":
-    modules = [_NestedCfgModule(f"SENSOR{i}", values={"Interval": 5, "Offset": 0}, data={"Value": i}) for i in range(17)]
-    return _make_service(sensors=modules, history_length=0, debug=_ERROR_LEVEL)
+def _run_settings_hammer(endpoint: str, path: str) -> None:
+    _, app, keys = _make_settings_hammer_service(endpoint)
+    run(_hammer_settings_route(app, path, 200, len(keys)))
 
 
-async def _hammer_route(app: "Microdot", path: str, n: int, expected_keys: "set[str]") -> None:
-    async def _one() -> None:
-        res = await app.dispatch_request(_make_request(app, "GET", path, None))
-        assert res.status_code == 200, path
-        body = _json(_assert_body_is_bounded_stream(res, path))
-        assert set(_obj(body)) == expected_keys
-
-    await asyncio.gather(*(_one() for _ in range(n)))
+def _seeded_bench() -> "_CommandBench":
+    # A set-up bench whose reader log holds one entry and whose webserver holds one entry and one dropped connection.
+    bench = _CommandBench()
+    run(bench.setup())
+    run(bench.reader.pr.err_s("x", errno=code("E", "CALLBACK")))
+    run(bench.service._note_drop(code("W", "HTTP_REFUSED"), "seeded"))
+    return bench
 
 
 _SENSOR_HAMMER_KEYS = {f"SENSOR{i}" for i in range(17)}
@@ -4004,30 +4079,26 @@ def test_i2_hammer_concurrent_sensors_requests_stay_valid() -> None:
 # Stressed at 17 groups so this set doesn't depend on today's small real field counts staying so.
 
 
-def _make_settings_hammer_service(endpoint: str) -> "tuple[WebserverService, Microdot, set[str]]":
-    # _get_settings_flat() merges every group's fields into one flat top-level dict with no
-    # per-group namespacing (matching real production wiring), so each group here must contribute
-    # distinct field names or later groups would overwrite earlier ones.
-    groups = [
-        SettingsGroup(_FakeModule(f"GROUP{i}", values={f"F{i}A": i, f"F{i}B": 0}), (f"F{i}A", f"F{i}B")) for i in range(17)
-    ]
-    service, app = _make_service(settings={endpoint: groups}, debug=_ERROR_LEVEL)
-    return service, app, {f"F{i}{s}" for i in range(17) for s in ("A", "B")}
+def _serve_one(service: "WebserverService", body_bytes: int, interval: int = 7) -> "tuple[_BodySizeReader, _ScriptedWriter]":
+    reader = _BodySizeReader(_head_then_body(_sized_put(body_bytes, interval)))
+    writer = _ScriptedWriter()
+    run_timed(service._serve(reader, writer), timeout_s=3.0)
+    return reader, writer
 
 
-async def _hammer_settings_route(app: "Microdot", path: str, n: int, expected_key_count: int) -> None:
-    async def _one() -> None:
-        res = await app.dispatch_request(_make_request(app, "GET", path, None))
-        assert res.status_code == 200, path
-        body = _json(_assert_body_is_bounded_stream(res, path))
-        assert len(_obj(body)) == expected_key_count, path  # every group's fields present exactly once
-
-    await asyncio.gather(*(_one() for _ in range(n)))
+def _settings_service(endpoint: str) -> "tuple[WebserverService, Microdot, _FakeModule]":
+    mod = _FakeModule(endpoint.upper(), values={"Interval": 5, "Offset": 0})
+    service, app = _make_service(settings={endpoint: [SettingsGroup(mod, ("Interval", "Offset"))]})
+    return service, app, mod
 
 
-def _run_settings_hammer(endpoint: str, path: str) -> None:
-    _, app, keys = _make_settings_hammer_service(endpoint)
-    run(_hammer_settings_route(app, path, 200, len(keys)))
+def _sized_put(payload_bytes: int, interval: int = 7) -> bytes:
+    # A /networking PUT of exactly payload_bytes, carrying a REAL field ("Interval") next to the
+    # padding - so an accepted one has to be genuinely applied, not merely not-rejected, and the
+    # padding key is one no driver registers so it can never validate as real config.
+    envelope = len(json.dumps({"Interval": interval, "Padding": ""}).encode())
+    body = json.dumps({"Interval": interval, "Padding": "x" * (payload_bytes - envelope)}).encode()
+    return _request_bytes("PUT", "/networking", body)
 
 
 def test_i2b_hammer_concurrent_networking_requests_stay_valid() -> None:
@@ -4047,44 +4118,24 @@ def test_i2b_hammer_concurrent_notification_requests_stay_valid() -> None:
 # sources plus this service's own entry (status/errcount), one settings group per flat endpoint.
 
 
-def _make_combined_hammer_service() -> "tuple[WebserverService, Microdot]":
-    sensor_modules = [_NestedCfgModule(f"SENSOR{i}", values={"Interval": 5, "Offset": 0}, data={"Value": i}) for i in range(17)]
-    error_modules = []
-    for i in range(17):
-        m = _FakeModule(f"MODULE{i}")
-        m.pr.err_count = 5
-        m.pr.history = [(1, "E")] * 5
-        error_modules.append(m)
-    net_mod = _FakeModule("WIFI", schema=(("SSID", "str", "", 0, 32, None),), values={"SSID": "MyNet"})
-    sys_mod = _FakeModule("SYSTEM", schema=(("DebugLevel", "int", 0, 0, 5, None),), values={"DebugLevel": 2})
-    notif_mod = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
-    return _make_service(
-        sensors=sensor_modules,
-        settings={
-            "networking": [SettingsGroup(net_mod, ("SSID",))],
-            "system": [SettingsGroup(sys_mod, ("DebugLevel",))],
-            "notification": [SettingsGroup(notif_mod, ("OnH",))],
-        },
-        status_sources={"networking": _const_source({"A": 1}), "system": _const_source({"B": 2})},
-        maintenance_sensors=[("SGP40", _const_source({"BackupTS": 1}))],
-        error_sources=error_modules,
-        history_length=0,
-        debug=_ERROR_LEVEL,
-    )
+def _stack_overflow() -> RuntimeError:
+    # The interpreter's own C-stack exhaustion, from a real recursion (py/runtime.c:1786, v1.29.0).
+    def dive(depth: int) -> int:
+        return dive(depth + 1)
+
+    try:
+        dive(0)
+    except RuntimeError as e:
+        return e
+    raise AssertionError("no recursion limit reached")
 
 
 # Every GET route of the one route table (src/asy_webserver_service.py ROUTES): a route added there joins the hammer.
 _ALL_MEMORY_BOUNDED_GET_ROUTES = tuple(path for method, path, _name in ROUTES if method == "GET")
 
 
-async def _hammer_all_routes(app: "Microdot", rounds: int) -> None:
-    async def _one(path: str) -> None:
-        res = await app.dispatch_request(_make_request(app, "GET", path, None))
-        assert res.status_code == 200, path
-        _json(_assert_body_is_bounded_stream(res, path))  # well-formed JSON, no exception, and
-        # genuinely streamed in bounded pieces (not a reverted single json.dumps() aggregate)
-
-    await asyncio.gather(*(_one(path) for _ in range(rounds) for path in _ALL_MEMORY_BOUNDED_GET_ROUTES))
+def _system_const(name: str) -> int:
+    return src_int("src/asy_system_service.py", name)  # a private const() of asy_system_service (tests/_src_const.py)
 
 
 def test_i3_hammer_every_memory_bounded_get_route_concurrently() -> None:
@@ -4100,26 +4151,19 @@ def test_i3_hammer_every_memory_bounded_get_route_concurrently() -> None:
 # checks the GET hammers' same bounded-stream property with a concurrent writer present, not a race hunt.
 
 
-def _make_write_hammer_service() -> "tuple[WebserverService, Microdot]":
-    modules = [_FakeModule(f"SENSOR{i}") for i in range(17)]
-    return _make_service(sensors=modules, history_length=0, debug=_ERROR_LEVEL)
+def _written(value: object, max_bytes: int = _DEFAULT_CHUNK_BYTES) -> "list[bytes]":
+    pieces: list[bytes] = []
+    writer = _PieceWriter(pieces, max_bytes=max_bytes)
+    writer.add_value(value)
+    writer.flush()
+    return pieces
 
 
-async def _hammer_routes_with_concurrent_writes(app: "Microdot", rounds: int) -> None:
-    async def _get_one(path: str) -> None:
-        res = await app.dispatch_request(_make_request(app, "GET", path, None))
-        assert res.status_code == 200, path
-        _json(_assert_body_is_bounded_stream(res, path))
-
-    async def _put_one(round_num: int) -> None:
-        target = f"SENSOR{round_num % 17}"
-        res = await app.dispatch_request(_make_request(app, "PUT", "/sensors", {target: {"Interval": 5 + (round_num % 10)}}))
-        assert res.status_code == 200, "/sensors PUT"
-        assert _at(_json(res.body), "result") == {target: {"Interval": "Valid"}}
-
-    gets = (_get_one(path) for _ in range(rounds) for path in ("/measurements", "/sensors"))
-    puts = (_put_one(i) for i in range(rounds))
-    await asyncio.gather(*gets, *puts)
+def status_body(res: "Response") -> bytes:
+    # GET /status streams a list of already-json.dumps()-encoded fragments (see
+    # asy_webserver_service.py's _build_status_pieces()); draining it the way a real client would
+    # gives every streamed body to _json() whole.
+    return drain_json_response_body(res.body)
 
 
 def test_i4_hammer_measurements_and_sensors_concurrently_with_a_real_config_write() -> None:

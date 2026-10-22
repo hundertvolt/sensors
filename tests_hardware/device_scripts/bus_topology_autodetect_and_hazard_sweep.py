@@ -67,12 +67,14 @@ class _Sweep(Seen):
 
 
 def _probe(i2c: "asy_i2c_driver.I2C", address: int) -> "str | bool":
-    # The zero-length write I2CDevice._probe_for_device() uses: True on an ACK, False on a clean NAK or timeout (an
-    # absent device), else what happened.
+    # The zero-length write I2CDevice._probe_for_device() uses, soft I2C on rp2: True on an ACK, False on the address NAK
+    # (ENODEV, machine_i2c.c:127-145, extmod/machine_i2c.c:199-203), else what happened: a timeout is a bus fault.
     try:
         i2c.writeto(address, b"")
-    except OSError:
-        return False
+    except OSError as e:
+        if e.errno == errno.ENODEV:
+            return False
+        return f"a bus fault, not a NAK: {type(e).__name__}: {e}"
     except Exception as e:  # anything but the bus's own error is a finding
         return f"{type(e).__name__}: {e}"
     return True
@@ -102,9 +104,11 @@ async def _recover_among_reads(i2c: "asy_i2c_driver.I2C", readers: "dict[str, Re
     return status[0], sweep.total - before
 
 
-async def _self_hazard(i2c: "asy_i2c_driver.I2C", label: str, read: "Reader", sweep: _Sweep) -> int:
-    # A lone known device read repeatedly while general-call broadcasts race the reads; returns the clean reads.
+async def _self_hazard(i2c: "asy_i2c_driver.I2C", label: str, read: "Reader", sweep: _Sweep) -> "dict[str, object]":
+    # A lone known device read repeatedly while general-call broadcasts race the reads: the clean reads and the
+    # broadcasts that reached the bus, the NAKed among them.
     clean = [0]
+    sent = {"broadcasts": 0, "naks": 0}
 
     async def reads() -> None:
         for i in range(_SELF_READS):
@@ -115,12 +119,17 @@ async def _self_hazard(i2c: "asy_i2c_driver.I2C", label: str, read: "Reader", sw
         for _ in range(_BROADCASTS):
             try:
                 i2c.writeto(_GENERAL_CALL_ADDRESS, b"\x06")
-            except OSError:  # a NAKed broadcast is a bus outcome, not this check's subject
-                pass
+            except OSError as e:  # rp2: EIO for a transfer the bus aborted (a NAK), ETIMEDOUT otherwise (machine_i2c.c:150-155)
+                if e.errno != errno.EIO:
+                    sweep.fail(sweep.caught(f"{label} self-hazard broadcast", e))
+                    await asyncio.sleep(_BROADCAST_STEP_S)
+                    continue
+                sent["naks"] += 1  # on the wire, taken by no device: the lone device ignores the general call
+            sent["broadcasts"] += 1
             await asyncio.sleep(_BROADCAST_STEP_S)
 
     await asyncio.wait_for(asyncio.gather(reads(), broadcasts()), _RUN_BOUND_S)
-    return clean[0]
+    return {"device": label, "clean_reads": clean[0], "planned": _SELF_READS, "broadcasts": sent["broadcasts"], "naks": sent["naks"], "broadcasts_planned": _BROADCASTS}
 
 
 async def _sweep_bus(bus_id: str, sweep: _Sweep, wdt: "machine.WDT", found: "dict[str, dict[str, object]]") -> None:
@@ -153,7 +162,7 @@ async def _sweep_bus(bus_id: str, sweep: _Sweep, wdt: "machine.WDT", found: "dic
         await asyncio.sleep(0)
     if len(readers) == 1:
         label, read = next(iter(readers.items()))
-        found["self_hazard"][bus_id] = {"device": label, "clean_reads": await _self_hazard(i2c, label, read, sweep), "planned": _SELF_READS}
+        found["self_hazard"][bus_id] = await _self_hazard(i2c, label, read, sweep)
     wdt.feed()
     if readers:
         status, sibling_errors = await _recover_among_reads(i2c, readers, sweep)

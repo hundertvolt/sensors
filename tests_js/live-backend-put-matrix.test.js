@@ -25,16 +25,95 @@ const NO_DATA = /** @type {import("../js/definitions.js").MockDeviceData} */ ({
 // @tunable l0.put_matrix_case_timeout_ms = 15000
 const CASE_TIMEOUT_MS = 15000;
 
+// The skips a full run takes, each with its reason, keyed by the case's section, the group its device wires and the
+// field: a skip not listed, or a listed case that ran, fails the file in its last hook. Each case runs on the first
+// device that wires it (dedupePutFieldCases); a case outside the run's shard is never reached, so never judged.
+/** @type {Map<string, string>} */
+const EXPECTED_SKIPS = new Map([
+    // An empty string has no resubmit gesture (Part H.4): SSID's source default, and the DNSFallback the twin runner
+    // plants empty so no run reaches a public DNS host (digital_twin/unixport/_offline_ntp_config.py). Neither is seeded:
+    // an SSID boots the twin in STA, and every case here runs in AP (agent, 2026-10-22).
+    ["networking/identity/SSID resubmit", "no current value to resubmit"],
+    ["networking/dns/DNSFallback resubmit", "no current value to resubmit"],
+    // Each enum field's boot option: selecting it is the resubmit case.
+    ["sensors/BMP3XX/PresOvers option 1", "the current option: the resubmit probe covers it"],
+    ["sensors/BMP3XX/TempOvers option 1", "the current option: the resubmit probe covers it"],
+    ["sensors/BMP3XX/FiltCoeff option 0", "the current option: the resubmit probe covers it"],
+    ["sensors/ISL29125/IRCompOffset option 0", "the current option: the resubmit probe covers it"],
+]);
+/** @type {Map<string, {id: string, reason: string | null}>} */
+const SKIP_DECISIONS = new Map();
+
+// The one option an enum action's probe sends.
+/** @type {Map<string, unknown>} */
+const PROBED_OPTIONS = new Map([["SystemCmd", "mempause"]]);
+
+// The four action fields' probes, in this order: mempause holds storage for five minutes, and a ResetErrors after it
+// answers Failed (the FRAM logs cannot be cleared then). An action no probe drives is listed in NOT_DRIVEN.
+/** @type {Record<string, (testCase: PutFieldCase) => Promise<void>>} */
+const ACTION_PROBES = {
+    async ResetErrors(testCase) {
+        const { device, defs, sectionKey, groupKey, field } = testCase;
+        // A backup round that read its interval before this PUT ends long before the reset, two served requests later.
+        await turnBackupsOff(defs);
+        const archived = await commands.archiveErrcount(`${device}-before-reset`);
+        expect(archived).toContain(`build/archive/live_twin/`);
+        const applied = await commands.applyField({ sectionKey, groupKey, fieldKey: field.key, field, value: true, expectRenderedValue: null, confirmMessage: confirmationFor(testCase, true), readCaption: false });
+        expect(applied.applyStatus).toBe("valid");
+        const { errcountRows } = await commands.remountAndReadField({ sectionKey: "status", groupKey: statusGroupKey(defs, null), fieldKey: "", kind: "errcount" });
+        expect(errcountRows.length).toBeGreaterThan(0);
+        expect(errcountRows.filter((row) => !row.endsWith(": 0"))).toEqual([]);
+    },
+    async LightCmdLED({ sectionKey, groupKey, field }) {
+        const args = { sectionKey, groupKey, fieldKey: field.key, field, expectRenderedValue: null, readCaption: false };
+        // Lit for ten seconds, so the second send - a navigation and two page requests later - lands while it runs.
+        const lit = await commands.applyField({ ...args, value: { R: 10, G: 20, B: 30, T: 10 } });
+        const busy = await commands.applyField({ ...args, value: { R: 10, G: 20, B: 30, T: 10 } });
+        const outOfRange = await commands.applyField({ ...args, value: { R: 256, G: 20, B: 30, T: 10 } });
+        expect([lit.applyStatus, busy.applyStatus, outOfRange.applyStatus]).toEqual(["valid", "failed", "invalid"]);
+    },
+    async PauseTime({ defs, sectionKey, groupKey, field }) {
+        const args = { sectionKey, groupKey, fieldKey: field.key, field, expectRenderedValue: null, readCaption: false };
+        const first = await commands.applyField({ ...args, value: 5 });
+        const second = await commands.applyField({ ...args, value: 5 });
+        const shown = await commands.remountAndReadField({ sectionKey: "status", groupKey: statusGroupKey(defs, field.key), fieldKey: field.key, kind: "readonly" });
+        const tooLong = await commands.applyField({ ...args, value: 3601 });
+        expect([first.applyStatus, second.applyStatus, tooLong.applyStatus]).toEqual(["valid", "valid", "invalid"]);
+        const remaining = Number.parseInt(shown.valueText ?? "", 10);
+        expect(remaining >= 1 && remaining <= 5, `Remaining Pause Time read ${String(shown.valueText)}`).toBe(true);
+    },
+    async SystemCmd(testCase) {
+        const { sectionKey, groupKey, field } = testCase;
+        const value = PROBED_OPTIONS.get(field.key);
+        const applied = await commands.applyField({ sectionKey, groupKey, fieldKey: field.key, field, value, expectRenderedValue: null, confirmMessage: confirmationFor(testCase, value), readCaption: false });
+        expect(applied.applyStatus).toBe("valid");
+    },
+};
+
+const ENDS_THE_TWIN = "ends the twin process: covered at L1, by the twin CI suite's Run 13, and reboot on silicon";
+// Every action no probe drives, as `<key>` or an enum's `<key> <option>`, with its reason.
+/** @type {Map<string, string>} */
+const NOT_DRIVEN = new Map([
+    ["SystemCmd reboot", ENDS_THE_TWIN],
+    ["SystemCmd bootloader", ENDS_THE_TWIN],
+    ["SystemCmd resetconfig", ENDS_THE_TWIN],
+    ["SystemCmd erasefram", ENDS_THE_TWIN],
+    ["UartHazards", "a bench-only hazard run across the crossover jumper, which only a device wiring a UART link pair offers"],
+]);
+
 /**
- * The value the twin holds for `testCase`'s field right now, read straight from its GET (undefined when absent).
- * @param {PutFieldCase} testCase
- * @returns {Promise<unknown>}
+ * The action fields the live tier drives itself, each with its own probe below; a field another device lacks is
+ * simply not collected for it.
+ * @param {string} device
+ * @returns {PutFieldCase[]}
  */
-async function readCurrentValue({ sectionKey, groupKey, field, putPath }) {
-    const real = await commands.getRealCurrentValues([putPath]);
-    const body = /** @type {Record<string, unknown>} */ (real[putPath]);
-    const scoped = sectionKey === "sensors" ? /** @type {Record<string, unknown> | undefined} */ (body[groupKey]) : body;
-    return scoped?.[field.key];
+function actionCasesOf(device) {
+    const defs = /** @type {SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device));
+    const order = Object.keys(ACTION_PROBES);
+    return defs.sections.flatMap((section) => section.groups.flatMap((group) => ("fields" in group && group.submit ? group.fields : [])
+        .filter((field) => order.includes(field.key))
+        .map((field) => ({ device, defs, sectionKey: section.key, groupKey: group.key, field, putPath: /** @type {string} */ (section.rest.put), currentValue: undefined }))))
+        .sort((a, b) => order.indexOf(a.field.key) - order.indexOf(b.field.key));
 }
 
 /**
@@ -54,6 +133,25 @@ function actionValue(field) {
 }
 
 /**
+ * Every action `defsList` holds and whether a probe drives it: each never-"Unchanged" field outside the sensors section
+ * (whose class has its own block below), and each option of such an enum.
+ * @param {SiteDefinitions[]} defsList
+ * @returns {{name: string, driven: boolean}[]}
+ */
+function actionsOf(defsList) {
+    return defsList.flatMap((defs) => defs.sections).filter((section) => section.key !== "sensors")
+        .flatMap((section) => section.groups.flatMap((group) => ("fields" in group ? group.fields : [])))
+        .filter(neverUnchanged)
+        .flatMap((field) => {
+            const probed = Object.hasOwn(ACTION_PROBES, field.key);
+            if (field.kind !== "enum") {
+                return [{ name: field.key, driven: probed }];
+            }
+            return (field.options ?? []).map((option) => ({ name: `${field.key} ${String(option.value)}`, driven: probed && PROBED_OPTIONS.get(field.key) === option.value }));
+        });
+}
+
+/**
  * The confirmation the page asks before sending `value` for a `confirm` field: an enum names the option, a toggle
  * its card's submit label (SPECIFICATION.md Part H.4).
  * @param {PutFieldCase} testCase
@@ -66,6 +164,42 @@ function confirmationFor({ defs, sectionKey, groupKey, field }, value) {
     }
     const group = defs.sections.find((section) => section.key === sectionKey)?.groups.find((candidate) => candidate.key === groupKey);
     return `${(group && "submitLabel" in group ? group.submitLabel : undefined) ?? field.label}?`;
+}
+
+/**
+ * Skips the running case's `probe` when `skip` holds, recording the decision for the file's last hook.
+ * @param {import("vitest").TestContext} ctx
+ * @param {PutFieldCase} testCase
+ * @param {string} probe
+ * @param {boolean} skip
+ * @param {string} reason
+ */
+function decideSkip(ctx, { device, sectionKey, groupKey, field }, probe, skip, reason) {
+    const id = `${sectionKey}/${groupKey}/${field.key} ${probe}`;
+    SKIP_DECISIONS.set(`${device} ${id}`, { id, reason: skip ? reason : null });
+    ctx.skip(skip, reason);
+}
+
+/**
+ * The value the twin holds for `testCase`'s field right now, read straight from its GET (undefined when absent).
+ * @param {PutFieldCase} testCase
+ * @returns {Promise<unknown>}
+ */
+async function readCurrentValue({ sectionKey, groupKey, field, putPath }) {
+    const real = await commands.getRealCurrentValues([putPath]);
+    const body = /** @type {Record<string, unknown>} */ (real[putPath]);
+    const scoped = sectionKey === "sensors" ? /** @type {Record<string, unknown> | undefined} */ (body[groupKey]) : body;
+    return scoped?.[field.key];
+}
+
+/**
+ * The NOT_DRIVEN rows no action of `defsList` declares any more: each a row that outlived its action.
+ * @param {SiteDefinitions[]} defsList
+ * @returns {string[]}
+ */
+function staleNotDriven(defsList) {
+    const declared = new Set(actionsOf(defsList).map(({ name }) => name));
+    return [...NOT_DRIVEN.keys()].filter((name) => !declared.has(name)).sort();
 }
 
 /**
@@ -101,61 +235,13 @@ async function turnBackupsOff(defs) {
     }
 }
 
-// The four action fields' probes, run in this order: mempause holds storage for five minutes, and a ResetErrors after
-// it answers Failed (the FRAM logs cannot be cleared then). Reboot, bootloader, resetconfig and erasefram end the
-// twin process: covered at L1, by the twin CI suite's Run 13 and (reboot) on silicon, not driven here.
-/** @type {Record<string, (testCase: PutFieldCase) => Promise<void>>} */
-const ACTION_PROBES = {
-    async ResetErrors(testCase) {
-        const { device, defs, sectionKey, groupKey, field } = testCase;
-        // A backup round that read its interval before this PUT ends long before the reset, two served requests later.
-        await turnBackupsOff(defs);
-        const archived = await commands.archiveErrcount(`${device}-before-reset`);
-        expect(archived).toContain(`build/archive/live_twin/`);
-        const applied = await commands.applyField({ sectionKey, groupKey, fieldKey: field.key, field, value: true, expectRenderedValue: null, confirmMessage: confirmationFor(testCase, true), readCaption: false });
-        expect(applied.applyStatus).toBe("valid");
-        const { errcountRows } = await commands.remountAndReadField({ sectionKey: "status", groupKey: statusGroupKey(defs, null), fieldKey: "", kind: "errcount" });
-        expect(errcountRows.length).toBeGreaterThan(0);
-        expect(errcountRows.filter((row) => !row.endsWith(": 0"))).toEqual([]);
-    },
-    async LightCmdLED({ sectionKey, groupKey, field }) {
-        const args = { sectionKey, groupKey, fieldKey: field.key, field, expectRenderedValue: null, readCaption: false };
-        // Lit for ten seconds, so the second send - a navigation and two page requests later - lands while it runs.
-        const lit = await commands.applyField({ ...args, value: { R: 10, G: 20, B: 30, T: 10 } });
-        const busy = await commands.applyField({ ...args, value: { R: 10, G: 20, B: 30, T: 10 } });
-        const outOfRange = await commands.applyField({ ...args, value: { R: 256, G: 20, B: 30, T: 10 } });
-        expect([lit.applyStatus, busy.applyStatus, outOfRange.applyStatus]).toEqual(["valid", "failed", "invalid"]);
-    },
-    async PauseTime({ defs, sectionKey, groupKey, field }) {
-        const args = { sectionKey, groupKey, fieldKey: field.key, field, expectRenderedValue: null, readCaption: false };
-        const first = await commands.applyField({ ...args, value: 5 });
-        const second = await commands.applyField({ ...args, value: 5 });
-        const shown = await commands.remountAndReadField({ sectionKey: "status", groupKey: statusGroupKey(defs, field.key), fieldKey: field.key, kind: "readonly" });
-        const tooLong = await commands.applyField({ ...args, value: 3601 });
-        expect([first.applyStatus, second.applyStatus, tooLong.applyStatus]).toEqual(["valid", "valid", "invalid"]);
-        const remaining = Number.parseInt(shown.valueText ?? "", 10);
-        expect(remaining >= 1 && remaining <= 5, `Remaining Pause Time read ${String(shown.valueText)}`).toBe(true);
-    },
-    async SystemCmd(testCase) {
-        const { sectionKey, groupKey, field } = testCase;
-        const applied = await commands.applyField({ sectionKey, groupKey, fieldKey: field.key, field, value: "mempause", expectRenderedValue: null, confirmMessage: confirmationFor(testCase, "mempause"), readCaption: false });
-        expect(applied.applyStatus).toBe("valid");
-    },
-};
-
 /**
- * The action fields the live tier drives itself, each with its own probe below; a field another device lacks is
- * simply not collected for it.
- * @param {string} device
- * @returns {PutFieldCase[]}
+ * The actions `defsList` holds that no probe drives and NOT_DRIVEN does not list.
+ * @param {SiteDefinitions[]} defsList
+ * @returns {string[]}
  */
-function actionCasesOf(device) {
-    const defs = /** @type {SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device));
-    const order = Object.keys(ACTION_PROBES);
-    return defs.sections.flatMap((section) => section.groups.flatMap((group) => ("fields" in group && group.submit ? group.fields : [])
-        .filter((field) => order.includes(field.key))
-        .map((field) => ({ device, defs, sectionKey: section.key, groupKey: group.key, field, putPath: /** @type {string} */ (section.rest.put), currentValue: undefined }))))
-        .sort((a, b) => order.indexOf(a.field.key) - order.indexOf(b.field.key));
+function unjudgedActions(defsList) {
+    return [...new Set(actionsOf(defsList).filter(({ name, driven }) => !driven && !NOT_DRIVEN.has(name)).map(({ name }) => name))].sort();
 }
 
 const config = await commands.getLiveMatrixConfig();
@@ -175,6 +261,43 @@ const NEVER_UNCHANGED_CASES = shardPutFieldCases(dedupePutFieldCases(DEVICE_IDS.
 })), config.shard);
 const ACTION_CASES = shardPutFieldCases(DEVICE_IDS.flatMap(actionCasesOf), config.shard);
 const devicesWithCases = [...new Set([...CASES, ...NEVER_UNCHANGED_CASES, ...ACTION_CASES].map((testCase) => testCase.device))];
+
+afterAll(() => {
+    const decisions = [...SKIP_DECISIONS.values()];
+    const unlisted = decisions.filter(({ id, reason }) => reason !== null && EXPECTED_SKIPS.get(id) !== reason).map(({ id, reason }) => `${id}: ${reason}`);
+    expect(unlisted, "skips EXPECTED_SKIPS does not list").toEqual([]);
+    expect(decisions.filter(({ id, reason }) => reason === null && EXPECTED_SKIPS.has(id)).map(({ id }) => id), "listed skips whose case ran").toEqual([]);
+});
+
+describe("the live tier's actions", () => {
+    it("drives every action of every device's definitions, or lists it as not driven with its reason", () => {
+        const defsList = [...GENERATED_DEFINITIONS.values()];
+        expect(unjudgedActions(defsList), "actions neither probed nor in NOT_DRIVEN").toEqual([]);
+        const reached = new Set(actionsOf(defsList).filter(({ driven }) => driven).map(({ name }) => name.split(" ")[0]));
+        expect(Object.keys(ACTION_PROBES).filter((key) => !reached.has(key)), "probes no definition's action reaches").toEqual([]);
+    });
+
+    it("names an action a device gains that no probe drives", () => {
+        const planted = /** @type {SiteDefinitions} */ (/** @type {unknown} */ ({
+            device: { id: "fixture-device" },
+            sections: [{ key: "status", groups: [{ key: "planted", submit: true, fields: [{ key: "PlantedCmd", kind: "toggle", dispatch: true }] }] }],
+        }));
+        expect(unjudgedActions([planted])).toEqual(["PlantedCmd"]);
+    });
+
+    it("lists as not driven only actions some device's definitions still declare", () => {
+        expect(staleNotDriven([...GENERATED_DEFINITIONS.values()]), "NOT_DRIVEN rows no definition declares").toEqual([]);
+    });
+
+    it("names a NOT_DRIVEN row whose action no device declares", () => {
+        const options = ["reboot", "bootloader", "resetconfig", "erasefram"].map((value) => ({ value }));
+        const planted = /** @type {SiteDefinitions} */ (/** @type {unknown} */ ({
+            device: { id: "fixture-device" },
+            sections: [{ key: "status", groups: [{ key: "planted", submit: true, fields: [{ key: "SystemCmd", kind: "enum", dispatch: true, options }] }] }],
+        }));
+        expect(staleNotDriven([planted])).toEqual(["UartHazards"]);
+    });
+});
 
 describe.each(devicesWithCases)("live PUT matrix on %s", (device) => {
     beforeAll(async () => {
@@ -256,7 +379,7 @@ describe.each(devicesWithCases)("live PUT matrix on %s", (device) => {
                     "resubmitting the field's own current value renders it, answered Unchanged",
                     async (ctx) => {
                         const current = await readCurrentValue(testCase);
-                        ctx.skip(hasNoResubmitGesture(current), "no current value to resubmit");
+                        decideSkip(ctx, testCase, "resubmit", hasNoResubmitGesture(current), "no current value to resubmit");
                         await applyAndExpectRendered(current, "unchanged");
                     },
                     CASE_TIMEOUT_MS,
@@ -266,7 +389,7 @@ describe.each(devicesWithCases)("live PUT matrix on %s", (device) => {
                     "resubmitting the field's own current value is sparse-omitted (nothing to submit, no round trip)",
                     async (ctx) => {
                         const current = await readCurrentValue(testCase);
-                        ctx.skip(hasNoResubmitGesture(current), "no current value to resubmit");
+                        decideSkip(ctx, testCase, "resubmit", hasNoResubmitGesture(current), "no current value to resubmit");
                         const result = await commands.applyUnchangedFieldExpectNothingToSubmit({
                             sectionKey,
                             groupKey,
@@ -397,7 +520,7 @@ describe.each(devicesWithCases)("live PUT matrix on %s", (device) => {
             // Selecting the option already shown is the resubmit case, whose own probe above knows
             // whether the card round-trips at all; here it would wait for an answer that never comes.
             it.for((field.options ?? []).map((o) => o.value))("selecting option %s renders Valid with that option actually shown selected", async (value, ctx) => {
-                ctx.skip(value === (await readCurrentValue(testCase)), "the current option: the resubmit probe covers it");
+                decideSkip(ctx, testCase, `option ${String(value)}`, value === (await readCurrentValue(testCase)), "the current option: the resubmit probe covers it");
                 await applyAndExpectRendered(value, "valid");
             });
         }

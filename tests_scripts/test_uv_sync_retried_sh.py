@@ -1,6 +1,6 @@
 """scripts/uv_sync_retried.sh with stub `uv` and `sleep` as the whole PATH: a sync failing twice passes on the third
-attempt after 10 s and 20 s pauses, three failures end with the last attempt's own exit code, and the attempts and
-pause step equal toolchain/setup_toolchain.py's, so the script stays the one retry definition CI and the runners share."""
+attempt after 10 s and 20 s pauses, three failures end with the last attempt's own exit code, and the attempts and pause
+step equal toolchain/setup_toolchain.py's, so the script stays the one retry definition CI and the runners share."""
 
 import inspect
 import re

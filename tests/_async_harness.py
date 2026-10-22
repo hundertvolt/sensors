@@ -1,6 +1,6 @@
-"""One way to drive a coroutine from a synchronous test: refuses to nest inside a running loop and, on every path, ends
-each task the call created, cancelling each on its own and naming any it could not end within its bound. A task such a
-cancellation starts is not tracked; microtest's after-each check is the backstop for it."""
+"""Drives a coroutine from a synchronous test, refusing to nest inside a running loop. run() ends each task the call
+created on every path, cancelling each alone and naming any it could not end within its bound; a task such a cancel
+starts is untracked, microtest's after-each check backstops it. run_to_interrupt() drops them as the boot entry does."""
 
 import asyncio
 import asyncio.core as _core  # type: ignore[import-not-found]  # cur_task, the queues and core's own create_task; no stub covers them
@@ -252,3 +252,18 @@ def run(coro: "CoroutineOf[T]", limit_s: "float | None" = None) -> "T":
 
 def run_timed(coro: "CoroutineOf[T]", timeout_s: float) -> "T":
     return _drive(coro, timeout_s)
+
+
+def run_to_interrupt(coro: "Coroutine[object, object, object]") -> bool:
+    # asyncio.run() until a KeyboardInterrupt ends it, then the fresh event loop the boot entry's `finally` takes, which
+    # drops every task left, and cur_task cleared, as the interrupted loop leaves it set: True when an interrupt did.
+    if _core.cur_task is not None:  # nesting refused as in _drive()
+        coro.close()
+        raise RuntimeError(_NESTED)
+    try:
+        asyncio.run(coro)
+    except KeyboardInterrupt:
+        asyncio.new_event_loop()
+        _core.cur_task = None
+        return True
+    return False

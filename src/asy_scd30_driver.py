@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT
 # From adafruit_scd30, restructured for asyncio + MicroPython - see THIRD_PARTY_LICENSES.md.
 
-"""Async I2C driver for the Sensirion SCD30 CO2/temperature/relative-humidity sensor. SCD30_I2C
-wraps the raw command set (16-bit commands, CRC-8 protected); SCD30_Reader runs the read loop plus an IRQ-pin self-healing trigger, and publishes the readings with wet bulb, dew point and the forced-recalibration readiness code (see SPECIFICATION.md Part C).
+"""Async I2C driver for the Sensirion SCD30 CO2/temperature/relative-humidity sensor. SCD30_I2C wraps the raw command
+set (16-bit commands, CRC-8 protected); SCD30_Reader runs the read loop plus an IRQ-pin self-healing trigger, and
+publishes the readings with wet bulb, dew point and the forced-recalibration readiness code (SPECIFICATION.md Part C).
+
 Source: Sensirion CO2 Sensors SCD30 Interface Description & Datasheet (datasheets/scd30/).
 """
 

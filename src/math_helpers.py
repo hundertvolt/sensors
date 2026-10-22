@@ -1,6 +1,9 @@
-"""Derived physical quantities from raw sensor readings: meteorological (wet-bulb temperature, dew
-point, barometric correction, humidity conversions), colorimetric (RGB->HSB, RGB->XYZ->xy, McCamy CCT), plus the project's one first-order EMA (SPECIFICATION.md Part G.2).
-Every function returns None - never raises - for a None, out-of-domain, or NaN input (see each function's own comment for its range/source).
+"""Derived physical quantities from raw sensor readings: meteorological (wet-bulb temperature, dew point, barometric
+correction, humidity conversions), colorimetric (RGB->HSB, RGB->XYZ->xy, McCamy CCT), plus the project's one first-order
+EMA (SPECIFICATION.md Part G.2).
+
+Every function returns None - never raises - for a None, out-of-domain, or NaN input (see each function's own comment
+for its range/source).
 """
 
 import math

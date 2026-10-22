@@ -1,5 +1,5 @@
 """scripts/typecheck.sh: the exact stub pins of versions.toml [stubs] checked against [micropython] ref, an install that
-must be exactly those releases, repairs that no-op on a fixed tree and fail on a moved one, and every pass and single-file
+must be exactly those releases, repairs that no-op on a fixed tree and fail on a moved one, every pass and single-file
 run named in the summary block. Driven on copies of the script, with mypy and uv stubbed, so nothing is installed."""
 
 import os

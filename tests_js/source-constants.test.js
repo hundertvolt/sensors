@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import definitionsSource from "../js/definitions.js?raw";
 import mockServerSource from "../js/mock-server.js?raw";
 import pollManagerSource from "../js/poll-manager.js?raw";
-import { readIntConst, readObjectConst } from "./_source_constants.js";
+import { readIntConst, readObjectConst, readStringSetConst } from "./_source_constants.js";
 
 describe("readIntConst", () => {
     it("reads a module's integer constants", () => {
@@ -41,5 +41,24 @@ describe("readObjectConst", () => {
 
     it("throws on a name the module does not declare", () => {
         expect(() => readObjectConst(mockServerSource, "NO_SUCH_TABLE")).toThrow("no const NO_SUCH_TABLE in source");
+    });
+});
+
+describe("readStringSetConst", () => {
+    it("reads the definitions' accepted field formats", () => {
+        expect(readStringSetConst(definitionsSource, "FIELD_FORMATS")).toContain("epoch");
+    });
+
+    it("reads every string of an exported set in order, without evaluating it", () => {
+        expect(readStringSetConst('export const S = new Set(["a", "b c"]);\n', "S")).toEqual(["a", "b c"]);
+    });
+
+    it("escapes the name and takes no nested declaration", () => {
+        expect(readStringSetConst('const A$B = new Set(["x"]);\n', "A$B")).toEqual(["x"]);
+        expect(() => readStringSetConst('function f() {\n    const S = new Set(["a"]);\n}\n', "S")).toThrow("no const S in source");
+    });
+
+    it("throws on a name the module does not declare", () => {
+        expect(() => readStringSetConst(definitionsSource, "NO_SUCH_SET")).toThrow("no const NO_SUCH_SET in source");
     });
 });

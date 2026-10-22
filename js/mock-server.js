@@ -765,9 +765,9 @@ export function installMockFetch(defs, initialData, controls) {
     }
 
     /**
-     * {"ResetErrors": true} is the one request, as _put_status() answers it (SPECIFICATION.md A.8): it refills every
-     * errcount entry and answers "Valid"; any other value or key answers "Invalid". Stateless, it answers as a running
-     * device outside its "Failed" windows: from a reboot or erase command's acceptance on, and during mempause.
+     * {"ResetErrors": true} refills every errcount entry and answers "Valid", as _put_status() does (SPECIFICATION.md A.8);
+     * another dispatch key the section lists (a registered command) answers {key: true} "Valid"; any other value or key is
+     * "Invalid". Stateless, it answers as a running device outside its "Failed" windows (pending command, reboot, mempause).
      * @param {Record<string, unknown>} body
      * @returns {Record<string, string>}
      */
@@ -776,7 +776,7 @@ export function installMockFetch(defs, initialData, controls) {
         const results = {};
         for (const [key, value] of Object.entries(body)) {
             if (key !== "ResetErrors" || value !== true) {
-                results[key] = INVALID;
+                results[key] = key !== "ResetErrors" && value === true && flatFieldDefs.get("status")?.get(key)?.dispatch === true ? VALID : INVALID;
                 continue;
             }
             for (const entry of Object.values(state.status.errcount)) {

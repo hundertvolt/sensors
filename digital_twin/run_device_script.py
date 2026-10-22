@@ -119,6 +119,7 @@ def main(argv: "list[str]") -> int:
     _configure_state(args.state_dir)
     _attach_jumper(plan)
     # armed before the script runs, as Board.run_isolated() does; a script constructing WDT again gets this one
+    # (ports/rp2/machine_wdt.c:44-61: one static object, re-armed and returned by every construction)
     watchdog = machine.WDT(timeout=_WDT_TIMEOUT_MS)
     _one_watchdog(watchdog)
     with open(args.script) as f:

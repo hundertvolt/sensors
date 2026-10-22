@@ -1,6 +1,9 @@
-"""The JS copies of src/'s wire facts (SPECIFICATION.md Part G.2's mirror obligation) equal their sources: js/api-contract.js,
-the mock's counter cap, code table, busy and unknown-code texts and DNS bounds, and every device's dispatch-field definitions. Both sides are
-read as source (Python by ast, JS by pattern), never imported, and each pin bites on a planted mismatch in a temporary copy."""
+"""The JS copies of src/'s wire facts (SPECIFICATION.md Part G.2's mirror obligation) equal their sources:
+js/api-contract.js, the mock's counter cap, code table, busy and unknown-code texts and DNS bounds, and every device's
+dispatch-field definitions.
+
+Both sides are read as source (Python by ast, JS by pattern), never imported, and each pin bites on a planted mismatch
+in a temporary copy."""
 
 import ast
 import json

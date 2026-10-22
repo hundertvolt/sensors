@@ -53,7 +53,7 @@ export function collectPutFieldCases(device, defs, data) {
     const cases = [];
     for (const section of defs.sections) {
         if (!["sensors", "networking", "system", "notification"].includes(section.key) || section.rest.put === undefined) {
-            continue; // measurements has no PUT; status's only field (ResetErrors) is dispatch-only
+            continue; // measurements has no PUT; status's fields are dispatch-only actions (ACTION_PROBES, NOT_DRIVEN)
         }
         for (const group of section.groups) {
             if (!("fields" in group) || !group.submit) {

@@ -1,6 +1,6 @@
-"""Every sensor driver module keeps one shape (SPECIFICATION.md C.2): _NAME = const("<NAME>"), each namedtuple bound to its
-own type name, REST keys from self.name never _NAME, no per-driver session class (DeviceSession is the shared one), and
-the module order constants, _VAL_* schema tuples, _N_* counts, _NAME and the namedtuple, default helpers, reader, bus class."""
+"""Every sensor driver module keeps one shape (SPECIFICATION.md C.2): _NAME = const("<NAME>"), each namedtuple bound to
+its type name, REST keys from self.name never _NAME, no per-driver session class (DeviceSession is shared); the module
+order: constants, _VAL_* schema tuples, _N_* counts, _NAME and namedtuple, default helpers, reader, bus class."""
 
 import ast
 from dataclasses import dataclass

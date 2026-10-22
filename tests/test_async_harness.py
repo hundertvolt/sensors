@@ -1,6 +1,6 @@
 """tests/_async_harness.py: run() and run_timed() refuse to nest inside a running loop, end every task they created
-whatever the coroutine does, name the ones they cannot end and keep no finished one; cancel() and cancel_all() end a
-task and wait for it. The nesting case runs in a child interpreter, where the crash the refusal prevents ends only it."""
+whatever the coroutine does, name the ones they cannot end and keep no finished one; run_to_interrupt() refuses as well;
+cancel() and cancel_all() end a task and wait for it."""
 
 import asyncio
 import asyncio.core as _core  # type: ignore[import-not-found]  # the scheduler queues; no stub covers them
@@ -10,7 +10,7 @@ import sys
 from time import ticks_diff, ticks_ms
 
 import _async_harness
-from _async_harness import cancel, cancel_all, run, run_timed
+from _async_harness import cancel, cancel_all, run, run_timed, run_to_interrupt
 from _tmp_scratch import TmpScratch
 
 try:
@@ -340,6 +340,7 @@ def test_cancel_and_cancel_all_end_their_tasks_and_wait_for_them() -> None:
 
 def test_run_from_inside_a_coroutine_is_refused_not_crashed() -> None:
     # The nested call ends with no running task while the outer coroutine still runs: its next await crashes the port.
+    # run()'s nesting case runs in a child interpreter, where the crash the refusal prevents ends only it.
     where = _scratch.dir()
     script = where + "nested.py"
     out = where + "out.txt"
@@ -361,6 +362,24 @@ def test_run_from_inside_a_coroutine_is_refused_not_crashed() -> None:
     assert "REFUSED run() called from inside a coroutine - build the fixture in the test's synchronous scope" in lines, lines
     assert "RESUMED" in lines, lines
     assert "DONE" in lines, lines
+
+
+def test_the_interrupt_runner_refuses_to_nest_inside_a_running_loop() -> None:
+    # As run() refuses: a nested asyncio.run() ends with no running task while the outer coroutine runs on (CLAUDE.md).
+    started: list[bool] = []
+
+    async def inner() -> None:
+        started.append(True)
+
+    async def outer() -> str:
+        try:
+            run_to_interrupt(inner())
+        except RuntimeError as e:
+            return str(e)
+        return "not refused"
+
+    assert run(outer()) == "run() called from inside a coroutine - build the fixture in the test's synchronous scope"
+    assert started == []
 
 
 def test_a_finished_task_another_awaited_is_passed_over_not_awaited_again() -> None:

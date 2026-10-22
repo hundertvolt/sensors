@@ -1,6 +1,6 @@
 """Recomputes SPECIFICATION.md Part F.3's code-derived timing rows from src/, buildgen/codegen.py, the UART span device
 script and the device TOMLs, never importing src/: a wrong Value or missing term, an unmarked or stale crossing, an
-unknown Part N ID, an I2C timeout past its bound, differing reply slacks and a lost row or table fail; each bites below."""
+unknown Part N ID, an I2C timeout past its bound, differing reply slacks, a lost row or table fail; each bites below."""
 
 import ast
 import math

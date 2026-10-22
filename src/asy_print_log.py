@@ -1,6 +1,10 @@
-"""Leveled console logging (PrintLog), the one ungated line of a layer with no logger (console()), a bounded error/warning history (PrintLogHistory) with optional FRAM-backed persistence (PrintLogHistoryStore), and the C-stack fatal flag the supervisor reads.
-A code equal to the history's newest entry is counted and written through but spends no new slot; the console prints every call at its level.
-Never raises: a FRAM chunk operation raises only by allocation, which reads as unreadable or fails the write; this layer cannot log into itself, so its caught allocation failures print through console().
+"""Leveled console logging (PrintLog), the one ungated line of a layer with no logger (console()), a bounded
+error/warning history (PrintLogHistory) with optional FRAM-backed persistence (PrintLogHistoryStore), and the C-stack
+fatal flag the supervisor reads.
+
+A code equal to the history's newest entry is counted and written through but spends no new slot; the console prints
+every call at its level. Never raises: a FRAM chunk operation raises only by allocation, which reads as unreadable or
+fails the write; this layer cannot log into itself, so its caught allocation failures print through console().
 """
 
 import asyncio
@@ -66,6 +70,7 @@ _NO_WRN = const(0x80)
 _MAX_WRN = const(0xFF)
 _MAX_CNT = const(0xFFFF)
 _WRAP_MAX = const(0x3FFFFFFF)  # the wrapping counters' top, inside the small-int range: compared for equality or by masked difference
+_RESETS_ALL = const(0x1FFFFFFF)  # one bit per store reset() in flight at once, its lowest-free-bit step inside the small-int range
 
 # Code from the global catalog (buildgen/error_catalog.json): a shared one.
 _ERR_LOG_RAM_ONLY = const(28)
@@ -148,12 +153,13 @@ class PrintLogHistory(PrintLog):
         self.restored = False  # True once setup() loaded what an earlier boot stored; a RAM-only history never does
         self._kept = 0  # wrapping counts of _keep()'s appends and _count()'s calls: a reset keeps what arrived since it began
         self._counted = 0
-        self._reset_mark = -1  # _kept when a store's latest reset() began
-        self._reset_repeat = 0  # 1: the newest code repeated during that reset before anything was kept, its slot kept too
+        self._resets = 0  # one bit per store reset() in flight, so overlapping resets each keep their own window
+        self._resets_fresh = 0  # those begun with nothing kept since: a repeat of the newest code marks each of them
+        self._resets_repeat = 0  # those so marked: each keeps the repeated slot too
 
-    def _clear(self, kept: int, counted: int) -> None:
+    def _clear(self, kept: int, counted: int, bit: int = 0) -> None:
         # A reset's clear, in place and allocation-free (deque item assignment): what arrived since it began stays newest.
-        since = self._since_kept(kept)
+        since = self._since_kept(kept, bit)
         for i in range(len(self.history) - since):
             self.history[i] = _NO_ERR
         self._err_count = self._since_counted(counted)
@@ -172,14 +178,16 @@ class PrintLogHistory(PrintLog):
 
     def _keep(self, code: int) -> None:
         # The newest-entry rule, SPECIFICATION.md Part C.7.1. A repeat while a reset is in flight with nothing kept since
-        # is marked rather than appended: a reset that clears keeps the slot it repeats, a refused one leaves the ring as is.
+        # is marked, on that reset's own bit, rather than appended: a reset that clears keeps the slot it repeats, a
+        # refused one leaves the ring as is.
         if not (len(self.history) and self.history[-1] == code):
             self.history.append(code)
             self._kept = self._kept + 1 if self._kept < _WRAP_MAX else 0
+            self._resets_fresh = 0
             if not self.initialized and self._pre_setup_slots < len(self.history):
                 self._pre_setup_slots += 1
-        elif self._kept == self._reset_mark:
-            self._reset_repeat = 1
+        else:
+            self._resets_repeat |= self._resets_fresh
 
     async def _read(self) -> tuple[int, tuple[int, ...]] | bool | None:
         return True
@@ -187,8 +195,9 @@ class PrintLogHistory(PrintLog):
     def _since_counted(self, counted: int) -> int:  # the count a reset begun at `counted` leaves: its calls since, less once a later reset cleared
         return min((self._counted - counted) & _WRAP_MAX, self._err_count)
 
-    def _since_kept(self, kept: int) -> int:  # how many of the newest slots a reset begun at `kept` keeps
-        return min((self._kept - kept) & _WRAP_MAX, len(self.history) - self._reset_repeat) + self._reset_repeat
+    def _since_kept(self, kept: int, bit: int) -> int:  # how many of the newest slots the reset begun at `kept` on `bit` keeps
+        repeat = 1 if self._resets_repeat & bit else 0
+        return min((self._kept - kept) & _WRAP_MAX, len(self.history) - repeat) + repeat
 
     async def _store_err(self, min_e: int, max_e: int, errno: int) -> None:
         # errno == _NO_ERR (0) is the shared "nothing to record" sentinel for err_s()/wrn_s() alike; a
@@ -287,11 +296,11 @@ class PrintLogHistoryStore(PrintLogHistory):
         self._write_gen = 0  # one step per _write() call and per reset() write
         self._written_gen = 0  # the _write_gen whose state the last successful write packed
 
-    def _pack_reset(self, dbuf: memoryview, kept: int, counted: int) -> None:
+    def _pack_reset(self, dbuf: memoryview, kept: int, counted: int, bit: int) -> None:
         # The image reset() writes, byte by byte into the chunk's buffer (no tuple, no list): the entries since it began
         # (kept, counted) in the newest slots with their count, every other byte cleared.
         struct.pack_into(self._HDR_FMT, dbuf, 0, self._since_counted(counted))
-        start = len(self.history) - self._since_kept(kept)
+        start = len(self.history) - self._since_kept(kept, bit)
         for i in range(len(self.history)):
             dbuf[self._HDR_SIZE + i] = self.history[i] if i >= start else _NO_ERR
 
@@ -316,7 +325,7 @@ class PrintLogHistoryStore(PrintLogHistory):
             return None
         return count, entries
 
-    async def _write(self, kept: int = -1, counted: int = 0) -> bool:  # kept >= 0: reset()'s image, never skipped
+    async def _write(self, kept: int = -1, counted: int = 0, bit: int = 0) -> bool:  # kept >= 0: reset()'s image, never skipped
         if self.fram is None:
             return False
         # The live state is packed and written under one lock, and a call whose state an earlier write already landed
@@ -336,7 +345,7 @@ class PrintLogHistoryStore(PrintLogHistory):
                     struct.pack_into(self._HDR_FMT, dbuf, 0, self._err_count)
                     struct.pack_into(self._history_fmt, dbuf, self._HDR_SIZE, *self.history)
                 else:
-                    self._pack_reset(dbuf, kept, counted)
+                    self._pack_reset(dbuf, kept, counted, bit)
                 ok = bool(await self.fram.write_into(buf))
             except MemoryError as e:
                 console(self.name, "PrintLog: FRAM history write failed:", e)
@@ -347,21 +356,31 @@ class PrintLogHistoryStore(PrintLogHistory):
 
     async def reset(self) -> bool:  # False when the cleared state could not be written (ResetErrors then answers "Failed")
         # The state it leaves is written before RAM clears: a pause refusing that write, up front or at the chunk, clears
-        # nothing, as "Failed" says (owner, 2026-10-13, paraphrase); any other failure clears RAM all the same. No setup()
-        # guard: what it writes is what the caller asked to persist, and it stops setup() restoring over it (SPECIFICATION.md Part C.7).
+        # nothing, as "Failed" says (owner, 2026-10-13, paraphrase); any other failure still clears RAM. No setup() guard: what
+        # it writes is what the caller asked to persist, and it stops setup() restoring over it (SPECIFICATION.md Part C.7).
         if self._paused():
             self._diag("PrintLog: History reset refused - storage paused")
+            return False
+        free = ~self._resets & _RESETS_ALL
+        bit = free & -free  # the lowest free bit, none while _RESETS_ALL's bits are all in flight
+        if not bit:
+            self._diag("PrintLog: History reset refused - too many at once")
             return False
         kept = self._kept
         counted = self._counted
         failing = self._write_failing
-        self._reset_mark = kept
-        self._reset_repeat = 0
-        ok = await self._write(kept, counted)
-        if not ok and self._paused():  # no await since the write: the chunk refused it under the pause
-            self._diag("PrintLog: History reset refused - storage paused")
-            return False
-        self._clear(kept, counted)  # no await since the write returned either: a queued write packs the cleared ring
+        self._resets |= bit
+        self._resets_fresh |= bit
+        try:
+            ok = await self._write(kept, counted, bit)
+            if not ok and self._paused():  # no await since the write: the chunk refused it under the pause
+                self._diag("PrintLog: History reset refused - storage paused")
+                return False
+            self._clear(kept, counted, bit)  # no await since the write returned either: a queued write packs the cleared ring
+        finally:  # a cancelled reset frees its bit too
+            self._resets &= ~bit
+            self._resets_fresh &= ~bit
+            self._resets_repeat &= ~bit
         if not ok:
             if failing:  # that run's entry went with the ring; one failing since the reset began kept its own
                 self._write_failing = False

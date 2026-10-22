@@ -1,5 +1,11 @@
-"""Shared base classes and primitives: the session lock (Lockable, DeviceSession), region buffers (RegionBuffer), received bytes in pieces (PieceBuffer), shared scalars (LockedCounter, LockedFlag, LockedValue, HourlyWindowCounter: no method awaits, so no lock), elapsed seconds (TickSeconds), the UTC timestamp, and the sensor-driver base (SensorReader, SensorReaderConfig) with error bookkeeping and optional JSON config storage.
-Every method returns a well-defined value, never raises; PieceBuffer's construction alone may raise, its caller's checks bounding size and piece_bytes.
+"""Shared base classes and primitives: the session lock (Lockable, DeviceSession), region buffers (RegionBuffer),
+received bytes in pieces (PieceBuffer), shared scalars (LockedCounter, LockedFlag, LockedValue, HourlyWindowCounter: no
+method awaits, so no lock), elapsed seconds (TickSeconds) and the UTC timestamp.
+
+The sensor-driver base (SensorReader, SensorReaderConfig) with error bookkeeping and optional JSON config storage.
+
+Every method returns a well-defined value, never raises; PieceBuffer's construction alone may raise, its caller's checks
+bounding size and piece_bytes.
 """
 # __init__ never calls self.pr.setup() (sync vs. async): setup() does it first (SensorReader), then the
 # store's (SensorReaderConfig) - both inside the one-time boot batch, never lazily in a task (Part A.7).

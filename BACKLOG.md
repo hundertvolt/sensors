@@ -270,15 +270,34 @@ gates, traps).
   the 21 ms GC term (Part N `uart.gc_pause_worst_ms`), and the flash calls' spans recorded. The
   figures go into SPECIFICATION.md Part F.3's `stall.gc`, `stall.voc_process`, `stall.crc_byte` and
   `stall.flash_program` rows. Twin row: none (silicon-only figures).
-- **Loop lag under combined load on the bench** — on `dev`, the bench round's
-  `flash/test_memory_stress.py::test_loop_lag_under_combined_load_stays_under_the_uart_reply_budget`
-  (`device_scripts/loop_lag_under_combined_load.py`), after the round's FRAM evidence is saved: the
-  shipped `main()` beside a 10 ms lag probe, an allocation-churn task and FRAM block writes in the
-  script's scratch region, with no concurrent API load (the twin scenario adds HTTP load, this
-  instrument does not). Expected: the worst lag under `dev`'s smallest hard consumer (Part F.3's
-  `con.uart_reply`); its max and p99 go into Part F.3's `lag.loop` row. Wear: none (FRAM block
-  writes in the script's scratch region). Twin row: the
+- **Loop lag under combined load on the bench** — on `dev`, the bench tier's
+  `bench/test_memory_stress_bench.py::test_loop_lag_under_http_load_on_every_route_stays_under_the_smallest_hard_consumer`
+  (`device_scripts/loop_lag_under_combined_load.py` in BENCH mode `"production"`, on the board's own
+  config and address, its error log saved first): the shipped `main()` beside a 10 ms lag probe, an
+  allocation-churn task and FRAM block writes in the script's scratch region, while the bench host's
+  readers cycle every GET route. Expected: the worst lag under `dev`'s smallest hard consumer (Part
+  F.3's `con.uart_reply`); its max and p99 go into Part F.3's `lag.loop` row. Wear: none (FRAM block
+  writes in the script's scratch region). Twin row: the flash test
+  `test_loop_lag_under_combined_load_stays_under_the_uart_reply_budget` under `--twin` and the
   `loop_lag_under_combined_load` scenario (Part F.3's `lag.loop`).
+- **The UART hazard run under API load** — on `dev`,
+  `bench/test_uart_link_under_api_load.py::test_a_hazard_run_under_the_readers_load_reports_every_verdict`:
+  one `PUT /status {"UartHazards": true}` while 3 readers GET `/status` until the run ends.
+  Expected: every hazard verdict as the twin judges it, the echo's `Failures` unchanged, the echo
+  resumed, the WEBSERVER counter at 0 and no task ended; the run's elapsed is recorded against Part
+  N's estimated `l4.uart_link_under_api_load_hazard_run_timeout_s` (600 s). Wear: none (the command
+  is dispatch-only). Twin row: `tests/test_digital_twin_uart_link.py`'s
+  `test_a_hazard_run_put_through_the_api_while_readers_hammer_it_reports_every_verdict`.
+- **Hard resets during natural FRAM backups, the torn writes expected** — on `dev`, the gated
+  bench run's
+  `bench/test_end_to_end_timing.py::test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly`
+  (`--allow-persistence-write`): three hard resets 25 s apart across the SGP40's 60 s backup
+  cadence. Expected: the SGP40 log empty, FRAM's log holding nothing beyond `E FRAM_STATUS_BYTE`
+  and `W FRAM_BLOCK_INVALID` (owner, 2026-09-13, on the torn-write trace: "Settled as acceptable
+  degradation rather than a robustness gap"), saved before it is cleared, a fresh backup completing
+  after the last reset and no task ended. Wear: 2 flash writes (the `BackupPeriod` change and its
+  restore); FRAM writes are not wear. Twin row: none (its twin record: the module needs the bench
+  bridge).
 - **What SCL and SDA do on silicon during an I2C bus recovery** — on `dev`, with a slave holding SDA
   low mid-byte: the line levels through `I2C.recover()`'s clear and its re-construction (pico-sdk's
   `i2c_init()` resets the whole block, SPECIFICATION.md F.5.1), and through the constructor's boot
@@ -371,6 +390,16 @@ gates, traps).
   answers are recorded, not judged, and the fidelity row follows them (agent, 2026-10-21). Wear:
   none (no NVM write). Twin row: the fidelity table's general-call assumption
   (`digital_twin/README.md`). Needs that device script.
+- **A lone BMP3xx under general calls** — on `dev`, the default flash tier's
+  `flash/test_bus_concurrency.py::test_bmp3xx_alone_survives_a_general_call`
+  (`device_scripts/bmp3xx_alone_survives_a_general_call.py`: distinctive volatile settings, then a
+  range-checked reader racing 0x06 broadcasts to address 0x00 under the bus lock) and the
+  self-hazard broadcasts of `test_bus_topology_autodetect_address_and_reserved_range_sweep`.
+  Expected: every planned broadcast sent, reads completing, and the configuration, chip ID,
+  power-control bits and power-on flag unchanged; at least one sweep broadcast on each bus it
+  races, a NAK on `dev`'s i2c0, whose lone BMP3xx takes no general call (agent, 2026-10-21). Wear:
+  none (volatile registers only, restored by a soft reset at the end). Twin row: the same test
+  under `--twin` (the file's twin record names its silicon-only cases, and this is not one).
 - **The SCD30's reaction to a wrong argument CRC or an out-of-range interval** — on `dev`,
   `flash/test_chip_conformance.py::test_scd30_argument_reaction_is_recorded`
   (`scd30_argument_reaction.py`): 0x4600 once with a wrong argument CRC and once with 0 and a
@@ -1171,20 +1200,9 @@ gates, traps).
   schema tuple + `get_dict_cfg()`/`get_dict_data()` is the intended single source, not fully wired
   end-to-end yet (`sensortask-wozi.py` itself predates the per-sensor-config model — see "Refactor
   targets not yet done" above).
-- Network fault injection against the real dev bench unit is complete
-  (`BenchBridge.inject_network_degradation()`, `tc netem` on `wifi_iface()` only: loss,
-  latency+jitter, corruption, duplication, reordering, exercised by
-  `tests_hardware/bench/test_network_resilience.py`); CYW43-firmware-level faults such as
-  `wlan.connect()` itself raising are not network-path faults `tc`/`iptables` can express and stay
-  covered by the digital twin's own `--fault wlan:...` hook. **Still open**: the
-  NTP-outage-x-bus-load fault recombination has no twin/mock-tier equivalent - the NTP outage alone
-  now does (twin Run 9: permanently unreachable NTP for 90 s, `scripts/_digital_twin_ci_suite.py`), so
-  adding bus load to that run is the obvious extension; not chased yet. The other two recombinations that matter (FRAM write vs. a real hardware reset;
-  repeated WiFi flapping x concurrent bus load) already have coverage across every tier where they
-  are meaningful.
 - **SystemService's settings store grows with device-wide settings** — the timezone offsets
   (`GMTOffset`/`DSTOffset`) now held by `NTPClient`'s config, future rsyslog settings;
-  `config_SYSTEM.cfg` holds only `DebugLevel` today (`src/asy_system_service.py:59, :101`).
+  `config_SYSTEM.cfg` holds only `DebugLevel` today (`src/asy_system_service.py:78, :121`).
   Owner-deferred goal (owner-confirmed, 2026-08-11, `249f2ae`: 'per the owner's explicit intent,
   this is meant to grow into a general, module-independent system-settings store', paraphrase).
 - **Adopt a genuine non-blocking alternative to every currently-unavoidable blocking call as soon as
@@ -1224,80 +1242,3 @@ gates, traps).
 
 Questions for the project owner, each dated, in the owner's format; nothing else in the repo parks a
 question.
-
-1. **Close the grkizi reboot-relaunch crash as not reproduced?** (entered 2026-10-14, agent) CI once recorded a
-   segmentation fault (SIGSEGV) in the digital twin at grkizi's Run 5c reboot relaunch (PR #58's run, 2026-09-25).
-   Run 5c alone, 50 times at each GC stage (`-1` and `32768`), on the code of the commit that adds this entry, with
-   the MicroPython v1.29.0 Unix-port `standard` build (sha256 `70358a465686f4bc…`, `scripts/_digital_twin_ci_suite.py
-   --device grkizi --only 5c --repeat 50`): 100 runs, no signal death, no failed check. Run 5c's relaunch path has
-   changed since, and the suite now names a signal death as a crash (`scripts/_twin_process.py`). (a) Close it:
-   nothing reruns it; a recurrence fails CI's grkizi twin job naming the signal and becomes a root-cause item.
-   (b) Keep it open: the 100 runs (about 61 min of grkizi twin time) repeat at each later gate. Either way no device's
-   firmware changes and no bus is involved: the twin runs on the host only.
-
-2. **Reboot when no sensor read timer can start?** (entered 2026-10-14, agent) The RP2040 gives `machine.Timer` 16 hardware
-   alarms. If none is free when the device boots, every sensor reader's read timer fails to start: each reader logs E `TIMER` and
-   ends, the task supervisor restarts it, and with every reader failing at once the restart budget is spent and the device
-   reboots about 5 s after boot, again on each boot while the alarms stay taken. One reader whose timer fails alone restarts
-   and reads once an alarm frees, with no reboot. (a) keep it: on every device a boot with no free alarm reboots, which frees
-   every alarm and so recovers a leak, but loops if the shortage returns at each boot; the readers concerned are SCD30 (i2c0)
-   and SGP40 (i2c1) on arzi, grkizi, klkizi and schlafzi, SCD30 (i2c0), SGP40 and BMP3XX (i2c1) on wozi, BMP3XX (i2c0),
-   SCD30, SGP40 and ISL29125 (i2c1) on dev; (b) degrade in place: a reader whose read timer cannot start keeps its task, logs
-   `TIMER` once and retries at its next pass, as the uptime and NTP timers already do: on every device those sensors stay
-   silent (no measurements) until an alarm frees while the web API, Wi-Fi and the logs run on, and no reboot follows; the
-   watchdog still covers a stuck loop. Until answered: (a), the current behaviour.
-
-3. **Cap the SCD30 NVM writes the extra-write flag admits?** (entered 2026-10-15, agent) The SCD30 keeps its settings in an
-   on-chip NVM for which Sensirion publishes no endurance figure. Hardware tests write it only behind `--allow-persistence-write`,
-   and a test spending more than the one write that flag admits needs `--allow-scd30-extra-write` on top. The documented rule
-   caps a session at one SCD30 write, the extra flag being for one test firing it "a second time"; the tests now carry more.
-   (a) keep what the tests carry: with both flags, one flash-and-bench session on `dev` spends up to 13 owned writes to its
-   SCD30 on `i2c1` (1 under the global flag; under the extra flag 2 and up to 3 on the flash tier, up to 3 and 4 on the bench
-   tier), plus at most one start command the session itself may send; a default run spends 0, at most 1; the manual power-cut
-   steps state theirs (up to 22 and 2) before each confirmation. (b) one further write per session: the extra flag admits a
-   single further owned write, so its five tests run one per session, chosen by name, and covering all five takes five sessions
-   on `dev`. Either way the SCD30s of `arzi`, `grkizi`, `klkizi`, `schlafzi` and `wozi` (each on `i2c0`) are never written by a
-   test: only `dev` is flashed. Until answered: (a), what the tests carry.
-
-4. **Keep the SCD30 soft reset at every start?** (entered 2026-10-15, agent) Every boot, every restart of the SCD30's read
-   task and the second consecutive failed read send the SCD30 its soft reset, which puts the sensor into the state it has after
-   powering up (Interface Description 1.4.10). A power loss within the first 7 days after automatic self-calibration (ASC) is
-   switched on aborts its search for calibration parameters (1.4.6); whether a soft reset does the same is not stated, and the
-   sensor reports no ASC progress, so the bench cannot measure it. (a) keep it: on every device a boot or a read-task restart
-   soft-resets the SCD30 (`i2c0` on `arzi`, `grkizi`, `klkizi`, `schlafzi` and `wozi`, `i2c1` on `dev`) and waits 2.5 s; if the
-   reset counts as a power loss, a device rebooted within 7 days of switching ASC on restarts its search, and a sensor left
-   mid-command by the previous run always starts clean. (b) reset only on the failed-read rung: boots and task restarts no
-   longer reset the sensor, so ASC's search survives a reboot whatever the reset does, and the first read after a boot takes the
-   sensor as the previous run left it, a confused sensor recovering at its second failed read instead. Until answered: (a), the
-   current behaviour.
-
-5. **Leave the UART hazards under API load untested?** (entered 2026-10-15, agent) `dev`'s two UART links (`uart0` initiator,
-   `uart1` responder, joined by the bench's crossover jumper) have their comm hazards (two initiations at once, both ends
-   transmitting, boundary values, a stalled transmit) and the field sweep tested on the board with the firmware stopped, and in
-   the digital twin. Under the bench's real API load only the link's normal multi-chunk echo runs, because the hazard script
-   needs the raw UART pair while a serving firmware owns it. (a) leave it so: on `dev` the hazards are proven with the firmware
-   stopped and the link's normal traffic under load, but no hazard with the web API busy beside it; no other device has a UART
-   link. (b) add a hazard mode to the firmware's own UART exerciser, driven from the bench test while readers hammer the API:
-   a firmware change for `dev`'s build only (the exerciser is wired on `dev` alone), and one more bench test of about the
-   hazard script's length. Until answered: (a).
-
-6. **Count a long comment line as several?** (entered 2026-10-15, agent) CLAUDE.md caps every comment block at 3 prose
-   lines, and the check that measures it (`tests_scripts/test_comment_block_cap.py`) counts each comment line once, so a
-   paragraph packed onto one long line passes the cap. (a) keep it so: nothing changes, and a long one-line comment stays
-   within the cap. (b) count a line as its length over 110 characters, rounded up: 761 comment blocks in 437 files go over
-   (measured 2026-10-15) and are rewrapped or shortened before the switch is turned on. (c) the same at 120 characters: 126
-   blocks in 116 files. Either way no device's firmware, wiring or bus changes: the check reads source text only, and the
-   switch is one constant in that file. Until answered: (a), the current behaviour.
-
-7. **Keep timestamping once the NTP sync goes stale?** (entered 2026-10-21, agent) The sync turns
-   stale when none has succeeded for 3 x `NTPInterval` (36 h at the default 12 h), and an NTP
-   settings change clears it until the next sync (owner, 2026-09-29); the RTC keeps good time
-   meanwhile. Two consumers then drop the clock: `/status` `UTCTime` reads null, and the VOC backup
-   (the SGP40's algorithm state in FRAM, on all six devices: SGP40 on I2C, FRAM on SPI) is written
-   without a timestamp, logging warning 35 at each backup, and such a backup is restored at the next
-   boot with no age test. `LocalTime` and the LED schedule already keep the clock set this boot
-   (agent, 2026-10-06). (a) keep it so, as legacy did: nothing changes. (b) both keep the clock set
-   this boot through a stale sync: `UTCTime` stays shown, backups keep their timestamp and their age
-   test; after an NTP settings change both still wait for the next sync. A firmware change in the
-   generated module and the NTP client, the same on every device; no bus traffic or wiring changes.
-   Until answered: (a), the current behaviour.

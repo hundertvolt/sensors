@@ -1,6 +1,6 @@
-"""scripts/run_unix_port_integration.sh boots the device it is told to and no other (without one, or one no devices/*.toml
+"""scripts/run_unix_port_integration.sh boots only the device it is told to (without one, or one no devices/*.toml
 carries, it exits 2 naming those it can boot) and nothing the Unix port cannot intern: it exits 1 naming the string, its
-bytes and the limit. Driven on a copy in a throwaway tree whose build steps, setcap and interpreter are stubs."""
+bytes and the limit. Driven on a copy in a throwaway tree, its build steps, setcap and interpreter stubbed."""
 
 import hashlib
 import json
@@ -27,8 +27,9 @@ _OVER = "x" * (_LIMIT + 1)
 
 
 def _launch(tmp_path: Path, *args: str, root_dir: str = "repo", device: str = "", layout: str = "", home: bool = True) -> tuple[subprocess.CompletedProcess[str], list[str]]:
-    # Runs the copy (under root_dir, with device's toml too and layout's entries first in the twin line) beside its libraries
-    # and a probe answering standard with a current record; returns the run and the stubs' log, one "<stub> <args>" per call.
+    # Runs the copy (under root_dir, with device's toml too and layout's entries first in the twin line) beside its
+    # libraries and a probe answering standard with a current record; returns the run and the stubs' log, one
+    # "<stub> <args>" per call.
     root = tmp_path / root_dir
     for rel in (*_COPIED, *(f"toolchain/{name}" for name in _INPUTS)):
         (root / rel).parent.mkdir(parents=True, exist_ok=True)

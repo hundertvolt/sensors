@@ -1,6 +1,6 @@
 """Fake `neopixel` module for the unit tier: the Unix port has none (`import neopixel` raises ImportError), and tests/
 precedes .frozen on MICROPYPATH, as for tests/machine.py. Models micropython-lib's driver
-(micropython/drivers/led/neopixel/neopixel.py:9-46): a bytearray in G-R-B order, so an unclamped value wraps or raises."""
+(micropython/drivers/led/neopixel/neopixel.py:9-46): a bytearray in G-R-B order, so unclamped values wrap or raise."""
 
 from machine import Pin, _CallLog
 

@@ -1,6 +1,6 @@
-"""The await-chain analysis tests_scripts/test_await_depth.py runs (SPECIFICATION.md F.1): from every task top in src/ and
-the generated modules, the longest run of nested coroutine frames a resumed task re-enters in C, through the calls that
-constructions and argument flow resolve, annotations only where a call goes unseen; a task-creating call starts a chain."""
+"""The await-chain analysis tests_scripts/test_await_depth.py runs (SPECIFICATION.md F.1): from every task top in src/
+and the generated modules, the longest run of nested coroutine frames a resumed task re-enters in C, via the calls that
+constructions and argument flow resolve, annotations only for unseen calls; a task-creating call starts a chain."""
 
 import ast
 from pathlib import Path

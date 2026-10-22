@@ -41,7 +41,7 @@ def build_construction_order(model: DeviceModel) -> "list[Node]":
     deps: dict[Node, set[Node]] = {n: set() for n in nodes}
 
     deps["ntp"].add("conn")
-    deps["sysfunct"].add("ntp")
+    deps["sysfunct"].add("ntp")  # built with ntp.ntp_issynced
 
     device = model.doc.get("device")
     device_wiring = device.get("wiring") if isinstance(device, dict) else None
@@ -62,7 +62,7 @@ def build_construction_order(model: DeviceModel) -> "list[Node]":
 
     for spec in model.instances.values():
         if spec.driver in ("sgp40", "notification"):
-            deps[spec.key].add("ntp")  # built with ntp.ntp_issynced / ntp.cettime
+            deps[spec.key].add("ntp")  # sgp40 built with ntp.ntp_clock_valid, notification with ntp.cettime
         for wf in spec.wiring_schema:
             value = spec.wiring.get(wf.toml_field)
             # An instance reference is a string; an absent optional field or Part L.6.2's

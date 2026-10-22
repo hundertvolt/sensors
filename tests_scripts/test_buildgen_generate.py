@@ -339,7 +339,7 @@ def test_real_device_system_status_reports_every_system_key_in_order(device: str
     result = _real(device)
     entries = _status_entries(result.module_source, "_system_status")
     has_fram = any(k[0] == "fram" for k in result.model.instances)
-    expected = ["SysUptime", "BootSignature", "ResetReason", "ResetBits", "MemFree", *(["MemPaused"] if has_fram else []), "ConfigFaults", "ConfigUnpersisted", "LastTaskEnd", "LocalTime", "UTCTime", "UnixTime"]
+    expected = ["SysUptime", "BootSignature", "ResetReason", "ResetBits", "MemFree", *(["MemPaused"] if has_fram else []), "ConfigFaults", "ConfigUnpersisted", "LastTaskEnd", "LocalTime", "UTCTime", "UnixTime", "TimeStale"]
     assert list(entries) == expected
     assert entries["LastTaskEnd"] == "sysfunct.get_last_task_end()"  # None until a supervised task ends this boot
     assert entries["UnixTime"] == "utc_now()"  # None until the first NTP sync, as UTCTime
@@ -348,6 +348,17 @@ def test_real_device_system_status_reports_every_system_key_in_order(device: str
     assert entries["MemFree"] == "gc.mem_free()"
     assert entries["ConfigFaults"] == "list(sysfunct.get_config_faults())"
     assert entries["ConfigUnpersisted"] == "list(sysfunct.get_config_unpersisted())"
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_shows_utc_time_through_a_stale_sync_and_flags_it(device: str) -> None:
+    # UTCTime reads the clock a sync set this boot, unset only by a settings change; TimeStale is null until
+    # that first sync (as UnixTime), then NTPSynced inverted. The boot signature still reads the sync itself.
+    source = _real(device).module_source
+    gates = [ast.unparse(n.value) for n in ast.walk(_function(source, "_system_status")) if isinstance(n, ast.Assign) and ast.unparse(n.targets[0]) == "utc"]
+    assert gates == ["time.gmtime() if await ntp.ntp_clock_valid() else None"]
+    assert _status_entries(source, "_system_status")["TimeStale"] == "None if utc_now() is None else not await ntp.ntp_issynced()"
+    assert "    sysfunct = SystemService(ntp.ntp_issynced, " in source
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -460,25 +471,9 @@ def test_real_device_serves_the_settings_groups_of_the_one_table(device: str) ->
 _EMITTED_FUNCTIONS = frozenset({"build_system", "main", "_gmtimestruct_to_dict", "_system_cmd_callback", "_notification_led_callback", "_notification_pause_callback", "_networking_status", "_system_status", "_notification_status"})
 
 
-def _runtime_module_names(tree: ast.Module) -> "set[str]":
-    # Every name the module binds at runtime: imports, assignments, annotation-only globals and defs,
-    # never one imported under TYPE_CHECKING (it does not exist on the device).
-    names: set[str] = set()
-    for node in tree.body:
-        if isinstance(node, ast.Import):
-            names |= {(a.asname or a.name).split(".")[0] for a in node.names}
-        elif isinstance(node, ast.ImportFrom):
-            names |= {a.asname or a.name for a in node.names}
-        elif isinstance(node, ast.Assign):
-            names |= {t.id for t in node.targets if isinstance(t, ast.Name)}
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            names.add(node.target.id)
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            names.add(node.name)
-        elif isinstance(node, ast.Try):
-            names |= {t.id for sub in ast.walk(node) if isinstance(sub, ast.Assign) for t in sub.targets if isinstance(t, ast.Name)}
-            names |= {a.asname or a.name for sub in ast.walk(node) if isinstance(sub, ast.ImportFrom) for a in sub.names}
-    return names
+def _reset_refusals(source: str) -> str:
+    call = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "RouteSources")
+    return next(ast.unparse(k.value) for k in call.keywords if k.arg == "reset_refusals")
 
 
 _GENERATED = [*DEVICE_NAMES, "novel_combo", "multi_instance"]
@@ -506,6 +501,27 @@ def test_generated_module_defines_only_the_functions_l2_lists(name: str) -> None
     assert [d for d in defined if d not in _EMITTED_FUNCTIONS and not d.startswith(("_sgp_maintenance_status_", "_collect_"))] == []
 
 
+def _runtime_module_names(tree: ast.Module) -> "set[str]":
+    # Every name the module binds at runtime: imports, assignments, annotation-only globals and defs,
+    # never one imported under TYPE_CHECKING (it does not exist on the device).
+    names: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            names |= {(a.asname or a.name).split(".")[0] for a in node.names}
+        elif isinstance(node, ast.ImportFrom):
+            names |= {a.asname or a.name for a in node.names}
+        elif isinstance(node, ast.Assign):
+            names |= {t.id for t in node.targets if isinstance(t, ast.Name)}
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            names.add(node.name)
+        elif isinstance(node, ast.Try):
+            names |= {t.id for sub in ast.walk(node) if isinstance(sub, ast.Assign) for t in sub.targets if isinstance(t, ast.Name)}
+            names |= {a.asname or a.name for sub in ast.walk(node) if isinstance(sub, ast.ImportFrom) for a in sub.names}
+    return names
+
+
 def _settings_groups(source: str, page: str) -> "list[tuple[str, tuple[str, ...], dict[str, str]]]":
     # (module, field names, hook keywords) of each SettingsGroup the generated RouteSources lists for `page`.
     routes = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "RouteSources")
@@ -517,17 +533,6 @@ def _settings_groups(source: str, page: str) -> "list[tuple[str, tuple[str, ...]
     for call in groups.elts:
         assert isinstance(call, ast.Call) and ast.unparse(call.func) == "SettingsGroup"
         out.append((ast.unparse(call.args[0]), ast.literal_eval(call.args[1]), {str(k.arg): ast.unparse(k.value) for k in call.keywords}))
-    return out
-
-
-def _setup_names(source: str) -> "list[str]":
-    # The bound setup methods _collect_setups() returns, in order.
-    returned = next(n.value for n in ast.walk(_function(source, "_collect_setups")) if isinstance(n, ast.Return))
-    assert isinstance(returned, ast.List)
-    out = []
-    for elt in returned.elts:
-        assert isinstance(elt, ast.Attribute) and elt.attr == "setup" and isinstance(elt.value, ast.Name), ast.unparse(elt)
-        out.append(elt.value.id)
     return out
 
 
@@ -601,22 +606,22 @@ def test_a_device_without_any_bus_generates(tmp_path: Path, src_dir: Path, ext_d
     assert not [n for n in ast.walk(ast.parse(result.module_source)) if isinstance(n, ast.Call) and ast.unparse(n.func).startswith("asy_") and ast.unparse(n.func).endswith(("I2C", "SPI", "UART"))]
 
 
+def _setup_names(source: str) -> "list[str]":
+    # The bound setup methods _collect_setups() returns, in order.
+    returned = next(n.value for n in ast.walk(_function(source, "_collect_setups")) if isinstance(n, ast.Return))
+    assert isinstance(returned, ast.List)
+    out = []
+    for elt in returned.elts:
+        assert isinstance(elt, ast.Attribute) and elt.attr == "setup" and isinstance(elt.value, ast.Name), ast.unparse(elt)
+        out.append(elt.value.id)
+    return out
+
+
 def _shared_head(stmts: "list[ast.stmt]") -> "list[str]":
     # Up to gc.threshold(), without the watchdog lines and the interrupt record's import.
     own = {"from machine import WDT", f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})", "from asy_system_service import RR_INTERRUPTED, write_reset_record"}
     texts = [ast.unparse(stmt) for stmt in stmts]
     return [t for t in texts[: texts.index("gc.threshold(32768)") + 1] if t not in own]
-
-
-def _src_tuple_const(path: Path, name: str) -> "tuple[str, ...]":
-    # A module-level `name = const((...))` read from source: an underscore const() is no attribute on MicroPython.
-    for node in ast.parse(path.read_text(encoding="utf-8")).body:
-        if isinstance(node, ast.Assign) and [ast.unparse(t) for t in node.targets] == [name]:
-            assert isinstance(node.value, ast.Call) and ast.unparse(node.value.func) == "const"
-            value = ast.literal_eval(node.value.args[0])
-            assert isinstance(value, tuple)
-            return value
-    raise AssertionError(f"{path.name} has no {name}")
 
 
 def test_a_link_naming_a_crc_mode_gets_that_check_on_its_uart_bus_and_its_import(src_dir: Path) -> None:
@@ -667,6 +672,17 @@ def test_an_unstated_rx_ring_is_left_to_the_uart_constructor_default(src_dir: Pa
     assert "rx_ring=" not in calls[buses[1]]
 
 
+def _src_tuple_const(path: Path, name: str) -> "tuple[str, ...]":
+    # A module-level `name = const((...))` read from source: an underscore const() is no attribute on MicroPython.
+    for node in ast.parse(path.read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.Assign) and [ast.unparse(t) for t in node.targets] == [name]:
+            assert isinstance(node.value, ast.Call) and ast.unparse(node.value.func) == "const"
+            value = ast.literal_eval(node.value.args[0])
+            assert isinstance(value, tuple)
+            return value
+    raise AssertionError(f"{path.name} has no {name}")
+
+
 def _src_with_read_triggers(src_dir: Path, tmp_path: Path, drivers: "tuple[str, ...]") -> Path:
     # A src/ copy in which exactly the named drivers' reader classes declare their own read triggers.
     copy = tmp_path / "src"
@@ -682,12 +698,6 @@ def _src_with_read_triggers(src_dir: Path, tmp_path: Path, drivers: "tuple[str, 
         method = "    def get_trigger_starters(self):\n        return [self.start_timer]\n\n"
         path.write_text(text[: match.end()] + method + text[match.end() :], encoding="utf-8")
     return copy
-
-
-def _status_entries(source: str, name: str) -> "dict[str, str]":
-    returned = next(n.value for n in ast.walk(_function(source, name)) if isinstance(n, ast.Return))
-    assert isinstance(returned, ast.Dict)
-    return {str(k.value): ast.unparse(v) for k, v in zip(returned.keys, returned.values, strict=True) if isinstance(k, ast.Constant)}
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -765,9 +775,10 @@ def test_a_test_override_is_named_in_the_build_info_and_a_release_build_names_no
     assert [new.strip() for _old, new in changed] == [want], changed
 
 
-def _toml_tables(doc: TomlDoc, key: str) -> "dict[str, TomlDoc]":
-    # Each sub-table of doc[key], checked; a new dict over the same tables, so an edit to one reaches `doc`.
-    return {name: table(sub) for name, sub in table(doc.get(key, {})).items()}
+def _status_entries(source: str, name: str) -> "dict[str, str]":
+    returned = next(n.value for n in ast.walk(_function(source, name)) if isinstance(n, ast.Return))
+    assert isinstance(returned, ast.Dict)
+    return {str(k.value): ast.unparse(v) for k, v in zip(returned.keys, returned.values, strict=True) if isinstance(k, ast.Constant)}
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -782,13 +793,9 @@ def test_a_naive_shifted_or_stale_build_date_is_refused(stamp: str) -> None:
     assert _build_date_problems(f'_BUILD_DATE = const("{stamp}")\n', datetime(2026, 9, 12, 10, 0, tzinfo=UTC)), stamp
 
 
-def _trigger_modules(source: str) -> "list[str]":
-    func = _function(source, "_collect_trigger_starters")
-    loops = [n for n in ast.walk(func) if isinstance(n, ast.For)]
-    if not loops:
-        return []
-    assert isinstance(loops[0].iter, ast.Tuple)
-    return [elt.id for elt in loops[0].iter.elts if isinstance(elt, ast.Name)]
+def _toml_tables(doc: TomlDoc, key: str) -> "dict[str, TomlDoc]":
+    # Each sub-table of doc[key], checked; a new dict over the same tables, so an edit to one reaches `doc`.
+    return {name: table(sub) for name, sub in table(doc.get(key, {})).items()}
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -889,9 +896,13 @@ def test_real_device_reset_errors_is_refused_by_the_reset_decision_and_the_fram_
     assert _reset_refusals(_real(device).module_source) == f"(sysfunct.is_reset_decided, {_fram_var(_real(device))}.get_pause)"
 
 
-def _reset_refusals(source: str) -> str:
-    call = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "RouteSources")
-    return next(ast.unparse(k.value) for k in call.keywords if k.arg == "reset_refusals")
+def _trigger_modules(source: str) -> "list[str]":
+    func = _function(source, "_collect_trigger_starters")
+    loops = [n for n in ast.walk(func) if isinstance(n, ast.For)]
+    if not loops:
+        return []
+    assert isinstance(loops[0].iter, ast.Tuple)
+    return [elt.id for elt in loops[0].iter.elts if isinstance(elt, ast.Name)]
 
 
 def _uart_bus_calls(source: str) -> "dict[str, str]":
@@ -993,15 +1004,15 @@ def test_real_device_names_each_task_starter_once_over_the_starters_own_module_t
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync(device: str) -> None:
-    # Legacy's gate (conn.ntp_issynced), cleared at the stale bound and on a force sync: a backup is
-    # stamped only while a sync vouches for the clock, never through a generated gate of its own.
+def test_real_device_gates_the_voc_backup_timestamp_on_the_clock_set_this_boot(device: str) -> None:
+    # The NTP client's clock check, unset only by a settings change: a backup keeps its timestamp through
+    # a stale sync, as UTCTime does, never through a generated gate of its own.
     result = _real(device)
     tree = ast.parse(result.module_source)
     backups = [ast.unparse(k.value) for n in ast.walk(tree) if isinstance(n, ast.Call) for k in n.keywords if k.arg == "backup"]
     wired = [spec for spec in result.model.instances.values() if spec.driver == "sgp40" and "fram_target" in spec.wiring]
     assert len(backups) == len(wired)
-    assert all(re.fullmatch(r"SgpBackup\(\w+, ntp\.ntp_issynced\)", b) for b in backups), backups
+    assert all(re.fullmatch(r"SgpBackup\(\w+, ntp\.ntp_clock_valid\)", b) for b in backups), backups
     assert "_clock_was_set" not in {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)}
 
 

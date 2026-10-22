@@ -2,9 +2,9 @@
 # /// script
 # requires-python = ">=3.11"
 # ///
-"""L2 system suite: boots one derived device's generated graph in the twin (digital_twin/run_generic_integration.py) as a
-subprocess and drives it over HTTP/UDP through real restarts at gc.threshold -1, then 32768; its fault matrix comes from the
-device's wiring plan. Run by scripts/run_digital_twin_ci.sh; reference: digital_twin/README.md "Automated CI suite"."""
+"""L2 system suite: boots one derived device's generated graph in the twin (digital_twin/run_generic_integration.py) as
+a subprocess, driving it over HTTP/UDP through real restarts at gc.threshold -1, then 32768; its fault matrix comes from
+the device's wiring plan. Run by scripts/run_digital_twin_ci.sh; see digital_twin/README.md "Automated CI suite"."""
 
 import argparse
 import http.client
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from buildgen.buildspec import BUS_ATTACHED_DRIVERS
 from buildgen.model import instance_label, load_device
-from buildgen.validate import device_max_connections_by_name, module_int_const
+from buildgen.validate import device_max_connections_by_name, module_float_const, module_int_const
 from scripts._port_lock import PortHeldError, port_lock
 from scripts._summary_block import Summary
 from scripts._twin_process import (
@@ -47,7 +47,6 @@ from scripts._twin_process import (
     errcount_table,
     exit_reason,
     feed_gap_verdict,
-    log_from,
     log_memory_verdict,
     log_tail,
     parse_machine_reset_line,
@@ -92,6 +91,9 @@ _VERBOSE_LOG_PREFIXES = ("SYSTEM", "SGP40", "SCD30", "BMP3XX", "WEBSERVER", "NOT
 # fault per driver: the writes every I2C driver's setup and reads go through, FRAM gone (`silent`: zeros, its bytes
 # kept, the one FRAM failure the port can produce) and a UART link going quiet.
 _SUSTAINED_FAULT = {"scd30": "writeto", "sgp40": "writeto", "bmp3xx": "writeto", "isl29125": "writeto", "fram": "silent", "uart_link": "silent"}
+# Run 3's FRAM write ceiling: a persisted-log chunk write takes 627-700 ms on silicon under load, one block at a time
+# device-wide (SPECIFICATION.md's rate.persisted_log row), so a storm persists at most one entry per 627 ms.
+_PERSISTED_LOG_CHUNK_WRITE_MS = 627
 # Run 5c's chain: one bounded fault per chip on its periodic bus call, read through each driver's own call sites.
 _BOUNDED_FAULT = {"scd30": "writeto", "sgp40": "writeto", "bmp3xx": "readfrom_mem", "isl29125": "readfrom_mem"}
 # Run 5: SGP40's measure-raw read only (the read after the 0x260F command), so setup and the heater-off rung stay healthy.
@@ -295,6 +297,11 @@ class RunContext:
     micropypath: str = TWIN_MICROPYPATH
 
     @property
+    def runs_dir(self) -> Path:
+        # Evidence a run keeps beside its log, outside the state archive: an errcount read before a ResetErrors clears it.
+        return self.logs_dir / "runs"
+
+    @property
     def state_dir(self) -> Path:
         # The pass's own persistent state, never digital_twin/'s manual defaults; _archive_state() is its one clearing point.
         return self.logs_dir / "state"
@@ -308,7 +315,7 @@ _CURRENT_PASS_LABEL = ""
 _CEILING_ROUNDS = 3  # back-to-back, so a leaked slot or a pool that only fills over time shows up
 
 
-_MEM_SAMPLE_LINE_FIELD_COUNT = 3  # "MEM_SAMPLE", the timestamp, the byte count
+_MEM_SAMPLE_LINE_FIELD_COUNT = 3  # "MEM_SAMPLE", the ticks_ms stamp, the byte count
 
 
 @dataclass
@@ -346,6 +353,11 @@ def _archive_state(ctx: RunContext, label: str) -> None:
     state.mkdir(parents=True, exist_ok=True)
 
 
+def _boot_entries(table: dict[str, JSONObject]) -> list[tuple[str, JSONValue, JSONValue]]:
+    # Every E and W slot of one errcount table as (module, type, num), in the table's order: what a boot logged.
+    return [(name, kind, num) for name, entry in table.items() for kind, num in _error_codes(entry) if kind in ("E", "W")]
+
+
 def _build_dns_query(query_id: int = _DNS_QUERY_ID, qname: str = "example.com") -> bytes:
     header = struct.pack(">HHHHHH", query_id, 0x0100, 1, 0, 0, 0)  # ID, flags(RD), QDCOUNT=1
     question = b"".join(bytes([len(part)]) + part.encode() for part in qname.split("."))
@@ -381,9 +393,12 @@ def _check_crc16_links(ctx: RunContext) -> None:
 
 
 def _check_exit(run: TwinRun, ec: int, run_label: str) -> None:
-    # A negative exit the suite did not cause is a crash, reported as one with the log tail, beside the caller's check.
+    # A negative exit the suite did not cause is a crash, reported as one with the log tail, beside the caller's check;
+    # a stop file the twin never acted on fails too, though the SIGINT fallback then ended the run cleanly.
     if ec < 0 and not run.killed:
         _fail(f"{run_label}: {exit_reason(ec, killed=run.killed)}; last log lines:\n{log_tail(run)}")
+    if run.stop_ignored:
+        _fail(f"{run_label}: the twin never acted on its stop file, so only the SIGINT fallback ended it; last log lines:\n{log_tail(run)}")
 
 
 def _check_no_memory_error_in_log(log_path: Path, run_label: str) -> None:
@@ -391,6 +406,22 @@ def _check_no_memory_error_in_log(log_path: Path, run_label: str) -> None:
     # missing, empty or unreadable log, which gives no verdict at all.
     verdict = log_memory_verdict(log_path)
     _check(condition=verdict is None, msg=f"{run_label}: log carries none of {_MEMORY_ERROR_MARKERS}" + (f" - {verdict}" if verdict else ""))
+
+
+def _check_quiet_boot(label: str, spawned_at: float, keep: Path, expected: "tuple[tuple[str, str, str], ...]" = ()) -> None:
+    # One /status read, its errcount kept at keep, whose E and W slots are exactly expected ((module, type, catalog
+    # name), no tolerance list); read before the boot's own first background warning can land (_quiet_boot_deadline_s()).
+    status, body = _http("GET", "/status")
+    age_s = time.monotonic() - spawned_at
+    table = errcount_table(status, body)
+    keep.parent.mkdir(parents=True, exist_ok=True)
+    keep.write_text(json.dumps(table, indent=1) + "\n", encoding="utf-8")
+    deadline_s = _quiet_boot_deadline_s()
+    _check(condition=age_s < deadline_s, msg=f"{label}: the errcount was read {age_s:.1f}s after the spawn, before a boot's own first background warning can land ({deadline_s:.0f}s)")
+    found = _boot_entries(table)
+    wanted = [(name, kind, code(kind, entry)) for name, kind, entry in expected]
+    named = "exactly " + ", ".join(f"{name}'s {kind} {entry}" for name, kind, entry in expected) if expected else "no E and no W entry"
+    _check(condition=found == wanted, msg=f"{label}: the boot logged {named} (kept in {keep}: {found!r})")
 
 
 def _check_run_log(run: TwinRun, run_label: str, *, starves_watchdog: bool) -> None:
@@ -614,6 +645,16 @@ def _mem_paused() -> bool | None:
     return paused if isinstance(paused, bool) else None
 
 
+def _mem_samples_from(log_path: Path, start: int) -> list[tuple[int, int]]:
+    # The MEM_SAMPLE lines starting at or after byte offset start, each with its offset; [] for a missing log.
+    try:
+        with log_path.open("rb") as log:
+            log.seek(start)
+            return _parse_mem_samples(log.read(), base=start)
+    except FileNotFoundError:
+        return []
+
+
 def _mem_trend(samples: list[int]) -> tuple[float, float, int, float, float] | None:
     # Pure trend-vs-tolerance arithmetic, split out of _run_11_soak() so it is unit-testable
     # without a live subprocess. Returns (trend, tolerance, quarter_size, early_avg, late_avg),
@@ -648,18 +689,19 @@ def _ntp_unreachable_verdict(nums: list[JSONValue], *, route: bool) -> tuple[boo
     return ok, f"Run 9: NTP logged errno {code('E', expected)} ({expected}), not {other}, for {_NTP_UNREACHABLE_HOST}: {why} (history {nums})"
 
 
-def _parse_mem_samples(log_text: str) -> list[tuple[float, int]]:
-    # The twin's _mem_sampler() prints one MEM_SAMPLE line per interval, scraped from the captured log;
-    # malformed lines are skipped rather than raising.
-    samples: list[tuple[float, int]] = []
-    for line in log_text.splitlines():
-        if not line.startswith("MEM_SAMPLE "):
-            continue
+def _parse_mem_samples(log: bytes, base: int = 0) -> list[tuple[int, int]]:
+    # The twin's _mem_sampler() lines as (byte offset of the line, free bytes), offsets counted from base; a malformed
+    # line is skipped, and so is an unterminated last one, which the twin may still be writing.
+    samples: list[tuple[int, int]] = []
+    offset = base
+    for line in log.splitlines(keepends=True):
+        start, offset = offset, offset + len(line)
         parts = line.split()
-        if len(parts) != _MEM_SAMPLE_LINE_FIELD_COUNT:
+        if not line.endswith(b"\n") or len(parts) != _MEM_SAMPLE_LINE_FIELD_COUNT or parts[0] != b"MEM_SAMPLE":
             continue
         try:
-            samples.append((float(parts[1]), int(parts[2])))
+            int(parts[1])  # the sampler's ticks_ms stamp, diagnostics only: no clock enters the window
+            samples.append((start, int(parts[2])))
         except ValueError:
             continue
     return samples
@@ -706,6 +748,12 @@ def _put_system_cmd(cmd: JSONValue) -> str | None:
     return word if isinstance(word, str) else None
 
 
+def _quiet_boot_deadline_s() -> float:
+    # A boot's own first error-count move, SGP40's untimestamped-backup warning, comes no earlier than the scenarios'
+    # shared-boot deadline after the spawn; one source for both readers of that background.
+    return module_float_const(REPO_ROOT / "scripts", "_digital_twin_scenarios.py", "_SHARED_BOOT_DEADLINE_S")
+
+
 def _real_reading(reading: object) -> bool:
     # A measurement that carries a value: a driver's fields stay null until its first good read, so an all-null
     # block is no reading at all, however truthy the dict holding it.
@@ -717,9 +765,9 @@ def _record(kind: str, full_msg: str) -> None:
     _CHECKS_PER_PASS[_CURRENT_PASS_LABEL] = _CHECKS_PER_PASS.get(_CURRENT_PASS_LABEL, 0) + 1
 
 
-def _relaunch_reason(ctx: RunContext, log_name: str, label: str, expected: int, *, system_entry: str | None = None) -> None:
+def _relaunch_reason(ctx: RunContext, log_name: str, label: str, expected: int, *, system_entry: str | None = None, interrupt: bool = False) -> None:
     # Boots on the same state and checks the reset reason the product read at boot (and, given its catalog name, the one
-    # SYSTEM entry that reset logged), then shuts down by SIGINT.
+    # SYSTEM entry that reset logged), then shuts down on its stop file, or by SIGINT with interrupt=True.
     proc = _spawn(ctx, [], ctx.logs_dir / log_name)
     try:
         _wait_until_serving(proc)
@@ -731,7 +779,7 @@ def _relaunch_reason(ctx: RunContext, log_name: str, label: str, expected: int, 
     except Exception as exc:
         _fail(f"{label}: {exc!r}")
     finally:
-        ec = _shutdown(proc, label)
+        ec = _shutdown(proc, label, interrupt=interrupt)
         _check(condition=ec == 0, msg=f"{label}: clean shutdown (exit code {ec})")
 
 
@@ -759,9 +807,9 @@ def _route_leaves_host(host: str, port: int) -> bool:
 
 
 def _run_10_watchdog_hang_backstop(ctx: RunContext) -> None:
-    # ---- Run 10: one real blocking sleep per instance (_HANG_MATRIX), each in its own fresh process, freezing the
-    # interpreter past the WDT window to prove the simulated backstop engages, which Run 3's raised errors cannot. A run
-    # ends on the runner's WATCHDOG_WOULD_TRIGGER line; --duration 15 bounds one whose hang fires late, behind startup I/O. ----
+    # ---- Run 10: one real blocking sleep per instance (_HANG_MATRIX), each in a fresh process, freezing the interpreter
+    # past the WDT window to prove the simulated backstop engages, which Run 3's raised errors cannot. A run ends on the
+    # runner's WATCHDOG_WOULD_TRIGGER line; --duration 15 bounds one whose hang fires late, behind startup I/O. ----
     for inst in _fault_instances(ctx, _HANG_MATRIX):
         _archive_state(ctx, f"run10 {inst.key}")
         label = f"Run 10 ({inst.key})"
@@ -807,12 +855,11 @@ def _run_11_soak_boot(ctx: RunContext, log_path: Path) -> _SoakRun:
     endpoints = (*ctx.routes, "/")
     http_failures: list[str] = []
     warmed = 0
-    cycles_start: float | None = None
-    cycles_end: float | None = None
+    window: tuple[int, int] | None = None  # the cycles' span of the log, in bytes: file order is emission order
     try:
         _wait_until_serving(proc)
         warmed = _soak_warm_up(log_path, endpoints, http_failures)
-        cycles_start = time.time()
+        cycles_start = log_path.stat().st_size
         for cycle in range(_SOAK_CYCLES):
             for path in endpoints:
                 try:
@@ -822,7 +869,7 @@ def _run_11_soak_boot(ctx: RunContext, log_path: Path) -> _SoakRun:
                     continue
                 if status != _HTTP_OK:
                     http_failures.append(f"cycle {cycle}: GET {path} -> {status}")
-        cycles_end = time.time()
+        window = (cycles_start, log_path.stat().st_size)
     except Exception as exc:  # CI orchestration: surface any failure as a suite failure, not a crash
         http_failures.append(repr(exc))
     finally:
@@ -831,9 +878,8 @@ def _run_11_soak_boot(ctx: RunContext, log_path: Path) -> _SoakRun:
     wdt_count = _would_have_triggered_count(log_path, "Run 11")
     samples: list[int] = []
     trend_result = None
-    if cycles_start is not None and cycles_end is not None:
-        log_text = read_log(log_path)
-        samples = [free for ts, free in _parse_mem_samples(log_text) if cycles_start <= ts <= cycles_end]
+    if window is not None:
+        samples = [free for offset, free in _mem_samples_from(log_path, window[0]) if offset < window[1]]
         if len(samples) // 4 >= 1:
             trend_result = _mem_trend(samples)
     return _SoakRun(http_failures=http_failures, wdt_count=wdt_count, shutdown_ec=ec, samples=samples, trend_result=trend_result, requests=(warmed + _SOAK_CYCLES) * len(endpoints))
@@ -878,9 +924,9 @@ def _run_11b_full_ceiling_concurrency(ctx: RunContext) -> None:
 
 
 def _run_12_reset_reasons(ctx: RunContext) -> None:
-    # ---- Run 12: the reset reasons reachable at L2. A fresh boot reads power-on; bootloader exits as a bootloader entry, its
-    # relaunch reads its code and clears the record; a SIGINT relaunch reads power-on; a C-stack overflow reboots with 20. The
-    # task budget's escalation is Run 4's, the REST reboot Run 5c's, 7 and 8 Run 13's. ----
+    # ---- Run 12: the reset reasons reachable at L2. A fresh boot reads power-on; bootloader exits as a bootloader entry,
+    # its relaunch reads its code and clears the record; a SIGINT relaunch reads power-on; a C-stack overflow reboots with
+    # 20. The task budget's escalation is Run 4's, the REST reboot Run 5c's, 7 and 8 Run 13's. ----
     _archive_state(ctx, "run12")
     proc = _spawn(ctx, [], ctx.logs_dir / "run12_a_power_on_then_bootloader.log")
     try:
@@ -893,7 +939,7 @@ def _run_12_reset_reasons(ctx: RunContext) -> None:
     reset = parse_machine_reset_line(read_log(proc.log_path))
     _check(condition=reset is not None and reset.kind == "bootloader", msg=f"Run 12: the runner's machine reset line names the bootloader entry ({reset!r})")
     log_b = ctx.logs_dir / "run12_b_after_bootloader.log"
-    _relaunch_reason(ctx, log_b.name, "Run 12 (after bootloader)", _reset_code("_RR_BOOTLOADER"))
+    _relaunch_reason(ctx, log_b.name, "Run 12 (after bootloader)", _reset_code("_RR_BOOTLOADER"), interrupt=True)  # what the SIGINT relaunch follows
     line = _shutdown_line(log_b, "Run 12 (after bootloader)")
     _check(condition=line is not None and line.mem_backup_r0 == (0, 0, 0, 0), msg=f"Run 12: the boot that read the bootloader record cleared it (mem_backup r0 {line.mem_backup_r0 if line else None!r})")
     _relaunch_reason(ctx, "run12_c_sigint_relaunch.log", "Run 12 (SIGINT relaunch)", _reset_code("_RR_POWER_ON"))
@@ -1087,17 +1133,49 @@ def _run_13_system_commands(ctx: RunContext) -> None:
 
 
 def _run_1_baseline(ctx: RunContext) -> None:
-    # ---- Run 1: fresh boot, walk every GET endpoint, PUT settings to carry forward. With no station link yet the
-    # device has never synced its clock, so both time fields read null. ----
+    # ---- Run 1: fresh boot, walk every GET endpoint, and nothing logged (kept in runs/ before the reset). With no
+    # station link yet the device has never synced its clock, so both time fields read null. Its reformat relaunch
+    # PUTs the settings later runs carry forward. ----
     log1 = ctx.logs_dir / "run1_baseline.log"
+    spawned_at = time.monotonic()
     proc = _spawn(ctx, [], log1)
     try:
         _wait_until_serving(proc)
         for path in (*ctx.routes, "/"):
             status, _ = _http("GET", path)
             _check(condition=status == _HTTP_OK, msg=f"Run 1: GET {path} -> 200")
+        _check_quiet_boot("Run 1", spawned_at, ctx.runs_dir / "run1_errcount.json")
         times = (_status_field("system", "UTCTime"), _status_field("system", "LocalTime"))
         _check(condition=times == (None, None), msg=f"Run 1: UTCTime and LocalTime are null before the first NTP sync ({times!r})")
+
+        status = _put_reset_errors_timed("Run 1")
+        _check(condition=status == _HTTP_OK, msg="Run 1: PUT /status ResetErrors accepted")
+    except Exception as exc:  # CI orchestration: surface any failure as a suite failure, not a crash
+        _fail(f"Run 1 (baseline boot): {exc!r}")
+    finally:
+        ec = _shutdown(proc, "Run 1")
+        _check(condition=ec == 0, msg=f"Run 1: clean shutdown (exit code {ec})")
+    paths = state_paths(ctx.state_dir)
+    _check(condition=paths.fram.exists() and paths.scd30.exists(), msg="Run 1: FRAM/SCD30 state files were persisted to disk on shutdown")
+    _run_1_reformat_relaunch(ctx)
+
+
+def _run_1_reformat_relaunch(ctx: RunContext) -> None:
+    # Run 1's second boot on an emptied config directory beside the kept FRAM state, as a reformatted filesystem leaves
+    # a unit: SYSTEM logs exactly one W CONFIG_LOST (kept in runs/ before the reset), then the settings Run 2 reads are PUT.
+    label = "Run 1 (reformat relaunch)"
+    config_dir = state_paths(ctx.state_dir).config_dir
+    try:
+        shutil.rmtree(config_dir)
+        config_dir.mkdir()
+    except OSError as exc:
+        _fail(f"{label}: emptying {config_dir} failed: {exc!r}")
+        return
+    spawned_at = time.monotonic()
+    proc = _spawn(ctx, [], ctx.logs_dir / "run1_reformat_relaunch.log")
+    try:
+        _wait_until_serving(proc)
+        _check_quiet_boot(label, spawned_at, ctx.runs_dir / "run1_reformat_errcount.json", (("SYSTEM", "W", "CONFIG_LOST"),))
 
         status, body = _http("PUT", "/system", {"DebugLevel": _TEST_DEBUG_LEVEL})
         _check(condition=status == _HTTP_OK and _field(body, "result", "DebugLevel") in ("Valid", "Unchanged"), msg=f"Run 1: PUT /system DebugLevel={_TEST_DEBUG_LEVEL} accepted")
@@ -1113,15 +1191,13 @@ def _run_1_baseline(ctx: RunContext) -> None:
         status, body = _http("PUT", "/networking", {"Hostname": "ci-digital-twin"})
         _check(condition=status == _HTTP_OK and _field(body, "result", "Hostname") in ("Valid", "Unchanged"), msg="Run 1: PUT /networking Hostname accepted")
 
-        status = _put_reset_errors_timed("Run 1")
-        _check(condition=status == _HTTP_OK, msg="Run 1: PUT /status ResetErrors accepted")
+        status = _put_reset_errors_timed(label)
+        _check(condition=status == _HTTP_OK, msg=f"{label}: PUT /status ResetErrors accepted")
     except Exception as exc:  # CI orchestration: surface any failure as a suite failure, not a crash
-        _fail(f"Run 1 (baseline boot + settings): {exc!r}")
+        _fail(f"{label} + settings: {exc!r}")
     finally:
-        ec = _shutdown(proc, "Run 1")
-        _check(condition=ec == 0, msg=f"Run 1: clean shutdown (exit code {ec})")
-    paths = state_paths(ctx.state_dir)
-    _check(condition=paths.fram.exists() and paths.scd30.exists(), msg="Run 1: FRAM/SCD30 state files were persisted to disk on shutdown")
+        ec = _shutdown(proc, label)
+        _check(condition=ec == 0, msg=f"{label}: clean shutdown (exit code {ec})")
 
 
 def _run_2_reboot_settings_persistence(ctx: RunContext) -> None:
@@ -1158,6 +1234,7 @@ def _run_3_sustained_bus_fault_matrix(ctx: RunContext) -> None:
     for inst in faulted:
         op = _SUSTAINED_FAULT[inst.driver]
         fault_args += ["--fault", f"{inst.key}:{op}" if op == "silent" else f"{inst.key}:{op}:{_BUS_FAULT_ERROR_COUNT}"]
+    started = time.monotonic()
     proc = _spawn(ctx, fault_args, log3)
     seen: dict[str, JSONObject] = {}
     ec = -1
@@ -1172,11 +1249,21 @@ def _run_3_sustained_bus_fault_matrix(ctx: RunContext) -> None:
         _fail(f"Run 3 (sustained bus-fault matrix): {exc!r}")
     finally:
         ec = _wait_exit(proc, "Run 3", timeout_s=_ESCALATION_WAIT_S)
+    window_ms = (time.monotonic() - started) * 1000
     _check(condition=ec == EXIT_SIMULATED_RESET, msg=f"Run 3: the device reset itself under the combined faults ({exit_reason(ec, killed=proc.killed)}, exit code {ec})")
     reset = parse_machine_reset_line(read_log(log3))
     _check(condition=reset is not None and reset.kind == "reset" and reset.reset_count == 1, msg=f"Run 3: the runner's machine reset line names one reset ({reset!r})")
     wdt3 = _would_have_triggered_count(log3, "Run 3")
     _check(condition=wdt3 == 0, msg=f"Run 3: watchdog never starved under the sustained faults (would_have_triggered_count={wdt3!r})")
+    # The ceiling is window / 627 ms x 2: each persisted entry writes both block copies of its chunk (agent, 2026-10-21).
+    # The chip is silent, so its landed count stays 0: the data phases and WRENs issued to it are what the product sent,
+    # a write being at most two WRENs (the driver's one latch retry, asy_fram_driver.py _enable_write()).
+    ceiling = int(window_ms // _PERSISTED_LOG_CHUNK_WRITE_MS) * 2
+    line = _shutdown_line(log3, "Run 3")
+    writes = line.fram_writes + line.fram_silent_writes if line is not None else None
+    _check(condition=writes is not None and writes <= ceiling, msg=f"Run 3: the FRAM chip's {writes!r} writes, landed or issued while silent, stay within the persisted-log rate, {ceiling} over the {window_ms:.0f} ms run")
+    attempts = -(-line.fram_silent_wrens // 2) if line is not None else None
+    _check(condition=attempts is not None and attempts <= ceiling, msg=f"Run 3: the {attempts!r} FRAM write attempts its silent chip saw (WRENs / 2) stay within the persisted-log rate, {ceiling} over the {window_ms:.0f} ms run")
 
 
 def _run_4_bus_fault_persistence_sweep(ctx: RunContext) -> None:
@@ -1528,8 +1615,8 @@ def _save_fram_evidence(ctx: RunContext, label: str) -> None:
         shutil.copy2(fram, evidence / fram.name)
 
 
-def _shutdown(run: TwinRun, run_label: str, timeout_s: float = 15.0, *, starves_watchdog: bool = False) -> int:
-    ec = shutdown(run, run_label, timeout_s)
+def _shutdown(run: TwinRun, run_label: str, timeout_s: float = 15.0, *, starves_watchdog: bool = False, interrupt: bool = False) -> int:
+    ec = shutdown(run, run_label, timeout_s, interrupt=interrupt)
     _check_exit(run, ec, run_label)
     _check_run_log(run, run_label, starves_watchdog=starves_watchdog)
     return ec
@@ -1556,13 +1643,13 @@ def _soak_warm_up(log_path: Path, endpoints: tuple[str, ...], http_failures: lis
     floor: int | None = None
     held = 0
     for cycle in range(_SOAK_WARMUP_CYCLES):
-        offset = len(read_log(log_path))
+        offset = log_path.stat().st_size
         for path in endpoints:
             try:
                 _http("GET", path)
             except (OSError, http.client.HTTPException) as e:  # one more failure, never an abort of the cycles
                 http_failures.append(f"warmup: GET {path} -> {e!r}")
-        samples = [free for _ts, free in _parse_mem_samples(log_from(log_path, offset))]
+        samples = [free for _offset, free in _mem_samples_from(log_path, offset)]
         if samples:
             held = 0 if floor is None or min(samples) < floor else held + 1
             floor = min(samples) if floor is None else min(floor, *samples)

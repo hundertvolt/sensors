@@ -17,20 +17,14 @@ _RESIDUAL = {
     "pyproject.toml": frozenset(
         {
             "_boot_contiguity_probe",
-            "_bus_hazard_catalog",
             "_sensortask_scenarios",
             "_uart_link_contract",
-            "asy_system_service",
             "machine",
-            "serving_at_default_gc",
             "test_asy_uart_comm",
-            "test_asy_uart_driver",
-            "test_bus_hazard_generated",
-            "test_bus_hazard_multi_device",
         },
     ),
-    "digital_twin/typecheck.ini": frozenset({"machine", "test_digital_twin_bus_hazard_concurrency"}),
-    "host_typecheck.ini": frozenset({"conftest", "scripts._hardware_verdict", "test_cross_browser_smoke_probe"}),
+    "digital_twin/typecheck.ini": frozenset({"machine"}),
+    "host_typecheck.ini": frozenset({"scripts._hardware_verdict"}),
 }
 
 
@@ -96,7 +90,7 @@ def test_no_pass_exempts_an_unlisted_module(repo_root: Path, config: str) -> Non
 
 def test_an_unlisted_exemption_is_reported(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text(f'[tool.mypy]\n{_FLAG} = true\n\n[[tool.mypy.overrides]]\nmodule = ["machine", "brand_new"]\n{_FLAG} = false\n', encoding="utf-8")
-    (tmp_path / "host_typecheck.ini").write_text(f"[mypy]\n{_FLAG} = true\n\n[mypy-conftest]\n{_FLAG} = false\n\n[mypy-brand_new]\n{_FLAG} = false\n", encoding="utf-8")
+    (tmp_path / "host_typecheck.ini").write_text(f"[mypy]\n{_FLAG} = true\n\n[mypy-scripts._hardware_verdict]\n{_FLAG} = false\n\n[mypy-brand_new]\n{_FLAG} = false\n", encoding="utf-8")
     assert _unlisted("pyproject.toml", _pyproject_pass(tmp_path)[2]) == ["brand_new"]
     assert _unlisted("host_typecheck.ini", _ini_pass(tmp_path, "host_typecheck.ini")[2]) == ["brand_new"]
 

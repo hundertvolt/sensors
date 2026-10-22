@@ -3,13 +3,16 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Pre-generates every real device's `sensortask_<device>.py`, both its boot entries, its expected boot
-facts and wiring-plan JSON (independent oracles for their consumers), its website definitions, its
-REST API reference and the freshness stamps via `buildgen` into gitignored `build/generated_src/` (SPECIFICATION.md E.3)."""
+"""Pre-generates every real device's `sensortask_<device>.py`, both its boot entries, its expected boot facts and
+wiring-plan JSON (independent oracles for their consumers), its website definitions, its REST API reference and the
+freshness stamps via `buildgen` into gitignored `build/generated_src/` (SPECIFICATION.md E.3)."""
 
-# Usage: uv run scripts/_generate_sensortask_modules.py [--device-toml PATH --out-dir DIR] (one TOML's outputs into DIR only)
-# Writes sensortask_<d>.py, sensortask_<d>_main.py, sensortask_<d>_main_noautostart.py, sensortask_<d>_expected.json, sensortask_<d>_wiring_plan.json,
-# definitions/<d>.json and api/<d>.json per device, then definitions/index.json, removes every other finished file (a removed device's), then writes .inputs_stamp.json (inputs and outputs) and definitions/inputs_stamp.json; test.sh, typecheck.sh, the twin runners and npm's build:definitions call it.
+# Usage: uv run scripts/_generate_sensortask_modules.py [--device-toml PATH --out-dir DIR] (one TOML's outputs into DIR
+# only); test.sh, typecheck.sh, the twin runners and npm's build:definitions call it.
+#
+# Writes sensortask_<d>.py, sensortask_<d>_main.py, sensortask_<d>_main_noautostart.py, sensortask_<d>_expected.json,
+# sensortask_<d>_wiring_plan.json, definitions/<d>.json and api/<d>.json per device, then definitions/index.json,
+# removes every other finished file (a removed device's), then writes the freshness stamps.
 
 import argparse
 import contextlib
@@ -153,6 +156,7 @@ def main(argv: "tuple[str, ...] | list[str]" = ()) -> int:
     stamps = _stamps(hashes, device_tomls, [p.relative_to(out_dir).as_posix() for p in written])
     if not _remove_all_but(out_dir, written | {out_dir / name for name in stamps}):
         return 1
+    # The freshness stamps: .inputs_stamp.json (inputs and outputs) and definitions/inputs_stamp.json.
     # Last: a run that stops earlier keeps the previous stamps, so a tree half-written from changed inputs reads as stale.
     if not _write_through_rename({out_dir / name: text for name, text in stamps.items()}):
         return 1

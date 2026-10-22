@@ -11,7 +11,9 @@ import time
 sys.path.insert(0, "digital_twin/unixport")  # the Unix-port UDP address shim (SPECIFICATION.md F.7 row 1)
 
 from _async_harness import run
+from _cancel_sweep import SocketLedger, cancel_at_each_await
 from _error_codes import code
+from _fake_time import DrivenTime
 from _port_bands import PortAllocator
 from _recording_print import record_prints
 from _src_const import src_const
@@ -67,8 +69,93 @@ _DNS_UDP_MAX = asy_dns_client.DNS_UDP_MAX
 _PORTS = PortAllocator("test_asy_dns_client")
 
 
+def _a_answer(ip: str, name_ptr: bytes = b"\xc0\x0c", ttl: int = 60) -> bytes:
+    ip_bytes = bytes(int(o) for o in ip.split("."))
+    return name_ptr + b"\x00\x01" + b"\x00\x01" + ttl.to_bytes(4, "big") + _be16(4) + ip_bytes
+
+
+def _be16(n: int) -> bytes:
+    return bytes([(n >> 8) & 0xFF, n & 0xFF])
+
+
+async def _close_failing_disconnect(self: "asy_udp_socket.UDPSocket") -> bool:
+    if self._sock is not None:
+        self._sock = _CloseRaisingSocket(self._sock)  # type: ignore[assignment]
+    return await _REAL_DISCONNECT(self)
+
+
+def _cname_answer(target: bytes, name_ptr: bytes = b"\xc0\x0c", ttl: int = 60) -> bytes:
+    return name_ptr + b"\x00\x05" + b"\x00\x01" + ttl.to_bytes(4, "big") + _be16(len(target)) + target
+
+
 def _make_port() -> int:  # a fresh loopback port per call, so tests never contend for the same address
     return _PORTS.next()
+
+
+def _make_pr() -> PrintLogHistory:  # a fresh in-memory logger for one resolve_ipv4() call's pr=
+    return PrintLogHistory(name="DNSTEST")
+
+
+def _make_response(query: "bytes | bytearray", answers: bytes, ancount: int, flags: bytes = b"\x81\x80") -> bytes:
+    header = bytes(query[0:2]) + flags + bytes(query[4:6]) + _be16(ancount) + b"\x00\x00\x00\x00"
+    question = bytes(query[12:])
+    return header + question + answers
+
+
+def _name_of_labels(*lengths: int) -> bytes:  # a dotted name whose labels have these octet counts
+    return b".".join(b"a" * n for n in lengths)
+
+
+def _nxdomain(query: bytes) -> bytes:
+    return _make_response(query, b"", ancount=0, flags=b"\x81\x83")  # QR, RD, RA; RCODE 3
+
+
+def _padded_reply(length: int, ip: str) -> "Callable[[bytes], bytes]":
+    # A valid one-answer reply for ip, zero-padded after its answer to exactly `length` bytes.
+    def build(query: bytes) -> bytes:
+        rsp = _make_response(query, _a_answer(ip), ancount=1)
+        return rsp + bytes(length - len(rsp))
+
+    return build
+
+
+def _refuses(host: bytes) -> bool:  # True when _build_query() raises ValueError for host
+    try:
+        _build_query(host, b"\x00\x00")
+    except ValueError:
+        return True
+    return False
+
+
+async def _refusing_write(self: "asy_udp_socket.UDPSocket", msg: "bytes | bytearray", timeout_ms: int = -1) -> "int | None":
+    # The parameter names stay write()'s own: mypy checks this double against it. Answers its "not sent" sentinel.
+    return None
+
+
+def _resolve_against(replies: "tuple[tuple[str, Callable[[bytes], bytes | None]], ...]") -> "tuple[tuple[str | None, int], tuple[int, list[int]]]":
+    # One fake server per (host, reply), all on one redirected port, asked in the given order.
+    port = _make_port()
+    pr = _make_pr()
+
+    async def scenario() -> "tuple[tuple[str | None, int], tuple[int, list[int]]]":
+        servers = [_FakeDNSServer(host, port) for host, _reply in replies]
+        try:
+            responders = [asyncio.create_task(servers[i].answer_once(replies[i][1])) for i in range(len(replies))]
+            result = await resolve_ipv4("pool.ntp.org", dns_servers=tuple(h for h, _r in replies), timeout_ms=_REPLY_TIMEOUT_MS, tries=1, pr=pr)
+            for i in range(len(responders)):
+                if not servers[i].received:  # a server the resolver never asked: stop its wait, the result says why
+                    responders[i].cancel()
+                try:
+                    await responders[i]
+                except asyncio.CancelledError:
+                    pass
+            return result, await _warnings(pr)
+        finally:
+            for s in servers:
+                s.close()
+
+    with redirect_udp_port(asy_dns_client, _DNS_PORT, port):
+        return run(scenario())
 
 
 def _resolved(host: str, port: int) -> "tuple[str, int]":
@@ -80,8 +167,8 @@ def _resolved(host: str, port: int) -> "tuple[str, int]":
     return cast("tuple[str, int]", socket.getaddrinfo(host, port)[0][-1])
 
 
-def _make_pr() -> PrintLogHistory:  # a fresh in-memory logger for one resolve_ipv4() call's pr=
-    return PrintLogHistory(name="DNSTEST")
+def _servfail(query: bytes) -> bytes:
+    return _make_response(query, b"", ancount=0, flags=b"\x81\x82")  # RCODE 2
 
 
 async def _warnings(pr: PrintLogHistory) -> "tuple[int, list[int]]":  # (ErrCount, the ring's W codes, oldest first)
@@ -247,18 +334,6 @@ def test_build_query_raises_value_error_for_a_label_past_the_bytearray_byte_rang
     assert raised
 
 
-def _refuses(host: bytes) -> bool:  # True when _build_query() raises ValueError for host
-    try:
-        _build_query(host, b"\x00\x00")
-    except ValueError:
-        return True
-    return False
-
-
-def _name_of_labels(*lengths: int) -> bytes:  # a dotted name whose labels have these octet counts
-    return b".".join(b"a" * n for n in lengths)
-
-
 def test_build_query_refuses_an_empty_label_a_trailing_dot_and_an_empty_name() -> None:
     # An empty label puts a zero length byte inside QNAME, which ends the name early (RFC 1035 SS3.1).
     for host in (b"a..b", b"pool.ntp.org.", b""):
@@ -279,25 +354,6 @@ def test_build_query_accepts_a_253_octet_name_and_refuses_254() -> None:
 # header/question section, matching how a real DNS server (and asy_captive_dns.py's own
 # DNSQuery.response()) builds a reply.
 # ---------------------------------------------------------------------------
-
-
-def _be16(n: int) -> bytes:
-    return bytes([(n >> 8) & 0xFF, n & 0xFF])
-
-
-def _make_response(query: "bytes | bytearray", answers: bytes, ancount: int, flags: bytes = b"\x81\x80") -> bytes:
-    header = bytes(query[0:2]) + flags + bytes(query[4:6]) + _be16(ancount) + b"\x00\x00\x00\x00"
-    question = bytes(query[12:])
-    return header + question + answers
-
-
-def _a_answer(ip: str, name_ptr: bytes = b"\xc0\x0c", ttl: int = 60) -> bytes:
-    ip_bytes = bytes(int(o) for o in ip.split("."))
-    return name_ptr + b"\x00\x01" + b"\x00\x01" + ttl.to_bytes(4, "big") + _be16(4) + ip_bytes
-
-
-def _cname_answer(target: bytes, name_ptr: bytes = b"\xc0\x0c", ttl: int = 60) -> bytes:
-    return name_ptr + b"\x00\x05" + b"\x00\x01" + ttl.to_bytes(4, "big") + _be16(len(target)) + target
 
 
 def test_parse_response_valid_single_a_answer() -> None:
@@ -417,6 +473,16 @@ def test_resolve_ipv4_literal_ip_returns_immediately_without_touching_the_networ
 # ---------------------------------------------------------------------------
 
 
+class _Clocked:
+    # A module stand-in for the fake server's waits: a DrivenTime with sleeps replaces its `time` and `asyncio`.
+    def __init__(self) -> None:
+        self.time = time
+        self.asyncio = asyncio
+
+
+_SERVER_CLOCK = _Clocked()  # the real modules, but inside a cancel sweep's block
+
+
 class _FakeDNSServer:
     def __init__(self, host: str, port: int) -> None:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -431,11 +497,11 @@ class _FakeDNSServer:
         # (extmod/modselect.c:583-594, v1.29.0).
         poller = select.poll()
         poller.register(self.sock, select.POLLIN)
-        t0 = time.ticks_ms()
+        t0 = _SERVER_CLOCK.time.ticks_ms()
         query: bytes | None = None
         addr: tuple[str, int] | None = None
         while query is None:
-            if time.ticks_diff(time.ticks_ms(), t0) > timeout_ms:
+            if time.ticks_diff(_SERVER_CLOCK.time.ticks_ms(), t0) > timeout_ms:
                 raise OSError("_FakeDNSServer.answer_once() timed out waiting for a query")
             readable = any(event & select.POLLIN for _fd, event in poller.ipoll(0))
             if readable:
@@ -445,7 +511,7 @@ class _FakeDNSServer:
                     if e.errno != errno.EAGAIN:  # only a wake-up with nothing to read is expected; anything else is the rig failing
                         raise
             if query is None:
-                await asyncio.sleep_ms(_FAKE_SERVER_POLL_MS)
+                await _SERVER_CLOCK.asyncio.sleep_ms(_FAKE_SERVER_POLL_MS)
         self.received.append(query)
         response = build_response(query)
         if response is not None:
@@ -669,12 +735,6 @@ class _CloseRaisingSocket:
 _REAL_DISCONNECT = asy_udp_socket.UDPSocket.disconnect
 
 
-async def _close_failing_disconnect(self: "asy_udp_socket.UDPSocket") -> bool:
-    if self._sock is not None:
-        self._sock = _CloseRaisingSocket(self._sock)  # type: ignore[assignment]
-    return await _REAL_DISCONNECT(self)
-
-
 def test_a_failed_socket_teardown_logs_one_warning_and_keeps_the_answer() -> None:
     port = _make_port()
     pr = _make_pr()
@@ -699,41 +759,6 @@ def test_a_failed_socket_teardown_logs_one_warning_and_keeps_the_answer() -> Non
     assert logged == (1, [code("W", "SOCKET_TEARDOWN")])
 
 
-def _padded_reply(length: int, ip: str) -> "Callable[[bytes], bytes]":
-    # A valid one-answer reply for ip, zero-padded after its answer to exactly `length` bytes.
-    def build(query: bytes) -> bytes:
-        rsp = _make_response(query, _a_answer(ip), ancount=1)
-        return rsp + bytes(length - len(rsp))
-
-    return build
-
-
-def _resolve_against(replies: "tuple[tuple[str, Callable[[bytes], bytes | None]], ...]") -> "tuple[tuple[str | None, int], tuple[int, list[int]]]":
-    # One fake server per (host, reply), all on one redirected port, asked in the given order.
-    port = _make_port()
-    pr = _make_pr()
-
-    async def scenario() -> "tuple[tuple[str | None, int], tuple[int, list[int]]]":
-        servers = [_FakeDNSServer(host, port) for host, _reply in replies]
-        try:
-            responders = [asyncio.create_task(servers[i].answer_once(replies[i][1])) for i in range(len(replies))]
-            result = await resolve_ipv4("pool.ntp.org", dns_servers=tuple(h for h, _r in replies), timeout_ms=_REPLY_TIMEOUT_MS, tries=1, pr=pr)
-            for i in range(len(responders)):
-                if not servers[i].received:  # a server the resolver never asked: stop its wait, the result says why
-                    responders[i].cancel()
-                try:
-                    await responders[i]
-                except asyncio.CancelledError:
-                    pass
-            return result, await _warnings(pr)
-        finally:
-            for s in servers:
-                s.close()
-
-    with redirect_udp_port(asy_dns_client, _DNS_PORT, port):
-        return run(scenario())
-
-
 def test_a_reply_longer_than_512_bytes_warns_and_tries_the_next_server() -> None:
     # No EDNS is sent, so a whole reply is at most 512 bytes (RFC 1035 SS4.2.1): a fuller receive buffer
     # means the datagram was cut, and its answer is not used.
@@ -745,14 +770,6 @@ def test_a_reply_longer_than_512_bytes_warns_and_tries_the_next_server() -> None
     assert _resolve_against(((_HOST, _padded_reply(_DNS_UDP_MAX, "192.0.2.15")),)) == (("192.0.2.15", DNS_RESOLVED), (0, []))
 
 
-def _nxdomain(query: bytes) -> bytes:
-    return _make_response(query, b"", ancount=0, flags=b"\x81\x83")  # QR, RD, RA; RCODE 3
-
-
-def _servfail(query: bytes) -> bytes:
-    return _make_response(query, b"", ancount=0, flags=b"\x81\x82")  # RCODE 2
-
-
 def test_an_nxdomain_names_the_cause_unless_another_server_resolves_it() -> None:
     # A first server's NXDOMAIN stays the cause though a later query was sent and failed otherwise, a later server's
     # answer still wins, and a server failure alone is no NXDOMAIN.
@@ -760,11 +777,6 @@ def test_an_nxdomain_names_the_cause_unless_another_server_resolves_it() -> None
     assert _resolve_against(((_SECOND_HOST, _nxdomain), (_HOST, good)))[0] == ("192.0.2.21", DNS_RESOLVED)
     assert _resolve_against(((_SECOND_HOST, _nxdomain), (_HOST, _servfail)))[0] == (None, DNS_NXDOMAIN)
     assert _resolve_against(((_SECOND_HOST, _servfail),))[0] == (None, DNS_FAILED)
-
-
-async def _refusing_write(self: "asy_udp_socket.UDPSocket", msg: "bytes | bytearray", timeout_ms: int = -1) -> "int | None":
-    # The parameter names stay write()'s own: mypy checks this double against it. Answers its "not sent" sentinel.
-    return None
 
 
 _REAL_WRITE = asy_udp_socket.UDPSocket.write
@@ -782,6 +794,56 @@ def test_a_query_no_server_was_sent_answers_not_sent_and_waits_for_no_reply() ->
     assert result == (None, DNS_NOT_SENT)
     assert redirect.constructed == 2
     assert time.ticks_diff(time.ticks_ms(), t0) < _REPLY_TIMEOUT_MS
+
+
+# ---------------------------------------------------------------------------
+# resolve_ipv4 - cancelled at each await: the socket it opened is torn down on every path
+# ---------------------------------------------------------------------------
+
+
+class _SweptResolve:
+    # One sweep count's fixture: a fresh fake server answering once, and the lookup's answer once it completed.
+    def __init__(self, server: _FakeDNSServer, responder: "asyncio.Task[None]") -> None:
+        self.server = server
+        self.responder = responder
+        self.result: tuple[str | None, int] | None = None
+
+
+def test_cancelling_a_resolve_at_each_await_leaves_no_socket_open() -> None:
+    # Driven 1 ms turns, shorter than the server's and the socket's poll sleeps, so each wait is a cancel point. The
+    # sockets are real loopback descriptors, so the socket's own poll stays real (the hang rule concerns non-fd objects).
+    port = _make_port()
+    ledger = SocketLedger(asy_udp_socket)
+    built: list[_SweptResolve] = []
+    received: list[int] = []
+
+    async def build() -> _SweptResolve:
+        server = _FakeDNSServer(_HOST, port)
+        responder = asyncio.create_task(server.answer_once(lambda q: _make_response(q, _a_answer("10.20.30.42"), ancount=1)))
+        built.append(_SweptResolve(server, responder))
+        return built[-1]
+
+    async def start(swept: _SweptResolve) -> None:
+        swept.result = await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=_REPLY_TIMEOUT_MS, tries=1, pr=_make_pr())
+
+    def invariants(swept: _SweptResolve) -> None:
+        ledger.assert_closed()
+        received.append(len(swept.server.received))
+
+    async def teardown(swept: _SweptResolve) -> None:
+        swept.responder.cancel()
+        try:
+            await swept.responder
+        except asyncio.CancelledError:
+            pass
+        swept.server.close()
+
+    with DrivenTime(asy_udp_socket, _SERVER_CLOCK, sleeps=True) as clock, ledger, redirect_udp_port(asy_dns_client, _DNS_PORT, port):
+        counts = cancel_at_each_await(build, start, invariants, turn=lambda: clock.elapse(1), teardown=teardown)
+        assert clock.wakes() == [], clock.wakes()
+    assert built[-1].result == ("10.20.30.42", DNS_RESOLVED)
+    assert len(received) == counts
+    assert (received[0], received[-1]) == (0, 1), received  # cancelled before the query left, and while its reply was awaited
 
 
 if __name__ == "__main__":

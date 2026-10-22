@@ -131,6 +131,11 @@ _PIN_NAMES["LED"] = _NUM_BANK0_GPIOS  # LED,EXT_GPIO0
 _OMITTED: int = object()  # type: ignore[assignment]  # an argument not given, told apart from an explicit None
 
 
+def _absent_handler(_pin: "Pin") -> None:
+    # Pin.irq()'s handler default: a call that names no argument is told apart from an explicit None (machine_pin.c:473).
+    pass
+
+
 def _build_i2c_chip(attachment: "_I2CAttachment") -> "Any":
     # Dispatches on the plan's driver string - the twin's hand-kept chip-fake catalog, the compared strings kept literal;
     # the chip Timers are simulation clocks, not rp2 alarms.
@@ -260,16 +265,16 @@ class Pin:
             # Set unconditionally, None meaning no pull (machine_pin.c:300-306): rp2 keeps the PULL_UP/PULL_DOWN bits.
             self.pull = 0 if pull is None else pull & (self.PULL_UP | self.PULL_DOWN)
 
-    def irq(
-        self,
-        handler: "Callable[[Pin], None] | None" = None,
-        trigger: int = IRQ_FALLING | IRQ_RISING,
-        *,
-        hard: bool = False,
-    ) -> "Pin":
-        self._irq_handler = handler
-        self._irq_trigger = trigger
-        self._irq_hard = hard
+    def irq(self, handler: "Callable[[Pin], None] | None" = _absent_handler, trigger: int = _OMITTED, *, hard: object = _OMITTED) -> "Pin":
+        # rp2 (machine_pin.c:464-476): an external pin raises first; a bare call returns the IRQ object (the Pin stands
+        # in) unchanged; any argument replaces handler, trigger and hard outright.
+        if self.id >= _NUM_BANK0_GPIOS:
+            raise ValueError("expecting a regular GPIO Pin")
+        if handler is _absent_handler and trigger is _OMITTED and hard is _OMITTED:
+            return self
+        self._irq_handler = None if handler is _absent_handler else handler
+        self._irq_trigger = self.IRQ_FALLING | self.IRQ_RISING if trigger is _OMITTED else trigger
+        self._irq_hard = hard is not _OMITTED and bool(hard)
         return self
 
     def off(self) -> None:
@@ -606,9 +611,9 @@ _FRAM_RDID_BY_MAX_SIZE: "dict[int, bytes]" = {
 
 
 def configure_fram_state_path(path: "str | None") -> None:
-    # Called once, before build_system() constructs spi0, by the twin's entry points (launch.py, run_generic_integration.py) -
-    # src/ never calls this: zero twin-awareness in src/ (owner, 2026-09-26: 'zero artifacts specifically added for testing').
-    # None (the default) means "in-memory only, no persistence".
+    # Called once, before build_system() constructs spi0, by the twin's entry points (launch.py,
+    # run_generic_integration.py) - src/ never calls this: zero twin-awareness in src/ (owner, 2026-09-26: 'zero artifacts
+    # specifically added for testing'). None (the default) means "in-memory only, no persistence".
     _require_unconstructed("configure_fram_state_path")
     global _fram_state_path
     _fram_state_path = path
@@ -894,11 +899,9 @@ class UARTLink:
         self.endpoints = (uart_a, uart_b)
         self.a_to_b = _LinkDirection(uart_b.rxbuf if capacity_a_to_b is None else capacity_a_to_b, uart_a.baudrate)
         self.b_to_a = _LinkDirection(uart_a.rxbuf if capacity_b_to_a is None else capacity_b_to_a, uart_b.baudrate)
-        # Wire time is a plain microsecond offset from this epoch via ticks_diff(), not raw ticks:
-        # the arithmetic below mixes it with byte durations and ticks values are opaque. A run
-        # longer than ticks_us()' period would need re-anchoring; no test comes close.
-        self._epoch_us = time.ticks_us()
-        self._stall_offset_us = time.ticks_diff(self._epoch_us, _flash_stall.EPOCH_US)  # wire time on the stalls' clock
+        # Wire time is plain microseconds since construction, not raw ticks (the arithmetic below mixes it with byte
+        # durations), read off _flash_stall's plain clock: no ticks_diff() spans the link's life, none ever wraps.
+        self._stall_offset_us = _flash_stall.plain_us(time.ticks_us(), time.ticks_ms())  # wire time 0 on the plain clock
         self._next_free_us = [0, 0]  # per direction: when the wire is idle again
         uart_a._link = self
         uart_b._link = self
@@ -927,7 +930,8 @@ class UARTLink:
         return 0 if uart is self.endpoints[0] else 1
 
     def _now_us(self) -> int:
-        return time.ticks_diff(time.ticks_us(), self._epoch_us)
+        # The offset plus a due time is the plain clock's time, where _flash_stall keeps its windows.
+        return _flash_stall.plain_us(time.ticks_us(), time.ticks_ms()) - self._stall_offset_us
 
     def _schedule(self, index: int, direction: "_LinkDirection", data: bytearray) -> None:
         now = self._now_us()
@@ -1608,9 +1612,9 @@ def flush_scd30() -> None:
         _current_scd30_chip.save_state()
 
 
-# mem_backup(): rp2's two watchdog-scratch regions; they survive machine.reset() (carried to the next launch by the reset
-# handler) and are cleared by power-on (v1.29.0 machine_mem_backup.c:36-40); the bootloader carry-over is an assumption
-# (digital_twin/README.md fidelity table).
+# mem_backup(): rp2's two watchdog-scratch regions; they survive machine.reset() (carried to the next launch by the
+# reset handler) and are cleared by power-on (v1.29.0 machine_mem_backup.c:36-40); the bootloader carry-over is an
+# assumption (digital_twin/README.md fidelity table).
 _mem_backup_state_path: "str | None" = None
 
 

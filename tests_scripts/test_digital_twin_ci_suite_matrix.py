@@ -1,5 +1,5 @@
-"""Tests scripts/_digital_twin_ci_suite.py's fault matrix and command line without a live twin: every fault and hang op a
-chip fake hooks is driven by a run or left out with a reason, every op named exists in the twin's vocabulary, Run 12's
+"""Tests scripts/_digital_twin_ci_suite.py's fault matrix and command line without a live twin: every fault and hang op
+a chip fake hooks is driven by a run or left out with a reason, every op named exists in the twin's vocabulary, Run 12's
 stack subject is the plan's first bus device, and the diagnosis options refuse what they cannot honour (exit 2)."""
 
 import ast

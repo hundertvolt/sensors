@@ -33,8 +33,9 @@ class FakeNtpServer:
     def close(self) -> None:
         self.sock.close()
 
-    async def serve_once(self, reply: "bytes | None") -> None:
-        # Answers exactly one request with `reply`; None takes the request and never answers it.
+    async def serve_once(self, reply: "bytes | None") -> bool:
+        # Takes exactly one request and answers it with `reply` (None: never answers it): True, or False once the poll
+        # budget ran out with no request, a bound in rounds rather than wall-clock time.
         for _ in range(self._poll_tries):
             # ipoll(0) returns an always-truthy iterator on this port - iterate and check the flags.
             if any(event & select.POLLIN for _obj, event in self.poller.ipoll(0)):
@@ -47,5 +48,6 @@ class FakeNtpServer:
                     continue
                 if reply is not None:
                     self.sock.sendto(reply, from_addr)
-                return
+                return True
             await asyncio.sleep_ms(self._poll_ms)
+        return False

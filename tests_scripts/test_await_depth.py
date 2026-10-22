@@ -1,6 +1,6 @@
 """The longest static await chain from any task top is pinned (SPECIFICATION.md F.1): a resumed task re-enters its whole
-chain in C, so a chain deeper than the budget fails here until the C-stack budget is re-derived on the board, a
-recursive one always. The analysis is tests_scripts/_await_depth.py; its rules are pinned below on fabricated modules."""
+chain in C, so a chain deeper than the budget fails until the C-stack budget is re-derived on the board, a recursive one
+always. The analysis: tests_scripts/_await_depth.py, its rules pinned below on fabricated modules."""
 
 from pathlib import Path
 

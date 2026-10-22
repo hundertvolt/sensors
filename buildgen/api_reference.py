@@ -1,6 +1,6 @@
-"""Generates a device's REST API reference (SPECIFICATION.md Part A.8): every route `asy_webserver_service.ROUTES`
-registers, with its fields from the device's website definitions, plus the four result words, the envelope's code texts
-and the two failure shapes, each read from `src/` by AST (buildgen never imports it). Written per device by the generator."""
+"""Generates a device's REST API reference (SPECIFICATION.md Part A.8): every `asy_webserver_service.ROUTES` route, with
+its fields from the device's website definitions, plus the four result words, the envelope's code texts and the two
+failure shapes, each read from `src/` by AST (buildgen never imports it). Written per device by the generator."""
 
 import ast
 import json

@@ -1,6 +1,6 @@
-"""tests_hardware/bench_control.py against a scripted subprocess.run: every restore proves its injection absent by state,
-a failed listing or capture raises naming the tool, a killed run's leftovers are cleared and reported, the single radio
-never scans while it hosts the AP nor re-activates an active one, and no module touches the host's own access path."""
+"""tests_hardware/bench_control.py against a scripted subprocess.run: every restore proves its injection absent by
+state, a failed listing or capture raises naming the tool, a killed run's leftovers are cleared and reported, the single
+radio never scans while it hosts the AP nor re-activates an active one; no module touches the host's own access path."""
 
 import ast
 import io

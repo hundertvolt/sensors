@@ -9,6 +9,7 @@ import struct
 import time
 
 from _async_harness import run
+from _cancel_sweep import assert_unlocked, cancel_at_each_await
 from _error_codes import code
 from _fast_sleep import check_sleep_ms
 from _fram_builders import make_fram_manager
@@ -56,8 +57,34 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
-    from typing import Any
+    from collections.abc import Awaitable, Callable, Coroutine
+    from typing import Any, TypeVar
+
+    from _uart_comm_harness import CommCallback, MessageCallback
+    from machine import UART as FakeUART
+    from typing_extensions import TypedDict, Unpack
+
+    from asy_print_log import PrintLogHistory
+    from asy_uart_comm import _PullCallback
+
+    class _CommKw(TypedDict, total=False):
+        # _make_comm()'s keywords: the four transfer_limits() fields, the role, the bus, the callbacks and UARTComm's own.
+        # payload_size and timeout take any value: the validation tests pass a str, None or a float on purpose.
+        payload_size: object
+        timeout: object
+        chunk_bytes: int
+        max_transfer_bytes: int
+        role: str
+        uart: UART | None
+        get_callback: CommCallback | None
+        set_callback: CommCallback | None
+        message_callback: MessageCallback | None
+        name: str
+        log: LogConfig
+        logger: PrintLogHistory | None
+
+    T = TypeVar("T")
+    U = TypeVar("U")
 
 _SRC = "src/asy_uart_comm.py"
 
@@ -142,7 +169,7 @@ def _w(name: str) -> str:  # persisted()'s form of a catalog wrnno
     return f"W{code('W', name)}"
 
 
-def _make_comm(**kwargs: "Any") -> UARTComm:
+def _make_comm(**kwargs: "Unpack[_CommKw]") -> UARTComm:
     DMA.reset_registry()  # each link's ring holds two of the twelve channels: a later pair in one test frees them
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
     driver._uart.rx_rate = float("inf")  # type: ignore[union-attr]  # fed bytes land at once, not on the fake clock
@@ -327,7 +354,7 @@ class _SleepRecorder:
     def restore(self) -> None:
         asy_uart_comm.asyncio = self._inner
 
-    def sleep_ms(self, ms: int) -> "Any":
+    def sleep_ms(self, ms: int) -> "Awaitable[None]":
         check_sleep_ms(ms)
         self.delays.append(ms)
         return self._inner.sleep_ms(min(ms, self.cap_ms))
@@ -596,6 +623,7 @@ def test_bytes_a_failed_frame_read_dropped_count_toward_the_link_diagnostic() ->
     pair = Pair(get_callback=echo_get(b""), set_callback=accept_set())
     pair.driver_a.discarded_bytes = 40  # dropped before setup: not this link's evidence
     assert run(pair.initiator.setup(), RUN_LIMIT_S) is True
+
     async def resyncs(dropped: int) -> None:
         async with pair.driver_a as device:
             for _ in range(_DIAG_RESYNC_STREAK):
@@ -689,7 +717,7 @@ def test_a_partially_failed_allocation_refuses_construction_outright() -> None:
     # gate: padding then shrank the TX buffer and the id write raised out of a never-raise module.
     real_allocate = UARTComm._allocate
 
-    def starved(self: UARTComm) -> "Any":
+    def starved(self: UARTComm) -> "tuple[RegionBuffer, RegionBuffer, bytearray, bytearray, bytearray]":
         tx, rx, _ack, _zero, _cmd = real_allocate(self)
         return tx, rx, bytearray(0), bytearray(0), bytearray(0)
 
@@ -784,7 +812,7 @@ def test_the_listen_loop_backs_off_on_a_dead_link_and_resets_after_success() -> 
 
 def test_the_listen_loop_survives_a_raising_callback() -> None:
     # uart_listen() is contracted never to raise, but a contract is not an enforcement.
-    def explode(cmd_id: int) -> "tuple[bool, Any]":
+    def explode(cmd_id: int) -> "tuple[bool, bytes]":
         raise ValueError("callback blew up")
 
     pair = Pair(get_callback=explode, set_callback=accept_set())
@@ -1710,7 +1738,7 @@ def test_a_missing_ack_at_each_train_position_aborts_and_resyncs() -> None:
 
 @_on_poll_rounds
 def test_a_multi_chunk_payload_arrives_byte_identical() -> None:
-    got: list[Any] = []
+    got: list[bool] = []
 
     def remember(cmd_id: int) -> "tuple[bool, int | None]":
         return True, None
@@ -1789,7 +1817,7 @@ def test_the_get_answer_echoes_the_requested_command_id() -> None:
 def test_a_rejected_get_callback_reports_a_distinct_outcome() -> None:
     # Withhold the answer, resync, and tell the responder's own caller which command was
     # refused - not silently nothing.
-    def refuse(cmd_id: int) -> "tuple[bool, Any]":
+    def refuse(cmd_id: int) -> "tuple[bool, None]":
         return False, None
 
     pair = Pair(get_callback=refuse, set_callback=accept_set())
@@ -1842,7 +1870,7 @@ def test_a_callback_returning_the_wrong_shape_is_treated_like_a_raise() -> None:
 def test_a_callback_returning_a_non_buffer_payload_is_rejected() -> None:
     # The callback-return guard again: the payload's type is part of the return shape, so a str here must not reach
     # the frame builder.
-    def wrong_type(cmd_id: int) -> "tuple[bool, Any]":
+    def wrong_type(cmd_id: int) -> "tuple[bool, str]":
         return True, "not a buffer"
 
     pair = Pair(get_callback=wrong_type, set_callback=accept_set())
@@ -1878,7 +1906,7 @@ def test_a_re_entrant_callback_is_refused_instead_of_deadlocking() -> None:
     # nothing is waiting on the wire. The bounded run() here is what proves it is not merely slow.
     pair = Pair(get_callback=echo_get(b""), set_callback=accept_set())
     assert run(pair.setup(), RUN_LIMIT_S) is True
-    outcome: list[Any] = []
+    outcome: list[bool] = []
 
     async def reentrant(cmd_id: int) -> "tuple[bool, bytes]":
         outcome.append(await pair.responder.uart_set(9, b"nested"))
@@ -1963,7 +1991,7 @@ def test_a_payload_can_be_streamed_from_a_pull_callback() -> None:
     # F7: what makes "large payloads over little buffers" true rather than half-true - the whole
     # payload never exists in RAM at either end.
     source = bytes((i * 3) & 0xFF for i in range(PAYLOAD_SIZE * 2 + 3))
-    got: list[Any] = []
+    got: list[bool] = []
 
     def pull(chunk: int, buf: memoryview) -> int:
         start = (chunk - 2) * PAYLOAD_SIZE
@@ -2106,7 +2134,7 @@ def test_an_empty_set_is_delivered_as_a_distinct_outcome() -> None:
     for args in ((None,), (bytearray(4), 0)):
         pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()), RUN_LIMIT_S)
 
-        async def scenario(pair: Pair = pair, args: "tuple[Any, ...]" = args) -> "tuple[bool, ListenResult]":
+        async def scenario(pair: Pair = pair, args: "tuple[None] | tuple[bytearray, int]" = args) -> "tuple[bool, ListenResult]":
             listener = asyncio.create_task(pair.responder.uart_listen())
             sent = await pair.initiator.uart_set_into(0x31, *args)
             return sent, await asyncio.wait_for(listener, _STEP_BOUND_S)
@@ -2170,7 +2198,7 @@ def test_a_buffer_is_borrowed_only_for_the_call() -> None:
     assert b"XXXXXX" not in pair.wire_from_initiator()
 
 
-def _stream_with_listener(pair: Pair, total: int, pull: "Any") -> "tuple[bool, ListenResult]":
+def _stream_with_listener(pair: Pair, total: int, pull: "_PullCallback | None") -> "tuple[bool, ListenResult]":
     async def scenario() -> "tuple[bool, ListenResult]":
         listener = asyncio.create_task(pair.responder.uart_listen())
         sent = await pair.initiator.uart_set_stream(0x32, total, pull)
@@ -2357,7 +2385,7 @@ def test_a_rejected_command_is_distinguishable_from_a_link_fault() -> None:
 def test_the_owned_listen_loop_delivers_a_received_payload() -> None:
     # Without this the loop consumed the ListenResult and dropped it: a responder wired the
     # documented way (get_task_starters()) could never see a SET's data at all.
-    seen: list[Any] = []
+    seen: list[tuple[int, int, bytes | None]] = []
 
     def record(cmd_id: int, cmd: int, payload: "PieceBuffer | None") -> None:
         seen.append((cmd_id, cmd, copied_out(payload)))
@@ -2775,9 +2803,9 @@ async def _listen_forever(pair: Pair) -> None:
 # ---------------------------------------------------------------------------
 
 
-def returns(value: "Any") -> "Any":
+def returns(value: object) -> "CommCallback":
     # A callback whose return shape is the thing under test, so it is supplied rather than computed.
-    def callback(cmd_id: int) -> "Any":
+    def callback(cmd_id: int) -> object:
         return value
 
     return callback
@@ -2902,7 +2930,8 @@ def test_a_listener_whose_callbacks_were_cleared_refuses_instead_of_dispatching(
     assert run(pair.responder.uart_listen(), RUN_LIMIT_S).cmd_id is None
     assert persisted(pair.responder) == [_e("BAD_ARG")], persisted(pair.responder)
 
-def fail_write_after(fake: "Any", successes: int) -> None:
+
+def fail_write_after(fake: "FakeUART", successes: int) -> None:
     # machine.py's own write_limit is a fixed per-call cap; these paths need the Nth write of an
     # exchange to fail instead, which is what a TX path dying mid-transaction actually looks like.
     # None is the real rp2 return: its internal per-byte timeout hit before anything was sent.
@@ -2913,9 +2942,9 @@ def fail_write_after(fake: "Any", successes: int) -> None:
         if left[0] <= 0:
             return None
         left[0] -= 1
-        return real(buf)  # type: ignore[no-any-return]
+        return real(buf)
 
-    fake.write = counted
+    fake.write = counted  # type: ignore[method-assign]
 
 
 @_on_poll_rounds
@@ -2977,13 +3006,14 @@ def test_a_peer_answering_a_different_question_is_refused() -> None:
     real_send_train = pair.responder._send_train
 
     async def answers_the_wrong_question(
-        device: "Any", cmd_id: int, payload: "Any", total: int, pull: "Any",
+        device: UART, cmd_id: int, payload: "bytes | bytearray | memoryview | None", total: int, pull: "_PullCallback | None",
     ) -> bool:
         return await real_send_train(device, (cmd_id + 1) & 0xFF, payload, total, pull)
 
     pair.responder._send_train = answers_the_wrong_question  # type: ignore[method-assign]
     assert run(pair.with_listener(pair.initiator.uart_get(0x40)), _LISTENER_RUN_BOUND_S) is None
     assert persisted(pair.initiator) == [_e("UART_GET_ID_MISMATCH")], persisted(pair.initiator)
+
 
 class _StarvedAlloc:
     # Shadows asy_uart_comm.py's module-global `bytearray` - tests/'s usual reassign-a-module-name
@@ -2999,7 +3029,7 @@ class _StarvedAlloc:
         self.skip = skip
         self.armed = True
 
-    def __call__(self, *args: "Any") -> bytearray:
+    def __call__(self, *args: int) -> bytearray:
         if self.armed:
             if self.skip:
                 self.skip -= 1
@@ -3055,7 +3085,7 @@ def test_every_internal_buffer_read_rechecks_rather_than_indexing_none() -> None
     comm._rx._buf = None
     comm._ack = bytearray(0)
 
-    async def internals() -> "tuple[Any, Any, Any, Any]":
+    async def internals() -> "tuple[bool, bool, int, int | None]":
         async with bus as device:
             return (
                 await comm._read_frame(device, 10),
@@ -3073,6 +3103,7 @@ def test_every_internal_buffer_read_rechecks_rather_than_indexing_none() -> None
     # the same missing buffer and returns 0 rather than raising, which is the point.
     assert persisted(comm) == [_e("ALLOC")], persisted(comm)
 
+
 def test_a_cancelled_transaction_still_releases_the_re_entrancy_flag() -> None:
     # _busy is cleared in a finally rather than on the return path, so a task cancelled while holding the
     # bus - a supervisor restart, or clear() unsticking a wedged link - does not leave the instance refusing
@@ -3086,7 +3117,7 @@ def test_a_cancelled_transaction_still_releases_the_re_entrancy_flag() -> None:
     assert bus is not None
     pair.link.direction_from(pair.fake_b).silent = True  # nothing answers, so every call parks
 
-    async def cancel_midway(work: "Any") -> None:
+    async def cancel_midway(work: "Coroutine[object, object, object]") -> None:
         task = asyncio.create_task(work)
         await asyncio.sleep_ms(_INSIDE_LOCK_MS)  # long enough to be inside the transaction, not before it
         # Asserted rather than assumed: cancelling a task that had not started yet would leave
@@ -3110,6 +3141,64 @@ def test_a_cancelled_transaction_still_releases_the_re_entrancy_flag() -> None:
         # would otherwise show only as the next iteration timing out rather than as a named failure.
         assert bus.session_lock.locked() is False, work
 
+
+def test_cancelling_at_each_await_leaves_no_lock_or_busy_flag() -> None:
+    # Each path cancelled after 0, 1, 2, ... turns on a fresh pair, every sleep a bare yield so a turn is one await: both
+    # ends come back free. A count that cancelled with a session lock held proves the sweep reached the transaction.
+    current: list[Pair] = []
+    inside = [False]
+    held = [0]
+
+    async def build() -> Pair:
+        current[:] = [await build_pair(get_callback=echo_get(b"v"), set_callback=accept_set())]
+        inside[0] = False
+        return current[0]
+
+    async def turn() -> None:
+        await asyncio.sleep(0)
+        inside[0] = current[0].driver_a.session_lock.locked() or current[0].driver_b.session_lock.locked()
+
+    def invariants(pair: Pair) -> None:
+        held[0] += inside[0]
+        for comm in (pair.initiator, pair.responder):
+            assert comm._busy is False, comm.name + " is still marked busy"
+            assert comm._in_resync is False, comm.name + " is still inside a resync"
+        assert_unlocked(initiator=pair.driver_a.session_lock, responder=pair.driver_b.session_lock)
+
+    async def paired(own: "Coroutine[object, object, T]", other: "Coroutine[object, object, U]") -> "tuple[T, U]":
+        # The other end's call is a task cancelled at the same turn, never drained: an idle listener has no deadline.
+        peer = asyncio.create_task(other)
+        try:
+            mine = await own
+        except asyncio.CancelledError:
+            peer.cancel()
+            try:
+                await peer
+            except asyncio.CancelledError:  # expected; anything else is a real failure
+                pass
+            raise
+        return mine, await peer
+
+    async def set_path(pair: Pair) -> None:
+        sent, _ = await paired(pair.initiator.uart_set(1, bytes(range(1, PAYLOAD_SIZE + 5))), pair.responder.uart_listen())
+        assert sent is True
+
+    async def get_path(pair: Pair) -> None:
+        got, _ = await paired(pair.initiator.uart_get(1), pair.responder.uart_listen())
+        assert copied_out(got) == b"v"
+
+    async def listen_path(pair: Pair) -> None:
+        heard, got = await paired(pair.responder.uart_listen(), pair.initiator.uart_get(1))
+        assert (heard.cmd_id, copied_out(got)) == (1, b"v")
+
+    with PollRoundClock() as clock:
+        clock.pace(real=False)
+        for name, path in (("uart_set", set_path), ("uart_get", get_path), ("uart_listen", listen_path)):
+            held[0] = 0
+            turns = cancel_at_each_await(build, path, invariants, turn=turn)
+            assert held[0] > 0, f"{name}: no cancel in its {turns} turns landed with a session lock held"
+
+
 def test_two_declined_ids_in_rotation_do_not_refill_the_history_either() -> None:
     # Alternating declined ids are one code, W56: one slot, every refusal counted (C.7.1).
     pair = run(build_pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=returns((False, None)), set_callback=accept_set()), RUN_LIMIT_S)
@@ -3131,8 +3220,8 @@ def test_a_pull_callback_failing_mid_train_quiesces_like_any_other_fault() -> No
     # Chunk 1 is already sent and acknowledged by the time a pull callback is first asked for anything, so
     # every abort here leaves the peer mid-train: it drains for 1.5 x timeout while this side, without a
     # hold-off, is free to transmit into that window, where the drain swallows a real payload as a fault.
-    def aborting_pull(kind: str) -> "Any":
-        def pull(chunk: int, buf: memoryview) -> "Any":
+    def aborting_pull(kind: str) -> "_PullCallback":
+        def pull(chunk: int, buf: memoryview) -> int:
             if chunk != 2:
                 return len(buf)
             if kind == "short":
@@ -3168,6 +3257,7 @@ def test_a_pull_callback_failing_mid_train_quiesces_like_any_other_fault() -> No
 # A demonstration, deliberately not a constraint - the module is standalone and this use case
 # constrains nothing about its design (SPECIFICATION.md Part J.1). Sizes and command ids are the
 # ones legacy/dev_drivers/sensortask-dev.py actually deployed.
+
 
 _BSEC_GET_MEASUREMENTS = 0x20
 _BSEC_GET_STATE = 0x21
@@ -3218,13 +3308,13 @@ def test_the_legacy_bsec_command_set_still_runs_end_to_end() -> None:
             if result.cmd_id is not None and got is not None:
                 received[result.cmd_id] = got
 
-    async def system_status() -> "tuple[Any, ...] | None":
+    async def system_status() -> "tuple[int, ...] | None":
         res = copied_out(await bme.uart_get(_BSEC_GET_SYSTEM_STATE, exp_size=len(_BSEC_SYSTEM_STATE)))
         return None if res is None else struct.unpack("<bbbbL", res)
 
-    async def scenario() -> "dict[str, Any]":
+    async def scenario() -> "dict[str, object]":
         listener = asyncio.create_task(peer())
-        out: dict[str, Any] = {}
+        out: dict[str, object] = {}
         try:
             out["status"] = await system_status()
             out["start"] = await bme.uart_set(_BSEC_SET_START, None)  # a command with no payload

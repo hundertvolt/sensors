@@ -710,8 +710,8 @@ class WifiService(SensorReaderConfig):
         self._hotspot_started_once = False
         if self._conn_phase not in (_PHASE_HOTSPOT, _PHASE_DEACTIVATED, _PHASE_SILENT):
             # DEACTIVATED (no configuration) and SILENT survive a restart (A.4); HOTSPOT is kept only so reconn_wifi below leaves it
-            # through _leave_hotspot_mode(), after which STA starts a fresh streak with hotspot_started_once cleared, as legacy's restart did
-            # (legacy/firmware/python/CommonDrivers/async_connect.py:176-181).
+            # through _leave_hotspot_mode(), after which STA starts a fresh streak with hotspot_started_once cleared, as legacy's
+            # restart did (legacy/firmware/python/CommonDrivers/async_connect.py:176-181).
             self._conn_phase = _PHASE_STA_SEEKING
         self._hotspot_timer.deinit()
         self._hotspot_timer_running = False

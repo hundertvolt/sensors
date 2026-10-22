@@ -66,16 +66,16 @@ _BOOT_REACH_MAX = 64 * 1024  # worst live -46,272 (below the seam); the control 
 # A live tripwire only: the control device's suppressed arm still sits 746,944-778,880 B deep, so the control does not assert it.
 _BOOT_MEDIAN_DEPTH_MIN = 256 * 1024  # worst live 739,680 (2.82x)
 
-# How many new blocks may sit more than this far above the seam: zero live on every device, 105-112 on
-# the control device's suppressed arm. A band near the suppressed reach counts only its edge; the slack is for one future
-# large allocation that genuinely cannot fit a low hole, not for a drift in placement.
+# How many new blocks may sit more than this far above the seam: zero live on every device, 105-112 on the control
+# device's suppressed arm. A band near the suppressed reach counts only its edge; the slack is for one future large
+# allocation that genuinely cannot fit a low hole, not for a drift in placement.
 _HIGH_BAND = 32 * 1024
 # @tunable l0.boot_contiguity_high_band_blocks_max = 32
 _HIGH_BAND_BLOCKS_MAX = 32
 
-# How much deeper the live arm must place than the suppressed one. A ratio between the two arms of
-# the same run, so it needs no absolute bound and no unit - the strictest thing this file asserts.
-# Measured on the control device: the suppressed batch median and whole-sequence reach both sit ABOVE the seam, the live ones below.
+# How much deeper the live arm must place than the suppressed one. A ratio between the two arms of the same run, so it
+# needs no absolute bound and no unit - the strictest thing this file asserts. Measured on the control device: the
+# suppressed batch median and whole-sequence reach both sit ABOVE the seam, the live ones below.
 # @tunable l0.boot_contiguity_arm_depth_ratio_min = 1.5
 _ARM_DEPTH_RATIO_MIN = 1.5
 # @tunable l0.boot_contiguity_arm_reach_ratio_min = 4.0
@@ -206,9 +206,9 @@ def _blocks_above(before: HeapMap, after: HeapMap, band: int) -> int:
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_the_setup_batch_places_its_survivors_low(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
-    # The setup list's collects (SystemService.run_setups()): each one resets the allocator's
-    # free-scan index, so the next module's permanent objects take the lowest fitting holes instead
-    # of landing above the churn's high-water mark. Suppressing them takes the control device's from ~925 KB below the seam to ~155 KB above.
+    # The setup list's collects (SystemService.run_setups()): each one resets the allocator's free-scan index, so the next
+    # module's permanent objects take the lowest fitting holes instead of landing above the churn's high-water mark.
+    # Suppressing them takes the control device's from ~925 KB below the seam to ~155 KB above.
     maps = boot_probe(device, _ARM_LIVE).maps
     seam, after = maps["batch_00"], maps["after_batch"]
     depth, reach = -_median(seam, after), _reach(seam, after)

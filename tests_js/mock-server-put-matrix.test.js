@@ -1,7 +1,7 @@
 /**
- * PUT-behaviour matrix over every real writable field of every device's generated definitions
- * (deduplicated by derivation), against js/mock-server.js's fetch interception - six categories per field
- * (owner, 2026-08-24) (valid, special, omitted, resubmit-unchanged, out-of-range, wrong-type), matching SPECIFICATION.md Part A.8.
+ * PUT-behaviour matrix over every real writable field of every device's generated definitions (deduplicated by
+ * derivation), against js/mock-server.js's fetch interception - six categories per field (owner, 2026-08-24) (valid,
+ * special, omitted, resubmit-unchanged, out-of-range, wrong-type), matching SPECIFICATION.md Part A.8.
  */
 import { describe, expect, it } from "vitest";
 import samples from "../mockdata/samples.json";

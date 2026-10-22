@@ -1,6 +1,6 @@
 """SCD30 conformance probe, run identically on the bench chip and on the twin's fake: raw machine.I2C only, KEY=VALUE
-lines and DONE=1 for flash/test_chip_conformance.py to diff; replies go out raw, so CRCs are checked host-side.
-Two soft resets, no NVM-backed command (Interface Description 1.4.10). Waits are awaited: the chip measures meanwhile."""
+lines and DONE=1 for flash/test_chip_conformance.py to diff; replies go out raw, so CRCs are checked host-side. Two soft
+resets, no NVM-backed command (Interface Description 1.4.10). Waits are awaited: the chip measures meanwhile."""
 
 import asyncio
 import time

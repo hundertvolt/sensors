@@ -1,6 +1,6 @@
 """Covers tests_hardware/harness.py's resolve_board_device() over fabricated /sys, /dev and by-id trees: it delegates to
-the installer's resolve_board_serial() (MicroPython's by-id name and USB vendor ID, never a bare ttyACM scan) and returns
-the stable by-id symlink. No hardware - the directories are injectable."""
+the installer's resolve_board_serial() (MicroPython's by-id name and USB vendor ID, never a bare ttyACM scan) and
+returns the stable by-id symlink. No hardware - the directories are injectable."""
 
 import ast
 import sys

@@ -219,9 +219,9 @@ async def _wifi_log(conn: "WifiService") -> "tuple[int, list[tuple[str, int]]]":
 
 
 def test_stations_rule_settings_change_and_silent_mode_in_one_boot() -> None:
-    # (c) An unconfirmed stations check counts as no client (owner, 2026-10-08, paraphrase). (a) "Any change of credentials, no
-    # matter from which side, lands in the same mode as "initial connection attempt after a fresh boot"" (owner, 2026-10-08).
-    # (b) "Don't permanently switch WiFi off, only stop retrying to connect." (owner, 2026-10-08)
+    # (c) An unconfirmed stations check counts as no client (owner, 2026-10-08, paraphrase). (a) "Any change of
+    # credentials, no matter from which side, lands in the same mode as "initial connection attempt after a fresh boot""
+    # (owner, 2026-10-08). (b) "Don't permanently switch WiFi off, only stop retrying to connect." (owner, 2026-10-08)
     async def scenario() -> None:
         module = await _boot()
         conn, pixel, webserver = module.conn, module.neopixel, module.webserver

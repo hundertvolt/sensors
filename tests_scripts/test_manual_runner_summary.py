@@ -1,6 +1,6 @@
-"""The manual-mode runner (tests_hardware/manual/runner.py) ends every run with the summary block (SPECIFICATION.md E.10):
-scripted runs of stub steps check the counts, levels and exit codes; the pull steps run against a faked board and clock,
-recording their latencies; and a fresh interpreter lists every step, reaching harness and buildgen on its own."""
+"""The manual-mode runner (tests_hardware/manual/runner.py) ends every run with the summary block (SPECIFICATION.md
+E.10): scripted runs of stub steps check the counts, levels and exit codes; the pull steps run against a faked board and
+clock, recording their latencies; and a fresh interpreter lists every step, reaching harness and buildgen on its own."""
 
 import os
 import subprocess

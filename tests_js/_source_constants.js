@@ -44,3 +44,17 @@ export function readObjectConst(source, name) {
     }
     return table;
 }
+
+/**
+ * A top-level `const NAME = new Set([<string>, ...]);` read as its strings, never evaluated.
+ * @param {string} source
+ * @param {string} name
+ * @returns {string[]}
+ */
+export function readStringSetConst(source, name) {
+    const match = new RegExp(`^(?:export )?const ${escaped(name)} = new Set\\(\\[(?<body>[^\\]]*)\\]\\);$`, "mu").exec(source);
+    if (match?.groups?.body === undefined) {
+        throw new Error(`no const ${name} in source`);
+    }
+    return [...match.groups.body.matchAll(/"(?<text>[^"]*)"/gu)].map((entry) => entry.groups?.text ?? "");
+}

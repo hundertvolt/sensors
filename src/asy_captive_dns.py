@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0 AND MIT
 # Apache-2.0 covers DNSQuery (from its main.py, changes per SS4(b)), MIT the rest - THIRD_PARTY_LICENSES.md.
 
-"""Captive-portal DNS spoofer for hotspot/AP mode. CaptiveDNS.run() runs while the device broadcasts
-its fallback hotspot; every on-subnet A/ANY query gets a canned A record pointing back at the AP's own IP, any other type an empty NOERROR reply.
-Malformed/off-subnet/truncated input is dropped, never raised.
+"""Captive-portal DNS spoofer for hotspot/AP mode. CaptiveDNS.run() runs while the device broadcasts its fallback
+hotspot; every on-subnet A/ANY query gets a canned A record pointing back at the AP's own IP, any other type an empty
+NOERROR reply. Malformed/off-subnet/truncated input is dropped, never raised.
 """
 
 import asyncio
@@ -95,15 +95,7 @@ class CaptiveDNS:
                         # One yield per datagram: while a flood keeps the socket ready nothing below this loop yields (on rp2
                         # lwIP refills the queue from PendSV while Python runs), so without it no other task would get a turn.
                         await asyncio.sleep(0)
-                        try:
-                            # addr[0] isn't guaranteed to be a str (confirmed: can come back as a
-                            # plain int) - treated like off-subnet, not the outer except's 3s backoff.
-                            addr_int = ipv4_to_int(addr[0])
-                        except MemoryError:
-                            raise  # a heap failure is ours, not a malformed sender: the catch-all below persists it
-                        except Exception as e:
-                            report_if_fatal(e)
-                            addr_int = None
+                        addr_int = ipv4_to_int(addr[0])  # the host is a str (extmod/modlwip.c:417-425, v1.29.0; the twin's shim): None, never a raise
                         on_subnet = addr_int is not None and (addr_int & netmask_int) == network
                         if not on_subnet:
                             self.pr.evt("Ignoring DNS request from off-subnet or malformed address", addr[0])

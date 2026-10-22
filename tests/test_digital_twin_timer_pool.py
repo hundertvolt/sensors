@@ -1,6 +1,6 @@
-"""rp2's 16-alarm pool exhausted under the generated graph of the device named by TEST_DEVICE: each failed arm is handled
-in place, none reboots (the uptime timer's rule: owner, 2026-07-18, paraphrase; a reader's: SPECIFICATION.md C.9). The
-Timer finaliser case is not reachable here (digital_twin/README.md fidelity table)."""
+"""rp2's 16-alarm pool exhausted under the generated graph of the device named by TEST_DEVICE: each failed arm is
+handled in place, none reboots (the uptime timer's rule: owner, 2026-07-18, paraphrase; a reader's:
+SPECIFICATION.md C.9). The Timer finaliser case is not reachable here (digital_twin/README.md fidelity table)."""
 
 import os
 import sys
@@ -31,6 +31,7 @@ import run_generic_integration  # noqa: E402 - imported after the prewarm and th
 from _async_harness import cancel, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
+from _fake_time import DrivenTime  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _src_const import src_const  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -48,7 +49,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Coroutine
     from typing import Protocol, TypeVar
 
     from launch import _Plan
@@ -77,7 +78,7 @@ _RR_MAGIC = src_const("src/asy_system_service.py", "_RR_MAGIC")
 _WAIT_S = 20.0
 # @tunable l2.timer_pool_run_bound_s = 60.0
 _RUN_BOUND_S = 60.0
-_POLL_S = 0.1  # how often a wait below looks again
+_POLL_S = 0.1  # how often a real-time wait below looks again
 # The reading field that proves a driver read (as the bus-hazard tier's _I2C_DRIVER_HEALTH_FIELD).
 _HEALTH_FIELD = {"scd30": "CO2", "sgp40": "VOC", "bmp3xx": "Pres", "isl29125": "Lux"}
 
@@ -112,6 +113,19 @@ async def _boot(pool_free: int) -> "WDT":
     return watchdog
 
 
+async def _driven(clock: "DrivenTime", what: str, coro: "Coroutine[object, object, T]") -> "T":
+    # `coro` as a task, the driven clock elapsed until it ends: a step whose own sleeps run on that clock.
+    task = asyncio.get_event_loop().create_task(coro)
+    await _until(clock, what, task.done)
+    return await task
+
+
+def _driven_modules() -> "list[object]":
+    # Every src service and driver holding asyncio, and the twin's machine (its Timers, WDT, chip clocks) and network:
+    # one clock for all of them, so a tick one module reads is diffed by another on the same clock.
+    return [m for name, m in sorted(sys.modules.items()) if (name.startswith("asy_") or name in ("machine", "network")) and getattr(m, "asyncio", None) is asyncio]
+
+
 async def _errors(source: object, number: int) -> int:
     # How many slots of `source`'s persisted history hold E `number`.
     log = await source.get_error_counter()  # type: ignore[attr-defined]  # every product module has it
@@ -143,6 +157,13 @@ def _restarted(first: "list[asyncio.Task[None] | None]", ended: "list[int]") -> 
         return all(module.sysfunct._tasks[i] not in (None, first[i]) for i in ended)
 
     return check
+
+
+async def _run_on_clock(scenario: "Callable[[DrivenTime], Coroutine[object, object, None]]") -> None:
+    # `scenario` booted and run on one driven clock (tests/_fake_time.py), the modules put back after. A UART-wired plan
+    # too: its link reads wire time off the twin's plain clock, digital_twin/_flash_stall.py's plain_us() (agent, 2026-10-22).
+    with DrivenTime(*_driven_modules(), sleeps=True) as clock:
+        await scenario(clock)
 
 
 def _sources(reader: "SensorReader") -> "list[SensorReader]":
@@ -186,7 +207,14 @@ async def _supervise(starters: "list[Callable[[], asyncio.Task[None]]]", names: 
     return [asyncio.get_event_loop().create_task(sysfunct.supervise_tasks())]
 
 
-async def _until(what: str, condition: "Callable[[], bool]") -> None:
+async def _until(clock: "DrivenTime | None", what: str, condition: "Callable[[], bool]") -> None:
+    # The driven clock elapsed wake by wake until `condition` holds, or with none a real-time poll; within _WAIT_S.
+    if clock is not None:
+        try:
+            await clock.run_until(condition, int(_WAIT_S * 1000))
+        except AssertionError as e:
+            raise AssertionError(f"{device}: {what} - {e}") from None
+        return
     waited = 0.0
     while not condition():
         if waited >= _WAIT_S:
@@ -198,24 +226,24 @@ async def _until(what: str, condition: "Callable[[], bool]") -> None:
 def test_a_reader_whose_trigger_cannot_arm_ends_restarts_and_reads_once_the_pool_frees() -> None:
     # Per reader, alone on its supervisor: the failed arm ends its task with one E TIMER, the supervisor restarts it,
     # and once the pool frees it reads. One at a time: every reader dying at once overruns the restart budget (below).
-    async def scenario() -> None:
-        watchdog = await _boot(_POOL)
+    async def scenario(clock: "DrivenTime") -> None:
+        watchdog = await _driven(clock, "the boot never finished", _boot(_POOL))
         sysfunct = module.sysfunct
         for key, reader in _readers():
             feeding: list[asyncio.Task[None]] = []
             machine.set_alarm_pool_free(0)
-            supervisor = await _supervise(reader.get_task_starters(), task_names_of(reader), reader.get_trigger_starters(), reader.get_timer_starters())
+            supervisor = await _driven(clock, key + "'s tasks and timers never started", _supervise(reader.get_task_starters(), task_names_of(reader), reader.get_trigger_starters(), reader.get_timer_starters()))
             try:
                 first = list(sysfunct._tasks)
-                await _until(key + "'s task never ended on its failed arm", _any_ended(first))
+                await _until(clock, key + "'s task never ended on its failed arm", _any_ended(first))
                 ended = [i for i, t in enumerate(first) if t is not None and t.done()]
-                await _until(key + "'s task was never restarted", _restarted(first, ended))
+                await _until(clock, key + "'s task was never restarted", _restarted(first, ended))
                 assert await _errors(reader, code("E", "TIMER")) >= 1, f"{device}: {key} persisted no E TIMER for its failed arm"
                 machine.set_alarm_pool_free(_POOL)
                 field = _HEALTH_FIELD[key.split("_", 1)[0]]
                 before = reader._datastruct
                 feeding = _start_sources(reader)  # an SGP40 measures only with its compensation inputs live
-                await _until(key + " never read once the pool freed", _read_after(reader, before, field))
+                await _until(clock, key + " never read once the pool freed", _read_after(reader, before, field))
             finally:
                 for task in feeding:
                     await cancel(task)
@@ -225,40 +253,41 @@ def test_a_reader_whose_trigger_cannot_arm_ends_restarts_and_reads_once_the_pool
             assert not sysfunct._reset_armed and machine.reset_count == 0, f"{device}: {key}'s failed arm armed a reset"
         assert watchdog.would_have_triggered_count == 0
 
-    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+    run_timed(_run_on_clock(scenario), timeout_s=_RUN_BOUND_S)
 
 
 def test_the_tick_timers_degrade_in_place_and_rearm_once_the_pool_frees() -> None:
     # SYSTEM's uptime runs on its one-second fallback with one E TIMER (the boot signature it feeds resolves only after
     # system.ntp_wait_s offline); once the pool frees, SYSTEM's, NTP's and WiFi's tick timers re-arm. No reset arms.
-    async def scenario() -> None:
-        watchdog = await _boot(_POOL)
+    async def scenario(clock: "DrivenTime") -> None:
+        watchdog = await _driven(clock, "the boot never finished", _boot(_POOL))
         sysfunct, ntp, conn = module.sysfunct, module.ntp, module.conn
         machine.set_alarm_pool_free(0)
         modules = (sysfunct, ntp, conn)
-        supervisor = await _supervise([s for m in modules for s in m.get_task_starters()], task_names_of(*modules), [], [s for m in modules for s in m.get_timer_starters()])
+        supervisor = await _driven(clock, "SYSTEM's, NTP's and WiFi's tasks never started", _supervise([s for m in modules for s in m.get_task_starters()], task_names_of(*modules), [], [s for m in modules for s in m.get_timer_starters()]))
         await ntp.ntp_force_sync()  # main()'s first sync request: the sync loop's wake, where it retries its arms
         try:
             uptime = await sysfunct.get_uptime()
-            await _until("SYSTEM's uptime stood still on its fallback", lambda: sysfunct._uptime.read() > uptime)
+            await _until(clock, "SYSTEM's uptime stood still on its fallback", lambda: sysfunct._uptime.read() > uptime)
             assert sysfunct._tick_failed is True, "the uptime tick armed from an empty pool"
             assert await _errors(sysfunct, code("E", "TIMER")) == 1, f"{device}: SYSTEM's failed uptime arm is not one E TIMER"
             assert (ntp._check_armed, ntp._tick_armed, conn._tick_armed) == (False, False, False), "a tick timer armed from an empty pool"
             machine.set_alarm_pool_free(_POOL)
-            await _until("SYSTEM's uptime tick never re-armed", lambda: not sysfunct._tick_failed)
-            await _until("NTP's timers never re-armed", lambda: ntp._tick_armed is True and ntp._check_armed is True)
-            await _until("WiFi's uptime tick never re-armed", lambda: conn._tick_armed is True)
+            await _until(clock, "SYSTEM's uptime tick never re-armed", lambda: not sysfunct._tick_failed)
+            await _until(clock, "NTP's timers never re-armed", lambda: ntp._tick_armed is True and ntp._check_armed is True)
+            await _until(clock, "WiFi's uptime tick never re-armed", lambda: conn._tick_armed is True)
             assert not sysfunct._reset_armed and machine.reset_count == 0, f"{device}: an exhausted pool armed a reset"
             assert watchdog.would_have_triggered_count == 0
         finally:
             await _stop_graph(supervisor)
 
-    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+    run_timed(_run_on_clock(scenario), timeout_s=_RUN_BOUND_S)
 
 
 def test_a_reboot_whose_reset_timer_cannot_arm_starves_the_watchdog_instead() -> None:
     # The reboot command with the pool empty: the shutdown runs, its one-shot cannot arm, so feeding stops for good and
-    # the record reads 6; nothing calls machine.reset() itself (owner, 2026-09-30, paraphrase).
+    # the record reads 6; nothing calls machine.reset() itself (owner, 2026-09-30, paraphrase). Real time throughout:
+    # `took` measures the run-out against the twin WDT's own clock (agent, 2026-10-22).
     async def scenario() -> None:
         watchdog = await _boot(_POOL)
         sysfunct = module.sysfunct
@@ -266,12 +295,12 @@ def test_a_reboot_whose_reset_timer_cannot_arm_starves_the_watchdog_instead() ->
         try:
             machine.set_alarm_pool_free(0)
             assert await sysfunct.reboot_system() is True
-            await _until("the shutdown sequence never finished", lambda: sysfunct._shutdown_task is not None and sysfunct._shutdown_task.done())
+            await _until(None, "the shutdown sequence never finished", lambda: sysfunct._shutdown_task is not None and sysfunct._shutdown_task.done())
             assert sysfunct._force_watchdog_starve is True, "the failed arm left the watchdog fed"
             record = machine.mem_backup(0)
             assert (record[0], record[1]) == (_RR_MAGIC, _RR_STARVE_ARM_FAILED), [hex(word) for word in record]
             last_feed = watchdog.feed_times[-1]
-            await _until("the starved watchdog never ran out", lambda: watchdog.would_have_triggered_count >= 1)
+            await _until(None, "the starved watchdog never ran out", lambda: watchdog.would_have_triggered_count >= 1)
             took = time.ticks_diff(time.ticks_ms(), last_feed)
             assert took <= watchdog.timeout + 1000, f"{device}: the watchdog ran out {took} ms after the last feed"
             assert (machine.reset_count, machine.bootloader_count) == (0, 0), "the starve fallback reset the board itself"

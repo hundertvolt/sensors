@@ -1,5 +1,5 @@
-"""The NTP store the twin plants before a boot holds every key of the product's NTP store, each one the twin does not set
-at the product's own default, so a fresh boot warns about none (the config manager warns once per missing key). Both
+"""The NTP store the twin plants before a boot holds every key of the product's NTP store, each one the twin does not
+set at the product's own default, so a fresh boot warns about none (the config manager warns once per missing key). Both
 sides are read by AST, never imported."""
 
 import ast

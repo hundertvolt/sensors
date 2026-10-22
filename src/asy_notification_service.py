@@ -1,6 +1,8 @@
-"""Generic threshold-triggered LED notification signalling: `NotificationSignal` (per-condition data
-holder) and `NotificationService` (shared sleep-window/interval/`AutoOn`/flash brightness+duration).
-Promoted from improved-quality/neopixel_signal.py's `airquality_auto_signal()`/`auto_led_override()` (see CLAUDE.md/BACKLOG.md); drives an LED through `request_signal_cb`, decoupled from any concrete LED implementation.
+"""Generic threshold-triggered LED notification signalling: `NotificationSignal` (per-condition data holder) and
+`NotificationService` (shared sleep-window/interval/`AutoOn`/flash brightness+duration).
+
+Promoted from improved-quality/neopixel_signal.py's `airquality_auto_signal()`/`auto_led_override()` (see
+CLAUDE.md/BACKLOG.md); drives an LED through `request_signal_cb`, decoupled from any concrete LED implementation.
 """
 # Signals are passed at construction; a refused one is printed at once and persisted by setup().
 

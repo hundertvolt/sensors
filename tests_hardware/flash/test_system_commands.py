@@ -1,6 +1,6 @@
-"""Flash-tier automated tests: the system commands on the bench board over USB, through the webserver's dispatch into the
-generated callback over a scratch config directory - the deletes, the erase and its feed gaps, the refusals, the states,
-a hung step, a reset mid-erase and the bootloader; each saves the FRAM evidence first and reads the attribution after."""
+"""Flash-tier automated tests: the system commands on the bench board over USB, through the webserver's dispatch into
+the generated callback over a scratch config dir - the deletes, the erase and its feed gaps, the refusals and states, a
+hung step, a reset mid-erase and the bootloader; each saves the FRAM evidence first, then reads the attribution."""
 
 import json
 import subprocess

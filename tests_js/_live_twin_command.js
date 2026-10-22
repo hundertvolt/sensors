@@ -145,9 +145,9 @@ function checkClock(testTimeoutMs) {
 }
 
 /**
- * Closes the check's own browser context within one twin stop. Closing the context disposes it with every page in it, where a
- * page's own close waits for its target to detach: Chrome 153's headless shell never detaches a page closed just as a second
- * failed navigation commits its error page, and the check's pages then kept loading the next twin.
+ * Closes the check's own browser context within one twin stop. Closing the context disposes it with every page in it,
+ * where a page's own close waits for its target to detach: Chrome 153's headless shell never detaches a page closed just
+ * as a second failed navigation commits its error page, and the check's pages then kept loading the next twin.
  * @param {import("playwright").BrowserContext[]} contexts the check's own context, once it has opened
  * @param {import("playwright").Page[]} pages its pages, named when the close outlasts the bound
  * @returns {Promise<Error | null>} why the close was still pending at that bound, or null
@@ -523,9 +523,9 @@ async function reloadAfterDrain(pages, index, tracker, clock, firstPassEnded) {
 }
 
 /**
- * A full connection ceiling of real-browser tabs against one live twin, all navigating at once: each load completes
- * or fails at the connection level within the page's own request cap, and every tab that did not load then loads on one
- * reload of its own, made after the others drain and while they are held (SPECIFICATION.md Parts H.7, H.7.1; agent, 2026-10-13).
+ * A full connection ceiling of real-browser tabs against one live twin, all navigating at once: each load completes or
+ * fails at the connection level within the page's own request cap, and every tab not loaded then loads on one reload of
+ * its own, made after the others drain and while they are held (SPECIFICATION.md Parts H.7, H.7.1; agent, 2026-10-13).
  * @param {{context: import("playwright").BrowserContext}} ctx
  * @param {string} device a devices/<device>.toml stem; its own ceiling sizes the tab count
  * @param {number} testTimeoutMs the calling test's own timeout (checkClock())

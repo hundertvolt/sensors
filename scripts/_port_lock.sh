@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Sourced lock for the product-fixed ports: one runner per port at a time, the holder's descendants pass, a dead holder's
-# lock is taken over. A lock is ${XDG_RUNTIME_DIR:-/tmp}/sensors-port-<port>.lock/ holding files pid and runner; the owner
-# chain travels down as SENSORS_PORT_LOCK_OWNER (pids) and SENSORS_PORT_LOCKS_HELD (ports), both space-separated.
+# Sourced lock for the product-fixed ports: one runner per port at a time, the holder's descendants pass, a dead
+# holder's lock is taken over.
+#
+# A lock is ${XDG_RUNTIME_DIR:-/tmp}/sensors-port-<port>.lock/ holding files pid and runner; the owner chain travels
+# down as SENSORS_PORT_LOCK_OWNER (pids) and SENSORS_PORT_LOCKS_HELD (ports), both space-separated.
 (return 0 2>/dev/null) || { echo "error: source scripts/_port_lock.sh, do not run it" >&2; exit 2; }
 
 _port_lock_alive() {

@@ -1,5 +1,5 @@
-"""Tests scripts/_digital_twin_scenarios.py's frame without booting a twin: the registry (a goal per scenario, known
-driver filters, nothing from tests/), the selection's named skips and deselections, which scenarios share a boot and in what
+"""scripts/_digital_twin_scenarios.py's frame without booting a twin: the registry (a goal per scenario, known driver
+filters, nothing from tests/), the selection's named skips and deselections, which scenarios share a boot and in what
 order, the idle check between them, the port band, a held port 53, the refusals, the run record and each boot's end."""
 
 import ast
@@ -393,7 +393,7 @@ _SHUTDOWN_LINE = (
     " No. of 1-blocks: 14, 2-blocks: 4, max blk sz: 9, max free sz: 64730\n"
     "digital_twin/run_generic_integration.py [fixture_device] shutdown: would_have_triggered_count=0 feed_count=1 largest_feed_gap_ms=1 "
     "wdt_timeout_ms=8000 mem_backup: r0=0x00000000,0x00000000,0x00000000,0x00000000 public_destinations_refused=0 flash_stall_longest_ms=0 "
-    "gc_block_bytes=32"
+    "gc_block_bytes=32 fram_writes=0 fram_writes_by=- fram_silent_writes=0 fram_silent_wrens=0"
 )
 
 

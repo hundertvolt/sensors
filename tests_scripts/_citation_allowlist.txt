@@ -86,5 +86,4 @@ tests_hardware/README.md	tests_hardware/bus_topology.py
 tests_scripts/conftest.py	devices/zz_test_*.toml
 tests_scripts/test_buildgen_validate.py	WP1
 tests_scripts/test_device_tomls.py	tests_hardware/bus_topology.py
-tests_scripts/test_digital_twin_generated_boot.py	Session 3
 tests_scripts/test_test_sh.py	devices/zz_test_*.toml

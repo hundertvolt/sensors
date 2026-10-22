@@ -1,5 +1,9 @@
-"""Digital-twin integration for the ISL29125's auto-range machinery: the real src/ driver against digital_twin/_isl29125_chip.py's stateful chip model, over the real bus fakes.
-This is the CI-every-commit version of the NeoPixel rig - continuity, hysteresis, colour invariance, requirement 17's dead-interrupt path and gain-ratio convergence, none of which any mock-tier test can prove because none of them has a chip whose gain actually changes."""
+"""Digital-twin integration for the ISL29125's auto-range machinery: the real src/ driver against
+digital_twin/_isl29125_chip.py's stateful chip model, over the real bus fakes.
+
+This is the CI-every-commit version of the NeoPixel rig - continuity, hysteresis, colour invariance, requirement 17's
+dead-interrupt path and gain-ratio convergence, none of which any mock-tier test can prove because none of them has a
+chip whose gain actually changes."""
 
 import asyncio
 import sys

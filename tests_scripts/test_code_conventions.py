@@ -1,6 +1,6 @@
-"""The machine-checkable code conventions (SPECIFICATION.md C.2, C.9, C.14.1, D.6, D.15, E.2) over src/, every device's
-generated modules and the pytest suites: the asy_ marker, _NAME equal to the measurement type, starter and task names, the
-errno=/wrnno= keyword, no print() or assert, one config-name helper, D.15 order, quoted TYPE_CHECKING names, no Test class."""
+"""Machine-checkable code conventions (SPECIFICATION.md C.2, C.9, C.14.1, D.6, D.15, E.2) over src/, each device's
+generated modules and pytest suites: asy_ marker, _NAME = the measurement type, starter and task names, errno=/wrnno=
+keyword, no print() or assert, one config-name helper, D.15 order, quoted TYPE_CHECKING names, no Test class."""
 
 import ast
 import re

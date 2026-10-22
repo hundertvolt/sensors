@@ -5,7 +5,7 @@ import asyncio
 
 from _async_harness import run
 from _error_codes import code
-from _fast_sleep import check_sleep_ms
+from _fake_time import DrivenTime
 from _fram_chip_fake import FakeMB85RS2MTA, FakeMB85RS64V
 from _src_const import src_const
 
@@ -27,9 +27,6 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
-    from typing import TypeVar
-
-    T = TypeVar("T")
 
 
 # @tunable l1.asy_fram_driver_lock_wait_s = 1.0
@@ -1007,39 +1004,26 @@ def test_setup_again_after_verify_present_failure_recovers() -> None:
     assert not fram.lost.is_set()
 
 
-class _RecordingWaitFor:
-    # Stands in for asy_fram_driver's asyncio: wait_for_ms() records the bound it is given, then runs
-    # the real mechanism on a 1 ms bound so the lock-busy case costs no real second.
-    def __init__(self) -> None:
-        self.timeouts_ms: list[int] = []
-
-    def __getattr__(self, name: str) -> object:
-        return getattr(asyncio, name)
-
-    def wait_for_ms(self, aw: "Coroutine[object, object, T]", timeout_ms: int) -> "Coroutine[object, object, T]":
-        check_sleep_ms(timeout_ms)
-        self.timeouts_ms.append(timeout_ms)
-        return asyncio.wait_for_ms(aw, 1)
-
-
 def test_verify_present_bounded_wait_returns_false_instead_of_hanging_when_lock_already_held() -> None:
-    # verify_present() takes the driver lock itself: inside an existing `async with fram:` it waits
-    # out its bounded timeout instead of hanging (asyncio.Lock is not reentrant).
+    # verify_present() takes the driver lock itself: inside an existing `async with fram:` it waits out its bounded
+    # timeout on driven time instead of hanging (asyncio.Lock is not reentrant).
     fram, _chip = _make_fram()
     run(_setup_fram(fram))
-    recorder = _RecordingWaitFor()
 
     async def scenario() -> bool:
-        async with fram:
-            return await fram.verify_present()
+        with DrivenTime(asy_fram_driver, sleeps=True) as clock:
+            async with fram:
+                probe = asyncio.create_task(fram.verify_present())
+                try:
+                    await clock.elapse(999)
+                    assert not probe.done(), "verify_present() gave up before its 1000 ms bound"
+                    await clock.elapse(1)
+                    assert probe.done(), "verify_present() still waits at its 1000 ms bound"
+                finally:
+                    probe.cancel()  # a no-op once it ended: a failed check leaves no task parked on the clock
+                return await probe
 
-    asy_fram_driver.asyncio = recorder  # type: ignore[assignment]
-    try:
-        result = run(scenario())
-    finally:
-        asy_fram_driver.asyncio = asyncio
-    assert result is False
-    assert recorder.timeouts_ms == [1000]  # one wait_for_ms() around the acquire, bounded at 1000 ms
+    assert run(scenario()) is False
     assert fram.initialized is True  # a lock-busy timeout isn't a device-identification failure
     assert not fram.lost.is_set()
     assert list(fram.pr.history).count(code("E", "LOCK_TIMEOUT")) == 1

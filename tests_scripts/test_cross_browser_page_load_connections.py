@@ -1,6 +1,6 @@
 """scripts/_page_load_connections.mjs under Node: the cross-browser smoke counts a page load's own connections (the
-document and its assets, SPECIFICATION.md H.7) apart from its data requests, and a connection still empty once the page's
-first data request went out (a browser's spare socket) on its own; the counting proxy is driven over real sockets."""
+document and its assets, SPECIFICATION.md H.7) apart from its data requests, and a connection still empty once the
+page's first data request went out (a browser's spare socket) on its own; the counting proxy driven on real sockets."""
 
 import json
 import shutil

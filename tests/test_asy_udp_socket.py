@@ -13,6 +13,8 @@ import time
 sys.path.insert(0, "digital_twin/unixport")  # the Unix-port UDP address shim (SPECIFICATION.md F.7 row 1)
 
 from _async_harness import run
+from _cancel_sweep import SocketLedger, assert_unlocked, cancel_at_each_await
+from _fake_time import DrivenTime
 from _fast_sleep import FastAsyncSleep
 from _port_bands import PortAllocator
 from _src_const import src_int
@@ -98,6 +100,21 @@ _HOST = "127.0.0.1"
 _PORTS = PortAllocator("asy_udp_socket")
 
 
+def _arms_off_target(make_exc: "Callable[[str], BaseException]", *, expect_line: bool) -> "list[tuple[str, object, list[str]]]":
+    # Every arm whose result is not its sentinel, or whose console lines are not the one expected line (or none),
+    # as (name, result, lines); each arm runs from this synchronous scope.
+    wrong = []
+    for arm, scenario, sentinel in _ARMS:
+        recorder = _PrintRecorder()
+        try:
+            got = run(scenario(make_exc(arm)))
+        finally:
+            recorder.restore()
+        if got != sentinel or recorder.lines != (["UDPSocket injected for " + arm] if expect_line else []):
+            wrong.append((arm, got, recorder.lines))
+    return wrong
+
+
 def _make_addr() -> tuple[str, int]:  # a fresh loopback port per call, so tests never contend for the same address
     return (_HOST, _make_port())
 
@@ -106,10 +123,50 @@ def _make_port() -> int:  # a fresh port number only, for tests that build their
     return _PORTS.next()
 
 
+async def _ntp_shaped_fetch(addr: tuple[str, int], timeout_ms: int) -> "tuple[bool, bytes | None, bool]":
+    # asy_ntp_client.py's _fetch_ntp_reply() shape: no reply is awaited for a request that was not sent, and
+    # the teardown runs in finally. Returns (sent, reply, torn down); no except here, so any raise fails the test.
+    ntp_request = b"\x1b" + bytearray(47)
+    cli = UDPSocket(addr, mode="client")
+    msg: bytes | None = None
+    try:
+        sent = await cli.write(ntp_request, timeout_ms=timeout_ms) is not None
+        if sent:
+            msg, _ = await cli.recvfrom(_NTP_PACKET_LEN, timeout_ms=timeout_ms)
+    finally:
+        torn_down = await cli.disconnect()
+    return sent, msg, torn_down
+
+
 def _raw(addr: tuple[str, int]) -> tuple[str, int]:
     # This Unix build's raw socket takes getaddrinfo()'s opaque sockaddr, never a tuple (SPECIFICATION.md F.7
     # row 1): only _AdversarialPeer's own socket uses it, every UDPSocket gets the plain tuple.
     return socket.getaddrinfo(addr[0], addr[1])[0][-1]  # type: ignore[return-value]
+
+
+def _record_ready_sleeps(timeout_ms: int, stop_after: int = 0) -> "list[int]":
+    # ready(POLLIN) on a bound socket nothing ever reaches; a wait with no deadline ends at the recorder's stop_after.
+    recorder = _RecordingAsyncio(asy_udp_socket.asyncio, stop_after)
+    asy_udp_socket.asyncio = recorder  # type: ignore[assignment]
+    try:
+        sock = UDPSocket(_make_addr(), mode="server")
+        try:
+            run(sock.ready(select.POLLIN, timeout_ms=timeout_ms))
+            assert not stop_after, "ready() returned with nothing to read and no deadline"
+        except _EnoughRoundsError:
+            pass
+        finally:
+            run(sock.disconnect())
+    finally:
+        asy_udp_socket.asyncio = recorder._real
+    return recorder.sleep_ms_calls
+
+
+def _unbindable_addr() -> tuple[str, int]:
+    # 10.255.255.254 is never a local interface address in this environment, so bind() there
+    # raises OSError(EADDRNOTAVAIL) - a deterministic forced bind() failure. A same-port "blocker"
+    # socket would not work: SO_REUSEADDR, set by _connect() itself, lets a second UDP socket bind.
+    return ("10.255.255.254", 51999)
 
 
 # The shipped values, read from source (tests/_src_const.py).
@@ -525,13 +582,13 @@ class _EnoughRoundsError(Exception):
 
 
 class _RecordingAsyncio:
-    # asyncio is a frozen Python package whose attributes tests may assign (test_asy_bmp3xx_driver.py patches asyncio.sleep);
-    # this wraps it instead so the recording also sees ready()'s own sleep_ms() calls through asy_udp_socket's module-level
-    # name, the way _RaisingSocketModule replaces the read-only C `socket`. stop_after > 0 ends a wait with no deadline.
+    # asyncio is a frozen Python package whose attributes tests may assign (test_asy_bmp3xx_driver.py patches
+    # asyncio.sleep); this wraps it instead so the recording also sees ready()'s own sleep_ms() calls through
+    # asy_udp_socket's module-level name, the way _RaisingSocketModule replaces the read-only C `socket`.
     def __init__(self, real: "ModuleType", stop_after: int = 0) -> None:
         self._real = real
         self.sleep_ms_calls: list[int] = []
-        self._stop_after = stop_after
+        self._stop_after = stop_after  # stop_after > 0 ends a wait with no deadline
 
     def __getattr__(self, name: str) -> object:
         return getattr(self._real, name)
@@ -544,24 +601,6 @@ class _RecordingAsyncio:
         # wrapper's own callers (ready()'s poll loop) do await what it hands back.
         sleeper: Awaitable[None] = self._real.sleep_ms(ms)
         return sleeper
-
-
-def _record_ready_sleeps(timeout_ms: int, stop_after: int = 0) -> "list[int]":
-    # ready(POLLIN) on a bound socket nothing ever reaches; a wait with no deadline ends at the recorder's stop_after.
-    recorder = _RecordingAsyncio(asy_udp_socket.asyncio, stop_after)
-    asy_udp_socket.asyncio = recorder  # type: ignore[assignment]
-    try:
-        sock = UDPSocket(_make_addr(), mode="server")
-        try:
-            run(sock.ready(select.POLLIN, timeout_ms=timeout_ms))
-            assert not stop_after, "ready() returned with nothing to read and no deadline"
-        except _EnoughRoundsError:
-            pass
-        finally:
-            run(sock.disconnect())
-    finally:
-        asy_udp_socket.asyncio = recorder._real
-    return recorder.sleep_ms_calls
 
 
 def test_ready_with_a_deadline_polls_at_the_transaction_rate() -> None:
@@ -965,21 +1004,6 @@ _ARMS: "tuple[tuple[str, Callable[[BaseException], Coroutine[object, object, obj
 )
 
 
-def _arms_off_target(make_exc: "Callable[[str], BaseException]", *, expect_line: bool) -> "list[tuple[str, object, list[str]]]":
-    # Every arm whose result is not its sentinel, or whose console lines are not the one expected line (or none),
-    # as (name, result, lines); each arm runs from this synchronous scope.
-    wrong = []
-    for arm, scenario, sentinel in _ARMS:
-        recorder = _PrintRecorder()
-        try:
-            got = run(scenario(make_exc(arm)))
-        finally:
-            recorder.restore()
-        if got != sentinel or recorder.lines != (["UDPSocket injected for " + arm] if expect_line else []):
-            wrong.append((arm, got, recorder.lines))
-    return wrong
-
-
 def test_an_allocation_failure_in_each_arm_prints_its_text_and_keeps_the_sentinel() -> None:
     # Injected text worded clear of the memory gates' markers; a real failure's own text is meant to trip them.
     wrong = _arms_off_target(lambda arm: MemoryError("injected for " + arm), expect_line=True)
@@ -1114,13 +1138,6 @@ def test_ready_survives_a_concurrent_disconnect_mid_poll_loop() -> None:
 # ---------------------------------------------------------------------------
 # _connect() retry/self-heal
 # ---------------------------------------------------------------------------
-
-
-def _unbindable_addr() -> tuple[str, int]:
-    # 10.255.255.254 is never a local interface address in this environment, so bind() there
-    # raises OSError(EADDRNOTAVAIL) - a deterministic forced bind() failure. A same-port "blocker"
-    # socket would not work: SO_REUSEADDR, set by _connect() itself, lets a second UDP socket bind.
-    return ("10.255.255.254", 51999)
 
 
 def test_connect_self_heals_after_a_failed_bind() -> None:
@@ -1323,21 +1340,6 @@ def test_recvfrom_detects_pollerr_instead_of_waiting_out_the_full_timeout() -> N
 # checked write, acquire-use-release) rather than importing implementation details - proving the
 # contract is robust protects a future refactored caller too, not just today's.
 # ---------------------------------------------------------------------------
-
-
-async def _ntp_shaped_fetch(addr: tuple[str, int], timeout_ms: int) -> "tuple[bool, bytes | None, bool]":
-    # asy_ntp_client.py's _fetch_ntp_reply() shape: no reply is awaited for a request that was not sent, and
-    # the teardown runs in finally. Returns (sent, reply, torn down); no except here, so any raise fails the test.
-    ntp_request = b"\x1b" + bytearray(47)
-    cli = UDPSocket(addr, mode="client")
-    msg: bytes | None = None
-    try:
-        sent = await cli.write(ntp_request, timeout_ms=timeout_ms) is not None
-        if sent:
-            msg, _ = await cli.recvfrom(_NTP_PACKET_LEN, timeout_ms=timeout_ms)
-    finally:
-        torn_down = await cli.disconnect()
-    return sent, msg, torn_down
 
 
 def test_ntp_client_pattern_end_to_end_success() -> None:
@@ -1624,20 +1626,23 @@ def test_concurrent_caller_joins_an_in_flight_connect_instead_of_a_premature_non
     bad_addr = _unbindable_addr()
     good_addr = _make_addr()
 
-    async def scenario() -> tuple[bool, int | None]:
+    async def scenario(clock: DrivenTime) -> tuple[bool, int | None]:
         sock = UDPSocket(bad_addr, mode="server")
         try:
             a_task = asyncio.create_task(sock._connect())
-            await asyncio.sleep(_FIRST_ATTEMPT_S)  # A has failed its first attempt, is backing off
+            # A has failed its first attempt and is backing off, holding the lock, on the driven clock
+            await clock.run_until(lambda: clock.wakes() == [_RETRY_BACKOFF_MS] and sock._connect_lock.locked(), 0)
             sock._addr = good_addr  # the fault clears while A still holds the lock
             b_task = asyncio.create_task(sock.sendto(b"x", good_addr))
+            clock.advance(_RETRY_BACKOFF_MS)
             await a_task
             b_result = await b_task
             return sock.connected, b_result
         finally:
             await sock.disconnect()
 
-    connected, b_result = run(scenario())
+    with DrivenTime(asy_udp_socket, sleeps=True) as clock:
+        connected, b_result = run(scenario(clock), _CONNECT_BOUND_S)
     assert connected is True
     assert b_result == 1  # len(b"x") - B's call succeeded once A's retry succeeded, not None
 
@@ -1705,6 +1710,45 @@ def test_cancelling_a_task_waiting_on_the_connect_lock_leaves_it_healthy() -> No
     a_side_ok, lock_still_healthy = run(scenario())
     assert a_side_ok
     assert lock_still_healthy
+
+
+def test_cancelling_connect_or_ready_at_each_await_leaves_the_lock_free() -> None:
+    # Driven turns of half each path's one sleep (the connect's backoff, the listen's idle poll), so each wait is a cancel
+    # point. The sockets are real loopback descriptors, so their own poll stays real (the hang rule concerns non-fd objects).
+    good_addr = _make_addr()
+    ledger = SocketLedger(asy_udp_socket)
+
+    async def build_bad() -> UDPSocket:
+        return UDPSocket(_unbindable_addr(), mode="server")
+
+    async def build_good() -> UDPSocket:
+        return UDPSocket(good_addr, mode="server")
+
+    async def connect(sock: UDPSocket) -> None:
+        await sock._connect()
+
+    async def listen(sock: UDPSocket) -> None:
+        await sock.recvfrom(DNS_UDP_MAX)  # no deadline: the idle poll, until cancelled
+
+    def invariants(sock: UDPSocket) -> None:
+        assert_unlocked(_connect_lock=sock._connect_lock)
+        assert sock._sock is None or sock.connected, "a socket left half set up"
+
+    async def reconnect(sock: UDPSocket) -> None:
+        sock._addr = good_addr  # a following connect to a good address succeeds; then no socket is left open
+        await sock._connect()
+        connected = sock.connected
+        await sock.disconnect()
+        ledger.assert_closed()
+        assert connected, "the next connect to a good address failed"
+
+    with DrivenTime(asy_udp_socket, sleeps=True) as clock, ledger:
+        counts = (
+            cancel_at_each_await(build_bad, connect, invariants, turn=lambda: clock.elapse(_RETRY_BACKOFF_MS // 2), teardown=reconnect),
+            cancel_at_each_await(build_good, listen, invariants, max_steps=4, turn=lambda: clock.elapse(_POLL_IDLE_MS // 2), teardown=reconnect, endless=True),
+        )
+        assert clock.wakes() == [], clock.wakes()
+    assert counts == (2, 4), counts  # the connect completes at its backoff's end; the listen never does
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
-"""Tests for digital_twin/launch.py: the shared --fault/--hang vocabulary and parsers, parse_args(), the shared chip lookup
-and fault plumbing (pure, synchronous), and short end-to-end runs of main() over a fixture plan - a "does it work at all"
-check, not a precise-behaviour assertion."""
+"""Tests for digital_twin/launch.py: the shared --fault/--hang vocabulary and parsers, parse_args(), the shared chip
+lookup and fault plumbing (pure, synchronous), and short end-to-end runs of main() over a fixture plan - a
+"does it work at all" check, not a precise-behaviour assertion."""
 
 import asyncio
 import errno

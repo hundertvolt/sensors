@@ -1,6 +1,6 @@
-"""The three mypy configs and every lint scope, pinned against each other: the same strictness in all three passes,
-ruff and CI naming the eight scopes plus the generated tree, every Python file checked by some mypy run and by two
-runs only where a named reason says why, and CI's typecheck.sh given no paths, so it checks a local run's files (B.15)."""
+"""The three mypy configs and every lint scope, pinned against each other: the same strictness in all three passes, ruff
+and CI naming the eight scopes plus the generated tree, every Python file checked by some mypy run and by two runs only
+where a named reason says why, and CI's typecheck.sh given no paths, so it checks a local run's files (B.15)."""
 
 import configparser
 import fnmatch

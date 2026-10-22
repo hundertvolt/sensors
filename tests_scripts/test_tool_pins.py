@@ -1,6 +1,6 @@
 """Every dev tool is pinned exactly and the pin agrees with what uv.lock records and resolves, uv itself is pinned once,
 and Node's majors agree (.nvmrc, @types/node, engines). Parsed, never run: `uv lock --check` passes a lock whose
-manifest and resolved versions disagree, which this catches. The PEP 723 coverage pin is test_script_metadata_pins.py's."""
+manifest and resolved versions disagree; this catches it. The PEP 723 coverage pin is test_script_metadata_pins.py's."""
 
 import json
 import re

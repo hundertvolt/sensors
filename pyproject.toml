@@ -179,15 +179,15 @@ max-returns = 10
 # under CPython. tests_scripts/test_ruff_exemptions_live.py fails on an entry that no longer fires.
 [tool.ruff.lint.per-file-ignores]
 # No pathlib (PTH), no async file I/O - every flash write is reachable only through the REST PUT path, SPECIFICATION.md
-# F.2 (ASYNC230) - no contextlib in the frozen build (SIM105), no PEP 448 unpacking in displays (RUF005), and zip() takes
-# no keyword, so strict= raises TypeError (B905; py/objzip.c, v1.29.0).
+# F.2 (ASYNC230) - no contextlib in the frozen build (SIM105), no PEP 448 unpacking in displays (RUF005), and zip()
+# takes no keyword, so strict= raises TypeError (B905; py/objzip.c, v1.29.0).
 #
 # TRY003/EM101/EM102 add exception classes and locals on the error path for no behavioural gain on a 264KB-SRAM target
 # (Part D.4).
 "src/**" = ["ASYNC230", "B905", "EM101", "EM102", "PTH", "RUF005", "SIM105", "TRY003"]
 # The generated device modules: build_system() binds the device graph to the module globals the collectors and main()
-# read (PLW0603), and web_host defaults to every interface (S104, as the S104 block below). Any other finding is fixed at
-# the template.
+# read (PLW0603), and web_host defaults to every interface (S104, as the S104 block below). Any other finding is fixed
+# at the template.
 "build/generated_src/**" = ["PLW0603", "S104"]
 # The generated boot entries arm the watchdog, put .frozen first and reserve the emergency buffer before their imports,
 # an order the boot depends on; the no-autostart one prints its start line and imports asyncio and main for the REPL
@@ -196,7 +196,7 @@ max-returns = 10
 "build/generated_src/sensortask_*_main_noautostart.py" = ["E402", "F401", "T20"]
 # Test code asserts (S101), reaches into privates under test (SLF001) and asserts literal values (PLR2004; Part E.3); a
 # double accepts the real API's full signature, and mypy checks Protocol and monkeypatch parameter NAMES (ARG). Tests
-# print as their output (T20) and keep the function-level imports test_import_placement.py's pending list holds (PLC0415).
+# print as their output (T20) and keep the function-level imports on test_import_placement.py's pending list (PLC0415).
 #
 # tests/ and digital_twin/ run under microtest.py, not pytest (PT), poll a fake's plain state flag - the fakes expose no
 # Event to wait on (ASYNC110) - and keep per-process counters and module-level fake state (PLW0603).
@@ -206,8 +206,8 @@ max-returns = 10
 # (S104).
 "tests/**" = ["ARG001", "ARG002", "ARG005", "ASYNC110", "ASYNC230", "B905", "EM101", "EM102", "FBT001", "FBT002", "PERF401", "PLC0415", "PLR2004", "PLW0603", "PT", "PTH", "RUF005", "S101", "S104", "SIM105", "SLF001", "T20", "TRY003"]
 "digital_twin/**" = ["ASYNC110", "ASYNC230", "B905", "EM101", "EM102", "PLR2004", "PLW0603", "PTH", "RUF005", "S101", "SIM105", "SLF001", "T20", "TRY003"]
-# Device scripts run on the board, never under pytest (PT), and await in loops as tests/ does (PERF401); the rp2 port has
-# no itertools, so pairwise() is unimplementable (RUF007); a script names its rendered includes under `if TYPE_CHECKING:`
+# Device scripts run on the board, never under pytest (PT), and await in loops as tests/ does (PERF401); rp2 has no
+# itertools, so pairwise() is unimplementable (RUF007); a script names its rendered includes under `if TYPE_CHECKING:`
 # for mypy alone, the render inlining their definitions (TC004). The tests_hardware/** entry below applies too.
 "tests_hardware/device_scripts/**" = ["ASYNC230", "B905", "EM101", "PERF401", "PT", "PTH", "RUF005", "RUF007", "SIM105", "TC004", "TRY003"]
 # Host tools print as their output (T20); a user error prints its message alone, with no traceback to duplicate it (EM101,
@@ -216,8 +216,10 @@ max-returns = 10
 "scripts/**" = ["EM101", "EM102", "T20", "TRY003"]
 "toolchain/**" = ["EM101", "EM102", "T20", "TRY003"]
 # The host test suites keep composite asserts, whose rewrite reports each operand (PT018; visit_BoolOp in pytest 9.1.1's
-# _pytest/assertion/rewrite.py), and literal raise messages, which are a test's failure text (EM101/EM102/TRY003) (owner,
-# 2026-10-19: "Default is ok", SPECIFICATION.md Part D.6). S603: running the repo's own scripts as subprocesses IS what tests_scripts/ verifies, every argv in-repo.
+# _pytest/assertion/rewrite.py), and literal raise messages, which are a test's failure text (EM101/EM102/TRY003)
+# (owner, 2026-10-19: "Default is ok", SPECIFICATION.md Part D.6).
+#
+# S603: running the repo's own scripts as subprocesses IS what tests_scripts/ verifies, every argv in-repo.
 "tests_scripts/**" = ["ARG001", "ARG002", "ARG005", "EM101", "EM102", "PLC0415", "PLR2004", "PT018", "S101", "S603", "SLF001", "T20", "TRY003"]
 "tests_hardware/**" = ["ARG001", "ARG002", "EM101", "EM102", "PLR2004", "PT018", "S101", "SLF001", "T20", "TRY003"]
 # Part C.5.2 publishes the `_set_dict_cfg` setter-dispatch contract by name, so these two call it across objects
@@ -264,16 +266,6 @@ max-returns = 10
 "digital_twin/machine.py" = ["A002", "ANN401", "ARG002", "FBT001", "FBT002", "PLR0913"]
 # A Pin double takes machine.Pin's own `id` parameter (A002); `result != result` is the NaN check (PLR0124).
 "tests/test_asy_i2c_driver.py" = ["A002", "PLR0124"]
-# ANN401 - heterogeneous **kwargs forwarded into a callee whose keywords have DIFFERENT types (print()'s sep/end/file/
-# flush; constructors with up to 21 keywords): object, str and str | None all fail at 3.10-3.12, and PEP 692's
-# Unpack[TypedDict] is unavailable, typings/' typing.pyi declaring TypedDict a plain object.
-"tests/test_asy_uart_comm.py" = ["ANN401"]
-"tests/test_asy_uart_driver.py" = ["ANN401"]
-# ANN401 - driver-agnostic fan-in seams: I2CHazardAdapter's callables each take one real driver instance across the whole
-# I2C_HAZARD_CATALOG, and the scenario library imports whichever device's module a scenario boots (L.4), which has no
-# static type.
-"tests/_bus_hazard_catalog.py" = ["ANN401"]
-"tests/_sensortask_scenarios.py" = ["ANN401"]
 # A runner exec()s the test file, device script or generated entry it runs; two host tests exec a function's own source
 # or the test's fixture text (S102).
 "tests/_coverage_runner.py" = ["S102"]
@@ -419,16 +411,10 @@ ignore_missing_imports = true
 # empty (owner, 2026-09-28).
 module = [
     "_boot_contiguity_probe",
-    "_bus_hazard_catalog",
     "_sensortask_scenarios",
     "_uart_link_contract",
-    "asy_system_service",
     "machine",
-    "serving_at_default_gc",
     "test_asy_uart_comm",
-    "test_asy_uart_driver",
-    "test_bus_hazard_generated",
-    "test_bus_hazard_multi_device",
 ]
 disallow_any_explicit = false
 

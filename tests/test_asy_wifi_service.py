@@ -13,6 +13,7 @@ sys.path.insert(0, "digital_twin/unixport")  # the Unix-port UDP address shim (S
 import machine
 import network
 from _async_harness import cancel, run
+from _cancel_sweep import assert_unlocked, cancel_at_each_await
 from _error_codes import code
 from _fake_time import DrivenTime, tick
 from _fake_timer_arm import RaiseOnArm
@@ -1383,6 +1384,63 @@ def test_get_hotspot_stations_releases_the_lock_when_cancelled_mid_call() -> Non
 
     run(scenario())
     assert not client.wifi_mode_lock.locked(), "the wifi mode lock leaked on cancellation"
+
+
+def test_cancelling_a_wifi_task_at_each_await_leaves_the_mode_lock_free() -> None:
+    # Fresh clients over one stored config, each sleep one yield: the STA attempt (no verdict, so every poll is a cancel
+    # point), the silent mode's due attempt and the flash task. A cancel touches no LED, so it stays as the cancel found it.
+    cfg_path = _tmp_cfg_dir()
+    with open(cfg_path + "config_WIFI.cfg", "w") as f:
+        f.write(_stored_json(led_on=True))
+    leds: list[_FakeLED] = []
+    lit_at_cancel: list[bool | None] = [None]
+
+    async def build(phase: int) -> WifiService:
+        led = _FakeLED()
+        leds[:] = [led]
+        lit_at_cancel[0] = led.state
+        client = WifiService(WifiConfig("SensorNode", "12345678", 5, 1), ext_led=led, cfg_path=cfg_path, log=LogConfig(None, 10, None))
+        await client.cfgmgr.setup()
+        await client.pr.setup()
+        await client.set_wifi_led(status=True)
+        client._conn_phase = phase
+        return client
+
+    async def build_seeking() -> WifiService:
+        return await build(_PHASE_STA_SEEKING)
+
+    async def build_silent() -> WifiService:
+        client = await build(_PHASE_SILENT)
+        client._hotspot_timer_running = True  # the period runs, and its fire has made an attempt due
+        client._silent_attempt_due = True
+        return client
+
+    async def sta(client: WifiService) -> None:
+        await client._run_sta_mode()
+
+    async def silent(client: WifiService) -> None:
+        await client._run_silent_mode()
+
+    async def flash(client: WifiService) -> None:
+        await client._flash_led(*_src_pattern("HOTSPOT"))
+
+    async def turn() -> None:
+        await asyncio.sleep(0)
+        lit_at_cancel[0] = leds[0].state  # the cancel follows this turn with no yield between
+
+    def invariants(client: WifiService) -> None:
+        assert_unlocked(wifi_mode_lock=client.wifi_mode_lock)
+        assert client._ledflash is None or client._ledflash.done(), "a flash task left running"
+        assert leds[0].state == lit_at_cancel[0], f"the cancel changed the LED from {lit_at_cancel[0]} to {leds[0].state}"
+        assert client._conn_phase != _PHASE_SILENT or leds[0].state is not True, "the LED lit while silent"
+
+    with FastAsyncSleep():
+        counts = (
+            cancel_at_each_await(build_seeking, sta, invariants, turn=turn),
+            cancel_at_each_await(build_silent, silent, invariants, turn=turn),
+            cancel_at_each_await(build_seeking, flash, invariants, max_steps=5, turn=turn, endless=True),
+        )
+    assert counts == (11, 11, 5), counts  # each attempt ends after its ten polls; the flash task never does
 
 
 def test_get_hotspot_stations_settles_once_in_milliseconds_before_the_query() -> None:

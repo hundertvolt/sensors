@@ -1,5 +1,10 @@
-"""Stateful fake for the MB85RS64V FRAM chip itself, on top of tests/machine.py's fake `machine.SPI` (raw bus only) - interprets the real opcode stream (RDID/RDSR/WRSR/WREN/WRDI/READ/WRITE) so FRAM_SPI's own logic runs for real against it, per SPECIFICATION.md Part E.4's mocking boundary.
-Each WEL rule cites its MB85RS64V datasheet page (DS501-00015-4v0-E) on its line. Fault-injection knobs simulate one transaction's effect being eaten by a bus disturbance, not "unplug the whole bus" - see each knob's own comment below; the inherited machine.SPI bus-level knobs (rx_overrun/inject_fault) reach this chip too, via readinto()."""
+"""Stateful fake for the MB85RS64V FRAM chip itself, on top of tests/machine.py's fake `machine.SPI` (raw bus only) -
+interprets the real opcode stream (RDID/RDSR/WRSR/WREN/WRDI/READ/WRITE) so FRAM_SPI's own logic runs for real against
+it, per SPECIFICATION.md Part E.4's mocking boundary.
+
+Each WEL rule cites its MB85RS64V datasheet page (DS501-00015-4v0-E) on its line. Fault-injection knobs simulate one
+transaction's effect being eaten by a bus disturbance, not "unplug the whole bus" - see each knob's own comment below;
+the inherited machine.SPI bus-level knobs (rx_overrun/inject_fault) reach this chip too, via readinto()."""
 
 from machine import SPI as FakeSPI
 
@@ -26,6 +31,11 @@ class FakeMB85RS64V(FakeSPI):
     # machine.SPI's own arguments, so another part is a subclass overriding these two.
     SIZE = 0x2000
     RDID = bytes([0x04, 0x7F, 0x03, 0x02])
+    TEST_API = (
+        "RDID", "SIZE", "bytes_written", "corrupt_next_write_data", "cut_after_bytes", "disturb_write_autoclear",
+        "disturb_wrsr_autoclear", "drop_next_wrdi", "drop_next_wren", "drop_wren", "drop_wrsr", "memory", "opcodes",
+        "rdid_count", "rdid_once", "rdid_response", "silent", "size", "status", "wel", "wp_pin", "write_transactions",
+    )  # fmt: skip
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)  # type: ignore[arg-type]
@@ -59,6 +69,10 @@ class FakeMB85RS64V(FakeSPI):
         # (WPEN=0 or WP=1). None models WP tied high, the driver's assumption without a wp_pin.
         self.wp_pin: Pin | None = None
         self.write_transactions = 0  # WRITE commands that reached their data phase, WEL set or not
+        self.bytes_written = 0  # WRITE data bytes the array took
+        # A power cut: once that many more WRITE data bytes are on the wire (WEL set or not), no write lands any
+        # more; the test raises its own PowerCut once it reads 0. None: no cut.
+        self.cut_after_bytes: int | None = None
         self.opcodes: list[int] | None = None  # a test sets a list to record every command's opcode
         self._pending_op: int | None = None
         self._pending_addr: int | None = None
@@ -97,11 +111,11 @@ class FakeMB85RS64V(FakeSPI):
     def readinto(self, buf: bytearray | memoryview, _write_value: int = 0x00) -> None:
         # Overriding readinto() shadows the base fake's bus-level fault check, so it is called explicitly:
         # without this, machine.SPI's rx_overrun/inject_fault knobs are unreachable through the FRAM stack
-        # and the 1.29 RX-overrun path is only testable one layer up.
+        # and the v1.29.0 RX-overrun path is only testable one layer up. The pending opcode is the match= key.
         #
         # Raising before the buffer is filled matches the base fake; on real hardware an overrun leaves
         # partial garbage there, which is why the caller must not trust it either way.
-        self._maybe_raise("readinto", len(buf))
+        self._maybe_raise("readinto", len(buf), self._pending_op)
         if self.silent is not None:
             buf[:] = bytes([self.silent]) * len(buf)
         elif self._pending_op == _OPCODE_READ and self._pending_addr is not None:
@@ -130,10 +144,15 @@ class FakeMB85RS64V(FakeSPI):
         if self._pending_op == _OPCODE_WRITE and self._pending_addr is not None:
             # data phase of a previously-opened WRITE (opcode+address arrived in the prior call)
             self.write_transactions += 1
+            stored = data if self.corrupt_next_write_data is None else self.corrupt_next_write_data
+            cut = self.cut_after_bytes
+            if cut is not None:
+                stored = stored[:cut]
+                self.cut_after_bytes = cut - min(cut, len(data))
             if live and self.wel:  # a WRITE without WEL is not performed (p.7, p.11)
-                stored = data if self.corrupt_next_write_data is None else self.corrupt_next_write_data
                 end = self._pending_addr + len(stored)
                 self.memory[self._pending_addr : end] = stored
+                self.bytes_written += len(stored)
                 self.corrupt_next_write_data = None
             if live and not self.disturb_write_autoclear:
                 self.status &= ~0x02  # WEL auto-clears at the CS rising edge after WRITE recognition (p.6)

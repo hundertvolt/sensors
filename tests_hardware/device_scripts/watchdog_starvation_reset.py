@@ -1,6 +1,6 @@
-"""Isolated-driver device script: deliberately starves the RP2040 hardware watchdog to confirm the real peripheral resets
-the board, not just mock/twin bookkeeping. Arms a short window and never feeds it; never returns - the reset ends the
-run, and the host reads the armed window and the banner printed before it."""
+"""Isolated-driver device script: deliberately starves the RP2040 hardware watchdog to confirm the real peripheral
+resets the board, not just mock/twin bookkeeping. Arms a short window and never feeds it; never returns - the reset ends
+the run, and the host reads the armed window and the banner printed before it."""
 
 import machine
 

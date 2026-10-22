@@ -34,6 +34,8 @@ if TYPE_CHECKING:
     from _mpy_shed.time_mp import _TicksMs
     from launch import FaultSpec, HangSpec, _Chip, _KnobChip, _Plan
 
+    from asy_print_log import PrintLogHistory
+
     T = TypeVar("T")
 
     class _Booted(Protocol):
@@ -55,6 +57,10 @@ if TYPE_CHECKING:
         def timeout(self) -> int: ...
         @property
         def would_have_triggered_count(self) -> int: ...
+
+    class _LoggerOwner(Protocol):
+        # Any booted object that names its loggers (SPECIFICATION.md Part C.14's fan-in shape).
+        def get_loggers(self) -> "list[PrintLogHistory]": ...
 
     class _Clearable(Protocol):
         def clear(self) -> None: ...
@@ -79,6 +85,14 @@ if TYPE_CHECKING:
 
     class _RxCounts(Protocol):
         rx_overruns: int  # the receive path's laps and errors (asy_uart_driver.UART)
+
+    class _FramCounts(Protocol):
+        # The twin FRAM chip's payload-write counters (digital_twin/_fram_chip.py), read at shutdown.
+        write_count: int
+        writes_at: dict[int, int]
+        writes_at_dropped: int
+        silent_write_count: int
+        silent_wren_count: int
 
     class _Direction(Protocol):
         @property
@@ -137,6 +151,7 @@ _EXIT_SIMULATED_BOOTLOADER = 4
 _EXIT_SIMULATED_POWER_LOSS = 5
 _watchdog: "machine.WDT | None" = None  # the WDT main() builds and passes to the booted module's main(),
 # read by _print_shutdown_line()'s two call sites: the generated module keeps no watchdog global.
+_module: "ModuleType | None" = None  # the booted module, whose FRAM-backed loggers the shutdown line attributes writes to
 _shutdown_printed = False
 _uart_counts: "list[tuple[str, _ExercisedLink, _RxCounts]]" = []  # each wired uart_link's counters, for the shutdown line
 
@@ -157,6 +172,8 @@ _DROP_TIMER_SITES = ("reset", "sequencer")  # the product one-shots --test-drop-
 _GC_BLOCK_BYTES = 4 * struct.calcsize("P")
 _TEST_TRAIN_CMD_ID = 0x02  # the exerciser's ECHO (asy_uart_link_driver.py), the one SET its responder takes
 _SIGINT = 2  # Linux's signal number (signal(7)): MicroPython has no signal module
+_WATCHDOG_FAULT_KINDS = ("supervisor-raise", "main-exit", "block")
+_WDT_FAULT_BLOCK_MS = _WDT_TIMEOUT_MS + 1000  # past the armed timeout: the starved countdown fires once the loop resumes
 
 
 if TYPE_CHECKING:
@@ -182,6 +199,7 @@ if TYPE_CHECKING:
         kbd_traceback: bool
         loop_lag_ms: int | None
         drop_timer_fire: str | None
+        watchdog_fault: str | None
 
     class RunEnvironment(NamedTuple):
         # The product's config directory, whether NTP may go online instead of the local responder, the test flags, and
@@ -195,12 +213,12 @@ else:
     RunLimits = namedtuple("RunLimits", ("duration", "gc_threshold", "mem_sample_interval_ms", "stop_file"))
     TestFlags = namedtuple(
         "TestFlags",
-        ("hold_closing_slot", "stall_loop_ms", "conn_status_interval_ms", "fault_status_interval_ms", "shutdown_hang", "flash_stall_max", "uart_over_cap", "hold_system_entry", "kbd_traceback", "loop_lag_ms", "drop_timer_fire"),
+        ("hold_closing_slot", "stall_loop_ms", "conn_status_interval_ms", "fault_status_interval_ms", "shutdown_hang", "flash_stall_max", "uart_over_cap", "hold_system_entry", "kbd_traceback", "loop_lag_ms", "drop_timer_fire", "watchdog_fault"),
     )
     RunEnvironment = namedtuple("RunEnvironment", ("config_dir", "online_ntp", "instrumentation", "debug_level"))
 
 
-_NO_TEST_FLAGS = TestFlags(False, None, None, None, None, False, False, None, False, None, None)
+_NO_TEST_FLAGS = TestFlags(False, None, None, None, None, False, False, None, False, None, None, None)
 _DEFAULT_ENVIRONMENT = RunEnvironment(_CONFIG_DIR_DEFAULT, False, _NO_TEST_FLAGS, None)
 _PERSISTENT_STATE = StatePaths(_FRAM_STATE_DEFAULT, _SCD30_STATE_DEFAULT, _MEM_BACKUP_STATE_DEFAULT)
 
@@ -242,17 +260,19 @@ _USAGE = f"""Usage: micropython digital_twin/run_generic_integration.py --module
   --mem-backup-state-path PATH  the watchdog scratch registers' file (default: {_MEM_BACKUP_STATE_DEFAULT}; "" in memory)
   --online-ntp             write no NTP config and start no local responder (default: sync against the responder)
   --seed N, --fault SPEC, --hang SPEC, --wifi-outcome OUTCOME   as digital_twin/launch.py --help
-  --duration SECONDS       serve this long (default: forever); --stop-file PATH ends it early once the file exists
+  --duration SECONDS       serve this long (default: forever); --stop-file PATH ends it once the file exists, either way
   --gc-threshold N         gc.threshold() for the run (default: {_GC_THRESHOLD_DEFAULT})
   --mem-sample-interval-ms N  print a MEM_SAMPLE line every N ms (default: off)
   test-only instrumentation, each off by default:
   --test-hold-closing-slot, --test-stall-loop-ms N, --test-conn-status-interval-ms N,
   --test-fault-status-interval-ms N, --test-shutdown-hang S1|S2|S3|S4|S5reset|S5erase|S6,
   --test-flash-stall-max (every flush at its datasheet maximum), --test-uart-over-cap (one train past each link's cap),
-  --test-hold-system-entry ERRNO (SYSTEM's entry with that errno waits for ENTRY_RELEASE),
+  --test-hold-system-entry ERRNO (SYSTEM's entry with that errno waits for ENTRY_RELEASE, its bounded wait starting there),
   --test-kbd-traceback (KBD_TRACEBACK prints the interrupt object's traceback),
   --test-loop-lag-ms N (a LOOP_LAG line every {_LOOP_LAG_REPORT_MS // 1000} s from a task sleeping N ms at a time, each link's transfers on it),
-  --test-drop-timer-fire reset|sequencer (that one-shot's fire lost as rp2's full scheduler queue loses it)
+  --test-drop-timer-fire reset|sequencer (that one-shot's fire lost as rp2's full scheduler queue loses it),
+  --test-watchdog-fault supervisor-raise|main-exit|block (after the supervisor's first feed, one fault that ends the
+    feeding; WDT_AT_FAULT <feed_count>)
   -h, --help               print this and exit 0"""
 
 
@@ -358,6 +378,28 @@ async def _feed_gap_folder(watchdog: "machine.WDT") -> None:
         _feed_gaps.fold(watchdog)
 
 
+def _fram_write_fields(module: "object | None", chip: "_FramCounts | None") -> str:
+    # The wired FRAM chip's payload writes, then per FRAM-backed logger of the booted module's objects, summed over its
+    # chunk's two block addresses (one persisted entry counts 2); the remainder is the non-logger writes (SGP40 backup,
+    # clears, erase units). Writes past writes_at's bound are unattributed, so the per-logger counts are short by them.
+    if chip is None:
+        return " fram_writes=0 fram_writes_by=- fram_silent_writes=0 fram_silent_wrens=0"
+    counted: dict[int, tuple[str, int]] = {}
+    for name in dir(module) if module is not None else ():
+        owner = getattr(module, name, None)
+        if isinstance(owner, type) or not hasattr(owner, "get_loggers"):
+            continue  # a class's get_loggers is unbound; only built objects own loggers
+        holder: _LoggerOwner = cast("_LoggerOwner", owner)
+        for logger in holder.get_loggers():
+            block_addr = getattr(getattr(logger, "fram", None), "_block_addr", None)  # PrintLogHistoryStore's chunk
+            if block_addr is not None:
+                counted[id(logger)] = (logger.name, sum(chip.writes_at.get(addr, 0) for addr in block_addr))
+    by = ",".join(f"{name}:{n}" for name, n in sorted(counted.values()) if n) or "-"
+    unattributed = f" fram_writes_unattributed={chip.writes_at_dropped}" if chip.writes_at_dropped else ""
+    silent = f" fram_silent_writes={chip.silent_write_count} fram_silent_wrens={chip.silent_wren_count}"
+    return f" fram_writes={chip.write_count} fram_writes_by={by}{silent}{unattributed}"
+
+
 def _link_directions(module_file: str, link: "machine.UARTLink") -> "dict[str, object]":
     # uart_link:silent's targets: each instance's outgoing direction by its instance key.
     directions: dict[str, object] = {}
@@ -375,12 +417,12 @@ async def _mem_sampler(interval_ms: int) -> None:
     while True:
         await asyncio.sleep_ms(interval_ms)
         gc.collect()
-        print(f"MEM_SAMPLE {time.time():.3f} {gc.mem_free()}")
+        print(f"MEM_SAMPLE {time.ticks_ms()} {gc.mem_free()}")
 
 
 def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "TestFlags | None":
     # `flags` with one --test-* flag set; None for an argument that is no test flag.
-    hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd, lag, drop = flags
+    hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd, lag, drop, wdt_fault = flags
     if arg == "--test-hold-closing-slot":
         hold = True
     elif arg == "--test-stall-loop-ms":
@@ -407,9 +449,30 @@ def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "T
         drop = _pop_value(remaining, arg)
         if drop not in _DROP_TIMER_SITES:
             raise ValueError(f"--test-drop-timer-fire {drop!r} not recognized - expected one of {_DROP_TIMER_SITES}")
+    elif arg == "--test-watchdog-fault":
+        wdt_fault = _pop_value(remaining, arg)
+        if wdt_fault not in _WATCHDOG_FAULT_KINDS:
+            raise ValueError(f"--test-watchdog-fault {wdt_fault!r} not recognized - expected one of {_WATCHDOG_FAULT_KINDS}")
     else:
         return None
-    return TestFlags(hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd, lag, drop)
+    return TestFlags(hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd, lag, drop, wdt_fault)
+
+
+def _print_boot_phases(device: str) -> None:
+    # Each boot-phase mark (asy_system_service's region-1 write) also printed as one line, so a booted run's log shows its
+    # boot order (SPECIFICATION.md Part A.7); the write is unchanged. Once per process: an in-process main() again keeps it.
+    service = sys.modules.get("asy_system_service")
+    if service is None or service._write_region.__name__ == "_boot_phase_line":
+        return
+    names = {getattr(service, name): name for name in dir(service) if name.startswith("BOOT_")}
+    write = service._write_region
+
+    def _boot_phase_line(region: int, magic: int, value: int) -> None:
+        write(region, magic, value)
+        if region == 1:
+            print(f"{_LINE_PREFIX} [{device}] boot phase: {names.get(value, value)}")
+
+    service.__dict__["_write_region"] = _boot_phase_line  # the module global boot_phase() calls
 
 
 def _print_shutdown_line(config: RunConfig) -> None:
@@ -420,7 +483,7 @@ def _print_shutdown_line(config: RunConfig) -> None:
         _shutdown_printed = True
         gc.collect()
         micropython.mem_info()  # the largest free block's only reader (py/gc.c gc_info(), v1.29.0)
-        print(_shutdown_line(config.device, _watchdog, _feed_gaps, _uart_counts))
+        print(_shutdown_line(config.device, _watchdog, _feed_gaps, _uart_counts) + _fram_write_fields(_module, machine._current_fram_chip))
 
 
 def _print_watchdog_would_trigger(watchdog: "machine.WDT") -> None:
@@ -439,17 +502,21 @@ def _reset_line(device: str, error: "machine.SimulatedRebootError") -> str:
     )
 
 
-async def _serve_until(duration_s: float, stop_file: "str | None") -> None:
-    # The whole duration, or until stop_file exists: either way serving ends here and the run shuts down
+async def _serve_until(duration_s: "float | None", stop_file: "str | None") -> None:
+    # The whole duration (None: forever), or until stop_file exists: either way serving ends here and the run shuts down
     # on main()'s one clean path, so a caller done early skips the idle tail without a signal.
     if stop_file is None:
+        while duration_s is None:
+            await asyncio.sleep(3600)
         await asyncio.sleep(duration_s)
         return
-    for _ in range(-(-int(duration_s * 1000) // _STOP_FILE_POLL_MS)):  # polls, not ticks: never short of the duration
+    polls = None if duration_s is None else -(-int(duration_s * 1000) // _STOP_FILE_POLL_MS)  # polls, not ticks: never short
+    while polls is None or polls > 0:
         try:
             os.stat(stop_file)
         except OSError:
             await asyncio.sleep_ms(_STOP_FILE_POLL_MS)
+            polls = None if polls is None else polls - 1
             continue
         print(f"{_LINE_PREFIX}: stop file seen, ending the run")
         return
@@ -468,8 +535,8 @@ def _shutdown_line(device: str, watchdog: "_Watchdog", gaps: _FeedGaps, links: "
 
 
 # Test-only instrumentation (owner, 2026-09-30, paraphrase): the runner, never src/ or the image, may rebind a booted
-# object from outside or print internal state when a named --test-* flag asks; tests_scripts/test_twin_runner_test_flags.py
-# keeps every one off by default and out of the production entry path.
+# object from outside or print internal state when a named --test-* flag asks;
+# tests_scripts/test_twin_runner_test_flags.py keeps every one off by default and out of the production entry path.
 
 
 async def _test_arm_shutdown_hang(module: "ModuleType", chips: "dict[str, object]", step: str) -> None:
@@ -582,21 +649,47 @@ def _test_hold_closing_slot(module: "ModuleType") -> "Callable[[], None]":
 
 def _test_hold_system_entry(module: "ModuleType", errno_held: int, say: "Callable[[str], None]" = print) -> "Callable[[], None]":
     # SystemService's logger writes its entry with errno_held only after ENTRY_RELEASE: ENTRY_HELD marks the call's start,
-    # so the host acts inside that write (the supervisor's escalation entry); the returned callback releases it.
-    logger, gate = module.sysfunct.pr, asyncio.Event()
+    # so the host acts inside that write (the supervisor's escalation entry); the returned callback releases it. The
+    # service's bounded wait on a held entry starts at the release, so the host's own pace never counts against it.
+    logger, gate, service = module.sysfunct.pr, asyncio.Event(), sys.modules.get("asy_system_service")
+    if service is None:
+        raise RuntimeError("asy_system_service is not imported, so the held entry's bounded wait cannot start at its release")
     real_err_s = logger.err_s
+    unstarted: list[Coroutine[object, object, None]] = []  # held entries no bounded wait has started yet
 
-    async def held(*args: object, **kwargs: object) -> None:
-        if kwargs.get("errno") == errno_held and not gate.is_set():
+    async def hold() -> None:
+        if not gate.is_set():
             say("ENTRY_HELD")
             await gate.wait()
+
+    async def held_entry(args: "tuple[object, ...]", kwargs: "dict[str, object]") -> None:
+        await hold()
         await real_err_s(*args, **kwargs)
+
+    def entry(*args: object, **kwargs: object) -> "Coroutine[object, object, None]":
+        if kwargs.get("errno") != errno_held or gate.is_set():
+            return cast("Coroutine[object, object, None]", real_err_s(*args, **kwargs))
+        coro = held_entry(args, kwargs)
+        unstarted.append(coro)
+        return coro
+
+    class _ReleasedWaits:
+        # The service's asyncio: every name reaches the real module; a wait on a held entry first waits for the release.
+        def __getattr__(self, name: str) -> object:
+            return getattr(asyncio, name)
+
+        async def wait_for_ms(self, aw: "Coroutine[object, object, None]", timeout: int) -> None:
+            if aw in unstarted:
+                unstarted.remove(aw)
+                await hold()
+            await asyncio.wait_for_ms(aw, timeout)
 
     def release() -> None:
         gate.set()
         say("ENTRY_RELEASED")
 
-    logger.err_s = held
+    logger.err_s = entry
+    service.__dict__["asyncio"] = _ReleasedWaits()  # the module global the escalation's bounded wait reads
     return release
 
 
@@ -657,6 +750,10 @@ def _test_p99_us(bins: "list[int]", samples: int, worst: int) -> int:
         if seen >= rank:
             return min((i + 1) * 1000, worst)
     return worst
+
+
+async def _test_raising_report(_task: object, _n: int) -> None:
+    raise RuntimeError("the supervisor's dead-task report raised (a test-only watchdog fault)")
 
 
 def _test_report_then_hang(line: str, say: "Callable[[str], None]" = print) -> "Callable[[object, int], Coroutine[object, object, None]]":
@@ -727,7 +824,9 @@ def _test_stall_loop(stall_ms: int) -> "Callable[[], None]":
     return stall
 
 
-def _test_start(flags: "TestFlags", module: "ModuleType", chips: "dict[str, object]", links: "list[tuple[str, _ExercisedLink, _RxCounts]]") -> "list[asyncio.Task[None]]":
+def _test_start(
+    flags: "TestFlags", module: "ModuleType", chips: "dict[str, object]", links: "list[tuple[str, _ExercisedLink, _RxCounts]]", main_task: "asyncio.Task[None]", watchdog: "_Watchdog",
+) -> "list[asyncio.Task[None]]":
     # Each named flag's instrumentation, and only under its own flag; the runner tasks it started.
     loop, tasks, triggers = asyncio.get_event_loop(), [], {}
     if flags.hold_closing_slot:
@@ -754,6 +853,8 @@ def _test_start(flags: "TestFlags", module: "ModuleType", chips: "dict[str, obje
         tasks.append(loop.create_task(_test_loop_lag(flags.loop_lag_ms, links=links)))
     if flags.drop_timer_fire:
         tasks.append(loop.create_task(_test_drop_timer_fire(module, flags.drop_timer_fire)))
+    if flags.watchdog_fault:
+        tasks.append(loop.create_task(_test_watchdog_fault(module, flags.watchdog_fault, main_task, watchdog)))
     return tasks
 
 
@@ -805,6 +906,26 @@ class _TestInertTimer:
 
     def init(self, **_settings: object) -> None:
         self.armed = saturating_add(self.armed, 1)
+
+
+async def _test_watchdog_fault(module: "ModuleType", kind: str, main_task: "asyncio.Task[None]", watchdog: "_Watchdog", say: "Callable[[str], None]" = print) -> None:
+    # After the supervisor's first feed (the first once its tasks exist), one fault from outside that ends the feeding: the
+    # dead-task report raises as one task ends, the product's main() is cancelled under the live runner loop, or the loop
+    # blocks past the timeout. WDT_AT_FAULT names the feed count the watchdog then starves from.
+    sysfunct = module.sysfunct
+    while not sysfunct._tasks or any(task is None for task in sysfunct._tasks):
+        await asyncio.sleep_ms(_READY_POLL_MS)
+    fed = watchdog.feed_count
+    while watchdog.feed_count == fed:
+        await asyncio.sleep_ms(_READY_POLL_MS)
+    say(f"WDT_AT_FAULT {watchdog.feed_count}")
+    if kind == "supervisor-raise":
+        sysfunct._log_dead_task = _test_raising_report  # the supervisor's own report: its raise ends the supervisor loop
+        next(task for task in sysfunct._tasks if task is not None).cancel()
+    elif kind == "main-exit":
+        main_task.cancel()  # the product's main(), as if it returned: this runner's loop and its tasks run on
+    else:
+        time.sleep_ms(_WDT_FAULT_BLOCK_MS)  # no await: the whole loop stops, as a long synchronous call on silicon stops it
 
 
 def _uart_links(module_file: str) -> "list[tuple[str, str]]":
@@ -874,7 +995,7 @@ def product_modules() -> "list[object]":
 
 
 async def main(config: RunConfig) -> None:
-    global _watchdog, _shutdown_printed, _feed_gaps, _uart_counts
+    global _watchdog, _shutdown_printed, _feed_gaps, _uart_counts, _module
     install()  # before the firmware: start_tasks() keeps it, so every task death prints (Part I.4(e))
     prewarm_poll_set()  # before anything registers a poll object (unix_port_poll_prewarm.py)
     patch_asy_udp_socket_for_unix_port()  # then before any UDPSocket exists (_unix_port_udp_addr_shim.py)
@@ -906,8 +1027,9 @@ async def main(config: RunConfig) -> None:
     # rp2's RTC is the wall clock: an NTP set must move the product's time.time() here too
     _wall_clock.install(product_modules())
     _flash_stall.install(sys.modules["asy_config_manager"])  # rp2 writes its flash with interrupts off: each flush stalls
+    _print_boot_phases(config.device)
     watchdog = machine.WDT(timeout=_WDT_TIMEOUT_MS, on_would_trigger=_print_watchdog_would_trigger)
-    _watchdog, _shutdown_printed, _feed_gaps, _uart_counts = watchdog, False, _FeedGaps(), []
+    _watchdog, _shutdown_printed, _feed_gaps, _uart_counts, _module = watchdog, False, _FeedGaps(), [], booted
     loop = asyncio.get_event_loop()
     main_task = loop.create_task(module.main(watchdog=watchdog, cfg_path=config.config_dir, debug=config.debug_level, web_host=config.host, web_port=config.port))
     tasks = [loop.create_task(_feed_gap_folder(watchdog))]
@@ -933,12 +1055,11 @@ async def main(config: RunConfig) -> None:
             _apply_hang(hang, chips, source=_SOURCE)
         if injections.wifi_outcomes:
             wlan.script_connect_outcomes(injections.wifi_outcomes)
-        tasks.extend(_test_start(config.instrumentation, booted, chips, _uart_counts))
+        tasks.extend(_test_start(config.instrumentation, booted, chips, _uart_counts, main_task, watchdog))
 
         if run.duration is None:
             print(f"Serving forever at http://{config.host}:{config.port}/ - Ctrl+C to stop")
-            while True:
-                await asyncio.sleep(3600)
+            await _serve_until(None, run.stop_file)
         elif run.duration > 0:
             await _serve_until(run.duration, run.stop_file)
     finally:

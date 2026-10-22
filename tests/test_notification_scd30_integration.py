@@ -1,6 +1,9 @@
-"""Cross-module integration: a real asy_scd30_driver.py.SCD30_Reader (against a fake I2C bus, same
-mocking boundary as test_asy_scd30_driver.py's own integration-level tests) feeding a real asy_notification_service.py.NotificationService, driving a real asy_neopixel_driver.py.NeopixelDriver.
-Exercises how a genuine hardware fault on one driver (SCD30) does NOT propagate into a sibling driver's (NOTIFY's) own error accounting, matching SPECIFICATION.md Part C.7's "each driver owns its own error log" separation of concerns.
+"""Cross-module integration: a real asy_scd30_driver.py.SCD30_Reader (against a fake I2C bus, same mocking boundary as
+test_asy_scd30_driver.py's own integration-level tests) feeding a real asy_notification_service.py.NotificationService,
+driving a real asy_neopixel_driver.py.NeopixelDriver.
+
+Exercises how a genuine hardware fault on one driver (SCD30) does NOT propagate into a sibling driver's (NOTIFY's) own
+error accounting, matching SPECIFICATION.md Part C.7's "each driver owns its own error log" separation of concerns.
 """
 # Each NotificationSignal below holds a direct (source, field) reference to the same scd_reader instance
 # (SPECIFICATION.md Part C.14.2), mirroring the generated device modules' real registration shape.
@@ -9,16 +12,17 @@ Exercises how a genuine hardware fault on one driver (SCD30) does NOT propagate 
 # above the raw I2C transaction - the driver's protocol and error handling, the notify poll loop, gating,
 # NeopixelDriver's arbitration and ramp - runs for real.
 
-import asyncio
 import errno
 import struct
 
 from _async_harness import cancel_all, run
 from _error_codes import code
-from _fake_time import FakeTime, UTCValid
+from _fake_time import DrivenTime, FakeTime, UTCValid
 from _tmp_scratch import TmpScratch
 from machine import I2C as FakeI2C
 
+import asy_neopixel_driver
+import asy_notification_service
 from asy_base_classes import ValueRef
 from asy_crc_checks import CRC8
 from asy_i2c_driver import I2C
@@ -38,6 +42,28 @@ if TYPE_CHECKING:
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
 # module's own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
 _scratch = TmpScratch("notify_scd30")
+
+
+async def _cycle(clock: DrivenTime, notify: NotificationService, flashes: int) -> None:
+    # The monitor's first cycle by the service's own rule: 2 x FlashDur after each triggered flash, so 1 ms before that
+    # end nothing is stored yet; then the loop parks on its next cycle, FlashInterval after its start.
+    cfg = (await notify.get_dict_cfg())["NOTIFY"]
+    flash_dur, interval = cfg["FlashDur"], cfg["FlashInterval"]
+    assert isinstance(flash_dur, float) and isinstance(interval, float), cfg
+    start = clock.now
+    end = start + flashes * round(flash_dur * 2000)
+    if end > start:
+        await clock.elapse(end - 1 - start)
+        assert notify._datastruct[1] is None, f"the cycle was stored by virtual t={clock.now} ms"  # State: None until stored
+    await clock.elapse(end - clock.now)
+    assert notify._datastruct[1] is not None, f"no cycle stored at virtual t={clock.now} ms"
+    assert clock.wakes()[-1] == start + round(interval * 1000), f"at virtual t={clock.now} ms the loop waits for {clock.wakes()}"
+
+
+def _driven() -> DrivenTime:
+    # The driver's and the service's time and asyncio on one driven clock for the block: every frame, settle, overlay
+    # and pause wait parks on it, and time moves only when the test moves it.
+    return DrivenTime(asy_neopixel_driver, asy_notification_service, sleeps=True)
 
 
 def _last_two_err_nums(log: "ErrorLog", name: str) -> "list[int] | list[str]":
@@ -122,7 +148,7 @@ def test_real_sensor_reading_above_threshold_flows_through_to_a_real_ramp() -> N
     i2c.read_queue.append(data_frame(2000.0, 22.0, 45.0))  # above the 1600 default threshold
     pixel, notify = _make_stack(scd_reader)
 
-    async def scenario() -> None:
+    async def scenario(clock: DrivenTime) -> None:
         # Exactly what _read_loop() itself does per cycle (see asy_scd30_driver.py) - driven directly
         # instead of through the full irq/timer machinery, which is already exhaustively covered by
         # test_asy_scd30_driver.py's own tests and isn't what this file is exercising.
@@ -132,11 +158,11 @@ def test_real_sensor_reading_above_threshold_flows_through_to_a_real_ramp() -> N
 
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
-        await asyncio.sleep(1.3)  # one triggered cycle's real settle time (2*0.5=1.0s) + margin
-        await cancel_all(tasks)
+        await _cycle(clock, notify, 1)
+        await cancel_all(tasks, settle_yields=1)
 
-    with UTCValid():
-        run(scenario())
+    with _driven() as clock, UTCValid():
+        run(scenario(clock))
     writes = [w[0] for w in pixel._pixel.writes]
     assert (200, 0, 0) in writes  # scaled by the default FlashBri=200, pure red channel
     assert writes[-1] == (0, 0, 0)
@@ -154,18 +180,18 @@ def test_real_humidity_reading_above_threshold_flows_through_to_a_real_ramp() ->
     i2c.read_queue.append(data_frame(800.0, 22.0, 70.0))  # CO2 well under threshold, Hum above the 65.0 default
     pixel, notify = _make_hum_stack(scd_reader)
 
-    async def scenario() -> None:
+    async def scenario(clock: DrivenTime) -> None:
         results, new_data = await scd_reader._read_scd()
         assert await scd_reader._error_check(results)
         await scd_reader._store_scd(results, new_data)
 
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
-        await asyncio.sleep(1.3)
-        await cancel_all(tasks)
+        await _cycle(clock, notify, 1)
+        await cancel_all(tasks, settle_yields=1)
 
-    with UTCValid():
-        run(scenario())
+    with _driven() as clock, UTCValid():
+        run(scenario(clock))
     writes = [w[0] for w in pixel._pixel.writes]
     assert (0, 0, 200) in writes  # scaled by the default FlashBri=200, pure blue channel (WarnHum's color)
     assert writes[-1] == (0, 0, 0)
@@ -180,22 +206,22 @@ def test_i2c_bus_fault_degrades_to_not_triggered_and_stays_isolated_to_scd30s_ow
     i2c.inject_fault("writeto", OSError, errno.EIO, "simulated bus fault")
     pixel, notify = _make_stack(scd_reader)
 
-    async def scenario() -> "tuple[ErrorLog, ErrorLog, bool]":
+    async def scenario(clock: DrivenTime) -> "tuple[ErrorLog, ErrorLog, bool]":
         results, new_data = await scd_reader._read_scd()  # the bus fault happens inside here
         still_running = await scd_reader._error_check(results)
         await scd_reader._store_scd(results, new_data)  # a no-op: results has None fields, nothing committed
 
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
-        await asyncio.sleep(0.2)  # one _monitor_loop() pass - nothing to settle, nothing was triggered
-        await cancel_all(tasks)
+        await _cycle(clock, notify, 0)  # one monitor pass: nothing was triggered, so nothing settles
+        await cancel_all(tasks, settle_yields=1)
 
         scd_log = await scd_reader.get_error_counter()
         notify_log = await notify.get_error_counter()
         return scd_log, notify_log, still_running
 
-    with UTCValid():
-        scd_log, notify_log, still_running = run(scenario())
+    with _driven() as clock, UTCValid():
+        scd_log, notify_log, still_running = run(scenario(clock))
     assert still_running is True  # one failure, well under max_module_error=5 - not a give-up condition
     # One faulted cycle persists the driver's read error and the reader's streak step: each layer the fault
     # reaches keeps its entry (owner, 2026-10-02; SPECIFICATION.md C.7).
@@ -226,7 +252,7 @@ def test_recovers_and_triggers_normally_after_a_prior_fault() -> None:
     frame1 = register_frame(1)
     frame2 = data_frame(2000.0, 22.0, 45.0)
 
-    async def scenario() -> None:
+    async def scenario(clock: DrivenTime) -> None:
         faulted, new_data = await scd_reader._read_scd()
         await scd_reader._error_check(faulted)
         await scd_reader._store_scd(faulted, new_data)
@@ -239,11 +265,11 @@ def test_recovers_and_triggers_normally_after_a_prior_fault() -> None:
 
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
-        await asyncio.sleep(1.3)
-        await cancel_all(tasks)
+        await _cycle(clock, notify, 1)
+        await cancel_all(tasks, settle_yields=1)
 
-    with UTCValid():
-        run(scenario())
+    with _driven() as clock, UTCValid():
+        run(scenario(clock))
     writes = [w[0] for w in pixel._pixel.writes]
     assert (200, 0, 0) in writes  # the prior fault didn't permanently poison later good reads
     scd_log = run(scd_reader.get_error_counter())

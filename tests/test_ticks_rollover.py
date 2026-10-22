@@ -5,7 +5,13 @@ by the L0 scan and the 2**30 fake (Part F.1)."""
 import asyncio
 import os
 import select
+import sys
 import time
+
+sys.path.append("digital_twin")  # the twin's flash stall; appended and dropped again, so tests/machine.py stays the one
+import _flash_stall  # type: ignore[import-not-found, unused-ignore]  # unresolved only in CI's narrowed mypy pass
+
+sys.path.pop()
 
 from _async_harness import run
 from _src_const import src_int
@@ -69,6 +75,14 @@ _LET_GO_READS = 5000  # a wait still running this many clock reads in is ended b
 _SIGNAL_WAIT_MS: int = src_int("src/asy_neopixel_driver.py", "_SIGNAL_WAIT_MS")
 
 _scratch = TmpScratch("ticks_rollover")
+
+
+class _FlushClock(Ticks30Time):
+    # Every ticks_us() read moves the clock 1 ms on: a flash stall's busy-wait ends after as many reads as it has ms.
+    def ticks_us(self) -> int:
+        value = super().ticks_us()
+        self.now += 1
+        return value
 
 
 class _PauseFlag:
@@ -186,6 +200,25 @@ def _files_reading_ticks(directory: str) -> "list[str]":
         if "ticks_ms()" in text or "ticks_us()" in text or ".ticks_diff(" in text:
             found.append(directory + "/" + filename)
     return found
+
+
+def _flash_stall_outcome(since_epoch_ms: int) -> "tuple[bool, bool, bool, bool]":
+    # One flush begun `since_epoch_ms` after the stalls' epoch, then whether a byte due 10 ms, 200 ms and 300 ms into it
+    # (past its end), and 10 ms in one whole 2**30 us period on, met interrupts off, asked as machine.UARTLink asks:
+    # plain microseconds on the stalls' clock, whose zero is the clock's start at 1000 ms.
+    clock = _FlushClock(1000)
+    saved = _swap_stall_clock(clock)
+    try:
+        _flash_stall.reset_test_state()
+        _flash_stall.restart(1000 * 1000, 1000)
+        clock.now = 1000 + since_epoch_ms
+        _flash_stall.stall(0)  # a small file's typical flush: about 240 ms, so about 240 clock reads
+        met = [bool(_flash_stall.irqs_were_off(since_epoch_ms * 1000 + due)) for due in (10_000, 200_000, 300_000, 10_000 + TICKS_PERIOD)]
+        return met[0], met[1], met[2], met[3]
+    finally:
+        _swap_stall_clock(saved)
+        _flash_stall.restart(time.ticks_us(), time.ticks_ms())
+        _flash_stall.reset_test_state()
 
 
 def _install(module: object, start: int) -> Ticks30Time:
@@ -362,6 +395,14 @@ def _storage_pause_outcome(start: int) -> "tuple[bool, bool, bool, bool]":
     finally:
         _restore(asy_system_service)
         _restore(asy_base_classes)
+
+
+def _swap_stall_clock(clock: object) -> object:
+    # Puts `clock` in as the flash stall's own `time` and returns the one it replaced.
+    stall: object = _flash_stall
+    saved = stall._time  # type: ignore[attr-defined]
+    stall._time = clock  # type: ignore[attr-defined]  # a module attribute swap, restored in the caller's finally
+    return saved
 
 
 def _tickseconds_reads(start: int, *, count_down: bool) -> "list[int]":
@@ -673,6 +714,15 @@ def test_the_storage_pause_deadline_crosses_the_ticks_wrap() -> None:
     wrapped = _storage_pause_outcome(TICKS_PERIOD - 30_000)
     assert wrapped == _storage_pause_outcome(_REFERENCE_NOW), wrapped
     assert wrapped == (True, True, False, False), wrapped
+
+
+def test_a_flash_stall_window_holds_across_2_29_us_and_misses_one_whole_period_on() -> None:
+    # On rp2's 2**30 us period, a flush begun 100 ms before or after 2**29 us (about 537 s) still holds the bytes due
+    # inside it, as one far from both does, and a byte one whole period (about 1074 s) on meets no stall.
+    for since_epoch_ms in (TICKS_PERIOD // 2 // 1000 - 100, TICKS_PERIOD // 2 // 1000 + 100):
+        wrapped = _flash_stall_outcome(since_epoch_ms)
+        assert wrapped == _flash_stall_outcome(_REFERENCE_NOW), (since_epoch_ms, wrapped)
+        assert wrapped == (True, True, False, False), (since_epoch_ms, wrapped)
 
 
 if __name__ == "__main__":

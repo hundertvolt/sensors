@@ -1,6 +1,6 @@
-"""The one shell convention over every scripts/*.sh: `#!/usr/bin/env bash`, `set -euo pipefail` first (or a set line saying
-why), a sourced helper setting no option of its caller's, one EXIT trap armed before any mktemp, no loop over an unquoted
-expansion, `-h|--help` exit 0, and an unknown argument refused with exit 2 naming it before any tool runs (sandboxed)."""
+"""One shell convention over scripts/*.sh: `#!/usr/bin/env bash`, `set -euo pipefail` first (or a set line saying why),
+a sourced helper setting no option of its caller's, one EXIT trap armed before any mktemp, no loop over an unquoted
+expansion, `-h|--help` exit 0, an unknown argument refused with exit 2 naming it before any tool runs (sandboxed)."""
 
 import re
 import shutil
