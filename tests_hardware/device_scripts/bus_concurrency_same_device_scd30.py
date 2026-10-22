@@ -1,100 +1,79 @@
-"""Isolated-driver device script: proves the SCD30 device-session lock serializes two concurrent
-multi-transaction sequences against the SAME device (real-hardware counterpart to SPECIFICATION.md
-Part C.8). Both paths are CRC-8 protected, so interleaving corruption would trip a CRC/NAK, not silently succeed."""
+"""Isolated-driver device script: the SCD30 device-session lock serialises two concurrent multi-transaction sequences
+against the same device (real-hardware counterpart to SPECIFICATION.md Part C.8). Both paths are CRC-8 protected, so
+interleaving corruption trips a CRC or NAK rather than succeeding silently. Reports facts; the host gives the verdict.
+"""
 
 import asyncio
-
-import machine
 
 import asy_i2c_driver
 from asy_scd30_driver import SCD30_I2C
 
-CO2_MIN_PPM, CO2_MAX_PPM = 200, 10_000
-HUMIDITY_MIN_RH, HUMIDITY_MAX_RH = 0.0, 100.0
-TEMP_MIN_C, TEMP_MAX_C = -40.0, 70.0
+# @include _shared/facts.py
+# @include _shared/watchdog.py
+# @include _shared/bus_reader_loops.py
 
-READER_ITERATIONS = 120
-SNAPSHOTTER_ITERATIONS = 40
-# setup()'s soft reset leaves the NVM-persisted measurement interval running, so data-ready is
-# raised while the registers still hold the first unsettled conversion - read back as a stuck
-# CO2 on every early iteration. scd30_same_device_rw_concurrency.py carries the same constant.
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from _shared.bus_reader_loops import Record, Stop, read_loop, report_errors, scd30_reading_problem
+    from _shared.facts import done, fact
+    from _shared.watchdog import arm
+    from bench_facts import BenchFacts
+
+BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
+
+# @tunable l3.bus_concurrency_same_device_scd30_reader_iterations = 120
+_READER_ITERATIONS = 120
+# @tunable l3.bus_concurrency_same_device_scd30_snapshotter_iterations = 40
+_SNAPSHOTTER_ITERATIONS = 40
+# setup()'s soft reset leaves the measurement interval running, so data-ready rises on the first unsettled conversion;
+# scd30_same_device_rw_concurrency.py consumes it the same way.
+# @tunable l3.scd30_same_device_rw_concurrency_settle_s = 12.0
 _SETTLE_S = 12.0
+# @tunable l3.scd30_same_device_rw_concurrency_settle_step_s = 0.5
+_SETTLE_STEP_S = 0.5
+# @tunable l3.bus_concurrency_same_device_scd30_run_bound_s = 90.0
+_RUN_BOUND_S = 90.0
 
 
 async def _main() -> None:
-    wdt = machine.WDT(timeout=8000)  # matches src/system_service.py's own production value
-    i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
-    scd = SCD30_I2C(i2c1)
+    wdt = arm()
+    bus = BENCH["bus"][BENCH["instances"]["scd30"]["bus"]]
+    i2c = asy_i2c_driver.I2C(bus["id"], bus["scl_pin"], bus["sda_pin"], frequency=bus["frequency"], timeout=bus.get("timeout"))
+    scd = SCD30_I2C(i2c)
+    # The SCD30 measurement prerequisite is the session's `scd30_measuring` fixture; this script writes nothing.
     await scd.setup()
-    # No set_ambient_pressure() here: this group's one NVM-persisted write happens once per
-    # session in flash/conftest.py's scd30_continuous_measurement_triggered fixture, which this
-    # test depends on. scd30_same_device_rw_concurrency.py's docstring has the wear reasoning.
 
-    # Deliberately discarded - see _SETTLE_S. read_measurement() is called rather than just slept
-    # through, because data-ready clears the instant it is read: consuming the stale conversion is
-    # what actually clears it, so sleeping alone would leave it waiting in the registers.
-    for _ in range(int(_SETTLE_S / 0.5)):
+    async def consume() -> "str | None":
         await scd.read_measurement()
-        wdt.feed()
-        await asyncio.sleep(0.5)
+        return None
 
-    reader_errors = []
-    reader_completed = 0
-    snapshot_errors = []
-    snapshot_completed = 0
+    settle = Record("scd30_settle")
+    await read_loop(consume, int(_SETTLE_S / _SETTLE_STEP_S), int(_SETTLE_STEP_S * 1000), wdt, settle, Stop())
+    fact("settle_failures", settle.total)
 
-    async def reader() -> None:
-        nonlocal reader_completed
-        for i in range(READER_ITERATIONS):
-            try:
-                await scd.read_measurement()
-                co2 = await scd.get_CO2()
-                hum = await scd.get_relative_humidity()
-                temp = await scd.get_temperature()
-                if co2 is not None and not (CO2_MIN_PPM <= co2 <= CO2_MAX_PPM):
-                    reader_errors.append(f"iter {i}: CO2={co2!r} outside plausible bounds")
-                if hum is not None and not (HUMIDITY_MIN_RH <= hum <= HUMIDITY_MAX_RH):
-                    reader_errors.append(f"iter {i}: Hum={hum!r} outside plausible bounds")
-                if temp is not None and not (TEMP_MIN_C <= temp <= TEMP_MAX_C):
-                    reader_errors.append(f"iter {i}: Temp={temp!r} outside plausible bounds")
-            except Exception as e:
-                reader_errors.append(f"iter {i}: {type(e).__name__}: {e}")
-            reader_completed += 1
-            if i % 10 == 0:
-                wdt.feed()
+    def off_schema(field: str, value: int) -> "str | None":
+        _kind, _default, low, high, _special = BENCH["scd30_schema"][field]
+        return None if isinstance(low, int) and isinstance(high, int) and low <= value <= high else f"{field}={value} outside its schema range [{low}, {high}]"
 
-    async def snapshotter() -> None:
-        nonlocal snapshot_completed
-        for i in range(SNAPSHOTTER_ITERATIONS):
-            try:
-                _temp_offset, meas_int, _amb_pres, _altitude, frc, _self_cal = await scd.get_config_snapshot()
-                if not (2 <= meas_int <= 1800):
-                    snapshot_errors.append(f"iter {i}: MeasInt={meas_int!r} outside valid schema range")
-                if not (400 <= frc <= 2000):
-                    snapshot_errors.append(f"iter {i}: ForceCalRef={frc!r} outside valid schema range")
-            except Exception as e:
-                snapshot_errors.append(f"iter {i}: {type(e).__name__}: {e}")
-            snapshot_completed += 1
-            if i % 5 == 0:
-                wdt.feed()
+    async def read() -> "str | None":
+        return await scd30_reading_problem(scd, BENCH["bounds"])
 
-    await asyncio.wait_for(asyncio.gather(reader(), snapshotter()), 90.0)
+    async def snapshot() -> "str | None":
+        _offset, interval, _ambient, _altitude, frc, _self_cal = await scd.get_config_snapshot()
+        return off_schema("MeasInterval", interval) or off_schema("ForceCalRef", frc)
 
-    failures = []
-    if reader_completed != READER_ITERATIONS:
-        failures.append(f"reader only completed {reader_completed}/{READER_ITERATIONS} iterations")
-    if snapshot_completed != SNAPSHOTTER_ITERATIONS:
-        failures.append(f"snapshotter only completed {snapshot_completed}/{SNAPSHOTTER_ITERATIONS} iterations")
-    failures.extend(reader_errors)
-    failures.extend(snapshot_errors)
-
-    if failures:
-        print(f"RESULT: FAIL {len(failures)} issue(s): {'; '.join(failures[:10])}")
-    else:
-        print(
-            f"RESULT: PASS reader={reader_completed}/{READER_ITERATIONS} "
-            f"snapshotter={snapshot_completed}/{SNAPSHOTTER_ITERATIONS} both clean, no CRC/bus faults",
-        )
+    reader_rec, snapshot_rec = Record("scd30_reader"), Record("scd30_snapshotter")
+    await asyncio.wait_for(asyncio.gather(read_loop(read, _READER_ITERATIONS, 0, wdt, reader_rec, Stop()), read_loop(snapshot, _SNAPSHOTTER_ITERATIONS, 0, wdt, snapshot_rec, Stop())), _RUN_BOUND_S)
+    fact("reader_completed", reader_rec.reads + reader_rec.total)
+    fact("reader_planned", _READER_ITERATIONS)
+    fact("snapshot_completed", snapshot_rec.reads + snapshot_rec.total)
+    fact("snapshot_planned", _SNAPSHOTTER_ITERATIONS)
+    report_errors([reader_rec, snapshot_rec])
+    done()
 
 
 asyncio.run(_main())

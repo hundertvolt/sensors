@@ -1,0 +1,28 @@
+js/app.js(10,10): error TS2305: Module '"./poll-manager.js"' has no exported member 'fetchWithTimeout'.
+js/render.js(486,64): error TS2345: Argument of type 'Record<string, unknown> | null' is not assignable to parameter of type 'Record<string, { counter: number; history?: { num: number; type: "E" | "N" | "W"; }[]; }>'.
+  Type 'null' is not assignable to type 'Record<string, { counter: number; history?: { num: number; type: "E" | "N" | "W"; }[]; }>'.
+js/render.js(513,22): error TS2339: Property 'dataset' does not exist on type 'Element'.
+js/render.js(515,29): error TS2339: Property 'dataset' does not exist on type 'Element'.
+js/templates.js(60,21): error TS7006: Parameter 'field' implicitly has an 'any' type.
+js/templates.js(60,28): error TS7006: Parameter 'currentValue' implicitly has an 'any' type.
+js/templates.js(60,42): error TS7006: Parameter 'editable' implicitly has an 'any' type.
+js/templates.js(60,52): error TS6133: 'fieldId' is declared but its value is never read.
+js/templates.js(117,28): error TS7006: Parameter 'option' implicitly has an 'any' type.
+js/templates.js(197,37): error TS7006: Parameter 'group' implicitly has an 'any' type.
+js/templates.js(197,44): error TS7006: Parameter 'currentValues' implicitly has an 'any' type.
+js/templates.js(421,35): error TS7006: Parameter 'section' implicitly has an 'any' type.
+js/templates.js(421,44): error TS7006: Parameter 'mainEl' implicitly has an 'any' type.
+tests_js/definitions-shape-corpus.test.js(4,19): error TS2307: Cannot find module '../tests_scripts/definitions_shape_cases.json' or its corresponding type declarations.
+tests_js/definitions-shape-corpus.test.js(7,25): error TS2345: Argument of type '({ definitions, valid }: any) => void' is not assignable to parameter of type '(...args: any[] | [any]) => Awaitable<void>'.
+  Types of parameters '__0' and 'args' are incompatible.
+    Type 'any[] | [any]' is not assignable to type '[any]'.
+      Type 'any[]' is not assignable to type '[any]'.
+        Target requires 1 element(s) but source may have fewer.
+tests_js/live-backend-put-matrix.test.js(54,40): error TS2339: Property 'defaultValue' does not exist on type 'FieldDef'.
+tests_js/live-backend-put-matrix.test.js(65,56): error TS2339: Property 'defaultValue' does not exist on type 'FieldDef'.
+tests_js/mock-server.test.js(3,25): error TS2307: Cannot find module '../tests/_radio_shape_cases.json' or its corresponding type declarations.
+tests_js/poll-manager.test.js(139,28): error TS2339: Property 'isBusy' does not exist on type 'PollManager'.
+tests_js/poll-manager.test.js(141,51): error TS2339: Property 'isBusy' does not exist on type 'PollManager'.
+tests_js/poll-manager.test.js(145,28): error TS2339: Property 'isBusy' does not exist on type 'PollManager'.
+tests_js/render.test.js(560,134): error TS2353: Object literal may only specify known properties, and 'defaultValue' does not exist in type 'FieldDef'.
+tests_js/templates.test.js(2,30): error TS2459: Module '"../js/templates.js"' declares 'buildField' locally, but it is not exported.

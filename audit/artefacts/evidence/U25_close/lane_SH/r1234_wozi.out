@@ -1,0 +1,83 @@
+== Left out of the fault matrix, each with its reason: {
+ "bmp3xx:fault:writeto_mem": "a configuration write; its failure path is tests/test_asy_bmp3xx_driver.py's and tests/test_digital_twin_bmp3xx.py's",
+ "isl29125:fault:writeto_mem": "a configuration write; its failure path is tests/test_digital_twin_isl29125.py's",
+ "isl29125:fault:int_stuck_high": "a persistent INT mode; tests/test_digital_twin_isl29125_autorange.py drives it",
+ "scd30:fault:readfrom_into": "the read half of SCD30's one bus session; tests/test_asy_scd30_driver.py and tests/test_digital_twin_scd30.py cover it",
+ "sgp40:fault:general_call": "sent only by bus recovery; tests/test_digital_twin_sgp40.py covers the reset",
+ "fram:fault:readinto": "a failed chunk read takes the store's self-healing path, tests/test_asy_fram_manager.py and tests/test_digital_twin_fram.py",
+ "fram:fault:wren": "a dropped write-enable; tests/test_digital_twin_fram.py drives it",
+ "bmp3xx:hang:readfrom_mem": "a hang freezes the interpreter whichever bus call it sits in; Run 10 hangs one representative op per driver",
+ "bmp3xx:hang:writeto_mem": "a hang freezes the interpreter whichever bus call it sits in; Run 10 hangs one representative op per driver",
+ "isl29125:hang:readfrom_mem": "a hang freezes the interpreter whichever bus call it sits in; Run 10 hangs one representative op per driver",
+ "isl29125:hang:writeto_mem": "a hang freezes the interpreter whichever bus call it sits in; Run 10 hangs one representative op per driver",
+ "scd30:hang:readfrom_into": "a hang freezes the interpreter whichever bus call it sits in; Run 10 hangs one representative op per driver",
+ "sgp40:hang:readfrom_into": "a hang freezes the interpreter whichever bus call it sits in; Run 10 hangs one representative op per driver",
+ "fram:hang:write": "a hang freezes the interpreter whichever bus call it sits in; Run 10 hangs one representative op per driver",
+ "wlan:fault:*": "every WLAN raise_on method is tests/test_asy_wifi_service.py's; Run 7 drives connect outcomes by --wifi-outcome",
+ "uart_link:fault:bounded": "drop, corrupt and truncate are tests/test_digital_twin_uart_link.py's; Run 3 carries uart_link:silent"
+}
+== Launching: /root/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_wozi --wiring-plan /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25sh/build/generated_src/sensortask_wozi_wiring_plan.json --device wozi --host 127.0.0.1 --port 18080 --fram-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/logs/r1234_wozi/gc_threshold_neg1/state/fram_state.json --scd30-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/logs/r1234_wozi/gc_threshold_neg1/state/scd30_state.json --mem-backup-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/logs/r1234_wozi/gc_threshold_neg1/state/mem_backup_state.json --config-dir /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/logs/r1234_wozi/gc_threshold_neg1/state/config/ --gc-threshold -1 (log: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/logs/r1234_wozi/gc_threshold_neg1/run1_baseline.log)
+OK: [gc.threshold=-1] Run 1: GET /measurements -> 200
+OK: [gc.threshold=-1] Run 1: GET /sensors -> 200
+OK: [gc.threshold=-1] Run 1: GET /networking -> 200
+OK: [gc.threshold=-1] Run 1: GET /system -> 200
+OK: [gc.threshold=-1] Run 1: GET /notification -> 200
+OK: [gc.threshold=-1] Run 1: GET /status -> 200
+OK: [gc.threshold=-1] Run 1: GET / -> 200
+OK: [gc.threshold=-1] Run 1: UTCTime and LocalTime are null before the first NTP sync ((None, None))
+OK: [gc.threshold=-1] Run 1: PUT /system DebugLevel=5 accepted
+OK: [gc.threshold=-1] Run 1: GET /system reflects DebugLevel=5 immediately
+OK: [gc.threshold=-1] Run 1: PUT /notification WarnCO2=1800 accepted
+OK: [gc.threshold=-1] Run 1: PUT /sensors SCD30.MeasInterval=4 accepted
+OK: [gc.threshold=-1] Run 1: PUT /networking Hostname accepted
+OK: [gc.threshold=-1] Run 1: the ResetErrors sweep finished inside its 12.0s budget (0.89s, 6% of the server's own 15.0s cap)
+OK: [gc.threshold=-1] Run 1: PUT /status ResetErrors accepted
+OK: [gc.threshold=-1] Run 1: log carries none of ('MemoryError', 'memory allocation failed')
+OK: [gc.threshold=-1] Run 1: no public destination was refused (public_destinations_refused=0)
+OK: [gc.threshold=-1] Run 1: clean shutdown (exit code 0)
+OK: [gc.threshold=-1] Run 1: FRAM/SCD30 state files were persisted to disk on shutdown
+== Launching: /root/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_wozi --wiring-plan /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25sh/build/generated_src/sensortask_wozi_wiring_plan.json --device wozi --host 127.0.0.1 --port 18080 --fram-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/logs/r1234_wozi/gc_threshold_neg1/state/fram_state.json --scd30-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/logs/r1234_wozi/gc_threshold_neg1/state/scd30_state.json --mem-backup-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/logs/r1234_wozi/gc_threshold_neg1/state/mem_backup_state.json --config-dir /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/logs/r1234_wozi/gc_threshold_neg1/state/config/ --gc-threshold -1 (log: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/logs/r1234_wozi/gc_threshold_neg1/run2_reboot_settings_persistence.log)
+OK: [gc.threshold=-1] Run 2: DebugLevel=5 survived a real process restart (persistence of settings)
+OK: [gc.threshold=-1] Run 2: WarnCO2 survived a real process restart
+OK: [gc.threshold=-1] Run 2: SCD30 MeasInterval survived a real process restart
+OK: [gc.threshold=-1] Run 2: Hostname survived a real process restart
+OK: [gc.threshold=-1] Run 2: log carries none of ('MemoryError', 'memory allocation failed')
+OK: [gc.threshold=-1] Run 2: no public destination was refused (public_destinations_refused=0)
+OK: [gc.threshold=-1] Run 2: clean shutdown (exit code 0)
+OK: [gc.threshold=-1] Run 2: bootup produced verbose (DebugLevel=5) log output from multiple modules (53 matching lines)
+== Launching: /root/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_wozi --wiring-plan /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25sh/build/generated_src/sensortask_wozi_wiring_plan.json --device wozi --host 127.0.0.1 --port 18080 --fram-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/logs/r1234_wozi/gc_threshold_neg1/state/fram_state.json --scd30-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/logs/r1234_wozi/gc_threshold_neg1/state/scd30_state.json --mem-backup-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/logs/r1234_wozi/gc_threshold_neg1/state/mem_backup_state.json --config-dir /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/logs/r1234_wozi/gc_threshold_neg1/state/config/ --gc-threshold -1 --fault bmp3xx:writeto:500 --fault fram:silent --fault scd30:writeto:500 --fault sgp40:writeto:500 (log: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/logs/r1234_wozi/gc_threshold_neg1/run3_sustained_bus_fault_matrix.log)
+OK: [gc.threshold=-1] Run 3: BMP3XX's injected sustained fault was recorded as a real error while the process lived ({'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'E', 'num': 28}, {'type': 'E', 'num': 10}, {'type': 'W', 'num': 15}], 'counter': 3})
+OK: [gc.threshold=-1] Run 3: FRAM's injected sustained fault was recorded as a real error while the process lived ({'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'W', 'num': 26}, {'type': 'E', 'num': 102}, {'type': 'W', 'num': 63}, {'type': 'E', 'num': 54}, {'type': 'E', 'num': 102}, {'type': 'E', 'num': 100}, {'type': 'E', 'num': 10}], 'counter': 8})
+OK: [gc.threshold=-1] Run 3: SCD30's injected sustained fault was recorded as a real error while the process lived ({'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'E', 'num': 28}, {'type': 'E', 'num': 10}, {'type': 'W', 'num': 15}, {'type': 'E', 'num': 10}], 'counter': 4})
+OK: [gc.threshold=-1] Run 3: SGP40's injected sustained fault was recorded as a real error while the process lived ({'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'E', 'num': 28}, {'type': 'E', 'num': 10}, {'type': 'W', 'num': 15}, {'type': 'E', 'num': 10}], 'counter': 4})
+OK: [gc.threshold=-1] Run 3: log carries none of ('MemoryError', 'memory allocation failed')
+OK: [gc.threshold=-1] Run 3: no public destination was refused (public_destinations_refused=0)
+OK: [gc.threshold=-1] Run 3: the device reset itself under the combined faults (a simulated reset, exit code 3)
+OK: [gc.threshold=-1] Run 3: the runner's machine reset line names one reset (ResetLine(kind='reset', reset_count=1, bootloader_count=0))
+OK: [gc.threshold=-1] Run 3: watchdog never starved under the sustained faults (would_have_triggered_count=0)
+== Launching: /root/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_wozi --wiring-plan /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25sh/build/generated_src/sensortask_wozi_wiring_plan.json --device wozi --host 127.0.0.1 --port 18080 --fram-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/logs/r1234_wozi/gc_threshold_neg1/state/fram_state.json --scd30-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/logs/r1234_wozi/gc_threshold_neg1/state/scd30_state.json --mem-backup-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/logs/r1234_wozi/gc_threshold_neg1/state/mem_backup_state.json --config-dir /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/logs/r1234_wozi/gc_threshold_neg1/state/config/ --gc-threshold -1 (log: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/logs/r1234_wozi/gc_threshold_neg1/run4_bus_fault_persistence_sweep.log)
+OK: [gc.threshold=-1] Run 4: ResetReason is the supervisor's escalation code 5 after Run 3's reset (5)
+OK: [gc.threshold=-1] Run 4: BMP3XX's error count correctly did NOT persist across reboot (FRAM was gone for all of Run 3, so nothing it logged could reach the chip) ({'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}], 'counter': 0})
+OK: [gc.threshold=-1] Run 4: SCD30's error count correctly did NOT persist across reboot (FRAM was gone for all of Run 3, so nothing it logged could reach the chip) ({'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}], 'counter': 0})
+OK: [gc.threshold=-1] Run 4: BMP3XX produces real readings again after a run in which every bus (FRAM included) was faulted throughout ({'TS': None, 'Temp': None, 'Pres': None, 'SLPres': None})
+OK: [gc.threshold=-1] Run 4: SCD30 produces real readings again after a run in which every bus (FRAM included) was faulted throughout ({'TS': None, 'Temp': None, 'WetBulb': None, 'CO2': None, 'FRCWait': None, 'Hum': None, 'FRCState': None, 'DewPoint': None})
+OK: [gc.threshold=-1] Run 4: SGP40 produces real readings again after a run in which every bus (FRAM included) was faulted throughout ({'VOCState': None, 'Raw': None, 'TS': None, 'VOC': None})
+OK: [gc.threshold=-1] Run 4: log carries none of ('MemoryError', 'memory allocation failed')
+OK: [gc.threshold=-1] Run 4: no public destination was refused (public_destinations_refused=0)
+OK: [gc.threshold=-1] Run 4: clean shutdown (exit code 0)
+OK: [gc.threshold=-1] Run 4: the boot that read the reset record cleared it (mem_backup r0 (0, 0, 0, 0))
+
+== Summary: scripts/_digital_twin_ci_suite.py ==
+Commit: 1042ee1 (uncommitted changes)
+Levels: L2 (wozi)
+GC stage: -1
+Counts (checks): passed 46 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

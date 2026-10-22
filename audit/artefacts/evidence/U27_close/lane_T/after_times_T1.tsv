@@ -1,0 +1,18 @@
+tests_scripts/test_devices_sh.py	0m0.416s	11 passed in 0.18s
+tests_scripts/test_require_python.py	0m0.565s	4 failed, 22 passed in 0.29s
+tests_scripts/test_unix_port_sh.py	0m6.337s	51 passed in 6.06s
+tests_scripts/test_port_lock.py	0m6.449s	44 passed in 6.12s
+tests_scripts/test_shell_conventions.py	0m1.226s	13 failed, 58 passed in 0.96s
+tests_scripts/test_twin_never_needs_tests_on_its_path.py	0m1.227s	1 failed, 53 passed in 0.90s
+tests_scripts/test_decision_vocabulary.py	0m9.942s	6 passed in 9.65s
+tests_scripts/test_citations.py	0m11.114s	1 failed, 14 passed in 10.87s
+tests_scripts/test_comment_block_cap.py	0m4.625s	581 passed in 4.38s
+tests_scripts/test_tunables_register.py	0m4.633s	15 passed in 4.32s
+tests_scripts/test_legacy_paths.py	0m1.914s	3 passed in 1.68s
+tests_scripts/test_import_placement.py	0m8.906s	7 passed in 8.66s
+tests_scripts/test_code_conventions.py	0m5.990s	25 passed in 5.28s
+tests_scripts/test_error_catalog.py	0m31.152s	40 passed in 20.78s
+tests_scripts/test_host_annotations.py	0m2.495s	12 passed in 2.22s
+tests_scripts/test_lint_ceilings.py	0m12.216s	19 passed in 11.97s
+tests_scripts/test_mypy_any_baseline.py	0m0.317s	7 passed in 0.09s
+tests_scripts/test_memory_error_gate_agreement.py	0m4.038s	14 passed in 3.80s

@@ -1,0 +1,23 @@
+# mutant m1b_pattern_guard against the lane snapshot prestreak/asy_wifi_service.py
+--- base/asy_wifi_service.py
++++ mutant/m1b_pattern_guard
+@@ -721,8 +721,6 @@
+     def _run_led_pattern(self, on_s: float, off_s: float) -> None:
+         # One flash task; asking for the pattern already running keeps its phase (a task that ended on a fault
+         # is not running: the next request starts it again). None while silent: dark until a link, see _led_on().
+-        if self._conn_phase == _PHASE_SILENT:
+-            return
+         if self._ledflash is not None and not self._ledflash.done() and self._led_pattern == (on_s, off_s):
+             return
+         if self._ledflash is not None:
+@@ -731,8 +729,8 @@
+         self._ledflash = asyncio.get_event_loop().create_task(self._flash_led(on_s, off_s))
+ 
+     async def _run_silent_mode(self) -> None:
+-        # One connect attempt per hotspot_time_min, uncapped, the watcher marking it due on the window's own timer; never a
+-        # scan: WLAN's scan() holds the VM up to 10 s (extmod/network_cyw43.c:236-246, v1.29.0), past the watchdog.
++        # One connect attempt per hotspot_time_min, uncapped, the watcher marking it due on the window's own timer; never
++        # WLAN.scan(), which holds the VM up to 10 s (extmod/network_cyw43.c:236-246, v1.29.0), past the watchdog.
+         if not self._hotspot_timer_running:
+             await self._arm_hotspot_timer()  # a failed arm is persisted and retried next iteration
+         if not self._silent_attempt_due:

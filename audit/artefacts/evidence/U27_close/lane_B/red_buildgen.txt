@@ -1,0 +1,15 @@
+E       ImportError: cannot import name 'device_max_connections_by_name' from 'buildgen.validate' (/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27b/buildgen/validate.py)
+E       ImportError: cannot import name 'device_max_connections_by_name' from 'buildgen.validate' (/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27b/buildgen/validate.py)
+E       ImportError: cannot import name 'device_max_connections_by_name' from 'buildgen.validate' (/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27b/buildgen/validate.py)
+E       ImportError: cannot import name 'device_max_connections_by_name' from 'buildgen.validate' (/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27b/buildgen/validate.py)
+E       ImportError: cannot import name 'device_max_connections_by_name' from 'buildgen.validate' (/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27b/buildgen/validate.py)
+E       ImportError: cannot import name 'device_max_connections_by_name' from 'buildgen.validate' (/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27b/buildgen/validate.py)
+E       TypeError: generate_device() got an unexpected keyword argument 'test_overrides'
+FAILED tests_scripts/test_buildgen_validate.py::test_the_ceiling_by_device_name_equals_the_path_form[arzi]
+FAILED tests_scripts/test_buildgen_validate.py::test_the_ceiling_by_device_name_equals_the_path_form[dev]
+FAILED tests_scripts/test_buildgen_validate.py::test_the_ceiling_by_device_name_equals_the_path_form[grkizi]
+FAILED tests_scripts/test_buildgen_validate.py::test_the_ceiling_by_device_name_equals_the_path_form[klkizi]
+FAILED tests_scripts/test_buildgen_validate.py::test_the_ceiling_by_device_name_equals_the_path_form[schlafzi]
+FAILED tests_scripts/test_buildgen_validate.py::test_the_ceiling_by_device_name_equals_the_path_form[wozi]
+FAILED tests_scripts/test_buildgen_generate.py::test_a_test_override_is_named_in_the_build_info_and_a_release_build_names_none
+7 failed, 754 deselected in 1.79s

@@ -1,0 +1,13 @@
+displays :0 :1 :2 in 60 ms; distinct: true
+stopped; tracked left: 0
+rc=0
+rejected: "Xvfb exited before reporting a display (exit code 1, signal none)\n--- Xvfb stderr ---\nFatal server error: (EE) fixture refusal\n"
+tracked left: 0
+rc=0
+--- after switching the early-exit trigger to close
+displays :0 :1 :2 in 69 ms; distinct: true
+stopped; tracked left: 0
+rc=0
+rejected: "Xvfb exited before reporting a display (exit code 1, signal none)\n--- Xvfb stderr ---\nFatal server error: (EE) fixture refusal\n"
+tracked left: 0
+rc=0

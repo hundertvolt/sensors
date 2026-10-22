@@ -1,0 +1,27 @@
+E           AssertionError: pyproject.toml: a bare `# type: ignore` must itself be an error (enable_error_code)
+E           assert 'ignore-without-code' in []
+E       AssertionError: scripts/lint.sh's ruff call
+E       assert ['buildgen', ...ardware', ...] == ['build/gener... 'tests', ...]
+E         
+E         At index 0 diff: 'buildgen' != 'build/generated_src'
+E         Right contains one more item: 'toolchain'
+E         Use -v to get more diff
+E       AssertionError: ci.yml's mypy paths are the main pass's files
+E       assert ['src', 'test...vice_scripts'] == ['digital_twi...vice_scripts']
+E         
+E         At index 0 diff: 'src' != 'digital_twin'
+E         Right contains one more item: 'tests_hardware/device_scripts'
+E         Use -v to get more diff
+E       AssertionError: no mypy run checks ['tests/_digital_twin_construction_scenarios.py', 'tests/test_digital_twin_bmp3xx.py', 'tests/test_digital_twin_bus_hazard_concurrency.py', 'tests/test_digital_twin_clock_jump.py', 'tests/test_digital_twin_construction.py', 'tests/test_digital_twin_fram.py', 'tests/test_digital_twin_fram_crash_points.py', 'tests/test_digital_twin_generic_wiring.py', 'tests/test_digital_twin_hot_replug.py', 'tests/test_digital_twin_http_client.py', 'tests/test_digital_twin_isl29125.py', 'tests/test_digital_twin_isl29125_autorange.py', 'tests/test_digital_twin_launch.py', 'tests/test_digital_twin_machine.py', 'tests/test_digital_twin_machine_uart.py', 'tests/test_digital_twin_network_neopixel.py', 'tests/test_digital_twin_ntp.py', 'tests/test_digital_twin_poll_prewarm.py', 'tests/test_digital_twin_rp2_constants.py', 'tests/test_digital_twin_run_generic_integration.py', 'tests/test_digital_twin_scd30.py', 'tests/test_digital_twin_sensortask_integration.py', 'tests/test_digital_twin_sgp40.py', 'tests/test_digital_twin_timer_pool.py', 'tests/test_digital_twin_uart_comm_hazard.py', 'tests/test_digital_twin_uart_field_sweep.py', 'tests/test_digital_twin_uart_link.py', 'tests/test_digital_twin_unix_port_unretrieved_report.py', 'tests/test_digital_twin_wifi_modes.py', 'digital_twin/launch.py', 'digital_twin/machine.py', 'digital_twin/neopixel.py', 'digital_twin/network.py', 'digital_twin/rp2.py', 'digital_twin/run_device_script.py', 'digital_twin/run_generic_integration.py'] - name it in a pass's files or check it alone in scripts/typecheck.sh
+E       assert not ['tests/_digital_twin_construction_scenarios.py', 'tests/test_digital_twin_bmp3xx.py', 'tests/test_digital_twin_bus_ha...ts/test_digital_twin_clock_jump.py', 'tests/test_digital_twin_construction.py', 'tests/test_digital_twin_fram.py', ...]
+E       AssertionError: the twin pass takes its files from its ini
+E       assert None
+E        +  where None = <function search at 0x7f85ac8ed940>('^mypy --config-file digital_twin/typecheck\\.ini \\|\\|', '#!/usr/bin/env bash\n# Runs mypy against pyproject.toml\'s [tool.mypy] `files` scope, plus two further invocations th...n\nif [ "$main_status" -ne 0 ] || [ "$twin_status" -ne 0 ] || [ "$host_status" -ne 0 ]; then\n    exit 1\nfi\nexit 0\n', re.MULTILINE)
+E        +    where <function search at 0x7f85ac8ed940> = re.search
+E        +    and   re.MULTILINE = re.MULTILINE
+FAILED tests_scripts/test_lint_type_scopes.py::test_the_three_passes_share_one_strictness
+FAILED tests_scripts/test_lint_type_scopes.py::test_ruff_and_ci_name_the_eight_scopes_and_the_generated_tree
+FAILED tests_scripts/test_lint_type_scopes.py::test_ci_s_mypy_step_names_exactly_the_main_pass_s_files
+FAILED tests_scripts/test_lint_type_scopes.py::test_every_python_file_is_checked_by_some_mypy_run
+FAILED tests_scripts/test_lint_type_scopes.py::test_scripts_typecheck_sh_runs_the_passes_from_their_configs_and_the_single_files
+5 failed, 3 passed in 1.98s

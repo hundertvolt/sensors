@@ -1,0 +1,232 @@
+
+######## SubagentHandback 2026-10-13T11:43:56.690Z
+WIP X1 7006202
+
+## U23 lane X, WIP X1 (branch `audit/u23-x`, worktree `S/wt-u23x`)
+
+**Commit:** `7006202`, "U23 lane X WIP X1: SPECIFICATION.md follows the website, its build and the wire facts". It sits on `202a118`. The only file touched is `SPECIFICATION.md` (+252/−101). Nothing was pushed, and I stopped here as the launch note says.
+
+Before the edits I ran `S/u23/rebuild.sh S/wt-u23x` once (6.8 s, rc=0).
+
+### Facts table
+Line numbers are those after the edit.
+
+| Fact | Status | Where, or why not |
+|---|---|---|
+| X1 | applied | N.3 L1, new row `l1.lwip_host_spin_window_rounds` (3 rounds) after the max_us row. Basis is the owner's 2026-10-13 decision with its question and words. |
+| X2 | applied | `l1.lwip_host_spin_round_max_us` Dependants now say "the fastest of every `l1.lwip_host_spin_window_rounds` consecutive `drain()` rounds". Value, Basis and Margin are unchanged, including "never a larger bound (owner, 2026-09-30)". |
+| X3 | applied | B.14.4 Cost: the time bound reads the fastest of three consecutive rounds (owner, 2026-10-13); the allocation bound reads every round; 8.5 ms is stated as a single round's worst. |
+| X4 | applied | N.3 Build: `web.default_decimals` after `web.poll_interval_ms`. Two sites. Basis is the owner's 2026-10-02 decision (full note and question), "the value is the lower of the owner's two (agent, 2026-10-13)". |
+| X5 | applied | L.5 now lists `web.ignored-when-set-unknown` and `web.key-needs-number`. A read-only comparison confirms that code and list now match exactly. |
+| X6 | applied | `@web resolution` replaces `@web defaultValue`. |
+| X7, X41, X44 | applied | A.8 opening: the `unavailableMarker` and `unknownCodeText` keys (both read by AST); the GET rule now excludes an always-executed toggle (`ContMeas`); the API-fact / page-only key split, with `api.field-key-unclassified`. |
+| X8 | applied | G.2 mirror catalog. The `DNS_LABEL_MAX`/`DNS_FALLBACK_MAX` pins exist in this tree, so they are written. I also added `MAX_POLL_INTERVAL_MS`, the reference agreement test, and the `readIntConst()` source reader with `POLL_BACKOFF_MAX_MS`. `isRecord` does not go into G.2, which lists no JS-only primitives. |
+| X9, X52 | applied, see deviation 1 | New H.1 paragraph "**Accessibility baseline**". |
+| X10, X34 (shell part) | applied | H.2 module map: `shell.js`, `api-contract.js`, and `isRecord()` on `definitions.js`. |
+| X11 | applied | H.2: the build script and the stager, the banner, `--stage-only`, the drift rule and `test_stage_website.py`; both scripts' usage lines. |
+| X12 | applied | Derived order and every refusal, plus "an import of a missing module", which the stager also refuses. The thin-bootstrap tag is kept. |
+| X13, X39, X53 | applied | H.3: the contract, the four controller dataset hooks, the template hooks, in-place updates, the template API, and the layering guard. |
+| X14 | applied | H.4 "Rendering safety" row now names the sink rule. |
+| X15, X36 | applied | New H.4 row "Divergences from the legacy site", one row holding both lists, each item with its actor. |
+| X16 | applied | H.4 mock paragraph, with the resolution clause (agent, 2026-09-30). The stateless-command gap is left out, as ruled (A-10). |
+| X17 | applied | `defaultDecimals` added to the H.5 top level. |
+| X18, X55 | applied | H.5 FieldDef keys and shape hints; `defaultValue` removed; `path` on the maintenance fields. |
+| X19 | applied | H.5: no synthetic baseline; `ContMeas` shows no state until set (agent, 2026-09-30; owner-reviewed, 2026-10-02). |
+| X20 | applied | H.5.1: every value's decimals come from its source, then the counts the build carries. ISL29125 is written "keeps its own tags (0 to 4)", because its tags run 0–4, not only 3–4. |
+| X21 | applied | `validateNumberHints()`. |
+| X22, X35 | applied | H.7 bundling and inlining, "nine modules". I took the count read-only from the stager's own `_closure()` call (the nine are `poll-manager`, `definitions`, `api-contract`, `field-format`, `templates`, `render`, `nav`, `shell`, `main`). |
+| X23–X27 | applied | H.8: `lint:html:built`, the reference loader and agreement checks, the console rule with the sink rule, and the stager checking the bootstrap. |
+| X28 | not written | Waits for the lead's final merge. The H.8 ceilings sentence (`SPECIFICATION.md:7210`) is false today and stays so until then. |
+| X29 | applied | A.8 controlled shutdown: the website's three dialogs. They sit under one owner tag (2026-10-01) quoting the full note and its question, because "Fine" in that note approves the DNS Clear dialog itself. |
+| X30 | applied | H.4 gap row: the DNS fallback exception (owner, 2026-09-26) and `PW`'s hint. "(owner, 2026-08-22, `cc999c1`: leave as-is)" is kept word for word. |
+| X31 | applied | H.4 "Poll coordination". The first sentence, which ends "by design;", is kept word for word, so its allow-list row stays valid. |
+| X32 | already present | — |
+| X33, X40 | applied | H.6: "no data" / "unavailable" and the rollup line; the errcount wiring. |
+| X34 (S3 part), X37, X38 (`l0.live_*`) | not written | S3 is still pending. `tests_js/_expected_display.js` does not exist yet, and `field-format.js` is still imported by the Node-context `_live_matrix_command.js`, so H.2's current reason for it is still true. |
+| X38, X47–X51 | applied | Firmware table, after `web.outer_cap_s`: `web.poll_backoff_max_ms`, `web.device_watch_interval_ms`, `web.clock_mismatch_s`. L0: `l0.section_render_wait_ms` with three sites; `site-functions.test.js` added to the two `l0.render_*` rows (Basis kept, per R15). |
+| X42 | applied | A.8 PUT /status `ResetErrors` rule. |
+| X43 | applied | `api.wire-text-not-string` added to L.5. |
+| X45 | applied | `UnixTime` in A.8. |
+| X46 | applied | A.8 `/status` `sensors` written as the wire nests it; `BackupTS`/`RestoreTS` placed under each SGP40 source. |
+| X54 | applied | H.4 PUT/GET row: the Apply path's texts. |
+| X56 | applied | H.5.1: the three status rows of D's report. |
+| X57 | applied | H.4 "Page model": the `#<key>` history, with the owner's 2026-10-01 quote. |
+
+Two small additions outside the work list, both to keep an existing citation true:
+- H.3's mechanics layer now names `shell.js`.
+- H.2 now says `build_device_websites.sh` skips the `zz_test_` fixtures. `tests_scripts/test_build_device_websites_sh.py:3` cites H.2 for that fact, and it was missing.
+
+### Deviations from the brief
+1. **H.1 accessibility (X9).** I wrote it as its own paragraph tagged (agent, 2026-09-27; owner-reviewed, 2026-10-01), not inline in the existing constraints list. That list is attributed to the owner's brief of 2026-08-21, so putting the new items inside it would date them wrongly.
+2. **Back-off formula (X48).** The brief says min(interval × 2^n, cap). I wrote what the code and its test do: after the k-th consecutive failure, the next try comes min(interval × 2^(k−1), cap) later, so 3000, 6000, 12000, …
+3. **`web.poll_backoff_max_ms` and `web.device_watch_interval_ms` Basis.** Per R13 these are `estimated (agent, 2026-09-30) — measurement owed: …`. The owner's "ok" on record `website-unattended` is listed in this report only.
+4. **No lane hashes in Part N or the doc (R14).** `web.clock_mismatch_s` uses (agent, 2026-10-13) instead of `10005b1`.
+5. **H.3 (X53).** I make no claim that the guard is red; your `baea419` escaped that selector. The controller list follows the guard's own `_CONTROLLERS` set (`render.js`, `nav.js`, `shell.js` and the two entries). `navOpen` is written by `nav.js`, not `render.js`.
+6. **`data-worst` values.** Written as `E`/`W`/`N`/`none`, which is what `js/templates.js` writes; X13's text left out `N`.
+
+### Owner-review records named (R6)
+- `apply-failure-marks-fields` ("ok", 2026-10-01): failed Apply marks every field.
+- `favicon-inline` ("ok", 2026-10-02): the inlined favicon.
+- `website-display-details` (answer "Fine, …", 2026-10-02): `ContMeas` with no state.
+- `website-unattended` ("ok", 2026-10-01): the back-off and the build reload in the divergence row.
+- `website-accessibility` (answer "Fine, …", 2026-10-01): the H.1 baseline.
+- The stripe and the double stripe have no record, so they carry plain actor tags.
+
+### Allow-list row retired (yours to drop)
+`tests_scripts/_decision_vocab_allowlist.txt:46`, `SPECIFICATION.md	**Contract between them**: controllers reach into a template only via `data-*` a`. The H.3 rewrite changed "appearance decided entirely by CSS" to "its appearance set entirely by CSS", so the sentence no longer matches. I kept the "Poll coordination" and "deliberately never staged" sentences and the "must never be *re-exported*" sentence word for word, so their rows still hold.
+
+### Checks
+I ran them after `git add`, as one pytest process at `nice -n 19` with `PYTHONPATH=scripts TZ=UTC` and no port. The files were `test_tunables_register.py`, `test_citations.py`, `test_decision_vocabulary.py`, `test_comment_block_cap.py`, `test_legacy_paths.py`, `test_error_catalog.py`, `test_import_placement.py`, `test_level_containment.py`, `test_lock_order.py`, `test_task_inventory.py` and `test_toml_schema_contract.py`.
+- **Before editing:** 1 failure. `test_tunables_register` was missing the 9 tagged IDs this lane owed and the 2 site-functions sites.
+- **Final:** 582 passed, 1 failed. `test_tunables_register` is now green. The one failure is `test_decision_vocabulary.py::test_the_allowlist_only_shrinks`, and it is only the retired row above (waits on you).
+
+### Runs
+Three runs, all exited and all in RUNS.md; `ps` shows nothing left over:
+- `rebuild.sh` (6.8 s)
+- the baseline check (85 s)
+- the final check (87 s, run twice on the staged file)
+
+### Findings outside the brief
+- **`SPECIFICATION.md:1142` (A.9), my file but not in the brief.** The example "`<staged>/definitions/wozi.json`, `<staged>/js/render.js`" was already wrong before this unit: the stage holds only `index.html` and `js/app.js`. I did not change it; it is a one-line fix if you want it in this unit.
+- **`js/definitions.js:438`, `neverUnchanged()`.** It cites H.4 for "the two classes the server never answers Unchanged", but that fact lives in H.5/H.6. The comment predates this unit (same text at `8fff76f`).
+- **`README.md:257` (lane Y).** The npm table still lacks `lint:html:built` (xy_gaps E3).
+- I grepped README, CLAUDE, BACKLOG, DEVICE_REFERENCE and the two other READMEs for the stale terms and found no other false sentence.
+- **Silent-failure scan.** This lane is docs only; the doc-level findings are the A.9 example and the H.8 ceilings sentence above. No new code finding.
+
+### Waiting for the resume
+- X28: your final ceiling figures.
+- S3: X34's `field-format.js` / `_expected_display.js` change, X37's full ceiling with reload recovery, and X38's `l0.live_*` rows plus any tag S renames or withdraws.
+
+Report table and edit scripts are in `S/u23/laneX/` (`check1.log`, `check2.log`, `edit1-3.py`, `commit_msg.txt`).
+
+######## SubagentHandback 2026-10-13T13:29:22.550Z
+RESUME FACTS 7666995. I still need the second message: the API5 hash and the measured lint-ceiling values.
+
+## Lane X, resumed (branch `audit/u23-x`, worktree `S/wt-u23x`)
+Commit `7666995` sits on WIP X1 `7006202`. It touches `SPECIFICATION.md` only (+75/−18) and is not pushed. API5 does not exist yet (`audit/u23-api5` is absent), so I have not merged, rebuilt or run the full check set. That waits for your second message.
+
+### Written, by item of your message
+1. **Lane S final (X34, X37, X38):**
+   - **Part N:** two new rows beside the `l0.live_twin_*` rows, in the agent form with S's measured times. `l0.live_concurrent_tabs_timeout_ms` (200000) gets margin about 8.6× its slowest device (23.2 s); `l0.live_restart_recovery_timeout_ms` (180000) about 19× (9.3 s).
+   - **H.7:** a new "What the live tier checks" paragraph. It covers:
+     - the exact-words smoke;
+     - the full `max_connections` ceiling with one reload per tab, and the printed counts line;
+     - the restart case;
+     - the four action probes in their run order, `mempause` last;
+     - `archiveErrcount()`;
+     - the `_expected_display.js` oracle;
+     - the restart signs.
+   - **H.7 cross-browser paragraph:** the old "`max_connections // 2` … never exceeded" is replaced by the full ceiling.
+   - **H.2:** `field-format.js` is now "pure formatting, no DOM dependency", with one line for `tests_js/_expected_display.js`.
+   - **H.8:** the test list gains `expected-display.test.js` and the restart signs.
+   - **H.8.1:** `DisplayField` is named as a second example of the convention.
+2. **Round 2:**
+   - H.3 and H.4 now show the call as `pollManager.request(url, init, timeoutMs, signal, queueSignal)`.
+   - The "Poll coordination" row carries your abort sentence verbatim, tagged (agent, 2026-10-13, decided on the owner's behalf for review), with the reason (`wrnno` 48 on ordinary navigation) and the cost (median 216.6 ms against 6.6 ms, at most the 15 s cap).
+   - The H.4 Apply-path row now names the confirmation texts. The put-matrix test cites H.4 for them.
+   - H.7 has the matrix page's reduced motion and per-frame waits (same tag) and the shards at 245-255 s, every case kept.
+3. **OF-111:**
+   - A.8 PUT /status: from the acceptance of reboot, bootloader, resetconfig or erasefram until the restart, `ResetErrors` answers "Failed" and clears nothing. Tagged (owner, 2026-10-13) with the question as asked (without the audit ID) and option (b), then the words "1 b".
+   - The A.8 shutdown paragraph now reads "from the moment a sequence is accepted, clearing nothing, so the FRAM-backed logs survive into the reset".
+4. **OF-129:**
+   - C.7: a new sentence for the hotspot window, with the question, option (b), "Take option b for 2" and the owner's follow-up.
+   - C.9: the failed hotspot-timer arm now counts in both modes, not only the silent one.
+   - A.4: one sentence on the hotspot window.
+   - C.7.2: already true for this timer (a task restart leaves the hotspot for a new STA interface). No edit.
+5. **Rulings:**
+   - A.9's staged example now reads `<staged>/index.html`, `<staged>/js/app.js`.
+   - The commit body says the H.3 "decided" → "set" rewording is no meaning change.
+   - X28 (the ceilings sentence at H.8, `SPECIFICATION.md` "Complexity ceilings (`complexity` 41 …") is not written yet and is false until your values arrive.
+6. Nothing written on MPRLS or SHTC3.
+
+### Deviations
+- **"L2 (Run 13)":** I did not repeat it. S's put-matrix comment says reboot, bootloader, resetconfig and erasefram are covered there, but `scripts/_digital_twin_ci_suite.py` has no Run 13 and no run that sends those commands. I wrote that the unit tier's shutdown scenarios cover them (A.8).
+- **mempause:** S also listed that `ResetErrors` answers "Failed" during a `mempause`. It is not in your list, and A.8's existing "a reset … returned false" already covers it. I wrote nothing more; it is Y's DEVICE_REFERENCE fact.
+
+### Allow-list rows retired (yours to drop at the docs merge)
+- `SPECIFICATION.md	**Contract between them**: controllers reach into a template only via `data-*` a` (from WIP X1).
+- `SPECIFICATION.md	| Poll coordination | One shared poll-manager (single-flight queue) | Measuremen`. The test judges each table row as one block, and your agent tag now sits in that row, so the older "by design" sentence reads as tagged. That is the check's own block rule, not a fix of that sentence's missing actor.
+
+### Pre-merge preview
+I ran `test_decision_vocabulary` and `test_citations` after `git add`: 19 passed, 2 failed. The failures are the two retired rows above, and citations to `tests_js/_expected_display.js` and `tests_js/expected-display.test.js`, which do not exist on this branch until API5 brings S's final. Both are expected to clear after the merge, the rows once dropped. One run of 19 s; it exited and is marked done in RUNS.md, and no process of mine is left.
+
+### Findings for you (files outside my set)
+- `tests_js/live-backend-put-matrix.test.js:182` (at `audit/u23-lead2`): the `applyAndExpectRendered` doc comment cites "SPECIFICATION.md Part H.3: only number/string captions self-refresh in place". H.3 now states that every card updates in place, toggles and selects included.
+- `tests_js/live-backend-put-matrix.test.js:88`: the "L2 (Run 13)" claim above.
+
+######## SubagentHandback 2026-10-13T13:34:05.063Z
+POLL ROW f837a39. I'm waiting for the API5 message; nothing else changed.
+
+I could not give the "by design" sentence an actor: it has no traceable decider. It came in with `WEBSITE_PLAN.md` (`9cc8dc4`/`95fc117`, 2026-08-21) as an actorless "settled architecture" row and moved into SPEC with `15ed282`. `audit/DECISION_PROVENANCE.md` E03 records that section as having no actor. The owner bulk tag in `999aada` covers visual/UX choices only, and this row is about polling.
+
+So I reworded it instead, using the reason the source itself gave ("(a page only ever needs one or the other)"):
+
+- **Before:** "Measurements and status/settings groups are never polled concurrently by design;"
+- **After:** "Measurements and status/settings groups are never polled concurrently, a page only ever needing one or the other;"
+
+The commit body says "No meaning change" and names the source. The rest of the row is unchanged, including your agent-tagged hand-over sentence.
+
+**Check:** `test_decision_vocabulary.py` after `git add`: 5 passed, 1 failed. The failure is `test_the_allowlist_only_shrinks`, naming two stale rows, both now stale because their sentences no longer contain decision vocabulary (not because of the agent tag later in the row):
+- `SPECIFICATION.md	**Contract between them**: controllers reach into a template only via `data-*` a`
+- `SPECIFICATION.md	| Poll coordination | One shared poll-manager (single-flight queue) | Measuremen`
+
+Both are yours to drop. The run took 9 s and is marked done in RUNS.md; no process of mine is left.
+
+**Branch `audit/u23-x`:** `7006202` (WIP X1), then `7666995` (resume facts), then `f837a39` (this change). Not pushed. Still waiting on the API5 hash and the ceiling values for X28, the merge, the rebuild and the final checks.
+
+######## SubagentHandback 2026-10-13T13:55:57.420Z
+FINAL ae6a7df
+
+## U23 lane X final (branch `audit/u23-x`, worktree `S/wt-u23x`, not pushed)
+Lane X is done: everything the brief and your messages asked for is in `SPECIFICATION.md`, the only file I changed. `test_tunables_register` is green on the merged tree. The one red check is two decision-vocabulary allow-list rows for you to drop.
+
+Commits on top of `202a118`:
+- `7006202`: WIP X1.
+- `7666995`: lane S final, round 2, OF-111, OF-129, the A.9 paths.
+- `f837a39`: the "Poll coordination" row's "by design" reworded, no meaning change.
+- `82ef8cf`: merge of API5 `1af97e9` (`--no-ff`, no conflict). I then ran `S/u23/rebuild.sh S/wt-u23x`: rc 0, all six devices.
+- `ae6a7df`: X28, the ceilings sentence.
+
+### Facts table
+| Fact | Status |
+|---|---|
+| X1–X27, X29–X31, X33, X35, X36, X39–X57 | applied in WIP X1 (each row and line is in that report); X31 and X53 later updated for round 2 |
+| X28 | applied: `complexity` 22 (`js/field-format.js`'s `formatFieldValue()`), `max-depth` 4, `max-nested-callbacks` 4, `max-classes-per-file` 1, from your values |
+| X32 | already present |
+| X34 | applied: `shell.js` in WIP X1; in the resume, `field-format.js` became "pure formatting, no DOM dependency", plus a line for `tests_js/_expected_display.js` |
+| X37 | applied: H.7 "What the live tier checks" (exact words, full ceiling with reload and the printed counts, restart case, action probes, `archiveErrcount()`, display oracle, restart signs, reduced motion and per-frame waits, shard times); the cross-browser paragraph now says full ceiling |
+| X38 | applied: all eight `web.*`/`l0.*`/`l1.*` rows and both site-functions sites, including `l0.live_concurrent_tabs_timeout_ms` (200000) and `l0.live_restart_recovery_timeout_ms` (180000) |
+| Round 2 | applied: the `queueSignal` argument in H.3 and H.4; your abort sentence in "Poll coordination" with its tag, reason and cost; the confirmation texts in the H.4 Apply row |
+| OF-111 | applied: the A.8 PUT /status refusal (owner, 2026-10-13, question and option quoted, "1 b"); the A.8 shutdown paragraph "from the moment a sequence is accepted, clearing nothing" |
+| OF-129 | applied: C.7 sentence (question, option, "Take option b for 2", the follow-up), C.9 now counts the failed arm in both modes, one A.4 sentence; C.7.2 already true, no edit |
+| A.9 | applied: `<staged>/index.html`, `<staged>/js/app.js` |
+| MPRLS / SHTC3 | nothing written, as you ordered |
+
+### Deviations (all reported earlier and accepted)
+- H.1's accessibility baseline is its own paragraph.
+- The back-off is written as min(interval × 2^(k−1), cap).
+- The Basis cells use R13's agent form.
+- No lane hashes in the doc.
+- `data-worst` is written as `E`/`W`/`N`/`none`.
+- No "L2 (Run 13)".
+- `mempause` is left to lane Y.
+
+### Owner-review records named (R6)
+`apply-failure-marks-fields`, `favicon-inline`, `website-display-details`, `website-unattended`, `website-accessibility`.
+
+### Allow-list rows retired (yours to drop)
+Both sentences now carry no decision vocabulary:
+- `SPECIFICATION.md	**Contract between them**: controllers reach into a template only via `data-*` a`
+- `SPECIFICATION.md	| Poll coordination | One shared poll-manager (single-flight queue) | Measuremen`
+
+### Checks
+Run on the merged tree after `git add`, one process, `nice -n 19`: the brief's 11 files (`test_tunables_register`, `test_citations`, `test_decision_vocabulary`, `test_comment_block_cap`, `test_legacy_paths`, `test_error_catalog`, `test_import_placement`, `test_level_containment`, `test_lock_order`, `test_task_inventory`, `test_toml_schema_contract`).
+- Result: 582 passed, 1 failed in 104 s.
+- The failure is `test_decision_vocabulary.py::test_the_allowlist_only_shrinks`, naming the two rows above.
+- `test_tunables_register` and `test_citations` are green.
+
+### Runs
+Every run since the first resume is marked done in RUNS.md: the 19 s preview, the 9 s decision-vocabulary run, the 8 s rebuild, and the 104 s final set. No process of mine is left.
+
+### Sentence outside my file that is false
+`tests_js/_live_matrix_command.js:495`, the `remountAndReadField` doc comment, still says "(SPECIFICATION.md Part H.3: an in-place poll never touches those controls)". H.3 now states that every card updates in place, toggles and selects included. This is the twin of the `:182` comment you corrected in `bbc420f`; one line for you.

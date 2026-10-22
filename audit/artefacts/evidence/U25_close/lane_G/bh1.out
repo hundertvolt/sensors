@@ -1,0 +1,4 @@
+test_digital_twin_bus_hazard_concurrency.-1 rc=1 wall=151.67 mem=0 :: 17/20 passed, 3 failed, 0 skipped
+FAIL test_dev_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load: teardown: AssertionError('a real select.poll() queried a UART fake 3 times',)
+FAIL test_dev_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call: teardown: AssertionError('a real select.poll() queried a UART fake 3 times',)
+FAIL test_wozi_fram_recovers_after_an_injected_spi_read_fault:

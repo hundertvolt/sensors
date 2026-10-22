@@ -1,0 +1,24 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_______ test_every_script_a_run_calls_as_a_command_is_executable_in_git ________
+
+    def test_every_script_a_run_calls_as_a_command_is_executable_in_git() -> None:
+        # CI's checkout takes each file's mode from git, so a script a step runs as a command needs 100755 in the index there.
+        called = set()
+        for path in (_CI, *_ACTIONS.glob("*/action.yml")):
+            steps = [step for job in _jobs().values() for step in _steps(job, 6)] if path == _CI else _action_steps(path)
+            called |= {(path.name if path == _CI else path.parent.name, found) for step in steps for line in _run_lines(step) for found in _SCRIPT_COMMAND.findall(line)}
+        assert any(script == "scripts/test.sh" for _, script in called), f"the command scan found no `scripts/test.sh` call - it reads nothing: {sorted(called)}"
+        modes = {}
+        for script in {script for _, script in called}:
+            entry = subprocess.run(["git", "-C", str(_REPO), "ls-files", "-s", "--", script], capture_output=True, text=True, check=True).stdout.split()
+            modes[script] = entry[0] if entry else "untracked"
+        wrong = sorted(f"{where}: {script} ({modes[script]})" for where, script in called if modes[script] != "100755")
+>       assert not wrong, f"these steps run a script as a command that git does not mark executable - `git update-index --chmod=+x` it, or run it through its interpreter: {wrong}"
+E       AssertionError: these steps run a script as a command that git does not mark executable - `git update-index --chmod=+x` it, or run it through its interpreter: ['setup-micropython-toolchain: scripts/_unix_port.sh (100644)']
+E       assert not ['setup-micropython-toolchain: scripts/_unix_port.sh (100644)']
+
+tests_scripts/test_ci_workflow.py:271: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_ci_workflow.py::test_every_script_a_run_calls_as_a_command_is_executable_in_git
+1 failed, 16 deselected in 0.09s

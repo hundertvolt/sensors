@@ -1,0 +1,21 @@
+..................................................................F
+=================================== FAILURES ===================================
+_ test_schema_default_is_the_default_each_src_tuple_declares[<2 files declare 'FiltCoeff'>-FiltCoeff] _
+
+src_file = "<2 files declare 'FiltCoeff'>", field = 'FiltCoeff'
+
+    @pytest.mark.parametrize(("src_file", "field"), [("asy_ntp_client.py", "NTPHost"), *_pushed_fields()], ids=str)
+    def test_schema_default_is_the_default_each_src_tuple_declares(src_file: str, field: str) -> None:
+        # The repair target of an aborted run's leftover: the NTP host the fault test garbles and every field the push tests
+        # write, each against an ast read of its src/ tuple apart from buildgen's.
+>       assert not src_file.startswith("<"), src_file
+E       AssertionError: <2 files declare 'FiltCoeff'>
+E       assert not True
+E        +  where True = <built-in method startswith of str object at 0x7f9ecaa27780>('<')
+E        +    where <built-in method startswith of str object at 0x7f9ecaa27780> = "<2 files declare 'FiltCoeff'>".startswith
+
+tests_scripts/test_bench_harness_helpers.py:776: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_bench_harness_helpers.py::test_schema_default_is_the_default_each_src_tuple_declares[<2 files declare 'FiltCoeff'>-FiltCoeff]
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed, 66 passed, 155 deselected in 1.52s

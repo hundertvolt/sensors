@@ -1,0 +1,13 @@
+after test_sensortask_dev cov rc=0 121.3s mem=0 89/89 passed, 0 failed, 0 skipped
+after test_asy_system_service f rc=0 33.4s mem=0 167/167 passed, 0 failed, 0 skipped
+after test_asy_system_service cov rc=0 38.1s mem=0 167/167 passed, 0 failed, 0 skipped
+after test_sensortask_dev e rc=0 65.7s mem=0 89/89 passed, 0 failed, 0 skipped
+after test_sensortask_dev f rc=0 93.6s mem=0 89/89 passed, 0 failed, 0 skipped
+after test_asy_webserver_connections e rc=0 1.3s mem=0 23/23 passed, 0 failed, 0 skipped
+after test_asy_webserver_connections f rc=0 1.4s mem=0 23/23 passed, 0 failed, 0 skipped
+after test_sensortask_wozi e rc=1 47.4s mem=0 84/89 passed, 5 failed, 0 skipped
+after test_asy_webserver_connections cov rc=0 1.5s mem=0 23/23 passed, 0 failed, 0 skipped
+after test_sensortask_wozi cov rc=1 96.2s mem=0 87/89 passed, 2 failed, 0 skipped
+after test_readiness_gates e rc=0 0.2s mem=0 14/14 passed, 0 failed, 0 skipped
+Terminated
+after test_sensortask_wozi f rc=143 17.7s mem=0 

@@ -1,0 +1,25 @@
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25sh/tests_scripts/test_digital_twin_scenarios.py:55: AttributeError: <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25sh/scripts/_digital_twin_scenarios.py'> has no attribute '_error_counters'
+E   AttributeError: module '_digital_twin_scenarios' has no attribute '_accept_queue'
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25sh/tests_scripts/test_digital_twin_scenarios.py:290: AttributeError: module '_digital_twin_scenarios' has no attribute '_accept_queue'
+E   AssertionError: ["scenario('above_max_connections_all_flaky_survives')", "scenario('above_max_connections_mixed_healthy_and_flaky_at_l..."scenario('all_flaky_connections_dont_wedge_the_server')", "scenario('api_burst_at_the_ceiling_during_bus_load')", ...]
+    assert ([<ast.Call object at 0x7f1d9aa57d90>, <ast.Call object at 0x7f1d9aa28610>, <ast.Call object at 0x7f1d9abbb400>, <ast.Call object at 0x7f1d9a9a2170>, <ast.Call object at 0x7f1d9a7ee320>, <ast.Call object at 0x7f1d9a7ef370>, ...] and False)
+     +  where False = all(<generator object test_every_scenario_names_its_family_as_a_literal.<locals>.<genexpr> at 0x7f1d9ab43840>)
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25sh/tests_scripts/test_digital_twin_scenarios.py:299: AssertionError: ["scenario('above_max_connections_all_flaky_survives')", "scenario('above_max_connections_mixed_healthy_and_flaky_at_l..."scenario('all_flaky_connections_dont_wedge_the_server')", "scenario('api_burst_at_the_ceiling_during_bus_load')", ...]
+E   TypeError: scenario() got an unexpected keyword argument 'family'
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25sh/tests_scripts/test_digital_twin_scenarios.py:307: TypeError: scenario() got an unexpected keyword argument 'family'
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_a_scenario_without_a_goal_is_refused_at_registration
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_a_name_registered_twice_is_refused
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_the_run_record_names_each_scenarios_outcome
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_the_sharing_scenarios_that_run_go_first_each_part_in_registry_order
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_consecutive_sharing_scenarios_that_run_form_one_group
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_a_sharing_scenario_boots_once_with_no_arguments_but_the_slot_lines
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_moved_error_sources_on_an_own_boot_are_refused_at_registration
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_sharing_scenarios_run_on_one_twin_until_the_group_ends
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_an_idle_check_failure_names_the_scenario_and_the_next_boots_fresh
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_a_held_slot_or_a_queued_connection_fails_the_idle_check
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_a_sharing_scenario_asking_for_its_own_arguments_is_refused
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_the_accept_queue_is_read_from_the_listening_row
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_every_scenario_names_its_family_as_a_literal
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_a_scenario_without_a_family_is_refused_at_registration
+14 failed, 20 passed in 0.71s

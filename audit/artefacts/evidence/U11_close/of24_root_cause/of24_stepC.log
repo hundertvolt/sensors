@@ -1,0 +1,396 @@
+
+LOG:  Mypy Version:           2.4.0
+LOG:  Config File:            /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/pyproject.toml
+LOG:  Configured Executable:  None
+LOG:  Current Executable:     /home/user/sensors/.venv/bin/python3
+LOG:  Cache Dir:              .mypy_cache
+LOG:  Compiled:               True
+LOG:  Exclude:                ['tests/network\\.py$', 'digital_twin/machine\\.py$', 'digital_twin/network\\.py$', 'digital_twin/neopixel\\.py$', 'digital_twin/launch\\.py$', 'digital_twin/run_generic_integration\\.py$', 'digital_twin/segfault_stress_repro\\.py$', 'tests/test_digital_twin_.*\\.py$', 'tests/_webserver_concurrency_scenarios\\.py$', 'tests/_digital_twin_construction_scenarios\\.py$']
+LOG:  Found source:           BuildSource(path='tests/test_asy_udp_socket.py', module='test_asy_udp_socket', has_text=False, base_dir='/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/tests', followed=False)
+LOG:  Metadata fresh for test_asy_udp_socket: file tests/test_asy_udp_socket.py
+LOG:  Metadata abandoned for collections.abc: options differ
+LOG:  Metadata not found for collections.abc
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/__init__.pyi (asyncio)
+LOG:  Metadata abandoned for asyncio: options differ
+LOG:  Metadata not found for asyncio
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/select.pyi (select)
+LOG:  Metadata abandoned for select: options differ
+LOG:  Metadata not found for select
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/socket.pyi (socket)
+LOG:  Metadata abandoned for socket: options differ
+LOG:  Metadata not found for socket
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/time.pyi (time)
+LOG:  Metadata abandoned for time: options differ
+LOG:  Metadata not found for time
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/src/asy_udp_socket.py (asy_udp_socket)
+LOG:  Metadata abandoned for asy_udp_socket: options differ
+LOG:  Metadata not found for asy_udp_socket
+LOG:  Metadata abandoned for typing: options differ
+LOG:  Metadata not found for typing
+LOG:  Metadata abandoned for types: options differ
+LOG:  Metadata not found for types
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/tests/microtest.py (microtest)
+LOG:  Metadata abandoned for microtest: options differ
+LOG:  Metadata not found for microtest
+LOG:  Metadata abandoned for builtins: options differ
+LOG:  Metadata not found for builtins
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/collections/abc.pyi (collections.abc)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/__init__.pyi (asyncio)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/select.pyi (select)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/socket.pyi (socket)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/time.pyi (time)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/src/asy_udp_socket.py (asy_udp_socket)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/typing.pyi (typing)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/types.pyi (types)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/tests/microtest.py (microtest)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/builtins.pyi (builtins)
+LOG:  Metadata abandoned for collections: options differ
+LOG:  Metadata not found for collections
+LOG:  Metadata abandoned for _collections_abc: options differ
+LOG:  Metadata not found for _collections_abc
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/base_events.pyi (asyncio.base_events)
+LOG:  Metadata abandoned for asyncio.base_events: options differ
+LOG:  Metadata not found for asyncio.base_events
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/coroutines.pyi (asyncio.coroutines)
+LOG:  Metadata abandoned for asyncio.coroutines: options differ
+LOG:  Metadata not found for asyncio.coroutines
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/events.pyi (asyncio.events)
+LOG:  Metadata abandoned for asyncio.events: options differ
+LOG:  Metadata not found for asyncio.events
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/exceptions.pyi (asyncio.exceptions)
+LOG:  Metadata abandoned for asyncio.exceptions: options differ
+LOG:  Metadata not found for asyncio.exceptions
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/futures.pyi (asyncio.futures)
+LOG:  Metadata abandoned for asyncio.futures: options differ
+LOG:  Metadata not found for asyncio.futures
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/locks.pyi (asyncio.locks)
+LOG:  Metadata abandoned for asyncio.locks: options differ
+LOG:  Metadata not found for asyncio.locks
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/protocols.pyi (asyncio.protocols)
+LOG:  Metadata abandoned for asyncio.protocols: options differ
+LOG:  Metadata not found for asyncio.protocols
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/queues.pyi (asyncio.queues)
+LOG:  Metadata abandoned for asyncio.queues: options differ
+LOG:  Metadata not found for asyncio.queues
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/runners.pyi (asyncio.runners)
+LOG:  Metadata abandoned for asyncio.runners: options differ
+LOG:  Metadata not found for asyncio.runners
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/streams.pyi (asyncio.streams)
+LOG:  Metadata abandoned for asyncio.streams: options differ
+LOG:  Metadata not found for asyncio.streams
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/tasks.pyi (asyncio.tasks)
+LOG:  Metadata abandoned for asyncio.tasks: options differ
+LOG:  Metadata not found for asyncio.tasks
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/micropython.pyi (asyncio.micropython)
+LOG:  Metadata abandoned for asyncio.micropython: options differ
+LOG:  Metadata not found for asyncio.micropython
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/transports.pyi (asyncio.transports)
+LOG:  Metadata abandoned for asyncio.transports: options differ
+LOG:  Metadata not found for asyncio.transports
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/threads.pyi (asyncio.threads)
+LOG:  Metadata abandoned for asyncio.threads: options differ
+LOG:  Metadata not found for asyncio.threads
+LOG:  Metadata abandoned for sys: options differ
+LOG:  Metadata not found for sys
+LOG:  Metadata abandoned for typing_extensions: options differ
+LOG:  Metadata not found for typing_extensions
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/__future__.pyi (__future__)
+LOG:  Metadata abandoned for __future__: options differ
+LOG:  Metadata not found for __future__
+LOG:  Metadata abandoned for _typeshed: options differ
+LOG:  Metadata not found for _typeshed
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/__init__.pyi (_mpy_shed)
+LOG:  Metadata abandoned for _mpy_shed: options differ
+LOG:  Metadata not found for _mpy_shed
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/time_mp.pyi (_mpy_shed.time_mp)
+LOG:  Metadata abandoned for _mpy_shed.time_mp: options differ
+LOG:  Metadata not found for _mpy_shed.time_mp
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/micropython.pyi (micropython)
+LOG:  Metadata abandoned for micropython: options differ
+LOG:  Metadata not found for micropython
+LOG:  Metadata abandoned for abc: options differ
+LOG:  Metadata not found for abc
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/re.pyi (re)
+LOG:  Metadata abandoned for re: options differ
+LOG:  Metadata not found for re
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/_typeshed/importlib.pyi (_typeshed.importlib)
+LOG:  Metadata abandoned for _typeshed.importlib: options differ
+LOG:  Metadata not found for _typeshed.importlib
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/tests/_tmp_scratch.py (_tmp_scratch)
+LOG:  Metadata abandoned for _tmp_scratch: options differ
+LOG:  Metadata not found for _tmp_scratch
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/_ast.pyi (_ast)
+LOG:  Metadata abandoned for _ast: options differ
+LOG:  Metadata not found for _ast
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/io.pyi (io)
+LOG:  Metadata abandoned for io: options differ
+LOG:  Metadata not found for io
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/collections/__init__.pyi (collections)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/_collections_abc.pyi (_collections_abc)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/base_events.pyi (asyncio.base_events)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/coroutines.pyi (asyncio.coroutines)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/events.pyi (asyncio.events)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/exceptions.pyi (asyncio.exceptions)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/futures.pyi (asyncio.futures)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/locks.pyi (asyncio.locks)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/protocols.pyi (asyncio.protocols)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/queues.pyi (asyncio.queues)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/runners.pyi (asyncio.runners)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/streams.pyi (asyncio.streams)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/tasks.pyi (asyncio.tasks)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/micropython.pyi (asyncio.micropython)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/transports.pyi (asyncio.transports)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/threads.pyi (asyncio.threads)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/sys/__init__.pyi (sys)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/typing_extensions.pyi (typing_extensions)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/__future__.pyi (__future__)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/_typeshed/__init__.pyi (_typeshed)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/__init__.pyi (_mpy_shed)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/time_mp.pyi (_mpy_shed.time_mp)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/micropython.pyi (micropython)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/abc.pyi (abc)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/re.pyi (re)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/_typeshed/importlib.pyi (_typeshed.importlib)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/tests/_tmp_scratch.py (_tmp_scratch)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/_ast.pyi (_ast)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/io.pyi (io)
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/ssl.pyi (ssl)
+LOG:  Metadata abandoned for ssl: options differ
+LOG:  Metadata not found for ssl
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/_asyncio.pyi (_asyncio)
+LOG:  Metadata abandoned for _asyncio: options differ
+LOG:  Metadata not found for _asyncio
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/mixins.pyi (asyncio.mixins)
+LOG:  Metadata abandoned for asyncio.mixins: options differ
+LOG:  Metadata not found for asyncio.mixins
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/enum.pyi (enum)
+LOG:  Metadata abandoned for enum: options differ
+LOG:  Metadata not found for enum
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/os/__init__.pyi (os)
+LOG:  Metadata abandoned for os: options differ
+LOG:  Metadata not found for os
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/blockdevice.pyi (_mpy_shed.blockdevice)
+LOG:  Metadata abandoned for _mpy_shed.blockdevice: options differ
+LOG:  Metadata not found for _mpy_shed.blockdevice
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/buffer_mp.pyi (_mpy_shed.buffer_mp)
+LOG:  Metadata abandoned for _mpy_shed.buffer_mp: options differ
+LOG:  Metadata not found for _mpy_shed.buffer_mp
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/io_mp.pyi (_mpy_shed.io_mp)
+LOG:  Metadata abandoned for _mpy_shed.io_mp: options differ
+LOG:  Metadata not found for _mpy_shed.io_mp
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/IRQs.pyi (_mpy_shed.IRQs)
+LOG:  Metadata abandoned for _mpy_shed.IRQs: options differ
+LOG:  Metadata not found for _mpy_shed.IRQs
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/_mp_available.pyi (_mpy_shed._mp_available)
+LOG:  Metadata abandoned for _mpy_shed._mp_available: options differ
+LOG:  Metadata not found for _mpy_shed._mp_available
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/mp_implementation.pyi (_mpy_shed.mp_implementation)
+LOG:  Metadata abandoned for _mpy_shed.mp_implementation: options differ
+LOG:  Metadata not found for _mpy_shed.mp_implementation
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/neopixelbase.pyi (_mpy_shed.neopixelbase)
+LOG:  Metadata abandoned for _mpy_shed.neopixelbase: options differ
+LOG:  Metadata not found for _mpy_shed.neopixelbase
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/pathlike.pyi (_mpy_shed.pathlike)
+LOG:  Metadata abandoned for _mpy_shed.pathlike: options differ
+LOG:  Metadata not found for _mpy_shed.pathlike
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/subscriptable.pyi (_mpy_shed.subscriptable)
+LOG:  Metadata abandoned for _mpy_shed.subscriptable: options differ
+LOG:  Metadata not found for _mpy_shed.subscriptable
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/mp_mem.pyi (_mpy_shed.mp_mem)
+LOG:  Metadata abandoned for _mpy_shed.mp_mem: options differ
+LOG:  Metadata not found for _mpy_shed.mp_mem
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/sre_compile.pyi (sre_compile)
+LOG:  Metadata abandoned for sre_compile: options differ
+LOG:  Metadata not found for sre_compile
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/sre_constants.pyi (sre_constants)
+LOG:  Metadata abandoned for sre_constants: options differ
+LOG:  Metadata not found for sre_constants
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/io_modes.pyi (_mpy_shed.io_modes)
+LOG:  Metadata abandoned for _mpy_shed.io_modes: options differ
+LOG:  Metadata not found for _mpy_shed.io_modes
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/ssl.pyi (ssl)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/_asyncio.pyi (_asyncio)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/mixins.pyi (asyncio.mixins)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/enum.pyi (enum)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/os/__init__.pyi (os)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/blockdevice.pyi (_mpy_shed.blockdevice)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/buffer_mp.pyi (_mpy_shed.buffer_mp)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/io_mp.pyi (_mpy_shed.io_mp)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/IRQs.pyi (_mpy_shed.IRQs)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/_mp_available.pyi (_mpy_shed._mp_available)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/mp_implementation.pyi (_mpy_shed.mp_implementation)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/neopixelbase.pyi (_mpy_shed.neopixelbase)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/pathlike.pyi (_mpy_shed.pathlike)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/subscriptable.pyi (_mpy_shed.subscriptable)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/mp_mem.pyi (_mpy_shed.mp_mem)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/sre_compile.pyi (sre_compile)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/sre_constants.pyi (sre_constants)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/io_modes.pyi (_mpy_shed.io_modes)
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/tls.pyi (tls)
+LOG:  Metadata abandoned for tls: options differ
+LOG:  Metadata not found for tls
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/os_vfs.pyi (_mpy_shed.os_vfs)
+LOG:  Metadata abandoned for _mpy_shed.os_vfs: options differ
+LOG:  Metadata not found for _mpy_shed.os_vfs
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/array.pyi (array)
+LOG:  Metadata abandoned for array: options differ
+LOG:  Metadata not found for array
+LOG:  Silencing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/sre_parse.pyi (sre_parse)
+LOG:  Metadata abandoned for sre_parse: options differ
+LOG:  Metadata not found for sre_parse
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/tls.pyi (tls)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/os_vfs.pyi (_mpy_shed.os_vfs)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/array.pyi (array)
+LOG:  Parsing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/sre_parse.pyi (sre_parse)
+LOG:  Loaded graph with 62 nodes (0.043 sec)
+LOG:  Found 19 SCCs; largest has 35 nodes
+LOG:  Scheduling SCC of size 35 (os sys typing _mpy_shed.mp_mem _mpy_shed._mp_available collections __future__ _mpy_shed.buffer_mp _mpy_shed.IRQs types _mpy_shed.time_mp _mpy_shed.mp_implementation sre_compile sre_constants _mpy_shed re io _mpy_shed.io_mp _mpy_shed.neopixelbase collections.abc _typeshed.importlib _ast sre_parse builtins _mpy_shed.blockdevice _mpy_shed.io_modes _mpy_shed.pathlike enum _collections_abc array _mpy_shed.subscriptable _typeshed typing_extensions abc _mpy_shed.os_vfs) as inherently stale
+LOG:  Writing typing_extensions /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/typing_extensions.pyi typing_extensions.meta.ff typing_extensions.data.ff
+LOG:  Cached module typing_extensions has changed interface
+LOG:  Writing typing /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/typing.pyi typing.meta.ff typing.data.ff
+LOG:  Cached module typing has changed interface
+LOG:  Writing types /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/types.pyi types.meta.ff types.data.ff
+LOG:  Cached module types has changed interface
+LOG:  Writing sys /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/sys/__init__.pyi sys/__init__.meta.ff sys/__init__.data.ff
+LOG:  Cached module sys has changed interface
+LOG:  Writing sre_parse /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/sre_parse.pyi sre_parse.meta.ff sre_parse.data.ff
+LOG:  Cached module sre_parse has changed interface
+LOG:  Writing sre_constants /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/sre_constants.pyi sre_constants.meta.ff sre_constants.data.ff
+LOG:  Cached module sre_constants has changed interface
+LOG:  Writing sre_compile /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/sre_compile.pyi sre_compile.meta.ff sre_compile.data.ff
+LOG:  Cached module sre_compile has changed interface
+LOG:  Writing re /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/re.pyi re.meta.ff re.data.ff
+LOG:  Cached module re has changed interface
+LOG:  Writing os /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/os/__init__.pyi os/__init__.meta.ff os/__init__.data.ff
+LOG:  Cached module os has changed interface
+LOG:  Writing io /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/io.pyi io.meta.ff io.data.ff
+LOG:  Cached module io has changed interface
+LOG:  Writing enum /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/enum.pyi enum.meta.ff enum.data.ff
+LOG:  Cached module enum has changed interface
+LOG:  Writing collections.abc /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/collections/abc.pyi collections/abc.meta.ff collections/abc.data.ff
+LOG:  Cached module collections.abc has changed interface
+LOG:  Writing collections /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/collections/__init__.pyi collections/__init__.meta.ff collections/__init__.data.ff
+LOG:  Cached module collections has changed interface
+LOG:  Writing array /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/array.pyi array.meta.ff array.data.ff
+LOG:  Cached module array has changed interface
+LOG:  Writing abc /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/abc.pyi abc.meta.ff abc.data.ff
+LOG:  Cached module abc has changed interface
+LOG:  Writing _typeshed.importlib /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/_typeshed/importlib.pyi _typeshed/importlib.meta.ff _typeshed/importlib.data.ff
+LOG:  Cached module _typeshed.importlib has changed interface
+LOG:  Writing _typeshed /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/_typeshed/__init__.pyi _typeshed/__init__.meta.ff _typeshed/__init__.data.ff
+LOG:  Cached module _typeshed has changed interface
+LOG:  Writing _mpy_shed.time_mp /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/time_mp.pyi _mpy_shed/time_mp.meta.ff _mpy_shed/time_mp.data.ff
+LOG:  Cached module _mpy_shed.time_mp has changed interface
+LOG:  Writing _mpy_shed.subscriptable /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/subscriptable.pyi _mpy_shed/subscriptable.meta.ff _mpy_shed/subscriptable.data.ff
+LOG:  Cached module _mpy_shed.subscriptable has changed interface
+LOG:  Writing _mpy_shed.pathlike /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/pathlike.pyi _mpy_shed/pathlike.meta.ff _mpy_shed/pathlike.data.ff
+LOG:  Cached module _mpy_shed.pathlike has changed interface
+LOG:  Writing _mpy_shed.os_vfs /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/os_vfs.pyi _mpy_shed/os_vfs.meta.ff _mpy_shed/os_vfs.data.ff
+LOG:  Cached module _mpy_shed.os_vfs has changed interface
+LOG:  Writing _mpy_shed.neopixelbase /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/neopixelbase.pyi _mpy_shed/neopixelbase.meta.ff _mpy_shed/neopixelbase.data.ff
+LOG:  Cached module _mpy_shed.neopixelbase has changed interface
+LOG:  Writing _mpy_shed.mp_mem /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/mp_mem.pyi _mpy_shed/mp_mem.meta.ff _mpy_shed/mp_mem.data.ff
+LOG:  Cached module _mpy_shed.mp_mem has changed interface
+LOG:  Writing _mpy_shed.mp_implementation /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/mp_implementation.pyi _mpy_shed/mp_implementation.meta.ff _mpy_shed/mp_implementation.data.ff
+LOG:  Cached module _mpy_shed.mp_implementation has changed interface
+LOG:  Writing _mpy_shed.io_mp /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/io_mp.pyi _mpy_shed/io_mp.meta.ff _mpy_shed/io_mp.data.ff
+LOG:  Cached module _mpy_shed.io_mp has changed interface
+LOG:  Writing _mpy_shed.io_modes /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/io_modes.pyi _mpy_shed/io_modes.meta.ff _mpy_shed/io_modes.data.ff
+LOG:  Cached module _mpy_shed.io_modes has changed interface
+LOG:  Writing _mpy_shed.buffer_mp /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/buffer_mp.pyi _mpy_shed/buffer_mp.meta.ff _mpy_shed/buffer_mp.data.ff
+LOG:  Cached module _mpy_shed.buffer_mp has changed interface
+LOG:  Writing _mpy_shed.blockdevice /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/blockdevice.pyi _mpy_shed/blockdevice.meta.ff _mpy_shed/blockdevice.data.ff
+LOG:  Cached module _mpy_shed.blockdevice has changed interface
+LOG:  Writing _mpy_shed._mp_available /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/_mp_available.pyi _mpy_shed/_mp_available.meta.ff _mpy_shed/_mp_available.data.ff
+LOG:  Cached module _mpy_shed._mp_available has changed interface
+LOG:  Writing _mpy_shed.IRQs /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/IRQs.pyi _mpy_shed/IRQs.meta.ff _mpy_shed/IRQs.data.ff
+LOG:  Cached module _mpy_shed.IRQs has changed interface
+LOG:  Writing _mpy_shed /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/_mpy_shed/__init__.pyi _mpy_shed/__init__.meta.ff _mpy_shed/__init__.data.ff
+LOG:  Cached module _mpy_shed has changed interface
+LOG:  Writing _collections_abc /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/_collections_abc.pyi _collections_abc.meta.ff _collections_abc.data.ff
+LOG:  Cached module _collections_abc has changed interface
+LOG:  Writing _ast /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/_ast.pyi _ast.meta.ff _ast.data.ff
+LOG:  Cached module _ast has changed interface
+LOG:  Writing __future__ /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/__future__.pyi __future__.meta.ff __future__.data.ff
+LOG:  Cached module __future__ has changed interface
+LOG:  Writing builtins /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/builtins.pyi builtins.meta.ff builtins.data.ff
+LOG:  Cached module builtins has changed interface
+LOG:  Scheduling SCC singleton (tls) as inherently stale
+LOG:  Scheduling SCC singleton (asyncio.mixins) as inherently stale
+LOG:  Scheduling SCC singleton (_asyncio) as inherently stale
+LOG:  Scheduling SCC singleton (_tmp_scratch) as inherently stale
+LOG:  Scheduling SCC singleton (micropython) as inherently stale
+LOG:  Scheduling SCC singleton (asyncio.threads) as inherently stale
+LOG:  Scheduling SCC singleton (asyncio.micropython) as inherently stale
+LOG:  Scheduling SCC singleton (asyncio.exceptions) as inherently stale
+LOG:  Scheduling SCC singleton (asyncio.coroutines) as inherently stale
+LOG:  Scheduling SCC singleton (time) as inherently stale
+LOG:  Scheduling SCC singleton (socket) as inherently stale
+LOG:  Scheduling SCC singleton (select) as inherently stale
+LOG:  Writing tls /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/tls.pyi tls.meta.ff tls.data.ff
+LOG:  Cached module tls has changed interface
+LOG:  Writing asyncio.mixins /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/mixins.pyi asyncio/mixins.meta.ff asyncio/mixins.data.ff
+LOG:  Cached module asyncio.mixins has changed interface
+LOG:  Writing _asyncio /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/_asyncio.pyi _asyncio.meta.ff _asyncio.data.ff
+LOG:  Cached module _asyncio has changed interface
+LOG:  Scheduling SCC singleton (asyncio.futures) as inherently stale
+LOG:  Writing _tmp_scratch /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/tests/_tmp_scratch.py _tmp_scratch.meta.ff _tmp_scratch.data.ff
+LOG:  Cached module _tmp_scratch has changed interface
+LOG:  Scheduling SCC singleton (microtest) as inherently stale
+LOG:  Writing micropython /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/micropython.pyi micropython.meta.ff micropython.data.ff
+LOG:  Cached module micropython has changed interface
+LOG:  Writing asyncio.threads /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/threads.pyi asyncio/threads.meta.ff asyncio/threads.data.ff
+LOG:  Cached module asyncio.threads has changed interface
+LOG:  Writing asyncio.micropython /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/micropython.pyi asyncio/micropython.meta.ff asyncio/micropython.data.ff
+LOG:  Cached module asyncio.micropython has changed interface
+LOG:  Writing asyncio.exceptions /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/exceptions.pyi asyncio/exceptions.meta.ff asyncio/exceptions.data.ff
+LOG:  Cached module asyncio.exceptions has changed interface
+LOG:  Writing asyncio.coroutines /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/coroutines.pyi asyncio/coroutines.meta.ff asyncio/coroutines.data.ff
+LOG:  Cached module asyncio.coroutines has changed interface
+LOG:  Writing time /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/time.pyi time.meta.ff time.data.ff
+LOG:  Cached module time has changed interface
+LOG:  Writing socket /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/socket.pyi socket.meta.ff socket.data.ff
+LOG:  Cached module socket has changed interface
+LOG:  Scheduling SCC singleton (ssl) as inherently stale
+LOG:  Writing select /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/select.pyi select.meta.ff select.data.ff
+LOG:  Cached module select has changed interface
+LOG:  Writing asyncio.futures /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/futures.pyi asyncio/futures.meta.ff asyncio/futures.data.ff
+LOG:  Cached module asyncio.futures has changed interface
+LOG:  Writing microtest /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/tests/microtest.py microtest.meta.ff microtest.data.ff
+LOG:  Cached module microtest has changed interface
+LOG:  Writing ssl /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/ssl.pyi ssl.meta.ff ssl.data.ff
+LOG:  Cached module ssl has changed interface
+LOG:  Scheduling SCC of size 10 (asyncio.events asyncio.locks asyncio.tasks asyncio.base_events asyncio.queues asyncio.runners asyncio asyncio.protocols asyncio.transports asyncio.streams) as inherently stale
+LOG:  Writing asyncio.protocols /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/protocols.pyi asyncio/protocols.meta.ff asyncio/protocols.data.ff
+LOG:  Cached module asyncio.protocols has changed interface
+LOG:  Writing asyncio.transports /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/transports.pyi asyncio/transports.meta.ff asyncio/transports.data.ff
+LOG:  Cached module asyncio.transports has changed interface
+LOG:  Writing asyncio.tasks /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/tasks.pyi asyncio/tasks.meta.ff asyncio/tasks.data.ff
+LOG:  Cached module asyncio.tasks has changed interface
+LOG:  Writing asyncio.streams /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/streams.pyi asyncio/streams.meta.ff asyncio/streams.data.ff
+LOG:  Cached module asyncio.streams has changed interface
+LOG:  Writing asyncio.runners /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/runners.pyi asyncio/runners.meta.ff asyncio/runners.data.ff
+LOG:  Cached module asyncio.runners has changed interface
+LOG:  Writing asyncio.queues /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/queues.pyi asyncio/queues.meta.ff asyncio/queues.data.ff
+LOG:  Cached module asyncio.queues has changed interface
+LOG:  Writing asyncio.locks /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/locks.pyi asyncio/locks.meta.ff asyncio/locks.data.ff
+LOG:  Cached module asyncio.locks has changed interface
+LOG:  Writing asyncio.events /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/events.pyi asyncio/events.meta.ff asyncio/events.data.ff
+LOG:  Cached module asyncio.events has changed interface
+LOG:  Writing asyncio.base_events /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/base_events.pyi asyncio/base_events.meta.ff asyncio/base_events.data.ff
+LOG:  Cached module asyncio.base_events has changed interface
+LOG:  Writing asyncio /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/typings/stdlib/asyncio/__init__.pyi asyncio/__init__.meta.ff asyncio/__init__.data.ff
+LOG:  Cached module asyncio has changed interface
+LOG:  Scheduling SCC singleton (asy_udp_socket) as inherently stale
+LOG:  Writing asy_udp_socket /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-of24/src/asy_udp_socket.py asy_udp_socket.meta.ff asy_udp_socket.data.ff
+LOG:  Cached module asy_udp_socket has changed interface
+LOG:  Scheduling SCC singleton (test_asy_udp_socket) as stale due to deps (asy_udp_socket microtest)
+LOG:  Parsing tests/test_asy_udp_socket.py (test_asy_udp_socket)
+LOG:  Writing test_asy_udp_socket tests/test_asy_udp_socket.py test_asy_udp_socket.meta.ff test_asy_udp_socket.data.ff
+LOG:  Cached module test_asy_udp_socket has same interface
+tests/test_asy_udp_socket.py:5:1: error: Module "asyncio" has no attribute
+"core"  [attr-defined]
+    from asyncio import core as asyncio_core
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+LOG:  Build finished in 0.430 seconds with 62 modules, and 3 errors
+Found 1 error in 1 file (checked 1 source file)

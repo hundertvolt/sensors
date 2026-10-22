@@ -1,0 +1,9 @@
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           HEAP_FRAGMENTATION_MEASUREMENTS.md	**It holds method, not results.** Current-state facts and rules live where they
+E           SPECIFICATION.md	The comparable 1.28 figure is the 2026-09-08 hammer-load `mem_free` floor of 91,
+E       assert not [('HEAP_FRAGMENTATION_MEASUREMENTS.md', '**It holds method, not results.** Current-state facts and rules live where they'), ('SPECIFICATION.md', 'The comparable 1.28 figure is the 2026-09-08 hammer-load `mem_free` floor of 91,')]
+E       AssertionError: tests_scripts/test_await_depth.py:12: mem.max_await_depth is tagged but has no SPECIFICATION.md Part N row
+E       assert not ['tests_scripts/test_await_depth.py:12: mem.max_await_depth is tagged but has no SPECIFICATION.md Part N row']
+FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+2 failed, 833 passed, 1 warning in 68.06s (0:01:08)

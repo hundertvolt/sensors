@@ -1,85 +1,83 @@
 #!/usr/bin/env bash
-# Stages the real website (html/ + js/) for exactly one device into the shape
-# scripts/build_frozen_html.sh expects, then invokes it. That script stays generic - this one's only
-# job is building the single merged directory HTML_SRC_DIRS points at.
-#
-# SPECIFICATION.md Part H.2 owns what gets staged and why: the app.js rename, the never-staged
-# mock-server.js, the import-stripping and concatenation-order rules. Part H.7 owns why bundling and
-# inlining exist at all, and why keep-alive is deliberately not the answer.
-#
-# Usage: scripts/build_website.sh <device> [output_path]
-#   <device>     matches an html/definitions/<device>.json file, e.g. "wozi".
-#   output_path  forwarded to build_frozen_html.sh (default: frozen_modules/frozen_html.py).
+# Builds one device's website: generates its definitions (SPECIFICATION.md H.5), stages html/ and js/ through
+# scripts/_stage_website.py (H.2) and freezes the stage with build_frozen_html.sh. Intermediates stay in
+# build/website/<device>/ (or $WEBSITE_WORK_DIR) until that device's next build.
 set -euo pipefail
+usage="Usage: scripts/build_website.sh [--stage-only] [--build-date STAMP] <device> [output]"
+help() {
+    cat <<'EOF'
+Usage: scripts/build_website.sh [--stage-only] [--build-date STAMP] <device> [output]
+Builds one device's website into a frozen module.
+  <device>            names a devices/<device>.toml
+  output              the frozen module written (default: frozen_modules/frozen_html.py)
+  --stage-only        stage the page and bundle into the directory output names instead; nothing is frozen
+  --build-date STAMP  stamp the firmware build's UTC date (YYYY-MM-DDTHH:MM:SSZ) into the page; none by default
+Environment:
+  WEBSITE_WORK_DIR    the intermediates, wiped at the start and kept (default: build/website/<device>)
+EOF
+}
+
+stage_only=false
+build_date=""
+positional=()
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        -h | --help)
+            help
+            exit 0
+            ;;
+        --stage-only) stage_only=true ;;
+        --build-date)
+            if [ "$#" -lt 2 ]; then
+                echo "error: --build-date needs a UTC stamp - $usage" >&2
+                exit 2
+            fi
+            build_date="$2"
+            shift
+            ;;
+        -*)
+            echo "error: unknown option $1 - $usage" >&2
+            exit 2
+            ;;
+        *) positional+=("$1") ;;
+    esac
+    shift
+done
+if [ "${#positional[@]}" -lt 1 ] || { $stage_only && [ "${#positional[@]}" -lt 2 ]; } || [ "${#positional[@]}" -gt 2 ]; then
+    echo "error: $usage (--stage-only needs the stage directory)" >&2
+    exit 2
+fi
+device="${positional[0]}"
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+# shellcheck source=/dev/null  # linted on its own, as one of scripts/*.sh
+source scripts/_devices.sh
+require_device "$device"
+# shellcheck source=/dev/null  # linted on its own, as one of scripts/*.sh
+source scripts/_require_python.sh
+require_python311
 
-device="${1:?Usage: scripts/build_website.sh <device> [output_path]}"
-out_file="${2:-frozen_modules/frozen_html.py}"
+# One build of a device at a time: a second waits for the first, then wipes and rebuilds the same tree.
+work="${WEBSITE_WORK_DIR:-build/website/$device}"
+mkdir -p "$(dirname "$work")"
+exec {work_lock}>"$work.lock"
+flock "$work_lock"
+rm -rf "$work"
+mkdir -p "$work/scratch"
+echo "== Website work dir: $work"
 
-stage_dir="$(mktemp -d)"
-# Separate from stage_dir on purpose: stage_dir is the served /html content root and gets scanned
-# whole, so a generated definitions.json written there would be frozen as an extra
-# /definitions.json.gz and defeat H.7's inlining. scratch_dir never reaches the served tree.
-scratch_dir="$(mktemp -d)"
-trap 'rm -rf "$stage_dir" "$scratch_dir"' EXIT
-
-# wozi/dev keep their hand-written html/definitions/<device>.json, which tests_js/'s PUT-matrix
-# fixtures load straight off disk; retiring them is deferred work (SPECIFICATION.md Part L.4).
-# Every other device has none, so buildgen generates one here rather than failing the build.
-definitions_src="html/definitions/${device}.json"
-if [[ ! -f "$definitions_src" ]]; then
-    device_toml="devices/${device}.toml"
-    if [[ ! -f "$device_toml" ]]; then
-        echo "error: no definitions file at $definitions_src and no $device_toml to generate one from" >&2
-        exit 1
-    fi
-    definitions_src="$scratch_dir/definitions.json"
-    python3 -m buildgen.definitions "$device_toml" --src-dir src --out "$definitions_src"
+# Every device's definitions are generated from its TOML and the src/ tags, never hand-kept. A sibling of the stage,
+# never inside it: the stage is the served /html root and gets frozen whole (H.7 inlines the definitions).
+definitions="$work/scratch/definitions.json"
+python3 -m buildgen.definitions "devices/$device.toml" --src-dir src --out "$definitions"
+stamp=()
+if [ -n "$build_date" ]; then
+    stamp=(--build-date "$build_date")
 fi
 
-STAGE_DIR="$stage_dir" DEFINITIONS_SRC="$definitions_src" python3 <<'PYEOF'
-import os
-
-stage_dir = os.environ["STAGE_DIR"]
-definitions_src = os.environ["DEFINITIONS_SRC"]
-
-with open("html/index.html", encoding="utf-8") as f:
-    html = f.read()
-with open("html/style.css", encoding="utf-8") as f:
-    css = f.read()
-with open(definitions_src, encoding="utf-8") as f:
-    definitions_json = f.read()
-
-# chr(92) rather than a literal backslash, to keep this heredoc's own escaping unambiguous. The
-# result is JSON's own escape for "<", identical to a literal "<" once parsed; escaping every one of
-# them is what stops a field value containing "</script" from closing the tag early (Part H.7).
-escaped_lt = chr(92) + "u003c"
-definitions_json = definitions_json.replace("<", escaped_lt)
-
-link_tag = '<link rel="stylesheet" href="style.css">'
-if link_tag not in html:
-    raise SystemExit("html/index.html's stylesheet <link> tag not found - update build_website.sh")
-html = html.replace(link_tag, "<style>\n" + css + "</style>")
-
-inlined_script = '<script type="application/json" id="inlined-definitions">' + definitions_json + "</script>\n"
-if "</head>" not in html:
-    raise SystemExit("html/index.html has no </head> - update build_website.sh")
-html = html.replace("</head>", inlined_script + "</head>")
-
-with open(os.path.join(stage_dir, "index.html"), "w", encoding="utf-8") as f:
-    f.write(html)
-PYEOF
-
-mkdir -p "$stage_dir"/js
-{
-    echo "// Generated by scripts/build_website.sh - concatenation of js/field-format.js, poll-manager.js,"
-    echo "// templates.js, definitions.js, render.js, nav.js, main.js (in that dependency order). Do not"
-    echo "// edit directly - edit the source files under js/ instead. See this script's own header comment for why."
-    for src in js/field-format.js js/poll-manager.js js/templates.js js/definitions.js js/render.js js/nav.js js/main.js; do
-        echo ""
-        echo "// ---- $src ----"
-        grep -v -E '^import .* from "\./[^"]+\.js";$' "$src"
-    done
-} > "$stage_dir"/js/app.js
-
-HTML_SRC_DIRS="$stage_dir" scripts/build_frozen_html.sh "$out_file"
+if $stage_only; then
+    python3 scripts/_stage_website.py "${stamp[@]}" "$definitions" "${positional[1]}"
+    exit 0
+fi
+out_file="${positional[1]:-frozen_modules/frozen_html.py}"
+python3 scripts/_stage_website.py "${stamp[@]}" "$definitions" "$work/stage"
+HTML_SRC_DIRS="$work/stage" FROZEN_HTML_WORK_DIR="$work/gzipped" scripts/build_frozen_html.sh "$out_file"

@@ -1,0 +1,17 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_______________ test_each_attributed_file_has_exactly_one_entry ________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u34/laneA/bites_a2/planted')
+
+    def test_each_attributed_file_has_exactly_one_entry(repo_root: Path) -> None:
+        entries = _entries(repo_root)
+        wrong = {rel: len(entries.get(rel, [])) for rel in _attributed(repo_root) if len(entries.get(rel, [])) != 1}
+>       assert not wrong, f"each attributed src/ file needs exactly one {_LICENCE_FILE} entry whose first code span is its path: {wrong}"
+E       AssertionError: each attributed src/ file needs exactly one THIRD_PARTY_LICENSES.md entry whose first code span is its path: {'src/zz_planted.py': 0}
+E       assert not {'src/zz_planted.py': 0}
+
+tests_scripts/test_third_party_attribution.py:101: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_third_party_attribution.py::test_each_attributed_file_has_exactly_one_entry
+1 failed, 3 deselected in 0.03s

@@ -1,0 +1,4 @@
+PASS test_an_allocation_failure_in_each_arm_prints_its_text_and_keeps_the_sentinel
+PASS test_an_os_error_in_each_arm_prints_nothing
+2/2 passed, 0 failed, 0 skipped
+rc=0 elapsed=1.134651555s mode=e file=/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18u/t_console.py

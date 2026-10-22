@@ -1,0 +1,22 @@
+coverage.xml of the gate2 coverage leg (wt-cov at af2d0fc), src/asy_system_service.py line hits 394-413
+file line-rate 0.9213
+394 -
+395 1
+396 1
+397 1
+398 1
+399 1
+400 1
+401 1
+402 1
+403 1
+404 1
+405 1
+406 1
+407 0
+408 1
+409 1
+410 1
+411 1
+412 1
+413 1

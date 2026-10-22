@@ -1,0 +1,24 @@
+....F..............                                                      [100%]
+=================================== FAILURES ===================================
+__________ test_every_allowed_unused_import_is_still_imported_unused ___________
+
+lifted = [('buildgen/__init__.py', 'D205', '1 blank line required between summary line and description'), ('buildgen/__init__.p...hould be on a separate line'), ('buildgen/api_reference.py', 'CPY001', 'Missing copyright notice at top of file'), ...]
+
+    def test_every_allowed_unused_import_is_still_imported_unused(lifted: "list[Finding]") -> None:
+        pyflakes = _lint_table().get("pyflakes", {})
+        assert isinstance(pyflakes, dict)
+        allowed = pyflakes.get("allowed-unused-imports", [])
+        assert isinstance(allowed, list)
+        dead = [module for module in allowed if not any(code == "F401" and _unused_import_of(str(module), message) for _, code, message in lifted)]
+>       assert not dead, "\n".join(f"pyproject.toml [tool.ruff.lint.pyflakes] allowed-unused-imports: {module!r} is imported unused nowhere - remove it" for module in dead)
+E       AssertionError: pyproject.toml [tool.ruff.lint.pyflakes] allowed-unused-imports: 'planted_never_imported' is imported unused nowhere - remove it
+E       assert not ['planted_never_imported']
+
+tests_scripts/test_ruff_exemptions_live.py:141: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_ruff_exemptions_live.py::test_every_allowed_unused_import_is_still_imported_unused
+1 failed, 18 passed in 13.82s
+
+real	0m14.295s
+user	0m5.517s
+sys	0m1.513s

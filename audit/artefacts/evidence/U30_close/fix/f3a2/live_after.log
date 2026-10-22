@@ -1,0 +1,9 @@
+load 1.09 solve 3.88 passes 16 chains 0.11 top 28 n_over28 0
+28 Microdot.handle_request -> Microdot.dispatch_request -> microdot.invoke_handler ... PrintLogHistory.err_s -> PrintLogHistory._store_err -> PrintLogHistory._write_through -> PrintLogHistory._write
+25 UARTComm._listen_loop -> UARTComm.uart_listen -> UARTComm._listen_unlocked ... PrintLogHistory.err_s -> PrintLogHistory._store_err -> PrintLogHistory._write_through -> PrintLogHistory._write
+24 BMP3XX_Reader._read_loop -> BMP3XX_Reader(SensorReader)._error_check -> BMP3XX_Reader(SensorReader)._climb_ladder ... PrintLogHistory.err_s -> PrintLogHistory._store_err -> PrintLogHistory._write_through -> PrintLogHistory._write
+24 UARTLinkDriver._exercise_loop -> UARTComm.uart_get -> UARTComm._run_get ... PrintLogHistory.err_s -> PrintLogHistory._store_err -> PrintLogHistory._write_through -> PrintLogHistory._write
+24 WifiService._connect_loop -> WifiService._run_hotspot_mode -> WifiService._start_hotspot ... PrintLogHistory.err_s -> PrintLogHistory._store_err -> PrintLogHistory._write_through -> PrintLogHistory._write
+23 ISL29125_Reader._read_loop -> ISL29125_Reader(SensorReader)._error_check -> ISL29125_Reader(SensorReader)._climb_ladder ... PrintLogHistory.err_s -> PrintLogHistory._store_err -> PrintLogHistory._write_through -> PrintLogHistory._write
+22 NTPClient._sync_loop -> NTPClient._run_ntp_sync_attempt -> NTPClient._get_ntp_config ... PrintLogHistory.err_s -> PrintLogHistory._store_err -> PrintLogHistory._write_through -> PrintLogHistory._write
+22 NotificationService._monitor_loop -> NotificationService._safe_local_time -> NTPClient.cettime ... PrintLogHistory.err_s -> PrintLogHistory._store_err -> PrintLogHistory._write_through -> PrintLogHistory._write

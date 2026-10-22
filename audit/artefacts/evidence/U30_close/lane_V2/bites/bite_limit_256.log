@@ -1,0 +1,259 @@
+FF.FFF..F                                                                [100%]
+=================================== FAILURES ===================================
+_ test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts[device---device's value (256 bytes)] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11318/test_a_string_the_interpreter_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fbf2a513510>
+where = 'device', named = "--device's value (256 bytes)"
+
+    @pytest.mark.parametrize(
+        ("where", "named"),
+        [
+            ("device", "--device's value (256 bytes)"),
+            ("multibyte device", "--device's value (256 bytes)"),
+            ("state path", "--fram-state-path's value"),
+            ("caller's argument", "--fault's value (256 bytes)"),
+            ("micropypath entry", "MICROPYPATH entry 1 (256 bytes)"),
+            ("home-relative entry without HOME", "MICROPYPATH entry 2 (258 bytes)"),
+            ("runner's directory", "the runner's directory (264 bytes)"),
+        ],
+    )
+    def test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, where: str, named: str) -> None:
+        # Each of these kills the interpreter before the runner's first line ("FATAL: uncaught NLR", exit 1), which read as a
+        # twin that "exited before ever serving"; a byte count, not characters, is what the interpreter measures.
+        device, state_dir, micropypath = "fixture-device", tmp_path / "state", twin_process.TWIN_MICROPYPATH
+        args: tuple[str, ...] = ()
+        if where == "device":
+            device = _OVER
+        elif where == "multibyte device":
+            device = "\u00e9" * ((_LIMIT + 1) // 2)
+        elif where == "state path":
+            state_dir = tmp_path / ("s" * (_LIMIT - 10))
+        elif where == "caller's argument":
+            args = ("--fault", _OVER)
+        elif where == "micropypath entry":
+            micropypath = f"{_OVER}:src"
+        elif where == "home-relative entry without HOME":
+            monkeypatch.delenv("HOME", raising=False)
+            micropypath = f"src:~/{_OVER}"
+        else:
+            monkeypatch.setattr(twin_process, "REPO_ROOT", Path("/" + "r" * 250))
+        with pytest.raises(ValueError, match="the twin was not started") as refused:
+            _spawn(monkeypatch, tmp_path, device=device, state_dir=state_dir, args=args, micropypath=micropypath)
+>       assert named in str(refused.value) and f"a qstr of at most {_LIMIT} bytes" in str(refused.value), refused.value
+E       AssertionError: ValueError("the twin was not started: --device's value (257 bytes) - the Unix port interns each as a qstr of at most 256 bytes and dies before the runner starts")
+E       assert ("--device's value (256 bytes)" in "the twin was not started: --device's value (257 bytes) - the Unix port interns each as a qstr of at most 256 bytes and dies before the runner starts")
+E        +  where "the twin was not started: --device's value (257 bytes) - the Unix port interns each as a qstr of at most 256 bytes and dies before the runner starts" = str(ValueError("the twin was not started: --device's value (257 bytes) - the Unix port interns each as a qstr of at most 256 bytes and dies before the runner starts"))
+E        +    where ValueError("the twin was not started: --device's value (257 bytes) - the Unix port interns each as a qstr of at most 256 bytes and dies before the runner starts") = <ExceptionInfo ValueError("the twin was not started: --device's value (257 bytes) - the Unix port interns each as a qstr of at most 256 bytes and dies before the runner starts") tblen=3>.value
+
+tests_scripts/test_twin_process_spawn.py:66: AssertionError
+_ test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts[multibyte device---device's value (256 bytes)] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11318/test_a_string_the_interpreter_1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fbf2a512f90>
+where = 'multibyte device', named = "--device's value (256 bytes)"
+
+    @pytest.mark.parametrize(
+        ("where", "named"),
+        [
+            ("device", "--device's value (256 bytes)"),
+            ("multibyte device", "--device's value (256 bytes)"),
+            ("state path", "--fram-state-path's value"),
+            ("caller's argument", "--fault's value (256 bytes)"),
+            ("micropypath entry", "MICROPYPATH entry 1 (256 bytes)"),
+            ("home-relative entry without HOME", "MICROPYPATH entry 2 (258 bytes)"),
+            ("runner's directory", "the runner's directory (264 bytes)"),
+        ],
+    )
+    def test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, where: str, named: str) -> None:
+        # Each of these kills the interpreter before the runner's first line ("FATAL: uncaught NLR", exit 1), which read as a
+        # twin that "exited before ever serving"; a byte count, not characters, is what the interpreter measures.
+        device, state_dir, micropypath = "fixture-device", tmp_path / "state", twin_process.TWIN_MICROPYPATH
+        args: tuple[str, ...] = ()
+        if where == "device":
+            device = _OVER
+        elif where == "multibyte device":
+            device = "\u00e9" * ((_LIMIT + 1) // 2)
+        elif where == "state path":
+            state_dir = tmp_path / ("s" * (_LIMIT - 10))
+        elif where == "caller's argument":
+            args = ("--fault", _OVER)
+        elif where == "micropypath entry":
+            micropypath = f"{_OVER}:src"
+        elif where == "home-relative entry without HOME":
+            monkeypatch.delenv("HOME", raising=False)
+            micropypath = f"src:~/{_OVER}"
+        else:
+            monkeypatch.setattr(twin_process, "REPO_ROOT", Path("/" + "r" * 250))
+>       with pytest.raises(ValueError, match="the twin was not started") as refused:
+E       Failed: DID NOT RAISE ValueError
+
+tests_scripts/test_twin_process_spawn.py:64: Failed
+----------------------------- Captured stdout call -----------------------------
+== Launching: /nonexistent/micropython digital_twin/run_generic_integration.py --module sensortask_fixture --wiring-plan /tmp/pytest-of-root/pytest-11318/test_a_string_the_interpreter_1/plan.json --device éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé --host 127.0.0.1 --port 20000 --fram-state-path /tmp/pytest-of-root/pytest-11318/test_a_string_the_interpreter_1/state/fram_state.json --scd30-state-path /tmp/pytest-of-root/pytest-11318/test_a_string_the_interpreter_1/state/scd30_state.json --mem-backup-state-path /tmp/pytest-of-root/pytest-11318/test_a_string_the_interpreter_1/state/mem_backup_state.json --config-dir /tmp/pytest-of-root/pytest-11318/test_a_string_the_interpreter_1/state/config/ --gc-threshold -1 (log: /tmp/pytest-of-root/pytest-11318/test_a_string_the_interpreter_1/twin.log)
+_ test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts[caller's argument---fault's value (256 bytes)] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11318/test_a_string_the_interpreter_3')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fbf2a55d610>
+where = "caller's argument", named = "--fault's value (256 bytes)"
+
+    @pytest.mark.parametrize(
+        ("where", "named"),
+        [
+            ("device", "--device's value (256 bytes)"),
+            ("multibyte device", "--device's value (256 bytes)"),
+            ("state path", "--fram-state-path's value"),
+            ("caller's argument", "--fault's value (256 bytes)"),
+            ("micropypath entry", "MICROPYPATH entry 1 (256 bytes)"),
+            ("home-relative entry without HOME", "MICROPYPATH entry 2 (258 bytes)"),
+            ("runner's directory", "the runner's directory (264 bytes)"),
+        ],
+    )
+    def test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, where: str, named: str) -> None:
+        # Each of these kills the interpreter before the runner's first line ("FATAL: uncaught NLR", exit 1), which read as a
+        # twin that "exited before ever serving"; a byte count, not characters, is what the interpreter measures.
+        device, state_dir, micropypath = "fixture-device", tmp_path / "state", twin_process.TWIN_MICROPYPATH
+        args: tuple[str, ...] = ()
+        if where == "device":
+            device = _OVER
+        elif where == "multibyte device":
+            device = "\u00e9" * ((_LIMIT + 1) // 2)
+        elif where == "state path":
+            state_dir = tmp_path / ("s" * (_LIMIT - 10))
+        elif where == "caller's argument":
+            args = ("--fault", _OVER)
+        elif where == "micropypath entry":
+            micropypath = f"{_OVER}:src"
+        elif where == "home-relative entry without HOME":
+            monkeypatch.delenv("HOME", raising=False)
+            micropypath = f"src:~/{_OVER}"
+        else:
+            monkeypatch.setattr(twin_process, "REPO_ROOT", Path("/" + "r" * 250))
+        with pytest.raises(ValueError, match="the twin was not started") as refused:
+            _spawn(monkeypatch, tmp_path, device=device, state_dir=state_dir, args=args, micropypath=micropypath)
+>       assert named in str(refused.value) and f"a qstr of at most {_LIMIT} bytes" in str(refused.value), refused.value
+E       AssertionError: ValueError("the twin was not started: --fault's value (257 bytes) - the Unix port interns each as a qstr of at most 256 bytes and dies before the runner starts")
+E       assert ("--fault's value (256 bytes)" in "the twin was not started: --fault's value (257 bytes) - the Unix port interns each as a qstr of at most 256 bytes and dies before the runner starts")
+E        +  where "the twin was not started: --fault's value (257 bytes) - the Unix port interns each as a qstr of at most 256 bytes and dies before the runner starts" = str(ValueError("the twin was not started: --fault's value (257 bytes) - the Unix port interns each as a qstr of at most 256 bytes and dies before the runner starts"))
+E        +    where ValueError("the twin was not started: --fault's value (257 bytes) - the Unix port interns each as a qstr of at most 256 bytes and dies before the runner starts") = <ExceptionInfo ValueError("the twin was not started: --fault's value (257 bytes) - the Unix port interns each as a qstr of at most 256 bytes and dies before the runner starts") tblen=3>.value
+
+tests_scripts/test_twin_process_spawn.py:66: AssertionError
+_ test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts[micropypath entry-MICROPYPATH entry 1 (256 bytes)] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11318/test_a_string_the_interpreter_4')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fbf2a511f90>
+where = 'micropypath entry', named = 'MICROPYPATH entry 1 (256 bytes)'
+
+    @pytest.mark.parametrize(
+        ("where", "named"),
+        [
+            ("device", "--device's value (256 bytes)"),
+            ("multibyte device", "--device's value (256 bytes)"),
+            ("state path", "--fram-state-path's value"),
+            ("caller's argument", "--fault's value (256 bytes)"),
+            ("micropypath entry", "MICROPYPATH entry 1 (256 bytes)"),
+            ("home-relative entry without HOME", "MICROPYPATH entry 2 (258 bytes)"),
+            ("runner's directory", "the runner's directory (264 bytes)"),
+        ],
+    )
+    def test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, where: str, named: str) -> None:
+        # Each of these kills the interpreter before the runner's first line ("FATAL: uncaught NLR", exit 1), which read as a
+        # twin that "exited before ever serving"; a byte count, not characters, is what the interpreter measures.
+        device, state_dir, micropypath = "fixture-device", tmp_path / "state", twin_process.TWIN_MICROPYPATH
+        args: tuple[str, ...] = ()
+        if where == "device":
+            device = _OVER
+        elif where == "multibyte device":
+            device = "\u00e9" * ((_LIMIT + 1) // 2)
+        elif where == "state path":
+            state_dir = tmp_path / ("s" * (_LIMIT - 10))
+        elif where == "caller's argument":
+            args = ("--fault", _OVER)
+        elif where == "micropypath entry":
+            micropypath = f"{_OVER}:src"
+        elif where == "home-relative entry without HOME":
+            monkeypatch.delenv("HOME", raising=False)
+            micropypath = f"src:~/{_OVER}"
+        else:
+            monkeypatch.setattr(twin_process, "REPO_ROOT", Path("/" + "r" * 250))
+        with pytest.raises(ValueError, match="the twin was not started") as refused:
+            _spawn(monkeypatch, tmp_path, device=device, state_dir=state_dir, args=args, micropypath=micropypath)
+>       assert named in str(refused.value) and f"a qstr of at most {_LIMIT} bytes" in str(refused.value), refused.value
+E       AssertionError: ValueError('the twin was not started: MICROPYPATH entry 1 (257 bytes) - the Unix port interns each as a qstr of at most 256 bytes and dies before the runner starts')
+E       assert ('MICROPYPATH entry 1 (256 bytes)' in 'the twin was not started: MICROPYPATH entry 1 (257 bytes) - the Unix port interns each as a qstr of at most 256 bytes and dies before the runner starts')
+E        +  where 'the twin was not started: MICROPYPATH entry 1 (257 bytes) - the Unix port interns each as a qstr of at most 256 bytes and dies before the runner starts' = str(ValueError('the twin was not started: MICROPYPATH entry 1 (257 bytes) - the Unix port interns each as a qstr of at most 256 bytes and dies before the runner starts'))
+E        +    where ValueError('the twin was not started: MICROPYPATH entry 1 (257 bytes) - the Unix port interns each as a qstr of at most 256 bytes and dies before the runner starts') = <ExceptionInfo ValueError('the twin was not started: MICROPYPATH entry 1 (257 bytes) - the Unix port interns each as a qstr of at most 256 bytes and dies before the runner starts') tblen=3>.value
+
+tests_scripts/test_twin_process_spawn.py:66: AssertionError
+_ test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts[home-relative entry without HOME-MICROPYPATH entry 2 (258 bytes)] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11318/test_a_string_the_interpreter_5')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fbf2ac64590>
+where = 'home-relative entry without HOME'
+named = 'MICROPYPATH entry 2 (258 bytes)'
+
+    @pytest.mark.parametrize(
+        ("where", "named"),
+        [
+            ("device", "--device's value (256 bytes)"),
+            ("multibyte device", "--device's value (256 bytes)"),
+            ("state path", "--fram-state-path's value"),
+            ("caller's argument", "--fault's value (256 bytes)"),
+            ("micropypath entry", "MICROPYPATH entry 1 (256 bytes)"),
+            ("home-relative entry without HOME", "MICROPYPATH entry 2 (258 bytes)"),
+            ("runner's directory", "the runner's directory (264 bytes)"),
+        ],
+    )
+    def test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, where: str, named: str) -> None:
+        # Each of these kills the interpreter before the runner's first line ("FATAL: uncaught NLR", exit 1), which read as a
+        # twin that "exited before ever serving"; a byte count, not characters, is what the interpreter measures.
+        device, state_dir, micropypath = "fixture-device", tmp_path / "state", twin_process.TWIN_MICROPYPATH
+        args: tuple[str, ...] = ()
+        if where == "device":
+            device = _OVER
+        elif where == "multibyte device":
+            device = "\u00e9" * ((_LIMIT + 1) // 2)
+        elif where == "state path":
+            state_dir = tmp_path / ("s" * (_LIMIT - 10))
+        elif where == "caller's argument":
+            args = ("--fault", _OVER)
+        elif where == "micropypath entry":
+            micropypath = f"{_OVER}:src"
+        elif where == "home-relative entry without HOME":
+            monkeypatch.delenv("HOME", raising=False)
+            micropypath = f"src:~/{_OVER}"
+        else:
+            monkeypatch.setattr(twin_process, "REPO_ROOT", Path("/" + "r" * 250))
+        with pytest.raises(ValueError, match="the twin was not started") as refused:
+            _spawn(monkeypatch, tmp_path, device=device, state_dir=state_dir, args=args, micropypath=micropypath)
+>       assert named in str(refused.value) and f"a qstr of at most {_LIMIT} bytes" in str(refused.value), refused.value
+E       AssertionError: ValueError('the twin was not started: MICROPYPATH entry 2 (259 bytes) - the Unix port interns each as a qstr of at most 256 bytes and dies before the runner starts')
+E       assert ('MICROPYPATH entry 2 (258 bytes)' in 'the twin was not started: MICROPYPATH entry 2 (259 bytes) - the Unix port interns each as a qstr of at most 256 bytes and dies before the runner starts')
+E        +  where 'the twin was not started: MICROPYPATH entry 2 (259 bytes) - the Unix port interns each as a qstr of at most 256 bytes and dies before the runner starts' = str(ValueError('the twin was not started: MICROPYPATH entry 2 (259 bytes) - the Unix port interns each as a qstr of at most 256 bytes and dies before the runner starts'))
+E        +    where ValueError('the twin was not started: MICROPYPATH entry 2 (259 bytes) - the Unix port interns each as a qstr of at most 256 bytes and dies before the runner starts') = <ExceptionInfo ValueError('the twin was not started: MICROPYPATH entry 2 (259 bytes) - the Unix port interns each as a qstr of at most 256 bytes and dies before the runner starts') tblen=3>.value
+
+tests_scripts/test_twin_process_spawn.py:66: AssertionError
+________________ test_the_limit_is_the_pinned_interpreters_own _________________
+
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+
+    def test_the_limit_is_the_pinned_interpreters_own(micropython_bin: Path) -> None:
+        # The named limit read against the interpreter itself: an argument of that many bytes starts, one byte more kills it.
+        outcomes = [subprocess.run([str(micropython_bin), "-c", "print('started')", "a" * size], capture_output=True, text=True, timeout=60, check=False) for size in (_LIMIT, _LIMIT + 1)]
+>       assert [(done.returncode, done.stdout.strip()) for done in outcomes] == [(0, "started"), (1, "")], outcomes
+E       AssertionError: [CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-c', "print('starte...aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'], returncode=1, stdout='', stderr='FATAL: uncaught NLR 0x7ff724805240
+E         ')]
+E       assert [(1, ''), (1, '')] == [(0, 'started'), (1, '')]
+E         
+E         At index 0 diff: (1, '') != (0, 'started')
+E         Use -v to get more diff
+
+tests_scripts/test_twin_process_spawn.py:81: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_twin_process_spawn.py::test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts[device---device's value (256 bytes)]
+FAILED tests_scripts/test_twin_process_spawn.py::test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts[multibyte device---device's value (256 bytes)]
+FAILED tests_scripts/test_twin_process_spawn.py::test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts[caller's argument---fault's value (256 bytes)]
+FAILED tests_scripts/test_twin_process_spawn.py::test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts[micropypath entry-MICROPYPATH entry 1 (256 bytes)]
+FAILED tests_scripts/test_twin_process_spawn.py::test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts[home-relative entry without HOME-MICROPYPATH entry 2 (258 bytes)]
+FAILED tests_scripts/test_twin_process_spawn.py::test_the_limit_is_the_pinned_interpreters_own
+6 failed, 3 passed in 0.11s

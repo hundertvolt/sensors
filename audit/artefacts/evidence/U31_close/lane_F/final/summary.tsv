@@ -1,0 +1,10 @@
+nn@-1	16.28	rc=0	mem=0	42/42 passed, 0 failed, 0 skipped
+nn@32768	16.28	rc=0	mem=0	42/42 passed, 0 failed, 0 skipped
+wm@-1	25.65	rc=0	mem=0	1/1 passed, 0 failed, 0 skipped
+wm@32768	25.82	rc=0	mem=0	1/1 passed, 0 failed, 0 skipped
+scen_arzi@-1	0.15	rc=2	mem=0
+scen_arzi@32768	0.13	rc=2	mem=0
+ALLDONE
+scen_arzi@-1	390.03	rc=0	mem=0
+scen_arzi@32768	392.31	rc=0	mem=0
+SCENDONE

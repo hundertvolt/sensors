@@ -19,9 +19,9 @@ from harness import _still_open, _wait_for_slots_to_drain, discover_max_connecti
 
 
 class _CeilingServer:
-    """Admits `ceiling` connections; each is closed after `idle_s` without a byte or `cap_s` in all.
-    Options mimic the board: `serve_s` holds a slot that long after the client's EOF (microdot serving
-    it), `answer` writes a response at once, `rst_refusals` refuses by RST rather than by FIN."""
+    # Admits `ceiling` connections; each is closed after `idle_s` without a byte or `cap_s` in all.
+    # Options mimic the board: `serve_s` holds a slot that long after the client's EOF (microdot serving
+    # it), `answer` writes a response at once, `rst_refusals` refuses by RST rather than by FIN.
 
     def __init__(self, ceiling: int, idle_s: float = 5.0, cap_s: float = 15.0, serve_s: float = 0.0, *, answer: bool = False, rst_refusals: bool = False) -> None:
         self.ceiling, self.idle_s, self.cap_s, self.serve_s = ceiling, idle_s, cap_s, serve_s

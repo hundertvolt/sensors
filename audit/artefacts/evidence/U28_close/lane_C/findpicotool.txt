@@ -1,0 +1,5 @@
+# /root/pico-toolchain/pico-sdk/tools/Findpicotool.cmake (the pinned pico-sdk, read 2026-10-19)
+31:                "No installed picotool with version ${picotool_VERSION_REQUIRED} found - building from source\n"
+38:            set(PICOTOOL_GIT_REPOSITORY_URL https://github.com/raspberrypi/picotool.git)
+48:        FetchContent_Populate(picotool QUIET
+2.3.0

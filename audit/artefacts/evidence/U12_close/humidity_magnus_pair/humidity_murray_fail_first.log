@@ -1,0 +1,6 @@
+FAIL test_abs_humidity_boundary_values_accepted:
+FAIL test_abs_humidity_out_of_range_temperature:
+FAIL test_rel_humidity_out_of_range_temperature:
+FAIL test_rel_humidity_boundary_values_accepted:
+FAIL test_abs_humidity_matches_hand_worked_values:
+85/90 passed, 5 failed, 0 skipped

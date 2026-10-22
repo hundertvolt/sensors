@@ -1,0 +1,14 @@
+--- src/asy_webserver_service.py	2026-10-07 11:45:40.808365805 +0000
++++ /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/planted_W2/asy_webserver_service.py	2026-10-07 12:22:44.938269788 +0000
+@@ -268,9 +268,8 @@
+         # _serve(), which logs it itself - logging both counted one timeout twice.
+         try:
+             return await asyncio.wait_for(coro, self._timeout_s)
+-        except asyncio.TimeoutError as e:
+-            await self._pr.wrn_s("Connection reclaimed (per-call timeout):", e, wrnno=_WRN_HTTP_CALL_TIMEOUT)
+-            raise
++        except asyncio.TimeoutError:
++            raise  # PLANTED: the read-phase timeout is no longer logged
+         except OSError:
+             # A read that saw a reset: modlwip has freed the pcb yet still accepts writes, which reach
+             # tcp_write(NULL) - so the 400 microdot answers a muted reset with is never sent.

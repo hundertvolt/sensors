@@ -1,0 +1,6 @@
+schlafzi -1 a rc=0 04:55:08Z
+grkizi 32768 a rc=0 04:55:39Z
+schlafzi -1 b rc=0 04:56:10Z
+grkizi 32768 b rc=0 04:56:41Z
+schlafzi -1 c rc=0 04:59:02Z
+grkizi 32768 c rc=0 04:59:33Z

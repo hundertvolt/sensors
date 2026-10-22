@@ -1,0 +1,22 @@
+FAIL test_a_train_chunk_the_crc_drops_is_named_apart_from_a_stalled_train:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 39, in _call
+  File "tests/test_asy_uart_comm.py", line 341, in on_the_clock
+  File "tests/test_asy_uart_comm.py", line 1338, in test_a_train_chunk_the_crc_drops_is_named_apart_from_a_stalled_train
+AssertionError: UART_B UART error: train read dropped a corrupted or incomplete frame at chunk 2
+UART_A UART error: ACK read dropped a corrupted or incomplete frame after sending frame 2
+FAIL test_an_ack_the_crc_drops_is_named_apart_from_a_missing_ack:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 39, in _call
+  File "tests/test_asy_uart_comm.py", line 341, in on_the_clock
+  File "tests/test_asy_uart_comm.py", line 1348, in test_an_ack_the_crc_drops_is_named_apart_from_a_missing_ack
+AssertionError: UART_A UART error: ACK read dropped a corrupted or incomplete frame after sending frame 1
+UART_B UART error: train read dropped a corrupted or incomplete frame at chunk 2
+FAIL test_an_answer_the_crc_drops_is_named_apart_from_a_get_left_unanswered:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 39, in _call
+  File "tests/test_asy_uart_comm.py", line 341, in on_the_clock
+  File "tests/test_asy_uart_comm.py", line 1328, in test_an_answer_the_crc_drops_is_named_apart_from_a_get_left_unanswered
+AssertionError: UART_A UART error: answer read dropped a corrupted or incomplete frame for GET 1
+UART_B UART error: ACK read dropped a corrupted or incomplete frame after sending frame 1
+0/3 passed, 3 failed, 0 skipped

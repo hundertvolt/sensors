@@ -1,37 +1,15 @@
 {
+    // Browser-context pass: js/**/*.js, tests_js/**/*.js and the project's own command declarations, except the
+    // Node-context files tsconfig.node.json checks.
+    "extends": "./tsconfig.base.json",
     "compilerOptions": {
-        "target": "ES2022",
-        "module": "ES2022",
-        "moduleResolution": "bundler",
         "lib": ["ES2022", "DOM"],
-        "allowJs": true,
-        "checkJs": true,
-        "noEmit": true,
-        "strict": true,
-        // Everything TypeScript offers beyond `strict`, mirroring pyproject.toml's mypy settings
-        // on the Python side. All of these were verified to hold before being switched on; the two
-        // that needed real fixes (exactOptionalPropertyTypes, noUncheckedIndexedAccess) were fixed
-        // in js/ rather than left off. skipLibCheck stays TRUE deliberately: the only findings it
-        // hides are inside third-party .d.ts files this project does not own.
-        "noUncheckedIndexedAccess": true,
-        "exactOptionalPropertyTypes": true,
-        "noImplicitOverride": true,
-        "noImplicitReturns": true,
-        "noUnusedLocals": true,
-        "noUnusedParameters": true,
-        "noFallthroughCasesInSwitch": true,
-        "allowUnreachableCode": false,
-        "allowUnusedLabels": false,
-        "verbatimModuleSyntax": true,
-        "skipLibCheck": true
+        // import.meta.glob (tests_js/_generated_definitions.js) and ?raw imports need Vite's client types;
+        // naming them also keeps Node's ambient types out of this browser-context pass.
+        "types": ["vite/client"]
     },
-    "include": ["js/**/*.js", "tests_js/**/*.js", "tests_js/**/*.d.ts"],
-    // tests_js/_live_twin_command.js and tests_js/_live_matrix_command.js are Node-context (server-
-    // side Vitest Commands API implementations, not browser code - see each file's own header
-    // comment) and are type-checked separately instead, via tsconfig.node.json - same "two separate
-    // invocations for two environments that would otherwise wrongly share one global-type scope"
-    // shape as digital_twin/typecheck.ini's own split from the main mypy pass (see CLAUDE.md's
-    // "Code quality tooling"). Excluded here so this browser-context pass doesn't also see Node's
-    // ambient globals (process, require, "node:*" specifiers) as if they existed in a real browser.
-    "exclude": ["tests_js/_live_twin_command.js", "tests_js/_live_matrix_command.js"]
+    "include": ["js/**/*.js", "tests_js/**/*.js", "tests_js/vitest-commands.ts"],
+    // The Node-context files run in Node (Vitest's Commands API, their helpers, the summary reporter): their Node globals
+    // must not leak into this browser program, the digital_twin/typecheck.ini split's reason (SPECIFICATION.md H.8).
+    "exclude": ["tests_js/_live_twin_command.js", "tests_js/_live_matrix_command.js", "tests_js/_lint_command.js", "tests_js/_summary_reporter.js", "tests_js/_port_lock.js", "tests_js/_twin_process.js"]
 }

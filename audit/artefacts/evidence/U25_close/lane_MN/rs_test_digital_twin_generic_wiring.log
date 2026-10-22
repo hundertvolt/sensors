@@ -1,0 +1,96 @@
+FAIL test_configure_i2c_wiring_dev_matches_the_documented_layout:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_generic_wiring.py", line 167, in test_configure_i2c_wiring_dev_matches_the_documented_layout
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_configure_i2c_wiring_dev_uses_scd30_irq_pin_11_not_wozis_8:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_generic_wiring.py", line 180, in test_configure_i2c_wiring_dev_uses_scd30_irq_pin_11_not_wozis_8
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_configure_i2c_wiring_rejects_an_unknown_profile:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_generic_wiring.py", line 146, in test_configure_i2c_wiring_rejects_an_unknown_profile
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_configure_i2c_wiring_wozi_matches_the_documented_layout:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_generic_wiring.py", line 154, in test_configure_i2c_wiring_wozi_matches_the_documented_layout
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_configure_i2c_wiring_wozi_uses_scd30_irq_pin_8_not_devs_11:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_generic_wiring.py", line 188, in test_configure_i2c_wiring_wozi_uses_scd30_irq_pin_8_not_devs_11
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+PASS test_configure_wiring_leaves_an_unlisted_bus_empty
+FAIL test_configure_wiring_leaves_spi_bus_unwired_when_plan_has_no_spi_entry:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_generic_wiring.py", line 132, in test_configure_wiring_leaves_spi_bus_unwired_when_plan_has_no_spi_entry
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_configure_wiring_rejects_a_plan_missing_buses_key:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_generic_wiring.py", line 50, in test_configure_wiring_rejects_a_plan_missing_buses_key
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_configure_wiring_rejects_a_plan_missing_spi_key:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_generic_wiring.py", line 58, in test_configure_wiring_rejects_a_plan_missing_spi_key
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_configure_wiring_rejects_an_unknown_driver:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_generic_wiring.py", line 102, in test_configure_wiring_rejects_an_unknown_driver
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_configure_wiring_uses_the_plans_own_irq_pin_for_scd30:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_generic_wiring.py", line 93, in test_configure_wiring_uses_the_plans_own_irq_pin_for_scd30
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_configure_wiring_wires_a_single_i2c_device_at_its_plan_address:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_generic_wiring.py", line 66, in test_configure_wiring_wires_a_single_i2c_device_at_its_plan_address
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_configure_wiring_wires_fram_with_devs_own_rdid_for_devs_own_size:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_generic_wiring.py", line 123, in test_configure_wiring_wires_fram_with_devs_own_rdid_for_devs_own_size
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_configure_wiring_wires_fram_with_the_plans_own_max_size:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_generic_wiring.py", line 113, in test_configure_wiring_wires_fram_with_the_plans_own_max_size
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_configure_wiring_wires_multiple_devices_sharing_one_bus:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_generic_wiring.py", line 77, in test_configure_wiring_wires_multiple_devices_sharing_one_bus
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_default_wiring_before_any_configure_call_is_wozi:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_generic_wiring.py", line 201, in test_default_wiring_before_any_configure_call_is_wozi
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+1/16 passed, 15 failed, 0 skipped
+RC=1 WALL=.037407213 FILE=tests/test_digital_twin_generic_wiring.py STAGE=-1

@@ -1,24 +1,23 @@
-"""Parses a driver module's `# @value-wiring <toml_field> <source_kwarg> <field_kwarg>
-<required|optional>` comment tags - the per-value measurement wiring that generalizes `warn_*`'s
-`{source, field}` shape to any module consuming one scalar out of another's `get_data()`."""
+"""Parses a driver module's `# @value-wiring <toml_field> <kwarg> <required|optional>` comment tags -
+the per-value measurement wiring that generalizes `warn_*`'s `{source, field}` shape to any module
+consuming one scalar out of another's `get_data()`, passed as `<kwarg>=ValueRef(<source>, "<field>")`."""
 
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from buildgen.errors import BuildError
-from buildgen.tag_comments import KNOWN_TAGS, check_for_near_miss_tags, iter_comment_tokens
+from buildgen.tag_comments import check_for_near_miss_tags, iter_comment_tokens, specs_for
 
-_SPECS = tuple(spec for spec in KNOWN_TAGS if spec.name == "value-wiring")
+_SPECS = specs_for("value-wiring")
 
-_TAG_RE = re.compile(r"#+\s*@value-wiring\s+(?P<toml_field>\w+)\s+(?P<source_kwarg>\w+)\s+(?P<field_kwarg>\w+)\s+(?P<required>required|optional)\s*$")
+_TAG_RE = re.compile(r"#+\s*@value-wiring\s+(?P<toml_field>\w+)\s+(?P<kwarg>\w+)\s+(?P<required>required|optional)\s*$")
 
 
 @dataclass(frozen=True)
 class ValueWiringField:
     toml_field: str
-    source_kwarg: str
-    field_kwarg: str
+    kwarg: str  # the constructor parameter receiving the ValueRef
     required: bool
 
 
@@ -35,13 +34,22 @@ def parse_value_wiring(path: Path, device: str, driver: str) -> "tuple[ValueWiri
             raise BuildError(
                 device,
                 f"{path}:{tok.lineno}: @value-wiring tag must be at module level, not inside a class/function body: {tok.text.strip()!r}",
+                rule="tag.not-module-level",
+                fix="move the tag to module level, beside the driver's schema",
                 instance=driver,
             )
-        fields.append(ValueWiringField(m.group("toml_field"), m.group("source_kwarg"), m.group("field_kwarg"), m.group("required") == "required"))
+        fields.append(ValueWiringField(m.group("toml_field"), m.group("kwarg"), m.group("required") == "required"))
     seen: set[str] = set()
     for f in fields:
         if f.toml_field in seen:
-            raise BuildError(device, f"{path}: declares two @value-wiring tags for {f.toml_field!r} - each TOML field is wired exactly once", instance=driver, field=f.toml_field)
+            raise BuildError(
+                device,
+                f"{path}: declares two @value-wiring tags for {f.toml_field!r}",
+                rule="tag.duplicate-field",
+                fix="keep one @value-wiring tag per TOML field: each is wired exactly once",
+                instance=driver,
+                field=f.toml_field,
+            )
         seen.add(f.toml_field)
     check_for_near_miss_tags(tokens, path, device, driver, exact_matches, _SPECS)
     return tuple(fields)

@@ -1,0 +1,166 @@
+.FF......FFFFFFF.......                                                  [100%]
+=================================== FAILURES ===================================
+______ test_every_hooked_op_is_driven_by_a_run_or_left_out_with_a_reason _______
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v/scripts/_digital_twin_ci_suite.py'>
+
+    def test_every_hooked_op_is_driven_by_a_run_or_left_out_with_a_reason(ci_suite: ModuleType) -> None:
+>       missing = sorted(_chip_hook_ops() - _driven(ci_suite) - set(ci_suite._LEFT_OUT))
+                                            ^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_ci_suite_matrix.py:65: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v/scripts/_digital_twin_ci_suite.py'>
+
+    def _driven(ci_suite: ModuleType) -> "set[tuple[str, str, str]]":
+        # What the runs drive: Run 3's sustained faults, Run 5c's bounded ones, Run 5's measure read, Run 12's stack-exhaustion
+        # reads, Run 10's hangs.
+        ops = {(d, "fault", op) for d, op in {**ci_suite._SUSTAINED_FAULT}.items()} | {(d, "fault", op) for d, op in ci_suite._BOUNDED_FAULT.items()}
+        ops.add(("sgp40", "fault", ci_suite._RUN_5_FAULT_OP))
+>       ops |= {(d, "fault", op) for d, op in ci_suite._STACK_FAULT_READ_OP.items()}
+                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module '_digital_twin_ci_suite' has no attribute '_STACK_FAULT_READ_OP'
+
+tests_scripts/test_digital_twin_ci_suite_matrix.py:39: AttributeError
+_______________ test_the_matrix_names_only_ops_the_twin_accepts ________________
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v/scripts/_digital_twin_ci_suite.py'>
+
+    def test_the_matrix_names_only_ops_the_twin_accepts(ci_suite: ModuleType) -> None:
+        faults, hangs = _vocabulary("_FAULT_DEVICE_OPS"), _vocabulary("_HANG_DEVICE_OPS")
+>       bad = sorted((d, k, op) for d, k, op in _driven(ci_suite) if op not in (faults if k == "fault" else hangs).get(d, ()))
+                                                ^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_ci_suite_matrix.py:72: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v/scripts/_digital_twin_ci_suite.py'>
+
+    def _driven(ci_suite: ModuleType) -> "set[tuple[str, str, str]]":
+        # What the runs drive: Run 3's sustained faults, Run 5c's bounded ones, Run 5's measure read, Run 12's stack-exhaustion
+        # reads, Run 10's hangs.
+        ops = {(d, "fault", op) for d, op in {**ci_suite._SUSTAINED_FAULT}.items()} | {(d, "fault", op) for d, op in ci_suite._BOUNDED_FAULT.items()}
+        ops.add(("sgp40", "fault", ci_suite._RUN_5_FAULT_OP))
+>       ops |= {(d, "fault", op) for d, op in ci_suite._STACK_FAULT_READ_OP.items()}
+                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module '_digital_twin_ci_suite' has no attribute '_STACK_FAULT_READ_OP'
+
+tests_scripts/test_digital_twin_ci_suite_matrix.py:39: AttributeError
+_ test_run_12s_stack_fault_reads_on_the_plans_first_bus_attached_instance[arzi] _
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v/scripts/_digital_twin_ci_suite.py'>
+device = 'arzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_run_12s_stack_fault_reads_on_the_plans_first_bus_attached_instance(ci_suite: ModuleType, device: str) -> None:
+        # The wiring plan's first attachment, I2C buses in plan order before SPI, with a read op the twin queues a stack
+        # fault on: a mode that stays set for the run takes none (digital_twin/launch.py parse_fault_spec()).
+        plan = compute_twin_wiring(build_model(device_toml(device), _REPO_ROOT / "src"))
+        first = [*(a for bus in plan["buses"].values() for a in bus), *plan["spi"].values()][0]
+>       inst = ci_suite._stack_fault_instance(plan)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module '_digital_twin_ci_suite' has no attribute '_stack_fault_instance'
+
+tests_scripts/test_digital_twin_ci_suite_matrix.py:96: AttributeError
+_ test_run_12s_stack_fault_reads_on_the_plans_first_bus_attached_instance[dev] _
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v/scripts/_digital_twin_ci_suite.py'>
+device = 'dev'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_run_12s_stack_fault_reads_on_the_plans_first_bus_attached_instance(ci_suite: ModuleType, device: str) -> None:
+        # The wiring plan's first attachment, I2C buses in plan order before SPI, with a read op the twin queues a stack
+        # fault on: a mode that stays set for the run takes none (digital_twin/launch.py parse_fault_spec()).
+        plan = compute_twin_wiring(build_model(device_toml(device), _REPO_ROOT / "src"))
+        first = [*(a for bus in plan["buses"].values() for a in bus), *plan["spi"].values()][0]
+>       inst = ci_suite._stack_fault_instance(plan)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module '_digital_twin_ci_suite' has no attribute '_stack_fault_instance'
+
+tests_scripts/test_digital_twin_ci_suite_matrix.py:96: AttributeError
+_ test_run_12s_stack_fault_reads_on_the_plans_first_bus_attached_instance[grkizi] _
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v/scripts/_digital_twin_ci_suite.py'>
+device = 'grkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_run_12s_stack_fault_reads_on_the_plans_first_bus_attached_instance(ci_suite: ModuleType, device: str) -> None:
+        # The wiring plan's first attachment, I2C buses in plan order before SPI, with a read op the twin queues a stack
+        # fault on: a mode that stays set for the run takes none (digital_twin/launch.py parse_fault_spec()).
+        plan = compute_twin_wiring(build_model(device_toml(device), _REPO_ROOT / "src"))
+        first = [*(a for bus in plan["buses"].values() for a in bus), *plan["spi"].values()][0]
+>       inst = ci_suite._stack_fault_instance(plan)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module '_digital_twin_ci_suite' has no attribute '_stack_fault_instance'
+
+tests_scripts/test_digital_twin_ci_suite_matrix.py:96: AttributeError
+_ test_run_12s_stack_fault_reads_on_the_plans_first_bus_attached_instance[klkizi] _
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v/scripts/_digital_twin_ci_suite.py'>
+device = 'klkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_run_12s_stack_fault_reads_on_the_plans_first_bus_attached_instance(ci_suite: ModuleType, device: str) -> None:
+        # The wiring plan's first attachment, I2C buses in plan order before SPI, with a read op the twin queues a stack
+        # fault on: a mode that stays set for the run takes none (digital_twin/launch.py parse_fault_spec()).
+        plan = compute_twin_wiring(build_model(device_toml(device), _REPO_ROOT / "src"))
+        first = [*(a for bus in plan["buses"].values() for a in bus), *plan["spi"].values()][0]
+>       inst = ci_suite._stack_fault_instance(plan)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module '_digital_twin_ci_suite' has no attribute '_stack_fault_instance'
+
+tests_scripts/test_digital_twin_ci_suite_matrix.py:96: AttributeError
+_ test_run_12s_stack_fault_reads_on_the_plans_first_bus_attached_instance[schlafzi] _
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v/scripts/_digital_twin_ci_suite.py'>
+device = 'schlafzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_run_12s_stack_fault_reads_on_the_plans_first_bus_attached_instance(ci_suite: ModuleType, device: str) -> None:
+        # The wiring plan's first attachment, I2C buses in plan order before SPI, with a read op the twin queues a stack
+        # fault on: a mode that stays set for the run takes none (digital_twin/launch.py parse_fault_spec()).
+        plan = compute_twin_wiring(build_model(device_toml(device), _REPO_ROOT / "src"))
+        first = [*(a for bus in plan["buses"].values() for a in bus), *plan["spi"].values()][0]
+>       inst = ci_suite._stack_fault_instance(plan)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module '_digital_twin_ci_suite' has no attribute '_stack_fault_instance'
+
+tests_scripts/test_digital_twin_ci_suite_matrix.py:96: AttributeError
+_ test_run_12s_stack_fault_reads_on_the_plans_first_bus_attached_instance[wozi] _
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v/scripts/_digital_twin_ci_suite.py'>
+device = 'wozi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_run_12s_stack_fault_reads_on_the_plans_first_bus_attached_instance(ci_suite: ModuleType, device: str) -> None:
+        # The wiring plan's first attachment, I2C buses in plan order before SPI, with a read op the twin queues a stack
+        # fault on: a mode that stays set for the run takes none (digital_twin/launch.py parse_fault_spec()).
+        plan = compute_twin_wiring(build_model(device_toml(device), _REPO_ROOT / "src"))
+        first = [*(a for bus in plan["buses"].values() for a in bus), *plan["spi"].values()][0]
+>       inst = ci_suite._stack_fault_instance(plan)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module '_digital_twin_ci_suite' has no attribute '_stack_fault_instance'
+
+tests_scripts/test_digital_twin_ci_suite_matrix.py:96: AttributeError
+___ test_run_12s_stack_cell_finds_no_subject_on_a_plan_without_a_bus_driver ____
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v/scripts/_digital_twin_ci_suite.py'>
+
+    def test_run_12s_stack_cell_finds_no_subject_on_a_plan_without_a_bus_driver(ci_suite: ModuleType) -> None:
+>       assert ci_suite._stack_fault_instance({"buses": {}, "spi": {}, "uart": None}) is None
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module '_digital_twin_ci_suite' has no attribute '_stack_fault_instance'
+
+tests_scripts/test_digital_twin_ci_suite_matrix.py:104: AttributeError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_ci_suite_matrix.py::test_every_hooked_op_is_driven_by_a_run_or_left_out_with_a_reason
+FAILED tests_scripts/test_digital_twin_ci_suite_matrix.py::test_the_matrix_names_only_ops_the_twin_accepts
+FAILED tests_scripts/test_digital_twin_ci_suite_matrix.py::test_run_12s_stack_fault_reads_on_the_plans_first_bus_attached_instance[arzi]
+FAILED tests_scripts/test_digital_twin_ci_suite_matrix.py::test_run_12s_stack_fault_reads_on_the_plans_first_bus_attached_instance[dev]
+FAILED tests_scripts/test_digital_twin_ci_suite_matrix.py::test_run_12s_stack_fault_reads_on_the_plans_first_bus_attached_instance[grkizi]
+FAILED tests_scripts/test_digital_twin_ci_suite_matrix.py::test_run_12s_stack_fault_reads_on_the_plans_first_bus_attached_instance[klkizi]
+FAILED tests_scripts/test_digital_twin_ci_suite_matrix.py::test_run_12s_stack_fault_reads_on_the_plans_first_bus_attached_instance[schlafzi]
+FAILED tests_scripts/test_digital_twin_ci_suite_matrix.py::test_run_12s_stack_fault_reads_on_the_plans_first_bus_attached_instance[wozi]
+FAILED tests_scripts/test_digital_twin_ci_suite_matrix.py::test_run_12s_stack_cell_finds_no_subject_on_a_plan_without_a_bus_driver
+9 failed, 14 passed in 1.36s

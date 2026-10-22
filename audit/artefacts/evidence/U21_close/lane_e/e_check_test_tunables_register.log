@@ -1,0 +1,32 @@
+.F.............                                                          [100%]
+=================================== FAILURES ===================================
+___________________ test_the_tags_and_the_part_n_rows_agree ____________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u21e')
+real_tags = [Tag(path='vitest.config.js', line=35, id='l0.vitest_test_timeout_ms', literal='20000'), Tag(path='src/asy_base_classe...odule.max_error', literal='5'), Tag(path='src/asy_base_classes.py', line=761, id='module.max_error', literal='5'), ...]
+
+    def test_the_tags_and_the_part_n_rows_agree(repo_root: Path, real_tags: "list[Tag]") -> None:
+        rows, problems = parse_register((repo_root / "SPECIFICATION.md").read_text(encoding="utf-8"))
+        problems += check_register(real_tags, rows)
+>       assert not problems, "\n".join(problems)
+E       AssertionError: tests/lwip_host/test_modlwip_eagain.py:14: l1.lwip_host_write_bound_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/lwip_host/test_modlwip_eagain.py:17: l1.lwip_host_connect_bound_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/lwip_host/test_modlwip_eagain.py:20: l1.lwip_host_recovery_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/lwip_host/test_modlwip_eagain.py:22: l1.lwip_host_rounds is tagged but has no SPECIFICATION.md Part N row
+E         tests/lwip_host/test_modlwip_eagain.py:24: l1.lwip_host_spin_rounds is tagged but has no SPECIFICATION.md Part N row
+E         tests/lwip_host/test_modlwip_eagain.py:28: l1.lwip_host_spin_round_max_us is tagged but has no SPECIFICATION.md Part N row
+E         tests/lwip_host/test_modlwip_eagain.py:30: l1.lwip_host_spin_round_alloc_max_b is tagged but has no SPECIFICATION.md Part N row
+E         toolchain/setup_toolchain.py:93: tool.remote_query_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         toolchain/setup_toolchain.py:95: tool.network_step_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         toolchain/setup_toolchain.py:97: tool.build_step_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         toolchain/setup_toolchain.py:130: tool.apt_step_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         toolchain/setup_toolchain.py:240: tool.bench_bridge_recovery_arm_s is tagged but has no SPECIFICATION.md Part N row
+E         toolchain/setup_toolchain.py:242: tool.bench_bridge_up_poll_s is tagged but has no SPECIFICATION.md Part N row
+E         toolchain/setup_toolchain.py:249: tool.node_shasums_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         toolchain/setup_toolchain.py:251: tool.node_tarball_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E       assert not ['tests/lwip_host/test_modlwip_eagain.py:14: l1.lwip_host_write_bound_ms is tagged but has no SPECIFICATION.md Part N ..._host/test_modlwip_eagain.py:28: l1.lwip_host_spin_round_max_us is tagged but has no SPECIFICATION.md Part N row', ...]
+
+tests_scripts/test_tunables_register.py:253: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+1 failed, 14 passed in 3.91s

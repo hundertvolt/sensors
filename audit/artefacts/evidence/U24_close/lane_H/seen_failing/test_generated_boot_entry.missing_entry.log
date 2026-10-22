@@ -1,0 +1,20 @@
+FAIL test_a_console_interrupt_is_recorded_before_it_propagates:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneH/plant_boot/test_generated_boot_entry.py", line 108, in test_a_console_interrupt_is_recorded_before_it_propagates
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneH/plant_boot/test_generated_boot_entry.py", line 46, in _boot
+OSError: [Errno 2] ENOENT
+FAIL test_a_raising_main_propagates_and_the_finally_still_runs:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneH/plant_boot/test_generated_boot_entry.py", line 98, in test_a_raising_main_propagates_and_the_finally_still_runs
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneH/plant_boot/test_generated_boot_entry.py", line 46, in _boot
+OSError: [Errno 2] ENOENT
+FAIL test_each_entry_arms_the_watchdog_and_sets_the_threshold_before_main:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneH/plant_boot/test_generated_boot_entry.py", line 83, in test_each_entry_arms_the_watchdog_and_sets_the_threshold_before_main
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneH/plant_boot/test_generated_boot_entry.py", line 46, in _boot
+OSError: [Errno 2] ENOENT
+PASS test_the_no_autostart_entry_prints_the_start_line_and_starts_nothing
+1/4 passed, 3 failed, 0 skipped

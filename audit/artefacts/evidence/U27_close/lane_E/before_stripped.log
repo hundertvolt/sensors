@@ -1,0 +1,8 @@
+..                                                                       [100%]
+============================== slowest durations ===============================
+7.95s call     tests_scripts/test_stripped_image_boots.py::test_every_compiled_image_boots_and_serves_like_its_source
+3.95s setup    tests_scripts/test_stripped_image_boots.py::test_each_image_holds_only_compiled_modules_and_the_stub_site
+0.02s setup    tests_scripts/test_stripped_image_boots.py::test_every_compiled_image_boots_and_serves_like_its_source
+
+(3 durations < 0.005s hidden.  Use -vv to show these durations.)
+2 passed in 12.09s

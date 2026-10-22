@@ -1,0 +1,68 @@
+# job 115457430932 (run 38443106827, head 37a259a): last 5000 of 6693 log lines were retrievable (MCP get_job_logs cap); the blob log host is denied by the egress proxy, so lines 1-1693 (18:06:12-18:14:36, where the failing file ran) are not available.
+# failing-file annotation (scripts/test.sh: last 40 lines of the file's own log) and the runner summary block, tail lines 4255-4320:
+2026-10-13T18:21:16.6386069Z 
+2026-10-13T18:21:16.6386263Z HTML report:     htmlcov_digital_twin/index.html
+2026-10-13T18:21:16.6386774Z Cobertura XML:   coverage_digital_twin.xml
+2026-10-13T18:21:16.6387287Z Markdown summary: coverage_summary_digital_twin.md
+2026-10-13T18:21:16.6637445Z ##[error][test_digital_twin_sensortask_integration] RuntimeError: injected status fault
+[test_digital_twin_sensortask_integration] UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+[test_digital_twin_sensortask_integration] Traceback (most recent call last):
+[test_digital_twin_sensortask_integration]   File "asyncio/core.py", line 1, in run_until_complete
+[test_digital_twin_sensortask_integration]   File "src/asy_system_service.py", line 468, in _status_loop
+[test_digital_twin_sensortask_integration]   File "tests/test_digital_twin_sensortask_integration.py", line 717, in read
+[test_digital_twin_sensortask_integration] RuntimeError: injected status fault
+[test_digital_twin_sensortask_integration] UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+[test_digital_twin_sensortask_integration] Traceback (most recent call last):
+[test_digital_twin_sensortask_integration]   File "asyncio/core.py", line 1, in run_until_complete
+[test_digital_twin_sensortask_integration]   File "src/asy_system_service.py", line 468, in _status_loop
+[test_digital_twin_sensortask_integration]   File "tests/test_digital_twin_sensortask_integration.py", line 717, in read
+[test_digital_twin_sensortask_integration] RuntimeError: injected status fault
+[test_digital_twin_sensortask_integration] UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+[test_digital_twin_sensortask_integration] Traceback (most recent call last):
+[test_digital_twin_sensortask_integration]   File "asyncio/core.py", line 1, in run_until_complete
+[test_digital_twin_sensortask_integration]   File "src/asy_system_service.py", line 468, in _status_loop
+[test_digital_twin_sensortask_integration]   File "tests/test_digital_twin_sensortask_integration.py", line 717, in read
+[test_digital_twin_sensortask_integration] RuntimeError: injected status fault
+[test_digital_twin_sensortask_integration] UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+[test_digital_twin_sensortask_integration] Traceback (most recent call last):
+[test_digital_twin_sensortask_integration]   File "asyncio/core.py", line 1, in run_until_complete
+[test_digital_twin_sensortask_integration]   File "src/asy_system_service.py", line 468, in _status_loop
+[test_digital_twin_sensortask_integration]   File "tests/test_digital_twin_sensortask_integration.py", line 717, in read
+[test_digital_twin_sensortask_integration] RuntimeError: injected status fault
+[test_digital_twin_sensortask_integration] UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+[test_digital_twin_sensortask_integration] Traceback (most recent call last):
+[test_digital_twin_sensortask_integration]   File "asyncio/core.py", line 1, in run_until_complete
+[test_digital_twin_sensortask_integration]   File "src/asy_system_service.py", line 468, in _status_loop
+[test_digital_twin_sensortask_integration]   File "tests/test_digital_twin_sensortask_integration.py", line 717, in read
+[test_digital_twin_sensortask_integration] RuntimeError: injected status fault
+[test_digital_twin_sensortask_integration] PASS test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0
+[test_digital_twin_sensortask_integration] PASS test_put_round_trips_through_a_real_twin_backed_driver_over_real_http
+[test_digital_twin_sensortask_integration] PASS test_sensors_put_round_trips_a_real_scd30_field_over_real_http
+[test_digital_twin_sensortask_integration] PASS test_static_site_is_served_over_real_http
+[test_digital_twin_sensortask_integration] PASS test_put_pause_time_round_trips_and_counts_down_over_real_http
+[test_digital_twin_sensortask_integration] PASS test_watchdog_is_never_starved_while_every_real_task_runs_concurrently
+[test_digital_twin_sensortask_integration] PASS test_mempause_over_real_http_reaches_the_real_fram_manager_and_unpauses
+[test_digital_twin_sensortask_integration] PASS test_reset_errors_over_real_http_is_not_undone_by_a_fram_loggers_later_setup
+[test_digital_twin_sensortask_integration] 14/15 passed, 1 failed, 0 skipped
+
+2026-10-13T18:21:16.7356258Z == Evidence archived in /home/runner/work/sensors/sensors/build/archive/test_sh/20261013T182116Z
+2026-10-13T18:21:16.7357804Z == Summary: scripts/test.sh ==
+2026-10-13T18:21:16.7358769Z Commit: 3d31acc
+2026-10-13T18:21:16.7360606Z Levels: L0 PASS · L1 PASS · L2 FAIL (tests/test_digital_twin_*.py only; run_digital_twin_ci.sh not run)
+2026-10-13T18:21:16.7361512Z GC stage: coverage run (settrace)
+2026-10-13T18:21:16.7362755Z Counts (files): passed 92 · failed 1 · skipped 1 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+2026-10-13T18:21:16.7364205Z Counts (tests_scripts tests): passed 4511 · failed 0 · skipped 11 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+2026-10-13T18:21:16.7365641Z Counts (tests): passed 4881 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+2026-10-13T18:21:16.7366462Z Failed:
+2026-10-13T18:21:16.7367012Z   - tests/test_digital_twin_sensortask_integration.py: 1 of 15 tests failed
+2026-10-13T18:21:16.7367697Z Skipped:
+2026-10-13T18:21:16.7368369Z   - tests/lwip_host/test_modlwip_eagain.py: not run under --coverage (the plain pass runs them)
+2026-10-13T18:21:16.7369185Z Deselected: none
+2026-10-13T18:21:16.7369552Z Passed only on retry: none
+2026-10-13T18:21:16.7369854Z Recovery passes: none
+2026-10-13T18:21:16.7370134Z Notes: none
+2026-10-13T18:21:16.7370383Z Checked nothing: none
+2026-10-13T18:21:16.7370649Z Result: FAIL
+2026-10-13T18:21:16.7370901Z Exit code: 1
+2026-10-13T18:21:16.7637984Z ##[error]Process completed with exit code 1.
+2026-10-13T18:21:16.8275754Z ##[group]Run cat coverage_summary.md >> "$GITHUB_STEP_SUMMARY"

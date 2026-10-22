@@ -1,0 +1,22 @@
+after test_sensortask_grkizi cov rc=0 88.2s mem=0 89/89 passed, 0 failed, 0 skipped
+after test_sensortask_grkizi f rc=0 59.2s mem=0 89/89 passed, 0 failed, 0 skipped
+after test_sensortask_grkizi e rc=0 41.6s mem=0 89/89 passed, 0 failed, 0 skipped
+after test_sensortask_klkizi cov rc=0 87.9s mem=0 89/89 passed, 0 failed, 0 skipped
+after test_sensortask_klkizi f rc=0 59.0s mem=0 89/89 passed, 0 failed, 0 skipped
+after test_sensortask_klkizi e rc=0 41.2s mem=0 89/89 passed, 0 failed, 0 skipped
+after test_sensortask_schlafzi cov rc=0 86.1s mem=0 89/89 passed, 0 failed, 0 skipped
+after test_sensortask_schlafzi f rc=0 60.7s mem=0 89/89 passed, 0 failed, 0 skipped
+after test_sensortask_schlafzi e rc=0 41.7s mem=0 89/89 passed, 0 failed, 0 skipped
+after test_neopixel_wifi_integration e rc=0 2.9s mem=0 8/8 passed, 0 failed, 0 skipped
+after test_neopixel_wifi_integration f rc=0 3.3s mem=0 8/8 passed, 0 failed, 0 skipped
+after test_neopixel_wifi_integration cov rc=0 3.6s mem=0 8/8 passed, 0 failed, 0 skipped
+after test_website_build_integration e rc=0 0.2s mem=0 7/7 passed, 0 failed, 0 skipped
+after test_website_build_integration f rc=0 0.3s mem=0 7/7 passed, 0 failed, 0 skipped
+after test_website_build_integration cov rc=0 0.3s mem=0 7/7 passed, 0 failed, 0 skipped
+before test_neopixel_wifi_integration e rc=0 2.8s mem=0 8/8 passed, 0 failed, 0 skipped
+before test_neopixel_wifi_integration f rc=0 3.3s mem=0 8/8 passed, 0 failed, 0 skipped
+before test_neopixel_wifi_integration cov rc=0 3.5s mem=0 8/8 passed, 0 failed, 0 skipped
+before test_website_build_integration e rc=0 0.3s mem=0 7/7 passed, 0 failed, 0 skipped
+before test_website_build_integration f rc=0 0.3s mem=0 7/7 passed, 0 failed, 0 skipped
+before test_website_build_integration cov rc=0 0.3s mem=0 7/7 passed, 0 failed, 0 skipped
+lane b done

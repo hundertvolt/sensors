@@ -1,0 +1,20 @@
+F...................                                                     [100%]
+=================================== FAILURES ===================================
+_________________________ test_the_hidden_oracle_bites _________________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b/src')
+
+    def test_the_hidden_oracle_bites(repo_root: Path, src_dir: Path) -> None:
+        # A device with an instance whose file hides a field: that field planted in its card, or as its maintenance row, is found.
+        for device in DEVICE_NAMES:
+            model = build_model(device_toml(device), src_dir)
+            spec = next((s for s in model.instances.values() if s.driver_info is not None and any(t.hidden and False for t in parse_web_tags(s.driver_info.source_path, device, s.label))), None)
+            if spec is not None:
+                break
+        else:
+>           pytest.fail("no device has an instance with a hidden= field, so the oracle below bites on nothing")
+E           Failed: no device has an instance with a hidden= field, so the oracle below bites on nothing
+
+tests_scripts/test_zz_plant_hidden.py:239: Failed
+1 failed, 19 passed, 379 deselected in 1.60s

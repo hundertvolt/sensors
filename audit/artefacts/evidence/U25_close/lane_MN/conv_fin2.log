@@ -1,0 +1,80 @@
+.F...................................................................... [ 10%]
+........................................................................ [ 21%]
+........................................................................ [ 31%]
+........................................................................ [ 42%]
+........................................................................ [ 52%]
+........................................................................ [ 63%]
+........................................................................ [ 73%]
+...........F.................F.......................................... [ 84%]
+........................................................................ [ 95%]
+..........F.......................                                       [100%]
+=================================== FAILURES ===================================
+_______________________ test_the_allowlist_only_shrinks ________________________
+
+findings = Counter({('tests/test_asy_wifi_service.py', 'type: ignore[method-assign] # deliberate monkeypatch'): 20, ('tests/test_...toolchain/setup_toolchain.py', 'Deliberately touches neither apt, git remotes, nor the pico-sdk/picotool derivat'): 1})
+
+    def test_the_allowlist_only_shrinks(findings: Counter[tuple[str, str]]) -> None:
+        stale = sorted((read_allowlist(ALLOWLIST) - findings).elements())
+>       assert not stale, "allow-list entries that no longer occur - delete these lines (or --regenerate):\n" + "\n".join(f"  {p}\t{s}" for p, s in stale)
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           digital_twin/machine.py	Digital-twin fake `machine` module - real-time-firing `Timer`, I2C/SPI wired to
+E           digital_twin/machine.py	Twin-only: real hardware can never be asked "would you have reset by now".
+E       assert not [('digital_twin/machine.py', 'Digital-twin fake `machine` module - real-time-firing `Timer`, I2C/SPI wired to'), ('digital_twin/machine.py', 'Twin-only: real hardware can never be asked "would you have reset by now".')]
+
+tests_scripts/test_decision_vocabulary.py:94: AssertionError
+___________________ test_the_tags_and_the_part_n_rows_agree ____________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn')
+real_tags = [Tag(path='vitest.config.js', line=41, id='l0.vitest_test_timeout_ms', literal='20000'), Tag(path='src/asy_base_classe...odule.max_error', literal='5'), Tag(path='src/asy_base_classes.py', line=763, id='module.max_error', literal='5'), ...]
+
+    def test_the_tags_and_the_part_n_rows_agree(repo_root: Path, real_tags: "list[Tag]") -> None:
+        rows, problems = parse_register((repo_root / "SPECIFICATION.md").read_text(encoding="utf-8"))
+        problems += check_register(real_tags, rows)
+>       assert not problems, "\n".join(problems)
+E       AssertionError: digital_twin/run_generic_integration.py:167: l2.twin_feed_gap_fold_ms is tagged but has no SPECIFICATION.md Part N row
+E         digital_twin/unixport/_ntp_responder.py:22: twin.ntp_responder_poll_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_http_client.py:32: l2.http_client_fetch_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_http_client.py:34: l2.http_client_silent_server_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine.py:90: l2.machine_timer_short_period_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine.py:92: l2.machine_timer_rearm_window_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine.py:94: l2.machine_spi_wire_time_us_per_byte is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine_uart.py:31: l2.machine_uart_frame_wire_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine_uart.py:33: l2.machine_uart_frame_timeout_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine_uart.py:37: l2.machine_uart_stall_baud is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine_uart.py:39: l2.machine_uart_stall_pages is tagged but has no SPECIFICATION.md Part N row
+E         SPECIFICATION.md:10823: l2.machine_wdt_short_timeout_ms: Sites list [('tests/test_digital_twin_machine.py', '150')], the tags say [('tests/test_digital_twin_machine.py', '100')]
+E       assert not ['digital_twin/run_generic_integration.py:167: l2.twin_feed_gap_fold_ms is tagged but has no SPECIFICATION.md Part N r...st_digital_twin_machine.py:92: l2.machine_timer_rearm_window_ms is tagged but has no SPECIFICATION.md Part N row', ...]
+
+tests_scripts/test_tunables_register.py:253: AssertionError
+______________________ test_the_pending_list_only_shrinks ______________________
+
+    def test_the_pending_list_only_shrinks() -> None:
+        stale = sorted((Counter(_PENDING) - collect_sites()).elements())
+>       assert not stale, "_PENDING entries that no longer occur - delete them (or --regenerate):\n" + "\n".join(f"  {s}" for s in stale)
+E       AssertionError: _PENDING entries that no longer occur - delete them (or --regenerate):
+E           ('tests/test_digital_twin_network_neopixel.py', 'test_neopixel_writes_stays_bounded_across_many_writes', 'neopixel')
+E           ('tests/test_digital_twin_network_neopixel.py', 'test_wlan_config_calls_stays_bounded_across_many_calls', 'network')
+E           ('tests/test_digital_twin_network_neopixel.py', 'test_wlan_connect_calls_stays_bounded_across_many_calls', 'network')
+E       assert not [('tests/test_digital_twin_network_neopixel.py', 'test_neopixel_writes_stays_bounded_across_many_writes', 'neopixel'),... ('tests/test_digital_twin_network_neopixel.py', 'test_wlan_connect_calls_stays_bounded_across_many_calls', 'network')]
+
+tests_scripts/test_import_placement.py:216: AssertionError
+______________________ test_every_integer_step_is_bounded ______________________
+
+modules = [('src/asy_api_response.py', <ast.Module object at 0x7fdbef513fd0>), ('src/asy_base_classes.py', <ast.Module object at...ger.py', <ast.Module object at 0x7fdbefd62fb0>), ('src/asy_crc_checks.py', <ast.Module object at 0x7fdbefacffd0>), ...]
+
+    def test_every_integer_step_is_bounded(modules: list[tuple[str, ast.Module]]) -> None:
+        found = {key: line for key, line in _all_steps(modules).items() if key not in _EXEMPT and key not in _PENDING}
+>       assert not found, "an unbounded counter step - guard it with a cap comparison, or reset it at a threshold:\n" + "\n".join(f"  {p}:{line} {name}" for (p, name), line in sorted(found.items()))
+E       AssertionError: an unbounded counter step - guard it with a cap comparison, or reset it at a threshold:
+E           digital_twin/_isl29125_chip.py:195 ISL29125Chip._prst_count
+E           digital_twin/_scd30_chip.py:227 SCD30Chip.nvm_writes
+E           digital_twin/_sgp40_chip.py:105 SGP40Chip.resets
+E       assert not {('digital_twin/_isl29125_chip.py', 'ISL29125Chip._prst_count'): 195, ('digital_twin/_scd30_chip.py', 'SCD30Chip.nvm_writes'): 227, ('digital_twin/_sgp40_chip.py', 'SGP40Chip.resets'): 105}
+
+tests_scripts/test_counter_steps.py:171: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+FAILED tests_scripts/test_import_placement.py::test_the_pending_list_only_shrinks
+FAILED tests_scripts/test_counter_steps.py::test_every_integer_step_is_bounded
+4 failed, 678 passed in 82.41s (0:01:22)

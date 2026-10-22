@@ -1,0 +1,2 @@
+BITTEN | pyproject.toml and uv.lock disagree - re-run `uv lock`, then `uv sync`: / ruff: pyproject.toml pins ==0.16.10, uv.lock resolves ['0.16.6'] / pytest: pyproject.toml pins ==9.1.1, uv.lock's manifest records '' / mpremote: pyproject.toml pins ==1.29.0, uv.lock's manifest records ''
+BITTEN | .nvmrc pins Node 24, but: {'package.json @types/node': 22}

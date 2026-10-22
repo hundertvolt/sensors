@@ -1,0 +1,8 @@
+base.test_asy_fram_manager.-1 rc=0 5.37s mem=0 143/143 passed, 0 failed, 0 skipped
+base.test_asy_fram_manager.32768 rc=0 6.28s mem=0 143/143 passed, 0 failed, 0 skipped
+base.test_uart_comm_hazard.-1 rc=0 102.81s mem=0 121/121 passed, 0 failed, 0 skipped
+base.test_uart_comm_hazard.32768 rc=0 107.28s mem=0 121/121 passed, 0 failed, 0 skipped
+base.test_uart_comm_hazard.settrace rc=0 128.26s mem=0 121/121 passed, 0 failed, 0 skipped
+base.test_asy_dns_client.-1 rc=0 0.87s mem=0 45/45 passed, 0 failed, 0 skipped
+base.test_asy_dns_client.32768 rc=0 0.90s mem=0 45/45 passed, 0 failed, 0 skipped
+base.test_asy_notification_service.-1 rc=0 19.13s mem=0 66/66 passed, 0 failed, 0 skipped

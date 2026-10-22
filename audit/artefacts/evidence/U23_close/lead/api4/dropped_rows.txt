@@ -1,0 +1,4 @@
+# u23/api4/dropped_rows.txt: the four rows 57da9b5 dropped from tests_scripts/_decision_vocab_allowlist.txt
+Rows :519, :522, :524 and :528, three naming tests_js/_live_matrix_command.js or _live_twin_command.js and one
+tests_js/live-backend.test.js (lane S's final retired their wordings); handback.txt names each.
+git -C <repo> show 57da9b5 -- tests_scripts/_decision_vocab_allowlist.txt shows the four removed lines.

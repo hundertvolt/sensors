@@ -1,0 +1,30 @@
+..F..........F..                                                         [100%]
+=================================== FAILURES ===================================
+_ test_the_web_filter_lists_every_input_and_compares_against_the_last_green_commit _
+
+    def test_the_web_filter_lists_every_input_and_compares_against_the_last_green_commit() -> None:
+        job = _jobs()["web-changes"]
+        listed = re.findall(r"^\s+- '([^']+)'$", job[job.index("filters: |") :], re.MULTILINE)
+        missing = [path for path in _WEB_INPUTS if path not in listed]
+>       assert not missing, f"web-changes: the web filter misses {missing} - a change there would not run the web tier"
+E       AssertionError: web-changes: the web filter misses ['tests_scripts/test_html_validate_config.py'] - a change there would not run the web tier
+E       assert not ['tests_scripts/test_html_validate_config.py']
+
+tests_scripts/test_ci_workflow.py:131: AssertionError
+______ test_the_web_lint_job_runs_the_html_validate_config_check_required ______
+
+    def test_the_web_lint_job_runs_the_html_validate_config_check_required() -> None:
+        # The unit-test jobs install no node_modules, so the check skips there: this job installs them and requires it.
+        steps = _steps(_jobs()["web-lint-and-typecheck"], 6)
+        runs = ["\n".join(_run_lines(step)) for step in steps]
+        install = next((i for i, run in enumerate(runs) if run == "npm ci"), len(steps))
+        checks = [i for i, step in enumerate(steps) if _HTML_VALIDATE_CHECK in runs[i] and re.search(r'^\s+HTML_VALIDATE_REQUIRED: "1"$', step, re.MULTILINE)]
+>       assert checks and checks[0] > install, f'web-lint-and-typecheck: after npm ci, run {_HTML_VALIDATE_CHECK} with env: HTML_VALIDATE_REQUIRED: "1"'
+E       AssertionError: web-lint-and-typecheck: after npm ci, run tests_scripts/test_html_validate_config.py with env: HTML_VALIDATE_REQUIRED: "1"
+E       assert ([])
+
+tests_scripts/test_ci_workflow.py:253: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_ci_workflow.py::test_the_web_filter_lists_every_input_and_compares_against_the_last_green_commit
+FAILED tests_scripts/test_ci_workflow.py::test_the_web_lint_job_runs_the_html_validate_config_check_required
+2 failed, 14 passed in 0.10s

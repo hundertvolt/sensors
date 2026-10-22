@@ -1,0 +1,38 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+__ test_a_crash_with_no_count_line_keeps_its_reason_though_a_test_had_failed ___
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u23/cifix/sumprobe/bite')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8128/test_a_crash_with_no_count_lin0')
+
+    def test_a_crash_with_no_count_line_keeps_its_reason_though_a_test_had_failed(repo_root: Path, tmp_path: Path) -> None:
+        log = _failure("test_b", "AssertionError: boom") + "[test_x] Segmentation fault\n"
+        code, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_x.py": ("FAIL\n", log, None)})
+        assert code == 1, out
+>       assert "Failed:\n  - tests/test_x.py: failed; no test count (crashed or killed)\nSkipped:" in _block(out), _block(out)
+E       AssertionError: == Summary: scripts/test.sh ==
+E         Commit: unknown
+E         Levels: L0 PASS · L1 FAIL · L2 PASS (tests/test_digital_twin_*.py only; run_digital_twin_ci.sh not run)
+E         GC stage: -1 (reactive default)
+E         Counts (files): passed 0 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+E         Counts (tests_scripts tests): passed 1 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+E         Counts (tests): passed 0 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+E         Failed:
+E           - tests/test_x.py: failed (FAIL test_b: AssertionError: boom); no test count (crashed or killed)
+E         Skipped: none
+E         Deselected: none
+E         Passed only on retry: none
+E         Recovery passes: none
+E         Notes: none
+E         Checked nothing: none
+E         Result: FAIL
+E         Exit code: 1
+E         
+E       assert 'Failed:\n  - tests/test_x.py: failed; no test count (crashed or killed)\nSkipped:' in '== Summary: scripts/test.sh ==\nCommit: unknown\nLevels: L0 PASS · L1 FAIL · L2 PASS (tests/test_digital_twin_*.py on...e\nPassed only on retry: none\nRecovery passes: none\nNotes: none\nChecked nothing: none\nResult: FAIL\nExit code: 1\n'
+E        +  where '== Summary: scripts/test.sh ==\nCommit: unknown\nLevels: L0 PASS · L1 FAIL · L2 PASS (tests/test_digital_twin_*.py on...e\nPassed only on retry: none\nRecovery passes: none\nNotes: none\nChecked nothing: none\nResult: FAIL\nExit code: 1\n' = _block('== Evidence archived in /tmp/pytest-of-root/pytest-8128/test_a_crash_with_no_count_lin0/repo/build/archive/test_sh/20...e\nPassed only on retry: none\nRecovery passes: none\nNotes: none\nChecked nothing: none\nResult: FAIL\nExit code: 1\n')
+
+../../../../wt-u23sum/tests_scripts/test_test_sh.py:1131: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_test_sh.py::test_a_crash_with_no_count_line_keeps_its_reason_though_a_test_had_failed
+1 failed, 117 deselected in 3.97s
+wall 4.202 s

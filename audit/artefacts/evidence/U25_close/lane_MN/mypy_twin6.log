@@ -1,0 +1,608 @@
+tests/test_digital_twin_generic_wiring.py: note: In function "test_configure_i2c_wiring_rejects_an_unknown_profile":
+tests/test_digital_twin_generic_wiring.py:146:9: error: Module has no attribute
+"configure_i2c_wiring"  [attr-defined]
+            machine.configure_i2c_wiring("not-a-real-profile")
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_generic_wiring.py: note: In function "test_configure_i2c_wiring_wozi_matches_the_documented_layout":
+tests/test_digital_twin_generic_wiring.py:154:5: error: Module has no attribute
+"configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_generic_wiring.py: note: In function "test_configure_i2c_wiring_dev_matches_the_documented_layout":
+tests/test_digital_twin_generic_wiring.py:167:5: error: Module has no attribute
+"configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("dev")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_generic_wiring.py: note: In function "test_configure_i2c_wiring_dev_uses_scd30_irq_pin_11_not_wozis_8":
+tests/test_digital_twin_generic_wiring.py:180:5: error: Module has no attribute
+"configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("dev")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_generic_wiring.py: note: In function "test_configure_i2c_wiring_wozi_uses_scd30_irq_pin_8_not_devs_11":
+tests/test_digital_twin_generic_wiring.py:188:5: error: Module has no attribute
+"configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_generic_wiring.py: note: In function "test_default_wiring_before_any_configure_call_is_wozi":
+tests/test_digital_twin_generic_wiring.py:201:5: error: Module has no attribute
+"configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")  # restore the default explic...
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_isl29125_autorange.py:16:5: error: Module
+"_isl29125_chip" has no attribute "Isl29125Chip"; maybe "ISL29125Chip"? 
+[attr-defined]
+        from _isl29125_chip import Isl29125Chip
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_isl29125_autorange.py: note: In function "_make_dev_reader":
+tests/test_digital_twin_isl29125_autorange.py:64:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("dev")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_http_client.py: note: In function "test_read_exact_fills_the_buffer_across_multiple_partial_reads":
+tests/test_digital_twin_http_client.py:172:48: error: Argument 1 to
+"_read_exact" has incompatible type "_ChunkedReader"; expected "_Reader" 
+[arg-type]
+        result = run_timed(http_client._read_exact(reader, 8), _RUN_BOUND_...
+                                                   ^~~~~~
+tests/test_digital_twin_http_client.py:172:48: note: Following member(s) of "_ChunkedReader" have conflicts:
+tests/test_digital_twin_http_client.py:172:48: note:     Expected:
+tests/test_digital_twin_http_client.py:172:48: note:         def readinto(self, buf: bytearray | memoryview[int]) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py:172:48: note:     Got:
+tests/test_digital_twin_http_client.py:172:48: note:         def readinto(self, buf: bytearray) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py: note: In function "test_read_exact_returns_a_right_sized_buffer_for_a_single_read":
+tests/test_digital_twin_http_client.py:178:48: error: Argument 1 to
+"_read_exact" has incompatible type "_ChunkedReader"; expected "_Reader" 
+[arg-type]
+        result = run_timed(http_client._read_exact(reader, 5), _RUN_BOUND_...
+                                                   ^~~~~~
+tests/test_digital_twin_http_client.py:178:48: note: Following member(s) of "_ChunkedReader" have conflicts:
+tests/test_digital_twin_http_client.py:178:48: note:     Expected:
+tests/test_digital_twin_http_client.py:178:48: note:         def readinto(self, buf: bytearray | memoryview[int]) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py:178:48: note:     Got:
+tests/test_digital_twin_http_client.py:178:48: note:         def readinto(self, buf: bytearray) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py: note: In function "test_read_exact_raises_incomplete_response_on_premature_stream_closure":
+tests/test_digital_twin_http_client.py:187:43: error: Argument 1 to
+"_read_exact" has incompatible type "_ChunkedReader"; expected "_Reader" 
+[arg-type]
+            run_timed(http_client._read_exact(reader, 5), _RUN_BOUND_S)
+                                              ^~~~~~
+tests/test_digital_twin_http_client.py:187:43: note: Following member(s) of "_ChunkedReader" have conflicts:
+tests/test_digital_twin_http_client.py:187:43: note:     Expected:
+tests/test_digital_twin_http_client.py:187:43: note:         def readinto(self, buf: bytearray | memoryview[int]) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py:187:43: note:     Got:
+tests/test_digital_twin_http_client.py:187:43: note:         def readinto(self, buf: bytearray) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py: note: In function "test_read_exact_retries_a_spurious_none_read_instead_of_treating_it_as_eof":
+tests/test_digital_twin_http_client.py:200:48: error: Argument 1 to
+"_read_exact" has incompatible type "_ChunkedReader"; expected "_Reader" 
+[arg-type]
+        result = run_timed(http_client._read_exact(reader, 3), _RUN_BOUND_...
+                                                   ^~~~~~
+tests/test_digital_twin_http_client.py:200:48: note: Following member(s) of "_ChunkedReader" have conflicts:
+tests/test_digital_twin_http_client.py:200:48: note:     Expected:
+tests/test_digital_twin_http_client.py:200:48: note:         def readinto(self, buf: bytearray | memoryview[int]) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py:200:48: note:     Got:
+tests/test_digital_twin_http_client.py:200:48: note:         def readinto(self, buf: bytearray) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py: note: In function "test_read_until_close_joins_chunks_across_multiple_reads":
+tests/test_digital_twin_http_client.py:237:54: error: Argument 1 to
+"_read_until_close" has incompatible type "_EofReader"; expected "_Reader" 
+[arg-type]
+    ...result = run_timed(http_client._read_until_close(reader), _RUN_BOUND_S...
+                                                        ^~~~~~
+tests/test_digital_twin_http_client.py:237:54: note: Following member(s) of "_EofReader" have conflicts:
+tests/test_digital_twin_http_client.py:237:54: note:     Expected:
+tests/test_digital_twin_http_client.py:237:54: note:         def readinto(self, buf: bytearray | memoryview[int]) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py:237:54: note:     Got:
+tests/test_digital_twin_http_client.py:237:54: note:         def readinto(self, buf: bytearray) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py: note: In function "test_read_until_close_retries_a_spurious_none_read":
+tests/test_digital_twin_http_client.py:244:54: error: Argument 1 to
+"_read_until_close" has incompatible type "_EofReader"; expected "_Reader" 
+[arg-type]
+    ...result = run_timed(http_client._read_until_close(reader), _RUN_BOUND_S...
+                                                        ^~~~~~
+tests/test_digital_twin_http_client.py:244:54: note: Following member(s) of "_EofReader" have conflicts:
+tests/test_digital_twin_http_client.py:244:54: note:     Expected:
+tests/test_digital_twin_http_client.py:244:54: note:         def readinto(self, buf: bytearray | memoryview[int]) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py:244:54: note:     Got:
+tests/test_digital_twin_http_client.py:244:54: note:         def readinto(self, buf: bytearray) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py: note: In function "test_read_until_close_bounds_each_read_to_the_scratch_buffer_size":
+tests/test_digital_twin_http_client.py:256:58: error: Argument 1 to
+"_read_until_close" has incompatible type "_EofReader"; expected "_Reader" 
+[arg-type]
+    ...result = run_timed(http_client._read_until_close(reader), _RUN_BOUND_S...
+                                                        ^~~~~~
+tests/test_digital_twin_http_client.py:256:58: note: Following member(s) of "_EofReader" have conflicts:
+tests/test_digital_twin_http_client.py:256:58: note:     Expected:
+tests/test_digital_twin_http_client.py:256:58: note:         def readinto(self, buf: bytearray | memoryview[int]) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py:256:58: note:     Got:
+tests/test_digital_twin_http_client.py:256:58: note:         def readinto(self, buf: bytearray) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py: note: In function "test_read_until_close_returns_empty_bytes_for_an_immediately_closed_stream":
+tests/test_digital_twin_http_client.py:264:54: error: Argument 1 to
+"_read_until_close" has incompatible type "_EofReader"; expected "_Reader" 
+[arg-type]
+    ...result = run_timed(http_client._read_until_close(reader), _RUN_BOUND_S...
+                                                        ^~~~~~
+tests/test_digital_twin_http_client.py:264:54: note: Following member(s) of "_EofReader" have conflicts:
+tests/test_digital_twin_http_client.py:264:54: note:     Expected:
+tests/test_digital_twin_http_client.py:264:54: note:         def readinto(self, buf: bytearray | memoryview[int]) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py:264:54: note:     Got:
+tests/test_digital_twin_http_client.py:264:54: note:         def readinto(self, buf: bytearray) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py: note: In function "test_drain_exact_consumes_exactly_n_bytes_without_returning_anything":
+tests/test_digital_twin_http_client.py:279:49: error: Argument 1 to
+"_drain_exact" has incompatible type "_EofReader"; expected "_Reader" 
+[arg-type]
+        result = run_timed(http_client._drain_exact(reader, 8), _RUN_BOUND...
+                                                    ^~~~~~
+tests/test_digital_twin_http_client.py:279:49: note: Following member(s) of "_EofReader" have conflicts:
+tests/test_digital_twin_http_client.py:279:49: note:     Expected:
+tests/test_digital_twin_http_client.py:279:49: note:         def readinto(self, buf: bytearray | memoryview[int]) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py:279:49: note:     Got:
+tests/test_digital_twin_http_client.py:279:49: note:         def readinto(self, buf: bytearray) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py: note: In function "test_drain_exact_raises_incomplete_response_on_premature_stream_closure":
+tests/test_digital_twin_http_client.py:286:44: error: Argument 1 to
+"_drain_exact" has incompatible type "_ChunkedReader"; expected "_Reader" 
+[arg-type]
+            run_timed(http_client._drain_exact(reader, 5), _RUN_BOUND_S)
+                                               ^~~~~~
+tests/test_digital_twin_http_client.py:286:44: note: Following member(s) of "_ChunkedReader" have conflicts:
+tests/test_digital_twin_http_client.py:286:44: note:     Expected:
+tests/test_digital_twin_http_client.py:286:44: note:         def readinto(self, buf: bytearray | memoryview[int]) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py:286:44: note:     Got:
+tests/test_digital_twin_http_client.py:286:44: note:         def readinto(self, buf: bytearray) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py: note: In function "test_drain_exact_retries_a_spurious_none_read_instead_of_treating_it_as_eof":
+tests/test_digital_twin_http_client.py:294:40: error: Argument 1 to
+"_drain_exact" has incompatible type "_ChunkedReader"; expected "_Reader" 
+[arg-type]
+        run_timed(http_client._drain_exact(reader, 3), _RUN_BOUND_S)  # no...
+                                           ^~~~~~
+tests/test_digital_twin_http_client.py:294:40: note: Following member(s) of "_ChunkedReader" have conflicts:
+tests/test_digital_twin_http_client.py:294:40: note:     Expected:
+tests/test_digital_twin_http_client.py:294:40: note:         def readinto(self, buf: bytearray | memoryview[int]) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py:294:40: note:     Got:
+tests/test_digital_twin_http_client.py:294:40: note:         def readinto(self, buf: bytearray) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py: note: In function "test_drain_exact_bounds_its_own_scratch_buffer_to_the_shared_chunk_size":
+tests/test_digital_twin_http_client.py:305:44: error: Argument 1 to
+"_drain_exact" has incompatible type "_EofReader"; expected "_Reader" 
+[arg-type]
+            run_timed(http_client._drain_exact(reader, 10), _RUN_BOUND_S)
+                                               ^~~~~~
+tests/test_digital_twin_http_client.py:305:44: note: Following member(s) of "_EofReader" have conflicts:
+tests/test_digital_twin_http_client.py:305:44: note:     Expected:
+tests/test_digital_twin_http_client.py:305:44: note:         def readinto(self, buf: bytearray | memoryview[int]) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py:305:44: note:     Got:
+tests/test_digital_twin_http_client.py:305:44: note:         def readinto(self, buf: bytearray) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py: note: In function "test_drain_until_close_consumes_every_chunk_without_returning_anything":
+tests/test_digital_twin_http_client.py:313:55: error: Argument 1 to
+"_drain_until_close" has incompatible type "_EofReader"; expected "_Reader" 
+[arg-type]
+    ...esult = run_timed(http_client._drain_until_close(reader), _RUN_BOUND_S...
+                                                        ^~~~~~
+tests/test_digital_twin_http_client.py:313:55: note: Following member(s) of "_EofReader" have conflicts:
+tests/test_digital_twin_http_client.py:313:55: note:     Expected:
+tests/test_digital_twin_http_client.py:313:55: note:         def readinto(self, buf: bytearray | memoryview[int]) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py:313:55: note:     Got:
+tests/test_digital_twin_http_client.py:313:55: note:         def readinto(self, buf: bytearray) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py: note: In function "test_drain_until_close_retries_a_spurious_none_read":
+tests/test_digital_twin_http_client.py:319:46: error: Argument 1 to
+"_drain_until_close" has incompatible type "_EofReader"; expected "_Reader" 
+[arg-type]
+        run_timed(http_client._drain_until_close(reader), _RUN_BOUND_S)
+                                                 ^~~~~~
+tests/test_digital_twin_http_client.py:319:46: note: Following member(s) of "_EofReader" have conflicts:
+tests/test_digital_twin_http_client.py:319:46: note:     Expected:
+tests/test_digital_twin_http_client.py:319:46: note:         def readinto(self, buf: bytearray | memoryview[int]) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py:319:46: note:     Got:
+tests/test_digital_twin_http_client.py:319:46: note:         def readinto(self, buf: bytearray) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py: note: In function "test_drain_until_close_returns_for_an_immediately_closed_stream":
+tests/test_digital_twin_http_client.py:325:46: error: Argument 1 to
+"_drain_until_close" has incompatible type "_EofReader"; expected "_Reader" 
+[arg-type]
+        run_timed(http_client._drain_until_close(reader), _RUN_BOUND_S)  #...
+                                                 ^~~~~~
+tests/test_digital_twin_http_client.py:325:46: note: Following member(s) of "_EofReader" have conflicts:
+tests/test_digital_twin_http_client.py:325:46: note:     Expected:
+tests/test_digital_twin_http_client.py:325:46: note:         def readinto(self, buf: bytearray | memoryview[int]) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_http_client.py:325:46: note:     Got:
+tests/test_digital_twin_http_client.py:325:46: note:         def readinto(self, buf: bytearray) -> Coroutine[Any, Any, int | None]
+tests/test_digital_twin_uart_link.py:34:1: error: Module "machine" has no
+attribute "configure_i2c_wiring"  [attr-defined]
+    from machine import WDT, LinkPoller, UARTLink, configure_i2c_wiring  #...
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_uart_link.py: note: In function "test_the_generic_runner_joins_the_two_buses_its_wiring_plan_names":
+tests/test_digital_twin_uart_link.py:287:57: error: Argument 1 to
+"_wire_uart_crossover" has incompatible type Module; expected "_Booted" 
+[arg-type]
+    ...k = run_generic_integration._wire_uart_crossover(sensortask_dev, plan)
+                                                        ^~~~~~~~~~~~~~
+tests/test_digital_twin_uart_link.py:287:57: note: Following member(s) of Module "sensortask_dev" have conflicts:
+tests/test_digital_twin_uart_link.py:287:57: note:     __file__: expected "str", got "str | None"
+tests/test_digital_twin_uart_link.py:287:57: note:     webserver: expected "object", got "WebserverService"
+tests/test_digital_twin_sensortask_integration.py: note: In function "test_every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly":
+tests/test_digital_twin_sensortask_integration.py:269:31: error: Value of type
+"int | float | str | list[JsonValue] | dict[str, JsonValue] | None" is not
+indexable  [index]
+                assert isinstance(build_info["FirmwareVersion"], str) and ...
+                                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:269:31: error: No overload
+variant of "__getitem__" of "str" matches argument type "str"  [call-overload]
+                assert isinstance(build_info["FirmwareVersion"], str) and ...
+                                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:269:31: note: Possible overload variants:
+tests/test_digital_twin_sensortask_integration.py:269:31: note:     def __getitem__(self, SupportsIndex | slice[Any, Any, Any], /) -> str
+tests/test_digital_twin_sensortask_integration.py:269:31: error: No overload
+variant of "__getitem__" of "list" matches argument type "str"  [call-overload]
+                assert isinstance(build_info["FirmwareVersion"], str) and ...
+                                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:269:31: note:     def __getitem__(self, SupportsIndex, /) -> JsonValue
+tests/test_digital_twin_sensortask_integration.py:269:31: note:     def __getitem__(self, slice[Any, Any, Any], /) -> list[JsonValue]
+tests/test_digital_twin_sensortask_integration.py:270:31: error: Value of type
+"int | float | str | list[JsonValue] | dict[str, JsonValue] | None" is not
+indexable  [index]
+                assert isinstance(build_info["WebsiteVersion"], str) and b...
+                                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:270:31: error: No overload
+variant of "__getitem__" of "str" matches argument type "str"  [call-overload]
+                assert isinstance(build_info["WebsiteVersion"], str) and b...
+                                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:270:31: note: Possible overload variants:
+tests/test_digital_twin_sensortask_integration.py:270:31: note:     def __getitem__(self, SupportsIndex | slice[Any, Any, Any], /) -> str
+tests/test_digital_twin_sensortask_integration.py:270:31: error: No overload
+variant of "__getitem__" of "list" matches argument type "str"  [call-overload]
+                assert isinstance(build_info["WebsiteVersion"], str) and b...
+                                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:270:31: note:     def __getitem__(self, SupportsIndex, /) -> JsonValue
+tests/test_digital_twin_sensortask_integration.py:270:31: note:     def __getitem__(self, slice[Any, Any, Any], /) -> list[JsonValue]
+tests/test_digital_twin_sensortask_integration.py:271:31: error: Value of type
+"int | float | str | list[JsonValue] | dict[str, JsonValue] | None" is not
+indexable  [index]
+                assert isinstance(build_info["BuildDate"], str) and build_...
+                                  ^~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:271:31: error: No overload
+variant of "__getitem__" of "str" matches argument type "str"  [call-overload]
+                assert isinstance(build_info["BuildDate"], str) and build_...
+                                  ^~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:271:31: note: Possible overload variants:
+tests/test_digital_twin_sensortask_integration.py:271:31: note:     def __getitem__(self, SupportsIndex | slice[Any, Any, Any], /) -> str
+tests/test_digital_twin_sensortask_integration.py:271:31: error: No overload
+variant of "__getitem__" of "list" matches argument type "str"  [call-overload]
+                assert isinstance(build_info["BuildDate"], str) and build_...
+                                  ^~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:271:31: note:     def __getitem__(self, SupportsIndex, /) -> JsonValue
+tests/test_digital_twin_sensortask_integration.py:271:31: note:     def __getitem__(self, slice[Any, Any, Any], /) -> list[JsonValue]
+tests/test_digital_twin_sensortask_integration.py: note: In function "test_put_pause_time_round_trips_and_counts_down_over_real_http":
+tests/test_digital_twin_sensortask_integration.py:406:21: error: Value of type
+"int | float | str | bool | list[JsonValue] | dict[str, JsonValue] | None" is
+not indexable  [index]
+                first = res.json()["notification"]["PauseTime"]
+                        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:406:21: error: No overload
+variant of "__getitem__" of "str" matches argument type "str"  [call-overload]
+                first = res.json()["notification"]["PauseTime"]
+                        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:406:21: note: Possible overload variants:
+tests/test_digital_twin_sensortask_integration.py:406:21: note:     def __getitem__(self, SupportsIndex | slice[Any, Any, Any], /) -> str
+tests/test_digital_twin_sensortask_integration.py:406:21: error: No overload
+variant of "__getitem__" of "list" matches argument type "str"  [call-overload]
+                first = res.json()["notification"]["PauseTime"]
+                        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:406:21: note:     def __getitem__(self, SupportsIndex, /) -> JsonValue
+tests/test_digital_twin_sensortask_integration.py:406:21: note:     def __getitem__(self, slice[Any, Any, Any], /) -> list[JsonValue]
+tests/test_digital_twin_sensortask_integration.py:407:20: error: Unsupported
+operand types for < ("int" and "None")  [operator]
+                assert first > 0
+                       ^
+tests/test_digital_twin_sensortask_integration.py:407:20: error: Unsupported
+operand types for < ("int" and "dict[str, JsonValue]")  [operator]
+                assert first > 0
+                       ^
+tests/test_digital_twin_sensortask_integration.py:407:20: note: Left operand is of type "Any | int | float | str | list[JsonValue] | dict[str, JsonValue] | None"
+tests/test_digital_twin_sensortask_integration.py:407:28: error: Unsupported
+operand types for > ("str" and "int")  [operator]
+                assert first > 0
+                               ^
+tests/test_digital_twin_sensortask_integration.py:407:28: error: Unsupported
+operand types for > ("list[JsonValue]" and "int")  [operator]
+                assert first > 0
+                               ^
+tests/test_digital_twin_sensortask_integration.py:414:27: error: Value of type
+"int | float | str | bool | list[JsonValue] | dict[str, JsonValue] | None" is
+not indexable  [index]
+                    current = res.json()["notification"]["PauseTime"]
+                              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:414:27: error: No overload
+variant of "__getitem__" of "str" matches argument type "str"  [call-overload]
+                    current = res.json()["notification"]["PauseTime"]
+                              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:414:27: note: Possible overload variants:
+tests/test_digital_twin_sensortask_integration.py:414:27: note:     def __getitem__(self, SupportsIndex | slice[Any, Any, Any], /) -> str
+tests/test_digital_twin_sensortask_integration.py:414:27: error: No overload
+variant of "__getitem__" of "list" matches argument type "str"  [call-overload]
+                    current = res.json()["notification"]["PauseTime"]
+                              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:414:27: note:     def __getitem__(self, SupportsIndex, /) -> JsonValue
+tests/test_digital_twin_sensortask_integration.py:414:27: note:     def __getitem__(self, slice[Any, Any, Any], /) -> list[JsonValue]
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for <= ("int" and "str")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for <= ("int" and "None")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for <= ("int" and "list[JsonValue]")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for <= ("int" and "dict[str, JsonValue]")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for <= ("float" and "str")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for <= ("float" and "None")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for <= ("float" and "list[JsonValue]")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for <= ("float" and "dict[str, JsonValue]")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for <= ("str" and "int")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for <= ("str" and "float")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for <= ("str" and "None")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for <= ("str" and "list[JsonValue]")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for <= ("str" and "dict[str, JsonValue]")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for >= ("int" and "None")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for >= ("float" and "None")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for >= ("str" and "None")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+left operand type for <= ("None")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for >= ("list[JsonValue]" and "None")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for <= ("list[JsonValue]" and "int")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for <= ("list[JsonValue]" and "float")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for <= ("list[JsonValue]" and "str")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for <= ("list[JsonValue]" and "None")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for <= ("list[JsonValue]" and "dict[str, JsonValue]")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for >= ("int" and "dict[str, JsonValue]")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for >= ("float" and "dict[str, JsonValue]")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for >= ("str" and "dict[str, JsonValue]")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+left operand type for <= ("dict[str, JsonValue]")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:415:24: error: Unsupported
+operand types for >= ("list[JsonValue]" and "dict[str, JsonValue]")  [operator]
+                    assert current <= last  # never increases - a real, mo...
+                           ^
+tests/test_digital_twin_sensortask_integration.py:415:24: note: Both left and right operands are unions
+tests/test_digital_twin_sensortask_integration.py: note: In function "test_mempause_over_real_http_reaches_the_real_fram_manager_and_unpauses":
+tests/test_digital_twin_sensortask_integration.py:1099:20: error: Value of type
+"int | float | str | bool | list[JsonValue] | dict[str, JsonValue] | None" is
+not indexable  [index]
+                assert res.json()["system"]["MemPaused"] is False
+                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:1099:20: error: No overload
+variant of "__getitem__" of "str" matches argument type "str"  [call-overload]
+                assert res.json()["system"]["MemPaused"] is False
+                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:1099:20: note: Possible overload variants:
+tests/test_digital_twin_sensortask_integration.py:1099:20: note:     def __getitem__(self, SupportsIndex | slice[Any, Any, Any], /) -> str
+tests/test_digital_twin_sensortask_integration.py:1099:20: error: No overload
+variant of "__getitem__" of "list" matches argument type "str"  [call-overload]
+                assert res.json()["system"]["MemPaused"] is False
+                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:1099:20: note:     def __getitem__(self, SupportsIndex, /) -> JsonValue
+tests/test_digital_twin_sensortask_integration.py:1099:20: note:     def __getitem__(self, slice[Any, Any, Any], /) -> list[JsonValue]
+tests/test_digital_twin_sensortask_integration.py:1108:20: error: Value of type
+"int | float | str | bool | list[JsonValue] | dict[str, JsonValue] | None" is
+not indexable  [index]
+                assert res.json()["system"]["MemPaused"] is True
+                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:1108:20: error: No overload
+variant of "__getitem__" of "str" matches argument type "str"  [call-overload]
+                assert res.json()["system"]["MemPaused"] is True
+                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:1108:20: note: Possible overload variants:
+tests/test_digital_twin_sensortask_integration.py:1108:20: note:     def __getitem__(self, SupportsIndex | slice[Any, Any, Any], /) -> str
+tests/test_digital_twin_sensortask_integration.py:1108:20: error: No overload
+variant of "__getitem__" of "list" matches argument type "str"  [call-overload]
+                assert res.json()["system"]["MemPaused"] is True
+                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:1108:20: note:     def __getitem__(self, SupportsIndex, /) -> JsonValue
+tests/test_digital_twin_sensortask_integration.py:1108:20: note:     def __getitem__(self, slice[Any, Any, Any], /) -> list[JsonValue]
+tests/test_digital_twin_sensortask_integration.py:1113:20: error: Value of type
+"int | float | str | bool | list[JsonValue] | dict[str, JsonValue] | None" is
+not indexable  [index]
+                assert res.json()["system"]["MemPaused"] is False
+                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:1113:20: error: No overload
+variant of "__getitem__" of "str" matches argument type "str"  [call-overload]
+                assert res.json()["system"]["MemPaused"] is False
+                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:1113:20: note: Possible overload variants:
+tests/test_digital_twin_sensortask_integration.py:1113:20: note:     def __getitem__(self, SupportsIndex | slice[Any, Any, Any], /) -> str
+tests/test_digital_twin_sensortask_integration.py:1113:20: error: No overload
+variant of "__getitem__" of "list" matches argument type "str"  [call-overload]
+                assert res.json()["system"]["MemPaused"] is False
+                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py:1113:20: note:     def __getitem__(self, SupportsIndex, /) -> JsonValue
+tests/test_digital_twin_sensortask_integration.py:1113:20: note:     def __getitem__(self, slice[Any, Any, Any], /) -> list[JsonValue]
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call":
+tests/test_digital_twin_bus_hazard_concurrency.py:227:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_dev_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call":
+tests/test_digital_twin_bus_hazard_concurrency.py:241:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("dev")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load":
+tests/test_digital_twin_bus_hazard_concurrency.py:255:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_dev_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load":
+tests/test_digital_twin_bus_hazard_concurrency.py:269:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("dev")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_fram_recovers_after_an_injected_spi_write_fault":
+tests/test_digital_twin_bus_hazard_concurrency.py:284:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py:296:42: error: Argument 2 to
+"inject_fault" of "FaultInjector" has incompatible type "OSError"; expected
+"type[BaseException]"  [arg-type]
+            chip.fault.inject_fault("write", OSError(5))
+                                             ^~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_fram_recovers_after_an_injected_spi_read_fault":
+tests/test_digital_twin_bus_hazard_concurrency.py:326:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py:344:45: error: Argument 2 to
+"inject_fault" of "FaultInjector" has incompatible type "OSError"; expected
+"type[BaseException]"  [arg-type]
+            chip.fault.inject_fault("readinto", OSError(5))
+                                                ^~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun":
+tests/test_digital_twin_bus_hazard_concurrency.py:372:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_survives_concurrent_bus_load_and_a_real_established_wifi_disconnect":
+tests/test_digital_twin_bus_hazard_concurrency.py:419:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_storage_pause_gates_the_real_twin_chip":
+tests/test_digital_twin_bus_hazard_concurrency.py:463:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_write_protect_blocks_reads_too_and_the_data_survives_it":
+tests/test_digital_twin_bus_hazard_concurrency.py:493:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_storage_pause_short_circuits_before_the_bus_so_an_injected_fault_survives":
+tests/test_digital_twin_bus_hazard_concurrency.py:519:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_storage_pause_does_not_survive_a_simulated_reboot":
+tests/test_digital_twin_bus_hazard_concurrency.py:551:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_a_chunk_another_owner_wrote_reads_blank_after_a_simulated_reboot":
+tests/test_digital_twin_bus_hazard_concurrency.py:582:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_three_concurrent_sgp40_measurements_each_send_and_read_their_own_words":
+tests/test_digital_twin_bus_hazard_concurrency.py:625:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py:644:13: error: No overload
+variant of "bytes" matches argument type "object"  [call-overload]
+        sent = [bytes(log[i][2]) for i in range(0, len(log), 2)]
+                ^~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py:644:13: note: Possible overload variants:
+tests/test_digital_twin_bus_hazard_concurrency.py:644:13: note:     def bytes(Iterable[SupportsIndex] | SupportsIndex | SupportsBytes | Buffer, /) -> bytes
+tests/test_digital_twin_bus_hazard_concurrency.py:644:13: note:     def bytes(str, /, encoding: str, errors: str = ...) -> bytes
+tests/test_digital_twin_bus_hazard_concurrency.py:644:13: note:     def bytes() -> bytes
+tests/test_digital_twin_bus_hazard_concurrency.py:646:19: error: No overload
+variant of "bytes" matches argument type "object"  [call-overload]
+        word_after = {bytes(log[i][2]): (log[i + 1][2][0] << 8) | log[i + ...
+                      ^~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py:646:19: note: Possible overload variants:
+tests/test_digital_twin_bus_hazard_concurrency.py:646:19: note:     def bytes(Iterable[SupportsIndex] | SupportsIndex | SupportsBytes | Buffer, /) -> bytes
+tests/test_digital_twin_bus_hazard_concurrency.py:646:19: note:     def bytes(str, /, encoding: str, errors: str = ...) -> bytes
+tests/test_digital_twin_bus_hazard_concurrency.py:646:19: note:     def bytes() -> bytes
+tests/test_digital_twin_bus_hazard_concurrency.py:646:38: error: Value of type
+"object" is not indexable  [index]
+        word_after = {bytes(log[i][2]): (log[i + 1][2][0] << 8) | log[i + ...
+                                         ^~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads":
+tests/test_digital_twin_bus_hazard_concurrency.py:662:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "_dev_i2c1":
+tests/test_digital_twin_bus_hazard_concurrency.py:744:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("dev")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_a_sustained_fault_on_one_twin_chip_climbs_to_the_bus_clear_and_recovers_once_cleared":
+tests/test_digital_twin_bus_hazard_concurrency.py:897:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_two_failing_readers_on_one_bus_run_each_bus_rung_once":
+tests/test_digital_twin_bus_hazard_concurrency.py:913:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Found 104 errors in 6 files (checked 56 source files)

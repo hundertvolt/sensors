@@ -1,0 +1,39 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+_ test_a_device_independent_scenario_runs_on_its_first_device_with_the_property_only _
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31t/scripts/_digital_twin_scenarios.py'>
+
+    def test_a_device_independent_scenario_runs_on_its_first_device_with_the_property_only(harness: ModuleType) -> None:
+>       firsts = [item for item in harness.SCENARIOS.values() if item.first_device]
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_scenarios.py:169: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+.0 = <dict_valueiterator object at 0x7f453f3e76a0>
+
+>   firsts = [item for item in harness.SCENARIOS.values() if item.first_device]
+                                                             ^^^^^^^^^^^^^^^^^
+E   AttributeError: 'Scenario' object has no attribute 'first_device'
+
+tests_scripts/test_digital_twin_scenarios.py:169: AttributeError
+_ test_a_stagger_wait_is_the_second_read_trigger_and_an_unknown_property_is_refused _
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31t/scripts/_digital_twin_scenarios.py'>
+
+    def test_a_stagger_wait_is_the_second_read_trigger_and_an_unknown_property_is_refused(harness: ModuleType) -> None:
+        for device in harness.generated_devices():
+            text = (harness.GENERATED_SRC_DIR / f"sensortask_{device}.py").read_text(encoding="utf-8")
+            body = text[text.index("def _collect_trigger_starters") :].split("\n\n", 1)[0]
+            modules = re.search(r"for module in \(([^)]*)\)", body)
+            assert modules is not None, device
+>           assert harness._stagger_waits(device) == (len([m for m in modules.group(1).split(",") if m.strip()]) > 1), (device, modules.group(1))
+                   ^^^^^^^^^^^^^^^^^^^^^^
+E           AttributeError: module '_digital_twin_scenarios' has no attribute '_stagger_waits'
+
+tests_scripts/test_digital_twin_scenarios.py:184: AttributeError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_a_device_independent_scenario_runs_on_its_first_device_with_the_property_only
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_a_stagger_wait_is_the_second_read_trigger_and_an_unknown_property_is_refused
+2 failed, 47 deselected in 0.19s

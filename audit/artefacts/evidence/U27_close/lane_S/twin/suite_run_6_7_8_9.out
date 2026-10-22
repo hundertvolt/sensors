@@ -1,0 +1,119 @@
+== Left out of the fault matrix, each with its reason: {
+ "bmp3xx:fault:writeto_mem": "a configuration write; its failure path is tests/test_asy_bmp3xx_driver.py's and tests/test_digital_twin_bmp3xx.py's",
+ "isl29125:fault:writeto_mem": "a configuration write; its failure path is tests/test_digital_twin_isl29125.py's",
+ "isl29125:fault:int_stuck_high": "a persistent INT mode; tests/test_digital_twin_isl29125_autorange.py drives it",
+ "scd30:fault:readfrom_into": "the read half of SCD30's one bus session; tests/test_asy_scd30_driver.py and tests/test_digital_twin_scd30.py cover it",
+ "sgp40:fault:general_call": "sent only by bus recovery; tests/test_digital_twin_sgp40.py covers the reset",
+ "fram:fault:readinto": "a failed chunk read takes the store's self-healing path, tests/test_asy_fram_manager.py and tests/test_digital_twin_fram.py",
+ "fram:fault:wren": "a dropped write-enable; tests/test_digital_twin_fram.py drives it",
+ "bmp3xx:hang:readfrom_mem": "a hang freezes the interpreter whichever bus call it sits in; Run 10 hangs one representative op per driver",
+ "bmp3xx:hang:writeto_mem": "a hang freezes the interpreter whichever bus call it sits in; Run 10 hangs one representative op per driver",
+ "isl29125:hang:readfrom_mem": "a hang freezes the interpreter whichever bus call it sits in; Run 10 hangs one representative op per driver",
+ "isl29125:hang:writeto_mem": "a hang freezes the interpreter whichever bus call it sits in; Run 10 hangs one representative op per driver",
+ "scd30:hang:readfrom_into": "a hang freezes the interpreter whichever bus call it sits in; Run 10 hangs one representative op per driver",
+ "sgp40:hang:readfrom_into": "a hang freezes the interpreter whichever bus call it sits in; Run 10 hangs one representative op per driver",
+ "fram:hang:write": "a hang freezes the interpreter whichever bus call it sits in; Run 10 hangs one representative op per driver",
+ "wlan:fault:*": "every WLAN raise_on method is tests/test_asy_wifi_service.py's; Run 7 drives connect outcomes by --wifi-outcome",
+ "uart_link:fault:bounded": "drop, corrupt and truncate are tests/test_digital_twin_uart_link.py's; Run 3 carries uart_link:silent"
+}
+== Launching: /root/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_dev --wiring-plan /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27s/build/generated_src/sensortask_dev_wiring_plan.json --device dev --host 127.0.0.1 --port 18080 --fram-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_neg1/state/fram_state.json --scd30-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_neg1/state/scd30_state.json --mem-backup-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_neg1/state/mem_backup_state.json --config-dir /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_neg1/state/config/ --gc-threshold -1 (log: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_neg1/run6_configure_ssid.log)
+OK: [gc.threshold=-1] Run 6: PUT /networking SSID accepted
+OK: [gc.threshold=-1] Run 6: log carries none of ('MemoryError', 'memory allocation failed')
+OK: [gc.threshold=-1] Run 6: no public destination was refused (public_destinations_refused=0)
+OK: [gc.threshold=-1] Run 6: no feed gap came near the watchdog timeout (largest 1774 ms of 8000 ms)
+OK: [gc.threshold=-1] Run 6: clean shutdown (exit code 0)
+== Launching: /root/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_dev --wiring-plan /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27s/build/generated_src/sensortask_dev_wiring_plan.json --device dev --host 127.0.0.1 --port 18080 --fram-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_neg1/state/fram_state.json --scd30-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_neg1/state/scd30_state.json --mem-backup-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_neg1/state/mem_backup_state.json --config-dir /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_neg1/state/config/ --gc-threshold -1 --wifi-outcome no_ap --wifi-outcome no_ap --wifi-outcome no_ap --wifi-outcome no_ap --wifi-outcome no_ap (log: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_neg1/run7_wifi_hotspot_dns.log)
+OK: [gc.threshold=-1] Run 7: all 5 repeated WiFi connect failures drove real hotspot fallback, and both they and the fallback were recorded in WIFI's error counter ({'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'W', 'num': 37}, {'type': 'W', 'num': 79}], 'counter': 6})
+OK: [gc.threshold=-1] Run 7: those 5 identical verdicts spent one history slot, not one each, and the fallback one more (2) - the ring still holds what preceded the outage ({'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'W', 'num': 37}, {'type': 'W', 'num': 79}], 'counter': 6})
+OK: [gc.threshold=-1] Run 7: the real CaptiveDNS answered a real UDP DNS query after WiFi hotspot fallback
+OK: [gc.threshold=-1] Run 7: webserver stayed reachable throughout the WiFi hotspot-fallback transition
+OK: [gc.threshold=-1] Run 7: log carries none of ('MemoryError', 'memory allocation failed')
+OK: [gc.threshold=-1] Run 7: no public destination was refused (public_destinations_refused=0)
+OK: [gc.threshold=-1] Run 7: no feed gap came near the watchdog timeout (largest 2002 ms of 8000 ms)
+OK: [gc.threshold=-1] Run 7: process survived the WiFi hotspot-fallback transition without crashing (exit code 0)
+== Launching: /root/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_dev --wiring-plan /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27s/build/generated_src/sensortask_dev_wiring_plan.json --device dev --host 127.0.0.1 --port 18080 --fram-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_neg1/state/fram_state.json --scd30-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_neg1/state/scd30_state.json --mem-backup-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_neg1/state/mem_backup_state.json --config-dir /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_neg1/state/config/ --gc-threshold -1 (log: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_neg1/run8_wifi_persistence_and_configure_ntp.log)
+OK: [gc.threshold=-1] Run 8: WIFI's FRAM-backed history came back all-or-nothing after an abrupt restart - never a partial 2-entry remnant ({'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'W', 'num': 37}, {'type': 'W', 'num': 79}], 'counter': 6})
+OK: [gc.threshold=-1] Run 8: and the counter came back with it, still naming all 5 attempts and the fallback rather than the slots they share ({'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'W', 'num': 37}, {'type': 'W', 'num': 79}], 'counter': 6})
+OK: [gc.threshold=-1] Run 8: NTP synced against the twin's local responder within 60s of the station link
+OK: [gc.threshold=-1] Run 8: UTCTime and LocalTime are both present after the first NTP sync, each the 8-field time (({'Weekday': 3, 'Yearday': 288, 'Year': 2026, 'Minute': 24, 'MDay': 15, 'Month': 10, 'Hour': 7, 'Second': 56}, {'Weekday': 3, 'Yearday': 288, 'Year': 2026, 'Minute': 24, 'MDay': 15, 'Month': 10, 'Hour': 9, 'Second': 56}))
+OK: [gc.threshold=-1] Run 8: PUT /networking NTPHost (unreachable) accepted
+OK: [gc.threshold=-1] Run 8: log carries none of ('MemoryError', 'memory allocation failed')
+OK: [gc.threshold=-1] Run 8: no public destination was refused (public_destinations_refused=0)
+OK: [gc.threshold=-1] Run 8: no feed gap came near the watchdog timeout (largest 1589 ms of 8000 ms)
+OK: [gc.threshold=-1] Run 8: clean shutdown (exit code 0)
+== Launching: /root/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_dev --wiring-plan /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27s/build/generated_src/sensortask_dev_wiring_plan.json --device dev --host 127.0.0.1 --port 18080 --fram-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_neg1/state/fram_state.json --scd30-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_neg1/state/scd30_state.json --mem-backup-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_neg1/state/mem_backup_state.json --config-dir /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_neg1/state/config/ --gc-threshold -1 (log: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_neg1/run9_ntp_unreachable.log)
+OK: [gc.threshold=-1] Run 9: NTP failed 3 time(s) within the 90s watch, every attempt its backoff schedules there
+OK: [gc.threshold=-1] Run 9: webserver stayed fully healthy with NTP permanently unreachable
+OK: [gc.threshold=-1] Run 9: NTP logged errno 72 (NTP_NOT_SENT), not NTP_NO_REPLY, for 192.0.2.1: no route to it leaves this host, so the request is never sent (history [72])
+OK: [gc.threshold=-1] Run 9: no task ended and was restarted while NTP failed (SYSTEM counter 0 -> 0)
+OK: [gc.threshold=-1] Run 9: log carries none of ('MemoryError', 'memory allocation failed')
+OK: [gc.threshold=-1] Run 9: no public destination was refused (public_destinations_refused=0)
+OK: [gc.threshold=-1] Run 9: no feed gap came near the watchdog timeout (largest 2004 ms of 8000 ms)
+OK: [gc.threshold=-1] Run 9: clean shutdown (exit code 0)
+== Left out of the fault matrix, each with its reason: {
+ "bmp3xx:fault:writeto_mem": "a configuration write; its failure path is tests/test_asy_bmp3xx_driver.py's and tests/test_digital_twin_bmp3xx.py's",
+ "isl29125:fault:writeto_mem": "a configuration write; its failure path is tests/test_digital_twin_isl29125.py's",
+ "isl29125:fault:int_stuck_high": "a persistent INT mode; tests/test_digital_twin_isl29125_autorange.py drives it",
+ "scd30:fault:readfrom_into": "the read half of SCD30's one bus session; tests/test_asy_scd30_driver.py and tests/test_digital_twin_scd30.py cover it",
+ "sgp40:fault:general_call": "sent only by bus recovery; tests/test_digital_twin_sgp40.py covers the reset",
+ "fram:fault:readinto": "a failed chunk read takes the store's self-healing path, tests/test_asy_fram_manager.py and tests/test_digital_twin_fram.py",
+ "fram:fault:wren": "a dropped write-enable; tests/test_digital_twin_fram.py drives it",
+ "bmp3xx:hang:readfrom_mem": "a hang freezes the interpreter whichever bus call it sits in; Run 10 hangs one representative op per driver",
+ "bmp3xx:hang:writeto_mem": "a hang freezes the interpreter whichever bus call it sits in; Run 10 hangs one representative op per driver",
+ "isl29125:hang:readfrom_mem": "a hang freezes the interpreter whichever bus call it sits in; Run 10 hangs one representative op per driver",
+ "isl29125:hang:writeto_mem": "a hang freezes the interpreter whichever bus call it sits in; Run 10 hangs one representative op per driver",
+ "scd30:hang:readfrom_into": "a hang freezes the interpreter whichever bus call it sits in; Run 10 hangs one representative op per driver",
+ "sgp40:hang:readfrom_into": "a hang freezes the interpreter whichever bus call it sits in; Run 10 hangs one representative op per driver",
+ "fram:hang:write": "a hang freezes the interpreter whichever bus call it sits in; Run 10 hangs one representative op per driver",
+ "wlan:fault:*": "every WLAN raise_on method is tests/test_asy_wifi_service.py's; Run 7 drives connect outcomes by --wifi-outcome",
+ "uart_link:fault:bounded": "drop, corrupt and truncate are tests/test_digital_twin_uart_link.py's; Run 3 carries uart_link:silent"
+}
+== Launching: /root/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_dev --wiring-plan /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27s/build/generated_src/sensortask_dev_wiring_plan.json --device dev --host 127.0.0.1 --port 18080 --fram-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_32768/state/fram_state.json --scd30-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_32768/state/scd30_state.json --mem-backup-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_32768/state/mem_backup_state.json --config-dir /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_32768/state/config/ --gc-threshold 32768 (log: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_32768/run6_configure_ssid.log)
+OK: [gc.threshold=32768] Run 6: PUT /networking SSID accepted
+OK: [gc.threshold=32768] Run 6: log carries none of ('MemoryError', 'memory allocation failed')
+OK: [gc.threshold=32768] Run 6: no public destination was refused (public_destinations_refused=0)
+OK: [gc.threshold=32768] Run 6: no feed gap came near the watchdog timeout (largest 1834 ms of 8000 ms)
+OK: [gc.threshold=32768] Run 6: clean shutdown (exit code 0)
+== Launching: /root/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_dev --wiring-plan /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27s/build/generated_src/sensortask_dev_wiring_plan.json --device dev --host 127.0.0.1 --port 18080 --fram-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_32768/state/fram_state.json --scd30-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_32768/state/scd30_state.json --mem-backup-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_32768/state/mem_backup_state.json --config-dir /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_32768/state/config/ --gc-threshold 32768 --wifi-outcome no_ap --wifi-outcome no_ap --wifi-outcome no_ap --wifi-outcome no_ap --wifi-outcome no_ap (log: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_32768/run7_wifi_hotspot_dns.log)
+OK: [gc.threshold=32768] Run 7: all 5 repeated WiFi connect failures drove real hotspot fallback, and both they and the fallback were recorded in WIFI's error counter ({'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'W', 'num': 37}, {'type': 'W', 'num': 79}], 'counter': 6})
+OK: [gc.threshold=32768] Run 7: those 5 identical verdicts spent one history slot, not one each, and the fallback one more (2) - the ring still holds what preceded the outage ({'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'W', 'num': 37}, {'type': 'W', 'num': 79}], 'counter': 6})
+OK: [gc.threshold=32768] Run 7: the real CaptiveDNS answered a real UDP DNS query after WiFi hotspot fallback
+OK: [gc.threshold=32768] Run 7: webserver stayed reachable throughout the WiFi hotspot-fallback transition
+OK: [gc.threshold=32768] Run 7: log carries none of ('MemoryError', 'memory allocation failed')
+OK: [gc.threshold=32768] Run 7: no public destination was refused (public_destinations_refused=0)
+OK: [gc.threshold=32768] Run 7: no feed gap came near the watchdog timeout (largest 2048 ms of 8000 ms)
+OK: [gc.threshold=32768] Run 7: process survived the WiFi hotspot-fallback transition without crashing (exit code 0)
+== Launching: /root/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_dev --wiring-plan /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27s/build/generated_src/sensortask_dev_wiring_plan.json --device dev --host 127.0.0.1 --port 18080 --fram-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_32768/state/fram_state.json --scd30-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_32768/state/scd30_state.json --mem-backup-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_32768/state/mem_backup_state.json --config-dir /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_32768/state/config/ --gc-threshold 32768 (log: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_32768/run8_wifi_persistence_and_configure_ntp.log)
+OK: [gc.threshold=32768] Run 8: WIFI's FRAM-backed history came back all-or-nothing after an abrupt restart - never a partial 2-entry remnant ({'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'W', 'num': 37}, {'type': 'W', 'num': 79}], 'counter': 6})
+OK: [gc.threshold=32768] Run 8: and the counter came back with it, still naming all 5 attempts and the fallback rather than the slots they share ({'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'W', 'num': 37}, {'type': 'W', 'num': 79}], 'counter': 6})
+OK: [gc.threshold=32768] Run 8: NTP synced against the twin's local responder within 60s of the station link
+OK: [gc.threshold=32768] Run 8: UTCTime and LocalTime are both present after the first NTP sync, each the 8-field time (({'Weekday': 3, 'Yearday': 288, 'Year': 2026, 'Minute': 26, 'MDay': 15, 'Month': 10, 'Hour': 7, 'Second': 58}, {'Weekday': 3, 'Yearday': 288, 'Year': 2026, 'Minute': 26, 'MDay': 15, 'Month': 10, 'Hour': 9, 'Second': 58}))
+OK: [gc.threshold=32768] Run 8: PUT /networking NTPHost (unreachable) accepted
+OK: [gc.threshold=32768] Run 8: log carries none of ('MemoryError', 'memory allocation failed')
+OK: [gc.threshold=32768] Run 8: no public destination was refused (public_destinations_refused=0)
+OK: [gc.threshold=32768] Run 8: no feed gap came near the watchdog timeout (largest 1599 ms of 8000 ms)
+OK: [gc.threshold=32768] Run 8: clean shutdown (exit code 0)
+== Launching: /root/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_dev --wiring-plan /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27s/build/generated_src/sensortask_dev_wiring_plan.json --device dev --host 127.0.0.1 --port 18080 --fram-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_32768/state/fram_state.json --scd30-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_32768/state/scd30_state.json --mem-backup-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_32768/state/mem_backup_state.json --config-dir /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_32768/state/config/ --gc-threshold 32768 (log: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_suite_6,7,8,9/gc_threshold_32768/run9_ntp_unreachable.log)
+OK: [gc.threshold=32768] Run 9: NTP failed 3 time(s) within the 90s watch, every attempt its backoff schedules there
+OK: [gc.threshold=32768] Run 9: webserver stayed fully healthy with NTP permanently unreachable
+OK: [gc.threshold=32768] Run 9: NTP logged errno 72 (NTP_NOT_SENT), not NTP_NO_REPLY, for 192.0.2.1: no route to it leaves this host, so the request is never sent (history [72])
+OK: [gc.threshold=32768] Run 9: no task ended and was restarted while NTP failed (SYSTEM counter 0 -> 0)
+OK: [gc.threshold=32768] Run 9: log carries none of ('MemoryError', 'memory allocation failed')
+OK: [gc.threshold=32768] Run 9: no public destination was refused (public_destinations_refused=0)
+OK: [gc.threshold=32768] Run 9: no feed gap came near the watchdog timeout (largest 2035 ms of 8000 ms)
+OK: [gc.threshold=32768] Run 9: clean shutdown (exit code 0)
+
+== Summary: scripts/_digital_twin_ci_suite.py ==
+Commit: 89b37a0 (uncommitted changes)
+Levels: L2 (dev)
+GC stage: both
+Counts (checks): passed 60 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

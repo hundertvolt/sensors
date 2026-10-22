@@ -1,0 +1,397 @@
+Plugin "vitest:mocks:interceptor" defines Vite-specific hooks (configureServer) in a plugin returned from applyToEnvironment. These hooks will be ignored.
+
+ RUN  v5.0.0 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u19j
+      API started at http://localhost:63315/
+
+ ❯ |chromium| tests_js/render.test.js (35 tests | 2 failed) 9762ms
+   ❯ renderSection (35)
+     ✓ renders readonly measurement fields and updates them on poll 168ms
+     ✓ renders a nested measurement field's own leaf at its declared precision, not [object Object] 159ms
+     ✓ renders a writable number field pre-filled via its current-value caption, and a toggle button 187ms
+     ✓ submits an edited field via Apply and shows the resulting per-field status 304ms
+     ✓ colors each individual field's own box by its own result, not just the card's worst status 369ms
+     ✓ sparse-omits an untouched toggle/enum field left at its current value, unlike a dispatch-marked field 517ms
+     ✓ still submits a toggle/enum field explicitly flipped back to its original value (a real, deliberate change) 411ms
+     ✓ submits a numeric-valued enum field as a number, not a stringified one (regression) 458ms
+     ✓ renders an errcount rollup, revealed via 'Show flagged', showing its full history immediately with no pagination 294ms
+     ✓ renders an errcount group outside the Status section from GET /status's errcount 295ms
+     ✓ preserves an expanded errcount card's 'Show flagged'/'Show all' state across a live poll rebuild 177ms
+     ✓ shows Valid (not Failed) after a successful Reset All Errors submission, even though /status's PUT never returns a per-field result 555ms
+     ✓ a toggle field with no real GET readback but a schema-declared defaultValue (3)
+       ✓ renders On (the schema defaultValue), not Off, despite no real current value 322ms
+       ✓ sparse-omits it when left untouched at the defaultValue (nothing to submit) 138ms
+       ✓ submits it once deliberately flipped away from the defaultValue 314ms
+     ✓ skips the PUT and shows a neutral message when Apply is clicked with nothing to submit 269ms
+     ✓ skips the PUT for an enum-only submit group (e.g. SystemCmd) left untouched, instead of silently dispatching whichever command the browser defaults a bare <select> to (regression) 187ms
+     ✓ shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds 383ms
+     ✓ shows a visible error banner when a settings section's one-shot GET fails 13ms
+     ✓ reports Invalid for non-numeric text in a number field instead of silently submitting 0 (regression) 371ms
+     × reports Invalid for non-numeric text in a composite subfield instead of silently submitting 0 (regression) 707ms
+     × reports Invalid for a composite field submitted with only some subfields filled 540ms
+     ✓ reports Valid for a fully-specified composite LightCmdLED submission and never persists it (dispatch-only, matches real GET /notification) 537ms
+     ✓ skips the PUT and shows a neutral message when LightCmdLED's Apply is clicked with every subfield left blank 546ms
+     ✓ flattens per-sensor maintenance data one level for the Status section's sensors group 196ms
+     ✓ shows a visible error banner when a GET response body is empty 12ms
+     ✓ shows a clear, non-crashing error banner when a GET response body is torn/truncated JSON (a transmission error) 11ms
+     ✓ surfaces the server's own descr text when the notification section's /status sub-fetch returns a shaped HTTP error 176ms
+     ✓ shows a visible error banner when the notification section's own /status sub-fetch fails 93ms
+     ✓ refreshes a readonly field embedded in a writable, live-polled group in place on the next poll 15ms
+     ✓ shows 'Request failed' and a failed apply-status when the PUT itself fails (network failure) 167ms
+     ✓ shows Failed, not silently Valid, when the PUT body is rejected as malformed (HTTP 200, res:ERR) 218ms
+     ✓ shows Failed with the server's own descr when a PUT hits a shaped HTTP error (500) 136ms
+     ✓ shows Failed when a PUT response body is empty (a torn/truncated transmission) 167ms
+     ✓ shows Failed for a field silently missing from a nominally-OK PUT response, without losing the other field's real status 348ms
+ ❯ |chromium| tests_js/mock-server.test.js (84 tests | 10 failed) 16732ms
+   ❯ installMockFetch (84)
+     ✓ runs on fixture definitions the site's own validator accepts 6ms
+     ✓ answers GET /sensors from the fixture 97ms
+     ✓ passes non-REST paths through to the real fetch 12ms
+     ✓ validates PUT /sensors against field min/max and reports Valid/Invalid/Unchanged 279ms
+     ✓ marks an in-range changed value as Valid and persists it for the next GET 339ms
+     ✓ resets error counters and refills history with no-error placeholders (real reset() never shrinks it) 208ms
+     ✓ leaves error counters untouched when ResetErrors is absent 316ms
+     ✓ validates PUT /networking against the networking group's own field defs 441ms
+     ✓ finds a fixture field for every shape the shared corpus names 2ms
+     ✓ answers a hostLabel field (Hostname) PUT of "SensorNode" with Valid, as the server's shape check does 158ms
+     ✓ answers a hostLabel field (Hostname) PUT of "SensorStation7" with Valid, as the server's shape check does 125ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a" with Valid, as the server's shape check does 139ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a-b" with Valid, as the server's shape check does 130ms
+     ✓ answers a hostLabel field (Hostname) PUT of "A1-b2" with Valid, as the server's shape check does 89ms
+     ✓ answers a hostLabel field (Hostname) PUT of "" with Invalid, as the server's shape check does 89ms
+     ✓ answers a hostLabel field (Hostname) PUT of "-a" with Invalid, as the server's shape check does 140ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a-" with Invalid, as the server's shape check does 147ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a b" with Invalid, as the server's shape check does 115ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a.b" with Invalid, as the server's shape check does 124ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a_b" with Invalid, as the server's shape check does 199ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a\u0000b" with Invalid, as the server's shape check does 155ms
+     ✓ answers a hostLabel field (Hostname) PUT of "ä" with Invalid, as the server's shape check does 104ms
+     ✓ answers a countryCode field (Country) PUT of "DE" with Valid, as the server's shape check does 191ms
+     ✓ answers a countryCode field (Country) PUT of "XX" with Valid, as the server's shape check does 153ms
+     ✓ answers a countryCode field (Country) PUT of "de" with Invalid, as the server's shape check does 114ms
+     ✓ answers a countryCode field (Country) PUT of "D1" with Invalid, as the server's shape check does 149ms
+     ✓ answers a countryCode field (Country) PUT of "ZZZ" with Invalid, as the server's shape check does 119ms
+     ✓ answers a countryCode field (Country) PUT of "Z" with Invalid, as the server's shape check does 123ms
+     ✓ answers a countryCode field (Country) PUT of "D\u0000" with Invalid, as the server's shape check does 178ms
+     ✓ answers a countryCode field (Country) PUT of "DÉ" with Invalid, as the server's shape check does 122ms
+     ✓ answers a hostName field (NTPHost) PUT of "pool.ntp.org" with Valid, as the server's shape check does 109ms
+     ✓ answers a hostName field (NTPHost) PUT of "192.168.1.1" with Valid, as the server's shape check does 115ms
+     ✓ answers a hostName field (NTPHost) PUT of "-a.b" with Invalid, as the server's shape check does 151ms
+     ✓ answers a hostName field (NTPHost) PUT of "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" with Invalid, as the server's shape check does 82ms
+     ✓ answers a hostName field (NTPHost) PUT of "a..b" with Invalid, as the server's shape check does 89ms
+     ✓ answers a hostName field (NTPHost) PUT of "a b" with Invalid, as the server's shape check does 126ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "" with Valid, as the server's shape check does 181ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "8.8.8.8" with Valid, as the server's shape check does 81ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "8.8.8.8,1.1.1.1" with Valid, as the server's shape check does 83ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "1.1.1.1,8.8.4.4,9.9.9.9" with Valid, as the server's shape check does 148ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "8.8.8.8," with Invalid, as the server's shape check does 150ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "a.b.c.d" with Invalid, as the server's shape check does 92ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "1.2.3.4,5.6.7.8,9.9.9.9,1.1.1.1" with Invalid, as the server's shape check does 92ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "8.8.8.8 ,1.1.1.1" with Invalid, as the server's shape check does 125ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "256.1.1.1" with Invalid, as the server's shape check does 156ms
+     ✓ accepts a string field's schema special before its length bounds, as the server does 239ms
+     ✓ bounds a byte-bounded string in UTF-8 bytes, not characters 244ms
+     ✓ validates PUT /system's SystemCmd against the fixed real command set 345ms
+     ✓ answers the SystemCmd near miss "Reboot" with Invalid: only the whole word runs a command 165ms
+     ✓ answers the SystemCmd near miss "reboot " with Invalid: only the whole word runs a command 172ms
+     ✓ answers the SystemCmd near miss " reboot" with Invalid: only the whole word runs a command 102ms
+     ✓ answers the SystemCmd near miss "reb" with Invalid: only the whole word runs a command 120ms
+     ✓ answers the SystemCmd near miss "rebootx" with Invalid: only the whole word runs a command 86ms
+     ✓ answers the SystemCmd near miss 1 with Invalid: only the whole word runs a command 118ms
+     ✓ answers the SystemCmd near miss null with Invalid: only the whole word runs a command 124ms
+     ✓ answers the SystemCmd near miss "reboot" with Invalid: only the whole word runs a command 99ms
+     ✓ answers the SystemCmd near miss {} with Invalid: only the whole word runs a command 94ms
+     × answers Invalid for a key no group of the endpoint lists, a dispatch key sent to another endpoint included 241ms
+     ✓ never persists SystemCmd into systemConfig - it's a dispatched action, not a stored setting (matches real GET /system, which never includes it) 351ms
+     ✓ validates PUT /notification's PauseTime range like the real backend's _dispatch_notification_pause() and dispatches it to the live status value, not a stored setting 1276ms
+     × dispatches PUT /notification's LightCmdLED like the real backend's _dispatch_notification_led()/_notification_led_callback(), never as a persisted setting 371ms
+     × refuses PUT /notification's LightCmdLED with Failed while an accepted flash still runs, and accepts one again once its t has passed 335ms
+     ✓ dispatches PUT /sensors' ForceCalRef like the real backend's set_forced_recalibration_reference(): range-validated but never Unchanged, and GET always reads back the fixed real-hardware constant 400 regardless of what was applied 635ms
+     ✓ runs PUT /sensors' AmbPres on every apply: never Unchanged, and GET reads back the value applied 662ms
+     ✓ dispatches PUT /sensors' ContMeas like the real backend's _set_dict_cfg() ContMeas branch: bool-only, always Valid, never persisted or reported by GET at all 685ms
+     ✓ dispatches PUT /sensors' ResetVOC like the real backend's _push_reset_voc(): bool-only, always Valid, never persisted or reported by GET at all 679ms
+     ✓ masks PW (and HotspotPW) on every GET /networking, whatever was applied 358ms
+     ✓ increments a TS-suffixed leaf by exactly 1 on jitter, jitters a plain number, and leaves a non-number leaf untouched 177ms
+     ✓ jitters a nested measurement sub-object's leaves too, not just the top level 204ms
+     ✓ never jitters a non-negative measurement leaf into a negative one 82ms
+     ✓ omits the command-only Calibrate from GET readback, as it already does for ContMeas/ResetVOC 385ms
+     ✓ accepts Calibrate repeatedly - it is a trigger, not a one-shot 414ms
+     × answers Invalid for a PUT /sensors key that isn't a real sensor, applying the real ones normally 269ms
+     × answers a PUT /sensors entry 5 that is not an object with Invalid in place of its field map 186ms
+     × answers a PUT /sensors entry null that is not an object with Invalid in place of its field map 258ms
+     × answers a PUT /sensors entry 1 that is not an object with Invalid in place of its field map 227ms
+     × answers a PUT /sensors entry "x" that is not an object with Invalid in place of its field map 184ms
+     × rejects an unsupported HTTP method with a 405 212ms
+     ✓ injects exactly one network failure via controls.nextFailure, then serves normally again 101ms
+     × injects exactly one HTTP error status via controls.nextFailure, then serves normally again 92ms
+     ✓ injects a malformed-body failure: HTTP 200 with res:ERR/code:1, matching the real backend's own make_response(1) exactly 1ms
+     ✓ injects a torn-json failure: HTTP 200 with an unparseable body, simulating a corrupted transmission 1ms
+     ✓ injects an empty-body failure: HTTP 200 with a zero-length body 0ms
+     ✓ injects a partial-result failure: one submitted field silently missing from a successful PUT's result 93ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 12 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers Invalid for a key no group of the endpoint lists, a dispatch key sent to another endpoint included
+AssertionError: expected {} to deeply equal { NoSuchKey: 'Invalid', …(1) }
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-Invalid-for-a-key-no-group-of-the-endpoint-lists--a-dispatch-key-sent-to-another-endpoint-included.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- {[39m
+[32m-   "NoSuchKey": "Invalid",[39m
+[32m-   "SystemCmd": "Invalid",[39m
+[32m- }[39m
+[31m+ {}[39m
+
+ ❯ tests_js/mock-server.test.js:329:35
+    327|         const networking = await (await fetch("/networking", { method:…
+    328|         expect(networking.res).toBe("OK");
+    329|         expect(networking.result).toEqual({ NoSuchKey: "Invalid", Syst…
+       |                                   ^
+    330|
+    331|         const system = await (await fetch("/system", { method: "PUT", …
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.Cigb0uSy-BEOvKO87.js?v=d2098878:4951:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/12]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > dispatches PUT /notification's LightCmdLED like the real backend's _dispatch_notification_led()/_notification_led_callback(), never as a persisted setting
+AssertionError: expected 'Failed' to be 'Invalid' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---dispatches-PUT--notification-s-LightCmdLED-like-the-real-backend-s-_dispatch_notification_led---_notification_led_callback----never-as-a-persisted-setting.png
+
+Expected: [32m"[7mInvali[27md"[39m
+Received: [31m"[7mFaile[27md"[39m
+
+ ❯ tests_js/mock-server.test.js:392:67
+    390|
+    391|         const missingSubfield = await fetch("/notification", { method:…
+    392|         expect((await missingSubfield.json()).result.LightCmdLED).toBe…
+       |                                                                   ^
+    393|
+    394|         const extraMember = await fetch("/notification", { method: "PU…
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.Cigb0uSy-BEOvKO87.js?v=d2098878:4951:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/12]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > refuses PUT /notification's LightCmdLED with Failed while an accepted flash still runs, and accepts one again once its t has passed
+AssertionError: expected [ 'OK', +0, 'OK', 'Failed' ] to deeply equal [ 'OK', +0, …(2) ]
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---refuses-PUT--notification-s-LightCmdLED-with-Failed-while-an-accepted-flash-still-runs--and-accepts-one-again-once-its-t-has-passed.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[2m    "OK",[22m
+[2m    0,[22m
+[32m-   "LED busy - retry later",[39m
+[31m+   "OK",[39m
+[2m    "Failed",[22m
+[2m  ][22m
+
+ ❯ tests_js/mock-server.test.js:446:84
+    444|         expect(first.descr).not.toBe(LED_BUSY_DESCR);
+    445|         const second = await (await fetch("/notification", { method: "…
+    446|         expect([second.res, second.code, second.descr, second.result.L…
+       |                                                                                    ^
+    447|
+    448|         advanceMockClockMs(1999); // still inside the first flash
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.Cigb0uSy-BEOvKO87.js?v=d2098878:4951:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/12]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers Invalid for a PUT /sensors key that isn't a real sensor, applying the real ones normally
+AssertionError: expected undefined to be 'Invalid' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-Invalid-for-a-PUT--sensors-key-that-isn-t-a-real-sensor--applying-the-real-ones-normally.png
+
+[32m- Expected:[39m
+"Invalid"
+
+[31m+ Received:[39m
+undefined
+
+ ❯ tests_js/mock-server.test.js:634:35
+    632|         const body = await response.json();
+    633|
+    634|         expect(body.result.BOGUS).toBe("Invalid");
+       |                                   ^
+    635|         expect(body.result.SCD30.MeasInterval).toBe("Valid");
+    636|     });
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.Cigb0uSy-BEOvKO87.js?v=d2098878:4951:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/12]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers a PUT /sensors entry 5 that is not an object with Invalid in place of its field map
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers a PUT /sensors entry 1 that is not an object with Invalid in place of its field map
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers a PUT /sensors entry "x" that is not an object with Invalid in place of its field map
+AssertionError: expected { SCD30: {} } to deeply equal { SCD30: 'Invalid' }
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-a-PUT--sensors-entry-5-that-is-not-an-object-with-Invalid-in-place-of-its-field-map.png
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-a-PUT--sensors-entry-1-that-is-not-an-object-with-Invalid-in-place-of-its-field-map.png
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-a-PUT--sensors-entry--x--that-is-not-an-object-with-Invalid-in-place-of-its-field-map.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[32m-   "SCD30": "Invalid",[39m
+[31m+   "SCD30": {},[39m
+[2m  }[22m
+
+ ❯ tests_js/mock-server.test.js:641:29
+    639|         uninstall = installMockFetch(DEFS, DATA);
+    640|         const body = await (await fetch("/sensors", { method: "PUT", b…
+    641|         expect(body.result).toEqual({ SCD30: "Invalid" });
+       |                             ^
+    642|     });
+    643|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.Cigb0uSy-BEOvKO87.js?v=d2098878:4951:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/12]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers a PUT /sensors entry null that is not an object with Invalid in place of its field map
+TypeError: Cannot convert undefined or null to object
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-a-PUT--sensors-entry-null-that-is-not-an-object-with-Invalid-in-place-of-its-field-map.png
+
+ ❯ window.fetch js/mock-server.js:586:69
+    584|                     return field !== undefined && neverUnchanged(field…
+    585|                 };
+    586|                 const persistableFields = Object.fromEntries(Object.en…
+       |                                                                     ^
+    587|                 const sensorResults = applySparsePut(persistableFields…
+    588|                 for (const [quirkKey, rawValue] of Object.entries(rawF…
+ ❯ tests_js/mock-server.test.js:640:29
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.Cigb0uSy-BEOvKO87.js?v=d2098878:4951:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/12]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > rejects an unsupported HTTP method with a 405
+AssertionError: expected [ 'ERR', 4, 'Method not allowed' ] to deeply equal [ 'ERR', 405, 'Method not allowed' ]
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---rejects-an-unsupported-HTTP-method-with-a-405.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[2m    "ERR",[22m
+[32m-   405,[39m
+[31m+   4,[39m
+[2m    "Method not allowed",[22m
+[2m  ][22m
+
+ ❯ tests_js/mock-server.test.js:649:51
+    647|         expect(response.status).toBe(405);
+    648|         const body = await response.json();
+    649|         expect([body.res, body.code, body.descr]).toEqual(["ERR", 405,…
+       |                                                   ^
+    650|     });
+    651|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.Cigb0uSy-BEOvKO87.js?v=d2098878:4951:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/12]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > injects exactly one HTTP error status via controls.nextFailure, then serves normally again
+AssertionError: expected 5 to be 500 // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---injects-exactly-one-HTTP-error-status-via-controls-nextFailure--then-serves-normally-again.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 500[39m
+[31m+ 5[39m
+
+ ❯ tests_js/mock-server.test.js:670:46
+    668|         expect(response.ok).toBe(false);
+    669|         expect(response.status).toBe(500);
+    670|         expect((await response.json()).code).toBe(500); // a shaped HT…
+       |                                              ^
+    671|
+    672|         const second = await fetch("/sensors");
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.Cigb0uSy-BEOvKO87.js?v=d2098878:4951:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/12]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > reports Invalid for non-numeric text in a composite subfield instead of silently submitting 0 (regression)
+AssertionError: expected 'failed' to be 'invalid' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---reports-Invalid-for-non-numeric-text-in-a-composite-subfield-instead-of-silently-submitting-0--regression-.png
+
+Expected: [32m"[7minvali[27md"[39m
+Received: [31m"[7mfaile[27md"[39m
+
+ ❯ tests_js/render.test.js:743:42
+    741|
+    742|         const card = mustQuery(main, '[data-group-key="flash"]');
+    743|         expect(card.dataset.applyStatus).toBe("invalid");
+       |                                          ^
+    744|         expect(mustQuery(card, ".apply-result").textContent).toContain…
+    745|     });
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.Cigb0uSy-BEOvKO87.js?v=d2098878:4951:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/12]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > reports Invalid for a composite field submitted with only some subfields filled
+AssertionError: expected 'failed' to be 'invalid' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---reports-Invalid-for-a-composite-field-submitted-with-only-some-subfields-filled.png
+
+Expected: [32m"[7minvali[27md"[39m
+Received: [31m"[7mfaile[27md"[39m
+
+ ❯ tests_js/render.test.js:764:42
+    762|
+    763|         const card = mustQuery(main, '[data-group-key="flash"]');
+    764|         expect(card.dataset.applyStatus).toBe("invalid");
+       |                                          ^
+    765|         expect(mustQuery(card, ".apply-result").textContent).toContain…
+    766|     });
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.Cigb0uSy-BEOvKO87.js?v=d2098878:4951:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/12]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  12 failed | 107 passed (119)
+   Start at  06:54:21
+   Duration  19.10s (tests 96%, worker 3%, import 1%)
+
+== Summary: npm test ==
+Commit: 5f3787a (uncommitted changes)
+Levels: L0
+Counts (tests): passed 107 · failed 12 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/mock-server.test.js > installMockFetch > answers Invalid for a key no group of the endpoint lists, a dispatch key sent to another endpoint included: expected {} to deeply equal { NoSuchKey: 'Invalid', …(1) }
+  - tests_js/mock-server.test.js > installMockFetch > dispatches PUT /notification's LightCmdLED like the real backend's _dispatch_notification_led()/_notification_led_callback(), never as a persisted setting: expected 'Failed' to be 'Invalid' // Object.is equality
+  - tests_js/mock-server.test.js > installMockFetch > refuses PUT /notification's LightCmdLED with Failed while an accepted flash still runs, and accepts one again once its t has passed: expected [ 'OK', +0, 'OK', 'Failed' ] to deeply equal [ 'OK', +0, …(2) ]
+  - tests_js/mock-server.test.js > installMockFetch > answers Invalid for a PUT /sensors key that isn't a real sensor, applying the real ones normally: expected undefined to be 'Invalid' // Object.is equality
+  - tests_js/mock-server.test.js > installMockFetch > answers a PUT /sensors entry 5 that is not an object with Invalid in place of its field map: expected { SCD30: {} } to deeply equal { SCD30: 'Invalid' }
+  - tests_js/mock-server.test.js > installMockFetch > answers a PUT /sensors entry null that is not an object with Invalid in place of its field map: Cannot convert undefined or null to object
+  - tests_js/mock-server.test.js > installMockFetch > answers a PUT /sensors entry 1 that is not an object with Invalid in place of its field map: expected { SCD30: {} } to deeply equal { SCD30: 'Invalid' }
+  - tests_js/mock-server.test.js > installMockFetch > answers a PUT /sensors entry "x" that is not an object with Invalid in place of its field map: expected { SCD30: {} } to deeply equal { SCD30: 'Invalid' }
+  - tests_js/mock-server.test.js > installMockFetch > rejects an unsupported HTTP method with a 405: expected [ 'ERR', 4, 'Method not allowed' ] to deeply equal [ 'ERR', 405, 'Method not allowed' ]
+  - tests_js/mock-server.test.js > installMockFetch > injects exactly one HTTP error status via controls.nextFailure, then serves normally again: expected 5 to be 500 // Object.is equality
+  - tests_js/render.test.js > renderSection > reports Invalid for non-numeric text in a composite subfield instead of silently submitting 0 (regression): expected 'failed' to be 'invalid' // Object.is equality
+  - tests_js/render.test.js > renderSection > reports Invalid for a composite field submitted with only some subfields filled: expected 'failed' to be 'invalid' // Object.is equality
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

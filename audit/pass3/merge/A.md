@@ -1,0 +1,33 @@
+# Pass 3 merge — agent A ledger (G1.md, G2.md), 2026-09-29
+
+- P003 | G1/R38 | applied | message-less `MemoryError` gate condition added to State; `py/objexcept.c:86-88, 399-415`, `mpconfigport.h:126`, SPEC :5036-5039 and the gate test's :12 checked at v1.29.0/HEAD; no `alloc_emergency_exception_buf()` call in `src/`/`buildgen/`
+- P009 | G2/R11 | applied | four no-assertion tests, the anchor check and three err_count-only warning tests added to State; anchor-check line corrected :348 → :346 (the test's `def`; :348 is its `pytest.skip`)
+- P010 | G2/R03 | applied | tests_js fake-timer/spy restore sites added to State; all nine sites checked at HEAD
+- P011 | G1/R03 | applied | "see G7/R19 (C2.06)" pointer added to State (the G7/R19 part is another agent's)
+- P020 | G2/R11 | applied | Req widened to `tests_hardware/` (OR19.a counts its 136); eight D1 sub-lines added to State with the D1 tag; the S16 evidence line merged with P070 into one S16 clause (D1.52, D4.181); D1.49's 2057-06-14T17:21:47Z recomputed and correct
+- P021 | G2/R27 | applied | four D1 sub-lines (D1.03-D1.05, D1.15) added to State with the D1 tag
+- P022 | G1/R14 | applied | REST-reboot `reset_reason` assertion added to State with the D1 tag
+- P023 | G1/R19 | applied | real-sync oracle for `test_wifi_networking.py:54-59` added to State with the D1 tag
+- P024 | G1/R29 | applied | rename of `test_hotspot_role_reversal.py:244` added; backoff branch pointed at G6/R24's U18 test beside V81 (V81 is that branch, DECISION_PROVENANCE:317)
+- P025 | G1/R32 | applied | named-seam reset test and stale comment removal added to the all-or-nothing State item with the D1 tag
+- P026 | G1/R17 | applied | `desync()` never called at HEAD (only `silence()`, :126); exercised-or-removed item added with the D1 tag
+- P027 | G1/R38 | applied | churn `MemoryError` fails the run; ≤ 25 × 512 B checked (`_CHURN_BLOCK = 512`, trim at `len(held) > 24`)
+- P028 | G1/R28 | applied | three more content-free tests added (seven total); existing range corrected :132-156 → :130-156 (first `def` at :130)
+- P028 | G1/R27 | already present | R27's Req already lists "multi-client load in hotspot mode" as a listed exception; the move is recorded in G1/R28's State
+- P030 | G2/R13 | applied | four D1 sub-lines (D1.48, D1.50, D1.54, D1.65) added to State with the D1 tag; fake `Pin(value=)` confirmed at `tests/machine.py:32`
+- P033 | G2/R15 | applied | NTP loopback flake root-cause item added with the D1 tag; test start corrected :2205 → :2203 (`def`; the two `wait_for(…, 5)` at :2228, :2242)
+- P054 | G2/R11 | applied | valid-or-unchanged live-matrix tolerance added to State; `config_manager.py:343-347` answers `Unchanged` at HEAD; the line names no unit, so none was added
+- P070 | G2/R11 | applied | S16 amended to "proven" (`modselect.c:583-594` returns `args[0]`); merged with P020's evidence line; call site `test_asy_udp_socket.py:291` named
+- P074 | G1/R02 | applied | BACKLOG heading split added to State; Rank's V1 V02 wording "D2/D3 and the order under the same 2026-09-22 heading" replaced by D1+D2 owner, D3 and the order agent (H1.01)
+- P097 | G2/R09 | applied | E.6.2:3157-3158 "not an automated check" removal added to the U7 doc item (lines checked at HEAD)
+- P098 | G2/R18 | applied | Sources: L10 split (owner per-file-override part, agent general rule) and the owner's 2026-09-16 "do not reduce any testing" added (the G4/R46 and G9/R38 parts are other agents')
+- P106 | G2/R17 | applied | verdicts added with LEAD_MERGE's override ("retires once the migration below is done (owner, 2026-09-29, OR102.a (10))" for RETIRE-CANDIDATE); every cited test line checked at HEAD; README clause located at :919; NOTIFY verdict cited to N.28
+- L16 | G2/R17 | applied | `modselect.c` residual as a known limitation nobody files upstream, merged into the same verdict clause
+- P107 | G1/R09 | applied | orphan verdicts added to State; `modnetwork.c:71` "XX" and the L4 test lines checked
+- P112 | G2/R27 | applied | `RogueUdpResponder` engagement floor added to State (errno 12 oracle at :351-355 confirmed)
+- P114 | G1/R31 | applied | M1 `confirm_pass()` and dated rig fact added to State
+- P118 | G1/R03 | applied | DHCP lease oracle added to State; lease range 16..23 checked (`dhcpserver.h:31-32`, `dhcpserver.c:206, 238`); test line corrected 170-175 → 168-173
+- P120 | G1/R40 | applied | Phase C owner check of the DHCP reservation and BME688 added to State (`dev_legacy/README.md:50, 659-663` checked)
+- P122 | G1/R02 | applied | F17 / BACKLOG item 44 close rule added to Req
+- P130 | G2/R27 | applied | captive-portal manual item records its observation, never PASS; "always reports PASS" confirmed at `manual_wifi.py:47`
+- P136 | G1/R36 | applied | SPEC:967-968 wording item added to the U36 doc list (text confirmed at :968)

@@ -1,0 +1,36 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18j
+
+ ✓ |chromium| tests_js/mock-server.test.js (53 tests) 13175ms
+   ✓ installMockFetch (53)
+     ✓ validates PUT /networking against the networking group's own field defs 445ms
+     ✓ bounds a byte-bounded string in UTF-8 bytes, not characters 327ms
+     ✓ never persists SystemCmd into systemConfig - it's a dispatched action, not a stored setting (matches real GET /system, which never includes it) 409ms
+     ✓ validates PUT /notification's PauseTime range like the real backend's _dispatch_notification_pause() and dispatches it to the live status value, not a stored setting 1145ms
+     ✓ dispatches PUT /notification's LightCmdLED like the real backend's _dispatch_notification_led()/_notification_led_callback(), never as a persisted setting 1570ms
+     ✓ refuses PUT /notification's LightCmdLED with Failed while an accepted flash still runs, and accepts one again once its t has passed 518ms
+     ✓ dispatches PUT /sensors' ForceCalRef like the real backend's set_forced_recalibration_reference(): range-validated but never Unchanged, and GET always reads back the fixed real-hardware constant 400 regardless of what was applied 516ms
+     ✓ runs PUT /sensors' AmbPres on every apply: never Unchanged, and GET reads back the value applied 742ms
+     ✓ dispatches PUT /sensors' ContMeas like the real backend's _set_dict_cfg() ContMeas branch: bool-only, always Valid, never persisted or reported by GET at all 465ms
+     ✓ dispatches PUT /sensors' ResetVOC like the real backend's _push_reset_voc(): bool-only, always Valid, never persisted or reported by GET at all 635ms
+     ✓ masks PW on every GET /networking like the real backend's _mask_pw(), regardless of what was actually applied 303ms
+     ✓ accepts Calibrate repeatedly - it is a trigger, not a one-shot 310ms
+
+ Test Files  1 passed (1)
+      Tests  53 passed (53)
+   Start at  01:54:33
+   Duration  18.22s (tests 96%, worker 3%, import 1%)
+
+== Summary: npm test ==
+Commit: c11ca0a
+Levels: L0
+Counts (tests): passed 53 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

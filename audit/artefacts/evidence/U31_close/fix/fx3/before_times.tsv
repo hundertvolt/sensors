@@ -1,0 +1,6 @@
+test_digital_twin_scenarios@-1	1.32	rc=0	51 passed in 1.02s
+test_timing_budget@-1	0.72	rc=0	10 passed in 0.47s
+test_twin_runner_test_flags@-1	0.58	rc=0	4 passed in 0.37s
+test_digital_twin_scenarios@32768	1.32	rc=0	51 passed in 0.98s
+test_timing_budget@32768	0.74	rc=0	10 passed in 0.47s
+test_twin_runner_test_flags@32768	0.54	rc=0	4 passed in 0.34s

@@ -1,0 +1,12 @@
+ruff rc=1 0.0s Found 1 error.
+mypy_noargs rc=0 9.8s Success: no issues found in 187 source files
+mypy_ci rc=0 9.7s Success: no issues found in 174 source files
+mypy_twin rc=1 2.4s Found 1 error in 1 file (checked 53 source files)
+mypy_host rc=0 8.0s Success: no issues found in 199 source files
+collect_hw rc=0 0.5s 120/145 tests collected (25 deselected) in 0.16s
+twin_e rc=0 101.2s 1/1 passed, 0 failed, 0 skipped
+twin_f rc=0 101.4s 1/1 passed, 0 failed, 0 skipped
+pytest_all rc=0 636.6s 4205 passed, 11 skipped, 3 warnings in 609.52s (0:10:09)
+generic_e rc=0 1.4s 26/26 passed, 0 failed, 0 skipped
+generic_f rc=0 1.5s 26/26 passed, 0 failed, 0 skipped
+DONE

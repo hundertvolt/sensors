@@ -1,0 +1,15 @@
+new.test_asy_fram_manager.-1 rc=0 5.75s mem=0 143/143 passed, 0 failed, 0 skipped
+new.test_asy_fram_manager.32768 rc=0 6.14s mem=0 143/143 passed, 0 failed, 0 skipped
+bite.fram_second_line rc=1 5.25s mem=0 137/143 passed, 6 failed, 0 skipped
+new.test_uart_comm_hazard.-1 rc=0 105.00s mem=0 121/121 passed, 0 failed, 0 skipped
+new.test_uart_comm_hazard.32768 rc=0 109.47s mem=0 121/121 passed, 0 failed, 0 skipped
+new.test_uart_comm_hazard.settrace rc=0 127.36s mem=0 121/121 passed, 0 failed, 0 skipped
+bite.hazard_wall_clock.base rc=0 83.77s mem=0 2/2 passed, 0 failed, 0 skipped
+bite.hazard_wall_clock.new rc=0 84.29s mem=0 2/2 passed, 0 failed, 0 skipped
+seen.dns_on_fef34d0 rc=1 0.89s mem=0 45/46 passed, 1 failed, 0 skipped
+seen.notif_on_fef34d0 rc=1 19.06s mem=0 64/67 passed, 3 failed, 0 skipped
+new.test_asy_dns_client.-1 rc=0 0.88s mem=0 46/46 passed, 0 failed, 0 skipped
+new.test_asy_dns_client.32768 rc=0 0.88s mem=0 46/46 passed, 0 failed, 0 skipped
+base.test_asy_notification_service.32768 rc=0 19.10s mem=0 66/66 passed, 0 failed, 0 skipped
+new.test_asy_notification_service.-1 rc=0 19.05s mem=0 67/67 passed, 0 failed, 0 skipped
+new.test_asy_notification_service.32768 rc=0 19.11s mem=0 67/67 passed, 0 failed, 0 skipped

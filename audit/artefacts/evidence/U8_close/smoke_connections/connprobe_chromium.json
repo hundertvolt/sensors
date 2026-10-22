@@ -1,0 +1,64 @@
+{
+ "viewport": 1280,
+ "connections": 3,
+ "conns": [
+  {
+   "id": 0,
+   "bytes": 635,
+   "requests": [
+    "GET / HTTP/1.1"
+   ]
+  },
+  {
+   "id": 1,
+   "bytes": 529,
+   "requests": [
+    "GET /js/app.js HTTP/1.1"
+   ]
+  },
+  {
+   "id": 2,
+   "bytes": 499,
+   "requests": [
+    "GET /measurements HTTP/1.1"
+   ]
+  }
+ ],
+ "pageRequests": [
+  "http://127.0.0.1:19432/",
+  "http://127.0.0.1:19432/js/app.js",
+  "http://127.0.0.1:19432/measurements"
+ ]
+}
+{
+ "viewport": 390,
+ "connections": 3,
+ "conns": [
+  {
+   "id": 0,
+   "bytes": 635,
+   "requests": [
+    "GET / HTTP/1.1"
+   ]
+  },
+  {
+   "id": 1,
+   "bytes": 529,
+   "requests": [
+    "GET /js/app.js HTTP/1.1"
+   ]
+  },
+  {
+   "id": 2,
+   "bytes": 499,
+   "requests": [
+    "GET /measurements HTTP/1.1"
+   ]
+  }
+ ],
+ "pageRequests": [
+  "http://127.0.0.1:19432/",
+  "http://127.0.0.1:19432/js/app.js",
+  "http://127.0.0.1:19432/measurements"
+ ]
+}

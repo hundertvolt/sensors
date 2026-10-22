@@ -1,0 +1,80 @@
+FAIL test_full_chain_degrades_cleanly_when_wifi_reports_connected_but_the_ntp_server_never_answers:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18i/tests/microtest.py", line 35, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18i/before/test_ntp_wifi_dns_integration.py", line 413, in test_full_chain_degrades_cleanly_when_wifi_reports_connected_but_the_ntp_server_never_answers
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18i/before/test_ntp_wifi_dns_integration.py", line 54, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18i/before/test_ntp_wifi_dns_integration.py", line 397, in scenario
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18i/before/test_ntp_wifi_dns_integration.py", line 282, in __enter__
+AttributeError: module 'asy_ntp_client' has no attribute '_NTP_UDP_PORT'
+FAIL test_get_dns_server_ip_real_wlan_exception_is_treated_as_none_not_propagated:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18i/tests/microtest.py", line 35, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18i/before/test_ntp_wifi_dns_integration.py", line 209, in test_get_dns_server_ip_real_wlan_exception_is_treated_as_none_not_propagated
+TypeError: _resolve_ntp_server() takes 4 positional arguments but 3 were given
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_ntp_client.py", line 407, in _sync_loop
+  File "src/asy_ntp_client.py", line 367, in _run_ntp_sync_attempt
+  File "src/asy_ntp_client.py", line 346, in _resolve_ntp_server
+TypeError: unexpected keyword argument 'pr'
+FAIL test_dns_server_ip_unset_sentinel_flows_through_a_real_never_configured_wifi_service:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18i/tests/microtest.py", line 35, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18i/before/test_ntp_wifi_dns_integration.py", line 189, in test_dns_server_ip_unset_sentinel_flows_through_a_real_never_configured_wifi_service
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18i/before/test_ntp_wifi_dns_integration.py", line 54, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18i/before/test_ntp_wifi_dns_integration.py", line 187, in scenario
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18i/before/test_ntp_wifi_dns_integration.py", line 121, in _cancel
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_ntp_client.py", line 407, in _sync_loop
+  File "src/asy_ntp_client.py", line 367, in _run_ntp_sync_attempt
+  File "src/asy_ntp_client.py", line 346, in _resolve_ntp_server
+TypeError: unexpected keyword argument 'pr'
+FAIL test_dns_resolution_totally_unreachable_through_the_real_chain_persists_errno_12:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18i/tests/microtest.py", line 35, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18i/before/test_ntp_wifi_dns_integration.py", line 449, in test_dns_resolution_totally_unreachable_through_the_real_chain_persists_errno_12
+AttributeError: module 'asy_dns_client' has no attribute '_FALLBACK_DNS_SERVERS'
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_ntp_client.py", line 407, in _sync_loop
+  File "src/asy_ntp_client.py", line 367, in _run_ntp_sync_attempt
+  File "src/asy_ntp_client.py", line 346, in _resolve_ntp_server
+TypeError: unexpected keyword argument 'pr'
+FAIL test_dns_server_ip_flows_from_a_connected_real_wifi_service_into_resolve_ipv4:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18i/tests/microtest.py", line 35, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18i/before/test_ntp_wifi_dns_integration.py", line 164, in test_dns_server_ip_flows_from_a_connected_real_wifi_service_into_resolve_ipv4
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18i/before/test_ntp_wifi_dns_integration.py", line 54, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18i/before/test_ntp_wifi_dns_integration.py", line 162, in scenario
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18i/before/test_ntp_wifi_dns_integration.py", line 121, in _cancel
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_ntp_client.py", line 407, in _sync_loop
+  File "src/asy_ntp_client.py", line 367, in _run_ntp_sync_attempt
+  File "src/asy_ntp_client.py", line 346, in _resolve_ntp_server
+TypeError: unexpected keyword argument 'pr'
+FAIL test_full_chain_reaches_synced_state_via_a_real_wifi_service_and_a_literal_ip_ntp_host:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18i/tests/microtest.py", line 35, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18i/before/test_ntp_wifi_dns_integration.py", line 373, in test_full_chain_reaches_synced_state_via_a_real_wifi_service_and_a_literal_ip_ntp_host
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18i/before/test_ntp_wifi_dns_integration.py", line 54, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18i/before/test_ntp_wifi_dns_integration.py", line 357, in scenario
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18i/before/test_ntp_wifi_dns_integration.py", line 282, in __enter__
+AttributeError: module 'asy_ntp_client' has no attribute '_NTP_UDP_PORT'
+PASS test_full_chain_stays_unsynced_when_the_real_wifi_service_reports_network_unavailable
+PASS test_wifi_mode_lock_is_the_same_instance_on_both_real_objects
+PASS test_ntp_sync_holding_the_lock_blocks_a_concurrent_real_wifi_mode_switch
+3/9 passed, 6 failed, 0 skipped

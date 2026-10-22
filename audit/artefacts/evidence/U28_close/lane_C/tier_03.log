@@ -1,0 +1,64 @@
+........................................................................ [  5%]
+........................................................................ [ 10%]
+........................................................................ [ 15%]
+........................................................................ [ 20%]
+........................................................................ [ 25%]
+........................................................................ [ 30%]
+........................................................................ [ 35%]
+........................................................................ [ 40%]
+........................................................................ [ 45%]
+........................................................................ [ 50%]
+........................................................................ [ 55%]
+........................................................................ [ 60%]
+...............F........................................................ [ 66%]
+........................................................................ [ 71%]
+........................................................................ [ 76%]
+........................................................................ [ 81%]
+........................................................................ [ 86%]
+........................................................................ [ 91%]
+.............F.......................................................... [ 96%]
+..................................................                       [100%]
+=================================== FAILURES ===================================
+__________________ test_each_pending_header_is_still_missing ___________________
+
+    def test_each_pending_header_is_still_missing() -> None:
+        # The pending set only shrinks: a file that has gained its header leaves it.
+        gained = sorted(p for p in _HEADER_PENDING if _has_header(p, (REPO_ROOT / p).read_text(encoding="utf-8")))
+>       assert gained == [], f"these now open with a header - delete their _HEADER_PENDING rows: {gained}"
+E       AssertionError: these now open with a header - delete their _HEADER_PENDING rows: ['.github/actions/setup-micropython-toolchain/action.yml', '.github/workflows/ci.yml']
+E       assert ['.github/act...flows/ci.yml'] == []
+E         
+E         Left contains 2 more items, first extra item: '.github/actions/setup-micropython-toolchain/action.yml'
+E         Use -v to get more diff
+
+tests_scripts/test_comment_block_cap.py:273: AssertionError
+___________________ test_the_tags_and_the_part_n_rows_agree ____________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28c')
+real_tags = [Tag(path='vitest.config.js', line=41, id='l0.vitest_test_timeout_ms', literal='20000'), Tag(path='src/asy_base_classe...odule.max_error', literal='5'), Tag(path='src/asy_base_classes.py', line=763, id='module.max_error', literal='5'), ...]
+
+    def test_the_tags_and_the_part_n_rows_agree(repo_root: Path, real_tags: "list[Tag]") -> None:
+        rows, problems = parse_register((repo_root / "SPECIFICATION.md").read_text(encoding="utf-8"))
+        problems += check_register(real_tags, rows)
+>       assert not problems, "\n".join(problems)
+E       AssertionError: scripts/_unix_port.sh:18: runner.unix_port_probe_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:49: ci.last_green_lookup_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:92: ci.devices_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:187: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:192: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:246: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:251: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:299: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:304: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:385: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:390: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         SPECIFICATION.md:10810: tool.apt_acquire_timeout_s: Sites list [('toolchain/setup_toolchain.py', '30')], the tags say [('.github/workflows/ci.yml', '30'), ('toolchain/setup_toolchain.py', '30')]
+E         SPECIFICATION.md:10811: tool.uv_sync_attempts: Sites list [('.github/actions/setup-micropython-toolchain/action.yml', '3'), ('.github/workflows/ci.yml', '3'), ('toolchain/setup_toolchain.py', '3')], the tags say [('.github/workflows/ci.yml', '3'), ('scripts/uv_sync_retried.sh', '3'), ('toolchain/setup_toolchain.py', '3')]
+E         SPECIFICATION.md:10812: tool.uv_sync_backoff_step_s: Sites list [('.github/actions/setup-micropython-toolchain/action.yml', '10'), ('.github/workflows/ci.yml', '10'), ('toolchain/setup_toolchain.py', '10.0')], the tags say [('scripts/uv_sync_retried.sh', '10'), ('toolchain/setup_toolchain.py', '10.0')]
+E       assert not ['scripts/_unix_port.sh:18: runner.unix_port_probe_timeout_s is tagged but has no SPECIFICATION.md Part N row', '.gith....github/workflows/ci.yml:246: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row', ...]
+
+tests_scripts/test_tunables_register.py:253: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_comment_block_cap.py::test_each_pending_header_is_still_missing
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+2 failed, 1416 passed in 82.65s (0:01:22)

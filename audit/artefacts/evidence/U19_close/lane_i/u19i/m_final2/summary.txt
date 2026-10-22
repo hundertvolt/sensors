@@ -1,0 +1,2 @@
+test_sensortask_dev cov rc=0 elapsed=146.169707429s mem_markers=0 :: 81/81 passed, 0 failed, 0 skipped
+test_sensortask_wozi cov rc=0 elapsed=108.939792867s mem_markers=0 :: 81/81 passed, 0 failed, 0 skipped

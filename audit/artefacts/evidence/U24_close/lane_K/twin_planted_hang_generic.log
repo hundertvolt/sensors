@@ -1,0 +1,21 @@
+PASS test_a_fault_naming_a_driver_this_device_does_not_carry_is_refused_by_name
+PASS test_a_hang_naming_a_driver_this_device_does_not_carry_is_refused_the_same_way
+PASS test_a_wlan_fault_still_bypasses_the_wiring_check
+PASS test_collect_chips_includes_fram_from_the_spi_bus
+FAIL test_collect_chips_keys_a_multi_instance_driver_by_its_qualified_name_too: left a task parked on the scheduler
+FAIL test_collect_chips_keys_a_single_instance_driver_by_its_plain_name: left a task parked on the scheduler
+PASS test_collect_chips_skips_a_bus_var_the_module_never_constructed
+digital_twin/run_generic_integration.py starting - device='sensortask_wozi' module='sensortask_wozi' host='127.0.0.1' port=19099 fram_state_path=None scd30_state_path=None seed=None duration=None faults=[('sgp40', 'writeto', 2)] hangs=[] wifi_outcomes=[] mem_sample_interval_ms=None
+Serving forever at http://127.0.0.1:19099/ - Ctrl+C to stop
+ABORT test_main_boots_arms_a_fault_and_shuts_down_cleanly:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 121, in run
+  File "tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneK/work/twin/test_planted_generic_hang.py", line 312, in test_main_boots_arms_a_fault_and_shuts_down_cleanly
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneK/work/twin/test_planted_generic_hang.py", line 41, in run_timed
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+5/26 passed, 3 failed, 0 skipped - aborted at test_main_boots_arms_a_fault_and_shuts_down_cleanly, later tests not run

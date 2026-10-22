@@ -1,0 +1,22 @@
+# first run: coverage alone, then gate_v8 NOCOV=1 (task output)
+coverage rc=0 622s 18:19:46
+start 18:19:46
+lint rc=0 18:19:48
+typecheck noargs rc=0 18:20:52
+typecheck ci rc=0 18:21:28
+gc32768 rc=0 18:30:16
+gc-1 rc=0 18:30:16
+wozi rc=0 18:32:30
+dev rc=0 18:34:19
+
+[harness 30-min limit stopped the chain here: arzi, klkizi, schlafzi, grkizi, npm cut off]
+# second run of those five, stopped by a container restart at about 18:47 (no result lines)
+# third run
+start 18:47:57
+grkizi rc=0 18:59:33
+schlafzi rc=0 18:59:33
+klkizi rc=0 18:59:36
+arzi rc=0 18:59:36
+npm rc=0 19:00:36
+done 19:00:36
+

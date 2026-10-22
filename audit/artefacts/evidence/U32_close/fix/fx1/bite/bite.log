@@ -1,0 +1,33 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+__________________________________ test_bite ___________________________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f0a40279a90>
+
+    def test_bite(monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(codegen, "_emit_callbacks", _planted)
+        t._real.cache_clear()
+>       t.test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync("wozi")
+
+../u32/laneFX1/bite/bite_clock_gate.py:17: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'wozi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync(device: str) -> None:
+        # Legacy's gate (conn.ntp_issynced), cleared at the stale bound and on a force sync: a backup is
+        # stamped only while a sync vouches for the clock, never through a generated gate of its own.
+        result = _real(device)
+        tree = ast.parse(result.module_source)
+        backups = [ast.unparse(k.value) for n in ast.walk(tree) if isinstance(n, ast.Call) for k in n.keywords if k.arg == "backup"]
+        wired = [spec for spec in result.model.instances.values() if spec.driver == "sgp40" and "fram_target" in spec.wiring]
+        assert len(backups) == len(wired)
+        assert all(re.fullmatch(r"SgpBackup\(\w+, ntp\.ntp_issynced\)", b) for b in backups), backups
+>       assert "_clock_was_set" not in {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)}
+E       AssertionError: assert '_clock_was_set' not in {'_clock_was_set', '_collect_config_stores', '_collect_error_sources', '_collect_level_setters', '_collect_setups', '_collect_task_names', ...}
+
+tests_scripts/test_buildgen_generate.py:1005: AssertionError
+=========================== short test summary info ============================
+FAILED ::test_bite - AssertionError: assert '_clock_was_set' not in {'_clock_...
+1 failed in 2.68s

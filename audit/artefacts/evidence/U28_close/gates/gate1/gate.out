@@ -1,0 +1,2 @@
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8: node_modules vs lock: 0 mismatched []
+toolchain not current for 924f08f: standard: the toolchain record at /root/pico-toolchain/toolchain-record.json names other inputs than this tree's toolchain/setup_toolchain.py

@@ -1,0 +1,16 @@
+api_reference	rc=0	4.38s	98 passed in 3.67s	mem=0
+build_website_sh	rc=0	8.30s	15 passed in 8.07s	mem=0
+buildgen_definitions	rc=0	4.24s	401 passed in 3.37s	mem=0
+buildgen_error_contract	rc=0	9.10s	184 passed in 7.12s	mem=0
+buildgen_source_agreement	rc=0	1.78s	17 passed in 1.28s	mem=0
+buildgen_web_tag	rc=0	0.90s	159 passed in 0.66s	mem=0
+ci_workflow	rc=0	0.32s	17 passed in 0.09s	mem=0
+definitions_js_mirrors	rc=0	0.34s	7 passed in 0.11s	mem=0
+error_catalog	rc=0	6.52s	40 passed in 5.41s	mem=0
+host_cli_exit_idiom	rc=0	1.74s	20 passed in 1.50s	mem=0
+js_coverage_excludes_json	rc=0	0.27s	2 passed in 0.06s	mem=0
+js_generated_definitions_loader	rc=0	2.03s	4 passed in 1.52s	mem=0
+measurement_field_tuple_agreement	rc=0	0.51s	11 passed in 0.29s	mem=0
+preview_server	rc=0	0.48s	15 passed in 0.20s	mem=0
+stage_website	rc=0	3.04s	36 passed in 2.70s	mem=0
+scans	rc=0	71.67s	872 passed, 1 warning in 71.03s (0:01:11)	mem=0

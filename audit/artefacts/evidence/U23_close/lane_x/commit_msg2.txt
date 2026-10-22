@@ -1,0 +1,51 @@
+U23 lane X: the live tier, the section hand-over, ResetErrors after a shutdown command, the hotspot window's failed arm
+
+Changes, by Part:
+- A.8: PUT /status refuses ResetErrors ("Failed", nothing cleared) from the
+  acceptance of a reboot, bootloader, resetconfig or erasefram command until
+  the unit restarts; the shutdown paragraph's "answers "Failed" once the
+  sequence has closed FRAM" becomes "from the moment a sequence is accepted,
+  clearing nothing, so the FRAM-backed logs survive into the reset".
+- A.9: the staged example paths name what the stager writes (index.html and
+  js/app.js); they were wrong before this unit too.
+- A.4, C.7, C.9: a hotspot window whose timer cannot be armed is a WLAN
+  hardware failure each iteration, so the task gives up and its restart
+  leaves the hotspot for a fresh STA streak; C.9 no longer limits the
+  counting to the silent mode. C.7.2's general rule already holds for this
+  timer: no edit there.
+- H.2: field-format.js is pure formatting with no DOM dependency; the
+  Node-and-browser module is tests_js/_expected_display.js.
+- H.3, H.4: pollManager.request() takes a queue signal; a left section drops
+  its queued GETs, its GET on the wire finishes, discarded, on a switch and
+  is aborted when the page stops, with any GET a switch handed it (agent,
+  2026-10-13, decided on the owner's behalf for review), the reason (the
+  device logs an aborted GET as a peer reset) and the measured cost; the
+  Apply path names the confirmation texts.
+- H.7: what the live tier checks (exact words, the full connection ceiling
+  with reload recovery and its printed counts, the restart case, the action
+  probes, archiveErrcount(), the display oracle, the restart signs), the
+  matrix page's reduced motion and per-frame waits (agent, 2026-10-13,
+  decided on the owner's behalf for review) and the shard times; the
+  cross-browser paragraph's full ceiling.
+- H.8, H.8.1: the test list gains expected-display.test.js and the restart
+  signs; the shared display oracle follows the narrow-typedef convention.
+- Part N: l0.live_concurrent_tabs_timeout_ms (200000) and
+  l0.live_restart_recovery_timeout_ms (180000) beside the l0.live_twin_* rows.
+- The H.3 rewording of the previous commit ("appearance decided entirely by
+  CSS" to "its appearance set entirely by CSS") is no meaning change.
+
+Owner decisions written, each with its question and words:
+- (owner, 2026-10-13) asked "refuse `ResetErrors` once a reboot or erase
+  command has been accepted?", option (b) reading "Refuse it ("Failed") from
+  the command's acceptance on: one line in the status PUT handler; the logs
+  survive into the reboot.": "1 b".
+- (owner, 2026-10-13) asked "should a failed hotspot-window timer count as a
+  hardware failure?", option (b) reading "Count it like the silent mode does:
+  it feeds the streak, then the task restart, then the budget's reboot.":
+  "Take option b for 2", after their follow-up "this means that currently the
+  window timer continously fails, the Hotspot never ends, and option b makes
+  it try to restart the task and if unsuccessful reboots, like normal modules
+  do?" was answered yes.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

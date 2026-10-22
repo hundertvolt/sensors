@@ -1,0 +1,6 @@
+base1 main rc=0 12.0s
+base1 twin rc=0 2.9s
+base1 host rc=0 14.8s
+base1 bench rc=0 3.8s
+base1 network rc=0 0.9s
+base1 conftest rc=0 2.5s

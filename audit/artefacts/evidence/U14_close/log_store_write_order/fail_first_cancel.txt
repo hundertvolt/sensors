@@ -1,0 +1,7 @@
+FAIL test_a_cancelled_newest_write_leaves_no_entry_unwritten:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u14l/tests/microtest.py", line 35, in run
+  File "tests/test_asy_print_log.py", line 824, in test_a_cancelled_newest_write_leaves_no_entry_unwritten
+AssertionError: [b'\x01\x00\x00\x00\x01']
+PASS test_wrn_s_records_in_the_warning_sub_range
+PASS test_each_level_prints_exactly_its_lines

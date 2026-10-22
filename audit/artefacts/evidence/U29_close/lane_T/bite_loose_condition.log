@@ -1,0 +1,68 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u29/laneT/vitest_proof/root
+
+ ❯ |chromium| tests_js/summary-reporter.test.js (8 tests | 1 failed) 1094ms
+   ✓ renderSummary (7)
+     ✓ prints the whole block, every list empty, for a clean run 2ms
+     ✓ lists failed, skipped and retried items apart from the passes 1ms
+     ✓ lists notes after the recovery passes, never counting them or changing the result 0ms
+     ✓ files a missing verdict as failed 0ms
+     ✓ raises a passing code to 1 under a failed or vacuous item, and keeps a failure code 1ms
+     ✓ states the result each exit code stands for 0ms
+     ✓ refuses a kind the block does not know 2ms
+   ❯ the JS tier's timeout retry (1)
+     × retries a timed-out test or hook twice and nothing else 1086ms (retry x2)
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/summary-reporter.test.js > the JS tier's timeout retry > retries a timed-out test or hook twice and nothing else
+ FAIL  |chromium| tests_js/summary-reporter.test.js > the JS tier's timeout retry > retries a timed-out test or hook twice and nothing else
+ FAIL  |chromium| tests_js/summary-reporter.test.js > the JS tier's timeout retry > retries a timed-out test or hook twice and nothing else
+AssertionError: expected 'Test timed out in 5ms' to be 'x' // Object.is equality: expected true to be false // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/summary-reporter.test.js/the-JS-tier-s-timeout-retry---retries-a-timed-out-test-or-hook-twice-and-nothing-else.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- false[39m
+[31m+ true[39m
+
+ ❯ tests_js/summary-reporter.test.js:98:54
+     96|         }
+     97|         for (const message of ["expected 1 to be 2 // Object.is equali…
+     98|             expect(condition.test(message), message).toBe(false);
+       |                                                      ^
+     99|         }
+    100|     });
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=293a1f0c:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=293a1f0c:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=293a1f0c:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=293a1f0c:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=293a1f0c:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=293a1f0c:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=293a1f0c:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 7 passed (8)
+   Start at  05:42:47
+   Duration  5.70s (tests 44%, worker 44%, setup 6%, import 6%)
+
+== Summary: npm test ==
+Commit: unknown
+Levels: L0
+Counts (tests): passed 7 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/summary-reporter.test.js > the JS tier's timeout retry > retries a timed-out test or hook twice and nothing else: expected 'Test timed out in 5ms' to be 'x' // Object.is equality: expected true to be false // Object.is equality
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

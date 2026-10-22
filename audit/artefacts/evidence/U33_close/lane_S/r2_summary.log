@@ -1,0 +1,5 @@
+round 1 plan c6b8a07 rc=0 wall=102.114003131 1158 passed, 1 warning in 100.16s (0:01:40)
+round 1 s ade93e6 rc=0 wall=98.220235770 1158 passed, 1 warning in 96.36s (0:01:36)
+round 2 plan c6b8a07 rc=0 wall=93.668685334 1158 passed, 1 warning in 92.05s (0:01:32)
+round 2 s ade93e6 rc=0 wall=104.760747811 1158 passed, 1 warning in 102.91s (0:01:42)
+mem markers: 0 logs

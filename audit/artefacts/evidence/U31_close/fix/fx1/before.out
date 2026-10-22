@@ -1,0 +1,22 @@
+test_asy_system_service@-1 rc=0 24.744208800 mem=0 177/177 passed, 0 failed, 0 skipped fails=0
+test_asy_wifi_service@-1 rc=0 24.471986494 mem=0 268/268 passed, 0 failed, 0 skipped fails=0
+test_asy_neopixel_driver@-1 rc=0 9.476225451 mem=0 54/54 passed, 0 failed, 0 skipped fails=0
+test_reset_call_site_invariant@-1 rc=0 .273163943 mem=0 3/3 passed, 0 failed, 0 skipped fails=0
+test_sensortask_arzi@-1 rc=0 29.027637007 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask_dev@-1 rc=0 46.366164203 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask_grkizi@-1 rc=0 27.905847158 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask_klkizi@-1 rc=0 27.694354373 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask_schlafzi@-1 rc=0 27.783657738 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask_wozi@-1 rc=0 31.358823946 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_asy_system_service@32768 rc=0 25.707212789 mem=0 177/177 passed, 0 failed, 0 skipped fails=0
+test_asy_wifi_service@32768 rc=0 24.851820508 mem=0 268/268 passed, 0 failed, 0 skipped fails=0
+test_asy_neopixel_driver@32768 rc=0 9.498576207 mem=0 54/54 passed, 0 failed, 0 skipped fails=0
+test_reset_call_site_invariant@32768 rc=0 .322204348 mem=0 3/3 passed, 0 failed, 0 skipped fails=0
+test_sensortask_arzi@32768 rc=0 31.670654140 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask_dev@32768 rc=0 52.344833479 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask_grkizi@32768 rc=0 31.302663334 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask_klkizi@32768 rc=0 32.235055816 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask_schlafzi@32768 rc=0 31.492649334 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+test_sensortask_wozi@32768 rc=0 35.536210995 mem=0 91/91 passed, 0 failed, 0 skipped fails=0
+py_before_pyfiles rc=0 28.238189666 mem=0 146 passed in 27.02s
+DONE

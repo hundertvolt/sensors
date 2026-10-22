@@ -1,0 +1,21 @@
+NOTE (standard_state): twin run: the twin's board starts fresh, nothing to check
+.F                                                                       [100%]
+=================================== FAILURES ===================================
+_________________ test_the_suppressed_arm_breaks_the_high_band _________________
+
+board = <twin_board.TwinBoard object at 0x7f149a97acd0>
+result_note = <function result_note.<locals>._note at 0x7f14998e7f60>
+
+    def test_the_suppressed_arm_breaks_the_high_band(board: "Board", result_note: "Callable[[str], None]") -> None:
+        # The control: a bound the broken configuration also satisfies is no guard.
+        high, bound = _high_band_blocks("suppressed", board, result_note)
+>       assert high > bound, f"with the per-unit collects suppressed only {high} new blocks sat above the high band, inside the twin's {bound} - the bound no longer detects the defect it exists for"
+E       AssertionError: with the per-unit collects suppressed only 0 new blocks sat above the high band, inside the twin's 32 - the bound no longer detects the defect it exists for
+E       assert 0 > 32
+
+tests_hardware/flash/test_heap_layout.py:87: AssertionError
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED tests_hardware/flash/test_heap_layout.py::test_the_live_arm_keeps_the_boot_survivors_under_the_high_band
+FAILED tests_hardware/flash/test_heap_layout.py::test_the_suppressed_arm_breaks_the_high_band
+1 failed, 1 passed in 14.84s

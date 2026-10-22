@@ -1,0 +1,132 @@
+FAIL test_a_strict_driven_time_refuses_every_wall_clock_read:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_shared_helpers.py", line 210, in test_a_strict_driven_time_refuses_every_wall_clock_read
+AssertionError: 
+FAIL test_driven_time_is_each_modules_time_inside_the_block_only:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_shared_helpers.py", line 197, in test_driven_time_is_each_modules_time_inside_the_block_only
+AssertionError: 
+FAIL test_driven_time_wraps_at_2_30_exactly_as_ticks30time_does:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_shared_helpers.py", line 189, in test_driven_time_wraps_at_2_30_exactly_as_ticks30time_does
+AssertionError: 
+FAIL test_fake_time_carries_the_hour_and_minute_it_was_given:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_shared_helpers.py", line 181, in test_fake_time_carries_the_hour_and_minute_it_was_given
+AttributeError: 'FakeTime' object has no attribute 'hour'
+FAIL test_fast_sleep_advances_a_given_clock_by_each_slept_time:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_shared_helpers.py", line 130, in test_fast_sleep_advances_a_given_clock_by_each_slept_time
+AssertionError: 
+FAIL test_fast_sleep_keeps_a_bounded_record_and_counts_what_it_dropped:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_shared_helpers.py", line 140, in test_fast_sleep_keeps_a_bounded_record_and_counts_what_it_dropped
+AssertionError: 
+PASS test_fast_sleep_restores_both_sleeps_when_the_block_raises
+FAIL test_fast_sleep_turns_both_sleeps_into_one_yield_and_records_each_delay:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_shared_helpers.py", line 115, in test_fast_sleep_turns_both_sleeps_into_one_yield_and_records_each_delay
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/_async_harness.py", line 100, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/_async_harness.py", line 42, in _drive
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+FAIL test_fixed_random_records_every_uniform_call_and_answers_its_script:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_shared_helpers.py", line 353, in test_fixed_random_records_every_uniform_call_and_answers_its_script
+AssertionError: 
+FAIL test_fixed_random_refuses_a_scripted_value_outside_the_requested_range:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_shared_helpers.py", line 370, in test_fixed_random_refuses_a_scripted_value_outside_the_requested_range
+AssertionError: 
+FAIL test_fixed_random_scripts_randint_and_getrandbits_too:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_shared_helpers.py", line 383, in test_fixed_random_scripts_randint_and_getrandbits_too
+AssertionError: 
+FAIL test_fixed_random_unscripted_answers_its_value_or_the_lower_bound:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_shared_helpers.py", line 374, in test_fixed_random_unscripted_answers_its_value_or_the_lower_bound
+AssertionError: 
+FAIL test_make_fram_manager_builds_another_part_and_restores_the_spi_class:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_shared_helpers.py", line 269, in test_make_fram_manager_builds_another_part_and_restores_the_spi_class
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/_fram_builders.py", line 2, in make_fram_manager
+NotImplementedError: 
+FAIL test_make_fram_manager_builds_over_a_fresh_chip_of_the_given_size:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_shared_helpers.py", line 251, in test_make_fram_manager_builds_over_a_fresh_chip_of_the_given_size
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/_fram_builders.py", line 2, in make_fram_manager
+NotImplementedError: 
+FAIL test_make_fram_manager_over_an_existing_chip_keeps_its_memory:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_shared_helpers.py", line 259, in test_make_fram_manager_over_an_existing_chip_keeps_its_memory
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/_fram_builders.py", line 2, in make_fram_manager
+NotImplementedError: 
+FAIL test_make_fram_manager_takes_the_history_length:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_shared_helpers.py", line 276, in test_make_fram_manager_takes_the_history_length
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/_fram_builders.py", line 2, in make_fram_manager
+NotImplementedError: 
+FAIL test_make_ntp_reply_is_a_48_byte_synchronized_server_reply_at_the_given_time:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_shared_helpers.py", line 287, in test_make_ntp_reply_is_a_48_byte_synchronized_server_reply_at_the_given_time
+AssertionError: 
+FAIL test_raise_on_arm_makes_init_raise_enomem_or_the_given_class_then_restores:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_shared_helpers.py", line 168, in test_raise_on_arm_makes_init_raise_enomem_or_the_given_class_then_restores
+AssertionError: None
+T refused 5
+LAYER lost 7
+FAIL test_record_prints_captures_every_logger_line_and_restores_print:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_shared_helpers.py", line 332, in test_record_prints_captures_every_logger_line_and_restores_print
+AssertionError: 
+OTHER not mine
+MINE|mine
+FAIL test_record_prints_for_one_logger_keeps_only_its_lines:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_shared_helpers.py", line 342, in test_record_prints_for_one_logger_keeps_only_its_lines
+AssertionError: 
+FAIL test_rp2_gmtime_answers_rp2s_eight_fields:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_shared_helpers.py", line 239, in test_rp2_gmtime_answers_rp2s_eight_fields
+AssertionError: 
+PASS test_src_const_evaluates_each_value_with_the_names_bound_before_it
+PASS test_src_const_reads_a_folded_tuple_as_a_tuple
+PASS test_src_const_refuses_a_name_that_is_no_const
+PASS test_src_consts_reads_each_file_once_and_every_src_const_evaluates
+FAIL test_the_fake_ntp_server_answers_one_request_or_drops_it:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_shared_helpers.py", line 315, in test_the_fake_ntp_server_answers_one_request_or_drops_it
+AssertionError: 
+PASS test_the_ntp_epoch_delta_is_rfc_5905s
+FAIL test_tick_sets_the_flag_once_per_time_and_advances_a_given_clock:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_shared_helpers.py", line 234, in test_tick_sets_the_flag_once_per_time_and_advances_a_given_clock
+AssertionError: 
+6/28 passed, 22 failed, 0 skipped
+RESULT tests/test_shared_helpers.py stage=-1 rc=1 wall=8.0s

@@ -1,0 +1,16 @@
+
+> sensors-website@0.1.0 typecheck
+> tsc --noEmit && tsc --noEmit -p tsconfig.node.json
+
+js/render.js(9,70): error TS2724: '"./templates.js"' has no exported member named 'updateErrcountGroup'. Did you mean 'ErrcountGroup'?
+js/render.js(9,91): error TS2305: Module '"./templates.js"' has no exported member 'updateFieldGroupValues'.
+js/render.js(15,43): error TS2694: Namespace '"/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23c/js/poll-manager"' has no exported member 'Visibility'.
+js/render.js(16,22): error TS2307: Cannot find module './shell.js' or its corresponding type declarations.
+js/render.js(93,53): error TS2554: Expected 2 arguments, but got 4.
+js/render.js(423,79): error TS2554: Expected 1-3 arguments, but got 4.
+js/render.js(486,64): error TS2345: Argument of type 'Record<string, unknown> | null' is not assignable to parameter of type 'Record<string, { counter: number; history?: { num: number; type: "E" | "N" | "W"; }[]; }>'.
+  Type 'null' is not assignable to type 'Record<string, { counter: number; history?: { num: number; type: "E" | "N" | "W"; }[]; }>'.
+js/render.js(528,9): error TS2554: Expected 2 arguments, but got 3.
+tests_js/live-backend-put-matrix.test.js(54,40): error TS2339: Property 'defaultValue' does not exist on type 'FieldDef'.
+tests_js/live-backend-put-matrix.test.js(65,56): error TS2339: Property 'defaultValue' does not exist on type 'FieldDef'.
+tests_js/render.test.js(560,134): error TS2353: Object literal may only specify known properties, and 'defaultValue' does not exist in type 'FieldDef'.

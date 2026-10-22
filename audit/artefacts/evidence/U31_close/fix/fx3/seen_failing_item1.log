@@ -1,0 +1,44 @@
+FF.                                                                      [100%]
+=================================== FAILURES ===================================
+_ test_the_lag_under_load_is_over_the_windows_begun_after_its_start_and_the_boot_window_is_reported_apart _
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31fx3/scripts/_digital_twin_scenarios.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11796/test_the_lag_under_load_is_ove0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fc919b5b9d0>
+capsys = <_pytest.capture.CaptureFixture object at 0x7fc919b45e50>
+
+    def test_the_lag_under_load_is_over_the_windows_begun_after_its_start_and_the_boot_window_is_reported_apart(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+        # The first LOOP_LAG line after the load's start closes the window open then, which holds the end of boot: its
+        # figure is reported beside the load's, never as it, and a line printed before the load counts in neither.
+        failures, printed, evidence = _lag_run(harness, tmp_path, monkeypatch, capsys, [240000, 3000, 2500, 2800])
+        assert failures == [], failures
+>       assert "max 3000 us over 3 windows" in printed and "max 240000 us" in printed and "400000" not in printed, printed
+E       AssertionError: loop lag under load: max 240000 us over 4 windows (bound 6000000 us); after it: LOOP_LAG max_us=900 p99_us=900 samples=500
+E         
+E       assert ('max 3000 us over 3 windows' in 'loop lag under load: max 240000 us over 4 windows (bound 6000000 us); after it: LOOP_LAG max_us=900 p99_us=900 samples=500\n')
+
+tests_scripts/test_digital_twin_scenarios.py:247: AssertionError
+_ test_every_window_the_load_spans_is_held_to_the_bound_the_boot_one_included[the boot window] _
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31fx3/scripts/_digital_twin_scenarios.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11796/test_every_window_the_load_spa0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fc918f92890>
+capsys = <_pytest.capture.CaptureFixture object at 0x7fc918f935d0>, over = 0
+expected = 'in the window open when the load began'
+
+    @pytest.mark.parametrize(("over", "expected"), [(0, "in the window open when the load began"), (2, "under load")], ids=["the boot window", "a load window"])
+    def test_every_window_the_load_spans_is_held_to_the_bound_the_boot_one_included(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], over: int, expected: str) -> None:
+        bound_us = smallest_hard_consumer(load_device(device_toml(DEVICE_NAMES[0])), harness.SRC_DIR).ms * 1000
+        windows = [240000, 3000, 2500, 2800]
+        windows[over] = bound_us + 1
+        failures, _printed, _evidence = _lag_run(harness, tmp_path, monkeypatch, capsys, windows)
+>       assert any(f"lagged {bound_us + 1} us {expected}" in f for f in failures), failures
+E       AssertionError: ["the loop lagged 6000001 us under load, past the 6000000 us smallest hard consumer: [{'max_us': 6000001, 'p99_us': 60... 'samples': 500}, {'max_us': 2500, 'p99_us': 2500, 'samples': 500}, {'max_us': 2800, 'p99_us': 2800, 'samples': 500}]"]
+E       assert False
+E        +  where False = any(<generator object test_every_window_the_load_spans_is_held_to_the_bound_the_boot_one_included.<locals>.<genexpr> at 0x7fc91992a5c0>)
+
+tests_scripts/test_digital_twin_scenarios.py:257: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_the_lag_under_load_is_over_the_windows_begun_after_its_start_and_the_boot_window_is_reported_apart
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_every_window_the_load_spans_is_held_to_the_bound_the_boot_one_included[the boot window]
+2 failed, 1 passed, 51 deselected in 0.29s

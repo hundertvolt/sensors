@@ -1,0 +1,17 @@
+F.............                                                           [100%]
+=================================== FAILURES ===================================
+___________ test_every_broad_handler_records_a_stack_overflow_first ____________
+
+sources = {'src/asy_api_response.py': '"""REST response envelope and settings-group setter dispatch for the Microdot layer; ever...      packet += bytes(map(int, ip.split(".")))  # 4bytes of IP\n            return packet\n        return None\n', ...}
+
+    def test_every_broad_handler_records_a_stack_overflow_first(sources: "dict[str, str]") -> None:
+>       assert _all_findings(sources) == []
+E       AssertionError: assert ['src/asy_bmp...atal(e)', ...] == []
+E         
+E         Left contains 97 more items, first extra item: 'src/asy_bmp3xx_driver.py:211 BMP3XX_Reader._apply_stored_config(): a broad handler whose first statement is not report_if_fatal(e)'
+E         Use -v to get more diff
+
+tests_scripts/test_fatal_report_sites.py:130: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_fatal_report_sites.py::test_every_broad_handler_records_a_stack_overflow_first
+1 failed, 13 passed in 1.65s

@@ -1,105 +1,98 @@
-"""The one writer bus_concurrency_isl29125_write_vs_siblings.py cannot cover: SCD30 itself, whose
-NVM write carries a real wear budget, so this fires ONCE at one chosen offset and is AND-gated
-behind --allow-persistence-writes plus --allow-scd30-extra-write (SPECIFICATION.md Part C.8)."""
+"""The one writer bus_concurrency_isl29125_write_vs_siblings.py cannot cover: the SCD30 itself, whose NVM carries a real
+wear budget, so this is AND-gated behind --allow-persistence-write plus --allow-scd30-extra-write; it spends two SCD30
+NVM writes (the offset and its restore) among the ISL29125 and SGP40 reads (SPECIFICATION.md Part C.8)."""
 
 import asyncio
 import time
-
-import machine
 
 import asy_i2c_driver
 from asy_isl29125_driver import ISL29125_I2C
 from asy_scd30_driver import SCD30_I2C
 from asy_sgp40_driver import SGP40_I2C
 
-_MODE_RGB = 0x05
+# @include _shared/facts.py
+# @include _shared/watchdog.py
+# @include _shared/bus_reader_loops.py
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from _shared.bus_reader_loops import Record, Stop, isl29125_counts_problem, read_loop, report_errors
+    from _shared.facts import done, fact
+    from _shared.watchdog import arm, fed_sleep_ms
+    from bench_facts import BenchFacts
+
+BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
+
+# @tunable l3.bus_concurrency_scd30_write_vs_siblings_sibling_step_ms = 15
+_SIBLING_STEP_MS = 15
+# @tunable l3.bus_concurrency_scd30_write_vs_siblings_after_write_s = 1.0
+_AFTER_WRITE_S = 1.0
+# @tunable l3.bus_concurrency_scd30_write_vs_siblings_run_bound_s = 60.0
+_RUN_BOUND_S = 60.0
+# The write waits until both siblings completed a read, at most this long (a deadline, never a fixed head start).
+# @tunable l3.bus_concurrency_scd30_write_vs_siblings_writer_delay_ms = 1000
+_WRITER_DELAY_MS = 1000
+# The offset the write sends, inside the schema's TempOffset range; the restore sends back what the chip held.
+_WRITE_OFFSET_C = 4.0
 
 
 async def _main() -> None:
-    wdt = machine.WDT(timeout=8000)
-    i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
-    scd = SCD30_I2C(i2c1)
-    isl = ISL29125_I2C(i2c1)
-    sgp = SGP40_I2C(i2c1)
-    await scd.setup()  # real soft reset only - continuous measurement already active from the session fixture, no second set_ambient_pressure() call here
+    wdt = arm()
+    bus = BENCH["bus"][BENCH["instances"]["scd30"]["bus"]]
+    i2c = asy_i2c_driver.I2C(bus["id"], bus["scl_pin"], bus["sda_pin"], frequency=bus["frequency"], timeout=bus.get("timeout"))
+    scd = SCD30_I2C(i2c)
+    isl = ISL29125_I2C(i2c)
+    sgp = SGP40_I2C(i2c)
+    await scd.setup()
     await isl.setup()
-    await isl.configure(mode=_MODE_RGB, range_fs=10000, resolution=16, threshold_interrupt=False)
+    await isl.configure(mode=BENCH["isl29125"]["mode_rgb"], range_fs=10000, resolution=16, threshold_interrupt=False)
     await sgp.setup()
 
-    isl_windows = []  # (start_ms, end_ms) per completed read_counts()
-    sgp_reads = 0
-    isl_errors = []
-    sgp_errors = []
-    write_error = None
-    write_done = False
-    write_window = None
-    stop = False
+    async def sgp_read() -> "str | None":
+        await sgp.measure_raw(temperature=25, relative_humidity=50)
+        return None
 
-    async def isl_loop() -> None:
-        i = 0
-        while not stop:
-            start = time.ticks_ms()
-            try:
-                green, red, blue = await isl.read_counts()
-                if not all(0 <= channel <= 0xFFFF for channel in (green, red, blue)):
-                    isl_errors.append(f"iter {i}: counts=({green}, {red}, {blue}) outside the 16-bit range - a torn burst")
-                isl_windows.append((start, time.ticks_ms()))
-            except Exception as e:
-                isl_errors.append(f"iter {i}: {type(e).__name__}: {e}")
-            i += 1
-            if i % 10 == 0:
-                wdt.feed()
-            await asyncio.sleep_ms(15)
+    isl_rec, sgp_rec, write_rec = Record("isl29125"), Record("sgp40"), Record("scd30_write")
+    stop = Stop()
+    prior = None
+    try:
+        prior = await scd.get_temperature_offset()
+    except (OSError, RuntimeError) as e:  # the bus or a CRC: nothing is written without the value to restore
+        write_rec.fail(f"prior offset read: {e!r}")
+    fact("prior_offset", prior)
 
-    async def sgp_loop() -> None:
-        nonlocal sgp_reads
-        i = 0
-        while not stop:
-            try:
-                await sgp.measure_raw(temperature=25, relative_humidity=50)
-                sgp_reads += 1
-            except Exception as e:
-                sgp_errors.append(f"iter {i}: {type(e).__name__}: {e}")
-            i += 1
-            if i % 10 == 0:
-                wdt.feed()
-            await asyncio.sleep_ms(15)
-
-    async def writer_loop() -> None:
-        nonlocal write_error, write_done, write_window, stop
-        await asyncio.sleep(0.3)  # let both siblings get real cycles running first
+    async def writer() -> None:
+        waited_ms = 0
+        while (isl_rec.reads == 0 or sgp_rec.reads == 0) and waited_ms < _WRITER_DELAY_MS:
+            await fed_sleep_ms(wdt, _SIBLING_STEP_MS)
+            waited_ms += _SIBLING_STEP_MS
         start = time.ticks_ms()
         try:
-            # THE one extra real NVM write this script makes - see its own module docstring. Fires
-            # exactly once; this script must never be called more than once per opt-in run.
-            await scd.set_temperature_offset(4.0)
-            write_window = (start, time.ticks_ms())
-        except Exception as e:
-            write_error = f"{type(e).__name__}: {e}"
-        write_done = True
-        await asyncio.sleep(1.0)  # keep both siblings running a little longer after the write too
-        stop = True
+            await scd.set_temperature_offset(_WRITE_OFFSET_C)  # owned writes: the offset, and its restore after the run
+            fact("write_done", time.ticks_diff(time.ticks_ms(), start))
+        except (OSError, RuntimeError, ValueError) as e:
+            fact("write_error", repr(e))
+        await fed_sleep_ms(wdt, int(_AFTER_WRITE_S * 1000))
+        stop.is_set = True
 
-    await asyncio.wait_for(asyncio.gather(isl_loop(), sgp_loop(), writer_loop()), 60.0)
-
-    failures = []
-    if isl_errors:
-        failures.append(f"{len(isl_errors)} ISL29125 read error(s): {'; '.join(isl_errors[:5])}")
-    if sgp_errors:
-        failures.append(f"{len(sgp_errors)} SGP40 read error(s): {'; '.join(sgp_errors[:5])}")
-    if not write_done:
-        failures.append("the concurrent set_temperature_offset() write never completed")
-    if write_error is not None:
-        failures.append(f"set_temperature_offset() failed: {write_error}")
-    if not isl_windows:
-        failures.append("ISL29125 completed zero reads during the whole run - loop never progressed")
-    if sgp_reads == 0:
-        failures.append("SGP40 completed zero reads during the whole run - loop never progressed")
-
-    if failures:
-        print(f"RESULT: FAIL {len(failures)} issue(s): {'; '.join(failures[:10])}")
+    if prior is None:
+        fact("write_skipped", True)
+        stop.is_set = True
     else:
-        print(f"RESULT: PASS isl29125_reads={len(isl_windows)} sgp40_reads={sgp_reads} write_window={write_window} - the one SCD30 write landed cleanly alongside both siblings' concurrent reads")
+        await asyncio.wait_for(asyncio.gather(read_loop(lambda: isl29125_counts_problem(isl), None, _SIBLING_STEP_MS, wdt, isl_rec, stop), read_loop(sgp_read, None, _SIBLING_STEP_MS, wdt, sgp_rec, stop), writer()), _RUN_BOUND_S)
+        try:
+            await scd.set_temperature_offset(prior)
+            fact("restored", await scd.get_temperature_offset())
+        except (OSError, RuntimeError, ValueError) as e:
+            fact("restore_error", repr(e))
+    fact("isl_windows", isl_rec.reads)
+    fact("sgp_reads", sgp_rec.reads)
+    report_errors([isl_rec, sgp_rec, write_rec])
+    done()
 
 
 asyncio.run(_main())

@@ -1,0 +1,3 @@
+PASS test_a_second_failed_streak_goes_silent_dark_and_links_on_a_later_attempt 53.587
+PASS test_a_settings_change_in_the_hotspot_reopens_it_once_more 65.59099999999999
+PASS test_a_chip_down_stations_answer_counts_as_no_client 30.955

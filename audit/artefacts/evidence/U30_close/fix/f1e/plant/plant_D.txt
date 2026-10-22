@@ -1,0 +1,1 @@
+896:        _KEPT.append(object())  # PLANTED LEAK: one 1-block object per connection

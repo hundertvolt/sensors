@@ -1,0 +1,137 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23fix
+
+ ❯ |chromium| tests_js/live-backend.test.js (18 tests | 7 failed | 11 skipped) 3675ms
+   ↓ live digital-twin backend: arzi (1)
+     ↓ the real website, driven by a real browser, round-trips a real PUT against a live twin
+   ↓ live digital-twin backend: dev (1)
+     ↓ the real website, driven by a real browser, round-trips a real PUT against a live twin
+   ↓ live digital-twin backend: grkizi (1)
+     ↓ the real website, driven by a real browser, round-trips a real PUT against a live twin
+   ↓ live digital-twin backend: klkizi (1)
+     ↓ the real website, driven by a real browser, round-trips a real PUT against a live twin
+   ↓ live digital-twin backend: schlafzi (1)
+     ↓ the real website, driven by a real browser, round-trips a real PUT against a live twin
+   ↓ live digital-twin backend: wozi (1)
+     ↓ the real website, driven by a real browser, round-trips a real PUT against a live twin
+   ↓ live digital-twin backend, concurrent browser sessions: arzi (1)
+     ↓ a full ceiling of browser tabs against one live twin all load, directly or on one reload
+   ↓ live digital-twin backend, concurrent browser sessions: dev (1)
+     ↓ a full ceiling of browser tabs against one live twin all load, directly or on one reload
+   ↓ live digital-twin backend, concurrent browser sessions: grkizi (1)
+     ↓ a full ceiling of browser tabs against one live twin all load, directly or on one reload
+   ↓ live digital-twin backend, concurrent browser sessions: klkizi (1)
+     ↓ a full ceiling of browser tabs against one live twin all load, directly or on one reload
+   ↓ live digital-twin backend, concurrent browser sessions: schlafzi (1)
+     ↓ a full ceiling of browser tabs against one live twin all load, directly or on one reload
+   ❯ live digital-twin backend, concurrent browser sessions: wozi (1)
+     × a full ceiling of browser tabs against one live twin all load, directly or on one reload 3176ms
+   ❯ live digital-twin backend, device restart: arzi (1)
+     × the page recovers from a device restart without reloading 83ms
+   ❯ live digital-twin backend, device restart: dev (1)
+     × the page recovers from a device restart without reloading 83ms
+   ❯ live digital-twin backend, device restart: grkizi (1)
+     × the page recovers from a device restart without reloading 81ms
+   ❯ live digital-twin backend, device restart: klkizi (1)
+     × the page recovers from a device restart without reloading 80ms
+   ❯ live digital-twin backend, device restart: schlafzi (1)
+     × the page recovers from a device restart without reloading 84ms
+   ❯ live digital-twin backend, device restart: wozi (1)
+     × the page recovers from a device restart without reloading 85ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: wozi > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+Error: Test timed out in 3000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--concurrent-browser-sessions--wozi---a-full-ceiling-of-browser-tabs-against-one-live-twin-all-load--directly-or-on-one-reload.png
+
+ ❯ task node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:5109:43
+ ❯ Object.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:5126:16
+ ❯ Object.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:4916:28
+ ❯ chain node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:4317:14
+ ❯ tests_js/live-backend.test.js:50:5
+     48|
+     49| describe.each(DEVICE_IDS)("live digital-twin backend, concurrent brows…
+     50|     it(
+       |     ^
+     51|         "a full ceiling of browser tabs against one live twin all load…
+     52|         async () => {
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:5251:64
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:5191:52
+ ❯ runWithSuite node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:5640:8
+ ❯ Object.collect node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:5191:22
+ ❯ Object.collect node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:5196:51
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/7]⎯
+
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend, device restart: arzi > the page recovers from a device restart without reloading
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend, device restart: dev > the page recovers from a device restart without reloading
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend, device restart: grkizi > the page recovers from a device restart without reloading
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend, device restart: klkizi > the page recovers from a device restart without reloading
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend, device restart: schlafzi > the page recovers from a device restart without reloading
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend, device restart: wozi > the page recovers from a device restart without reloading
+Error: 127.0.0.1:19481 still answers before starting arzi's twin: an earlier twin holds the port, and this check would test that twin instead of its own
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--device-restart--arzi---the-page-recovers-from-a-device-restart-without-reloading.png
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--device-restart--dev---the-page-recovers-from-a-device-restart-without-reloading.png
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--device-restart--grkizi---the-page-recovers-from-a-device-restart-without-reloading.png
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--device-restart--klkizi---the-page-recovers-from-a-device-restart-without-reloading.png
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--device-restart--schlafzi---the-page-recovers-from-a-device-restart-without-reloading.png
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--device-restart--wozi---the-page-recovers-from-a-device-restart-without-reloading.png
+
+ ❯ tests_js/live-backend.test.js:74:43
+     72|         "the page recovers from a device restart without reloading",
+     73|         async () => {
+     74|             const result = await commands.runLiveBackendRestartRecover…
+       |                                           ^
+     75|
+     76|             if (result.skipped) {
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:5684:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/7]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  7 failed | 11 skipped (18)
+   Start at  16:26:33
+   Duration  4.86s (tests 93%, worker 5%, import 2%)
+
+== Summary: npm test ==
+Commit: 9bf2274 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 0 · failed 7 · skipped 11 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: wozi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: Test timed out in 3000ms.
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: arzi > the page recovers from a device restart without reloading: 127.0.0.1:19481 still answers before starting arzi's twin: an earlier twin holds the port, and this check would test that twin instead of its own
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: dev > the page recovers from a device restart without reloading: 127.0.0.1:19481 still answers before starting dev's twin: an earlier twin holds the port, and this check would test that twin instead of its own
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: grkizi > the page recovers from a device restart without reloading: 127.0.0.1:19481 still answers before starting grkizi's twin: an earlier twin holds the port, and this check would test that twin instead of its own
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: klkizi > the page recovers from a device restart without reloading: 127.0.0.1:19481 still answers before starting klkizi's twin: an earlier twin holds the port, and this check would test that twin instead of its own
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: schlafzi > the page recovers from a device restart without reloading: 127.0.0.1:19481 still answers before starting schlafzi's twin: an earlier twin holds the port, and this check would test that twin instead of its own
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: wozi > the page recovers from a device restart without reloading: 127.0.0.1:19481 still answers before starting wozi's twin: an earlier twin holds the port, and this check would test that twin instead of its own
+Skipped:
+  - tests_js/live-backend.test.js > live digital-twin backend: arzi > the real website, driven by a real browser, round-trips a real PUT against a live twin: skip
+  - tests_js/live-backend.test.js > live digital-twin backend: dev > the real website, driven by a real browser, round-trips a real PUT against a live twin: skip
+  - tests_js/live-backend.test.js > live digital-twin backend: grkizi > the real website, driven by a real browser, round-trips a real PUT against a live twin: skip
+  - tests_js/live-backend.test.js > live digital-twin backend: klkizi > the real website, driven by a real browser, round-trips a real PUT against a live twin: skip
+  - tests_js/live-backend.test.js > live digital-twin backend: schlafzi > the real website, driven by a real browser, round-trips a real PUT against a live twin: skip
+  - tests_js/live-backend.test.js > live digital-twin backend: wozi > the real website, driven by a real browser, round-trips a real PUT against a live twin: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: arzi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: dev > a full ceiling of browser tabs against one live twin all load, directly or on one reload: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: grkizi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: klkizi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: schlafzi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: skip
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

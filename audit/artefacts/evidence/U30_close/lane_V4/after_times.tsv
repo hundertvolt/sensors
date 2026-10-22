@@ -1,0 +1,10 @@
+test_test_sh	-1	34.013	rc=0	190 passed in 33.76s
+test_test_sh	32768	33.451	rc=0	190 passed in 33.20s
+test_twin_board	-1	3.382	rc=0	24 passed in 2.83s
+test_twin_board	32768	3.471	rc=0	24 passed in 2.97s
+test_twin_process_spawn	-1	0.445	rc=0	10 passed in 0.21s
+test_twin_process_spawn	32768	0.319	rc=0	10 passed in 0.09s
+test_shell_conventions	-1	0.814	rc=0	77 passed in 0.59s
+test_shell_conventions	32768	0.858	rc=0	77 passed in 0.62s
+test_memory_error_gate_agreement	-1	3.534	rc=0	14 passed in 3.29s
+test_memory_error_gate_agreement	32768	3.325	rc=0	14 passed in 3.08s

@@ -1,0 +1,11 @@
+X01P 0 2336 64 64 (0, True, True, True, True)
+X01P 1 2368 32 32 (0, True, True, True, True)
+X01P 2 2336 0 0 (0, True, True, True, True)
+X01F crc -1 0 [2336, 2368, 2336]
+AssertionError: [2336, 2368, 2336] bytes over 30 failures a window = 77.9 B/failure at the least
+X01P 0 2336 64 64 (0, True, True, True, True)
+X01P 1 2336 0 0 (0, True, True, True, True)
+X01P 2 2336 0 0 (0, True, True, True, True)
+X01F nocrc -1 0 [2336, 2336, 2336]
+AssertionError: [2336, 2336, 2336] bytes over 30 failures a window = 77.9 B/failure at the least
+0/2 passed, 2 failed, 0 skipped

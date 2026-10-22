@@ -1,0 +1,6 @@
+usage: _digital_twin_ci_suite.py [-h] --micropython-bin MICROPYTHON_BIN
+                                 --device DEVICE [--logs-dir LOGS_DIR]
+                                 [--only ONLY] [--repeat REPEAT]
+                                 [--gc-threshold {-1,32768}]
+                                 [--device-toml DEVICE_TOML]
+_digital_twin_ci_suite.py: error: argument --only: 9 needs 8 - a run reads the state the run before it leaves

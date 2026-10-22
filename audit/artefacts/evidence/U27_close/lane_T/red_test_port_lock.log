@@ -1,0 +1,436 @@
+...........................EFEEFFEEEEFFEEEEE                             [100%]
+==================================== ERRORS ====================================
+_ ERROR at setup of test_the_cpython_reader_refuses_a_port_a_bash_runner_holds _
+
+    @pytest.fixture(scope="module")
+    def port_lock_py() -> ModuleType:
+>       return load_script_module(_PY_LIB, "_port_lock")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_port_lock.py:199: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7fbe915d2ad0>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_port_lock.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_port_lock.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+_ ERROR at setup of test_the_cpython_reader_takes_over_a_dead_holders_lock_and_chains_while_it_holds _
+
+    @pytest.fixture(scope="module")
+    def port_lock_py() -> ModuleType:
+>       return load_script_module(_PY_LIB, "_port_lock")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_port_lock.py:199: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7fbe915d2ad0>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_port_lock.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_port_lock.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+_ ERROR at setup of test_a_lock_left_without_a_pid_is_taken_over_by_the_cpython_reader _
+
+    @pytest.fixture(scope="module")
+    def port_lock_py() -> ModuleType:
+>       return load_script_module(_PY_LIB, "_port_lock")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_port_lock.py:199: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7fbe915d2ad0>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_port_lock.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_port_lock.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+_ ERROR at setup of test_the_cpython_reader_refuses_an_unrelated_holder_whatever_chain_it_inherited[port-not-listed] _
+
+    @pytest.fixture(scope="module")
+    def port_lock_py() -> ModuleType:
+>       return load_script_module(_PY_LIB, "_port_lock")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_port_lock.py:199: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7fbe915d2ad0>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_port_lock.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_port_lock.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+_ ERROR at setup of test_the_cpython_reader_refuses_an_unrelated_holder_whatever_chain_it_inherited[holder-not-an-ancestor] _
+
+    @pytest.fixture(scope="module")
+    def port_lock_py() -> ModuleType:
+>       return load_script_module(_PY_LIB, "_port_lock")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_port_lock.py:199: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7fbe915d2ad0>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_port_lock.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_port_lock.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+_ ERROR at setup of test_a_nested_take_is_re_entrant_and_only_the_outer_release_removes_the_lock _
+
+    @pytest.fixture(scope="module")
+    def port_lock_py() -> ModuleType:
+>       return load_script_module(_PY_LIB, "_port_lock")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_port_lock.py:199: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7fbe915d2ad0>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_port_lock.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_port_lock.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+_ ERROR at setup of test_the_cpython_reader_releases_only_a_lock_it_still_holds _
+
+    @pytest.fixture(scope="module")
+    def port_lock_py() -> ModuleType:
+>       return load_script_module(_PY_LIB, "_port_lock")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_port_lock.py:199: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7fbe915d2ad0>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_port_lock.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_port_lock.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+_ ERROR at setup of test_a_malformed_cpython_take_is_refused_before_touching_the_root[zero] _
+
+    @pytest.fixture(scope="module")
+    def port_lock_py() -> ModuleType:
+>       return load_script_module(_PY_LIB, "_port_lock")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_port_lock.py:199: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7fbe915d2ad0>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_port_lock.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_port_lock.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+_ ERROR at setup of test_a_malformed_cpython_take_is_refused_before_touching_the_root[too-high] _
+
+    @pytest.fixture(scope="module")
+    def port_lock_py() -> ModuleType:
+>       return load_script_module(_PY_LIB, "_port_lock")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_port_lock.py:199: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7fbe915d2ad0>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_port_lock.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_port_lock.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+_ ERROR at setup of test_a_malformed_cpython_take_is_refused_before_touching_the_root[a-bool] _
+
+    @pytest.fixture(scope="module")
+    def port_lock_py() -> ModuleType:
+>       return load_script_module(_PY_LIB, "_port_lock")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_port_lock.py:199: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7fbe915d2ad0>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_port_lock.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_port_lock.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+_ ERROR at setup of test_a_malformed_cpython_take_is_refused_before_touching_the_root[no-runner] _
+
+    @pytest.fixture(scope="module")
+    def port_lock_py() -> ModuleType:
+>       return load_script_module(_PY_LIB, "_port_lock")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_port_lock.py:199: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7fbe915d2ad0>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_port_lock.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_port_lock.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+_ ERROR at setup of test_a_cpython_take_on_a_missing_lock_root_is_refused_naming_it _
+
+    @pytest.fixture(scope="module")
+    def port_lock_py() -> ModuleType:
+>       return load_script_module(_PY_LIB, "_port_lock")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_port_lock.py:199: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7fbe915d2ad0>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_port_lock.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_port_lock.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+=================================== FAILURES ===================================
+__________ test_a_bash_runner_refuses_a_port_the_cpython_reader_holds __________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9780/test_a_bash_runner_refuses_a_p0')
+
+    def test_a_bash_runner_refuses_a_port_the_cpython_reader_holds(tmp_path: Path) -> None:
+>       with _py_holder(tmp_path, 53, "py-holder") as (holder, holder_pid):
+
+tests_scripts/test_port_lock.py:415: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.11/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+runtime_dir = PosixPath('/tmp/pytest-of-root/pytest-9780/test_a_bash_runner_refuses_a_p0')
+port = 53, runner = 'py-holder'
+
+    @contextmanager
+    def _py_holder(runtime_dir: Path, port: int, runner: str) -> Iterator[tuple[subprocess.Popen[str], int]]:
+        proc = subprocess.Popen(_py(str(port), runner), env=_env(runtime_dir), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            assert proc.stdout is not None
+            line = proc.stdout.readline()
+>           assert line.startswith("took "), f"the CPython holder did not take {port}: {line!r} {proc.stderr.read() if proc.stderr else ''}"
+E           AssertionError: the CPython holder did not take 53: '' Traceback (most recent call last):
+E               File "<string>", line 3, in <module>
+E             ModuleNotFoundError: No module named '_port_lock'
+E             
+E           assert False
+E            +  where False = <built-in method startswith of str object at 0xa314a0>('took ')
+E            +    where <built-in method startswith of str object at 0xa314a0> = ''.startswith
+
+tests_scripts/test_port_lock.py:135: AssertionError
+________ test_a_cpython_child_of_a_bash_holder_passes_without_retaking _________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9780/test_a_cpython_child_of_a_bash0')
+
+    def test_a_cpython_child_of_a_bash_holder_passes_without_retaking(tmp_path: Path) -> None:
+        child = shlex.join(_py("53", "py-child", "/bin/true"))
+        done = _run(tmp_path, "port_lock_take 53 bash-parent", child, 'cat "$XDG_RUNTIME_DIR/sensors-port-53.lock/pid"; echo "parent $$"')
+>       assert done.returncode == 0, done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '-c', 'set -euo pipefail
+E         source /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57...ost recent call last):
+E           File "<string>", line 3, in <module>
+E         ModuleNotFoundError: No module named \'_port_lock\'
+E         ')
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/bin/bash', '-c', 'set -euo pipefail\nsource /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57...ost recent call last):\n  File "<string>", line 3, in <module>\nModuleNotFoundError: No module named \'_port_lock\'\n').returncode
+
+tests_scripts/test_port_lock.py:441: AssertionError
+________ test_a_bash_child_of_a_cpython_holder_passes_without_retaking _________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9780/test_a_bash_child_of_a_cpython0')
+
+    def test_a_bash_child_of_a_cpython_holder_passes_without_retaking(tmp_path: Path) -> None:
+        bash_child = ["/bin/bash", "-c", _script("port_lock_take 53 bash-child", "echo child-took")]
+        done = subprocess.run(_py("53", "py-parent", *bash_child), env=_env(tmp_path), capture_output=True, text=True, check=False, timeout=30)
+>       assert done.returncode == 0, done
+E       AssertionError: CompletedProcess(args=['/home/user/sensors/.venv/bin/python', '-I', '-c', 'import os, subprocess, sys
+E         sys.path.insert...ost recent call last):
+E           File "<string>", line 3, in <module>
+E         ModuleNotFoundError: No module named \'_port_lock\'
+E         ')
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/home/user/sensors/.venv/bin/python', '-I', '-c', 'import os, subprocess, sys\nsys.path.insert...ost recent call last):\n  File "<string>", line 3, in <module>\nModuleNotFoundError: No module named \'_port_lock\'\n').returncode
+
+tests_scripts/test_port_lock.py:450: AssertionError
+___ test_a_cpython_holder_interrupted_releases_and_one_killed_is_taken_over ____
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9780/test_a_cpython_holder_interrup0')
+
+    def test_a_cpython_holder_interrupted_releases_and_one_killed_is_taken_over(tmp_path: Path) -> None:
+>       with _py_holder(tmp_path, 53, "py-holder") as (holder, _):
+
+tests_scripts/test_port_lock.py:483: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.11/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+runtime_dir = PosixPath('/tmp/pytest-of-root/pytest-9780/test_a_cpython_holder_interrup0')
+port = 53, runner = 'py-holder'
+
+    @contextmanager
+    def _py_holder(runtime_dir: Path, port: int, runner: str) -> Iterator[tuple[subprocess.Popen[str], int]]:
+        proc = subprocess.Popen(_py(str(port), runner), env=_env(runtime_dir), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            assert proc.stdout is not None
+            line = proc.stdout.readline()
+>           assert line.startswith("took "), f"the CPython holder did not take {port}: {line!r} {proc.stderr.read() if proc.stderr else ''}"
+E           AssertionError: the CPython holder did not take 53: '' Traceback (most recent call last):
+E               File "<string>", line 3, in <module>
+E             ModuleNotFoundError: No module named '_port_lock'
+E             
+E           assert False
+E            +  where False = <built-in method startswith of str object at 0xa314a0>('took ')
+E            +    where <built-in method startswith of str object at 0xa314a0> = ''.startswith
+
+tests_scripts/test_port_lock.py:135: AssertionError
+_________ test_bash_and_cpython_takers_racing_leave_exactly_one_holder _________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9780/test_bash_and_cpython_takers_r0')
+
+    def test_bash_and_cpython_takers_racing_leave_exactly_one_holder(tmp_path: Path) -> None:
+        racers = [_start_holder(tmp_path, (53,), f"bash-{n}") for n in range(_RACERS // 2)]
+        racers += [subprocess.Popen(_py("53", f"py-{n}"), env=_env(tmp_path), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for n in range(_RACERS // 2)]
+        try:
+            deadline = time.monotonic() + 20
+            while sum(proc.poll() is None for proc in racers) > 1 and time.monotonic() < deadline:
+                time.sleep(0.05)
+            alive = [proc for proc in racers if proc.poll() is None]
+            assert len(alive) == 1, f"{len(alive)} racers hold port 53 at once"
+            assert alive[0].stdout is not None
+            took = alive[0].stdout.readline().split()
+            assert took[0] == "took", took
+            holder_runner = _recorded(tmp_path, 53)[1]
+            for proc in racers:
+                if proc is not alive[0]:
+>                   assert (proc.returncode, proc.stderr.read().strip() if proc.stderr else "") == (1, _held(53, holder_runner, int(took[1])))
+E                   assert (1, "Tracebac...'_port_lock'") == (1, 'port 53 ... (CLAUDE.md)')
+E                     
+E                     At index 1 diff: 'Traceback (most recent call last):\n  File "<string>", line 3, in <module>\nModuleNotFoundError: No module named \'_port_lock\'' != 'port 53 is held by bash-0 (pid 15494) - run the suites one after the other (CLAUDE.md)'
+E                     Use -v to get more diff
+
+tests_scripts/test_port_lock.py:509: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_port_lock.py::test_a_bash_runner_refuses_a_port_the_cpython_reader_holds
+FAILED tests_scripts/test_port_lock.py::test_a_cpython_child_of_a_bash_holder_passes_without_retaking
+FAILED tests_scripts/test_port_lock.py::test_a_bash_child_of_a_cpython_holder_passes_without_retaking
+FAILED tests_scripts/test_port_lock.py::test_a_cpython_holder_interrupted_releases_and_one_killed_is_taken_over
+FAILED tests_scripts/test_port_lock.py::test_bash_and_cpython_takers_racing_leave_exactly_one_holder
+ERROR tests_scripts/test_port_lock.py::test_the_cpython_reader_refuses_a_port_a_bash_runner_holds
+ERROR tests_scripts/test_port_lock.py::test_the_cpython_reader_takes_over_a_dead_holders_lock_and_chains_while_it_holds
+ERROR tests_scripts/test_port_lock.py::test_a_lock_left_without_a_pid_is_taken_over_by_the_cpython_reader
+ERROR tests_scripts/test_port_lock.py::test_the_cpython_reader_refuses_an_unrelated_holder_whatever_chain_it_inherited[port-not-listed]
+ERROR tests_scripts/test_port_lock.py::test_the_cpython_reader_refuses_an_unrelated_holder_whatever_chain_it_inherited[holder-not-an-ancestor]
+ERROR tests_scripts/test_port_lock.py::test_a_nested_take_is_re_entrant_and_only_the_outer_release_removes_the_lock
+ERROR tests_scripts/test_port_lock.py::test_the_cpython_reader_releases_only_a_lock_it_still_holds
+ERROR tests_scripts/test_port_lock.py::test_a_malformed_cpython_take_is_refused_before_touching_the_root[zero]
+ERROR tests_scripts/test_port_lock.py::test_a_malformed_cpython_take_is_refused_before_touching_the_root[too-high]
+ERROR tests_scripts/test_port_lock.py::test_a_malformed_cpython_take_is_refused_before_touching_the_root[a-bool]
+ERROR tests_scripts/test_port_lock.py::test_a_malformed_cpython_take_is_refused_before_touching_the_root[no-runner]
+ERROR tests_scripts/test_port_lock.py::test_a_cpython_take_on_a_missing_lock_root_is_refused_naming_it
+5 failed, 27 passed, 12 errors in 4.04s

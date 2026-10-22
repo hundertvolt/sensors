@@ -1,0 +1,25 @@
+flag = ['true']
+
+    @pytest.mark.parametrize("flag", ["yes", 1, 0, ["true"]])
+    def test_a_bench_flag_that_is_no_bool_is_rejected(tmp_path: Path, src_dir: Path, flag: "TomlValue") -> None:
+        doc = base_doc()
+        table_at(doc, "device")["bench"] = flag
+>       with pytest.raises(BuildError, match=r"\[device\]\.bench must be true or false") as info:
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: '\\[device\\]\\.bench must be true or false'
+E         Actual message: "[fixture.bench] [device] declares unrecognized field(s) ['bench'] - typo, or copy-pasted from an unrelated table? - fix: remove or correct ['bench']"
+
+tests_scripts/test_buildgen_validate.py:629: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_bench_device.py::test_exactly_one_device_toml_names_the_bench_board
+FAILED tests_scripts/test_bench_device.py::test_both_readers_name_the_flagged_device
+FAILED tests_scripts/test_bench_device.py::test_none_or_several_flagged_tomls_are_refused_naming_the_files[none]
+FAILED tests_scripts/test_bench_device.py::test_none_or_several_flagged_tomls_are_refused_naming_the_files[two]
+FAILED tests_scripts/test_bench_device.py::test_the_environment_override_names_an_existing_device_or_is_refused
+FAILED tests_scripts/test_bench_device.py::test_the_build_refuses_a_bench_flag_that_is_no_bool
+FAILED tests_scripts/test_buildgen_validate.py::test_device_bench_flag_is_accepted_and_emitted_nowhere
+FAILED tests_scripts/test_buildgen_validate.py::test_a_bench_flag_that_is_no_bool_is_rejected[yes]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_bench_flag_that_is_no_bool_is_rejected[1]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_bench_flag_that_is_no_bool_is_rejected[0]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_bench_flag_that_is_no_bool_is_rejected[flag3]
+11 failed, 398 deselected in 1.02s

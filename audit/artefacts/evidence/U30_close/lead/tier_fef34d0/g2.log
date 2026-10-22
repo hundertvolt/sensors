@@ -1,0 +1,101 @@
+........................................................................ [  8%]
+........................................................................ [ 16%]
+........................................................................ [ 24%]
+........................................................................ [ 32%]
+........................................................................ [ 40%]
+........................................................................ [ 48%]
+........................................................................ [ 56%]
+........................................................................ [ 64%]
+........................................................................ [ 72%]
+F..F.................................................................... [ 80%]
+........................................................................ [ 89%]
+..................................................................F..... [ 97%]
+.........................                                                [100%]
+=================================== FAILURES ===================================
+_ test_each_runner_refuses_a_port_a_live_process_holds_before_touching_anything[run_unix_port_integration.sh-53] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11458/test_each_runner_refuses_a_por3')
+runner = 'scripts/run_unix_port_integration.sh', port = 53
+
+    @pytest.mark.parametrize(("runner", "port"), _RUNNER_PORTS, ids=[f"{Path(r).name}-{p}" for r, p in _RUNNER_PORTS])
+    def test_each_runner_refuses_a_port_a_live_process_holds_before_touching_anything(tmp_path: Path, runner: str, port: int) -> None:
+        with _other_process() as other:
+            (tmp_path / "runtime").mkdir()
+            _plant(tmp_path / "runtime", port, other, "other-runner")
+            done, root, calls = _run_runner(tmp_path, runner)
+>           assert (done.returncode, done.stderr.strip().splitlines()[-1:]) == (1, [_held(port, "other-runner", other)]), done.stderr
+E           AssertionError: realpath: digital_twin/run_generic_integration.py: No such file or directory
+E             
+E           assert (1, ['realpat...r directory']) == (1, ['port 53...(CLAUDE.md)'])
+E             
+E             At index 1 diff: ['realpath: digital_twin/run_generic_integration.py: No such file or directory'] != ['port 53 is held by other-runner (pid 650) - run the suites one after the other (CLAUDE.md)']
+E             Use -v to get more diff
+
+tests_scripts/test_port_lock.py:391: AssertionError
+_ test_each_runner_holds_its_ports_past_the_lock_and_releases_them_on_exit[scripts/run_unix_port_integration.sh] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11458/test_each_runner_holds_its_por2')
+runner = 'scripts/run_unix_port_integration.sh'
+
+    @pytest.mark.parametrize("runner", list(_RUNNERS))
+    def test_each_runner_holds_its_ports_past_the_lock_and_releases_them_on_exit(tmp_path: Path, runner: str) -> None:
+        # The stub uv fails the first step past the locks: an abort under set -e.
+        done, _, calls = _run_runner(tmp_path, runner)
+        assert done.returncode == 1, done.stderr
+        held = " ".join(sorted(f"sensors-port-{port}.lock" for port in _RUNNERS[runner][1]))
+>       first = calls.read_text(encoding="utf-8").splitlines()[0]
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_port_lock.py:403: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.11/pathlib.py:1058: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/tmp/pytest-of-root/pytest-11458/test_each_runner_holds_its_por2/uv.calls')
+mode = 'r', buffering = -1, encoding = 'utf-8', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: '/tmp/pytest-of-root/pytest-11458/test_each_runner_holds_its_por2/uv.calls'
+
+/usr/lib/python3.11/pathlib.py:1044: FileNotFoundError
+_ test_a_held_port_53_fails_a_twin_runner_at_once_naming_it_before_any_tool_runs[scripts/run_unix_port_integration.sh-args1] _
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-11458/test_a_held_port_53_fails_a_tw1/repo')
+runner = 'scripts/run_unix_port_integration.sh', args = ('--device', 'arzi')
+
+    @pytest.mark.parametrize(("runner", "args"), [(_RUNNER, (DEVICE_NAMES[0],)), ("scripts/run_unix_port_integration.sh", ("--device", DEVICE_NAMES[0]))])
+    def test_a_held_port_53_fails_a_twin_runner_at_once_naming_it_before_any_tool_runs(sandbox: Path, runner: str, args: "tuple[str, ...]") -> None:
+        holder = subprocess.Popen(["sleep", "60"])  # coreutils sleep, the stand-in holder's process
+        lock = sandbox / "runtime" / "sensors-port-53.lock"
+        lock.mkdir()
+        (lock / "runner").write_text("another suite\n", encoding="utf-8")
+        (lock / "pid").write_text(f"{holder.pid}\n", encoding="utf-8")
+        try:
+            done, calls = _run(sandbox, *args, runner=runner)
+        finally:
+            holder.kill()
+            holder.wait()
+        assert (done.returncode, calls) == (1, []), (done.stderr, calls)
+>       assert "port 53 is held by another suite" in done.stderr, done.stderr
+E       AssertionError: realpath: digital_twin/run_generic_integration.py: No such file or directory
+E         
+E       assert 'port 53 is held by another suite' in 'realpath: digital_twin/run_generic_integration.py: No such file or directory\n'
+E        +  where 'realpath: digital_twin/run_generic_integration.py: No such file or directory\n' = CompletedProcess(args=['/bin/bash', '/tmp/pytest-of-root/pytest-11458/test_a_held_port_53_fails_a_tw1/repo/scripts/run...zi'], returncode=1, stdout='', stderr='realpath: digital_twin/run_generic_integration.py: No such file or directory\n').stderr
+
+tests_scripts/test_run_digital_twin_ci_sh.py:184: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_port_lock.py::test_each_runner_refuses_a_port_a_live_process_holds_before_touching_anything[run_unix_port_integration.sh-53]
+FAILED tests_scripts/test_port_lock.py::test_each_runner_holds_its_ports_past_the_lock_and_releases_them_on_exit[scripts/run_unix_port_integration.sh]
+FAILED tests_scripts/test_run_digital_twin_ci_sh.py::test_a_held_port_53_fails_a_twin_runner_at_once_naming_it_before_any_tool_runs[scripts/run_unix_port_integration.sh-args1]
+3 failed, 886 passed in 106.82s (0:01:46)

@@ -1,0 +1,23 @@
+U19 lane B: WIP B1 - HourlyWindowCounter, and the config GET under the module's write lock with the unavailable marker
+
+- src/asy_base_classes.py: HourlyWindowCounter (24 hourly bins, plain add(now_s)/total(now_s)/reset(),
+  COUNTER_CAP saturation, no clock, no lock, no allocation per call) beside the shared scalars, named in
+  the module header; SensorReader._get_dict_cfg() runs under self._set_lock and sends
+  {name: {"error": "unavailable"}} in place of the map when _get_mgr_cfg() raises or returns None (the
+  callback then not awaited) or the callback raises or returns None; each path keeps its own entry.
+  Callback type Callable[[], Awaitable[dict[str, CfgValue] | None]].
+- tests/test_asy_base_classes.py: the three _get_dict_cfg failure-path tests inverted to the marker
+  (renamed), plus test_a_config_get_waits_for_the_modules_write_lock; all four seen failing first.
+
+Tests outside lane B's files that the marker turns red (an invalid store before or after a failed
+setup now answers the marker, by the contract):
+- tests/test_asy_ntp_client.py:388 test_get_dict_cfg_returns_all_none_values_when_config_manager_is_invalid (assert :391-399, reported at :398)
+- tests/test_asy_wifi_service.py:748 (assert :756) test_get_dict_cfg_returns_all_none_values_when_config_manager_is_invalid
+- tests/test_readiness_gates.py:289 test_notification_service_answers_before_and_after_a_failed_setup (assert :299, predicate :294)
+- tests/test_readiness_gates.py:307 test_wifi_service_answers_before_and_after_a_failed_setup (:319 via :313, KeyError SSID)
+Whole-tree: tests_scripts/test_fault_or_warning_never_both.py's _ALLOWED row
+(asy_base_classes.py, _get_dict_cfg, E CFG_GET_RAISED, W CALLBACK_KEYS) no longer occurs (G, A-9).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8
+

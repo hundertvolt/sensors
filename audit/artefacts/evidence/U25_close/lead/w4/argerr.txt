@@ -1,0 +1,1 @@
+usage: scripts/run_digital_twin_ci.sh <device> [--gc-threshold -1|32768] [--part suite|harness]

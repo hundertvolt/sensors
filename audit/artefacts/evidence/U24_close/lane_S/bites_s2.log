@@ -1,0 +1,37 @@
+== bite interim-trap-gone (scripts/test.sh)
+FAILED tests_scripts/test_port_lock.py::test_each_runner_holds_its_ports_past_the_lock_and_releases_them_on_exit[scripts/test.sh]
+1 failed, 26 passed in 3.76s
+== bite lock-after-sweeps (scripts/test.sh)
+FAILED tests_scripts/test_port_lock.py::test_each_runner_refuses_a_port_a_live_process_holds_before_touching_anything[test.sh-53]
+1 failed, 26 passed in 3.61s
+== bite no-18080 (scripts/run_digital_twin_ci.sh)
+FAILED tests_scripts/test_port_lock.py::test_each_runner_refuses_a_port_a_live_process_holds_before_touching_anything[run_digital_twin_ci.sh-18080]
+FAILED tests_scripts/test_port_lock.py::test_each_runner_holds_its_ports_past_the_lock_and_releases_them_on_exit[scripts/run_digital_twin_ci.sh]
+2 failed, 25 passed in 4.09s
+== bite zz-test-listed (scripts/run_unix_port_integration.sh)
+FAILED tests_scripts/test_run_unix_port_integration_sh.py::test_a_missing_or_unknown_device_exits_2_naming_the_valid_ones_and_runs_nothing[none]
+FAILED tests_scripts/test_run_unix_port_integration_sh.py::test_a_missing_or_unknown_device_exits_2_naming_the_valid_ones_and_runs_nothing[only-forwarded-flags]
+FAILED tests_scripts/test_run_unix_port_integration_sh.py::test_a_missing_or_unknown_device_exits_2_naming_the_valid_ones_and_runs_nothing[flag-without-value]
+FAILED tests_scripts/test_run_unix_port_integration_sh.py::test_a_missing_or_unknown_device_exits_2_naming_the_valid_ones_and_runs_nothing[empty-value]
+FAILED tests_scripts/test_run_unix_port_integration_sh.py::test_a_missing_or_unknown_device_exits_2_naming_the_valid_ones_and_runs_nothing[unknown]
+FAILED tests_scripts/test_run_unix_port_integration_sh.py::test_a_missing_or_unknown_device_exits_2_naming_the_valid_ones_and_runs_nothing[reserved-fixture]
+6 failed, 1 passed in 0.32s
+== bite device-not-checked (scripts/run_unix_port_integration.sh)
+FAILED tests_scripts/test_run_unix_port_integration_sh.py::test_a_missing_or_unknown_device_exits_2_naming_the_valid_ones_and_runs_nothing[unknown]
+FAILED tests_scripts/test_run_unix_port_integration_sh.py::test_a_missing_or_unknown_device_exits_2_naming_the_valid_ones_and_runs_nothing[reserved-fixture]
+2 failed, 5 passed in 0.33s
+== bite host-render-unguarded (scripts/test.sh)
+        # the caller cannot tell from a failed test - so the split above would be unreachable.
+>           assert line.rstrip().endswith("|| coverage_render_failed=1"), f"unguarded renderer call: {line.strip()}"
+E            +  where False = <built-in method endswith of str object at 0x7f447c9fe3a0>('|| coverage_render_failed=1')
+__________ test_a_failed_new_render_alone_exits_three[coverage html] ___________
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8089/test_a_failed_new_render_alone1')
+    def test_a_failed_new_render_alone_exits_three(repo_root: Path, tmp_path: Path, failing: str) -> None:
+FAILED tests_scripts/test_test_sh.py::test_a_renderer_failure_alone_exits_three_rather_than_one
+FAILED tests_scripts/test_test_sh.py::test_a_test_failure_outranks_a_renderer_failure
+FAILED tests_scripts/test_test_sh.py::test_every_report_render_tolerates_its_own_failure
+FAILED tests_scripts/test_test_sh.py::test_a_failed_new_render_alone_exits_three[coverage html]
+4 failed, 116 passed in 27.96s
+== bite xml-always (scripts/_render_coverage.py)
+FAILED tests_scripts/test_render_coverage_anchors.py::test_a_render_given_no_xml_file_writes_html_and_markdown_only
+1 failed, 1 passed in 0.13s

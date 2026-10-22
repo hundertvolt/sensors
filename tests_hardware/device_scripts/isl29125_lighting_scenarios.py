@@ -1,16 +1,19 @@
-"""Resilience proof: the ISL29125 under recombined realistic lighting - colours and mixtures,
-sunrise-slow to flash-instant, arbitrary start and end levels, holds, threshold oscillation, and a
-constant ambient under a moving channel. Structural assertions only, never absolute lux."""
+"""Resilience proof: the ISL29125 under recombined realistic lighting - colours and mixtures, sunrise-slow to
+flash-instant, arbitrary start and end levels, holds, threshold oscillation and a constant ambient under a moving
+channel. Reports each scenario's figures and its log; the host gives the verdict, never on absolute lux."""
 
 import asyncio
 import time
 
-import machine
 from machine import Pin
 from neopixel import NeoPixel
 
 import asy_i2c_driver
 from asy_isl29125_driver import ISL29125, ISL29125_Reader
+
+# @include _shared/facts.py
+# @include _shared/watchdog.py
+# @include _shared/isl_error_log.py
 
 try:
     from typing import TYPE_CHECKING
@@ -18,112 +21,49 @@ except ImportError:  # typing has no runtime presence on MicroPython
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from print_log import ErrorLog
+    import machine
+    from _shared.facts import done, errors, fact
+    from _shared.isl_error_log import log_record
+    from _shared.watchdog import arm, fed_sleep_ms
+    from bench_facts import BenchFacts
 
-# The NeoPixel is driven RAW on purpose: NeopixelDriver offers a steady white and a 0->peak->0
-# triangle, neither of which can express an arbitrary start, end, pause, step or per-channel
-# waveform. Nothing else contends for the pixel in an isolated run, so no arbitration is bypassed.
-_PIN_PIXEL = 18
-# Measured on the covered rig: rising, the low range holds to level 6 (~197 lx) and the high takes
-# over at level 8 (~300 lx); falling, high holds to level 3 (~112 lx) and low takes back at level 2
-# (~76 lx). So levels 2..8 sit INSIDE the hysteresis band and cannot force a switch either way.
+BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
+
+# The NeoPixel is driven raw on purpose: NeopixelDriver's steady white and 0->peak->0 triangle cannot express an
+# arbitrary start, end, pause, step or per-channel waveform; nothing else contends for the pixel in an isolated run.
+
+# Measured on the covered rig: the low range holds rising to level 6 (~197 lx), the high takes over at 8 (~300 lx);
+# falling, high holds to 3 (~112 lx), low takes back at 2 (~76 lx) - levels 2..8 sit inside the hysteresis band.
 _BAND_BELOW = 1  # comfortably under the falling edge
 _BAND_ABOVE = 12  # comfortably over the rising edge
-_SWITCH_HOLD_S = 8.0  # the derived 2 cycles + settle + a 1s sample interval, with margin
-_STEP_MS = 100  # light-program update period; a "step" shape lands inside one of these
+# @tunable l3.isl29125_lighting_scenarios_switch_hold_s = 8.0
+_SWITCH_HOLD_S = 8.0  # the derived 2 cycles + settle + a 1 s sample interval, with margin
+# @tunable l3.isl29125_lighting_scenarios_sample_ms = 300
 _SAMPLE_MS = 300  # reader polling; the reader itself produces a fresh sample about once a second
+# @tunable l3.isl29125_lighting_scenarios_settle_s = 4.0
 _SETTLE_S = 4.0
-_MAX_SAMPLE_GAP_S = 8.0  # a longer stall means the read chain died, not that light moved slowly
+# @tunable l3.isl29125_lighting_scenarios_max_sample_gap_s = 8.0
+_MAX_SAMPLE_GAP_S = 8.0  # a longer stall means the read chain died, not that the light moved slowly
 _BASELINE_LEVEL = 20
-_BASELINE_TOL = 0.35  # return-to-baseline: same light must read the same after ANY scenario
+# @tunable l3.isl29125_lighting_scenarios_baseline_tol = 0.35
+_BASELINE_TOL = 0.35  # return-to-baseline: the same light must read the same after any scenario
+# @tunable l3.isl29125_lighting_scenarios_park_stable_samples = 3
 _PARK_STABLE_SAMPLES = 3  # consecutive same-range samples that count as "the entry range has settled"
+# @tunable l3.isl29125_lighting_scenarios_park_timeout_s = 20.0
 _PARK_TIMEOUT_S = 20.0
-
-failures: "list[str]" = []
-notes: "list[str]" = []
-w13_seen: "list[str]" = []  # scenarios during which the driver's cross-scenario W13 run-of-five surfaced
-
-
-def check(condition: object, message: str) -> None:
-    if not condition:
-        failures.append(message)
-
-
-def _lerp(start: "tuple[int, int, int]", end: "tuple[int, int, int]", frac: float) -> "tuple[int, int, int]":
-    return (
-        int(start[0] + (end[0] - start[0]) * frac),
-        int(start[1] + (end[1] - start[1]) * frac),
-        int(start[2] + (end[2] - start[2]) * frac),
-    )
+# @tunable l3.isl29125_lighting_scenarios_min_samples = 3
+_MIN_SAMPLES = 3
+# @tunable l3.isl29125_lighting_scenarios_min_span_ratio = 100.0
+_MIN_SPAN_RATIO = 100.0
+# Five periodic-path range decisions in a row raise ISL_PERIODIC_ONLY: fewer switches than that in a run could not.
+# @tunable isl29125.periodic_only_warn_at = 5
+_PERIODIC_ONLY_WARN_AT = 5
+W_ISL_PERIODIC_ONLY = 32  # buildgen/error_catalog.json: five range decisions by the periodic path only
+_FAILURES_KEPT = 12  # the per-sample invariant failures kept beside their total
 
 
-class Rig:
-    """Owns the pixel and the reader, and keeps the running per-sample verdict for one scenario."""
-
-    def __init__(self, pixel: NeoPixel, reader: ISL29125_Reader, wdt: machine.WDT) -> None:
-        self.pixel = pixel
-        self.reader = reader
-        self.wdt = wdt
-        self.rgb = (0, 0, 0)
-        self.samples = 0
-        self.switches = 0
-        self.total_switches = 0  # across every scenario - reset_scenario() deliberately leaves it alone
-        self.ranges_used: list[int] = []
-        self.last_range: int | None = None
-        self.last_ts: object = None
-        self.last_sample_ms = time.ticks_ms()
-        self.max_gap_ms = 0
-        self.lux_min = 1e9
-        self.lux_max = -1.0
-        self.label = ""
-
-    def write(self, rgb: "tuple[int, int, int]") -> None:
-        self.rgb = rgb
-        self.pixel[0] = rgb
-        self.pixel.write()
-
-    def reset_scenario(self, label: str) -> None:
-        self.label = label
-        self.samples = 0
-        self.switches = 0
-        self.ranges_used = []
-        self.last_range = None
-        self.max_gap_ms = 0
-        self.lux_min, self.lux_max = 1e9, -1.0
-        self.last_sample_ms = time.ticks_ms()
-
-    def observe(self, data: ISL29125) -> None:
-        """Per-sample invariants, checked as the sample arrives - no full trace is retained, so
-        memory stays flat however long a scenario runs (SPECIFICATION.md Part I)."""
-        if data.Lux is None or data.TS is None or self.last_ts == data.TS:
-            return
-        self.last_ts = data.TS
-        self.samples += 1
-        now = time.ticks_ms()
-        gap = time.ticks_diff(now, self.last_sample_ms)
-        self.max_gap_ms = max(self.max_gap_ms, gap)
-        self.last_sample_ms = now
-        self.lux_min = min(self.lux_min, data.Lux)
-        self.lux_max = max(self.lux_max, data.Lux)
-        label = f"{self.label}@rgb{self.rgb}"
-        check(data.Lux >= 0.0, f"{label}: Lux={data.Lux!r} is negative")
-        check(data.RangeAct in (375, 10000), f"{label}: RangeAct={data.RangeAct!r} is neither real range")
-        for name, value in (("Red", data.Red), ("Green", data.Green), ("Blue", data.Blue), ("Bri", data.Bri), ("Sat", data.Sat)):
-            check(value is not None and 0.0 <= value <= 1.0, f"{label}: {name}={value!r} outside the normalised 0-1 domain")
-        check(data.Hue is not None and 0.0 <= data.Hue < 360.0, f"{label}: Hue={data.Hue!r} outside [0, 360)")
-        if data.Red is not None and data.Green is not None and data.Blue is not None and data.Bri is not None:
-            peak = max(data.Red, data.Green, data.Blue)
-            check(abs(data.Bri - peak) <= 1e-6, f"{label}: Bri={data.Bri!r} != max(R,G,B)={peak!r}")
-        if data.RangeAct is not None and data.RangeAct not in self.ranges_used:
-            self.ranges_used.append(data.RangeAct)
-        if self.last_range is not None and data.RangeAct != self.last_range:
-            self.switches += 1
-            self.total_switches += 1
-        self.last_range = data.RangeAct
-
-
-async def _drive(rig: Rig, segments: "list[tuple[str, tuple[int, int, int], tuple[int, int, int], float]]") -> None:
-    """Runs one light program while sampling continuously. shape is step | ramp | hold."""
+async def _drive(rig: "Rig", segments: "list[tuple[str, tuple[int, int, int], tuple[int, int, int], float]]") -> None:
+    # Runs one light program while sampling continuously. shape is step | ramp | hold.
     for shape, start, end, duration_s in segments:
         total_ms = int(duration_s * 1000)
         if shape == "step":
@@ -136,103 +76,131 @@ async def _drive(rig: Rig, segments: "list[tuple[str, tuple[int, int, int], tupl
             if shape == "ramp":
                 rig.write(_lerp(start, end, min(1.0, elapsed / total_ms)))
             rig.observe(await rig.reader.get_data())
-            rig.wdt.feed()
-            await asyncio.sleep_ms(_SAMPLE_MS)
+            await fed_sleep_ms(rig.wdt, _SAMPLE_MS)
             elapsed = time.ticks_diff(time.ticks_ms(), begin)
         if shape == "ramp":
             rig.write(end)
 
 
+class Rig:
+    # Owns the pixel and the reader and keeps one scenario's running figures. A new sample is a newly stored reading
+    # (object identity, never the 1 s TS); a range switch is any change of RangeAct between two polls.
+
+    def __init__(self, pixel: NeoPixel, reader: ISL29125_Reader, wdt: "machine.WDT") -> None:
+        self._pixel = pixel
+        self.reader = reader
+        self.wdt = wdt
+        self.rgb = (0, 0, 0)
+        self.failures_total = 0
+        self.failures_first: list[str] = []
+        self.total_switches = 0  # across every scenario: reset_scenario() leaves it alone
+        self.last_data: object = None
+        self.last_range: int | None = None
+        # One scenario's figures, typed here and set by reset_scenario().
+        self.label = ""
+        self.samples = self.switches = self.max_gap_ms = 0
+        self.ranges_used: list[int] = []
+        self.lux_min = self.lux_max = 0.0
+        self.last_sample_ms = time.ticks_ms()
+        self.reset_scenario("")
+
+    def check(self, condition: object, message: str) -> None:
+        if not condition:
+            self.failures_total += 1
+            if len(self.failures_first) < _FAILURES_KEPT:
+                self.failures_first.append(message)
+
+    def observe(self, data: ISL29125) -> None:
+        # Per-poll range transitions and per-sample invariants, kept as figures: memory stays flat however long a
+        # scenario runs (SPECIFICATION.md Part I).
+        if data.RangeAct is not None:
+            if self.last_range is not None and data.RangeAct != self.last_range:
+                self.switches += 1
+                self.total_switches += 1
+            self.last_range = data.RangeAct
+            if data.RangeAct not in self.ranges_used:
+                self.ranges_used.append(data.RangeAct)
+        if data.Lux is None or data is self.last_data:
+            return
+        self.last_data = data
+        self.samples += 1
+        now = time.ticks_ms()
+        self.max_gap_ms = max(self.max_gap_ms, time.ticks_diff(now, self.last_sample_ms))
+        self.last_sample_ms = now
+        self.lux_min = min(self.lux_min, data.Lux)
+        self.lux_max = max(self.lux_max, data.Lux)
+        label = f"{self.label}@rgb{self.rgb}"
+        self.check(data.Lux >= 0.0, f"{label}: Lux={data.Lux!r} is negative")
+        self.check(data.RangeAct in (375, 10000), f"{label}: RangeAct={data.RangeAct!r} is neither real range")
+        for name, value in (("Red", data.Red), ("Green", data.Green), ("Blue", data.Blue), ("Bri", data.Bri), ("Sat", data.Sat)):
+            self.check(value is not None and 0.0 <= value <= 1.0, f"{label}: {name}={value!r} outside the normalised 0-1 domain")
+        self.check(data.Hue is not None and 0.0 <= data.Hue < 360.0, f"{label}: Hue={data.Hue!r} outside [0, 360)")
+        if data.Red is not None and data.Green is not None and data.Blue is not None and data.Bri is not None:
+            peak = max(data.Red, data.Green, data.Blue)
+            self.check(abs(data.Bri - peak) <= 1e-6, f"{label}: Bri={data.Bri!r} != max(R,G,B)={peak!r}")
+
+    def reset_scenario(self, label: str) -> None:
+        self.label = label
+        self.samples = 0
+        self.switches = 0
+        self.ranges_used = []
+        self.max_gap_ms = 0
+        self.lux_min, self.lux_max = 1e9, -1.0
+        self.last_sample_ms = time.ticks_ms()
+
+    def write(self, rgb: "tuple[int, int, int]") -> None:
+        self.rgb = rgb
+        self._pixel[0] = rgb
+        self._pixel.write()
+
+
+def _lerp(start: "tuple[int, int, int]", end: "tuple[int, int, int]", frac: float) -> "tuple[int, int, int]":
+    return (
+        int(start[0] + (end[0] - start[0]) * frac),
+        int(start[1] + (end[1] - start[1]) * frac),
+        int(start[2] + (end[2] - start[2]) * frac),
+    )
+
+
 async def _park(rig: Rig, rgb: "tuple[int, int, int]") -> bool:
-    """Forces the entry range before a scenario starts counting; False if it never settled on one.
-    Deliberately NOT rig.observe(): a switch caused by getting INTO position is not the scenario's
-    own behaviour and must not land in its switch budget - the bug this closes."""
+    # The entry range before a scenario starts counting; False if it never settled on one. Not rig.observe(): a switch
+    # made getting into position is not the scenario's own and must not land in its switch budget.
     rig.write(rgb)
     last: int | None = None
+    seen: object = None
     run = 0
     deadline = time.ticks_add(time.ticks_ms(), int(_PARK_TIMEOUT_S * 1000))
-    last_ts = None
     while time.ticks_diff(deadline, time.ticks_ms()) > 0:
         data = await rig.reader.get_data()
-        if data.RangeAct is not None and data.TS is not None and last_ts != data.TS:
-            last_ts = data.TS
+        if data.RangeAct is not None and data is not seen:
+            seen = data
             run = run + 1 if data.RangeAct == last else 1
             last = data.RangeAct
             if run >= _PARK_STABLE_SAMPLES:
-                rig.last_ts = data.TS  # observe() skips stale timestamps; don't re-count this one
+                rig.last_data, rig.last_range = data, data.RangeAct  # observe() starts from here
                 return True
-        rig.wdt.feed()
-        await asyncio.sleep_ms(_SAMPLE_MS)
+        await fed_sleep_ms(rig.wdt, _SAMPLE_MS)
     return False
 
 
-async def _settled(rig: Rig, rgb: "tuple[int, int, int]") -> "ISL29125 | None":
-    """Parks at one colour, waits out the settle, and returns one fresh sample."""
-    rig.write(rgb)
-    begin = time.ticks_ms()
-    while time.ticks_diff(time.ticks_ms(), begin) < int(_SETTLE_S * 1000):
-        rig.observe(await rig.reader.get_data())
-        rig.wdt.feed()
-        await asyncio.sleep_ms(_SAMPLE_MS)
-    data = await rig.reader.get_data()
-    return data if data.Lux is not None else None
-
-
-def _log_entries(counters: "ErrorLog") -> "list[tuple[str, int]]":
-    entry = counters.get("ISL29125")
-    if entry is None:
-        return []
-    types, nums = entry["ErrType"], entry["ErrNum"]
-    return [(types[i], nums[i]) for i in range(min(len(types), len(nums)))]
-
-
-async def _run_scenario(rig: Rig, spec: "tuple[str, tuple[int, int, int], list[tuple[str, tuple[int, int, int], tuple[int, int, int], float]], int, int, bool]") -> None:
+async def _run_scenario(rig: Rig, spec: "tuple[str, tuple[int, int, int], list[tuple[str, tuple[int, int, int], tuple[int, int, int], float]], int, int, bool]") -> "dict[str, object]":
+    # One scenario from a range it chose (inside the band either range is stable), its figures and its own log.
     name, entry, segments, min_switches, max_switches, both_ranges = spec
-    # Every scenario starts from a range it CHOSE, not whichever one _baseline()'s level-20 light
-    # left behind - inside the hysteresis band either range is stable, so a scenario declares the
-    # light that forces the one it wants and this proves the part actually got there.
-    check(await _park(rig, entry), f"{name}: the entry light {entry} never settled on one range within {_PARK_TIMEOUT_S:.0f}s - the scenario's starting range is undefined")
+    parked = await _park(rig, entry)
     rig.reset_scenario(name)
     await rig.reader.reset_error_counter()
     await _drive(rig, segments)
-    entries = _log_entries(await rig.reader.get_error_counter())
-    errors = [pair for pair in entries if pair[0] == "E"]
-    check(not errors, f"{name}: the module logged real ERRORS: {errors}")
-    # W13 needs five periodic-path range decisions in a row, and that run lives in driver state
-    # (_periodic_only_switches) which reset_error_counter() does not touch - so it can span
-    # scenarios, and blaming the one it surfaces in would be arbitrary. Asserted once per run.
-    if ("W", 13) in entries:
-        w13_seen.append(name)
-    check(rig.samples >= 3, f"{name}: only {rig.samples} samples arrived - the read chain stalled")
-    check(rig.max_gap_ms <= int(_MAX_SAMPLE_GAP_S * 1000), f"{name}: {rig.max_gap_ms}ms between samples - the read chain stalled mid-scenario")
-    check(rig.switches <= max_switches, f"{name}: {rig.switches} range switches (limit {max_switches}) - chattering")
-    # The other half, and the one a passing run can otherwise hide: a scenario built to exercise
-    # the range switch must ACTUALLY have exercised it, or it proved nothing.
-    check(rig.switches >= min_switches, f"{name}: only {rig.switches} range switches, expected at least {min_switches} - the scenario never engaged the mechanism it targets")
-    if both_ranges:
-        check(len(rig.ranges_used) == 2, f"{name}: only range(s) {rig.ranges_used} were used - the light never crossed the hysteresis band")
-    notes.append(f"{name}: samples={rig.samples} switches={rig.switches} ranges={rig.ranges_used} lux={rig.lux_min:.1f}..{rig.lux_max:.1f} max_gap={rig.max_gap_ms}ms")
-
-
-async def _baseline(rig: Rig, tag: str, reference: "list[float]") -> None:
-    """The resilience check that matters most: identical light must still read the same after
-    whatever the previous scenario did. Catches a driver wedged in a range, or stuck state."""
-    data = await _settled(rig, (_BASELINE_LEVEL, _BASELINE_LEVEL, _BASELINE_LEVEL))
-    check(data is not None and data.Lux is not None, f"baseline after {tag}: no reading at all")
-    if data is None or data.Lux is None:
-        return
-    if not reference:
-        reference.append(data.Lux)
-        notes.append(f"baseline reference established: {data.Lux:.2f} lux")
-        return
-    rel = abs(data.Lux - reference[0]) / reference[0]
-    check(rel <= _BASELINE_TOL, f"baseline after {tag}: {data.Lux:.2f} lux vs reference {reference[0]:.2f} ({rel * 100:.0f}% off) - the module did not return to a consistent state")
+    return {
+        "parked": parked, "samples": rig.samples, "switches": rig.switches, "min_switches": min_switches, "max_switches": max_switches,
+        "both_ranges": both_ranges, "ranges_used": rig.ranges_used, "lux": [rig.lux_min, rig.lux_max], "max_gap_ms": rig.max_gap_ms,
+        "log": log_record(await rig.reader.get_error_counter(), rig.reader.name),
+    }
 
 
 def _scenarios() -> "list[tuple[str, tuple[int, int, int], list[tuple[str, tuple[int, int, int], tuple[int, int, int], float]], int, int, bool]]":
-    """(name, entry_light, segments, min_switches, max_switches, must_use_both_ranges). entry_light
-    is parked and settled BEFORE counting, so a budget measures only its own program. Levels come
-    from the rig's MEASURED hysteresis band - tests_hardware/README.md has the table and holds."""
+    # Rows: name, entry_light, segments, min_switches, max_switches, must_use_both_ranges; entry_light
+    # is parked and settled BEFORE counting, so a budget measures only its own program. Levels come
+    # from the rig's MEASURED hysteresis band - tests_hardware/README.md has the table and holds.
     dark, below, inside, full = (0, 0, 0), 1, 5, 255
     lo, hi, sh = _BAND_BELOW, _BAND_ABOVE, _SWITCH_HOLD_S
     return [
@@ -302,56 +270,70 @@ def _scenarios() -> "list[tuple[str, tuple[int, int, int], list[tuple[str, tuple
     ]
 
 
+async def _settled(rig: Rig, rgb: "tuple[int, int, int]") -> "float | None":
+    # Parks at one colour, waits out the settle, and returns the lux of the first sample stored after it.
+    rig.write(rgb)
+    begin = time.ticks_ms()
+    while time.ticks_diff(time.ticks_ms(), begin) < int(_SETTLE_S * 1000):
+        rig.observe(await rig.reader.get_data())
+        await fed_sleep_ms(rig.wdt, _SAMPLE_MS)
+    stale = await rig.reader.get_data()
+    begin = time.ticks_ms()
+    while time.ticks_diff(time.ticks_ms(), begin) < int(_MAX_SAMPLE_GAP_S * 1000):
+        data = await rig.reader.get_data()
+        lux: float | None = data.Lux
+        if data is not stale and lux is not None:
+            return lux
+        await fed_sleep_ms(rig.wdt, _SAMPLE_MS)
+    return None
+
+
 async def _main() -> None:
-    wdt = machine.WDT(timeout=8000)
-    i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
-    pixel = NeoPixel(Pin(_PIN_PIXEL, Pin.OUT), 1)
-    reader = ISL29125_Reader(i2c1, 6, max_module_error=999, fram=None, debug=None)
+    wdt = arm()
+    chip = BENCH["instances"]["isl29125"]
+    bus = BENCH["bus"][chip["bus"]]
+    i2c = asy_i2c_driver.I2C(bus["id"], bus["scl_pin"], bus["sda_pin"], frequency=bus["frequency"], timeout=bus.get("timeout"))
+    reader = ISL29125_Reader(i2c, chip["irq_pin"], max_module_error=999)
     reader.cfgmgr.valid = True
-    # Seeded from the driver's own schema, never a hand-copied list - a key added there
-    # (GainRatio, f05f82d) otherwise leaves this one short of _N_FLOAT_CFG and _init_isl() never
-    # starts the read chain. Command-only entries have no default and are skipped.
-    reader.cfgmgr._cache = {field[0]: field[2] for field in reader.cfg_schema if field[2] is not None}
+    # Seeded from the driver's own schema (command-only fields have no default), never a hand-copied list.
+    reader.cfgmgr._cache = {field[0]: field[2] for field in reader.get_cfg_schema() if field[2] is not None}
     reader.cfgmgr._cache["AutoRangeDwell"] = 0.0  # no switch-down suppression: the scenarios drive the range loop on purpose
-    reader.start_timer()
-    tasks = [reader.start_asy_trigger(), reader.start_asy_read()]
-    rig = Rig(pixel, reader, wdt)
-    reference: list[float] = []
-    span_lo, span_hi = 1e9, -1.0
+    pixel = NeoPixel(Pin(BENCH["instances"]["neopixel"]["pin"], Pin.OUT), n=1)
     try:
+        reader.start_timer()
+        tasks = [reader.start_asy_trigger(), reader.start_asy_read()]
+        rig = Rig(pixel, reader, wdt)
         rig.write((0, 0, 0))
-        await asyncio.sleep_ms(500)
-        wdt.feed()
-        await _baseline(rig, "start", reference)
+        await fed_sleep_ms(wdt, _SAMPLE_MS)
+        # The baseline after every scenario: identical light must still read the same (a wedged range or stuck state).
+        baselines = [await _settled(rig, (_BASELINE_LEVEL, _BASELINE_LEVEL, _BASELINE_LEVEL))]
+        span = [1e9, -1.0]
         for spec in _scenarios():
-            await _run_scenario(rig, spec)
-            span_lo, span_hi = min(span_lo, rig.lux_min), max(span_hi, rig.lux_max)
-            await _baseline(rig, spec[0], reference)
-        # Collectively the scenarios must have covered a real dynamic range, not one corner of it.
-        check(span_hi > span_lo * 100.0, f"the scenario set only spanned {span_lo:.1f}..{span_hi:.1f} lux - the brightness range was not really covered")
-        # Without this the W13 check below proves nothing: the warning needs five
-        # consecutive periodic-only decisions, so a run with four switches in total could not have
-        # produced it however dead the interrupt line was.
-        check(rig.total_switches >= 5, f"only {rig.total_switches} range switches across the whole run - too few for the W13 dead-interrupt check below to be able to fire at all")
-        check(not w13_seen, f"W13 logged during {w13_seen} - five range decisions running came from the PERIODIC path, so the interrupt is not carrying them")
-        notes.append(f"combined span across every scenario: {span_lo:.1f}..{span_hi:.1f} lux, {rig.total_switches} range switches in total")
-    finally:
-        pixel[0] = (0, 0, 0)
-        pixel.write()
+            figures = await _run_scenario(rig, spec)
+            fact("scenario_" + spec[0], figures)
+            span = [min(span[0], rig.lux_min), max(span[1], rig.lux_max)]
+            baselines.append(await _settled(rig, (_BASELINE_LEVEL, _BASELINE_LEVEL, _BASELINE_LEVEL)))
+        fact("baselines", baselines)
+        fact("span", span)
+        fact("total_switches", rig.total_switches)
+        errors("sample_failures", rig.failures_total, rig.failures_first)
+        died = []
         for task in tasks:
             task.cancel()
             try:
                 await task
-            except (asyncio.CancelledError, Exception):
+            except asyncio.CancelledError:
                 pass
-
-    for note in notes:
-        print("  " + note)
-    if failures:
-        shown = failures[:12]
-        print(f"RESULT: FAIL ({len(failures)} findings) {'; '.join(shown)}")
-    else:
-        print(f"RESULT: PASS {len(_scenarios())} recombined lighting scenarios - colours, mixtures, slow/medium/fast slopes, steps, pauses, threshold oscillation and an ambient+dynamic split - all handled with no stuck state ({len(notes)} observations)")
+            except Exception as e:  # a task that died on its own is a fact the host fails on
+                died.append(repr(e))
+            await asyncio.sleep(0)
+        reader.stop_timer()
+        fact("died", died)
+        fact("bounds", {"min_samples": _MIN_SAMPLES, "max_sample_gap_ms": int(_MAX_SAMPLE_GAP_S * 1000), "baseline_tol": _BASELINE_TOL, "min_span_ratio": _MIN_SPAN_RATIO, "periodic_only_warn_at": _PERIODIC_ONLY_WARN_AT, "periodic_only": W_ISL_PERIODIC_ONLY})
+    finally:
+        pixel[0] = (0, 0, 0)
+        pixel.write()
+    done()
 
 
 asyncio.run(_main())

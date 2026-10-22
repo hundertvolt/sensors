@@ -1,0 +1,34 @@
+# tag	value	site	basis	change
+l2.scenario_request_timeout_s	10.0	scripts/_digital_twin_scenarios.py:72	one request on its own connection; every served request measured < 1 s on wozi/dev	new (harness)
+l2.scenario_serving_timeout_s	30.0	scripts/_digital_twin_scenarios.py:74	boot to first 200; measured 3-5 s per boot on wozi/dev	new
+l2.scenario_line_poll_s	0.05	scripts/_digital_twin_scenarios.py:76	log-line poll; well below the 20 ms x few CONN_SLOTS cadence it reads	new
+l2.scenario_conn_status_interval_ms	20	scripts/_digital_twin_scenarios.py:78	CONN_SLOTS period: a drain seen within a few polls	new
+l2.scenario_fault_status_interval_ms	100	scripts/_digital_twin_scenarios.py:80	FAULT_PENDING period; SGP40 reads at 1 s	new
+l2.scenario_drain_wait_s	10.0	scripts/_digital_twin_scenarios.py:82	slot outlives its response until its close (H.7.1); drains measured < 0.2 s	new (in-DUT _drained bound)
+l2.scenario_still_serving_s	5.0	scripts/_digital_twin_scenarios.py:84	retry window for the ceiling's close lag	new (in-DUT _still_serving)
+l2.scenario_flaky_hold_s	0.05	scripts/_digital_twin_scenarios.py:86	flaky client's partial-request hold	new (value from tests/_webserver_concurrency_scenarios.py, untagged there)
+l2.scenario_slow_put_s	1.0	scripts/_digital_twin_scenarios.py:88	slow healthy PUT's pause; holders for the refusal count	new (value from the in-DUT library, untagged there)
+l2.scenario_stall_ms	200	scripts/_digital_twin_scenarios.py:90	stalled-loop length, past one SYN retry's arrivals	new (value from the in-DUT library, untagged there)
+l2.scenario_watchdog_window_s	8.5	scripts/_digital_twin_scenarios.py:92	past the 8,000 ms watchdog; waited after the reset deadline	new
+l2.scenario_refusal_feed_s	10.0	scripts/_digital_twin_scenarios.py:94	past one watchdog period after a refused command	new
+l2.scenario_commanded_reset_margin_s	10.0	scripts/_digital_twin_scenarios.py:96	margin over _RESET_DELAY + _TASK_CHECK_TIME (src/asy_system_service.py)	new
+l2.scenario_pause_countdown_s	15.0	scripts/_digital_twin_scenarios.py:98	PauseTime 3 counting to 0 at 1 s steps	new
+l2.scenario_hotspot_wait_s	90.0	scripts/_digital_twin_scenarios.py:100	five scripted STA failures then the hotspot	new
+l2.scenario_uart_load_s	20.0	scripts/_digital_twin_scenarios.py:102	concurrent-load window (packet (m))	new
+l2.scenario_uart_load_faults	3	scripts/_digital_twin_scenarios.py:104	SGP40 measure reads failed, below any restart (same as l2.bounded_fault_count)	new
+web.connections_per_page_load	2	scripts/_digital_twin_scenarios.py:107	Part H.7 post-inlining footprint	site moved from tests/_webserver_concurrency_scenarios.py
+l2.commanded_reset_margin_s	10.0	scripts/_digital_twin_ci_suite.py:228	margin over _RESET_DELAY + _TASK_CHECK_TIME	new
+l2.escalation_wait_s	120.0	scripts/_digital_twin_ci_suite.py:216	sustained fault to the supervisor escalation reset; measured < 60 s	new
+l2.ntp_first_sync_wait_s	60.0	scripts/_digital_twin_ci_suite.py:218	first NTP sync after STA+GOT_IP against the local responder	new
+l2.read_cycle_wait_s	30.0	scripts/_digital_twin_ci_suite.py:220	one TS-based read cycle after the sync	new
+l2.verbose_poll_s	0.5	scripts/_digital_twin_ci_suite.py:230	DebugLevel log poll	new
+l2.in_flight_settle_s	-	scripts/_digital_twin_ci_suite.py (U24)	withdrawn: its sleep replaced by a poll	withdrawn
+l2.mem_paused_poll_s	-	scripts/_digital_twin_ci_suite.py (U24)	withdrawn with the MemPaused wait	withdrawn
+l2.mem_paused_wait_s	-	scripts/_digital_twin_ci_suite.py (U24)	withdrawn	withdrawn
+l2.past_exhaustion_wait_s	-	scripts/_digital_twin_ci_suite.py (U24)	withdrawn	withdrawn
+l2.kill_reap_timeout_s	5.0	scripts/_twin_process.py:35	site moved from the suite	moved
+l2.serving_poll_s	0.25	scripts/_twin_process.py:37	site moved from the suite	moved
+l2.serving_probe_timeout_s	1.0	scripts/_twin_process.py:39	site moved from the suite	moved
+l0.generated_boot_link_poll_gap_s	3.0	tests_scripts/test_digital_twin_generated_boot.py:65	gap between UART counter polls on the CRC16 link boot	new
+l0.generated_boot_reset_wait_s	120.0	tests_scripts/test_digital_twin_generated_boot.py:67	sustained fault to escalation reset	new
+l0.live_smoke_timeout_ms	45000	tests_js/live-backend.test.js:10	boot's 20 s bound, two Applies and the stop; measured 6.2-7.2 s on each of the six devices	basis added

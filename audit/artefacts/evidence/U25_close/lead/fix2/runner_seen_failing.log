@@ -1,0 +1,42 @@
+F.F                                                                      [100%]
+=================================== FAILURES ===================================
+____ test_the_ci_runner_builds_the_site_each_part_boots_from[args0-parts0] _____
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-sf/scripts/_digital_twin_scenarios.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8866/test_the_ci_runner_builds_the_0')
+args = (), parts = ('suite', 'harness')
+
+    @pytest.mark.parametrize(("args", "parts"), [((), ("suite", "harness")), (("--part", "suite"), ("suite",)), (("--part", "harness"), ("harness",))])
+    def test_the_ci_runner_builds_the_site_each_part_boots_from(harness: ModuleType, tmp_path: Path, args: "tuple[str, ...]", parts: "tuple[str, ...]") -> None:
+        # The suite boots frozen_modules/, the harness the device's own site under SITES_DIR: each part builds its own.
+        site = (harness.SITES_DIR / "fixture-device" / "frozen_html.py").relative_to(_REPO_ROOT)
+        want = {"suite": "fixture-device", "harness": f"fixture-device {site}"}
+>       assert _runner_builds(tmp_path, *args) == [want[part] for part in parts]
+E       AssertionError: assert ['fixture-device'] == ['fixture-dev...ozen_html.py']
+E         
+E         Right contains one more item: 'fixture-device build/generated_html/fixture-device/frozen_html.py'
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_scenarios.py:345: AssertionError
+____ test_the_ci_runner_builds_the_site_each_part_boots_from[args2-parts2] _____
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-sf/scripts/_digital_twin_scenarios.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8866/test_the_ci_runner_builds_the_2')
+args = ('--part', 'harness'), parts = ('harness',)
+
+    @pytest.mark.parametrize(("args", "parts"), [((), ("suite", "harness")), (("--part", "suite"), ("suite",)), (("--part", "harness"), ("harness",))])
+    def test_the_ci_runner_builds_the_site_each_part_boots_from(harness: ModuleType, tmp_path: Path, args: "tuple[str, ...]", parts: "tuple[str, ...]") -> None:
+        # The suite boots frozen_modules/, the harness the device's own site under SITES_DIR: each part builds its own.
+        site = (harness.SITES_DIR / "fixture-device" / "frozen_html.py").relative_to(_REPO_ROOT)
+        want = {"suite": "fixture-device", "harness": f"fixture-device {site}"}
+>       assert _runner_builds(tmp_path, *args) == [want[part] for part in parts]
+E       AssertionError: assert ['fixture-device'] == ['fixture-dev...ozen_html.py']
+E         
+E         At index 0 diff: 'fixture-device' != 'fixture-device build/generated_html/fixture-device/frozen_html.py'
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_scenarios.py:345: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_the_ci_runner_builds_the_site_each_part_boots_from[args0-parts0]
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_the_ci_runner_builds_the_site_each_part_boots_from[args2-parts2]
+2 failed, 1 passed, 34 deselected in 0.72s

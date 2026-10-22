@@ -1,0 +1,68 @@
+FAIL test_a_poller_asks_only_for_its_mask:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine_uart.py", line 159, in test_a_poller_asks_only_for_its_mask
+  File "tests/test_digital_twin_machine_uart.py", line 29, in _make_link
+AttributeError: module 'machine' has no attribute 'reset_peripherals'
+FAIL test_a_second_instance_on_one_bus_id_supersedes_the_first:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine_uart.py", line 58, in test_a_second_instance_on_one_bus_id_supersedes_the_first
+  File "tests/test_digital_twin_machine_uart.py", line 29, in _make_link
+AttributeError: module 'machine' has no attribute 'reset_peripherals'
+FAIL test_delivery_takes_real_wire_time:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine_uart.py", line 75, in test_delivery_takes_real_wire_time
+AttributeError: module 'machine' has no attribute 'reset_peripherals'
+FAIL test_faster_baud_delivers_faster:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine_uart.py", line 102, in test_faster_baud_delivers_faster
+  File "tests/test_digital_twin_machine_uart.py", line 93, in elapsed_for
+AttributeError: module 'machine' has no attribute 'reset_peripherals'
+FAIL test_ioctl_answers_einval_to_get_fileno:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine_uart.py", line 42, in test_ioctl_answers_einval_to_get_fileno
+  File "tests/test_digital_twin_machine_uart.py", line 29, in _make_link
+AttributeError: module 'machine' has no attribute 'reset_peripherals'
+FAIL test_poll_mask_reports_what_the_link_delivered:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine_uart.py", line 47, in test_poll_mask_reports_what_the_link_delivered
+  File "tests/test_digital_twin_machine_uart.py", line 29, in _make_link
+AttributeError: module 'machine' has no attribute 'reset_peripherals'
+FAIL test_reads_pump_the_wire_without_settle:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine_uart.py", line 108, in test_reads_pump_the_wire_without_settle
+  File "tests/test_digital_twin_machine_uart.py", line 29, in _make_link
+AttributeError: module 'machine' has no attribute 'reset_peripherals'
+FAIL test_reset_peripherals_frees_every_dma_channel:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine_uart.py", line 152, in test_reset_peripherals_frees_every_dma_channel
+AttributeError: module 'machine' has no attribute 'reset_peripherals'
+PASS test_the_finaliser_aborts_the_channel
+FAIL test_twin_link_satisfies_the_shared_contract:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine_uart.py", line 37, in test_twin_link_satisfies_the_shared_contract
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_uart_link_contract.py", line 42, in check_byte_moves_one_way
+  File "tests/test_digital_twin_machine_uart.py", line 29, in _make_link
+AttributeError: module 'machine' has no attribute 'reset_peripherals'
+FAIL test_twin_poller_is_not_a_real_select_poll:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine_uart.py", line 129, in test_twin_poller_is_not_a_real_select_poll
+  File "tests/test_digital_twin_machine_uart.py", line 29, in _make_link
+AttributeError: module 'machine' has no attribute 'reset_peripherals'
+FAIL test_twin_poller_requeries_ioctl:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine_uart.py", line 120, in test_twin_poller_requeries_ioctl
+  File "tests/test_digital_twin_machine_uart.py", line 29, in _make_link
+AttributeError: module 'machine' has no attribute 'reset_peripherals'
+1/12 passed, 11 failed, 0 skipped
+RC=1 WALL=.055996862 FILE=tests/test_digital_twin_machine_uart.py STAGE=-1

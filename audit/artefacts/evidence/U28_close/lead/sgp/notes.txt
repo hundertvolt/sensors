@@ -1,0 +1,17 @@
+U28 SGP40 W35 root cause (sgp agent, 2026-10-19). Code read in S/wt-u28t (f06ee49 == 8ad2bb3 runtime).
+
+Chain (verified unless marked):
+- Shared boot: SharedBoot.acquire() boots ctx.boot(*_CONN), fresh state, SSID default "" (scenarios.py:296-311, :695).
+- asy_wifi_service.py:346-349 empty SSID -> _PHASE_HOTSPOT; :968-969 network_available_locked() False in hotspot.
+- asy_ntp_client.py:401-408 attempt skipped when network unavailable -> never synced (responder 127.0.0.1:123 unused).
+- asy_sgp40_driver.py: BackupPeriod def 1 (:98), WaitTimeNTP def 30 (:100), voc_write = min(30,600) (:348,:355); counter +1 per 1 s trigger (:282-284, :613-618);
+  _run_backup :500-526: voc_write 30 -> 29.. each retry 1 cycle later (:506-509); at cycle 60+29=89 require_ntp False,
+  unsynced -> wrn_s W35 (:526); voc_write stays 0 so every later backup (each 60 cycles) warns again.
+- twin Timer sleeps full period then fires (digital_twin/machine.py:1400-1418): cycles only drift late.
+- asy_print_log.py:2,154 newest-entry rule: counter rises per W35, one slot.
+- idle_problems (scenarios.py:313-336): any moved count not in item.moves fails; 14 shared scenarios state WEBSERVER only, none SGP40.
+Measured (run1, idle, GC 32768): serving +4.0 s, W35 #1 at +94.0 s, #2 at +155.1 s (60 cycles = 61.1 s).
+Local shared group (30 scen.) cumulative end: dev 83.9 s @32768, 73.4 s @-1; others 61-69 s. #29 window dev@32768: 76.4-82.6 s.
+CI: early log (shared group) truncated by MCP 5000-line tail; blob URL blocked. step start -> a_command end:
+  failing 32768 404.7 s, -1 291.6 s; U27 32768 156.9 s, -1 138.9 s. Late scenarios same speed (ratio ~0.97).
+  CI uses autodetected TEST_PARALLELISM (ci.yml:518/544, no override); local gate used TEST_PARALLELISM=4.

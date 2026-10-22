@@ -1,0 +1,6 @@
+test_mpremote_connect_sh	0.58	5 passed in 0.35s
+test_mpremote_connect_sh	0.50	5 passed in 0.25s
+test_render_coverage_anchors	0.29	3 passed in 0.08s
+test_render_coverage_anchors	0.32	3 passed in 0.09s
+test_tool_help	3.27	21 passed in 3.05s
+test_tool_help	3.20	21 passed in 2.96s

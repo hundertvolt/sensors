@@ -1,0 +1,2 @@
+bitten: 'RETRIED-PASS 2/3\n' 2
+TEST FAILED as it must: == tests_scripts/ exceeded 30s on attempt 1/3 - retrying in case of transient runner contention

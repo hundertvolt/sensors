@@ -1,0 +1,44 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_ test_a_removed_devices_outputs_leave_the_tree_and_nothing_outside_it_is_touched _
+
+generate_sensortask_modules = <module '_generate_sensortask_modules' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b/scripts/_generate_sensortask_modules.py'>
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8280/test_a_removed_devices_outputs0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f17e12cb190>
+
+    def test_a_removed_devices_outputs_leave_the_tree_and_nothing_outside_it_is_touched(generate_sensortask_modules: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Two devices generated, one TOML removed, generated again: no file of the removed device stays behind for a
+        # consumer to read as a device, the remaining one's outputs all do, and only build/generated_src/ is swept.
+        monkeypatch.setattr(generate_sensortask_modules, "REPO_ROOT", tmp_path)
+        out_dir = _one_device_tree(repo_root, tmp_path)
+        kept, removed = DEVICE_NAMES[0], DEVICE_NAMES[1]
+        (tmp_path / "devices" / f"{removed}.toml").symlink_to(repo_root / "devices" / f"{removed}.toml")
+        assert generate_sensortask_modules.main() == 0
+        assert [p for p in out_dir.rglob(f"*{removed}*") if p.is_file()], "the removed device was never generated - the sweep below would hold vacuously"
+        beside = tmp_path / "build" / "generated_html" / removed / "index.html"
+        beside.parent.mkdir(parents=True)
+        beside.write_text("another builder's output\n")
+        in_flight = out_dir / f"sensortask_{removed}.py.tmp"
+        in_flight.write_text("a concurrent run's file before its rename\n")
+        (tmp_path / "devices" / f"{removed}.toml").unlink()
+        assert generate_sensortask_modules.main() == 0
+    
+        left = sorted(p.relative_to(out_dir).as_posix() for p in out_dir.rglob("*") if p.is_file() and not p.name.endswith(".tmp"))
+        assert not [name for name in left if removed in name], left
+        assert {f"sensortask_{kept}.py", f"definitions/{kept}.json", f"api/{kept}.json"} <= set(left), left
+>       assert beside.is_file() and in_flight.is_file(), "the sweep reached past the generator's own finished outputs"
+E       AssertionError: the sweep reached past the generator's own finished outputs
+E       assert (True and False)
+E        +  where True = is_file()
+E        +    where is_file = PosixPath('/tmp/pytest-of-root/pytest-8280/test_a_removed_devices_outputs0/build/generated_html/dev/index.html').is_file
+E        +  and   False = is_file()
+E        +    where is_file = PosixPath('/tmp/pytest-of-root/pytest-8280/test_a_removed_devices_outputs0/build/generated_src/sensortask_dev.py.tmp').is_file
+
+tests_scripts/test_generate_sensortask_modules.py:184: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Generated 2 device module(s) + boot entries + expected facts + wiring plan(s) + definitions + API reference(s) into /tmp/pytest-of-root/pytest-8280/test_a_removed_devices_outputs0/build/generated_src
+Generated 1 device module(s) + boot entries + expected facts + wiring plan(s) + definitions + API reference(s) into /tmp/pytest-of-root/pytest-8280/test_a_removed_devices_outputs0/build/generated_src
+=========================== short test summary info ============================
+FAILED tests_scripts/test_generate_sensortask_modules.py::test_a_removed_devices_outputs_leave_the_tree_and_nothing_outside_it_is_touched
+1 failed, 8 deselected in 0.96s

@@ -1,0 +1,5 @@
+group 0: 45 files rc=0 132s 3572 passed, 6 skipped in 130.03s (0:02:10)
+group 1: 45 files rc=0 139s 845 passed in 137.05s (0:02:17)
+group 2: 45 files rc=1 132s 1 failed, 824 passed in 128.38s (0:02:08)
+group 3: 43 files rc=1 177s 7 failed, 1008 passed in 175.52s (0:02:55)
+DONE

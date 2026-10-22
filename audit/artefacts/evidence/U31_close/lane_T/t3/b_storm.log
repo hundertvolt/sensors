@@ -1,0 +1,18 @@
+== loop_lag_under_combined_load: The loop's lag under a ceiling of GETs on every route, a FRAM-log fault storm and the links' exercisers stays under the device's smallest hard consumer, and settles once the load stops.
+== Launching: /root/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_dev --wiring-plan /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u31/laneT/t3/bite_storm/build/generated_src/sensortask_dev_wiring_plan.json --device dev --host 127.0.0.1 --port 20166 --fram-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u31/laneT/t3/b_storm.d/loop_lag_under_combined_load/state_01/fram_state.json --scd30-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u31/laneT/t3/b_storm.d/loop_lag_under_combined_load/state_01/scd30_state.json --mem-backup-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u31/laneT/t3/b_storm.d/loop_lag_under_combined_load/state_01/mem_backup_state.json --config-dir /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u31/laneT/t3/b_storm.d/loop_lag_under_combined_load/state_01/config/ --gc-threshold -1 --debug-level 1 --test-kbd-traceback --test-loop-lag-ms 10 (log: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u31/laneT/t3/b_storm.d/loop_lag_under_combined_load/twin_01.log)
+FAILED: loop_lag_under_combined_load - AssertionError: the SGP40 fault storm never reached its 5-read streak under the load (36.0s)
+== Summary: scripts/_digital_twin_scenarios.py ==
+Commit: unknown
+Levels: L2 (dev)
+GC stage: -1
+Counts (scenarios): passed 0 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - loop_lag_under_combined_load: AssertionError: the SGP40 fault storm never reached its 5-read streak under the load (36.0s)
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

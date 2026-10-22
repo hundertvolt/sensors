@@ -1,0 +1,35 @@
+F..F                                                                     [100%]
+=================================== FAILURES ===================================
+______ test_every_test_only_flag_is_off_by_default_parsed_and_documented _______
+
+    def test_every_test_only_flag_is_off_by_default_parsed_and_documented() -> None:
+>       assert default_problems(RUNNER.read_text(encoding="utf-8")) == []
+E       AssertionError: assert ['--test-loop...n the runner'] == []
+E         
+E         Left contains 2 more items, first extra item: '--test-loop-lag-ms is in the flag table but not in the runner'
+E         Use -v to get more diff
+
+tests_scripts/test_twin_runner_test_flags.py:89: AssertionError
+___________ test_a_flag_defaulting_on_or_an_unguarded_call_is_caught ___________
+
+    def test_a_flag_defaulting_on_or_an_unguarded_call_is_caught() -> None:
+        source = RUNNER.read_text(encoding="utf-8")
+        on = source.replace("_NO_TEST_FLAGS = TestFlags(False,", "_NO_TEST_FLAGS = TestFlags(True,", 1)
+        assert on != source and any("by default" in p for p in default_problems(on))
+        unguarded = source.replace("    if flags.conn_status_interval_ms:\n        tasks.append(", "    if True:\n        tasks.append(")
+        assert unguarded != source and any("outside its flag's if" in p for p in guard_problems(unguarded))
+        leaked = source.replace("def load_module(", "def _leak(m):\n    m.webserver._close_writer = None\n\n\ndef load_module(")
+        assert leaked != source and any("rebinds m.webserver._close_writer" in p for p in guard_problems(leaked))
+        dropped = source.replace('elif arg == "--test-loop-lag-ms":', 'elif arg == "--test-loop-lag":')
+>       assert dropped != source and any("--test-loop-lag-ms is in the flag table but not in the runner" in p for p in default_problems(dropped))
+E       assert ('"""Generic twin entry point: boots any buildgen-generated sensortask_<device> module against its wiring-plan JSON and...isters\n        print(f"{_LINE_PREFIX} [{_config.device}] power lost")\n        sys.exit(_EXIT_SIMULATED_POWER_LOSS)\n' != '"""Generic twin entry point: boots any buildgen-generated sensortask_<device> module against its wiring-plan JSON and...isters\n        print(f"{_LINE_PREFIX} [{_config.device}] power lost")\n        sys.exit(_EXIT_SIMULATED_POWER_LOSS)\n')
+
+tests_scripts/test_twin_runner_test_flags.py:122: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_twin_runner_test_flags.py::test_every_test_only_flag_is_off_by_default_parsed_and_documented
+FAILED tests_scripts/test_twin_runner_test_flags.py::test_a_flag_defaulting_on_or_an_unguarded_call_is_caught
+2 failed, 2 passed in 0.37s
+
+real	0m0.671s
+user	0m0.504s
+sys	0m0.159s

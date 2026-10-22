@@ -1,0 +1,40 @@
+..F..................................................................... [ 43%]
+........................................................................ [ 87%]
+.....................                                                    [100%]
+=================================== FAILURES ===================================
+___________ test_the_live_tree_fixture_test_uses_the_reserved_prefix ___________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27w1')
+
+    def test_the_live_tree_fixture_test_uses_the_reserved_prefix(repo_root: Path) -> None:
+        # The sweep above is only sound if every test that writes into the real devices/ directory names
+        # its file inside the reserved namespace. Checked against the real source rather than trusting a
+        # comment: a second such fixture added under some other name would be swept by nothing.
+        text = (repo_root / "tests_scripts" / "test_build_website_sh.py").read_text()
+        # Only paths that are actually WRITTEN count - the same `repo_root / "devices" / f"{device}.toml"`
+        # expression is read-only all over tests_scripts/, and flagging those would make this guard fire
+        # on a perfectly safe addition instead of on a real one.
+        written = [(path_var, name_var) for path_var, name_var in re.findall(r'(\w+) = repo_root / "devices" / f"\{(\w+)\}\.toml"', text) if f"{path_var}.write_text(" in text]
+>       assert written, "test_build_website_sh.py no longer writes a devices/<device>.toml - update this test, or drop the sweep in scripts/test.sh if nothing writes there any more"
+E       AssertionError: test_build_website_sh.py no longer writes a devices/<device>.toml - update this test, or drop the sweep in scripts/test.sh if nothing writes there any more
+E       assert []
+
+tests_scripts/test_test_sh.py:78: AssertionError
+============================= slowest 14 durations =============================
+5.09s call     tests_scripts/test_test_sh.py::test_without_the_trap_the_background_child_outlives_an_aborted_run
+2.64s call     tests_scripts/test_test_sh.py::test_the_per_file_timeout_interrupts_first_so_a_hung_file_names_its_test_and_ends
+2.23s call     tests_scripts/test_test_sh.py::test_a_job_that_ignores_the_stop_is_killed_after_twice_the_hard_stop_and_named
+2.03s call     tests_scripts/test_test_sh.py::test_a_file_killed_at_the_hard_stop_is_retried_like_a_timeout
+2.02s call     tests_scripts/test_test_sh.py::test_the_timeout_interrupts_the_files_process_once
+2.02s call     tests_scripts/test_test_sh.py::test_a_file_that_ignores_the_interrupt_is_killed_and_the_run_says_why
+1.65s call     tests_scripts/test_test_sh.py::test_an_allocation_failure_in_a_timed_out_attempt_fails_the_file_its_retry_passes
+1.61s call     tests_scripts/test_test_sh.py::test_a_skipped_test_is_named_in_the_block_with_its_reason_once
+1.46s call     tests_scripts/test_test_sh.py::test_the_exit_trap_kills_the_background_child_on_an_aborted_run
+1.21s call     tests_scripts/test_test_sh.py::test_a_genuinely_slow_host_drops_to_one_times_on_the_real_clock
+1.04s call     tests_scripts/test_test_sh.py::test_a_pass_after_a_timeout_is_retried_pass_not_pass
+0.98s call     tests_scripts/test_test_sh.py::test_a_retried_a_crashed_and_an_allocation_flagged_file_render_the_block
+0.98s call     tests_scripts/test_test_sh.py::test_a_scenario_job_is_counted_from_its_run_record_under_l2_and_names_what_it_did_not_run
+0.93s call     tests_scripts/test_test_sh.py::test_a_coverage_run_names_each_scenario_harness_job_as_skipped
+=========================== short test summary info ============================
+FAILED tests_scripts/test_test_sh.py::test_the_live_tree_fixture_test_uses_the_reserved_prefix
+1 failed, 164 passed in 48.60s

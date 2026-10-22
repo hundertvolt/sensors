@@ -1,0 +1,65 @@
+........................................................................ [  8%]
+........................................................................ [ 16%]
+........................................................................ [ 24%]
+........................................................................ [ 33%]
+........................................................................ [ 41%]
+........................................................................ [ 49%]
+........................................................................ [ 57%]
+........................................................................ [ 66%]
+........................................................................ [ 74%]
+......................................F......F.......................... [ 82%]
+........................................................................ [ 91%]
+........................................................................ [ 99%]
+.....                                                                    [100%]
+=================================== FAILURES ===================================
+______________________ test_the_pending_list_only_shrinks ______________________
+
+    def test_the_pending_list_only_shrinks() -> None:
+        stale = sorted((Counter(_PENDING) - collect_sites()).elements())
+>       assert not stale, "_PENDING entries that no longer occur - delete them (or --regenerate):\n" + "\n".join(f"  {s}" for s in stale)
+E       AssertionError: _PENDING entries that no longer occur - delete them (or --regenerate):
+E           ('tests/test_asy_notification_service.py', 'test_next_sleep_s_floors_at_point_one_when_elapsed_exceeds_interv', 'time')
+E           ('tests/test_asy_notification_service.py', 'test_next_sleep_s_subtracts_elapsed_time', 'time')
+E       assert not [('tests/test_asy_notification_service.py', 'test_next_sleep_s_floors_at_point_one_when_elapsed_exceeds_interv', 'time'), ('tests/test_asy_notification_service.py', 'test_next_sleep_s_subtracts_elapsed_time', 'time')]
+
+tests_scripts/test_import_placement.py:187: AssertionError
+___________________ test_the_tags_and_the_part_n_rows_agree ____________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31s')
+real_tags = [Tag(path='vitest.config.js', line=41, id='l0.vitest_test_timeout_ms', literal='20000'), Tag(path='vitest.config.js', ...r_controller_at', literal='4'), Tag(path='src/asy_base_classes.py', line=403, id='module.max_error', literal='5'), ...]
+
+    def test_the_tags_and_the_part_n_rows_agree(repo_root: Path, real_tags: "list[Tag]") -> None:
+        rows, problems = parse_register((repo_root / "SPECIFICATION.md").read_text(encoding="utf-8"))
+        problems += check_register(real_tags, rows)
+>       assert not problems, "\n".join(problems)
+E       AssertionError: src/asy_bmp3xx_driver.py:79: bmp3xx.status_poll_ms is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_bmp3xx_driver.py:81: bmp3xx.reset_settle_ms is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_i2c_driver.py:22: i2c.probe_settle_ms is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_notification_service.py:62: notify.min_sleep_ms is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_scd30_driver.py:72: scd30.cmd_response_wait_ms is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_scd30_driver.py:74: scd30.asc_enable_wait_ms is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_scd30_driver.py:76: scd30.soft_reset_wait_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_asy_notification_service.py:42: l1.asy_notification_service_next_sleep_min_ms is tagged but has no SPECIFICATION.md Part N row
+E         SPECIFICATION.md:11436: notify.min_sleep_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11437: notify.cfg_fail_interval_s: Sites list [('src/asy_notification_service.py', '600.0')], the tags say [('src/asy_notification_service.py', '600')]
+E         SPECIFICATION.md:11439: scd30.cmd_response_wait_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11440: scd30.asc_enable_wait_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11441: scd30.soft_reset_wait_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11453: bmp3xx.status_poll_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11454: bmp3xx.reset_settle_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11455: i2c.probe_settle_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11663: l1.asy_notification_service_next_sleep_min_s is a tuned row, but no file carries its @tunable tag
+E       assert not ['src/asy_bmp3xx_driver.py:79: bmp3xx.status_poll_ms is tagged but has no SPECIFICATION.md Part N row', 'src/asy_bmp3x...t N row', 'src/asy_scd30_driver.py:74: scd30.asc_enable_wait_ms is tagged but has no SPECIFICATION.md Part N row', ...]
+
+tests_scripts/test_tunables_register.py:253: AssertionError
+=============================== warnings summary ===============================
+tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31s/tests_scripts/test_citations.py:236: UserWarning: datasheets/ submodule not initialised - paths under it are not checked
+    datasheets=_datasheets_checked(),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests_scripts/test_import_placement.py::test_the_pending_list_only_shrinks
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+2 failed, 867 passed, 1 warning in 69.72s (0:01:09)
+scans rc=1

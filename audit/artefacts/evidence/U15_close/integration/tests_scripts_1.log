@@ -1,0 +1,187 @@
+........................................................................ [  2%]
+........ssssss.......................................................... [  4%]
+........................................................................ [  6%]
+........................................................................ [  9%]
+........................................................................ [ 11%]
+........................................................................ [ 13%]
+........................................................................ [ 16%]
+........................................................................ [ 18%]
+.................................................................F...... [ 20%]
+........................................................................ [ 23%]
+........................................................................ [ 25%]
+........................................................................ [ 27%]
+........................................................................ [ 30%]
+........................................................................ [ 32%]
+........................................................................ [ 34%]
+........................................................................ [ 37%]
+........................................................................ [ 39%]
+........................................................................ [ 41%]
+........................................................................ [ 44%]
+........................................................................ [ 46%]
+........................................................................ [ 48%]
+........................................................................ [ 51%]
+........................................................................ [ 53%]
+........................................................................ [ 55%]
+.....F.F................................................................ [ 58%]
+........................................................................ [ 60%]
+........................................................................ [ 62%]
+..........................................................s.ssss........ [ 65%]
+......................F................................................. [ 67%]
+........................................................................ [ 69%]
+........................................................................ [ 72%]
+........................................................................ [ 74%]
+........................................................................ [ 76%]
+........................................................................ [ 79%]
+........................................................................ [ 81%]
+........................................................................ [ 83%]
+.........F.........................................................F...F [ 86%]
+........................................................................ [ 88%]
+........................................................................ [ 90%]
+........................................................................ [ 92%]
+........................................................................ [ 95%]
+........................................................................ [ 97%]
+........................................................................ [ 99%]
+.                                                                        [100%]
+=================================== FAILURES ===================================
+____ test_extract_field_schemas_real_scd30_has_no_schema_entry_for_contmeas ____
+
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15int/src')
+
+    def test_extract_field_schemas_real_scd30_has_no_schema_entry_for_contmeas(src_dir: Path) -> None:
+        # ContMeas is deliberately freestanding (no _VAL_* constant at all - see the driver's own
+        # comment); confirms the AST scan doesn't invent one.
+        fields = extract_field_schemas(src_dir / "asy_scd30_driver.py")
+>       assert "ContMeas" not in fields
+E       AssertionError: assert 'ContMeas' not in {'ContMeas': ('bool', None, None, None, None), 'TempOffset': ('float', None, 0.0, 655.35, None), 'MeasInterval': ('int', None, 2, 1800, None), 'AmbPres': ('int', None, 700, 1400, 0), ...}
+
+tests_scripts/test_buildgen_schema_ast.py:165: AssertionError
+_ test_a_planted_malformed_bmp3xx_record_fails[("MeanAtmTemp", "float", 15.0, -50.0, 50.0, None)-("MeanAtmTemp", "float", 15.0, -50.0, 50.0)-is not a 6-tuple] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-5588/test_a_planted_malformed_bmp3x2')
+validator = <function type_or_range_error at 0x7fb2bf9c1bc0>
+old = '("MeanAtmTemp", "float", 15.0, -50.0, 50.0, None)'
+new = '("MeanAtmTemp", "float", 15.0, -50.0, 50.0)'
+expected = 'is not a 6-tuple'
+
+    @pytest.mark.parametrize(("old", "new", "expected"), _BITES)
+    def test_a_planted_malformed_bmp3xx_record_fails(tmp_path: Path, validator: Validator, old: str, new: str, expected: str) -> None:
+        copy = Path(shutil.copy(_SRC / "asy_bmp3xx_driver.py", tmp_path))
+        source = copy.read_text(encoding="utf-8")
+>       assert source.count(old) == 1, old
+E       AssertionError: ("MeanAtmTemp", "float", 15.0, -50.0, 50.0, None)
+E       assert 0 == 1
+E        +  where 0 = <built-in method count of str object at 0x74c1ec0>('("MeanAtmTemp", "float", 15.0, -50.0, 50.0, None)')
+E        +    where <built-in method count of str object at 0x74c1ec0> = '# SPDX-FileCopyrightText: 2018 Carter Nelson for Adafruit Industries (original adafruit_bmp3xx,\n# CircuitPython) - r...event is None:\n            raise OSError("I2C bus not initialized")\n        return bool(event[0] & _EVENT_POR_BIT)\n'.count
+
+tests_scripts/test_config_schemas.py:180: AssertionError
+_ test_a_planted_malformed_bmp3xx_record_fails[("MeanAtmTemp", "float", 15.0, -50.0, 50.0, None)-("MeanAtmTemp", "float", 99.0, -50.0, 50.0, None)-MeanAtmTemp: default 99.0 (special None) fails] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-5588/test_a_planted_malformed_bmp3x4')
+validator = <function type_or_range_error at 0x7fb2bf9c1bc0>
+old = '("MeanAtmTemp", "float", 15.0, -50.0, 50.0, None)'
+new = '("MeanAtmTemp", "float", 99.0, -50.0, 50.0, None)'
+expected = 'MeanAtmTemp: default 99.0 (special None) fails'
+
+    @pytest.mark.parametrize(("old", "new", "expected"), _BITES)
+    def test_a_planted_malformed_bmp3xx_record_fails(tmp_path: Path, validator: Validator, old: str, new: str, expected: str) -> None:
+        copy = Path(shutil.copy(_SRC / "asy_bmp3xx_driver.py", tmp_path))
+        source = copy.read_text(encoding="utf-8")
+>       assert source.count(old) == 1, old
+E       AssertionError: ("MeanAtmTemp", "float", 15.0, -50.0, 50.0, None)
+E       assert 0 == 1
+E        +  where 0 = <built-in method count of str object at 0x77be9f0>('("MeanAtmTemp", "float", 15.0, -50.0, 50.0, None)')
+E        +    where <built-in method count of str object at 0x77be9f0> = '# SPDX-FileCopyrightText: 2018 Carter Nelson for Adafruit Industries (original adafruit_bmp3xx,\n# CircuitPython) - r...event is None:\n            raise OSError("I2C bus not initialized")\n        return bool(event[0] & _EVENT_POR_BIT)\n'.count
+
+tests_scripts/test_config_schemas.py:180: AssertionError
+_ test_the_only_error_source_exempt_from_run_5cs_loss_sweep_is_the_store_itself _
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15int/scripts/_digital_twin_ci_suite.py'>
+
+    def test_the_only_error_source_exempt_from_run_5cs_loss_sweep_is_the_store_itself(ci_suite: ModuleType) -> None:
+        # Everything else in errcount is FRAM-backed and must come back across a commanded reboot.
+        # FRAMManager cannot persist its own history through the store that failed, the one
+        # legitimate exemption, which _sensortask_scenarios.py pins from the real object graph too.
+>       assert sorted(ci_suite._IN_MEMORY_ONLY_ERROR_SOURCES) == ["FRAM"]
+E       AssertionError: assert ['CFGMGR_SCD30', 'FRAM'] == ['FRAM']
+E         
+E         At index 0 diff: 'CFGMGR_SCD30' != 'FRAM'
+E         Left contains one more item: 'FRAM'
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_ci_suite_errcount.py:172: AssertionError
+____________ test_no_file_outside_the_device_tomls_names_a_variant _____________
+
+    def test_no_file_outside_the_device_tomls_names_a_variant() -> None:
+        found = collect_findings()
+        new = {path: hits[:3] for path, hits in found.items() if path not in _NOT_YET_CLEANED}
+>       assert not new, "variant literals outside devices/ - take the device from data, an argument or a TOML property:\n" + "\n".join(f"  {p}: {h}" for p, h in sorted(new.items()))
+E       AssertionError: variant literals outside devices/ - take the device from data, an argument or a TOML property:
+E           tests_hardware/device_scripts/sgp40_sample_cadence.py: [(9, 'sensortask_dev'), (29, 'sensortask_dev'), (33, 'sensortask_dev')]
+E       assert not {'tests_hardware/device_scripts/sgp40_sample_cadence.py': [(9, 'sensortask_dev'), (29, 'sensortask_dev'), (33, 'sensortask_dev')]}
+
+tests_scripts/test_no_variant_literals.py:205: AssertionError
+___________ test_the_largest_legitimate_body_is_the_pinned_one[dev] ____________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15int')
+device = 'dev'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_the_largest_legitimate_body_is_the_pinned_one(repo_root: Path, device: str) -> None:
+        # Growth is the real hazard here, and it is silent: every added driver or widened string bound
+        # moves this number a little, and only the last one would ever cross the cap. Pinned so each
+        # step is deliberate, the same way the persistence-write guard pins its own allowlists.
+        largest = max(size for _route, size in _put_sections(repo_root, device))
+        cap = _cap_from_src(repo_root)
+>       assert largest == _EXPECTED_LARGEST[device], (
+            f"{device}'s largest schema-permitted PUT body moved from {_EXPECTED_LARGEST[device]} to {largest} B "
+            f"against a {cap} B cap ({cap / largest:.2f}x headroom). Update _EXPECTED_LARGEST deliberately, "
+            f"and check SPECIFICATION.md Part I.6's quoted figure with it."
+        )
+E       AssertionError: dev's largest schema-permitted PUT body moved from 972 to 1080 B against a 2048 B cap (1.90x headroom). Update _EXPECTED_LARGEST deliberately, and check SPECIFICATION.md Part I.6's quoted figure with it.
+E       assert 1080 == 972
+
+tests_scripts/test_request_body_cap_headroom.py:124: AssertionError
+___________ test_the_largest_legitimate_body_is_the_pinned_one[wozi] ___________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15int')
+device = 'wozi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_the_largest_legitimate_body_is_the_pinned_one(repo_root: Path, device: str) -> None:
+        # Growth is the real hazard here, and it is silent: every added driver or widened string bound
+        # moves this number a little, and only the last one would ever cross the cap. Pinned so each
+        # step is deliberate, the same way the persistence-write guard pins its own allowlists.
+        largest = max(size for _route, size in _put_sections(repo_root, device))
+        cap = _cap_from_src(repo_root)
+>       assert largest == _EXPECTED_LARGEST[device], (
+            f"{device}'s largest schema-permitted PUT body moved from {_EXPECTED_LARGEST[device]} to {largest} B "
+            f"against a {cap} B cap ({cap / largest:.2f}x headroom). Update _EXPECTED_LARGEST deliberately, "
+            f"and check SPECIFICATION.md Part I.6's quoted figure with it."
+        )
+E       AssertionError: wozi's largest schema-permitted PUT body moved from 635 to 743 B against a 2048 B cap (2.76x headroom). Update _EXPECTED_LARGEST deliberately, and check SPECIFICATION.md Part I.6's quoted figure with it.
+E       assert 743 == 635
+
+tests_scripts/test_request_body_cap_headroom.py:124: AssertionError
+=============================== warnings summary ===============================
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15int/tests_hardware/bench/test_bus_concurrency_under_api_load.py:289: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15int/tests_hardware/bench/test_bus_concurrency_under_api_load.py:459: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15int/tests_hardware/bench/test_bus_concurrency_under_api_load.py:548: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests_scripts/test_buildgen_schema_ast.py::test_extract_field_schemas_real_scd30_has_no_schema_entry_for_contmeas
+FAILED tests_scripts/test_config_schemas.py::test_a_planted_malformed_bmp3xx_record_fails[("MeanAtmTemp", "float", 15.0, -50.0, 50.0, None)-("MeanAtmTemp", "float", 15.0, -50.0, 50.0)-is not a 6-tuple]
+FAILED tests_scripts/test_config_schemas.py::test_a_planted_malformed_bmp3xx_record_fails[("MeanAtmTemp", "float", 15.0, -50.0, 50.0, None)-("MeanAtmTemp", "float", 99.0, -50.0, 50.0, None)-MeanAtmTemp: default 99.0 (special None) fails]
+FAILED tests_scripts/test_digital_twin_ci_suite_errcount.py::test_the_only_error_source_exempt_from_run_5cs_loss_sweep_is_the_store_itself
+FAILED tests_scripts/test_no_variant_literals.py::test_no_file_outside_the_device_tomls_names_a_variant
+FAILED tests_scripts/test_request_body_cap_headroom.py::test_the_largest_legitimate_body_is_the_pinned_one[dev]
+FAILED tests_scripts/test_request_body_cap_headroom.py::test_the_largest_legitimate_body_is_the_pinned_one[wozi]
+7 failed, 3079 passed, 11 skipped, 3 warnings in 584.64s (0:09:44)

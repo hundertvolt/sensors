@@ -1,0 +1,38 @@
+[test_asy_uart_driver] PASS test_writefrom_rejects_a_size_longer_than_the_buffer
+[test_asy_uart_driver] PASS test_multiple_invalid_pins_still_raises_cleanly
+[test_asy_uart_driver] PASS test_cancel_read_timeout_returns_false_if_not_locked
+[test_asy_uart_driver] PASS test_writefrom_retries_after_a_short_write_until_everything_is_sent
+[test_asy_neopixel_driver] PASS test_in_memory_variant_works_without_fram
+[test_asy_neopixel_driver] PASS test_init_bakes_name_into_the_logger
+[test_asy_neopixel_driver] FAIL test_overlay_write_deferred_while_ramp_holds_the_overlay_lock:
+[test_asy_neopixel_driver] Traceback (most recent call last):
+[test_asy_neopixel_driver]   File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u7g/tests/microtest.py", line 27, in run
+[test_asy_neopixel_driver]   File "tests/test_asy_neopixel_driver.py", line 177, in test_overlay_write_deferred_while_ramp_holds_the_overlay_lock
+[test_asy_neopixel_driver]   File "tests/test_asy_neopixel_driver.py", line 23, in run
+[test_asy_neopixel_driver]   File "asyncio/core.py", line 1, in run
+[test_asy_neopixel_driver]   File "asyncio/core.py", line 1, in run_until_complete
+[test_asy_neopixel_driver]   File "asyncio/core.py", line 1, in run_until_complete
+[test_asy_neopixel_driver]   File "tests/test_asy_neopixel_driver.py", line 169, in scenario
+[test_asy_neopixel_driver] AssertionError: 
+[test_asy_neopixel_driver] PASS test_led_signal_returns_false_for_a_second_call_before_the_first_dispatches
+[test_bus_hazard_generated] PASS test_dev_i2c1_a_config_write_does_not_disturb_concurrent_sibling_reads_across_timing_offsets
+[test_bus_hazard_generated] PASS test_build_bus_occupants_fails_loud_for_a_driver_with_no_catalog_adapter
+[test_asy_neopixel_driver] PASS test_toggle_flips_from_on_to_off
+[test_asy_uart_driver] PASS test_cancel_with_a_wedged_holder_is_bounded_and_counted
+== Summary: scripts/test.sh ==
+Commit: 1ad00b2
+Levels: L0 PASS · L1 FAIL · L2 PASS (tests/test_digital_twin_*.py only; run_digital_twin_ci.sh not run)
+GC stage: 32768
+Counts (files): passed 87 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Counts (tests_scripts tests): passed 2743 · failed 0 · skipped 6 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Counts (tests): passed 3866 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests/test_asy_neopixel_driver.py: 1 of 38 tests failed
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

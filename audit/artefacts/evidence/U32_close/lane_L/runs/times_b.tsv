@@ -1,0 +1,14 @@
+new	test_digital_twin_run_generic_integration.py	-1	1.36	0	0	43/43 passed, 0 failed, 0 skipped
+new	test_sensortask.py[arzi]	-1	28.56	0	0	91/91 passed, 0 failed, 0 skipped
+new	test_sensortask.py[dev]	-1	45.44	0	0	91/91 passed, 0 failed, 0 skipped
+new	test_sensortask.py[grkizi]	-1	28.46	0	0	91/91 passed, 0 failed, 0 skipped
+new	test_sensortask.py[klkizi]	-1	28.19	0	0	91/91 passed, 0 failed, 0 skipped
+new	test_sensortask.py[schlafzi]	-1	28.60	0	0	91/91 passed, 0 failed, 0 skipped
+new	test_sensortask.py[wozi]	-1	31.86	0	0	91/91 passed, 0 failed, 0 skipped
+new	test_digital_twin_run_generic_integration.py	32768	1.50	0	0	43/43 passed, 0 failed, 0 skipped
+new	test_sensortask.py[arzi]	32768	32.40	0	0	91/91 passed, 0 failed, 0 skipped
+new	test_sensortask.py[dev]	32768	53.64	0	0	91/91 passed, 0 failed, 0 skipped
+new	test_sensortask.py[grkizi]	32768	32.51	0	0	91/91 passed, 0 failed, 0 skipped
+new	test_sensortask.py[klkizi]	32768	32.31	0	0	91/91 passed, 0 failed, 0 skipped
+new	test_sensortask.py[schlafzi]	32768	31.99	0	0	91/91 passed, 0 failed, 0 skipped
+new	test_sensortask.py[wozi]	32768	35.65	0	0	91/91 passed, 0 failed, 0 skipped

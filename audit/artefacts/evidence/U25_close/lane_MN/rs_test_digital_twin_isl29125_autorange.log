@@ -1,0 +1,262 @@
+FAIL test_a_calibration_run_measures_the_chips_own_real_ratio:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_isl29125_autorange.py", line 424, in test_a_calibration_run_measures_the_chips_own_real_ratio
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_isl29125_autorange.py", line 409, in whole
+  File "tests/test_digital_twin_isl29125_autorange.py", line 64, in _make_dev_reader
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_a_calibration_window_without_a_stable_reading_warns_once:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_isl29125_autorange.py", line 447, in test_a_calibration_window_without_a_stable_reading_warns_once
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_isl29125_autorange.py", line 431, in whole
+  File "tests/test_digital_twin_isl29125_autorange.py", line 64, in _make_dev_reader
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_a_dead_interrupt_line_eventually_warns_rather_than_staying_invisible:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_isl29125_autorange.py", line 367, in test_a_dead_interrupt_line_eventually_warns_rather_than_staying_invisible
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_isl29125_autorange.py", line 356, in whole
+  File "tests/test_digital_twin_isl29125_autorange.py", line 64, in _make_dev_reader
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_a_freshly_constructed_chip_is_recovered_from_its_own_power_on_brownout_flag:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_isl29125_autorange.py", line 550, in test_a_freshly_constructed_chip_is_recovered_from_its_own_power_on_brownout_flag
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_isl29125_autorange.py", line 540, in whole
+  File "tests/test_digital_twin_isl29125_autorange.py", line 64, in _make_dev_reader
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_a_muted_interrupt_is_rearmed_once_and_delivers_again:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_isl29125_autorange.py", line 397, in test_a_muted_interrupt_is_rearmed_once_and_delivers_again
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_isl29125_autorange.py", line 374, in whole
+  File "tests/test_digital_twin_isl29125_autorange.py", line 64, in _make_dev_reader
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_a_real_brownout_is_detected_reconfigured_and_recovered_from:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_isl29125_autorange.py", line 571, in test_a_real_brownout_is_detected_reconfigured_and_recovered_from
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_isl29125_autorange.py", line 555, in whole
+  File "tests/test_digital_twin_isl29125_autorange.py", line 64, in _make_dev_reader
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_a_real_threshold_crossing_drives_the_interrupt_line_into_the_read_event:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_isl29125_autorange.py", line 328, in test_a_real_threshold_crossing_drives_the_interrupt_line_into_the_read_event
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_isl29125_autorange.py", line 304, in whole
+  File "tests/test_digital_twin_isl29125_autorange.py", line 64, in _make_dev_reader
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_a_red_dominant_scene_does_not_drive_a_read_every_prst_window:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_isl29125_autorange.py", line 291, in test_a_red_dominant_scene_does_not_drive_a_read_every_prst_window
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_isl29125_autorange.py", line 267, in whole
+  File "tests/test_digital_twin_isl29125_autorange.py", line 64, in _make_dev_reader
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_a_single_clipped_channel_switches_the_range_up_and_does_not_fall_back:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_isl29125_autorange.py", line 237, in test_a_single_clipped_channel_switches_the_range_up_and_does_not_fall_back
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_isl29125_autorange.py", line 224, in whole
+  File "tests/test_digital_twin_isl29125_autorange.py", line 64, in _make_dev_reader
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_a_steady_calibration_scene_converges_with_no_entry:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_isl29125_autorange.py", line 466, in test_a_steady_calibration_scene_converges_with_no_entry
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_isl29125_autorange.py", line 452, in whole
+  File "tests/test_digital_twin_isl29125_autorange.py", line 64, in _make_dev_reader
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_applying_a_measured_ratio_shrinks_the_high_range_error:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_isl29125_autorange.py", line 528, in test_applying_a_measured_ratio_shrinks_the_high_range_error
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_isl29125_autorange.py", line 508, in whole
+  File "tests/test_digital_twin_isl29125_autorange.py", line 64, in _make_dev_reader
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_cal_light_reads_too_dark_suitable_and_too_bright_from_the_light_model:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_isl29125_autorange.py", line 484, in test_cal_light_reads_too_dark_suitable_and_too_bright_from_the_light_model
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_isl29125_autorange.py", line 473, in whole
+  File "tests/test_digital_twin_isl29125_autorange.py", line 64, in _make_dev_reader
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_each_brownout_is_one_warning_and_nothing_else:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_isl29125_autorange.py", line 595, in test_each_brownout_is_one_warning_and_nothing_else
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_isl29125_autorange.py", line 578, in whole
+  File "tests/test_digital_twin_isl29125_autorange.py", line 64, in _make_dev_reader
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_hue_saturation_and_colour_temperature_hold_still_across_the_switch:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_isl29125_autorange.py", line 211, in test_hue_saturation_and_colour_temperature_hold_still_across_the_switch
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_isl29125_autorange.py", line 191, in whole
+  File "tests/test_digital_twin_isl29125_autorange.py", line 64, in _make_dev_reader
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_normalised_rgb_and_brightness_are_continuous_across_the_switch_not_only_lux:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_isl29125_autorange.py", line 161, in test_normalised_rgb_and_brightness_are_continuous_across_the_switch_not_only_lux
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_isl29125_autorange.py", line 142, in whole
+  File "tests/test_digital_twin_isl29125_autorange.py", line 64, in _make_dev_reader
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_reported_lux_is_continuous_and_monotonic_through_a_range_sweep:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_isl29125_autorange.py", line 135, in test_reported_lux_is_continuous_and_monotonic_through_a_range_sweep
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_isl29125_autorange.py", line 112, in whole
+  File "tests/test_digital_twin_isl29125_autorange.py", line 64, in _make_dev_reader
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_the_applied_ratio_changes_only_by_a_config_push:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_isl29125_autorange.py", line 501, in test_the_applied_ratio_changes_only_by_a_config_push
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_isl29125_autorange.py", line 489, in whole
+  File "tests/test_digital_twin_isl29125_autorange.py", line 64, in _make_dev_reader
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_the_clipped_scene_reports_the_tints_own_hue_once_it_is_on_the_right_range:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_isl29125_autorange.py", line 259, in test_the_clipped_scene_reports_the_tints_own_hue_once_it_is_on_the_right_range
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_isl29125_autorange.py", line 242, in whole
+  File "tests/test_digital_twin_isl29125_autorange.py", line 64, in _make_dev_reader
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_the_range_does_not_oscillate_when_parked_at_the_switch_point:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_isl29125_autorange.py", line 184, in test_the_range_does_not_oscillate_when_parked_at_the_switch_point
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_isl29125_autorange.py", line 169, in whole
+  File "tests/test_digital_twin_isl29125_autorange.py", line 64, in _make_dev_reader
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_the_range_still_tracks_when_the_interrupt_line_never_asserts:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_isl29125_autorange.py", line 351, in test_the_range_still_tracks_when_the_interrupt_line_never_asserts
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_isl29125_autorange.py", line 336, in whole
+  File "tests/test_digital_twin_isl29125_autorange.py", line 64, in _make_dev_reader
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+0/20 passed, 20 failed, 0 skipped
+RC=1 WALL=.099830507 FILE=tests/test_digital_twin_isl29125_autorange.py STAGE=-1

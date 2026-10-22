@@ -1,0 +1,6 @@
+base_copy	0	7.56	(112 tests) 218ms
+wt-u32w	0	6.25	(116 tests) 223ms
+base_copy	0	3.53	(112 tests) 137ms
+wt-u32w	0	3.90	(116 tests) 134ms
+base_copy	0	2.84	(112 tests) 136ms
+wt-u32w	0	2.96	(116 tests) 136ms

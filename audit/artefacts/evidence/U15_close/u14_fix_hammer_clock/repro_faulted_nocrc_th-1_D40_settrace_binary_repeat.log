@@ -1,0 +1,8 @@
+ok   k=589 D=40 stalled=1 window_sleeps=602 window_failed_calls=0 responder_failed_listens=0+1 659ms: pass
+ok   k=589 D=40 stalled=1 window_sleeps=601 window_failed_calls=0 responder_failed_listens=0+1 652ms: pass
+FLIP k=589 D=40 stalled=1 window_sleeps=677 window_failed_calls=1 responder_failed_listens=0+0 551ms: FAIL AssertionError: 640 bytes over 30 failures = 21.3 B/failure
+FLIP k=589 D=40 stalled=1 window_sleeps=675 window_failed_calls=1 responder_failed_listens=0+0 553ms: FAIL AssertionError: 576 bytes over 30 failures = 19.2 B/failure
+ok   k=589 D=40 stalled=1 window_sleeps=726 window_failed_calls=1 responder_failed_listens=1+1 737ms: pass
+FLIP k=580 D=40 stalled=1 window_sleeps=670 window_failed_calls=1 responder_failed_listens=0+0 547ms: FAIL AssertionError: 576 bytes over 30 failures = 19.2 B/failure
+ok   k=580 D=40 stalled=1 window_sleeps=720 window_failed_calls=1 responder_failed_listens=1+1 714ms: pass
+ok   k=580 D=40 stalled=1 window_sleeps=720 window_failed_calls=1 responder_failed_listens=1+1 715ms: pass

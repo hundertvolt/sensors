@@ -1,0 +1,66 @@
+FACT state="loads"
+FACT layout={"allocated": 1140, "size": 262144}
+FACT seeded=["BMP3XX", "CFGMGR_BMP3XX", "CFGMGR_ISL29125", "CFGMGR_NOTIFY", "CFGMGR_NTP", "CFGMGR_SGP40", "CFGMGR_SYSTEM", "CFGMGR_WIFI", "DNSSRV", "ISL29125", "NEOPIXEL", "NOTIFY", "NTP", "SCD30", "SGP40", "SYSTEM", "UART_init", "UART_resp", "WEBSERVER", "WIFI"]
+FACT seeded_system={"ErrType": ["N", "N", "N", "N", "N", "N", "N", "E", "E", "E"], "ErrCount": 3, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 125, 126, 127]}
+FACT answer="Valid"
+ERASE START
+FACT erase={"ms": 1058, "ok": true, "max_gap_ms": 5}
+FACT reset={"code": 8, "feeds": 1100, "max_gap_ms": 1815, "loads": [73, 73, 0]}
+digital_twin/run_device_script.py: machine reset: kind=reset
+
+   note: erase 1058 ms under [73, 73, 0] (load writes, bus reads, bus faults)
+   note: twin run: no production boot follows the reset - the after-boot half is silicon's
+test_fram_erase_racing_a_chunk_write_leaves_no_torn_chunk PASS
+STEM.cfg - Writing configuration file!
+CFGMGR_SYSTEM Default data was written in hwtest-scratch/config_SYSTEM.cfg - config is ready.
+WIFI Establishing WLAN connection
+WIFI No SSID configured, hotspot mode
+BMP3XX Setting sensor config at startup.
+BMP3XX initialized
+SYSTEM load
+ISL29125 Setting sensor config at startup.
+ISL29125 initialized
+SYSTEM System command accepted, controlled shutdown for reboot
+FACT answer="Valid"
+SYSTEM load
+SYSTEM load
+SYSTEM load
+SYSTEM load
+SYSTEM load
+SYSTEM load
+SYSTEM load
+SYSTEM load
+SYSTEM load
+UART_init UART error: no ACK for frame 1
+SYSTEM load
+SYSTEM load
+SYSTEM load
+SYSTEM load
+SYSTEM load
+SYSTEM load
+SYSTEM load
+SYSTEM load
+FRAM FRAM verification set to 60 write cycles.
+SGP40 initialized with storage
+SYSTEM load
+SYSTEM load
+SYSTEM load
+SYSTEM load
+SYSTEM Shutdown: supervisor stopped, the watchdog is fed by the shutdown alone
+SYSTEM Shutdown: config stores closed and flushed
+FRAM Storage pause set to True
+SYSTEM load
+SYSTEM Shutdown: storage quiesced
+FRAM FRAM communication paused, not writing FRAM!
+SYSTEM PrintLog: History write failed!
+SYSTEM load
+SYSTEM Shutdown: supervised tasks stopped
+SYSTEM Reboot triggered
+FRAM Storage pause set to True
+SYSTEM Storage paused
+FACT reset={"code": 3, "feeds": 55, "max_gap_ms": 1814, "bus": [24, 0]}
+FACT written={"SYSTEM": [126, 125, 126, 125, 126, 125, 126, 125, 126, 125, 126, 125, 126, 125, 126, 125, 126, 125, 126, 125, 126, 125, 126, 125]}
+digital_twin/run_device_script.py: machine reset: kind=reset
+
+   note: twin run: no production boot follows the reset - the after-boot half is silicon's
+test_reboot_command_shuts_down_then_resets PASS

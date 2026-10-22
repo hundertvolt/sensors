@@ -1,0 +1,8 @@
+FAIL test_an_allocation_failure_in_each_arm_prints_its_text_and_keeps_the_sentinel:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18u/t_console.py", line 200, in test_an_allocation_failure_in_each_arm_prints_its_text_and_keeps_the_sentinel
+AssertionError: [('_connect', (False, True, True), []), ('unregister', (False, True, False), []), ('close', (False, True, False), []), ('ready', False, []), ('sendto', None, []), ('write', None, []), ('recvfrom', (None, None), [])]
+PASS test_an_os_error_in_each_arm_prints_nothing
+1/2 passed, 1 failed, 0 skipped
+rc=1 elapsed=1.136054554s mode=e file=/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18u/t_console.py

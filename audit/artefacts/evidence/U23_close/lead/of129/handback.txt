@@ -1,0 +1,35 @@
+
+######## SubagentHandback 2026-10-13T13:08:48.450Z
+OF-129 (b) is done in commit 16d8fae on `audit/u23-of129` (worktree S/wt-u23w, parent 202a118). Not pushed. All 132 runs passed and the checks are clean, except `test_tunables_register`, which is red on rows lane X owes.
+
+- **Change:** in `src/asy_wifi_service.py`, `_hotspot_client_absent()` (lines 496-499) now sets `self._hw_op_failed = True` when `_arm_hotspot_timer()` returns False. The new 2-line comment matches the silent-mode comment at :740-742 word for word ("Persisted and retried next iteration; …, as the uptime tick's does (owner, 2026-10-13)"). I left the silent-mode comment unchanged, since its actor stays (agent, 2026-10-12).
+- **Tests:** `tests/test_asy_wifi_service.py` goes from 261 to 264 tests.
+  - `test_a_failed_window_arm_is_the_iterations_hardware_failure` (:2148), for OSError and MemoryError.
+  - `test_integration_a_hotspot_window_that_cannot_be_armed_ends_the_task_and_its_restart_retries_sta` (:4383): the streak is 0, 1, 2 at the three no-client ticks and the task gives up at max+1. The restart runs with the pool still exhausted and the router back. It leaves the hotspot, links on a new STA interface, and starts a fresh streak with the hotspot available again.
+  - `test_integration_a_window_arm_that_succeeds_later_heals_the_streak` (:4416): the streak runs 0, 1, 2, 1, 0, 0 and the window is armed once.
+  - `_hotspot_client()` takes a new `max_module_error` argument.
+- **Twin:** neither twin `Timer` can fail an arm (`digital_twin/machine.py` has no fault model), so no twin file can pin this behaviour. No file outside my set was needed.
+- **Seen failing first:** on 202a118's code all three new tests failed (261/264). The two integration tests failed on their streak asserts (the streak stayed at 0 every tick). The restart half guards unchanged code and was never seen failing on its own. Log: `u23/of129/logs/seen_failing_first.txt`.
+- **Run set:** 32 files. `git grep -l WifiService` gives only 12 test files, not U22's set, so I ran the union with U22's 28-file consumer list. "Before" ran on a scratch copy of 202a118, since removed. Every run was green with no memory marker; each file row reads count, then -1 before→after, then 32768 before→after, in seconds.
+  - wifi_service 264: 19.6→19.7, 21.5→21.5; settrace 20.6→20.6
+  - captive_dns 63: 25.6→25.6, 25.6→25.6
+  - ntp_client 177: 22.7→22.8, 24.6→25.2
+  - wifi_modes twin 1/1: 101.3→101.2, 101.5→101.7 (run alone)
+  - bus_hazard 20: 154.4→154.3, 158.6→158.3
+  - uart_link 19: 70.4→68.7, 82.0→80.2
+  - sensortask_integration 15: 61.1→61.0, 64.6→64.2
+  - sensortask_{arzi,dev,grkizi,klkizi,schlafzi,wozi} 89 each: -1 at 44-72 s, 32768 at 60-103 s (dev the largest, 71.4→71.9 and 100.7→103.4); every change is within 5%
+  - webserver_concurrency ×6, 20 each: 40-52 s, changes within ±1 s
+  - construction ×6, real_website 9, run_generic 26, neopixel 8, ntp_fram 12, ntp_wifi_dns 13, readiness 14, setter_microdot 40: all under 13 s, unchanged
+  - The full table is in `u23/of129/results.tsv`.
+- **Checks:** ruff on the 8 scopes is clean, and the four cold-cache mypy runs are clean (the typings symlink is removed). From the pre-commit set, error_catalog, citations, decision_vocabulary, comment_block_cap and code_conventions pass, as do six others. `test_tunables_register` fails only on base rows lane X owes (web.default_decimals, l1.lwip_host_spin_window_rounds, web.clock_mismatch_s, web.poll_backoff_max_ms, web.device_watch_interval_ms, l0.section_render_wait_ms, and the render_* Sites). My diff adds no `@tunable` tag.
+- **Facts for lane X (SPECIFICATION.md):**
+  - C.7, the `_error_check` paragraph at :3014-3020: a hotspot window that cannot be armed is a hardware failure too. With no window the hotspot never ends and STA is never retried, so each failed arm counts, climbs to the device rung and the give-up, and the restart leaves the hotspot for a fresh STA streak with the hotspot available again (owner, 2026-10-13: "Take option b for 2").
+  - C.9 at :3566-3569: drop "in the silent mode" as the only mode where a failed arm counts.
+  - C.7.2 at :3146: "re-armed at the next opportunity, then its task ends" now holds for this timer.
+  - A.4's Wi-Fi state machine may want one sentence on this.
+  - The catalog texts (TIMER, WLAN_GIVE_UP) stay accurate.
+- **Fact for lane Y (DEVICE_REFERENCE.md):** the overlay bullet at :13-22 describes the hotspot. If the hotspot's timer cannot be started, the Wi-Fi task restarts after a few 5 s checks and tries the home network again, and repeated restarts reboot the unit.
+- **RUNS.md:** it matches `ps`. No OF-129 line is open and no process of mine is left. Your own line "agent (lead edit OF-129)" from 12:14:07 is still open, for you to close.
+- **RUNS.md race, found and repaired:** my helper, copied from `u23/of111/runs.py`, wrote lines with no final newline. Five "lead edits 2" lines were appended onto mine, and their done-marker for "E3 sanity" landed on my `after-f-test_sensortask_arzi` line. I split the five lines and moved that marker back to its owner (backup at `u23/of129/RUNS.md.bak_before_repair`), and fixed my helper. `u23/of111/runs.py` still has the same defect; I did not touch it.
+- **Side note, not changed:** `_hotspot_client_absent()` prints "No client connected - hotspot timer started" even when the arm then fails. It is a print-only line, and the persisted TIMER entry follows it.

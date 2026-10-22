@@ -1,0 +1,32 @@
+== stage -1
+import ms 79 alloc 1335202 live after collect 294752
+3242 ms 319720220 B test_the_index_sequence_matches_the_c_reference
+601 ms 56171544 B test_the_lowered_uptime_limit_leaves_the_output_unchanged
+61 ms 3636928 B test_process_oscillating_extreme_readings_widens_the_variance_scaling
+51 ms 3854968 B test_process_sustained_extreme_low_then_high_readings_clamps_the_sigmoid
+41 ms 1118402 B test_voc_state_round_trips_through_a_real_fram_chunk_across_a_simulated_reboot
+31 ms 353188 B test_voc_state_self_heals_from_a_single_corrupted_copy_through_real_fram
+26 ms 297864 B test_voc_state_restore_from_a_hard_fram_read_failure_leaves_algorithm_state_untouched
+10 ms 780680 B test_proc_ser_des_restore_resumes_identically_to_the_original
+tests ms 4098 alloc B 389094468 est. threshold collections - live 2359392
+real	0m4.200s
+user	0m4.066s
+== stage 32768
+import ms 75 alloc 1334477 live after collect 294688
+15442 ms 319720220 B test_the_index_sequence_matches_the_c_reference
+2731 ms 56171544 B test_the_lowered_uptime_limit_leaves_the_output_unchanged
+178 ms 3854968 B test_process_sustained_extreme_low_then_high_readings_clamps_the_sigmoid
+171 ms 3636928 B test_process_oscillating_extreme_readings_widens_the_variance_scaling
+75 ms 1118402 B test_voc_state_round_trips_through_a_real_fram_chunk_across_a_simulated_reboot
+51 ms 353188 B test_voc_state_self_heals_from_a_single_corrupted_copy_through_real_fram
+40 ms 971480 B test_process_after_blackout_produces_index_in_documented_range
+36 ms 780680 B test_proc_ser_des_restore_resumes_identically_to_the_original
+tests ms 18864 alloc B 389094468 est. threshold collections 11874 live 358336
+real	0m18.964s
+user	0m18.624s
+tables live 108640 ms 3027 alloc 313203344 collections -
+no tables live 108576 ms 2808 alloc 313203344 collections -
+tables live 108640 ms 10868 alloc 313203344 collections 9558
+no tables live 108576 ms 10596 alloc 313203344 collections 9558
+heapsize 4M: tables live 108640 ms 5734 alloc 313203344 collections 9558
+heapsize 16M: tables live 108640 ms 11052 alloc 313203344 collections 9558

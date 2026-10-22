@@ -1,0 +1,13 @@
+tests/test_digital_twin_sensortask_integration.py: note: In function "test_the_supervisor_restarts_a_real_dead_task":
+tests/test_digital_twin_sensortask_integration.py:458:19: error: Missing
+positional argument "task_names" in call to "start_tasks" of "SystemService" 
+[call-arg]
+                await sysfunct.start_tasks(task_starters)
+                      ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_sensortask_integration.py: note: In function "test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0":
+tests/test_digital_twin_sensortask_integration.py:513:19: error: Missing
+positional argument "task_names" in call to "start_tasks" of "SystemService" 
+[call-arg]
+                await sysfunct.start_tasks(task_starters)
+                      ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Found 2 errors in 1 file (checked 52 source files)

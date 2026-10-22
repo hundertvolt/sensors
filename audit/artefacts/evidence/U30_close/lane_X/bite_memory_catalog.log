@@ -1,0 +1,6 @@
+E       AssertionError: run-phase allocations not in _RUN_PHASE_ALLOWED (SPECIFICATION.md I.2): [('asy_neopixel_driver.py', 'NeopixelDriver.off', '_planted')]
+E       assert not [('asy_neopixel_driver.py', 'NeopixelDriver.off', '_planted')]
+1 failed, 11 deselected in 0.98s
+E       AssertionError: _RUN_PHASE_ALLOWED entries that no longer occur: [('asy_wifi_service.py', 'WifiService._switch_wlan_mode', '_wlan')]
+E       assert not [('asy_wifi_service.py', 'WifiService._switch_wlan_mode', '_wlan')]
+1 failed, 11 deselected in 1.00s

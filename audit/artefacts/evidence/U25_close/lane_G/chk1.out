@@ -1,0 +1,63 @@
+== ruff
+All checks passed!
+== twin
+Success: no issues found in 54 source files
+== main
+Success: no issues found in 204 source files
+== mainargs
+Success: no issues found in 188 source files
+== conv
+== test_decision_vocabulary: 2 failed, 4 passed in 8.27s
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           tests/test_digital_twin_bus_hazard_concurrency.py	Deliberately does NOT reuse _run_real_task_graph_and_assert_healthy(): its share
+E           tests/test_digital_twin_bus_hazard_concurrency.py	wozi's own SGP40+BMP3xx-on-i2c1 pairing can never be confirmed on real hardware
+E           tests/test_digital_twin_sensortask_integration.py	Deliberately does not wait out an auto-unpause: the command's duration is a hard
+E           tests/test_digital_twin_sensortask_integration.py	PauseTime is deliberately excluded from GET /notification's flat settings, so it
+E           tests/test_digital_twin_sensortask_integration.py	See SPECIFICATION.md Part A.9 - the frozen_html website, served by WebserverServ
+E       assert not [('tests/test_digital_twin_bus_hazard_concurrency.py', 'Deliberately does NOT reuse _run_real_task_graph_and_assert_he...l_twin_sensortask_integration.py', 'See SPECIFICATION.md Part A.9 - the frozen_html website, served by WebserverServ')]
+FAILED tests_scripts/test_decision_vocabulary.py::test_decision_vocabulary_names_its_actor_or_is_allow_listed
+== test_citations: 1 failed, 14 passed in 10.56s
+E           CLAUDE.md: digital_twin/unix_port_gc_unwedge.py
+E           SPECIFICATION.md: digital_twin/segfault_stress_repro.py
+E           SPECIFICATION.md: digital_twin/unix_port_gc_unwedge.py
+E           SPECIFICATION.md: digital_twin/unix_port_gc_unwedge.py
+E           SPECIFICATION.md: digital_twin/unix_port_gc_unwedge.py
+E           SPECIFICATION.md: tests/test_digital_twin_unix_port_gc_unwedge.py
+E           SPECIFICATION.md: tests/test_sensortask_dev.py
+E           SPECIFICATION.md: tests/test_sensortask_dev.py
+== test_comment_block_cap: 488 passed in 3.92s
+== test_tunables_register: 1 failed, 14 passed in 4.15s
+E         tests/test_digital_twin_machine_uart.py:37: l2.machine_uart_stall_baud is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine_uart.py:39: l2.machine_uart_stall_pages is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_ntp.py:61: l2.ntp_reply_wait_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_ntp.py:64: l2.ntp_run_bound_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_ntp.py:275: l2.ntp_sync_wait_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_timer_pool.py:74: l2.timer_pool_wait_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_timer_pool.py:76: l2.timer_pool_run_bound_s is tagged but has no SPECIFICATION.md Part N row
+E         SPECIFICATION.md:10790: l2.twin_ready_poll_ms: Sites list [('digital_twin/run_generic_integration.py', '20'), ('digital_twin/segfault_stress_repro.py', '20')], the tags say [('digital_twin/run_generic_integration.py', '20')]
+== test_legacy_paths: 3 passed in 1.69s
+== test_import_placement: 7 passed in 7.35s
+== test_code_conventions: 25 passed in 3.89s
+== test_error_catalog: 40 passed in 18.48s
+== test_host_annotations: 12 passed in 1.87s
+== test_lint_ceilings: 19 passed in 9.45s
+== test_mypy_any_baseline: 7 passed in 0.06s
+== test_memory_error_gate_agreement: 13 passed in 4.35s
+== test_port_bands: 1 failed, 15 passed in 1.82s
+E       assert ["tests/_webs...999, 'tcp'))"] == []
+E         
+E         Left contains one more item: "tests/_webserver_concurrency_scenarios.py: rows [], literal ports [] (its own row (19700, 19999, 'tcp'))"
+E         Use -v to get more diff
+FAILED tests_scripts/test_port_bands.py::test_every_test_file_that_binds_a_port_draws_it_from_its_band
+== test_twin_entry_point_order: 1 failed, 7 passed in 0.93s
+E       AssertionError: ["test_digital_twin_construction.py: module-level calls start ['getenv', 'prewarm_poll_set'] with the shim present, no...poll_set', 'require_fresh'] with the shim absent, not ['prewarm_poll_set', 'patch_asy_udp_socket_for_unix_port']", ...]
+E       assert ["test_digita..._port']", ...] == []
+E         
+E         Left contains 9 more items, first extra item: "test_digital_twin_construction.py: module-level calls start ['getenv', 'prewarm_poll_set'] with the shim present, not ['prewarm_poll_set', 'patch_asy_udp_socket_for_unix_port']"
+E         Use -v to get more diff
+FAILED tests_scripts/test_twin_entry_point_order.py::test_every_booting_twin_test_file_prewarms_then_shims_first
+== test_no_variant_literals: 1 failed, 18 passed in 9.51s
+E       AssertionError: these files are clean now - remove their _NOT_YET_CLEANED entries: ['tests/test_digital_twin_generic_wiring.py', 'tests/test_digital_twin_isl29125_autorange.py']
+E       assert not ['tests/test_digital_twin_generic_wiring.py', 'tests/test_digital_twin_isl29125_autorange.py']
+FAILED tests_scripts/test_no_variant_literals.py::test_every_not_yet_cleaned_entry_still_carries_a_literal
+CHK-DONE

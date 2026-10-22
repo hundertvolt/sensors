@@ -1,0 +1,48 @@
+== plain th=-1 offset=1 stall after clear poll k=2 D=30ms
+rep 0 PASS
+  offset 1 waits(us): [35268, 5493, 5485, 5461, 5419, 6317, 5422, 5586, 5419, 7399, 11879] 
+fails 0 / 1
+== plain th=-1 offset=1 stall after clear poll k=7 D=30ms
+rep 0 PASS
+  offset 1 waits(us): [5410, 35109, 5405, 5534, 5468, 5855, 4380, 5395, 5374, 5423, 5410] 
+fails 0 / 1
+== plain th=-1 offset=1 stall after clear poll k=2 D=40ms
+rep 0 PASS
+  offset 1 waits(us): [45419, 5411, 5416, 5358, 5334, 5393, 5651, 5425, 5268, 5397, 5336] 
+fails 0 / 1
+== plain th=-1 offset=1 stall after clear poll k=7 D=40ms
+rep 0 PASS
+  offset 1 waits(us): [5410, 45568, 5407, 5395, 5354, 5398, 5406, 5323, 9084, 5324, 5320] 
+fails 0 / 1
+== plain th=-1 offset=1 stall after clear poll k=2 D=44ms
+rep 0 PASS
+  offset 1 waits(us): [49473, 5460, 5433, 5411, 5431, 5430, 5440, 5420, 5456, 5407, 5389] 
+fails 0 / 1
+== plain th=-1 offset=1 stall after clear poll k=7 D=44ms
+rep 0 PASS
+  offset 1 waits(us): [5438, 49281, 5445, 5441, 5454, 5449, 5433, 5490, 5422, 5418, 5981] 
+fails 0 / 1
+== plain th=-1 offset=1 stall after clear poll k=2 D=46ms
+rep 0 FAIL 1/6 timing offset(s) reproduced a hazard: ['offset=1: the recovery did not clear the planted held SDA: status 4']
+  offset 1 waits(us): [50158] held
+fails 1 / 1
+== plain th=-1 offset=1 stall after clear poll k=7 D=46ms
+rep 0 FAIL 1/6 timing offset(s) reproduced a hazard: ['offset=1: the recovery did not clear the planted held SDA: status 5']
+  offset 1 waits(us): [5574, 50375] held
+fails 1 / 1
+== plain th=-1 offset=1 stall after clear poll k=2 D=50ms
+rep 0 FAIL 1/6 timing offset(s) reproduced a hazard: ['offset=1: the recovery did not clear the planted held SDA: status 4']
+  offset 1 waits(us): [52531] held
+fails 1 / 1
+== plain th=-1 offset=1 stall after clear poll k=7 D=50ms
+rep 0 FAIL 1/6 timing offset(s) reproduced a hazard: ['offset=1: the recovery did not clear the planted held SDA: status 5']
+  offset 1 waits(us): [7619, 51543] held
+fails 1 / 1
+== plain th=-1 offset=1 stall after clear poll k=2 D=60ms
+rep 0 FAIL 1/6 timing offset(s) reproduced a hazard: ['offset=1: the recovery did not clear the planted held SDA: status 4']
+  offset 1 waits(us): [61814] held
+fails 1 / 1
+== plain th=-1 offset=1 stall after clear poll k=7 D=60ms
+rep 0 FAIL 1/6 timing offset(s) reproduced a hazard: ['offset=1: the recovery did not clear the planted held SDA: status 5']
+  offset 1 waits(us): [5473, 62645] held
+fails 1 / 1

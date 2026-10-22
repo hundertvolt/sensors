@@ -1,0 +1,1 @@
+F-12 verdict: reproduced - lane D's final tests_scripts/test_api_reference.py (3c23b1b) on 3d29af9's tree: 9 failed, 89 passed (rc 1, 12.1 s, 2026-10-13 11:20 UTC): the six devices' failure-shape case and three source-read cases (marker-not-a-string, marker-missing, unknown-text-not-a-string), matching D's "9 failed in test_api_reference".

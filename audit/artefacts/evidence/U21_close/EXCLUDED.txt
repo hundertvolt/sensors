@@ -1,0 +1,52 @@
+# Files left out of evidence_stage_u21 by the brief's rules, one per line: evidence path | rule | matched tracked file | source (relative to the scratchpad)
+# a = git blob equals a tracked blob (wt-u21api 895268c, f76385a, or any commit of f76385a..895268c); b = basename of a tracked .py/.js/.mjs/.ts/.toml/.sh/.json/.css/.html/.md file; c = 90% or more of its non-blank lines in one tracked text file of 895268c or f76385a
+# audit/ and arduino/ paths are left out of every tracked set; nothing under arduino/ was opened. A line that also meets a later rule names it after "also".
+
+lane_t/host_typecheck.before_o_section.ini | a | blob 9c49e63ec08c = host_typecheck.ini@e4783af; also c: host_typecheck.ini@f76385a (100% of 75 lines) | u21t_scratch/host_typecheck.before_o_section.ini
+lane_t/host_typecheck_noTbaseline.ini | a | blob 9c49e63ec08c = host_typecheck.ini@e4783af; also c: host_typecheck.ini@f76385a (100% of 75 lines) | u21t_scratch/host_typecheck_noTbaseline.ini
+lane_o/u21o_orig_test.py | a | blob 122ff3b1837b = tests_scripts/test_micropython_overrides.py@f76385a; also c: the same file (100% of 748 lines) | u21o_orig_test.py
+lane_o/u21o_test_before_reorder.py | a | blob b81347a148e4 = tests_scripts/test_micropython_overrides.py@c91676c; also c: tests_scripts/test_micropython_overrides.py@895268c (100% of 1510 lines) | u21o_test_before_reorder.py
+lane_t/setup_toolchain.pre_d15.py | c | toolchain/setup_toolchain.py@895268c (100% of 1513 lines) | u21t_scratch/setup_toolchain.pre_d15.py
+lane_t/test_file_before_proof.py | c | tests_scripts/test_setup_toolchain_env.py@895268c (98% of 1408 lines) | u21t_scratch/test_file_before_proof.py
+lane_o/u21o_host_typecheck.ini | c | host_typecheck.ini@f76385a (100% of 77 lines) | u21o_host_typecheck.ini
+lane_o/u21o_tests_a.py | c | tests_scripts/test_micropython_overrides.py@895268c (100% of 76 lines) | u21o_tests_a.py
+lane_o/u21o_tests_b.py | c | tests_scripts/test_micropython_overrides.py@895268c (92% of 85 lines) | u21o_tests_b.py
+lane_o/u21o_tests_c.py | c | tests_scripts/test_micropython_overrides.py@895268c (100% of 122 lines) | u21o_tests_c.py
+lane_o/u21o_tests_d.py | c | tests_scripts/test_micropython_overrides.py@895268c (94% of 178 lines) | u21o_tests_d.py
+lane_o/u21o_tests_e.py | c | tests_scripts/test_micropython_overrides.py@895268c (100% of 92 lines) | u21o_tests_e.py
+
+# Counts: rule a 4, rule b 0, rule c 8 (12 files). All four rule-a files also meet rule c. Every refused file is a scratch copy
+# of a tracked file: three copies of host_typecheck.ini, the overrides test file whole (base and before the reorder) and in
+# five pieces, and the installer and its test file at earlier states. No copied file matched a tracked basename (rule b).
+
+# Checked, not refused by a rule, and still left out (path | best tracked match | source | why):
+# lane_o/u21o_tail.py | toolchain/micropython_overrides.py@895268c, 89% of 167 lines | u21o_tail.py | a WIP piece of the module (just under rule c)
+# lane_d/b14_45.md | SPECIFICATION.md@895268c, 85% of 143 lines | u21d_ds/b14_45.md | lane D's draft of B.14.4 and B.14.5; the landed text is the tracked file
+# lane_s/sitecustomize.py | toolchain/setup_toolchain.py@895268c, 45% of 33 lines | u21s_shim/sitecustomize.py | a stand-in for lane T's then-unmerged lock and record calls, used for lane S's pre-merge checks; no report cites it
+# lane_o/u21o_rb.py | 6% | u21o_rb.py | an early readback probe over fake build trees; its output was not kept
+# lane_o/u21o_smoke.py | 8% | u21o_smoke.py | a smoke run of every apply_*(); its only output is the two .pp files below
+# lane_o/u21o_orig_names.txt | none | u21o_orig_names.txt | the base test names, which the tracked f76385a gives
+
+# Left out without a rule check (never candidates; paths relative to the scratchpad):
+# - near-duplicate reruns, each replaced by a diff against the kept final log (each diff rebuilds its log exactly; checked):
+#   u21t_runs/tc_test.log and u21t_runs/tc_test2.log (2,363 lines each; 200 and 185 diff lines against tc_test3.log),
+#   u21/o_test_run2.log (2,364 lines; 150 diff lines against o_test_run3.log). The diffs are lane_t/tc_test_vs_tc_test3.diff.txt,
+#   lane_t/tc_test2_vs_tc_test3.diff.txt and lane_o/o_test_run2_vs_o_test_run3.diff.txt.
+# - bulk output: u21o_tick/dis.txt (the tick image's disassembly, 240,160 lines, 10 MB; lane_o/tick_image_literal_pools.txt keeps
+#   every line with the offset literal and its function), u21/s_probe/rp2_listen/firmware_symbols.txt (the nm listing, 7,743 lines;
+#   map_output.txt keeps the five pool lines read from it, with their line numbers), u21o_smoke_unix_mphal.pp and
+#   u21o_smoke_unpatched.pp (preprocessor outputs, 830 KB each, cited by no report)
+# - duplicates: u21/s_probe/control_e.log and control_e.load (byte-identical to u21s_runs/control_e.*, kept in lane_s/runs/)
+# - empty files: u21t_scratch/proof_marker and marker2 (the incident proof's `find -newer` reference points), u21d_ds/b14_old.txt
+# - compiled binaries: u21o_tick/firmware-dev-tickoffset.uf2 (dev's tick-offset image, 2.3 MB), u21/incident_build_standard_frozen_verify.bin,
+#   u21/pretc/ (the two pre-U21 Unix binaries); toolchain copies (u21tc-*, /root/pico-toolchain) and the worktrees were never sources
+# - caches: u21s_shim/__pycache__
+# - never copied, as the brief says: u21/packet_lane*.md, u21/brief_*.md, u21/lane_plan.md, u21/pk/, u21/common.md, u21/common_draft.md;
+#   also not among the sources: the lead's planning files (u21/extract.py, mkbrief_de.py, files_{T,O,S}.txt, lane_sets.txt,
+#   resume_common.txt), u21/close/ (the scan record drafts), u21/gate1/ and gate1.timeline (the lead's gate1/ holds the final gate)
+
+# Credential grep (password, token, secret, psk, any case) over every copied text file and inside the nine .gz logs: 59 distinct
+# matching lines in 11 plain files (RUNS.md checked at its copy), none in the .gz logs. All are test names (the hotspot-password
+# and mask tests in the gate0 logs, test_cli_env_has_no_password_option), option and variable names (`--password`, `BENCH_AP_PASSWORD`,
+# a `<psk>` placeholder), doc phrases (passwordless sudo, the PSK lines, secrets redaction, citation tokens) and the incident's
+# throwaway test argument `--password x`. No credential: no file was left out on this rule.

@@ -1,0 +1,27 @@
+bite 1 replanted: see 1/run.log
+  test_a_parameter_every_call_resolves_takes_only_what_the_calls_pass
+1 failed, 19 passed, 1 deselected, 1 error in 0.19s
+bite 2 rc=1 case=[a classmethod's cls() on a subclass] failed:
+  test_a_constructed_subclass_keeps_its_override[a classmethod's cls() on a subclass]
+1 failed, 19 passed, 1 deselected, 1 error in 0.18s
+bite 3 rc=1 case=[an unresolved call] failed:
+  test_a_parameter_a_call_may_fill_unseen_keeps_its_annotation[an unresolved call]
+1 failed, 19 passed, 1 deselected, 1 error in 0.15s
+bite 4 rc=1 case=[a starred argument] failed:
+  test_a_parameter_a_call_may_fill_unseen_keeps_its_annotation[a starred argument]
+1 failed, 19 passed, 1 deselected, 1 error in 0.15s
+bite 5 rc=1 case=[an omitted argument's default] failed:
+  test_a_parameter_a_call_may_fill_unseen_keeps_its_annotation[an omitted argument's default]
+1 failed, 19 passed, 1 deselected, 1 error in 0.15s
+bite 6 rc=1 case=[a value the flow does not know] failed:
+  test_a_parameter_a_call_may_fill_unseen_keeps_its_annotation[a value the flow does not know]
+1 failed, 19 passed, 1 deselected, 1 error in 0.16s
+bite 7 rc=1 case=[a reference handed on] failed:
+  test_a_parameter_a_call_may_fill_unseen_keeps_its_annotation[a reference handed on]
+1 failed, 19 passed, 1 deselected, 1 error in 0.15s
+bite 8 rc=1 case=[a comprehension's call] failed:
+  test_a_parameter_a_call_may_fill_unseen_keeps_its_annotation[a comprehension's call]
+1 failed, 19 passed, 1 deselected, 1 error in 0.14s
+bite 9 rc=1 case=[a method nothing here calls] failed:
+  test_a_parameter_a_call_may_fill_unseen_keeps_its_annotation[a method nothing here calls]
+1 failed, 19 passed, 1 deselected, 1 error in 0.15s

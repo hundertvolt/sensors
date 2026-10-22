@@ -1,0 +1,63 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23c
+
+ ✓ |chromium| tests_js/site-functions.test.js > arzi's site > shows one Measurements group and one writable Sensors group per sensor its TOML declares 3ms
+ ✓ |chromium| tests_js/site-functions.test.js > arzi's site > sets the Wi-Fi identity, the Wi-Fi LED and the NTP server 0ms
+ ✓ |chromium| tests_js/site-functions.test.js > arzi's site > sets the system settings and sends reboot, bootloader and backup-pause commands 1ms
+ ✓ |chromium| tests_js/site-functions.test.js > arzi's site > flashes the LED, pauses and configures notifications where the device has them 0ms
+ ✓ |chromium| tests_js/site-functions.test.js > arzi's site > colours each field an Apply in the sensors section sent with its own result 38ms
+ ✓ |chromium| tests_js/site-functions.test.js > arzi's site > colours each field an Apply in the networking section sent with its own result 55ms
+ ✓ |chromium| tests_js/site-functions.test.js > arzi's site > colours each field an Apply in the system section sent with its own result 35ms
+ ✓ |chromium| tests_js/site-functions.test.js > arzi's site > colours each field an Apply in the status section sent with its own result 29ms
+ ✓ |chromium| tests_js/site-functions.test.js > arzi's site > colours each field an Apply in the notification section sent with its own result 46ms
+ ✓ |chromium| tests_js/site-functions.test.js > dev's site > shows one Measurements group and one writable Sensors group per sensor its TOML declares 1ms
+ ✓ |chromium| tests_js/site-functions.test.js > dev's site > sets the Wi-Fi identity, the Wi-Fi LED and the NTP server 0ms
+ ✓ |chromium| tests_js/site-functions.test.js > dev's site > sets the system settings and sends reboot, bootloader and backup-pause commands 0ms
+ ✓ |chromium| tests_js/site-functions.test.js > dev's site > flashes the LED, pauses and configures notifications where the device has them 0ms
+ ✓ |chromium| tests_js/site-functions.test.js > dev's site > colours each field an Apply in the sensors section sent with its own result 56ms
+ ✓ |chromium| tests_js/site-functions.test.js > dev's site > colours each field an Apply in the networking section sent with its own result 56ms
+ ✓ |chromium| tests_js/site-functions.test.js > dev's site > colours each field an Apply in the system section sent with its own result 34ms
+ ✓ |chromium| tests_js/site-functions.test.js > dev's site > colours each field an Apply in the status section sent with its own result 32ms
+ ✓ |chromium| tests_js/site-functions.test.js > dev's site > colours each field an Apply in the notification section sent with its own result 45ms
+ ✓ |chromium| tests_js/site-functions.test.js > grkizi's site > shows one Measurements group and one writable Sensors group per sensor its TOML declares 1ms
+ ✓ |chromium| tests_js/site-functions.test.js > grkizi's site > sets the Wi-Fi identity, the Wi-Fi LED and the NTP server 0ms
+ ✓ |chromium| tests_js/site-functions.test.js > grkizi's site > sets the system settings and sends reboot, bootloader and backup-pause commands 0ms
+ ✓ |chromium| tests_js/site-functions.test.js > grkizi's site > flashes the LED, pauses and configures notifications where the device has them 0ms
+ ✓ |chromium| tests_js/site-functions.test.js > grkizi's site > colours each field an Apply in the sensors section sent with its own result 34ms
+ ✓ |chromium| tests_js/site-functions.test.js > grkizi's site > colours each field an Apply in the networking section sent with its own result 57ms
+ ✓ |chromium| tests_js/site-functions.test.js > grkizi's site > colours each field an Apply in the system section sent with its own result 36ms
+ ✓ |chromium| tests_js/site-functions.test.js > grkizi's site > colours each field an Apply in the status section sent with its own result 39ms
+ ✓ |chromium| tests_js/site-functions.test.js > grkizi's site > colours each field an Apply in the notification section sent with its own result 45ms
+ ✓ |chromium| tests_js/site-functions.test.js > klkizi's site > shows one Measurements group and one writable Sensors group per sensor its TOML declares 1ms
+ ✓ |chromium| tests_js/site-functions.test.js > klkizi's site > sets the Wi-Fi identity, the Wi-Fi LED and the NTP server 0ms
+ ✓ |chromium| tests_js/site-functions.test.js > klkizi's site > sets the system settings and sends reboot, bootloader and backup-pause commands 0ms
+ ✓ |chromium| tests_js/site-functions.test.js > klkizi's site > flashes the LED, pauses and configures notifications where the device has them 0ms
+ ✓ |chromium| tests_js/site-functions.test.js > klkizi's site > colours each field an Apply in the sensors section sent with its own result 39ms
+ ✓ |chromium| tests_js/site-functions.test.js > klkizi's site > colours each field an Apply in the networking section sent with its own result 59ms
+ ✓ |chromium| tests_js/site-functions.test.js > klkizi's site > colours each field an Apply in the system section sent with its own result 34ms
+ ✓ |chromium| tests_js/site-functions.test.js > klkizi's site > colours each field an Apply in the status section sent with its own result 41ms
+ ✓ |chromium| tests_js/site-functions.test.js > klkizi's site > colours each field an Apply in the notification section sent with its own result 53ms
+ ✓ |chromium| tests_js/site-functions.test.js > schlafzi's site > shows one Measurements group and one writable Sensors group per sensor its TOML declares 0ms
+ ✓ |chromium| tests_js/site-functions.test.js > schlafzi's site > sets the Wi-Fi identity, the Wi-Fi LED and the NTP server 0ms
+ ✓ |chromium| tests_js/site-functions.test.js > schlafzi's site > sets the system settings and sends reboot, bootloader and backup-pause commands 0ms
+ ✓ |chromium| tests_js/site-functions.test.js > schlafzi's site > flashes the LED, pauses and configures notifications where the device has them 0ms
+ ✓ |chromium| tests_js/site-functions.test.js > schlafzi's site > colours each field an Apply in the sensors section sent with its own result 35ms
+ ✓ |chromium| tests_js/site-functions.test.js > schlafzi's site > colours each field an Apply in the networking section sent with its own result 55ms
+ ✓ |chromium| tests_js/site-functions.test.js > schlafzi's site > colours each field an Apply in the system section sent with its own result 33ms
+ ✓ |chromium| tests_js/site-functions.test.js > schlafzi's site > colours each field an Apply in the status section sent with its own result 34ms
+ ✓ |chromium| tests_js/site-functions.test.js > schlafzi's site > colours each field an Apply in the notification section sent with its own result 44ms
+ ✓ |chromium| tests_js/site-functions.test.js > wozi's site > shows one Measurements group and one writable Sensors group per sensor its TOML declares 1ms
+ ✓ |chromium| tests_js/site-functions.test.js > wozi's site > sets the Wi-Fi identity, the Wi-Fi LED and the NTP server 0ms
+ ✓ |chromium| tests_js/site-functions.test.js > wozi's site > sets the system settings and sends reboot, bootloader and backup-pause commands 0ms
+ ✓ |chromium| tests_js/site-functions.test.js > wozi's site > flashes the LED, pauses and configures notifications where the device has them 0ms
+ ✓ |chromium| tests_js/site-functions.test.js > wozi's site > colours each field an Apply in the sensors section sent with its own result 44ms
+ ✓ |chromium| tests_js/site-functions.test.js > wozi's site > colours each field an Apply in the networking section sent with its own result 55ms
+ ✓ |chromium| tests_js/site-functions.test.js > wozi's site > colours each field an Apply in the system section sent with its own result 34ms
+ ✓ |chromium| tests_js/site-functions.test.js > wozi's site > colours each field an Apply in the status section sent with its own result 29ms
+ ✓ |chromium| tests_js/site-functions.test.js > wozi's site > colours each field an Apply in the notification section sent with its own result 44ms
+
+ Test Files  1 passed (1)
+      Tests  54 passed (54)
+   Start at  09:57:14
+   Duration  2.77s (tests 77%, worker 15%, import 8%)
+

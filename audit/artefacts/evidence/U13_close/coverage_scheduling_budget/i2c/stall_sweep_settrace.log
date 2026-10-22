@@ -1,0 +1,8 @@
+== settrace offset=1 k=2 D=44
+rep 0 FAIL 1/6 timing offset(s) reproduced a hazard: ['offset=1: the recovery did not clear the planted held SDA: status 4']
+  offset 1 waits(us): [50184] held
+fails 1 / 1
+== settrace offset=1 k=2 D=46
+rep 0 FAIL 1/6 timing offset(s) reproduced a hazard: ['offset=1: the recovery did not clear the planted held SDA: status 4']
+  offset 1 waits(us): [51442] held
+fails 1 / 1

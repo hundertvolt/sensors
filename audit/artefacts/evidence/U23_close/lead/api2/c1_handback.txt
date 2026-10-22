@@ -1,0 +1,91 @@
+
+######## SubagentHandback 2026-10-13T09:11:43.468Z
+WIP 71f14d6
+
+U23 lane C, C1 WIP, on branch `audit/u23-c` (parent `d90bd96`). Not pushed. It contains three files from my set: `js/render.js`, `tests_js/render.test.js` and `tests_js/generated-definitions-render.test.js`.
+
+**Main point:** C1 is written against lane T's T1 and lane S's S1 API, so on this tree it cannot load. `render.test.js` fails at import with `SyntaxError: '/js/templates.js' does not provide an export named 'updateErrcountGroup'`. Every file that imports `render.js` fails the same way until the API base merges T1 and S1. To check the code before then, I copied the tree to `scratchpad/u23c/harness/` (never committed) and wrote stand-ins there for the §3 T1/S1 contract. With those stand-ins:
+- `render.test.js`: 49 of 50 pass. The one red is the known `defaultValue` case, which belongs to the Apply phase.
+- `generated-definitions-render.test.js`: 48 of 48 pass.
+
+## Step table (C1 scope)
+| row | status | note |
+|---|---|---|
+| 54 M.WEB.022 | applied | `showBanner(el, msg)` sets text and `data-shown="true"`; `hideBanner(el)` sets `"false"` and keeps the text. Imports are only what C1 uses. |
+| 21.20 M.WEB.020 | applied | `renderSection(defs, section, mainEl, context = {})`, `context = {visibility?, deviceClock?, onRecovered?, applyTracker?}`, returns `stop()`. One AbortController; every section runs through `startPolling` (`stopAfterSuccess` unless the section is live). `fetchOnce` throws; `onError`/`onSuccess` show the banner, log once per failure episode and call `onRecovered`. The device clock observes every `/status` body. Cards build once and update in place. A generic `/status` sub-request runs for an errcount group or a `statusPath` field. `groupValuesFrom` reads by path with no flattening. The card gets `data-source-state="unavailable"`. Selectors use `CSS.escape`. |
+| 21.19 M.WEB.019 | partly | Only the `describeGetFailure` JSDoc. The rest comes after the base. |
+| 21.21 M.WEB.021 | partly | New signature `(group, groupIndex, section, values, ctx)` and a `send()` that calls `applyTracker.begin/end` and keeps Apply disabled through the post-write GET. The other Apply semantics are HEAD's for now. |
+| 21.29 M.WEB.054 | partly | The C1 cases, banner asserts on `dataset.shown`, the comment rewrites, and three known reds fixed (below). |
+| X9 | applied | Banner assert is `data-shown === "false"`; the latency comment is gone. |
+| 20, 42, 62, 66, 67 | pending | After the API base. |
+
+Known reds from wave 1 that I fixed in C1 (plain expectation updates):
+- "OK —" became "Command executed —".
+- The PUT 500 case expects "Internal server error" instead of "simulated failure".
+- The `partial-result` case now uses a local fetch stub and also asserts that the other field shows Valid.
+
+## Tests seen failing first, on HEAD's `render.js`
+- **New render cases (21):** stop during a pending GET, next section not queued behind a stopped one, node identity over three polls, focus kept on "Show all", maintenance by path with two instances, `statusPath` on another route, unavailable source, unavailable sensor marker in place and back, errcount "no data" and "unavailable", device-clock observe, epoch age plus `defaultDecimals`, `onRecovered` once, `console.error` once per episode, `applyTracker` order, and one-shot recovery.
+- **Existing tests rewritten to `dataset.shown`:** six banner tests.
+- **Banner pair:** failed at link time ("does not provide an export named 'hideBanner'").
+- **`generated-definitions-render`:** 36 section cases failed with `expected null to be 'false'`.
+- **Guards** (pass on HEAD): the errcount-filter test and the readonly in-place test, after their rewrite to real timers.
+
+## Deviations
+1. The banner pair sits in D.15 order (public functions, alphabetical, at the end), not "after the imports" as M.WEB.022 says. The brief makes D.15 order the last edit.
+2. `groupValuesFrom` stays private. Exporting it would be a test-only seam (OR36.a (1)), and the coverage test keeps its local mirror (row 62).
+3. Three tests use real timers instead of fake ones:
+   - The HEAD errcount-filter test never polled at all: a probe counted `gets=0`, because the 1000 ms timer was armed for real before `useFakeTimers()`. So it passed without testing anything.
+   - The readonly in-place test fails when run alone, at HEAD too: a Response body read needs a real task, which `advanceTimersByTimeAsync(0)` does not give.
+   - The one-shot recovery test uses a 200 ms retry for the same reason. The packet's "Fake timers from here on" comment is therefore not written.
+4. The `require-atomic-updates` disable and its two-line comment are gone: after the `send()` split ESLint no longer reports the rule, and the directive would be unused. I re-check this in the Apply phase.
+5. The `DEFS` notification section gains a `pause` group whose `PauseTime` has a `statusPath`, so the two `/status` sub-request tests take the generic path. The stubbed error code changed from 4 to 404.
+
+## Red until the API base (exact lines)
+`npm run typecheck`:
+- `js/render.js(9,70)` and `(9,91)`: missing `updateErrcountGroup` / `updateFieldGroupValues` (T1).
+- `js/render.js(15,43)`: no `Visibility` in `poll-manager` (S1).
+- `js/render.js(16,22)`: no `./shell.js` (S1).
+- `js/render.js(93,53)`: `buildFieldGroupCard` takes 4 arguments (T1).
+- `js/render.js(423,79)`: `request` takes 4 arguments (S1).
+- `js/render.js(486,64)`: `buildErrcountGroup` needs a nullable errcount (T1).
+- `js/render.js(528,9)`: `startPolling` options (S1).
+- Mine, known: `tests_js/render.test.js(560,134)` `defaultValue`.
+- S's: `live-backend-put-matrix` 54/65.
+
+Other checks:
+- `lint-ceilings.test.js`: complexity is red, the same as W1. max-depth, max-nested-callbacks and classes are green. My maxima: `render.js` complexity 20 (HEAD 22), max-depth 4, max-nested-callbacks 2; `render.test.js` 6 / 2 / 4; `generated-definitions-render.test.js` 5 / 2 / 3.
+- `test_tunables_register`: red only on rows that are not mine — `web.default_decimals` (waiting for X) and `l1.lwip_host_spin_window_rounds`.
+
+## What T and S must provide (what C1 calls)
+- **T:**
+  - `buildFieldGroupCard(group, values, groupIndex, display)` with `display = {deviceNowS, defaultDecimals? (present only when the definitions carry it), isUnavailable(field)}`.
+  - `updateFieldGroupValues(card, group, values, display)`.
+  - `buildErrcountGroup` and `updateErrcountGroup` taking `Record<string, unknown> | null`.
+  - The section banner starting at `data-shown="false"`.
+  - My tests read: `[data-current-value-for]` captions containing "unavailable" or the value; readonly `.field-value` text "unavailable"; `.errcount-row-count` text "no data" or "unavailable"; epoch "30 s ago"; a float shown as "21.46" under `defaultDecimals: 2`.
+- **S:**
+  - `pollManager.request(url, undefined, undefined, signal)`, where an aborted request rejects with `name === "AbortError"`.
+  - `startPolling(fn, ms, {visibility?, onError, stopAfterSuccess})`. I omit the `visibility` key when it is absent, because of `exactOptionalPropertyTypes`. The first failure retries at `intervalMs`.
+  - The `Visibility` typedef in `poll-manager.js` and the `DeviceClock` typedef in `shell.js`.
+
+## For the lead
+- **Website input changed:** `js/render.js`. Please rebuild before any full-graph or browser run.
+- **Files to run at the API base:** `tests_js/render.test.js`, `tests_js/generated-definitions-render.test.js`, and `npm run typecheck`. S's `main`/`app` tests and T's accessibility test also import `render.js`.
+- **Wall times:** `render.test.js` went from 1538 ms (35 tests, W1) to 3091 ms (50 tests, harness). `generated-definitions-render` went from 957 ms to 853 ms. These are browser files, so there are no GC-stage or settrace timings.
+- **Checks I ran:**
+  - Pre-commit pytest set after `git add`: 614 passed, 1 failed (`test_tunables_register`, as above).
+  - ruff over the eight scopes: clean.
+  - mypy main pass, cold cache, both no-args and `src tests tests_hardware/device_scripts`: clean (no Python changed).
+  - `npm run lint`: clean.
+- **Runs:** all were foreground and all exited; no background process is left. The one run over a minute (the pre-commit set, 93 s) is entered in RUNS.md after the fact.
+
+## Findings
+- **F1 (test, class 3):** HEAD's errcount-filter render test never polled, so it passed without checking anything. Fixed in my file.
+- **F2:** HEAD's readonly in-place render test depends on test order; it fails when run alone. Fixed.
+- **F3 (mock, M's file, new):** `GET /status` writes `UnixTime` into whatever `status.system` holds. A degraded `{"error":"unavailable"}` system source therefore gains a key and stops being the marker, so the mock cannot serve what the server's `_write_guarded()` sends. My test uses a local stub instead.
+- **F4 (D.10 / Part G):** this adds a third private plain-object check (`isRecord` in `render.js`, `isObject` in `definitions.js`, `isPlainObject` in `mock-server.js`). It is a candidate for a shared helper.
+- **F5 (class 4, my site, new, low):** a GET answering a non-object JSON body would paint every field "—" with no banner. I'll close it in the Apply phase with a test that sends such a body.
+- **Inadvertent read:** a `ruff check .` run walked `arduino/` and printed one finding line. I deleted the log and read nothing further there.
+
+**Silent-failure scan, C1 part:** first load, section switch with a GET in flight, hidden tab, failing episode and recovery, unavailable source and missing errcount, and stopped page are covered by the tests above. The full scan comes in the final report.

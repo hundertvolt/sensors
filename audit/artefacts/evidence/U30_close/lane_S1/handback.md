@@ -1,0 +1,30 @@
+U30 lane S1, FINAL. The lane is finished: both parts are committed and every check passes at -1 and 32768 with no memory markers. I wrote no relay lines.
+- Commits on audit/u30-s1 (S/wt-u30s1, not pushed): 48c81cc (the memory part), bb41930 (the merge of <API>, c253487), 9ac2b84 (the report_if_fatal part).
+- All 24 steps applied (only their U30 parts; every other part of each step was already in the code, found by quoted text):
+  - Memory steps 54, 62, 73, 74, 75, 78, 80, 95, 96, 98: the I2C bus keeps one view of its scratch buffer; a whole buffer goes to the bus as it is; new get_register_into() on I2C and I2CDevice.
+  - Handler steps 58-61, 69-72, 90-93, 123, 124: report_if_fatal(e) is now the first statement of all 11 BMP3XX and 21 ISL29125 broad handlers. configure()'s rollback ends in a bare raise and needs none; a scratch AST check found 32 correct and 0 missing.
+- Rulings applied: R-17 (ISL29125's 3-byte CONFIG snapshot buffer is built once, at construction); R-16, BMP3XX half (one CFG_READ entry and one console line per episode; the next good read or a task restart ends it).
+- Not U30, left alone: step 54's ms settle and the sleep_ms in steps 62/95 (U31); step 69's SPDX header (U34).
+- Seen failing first:
+  - test_asy_i2c_driver.py: :1402 (a memoryview was passed instead of the caller's buffer); the get_register_into tests (AttributeError); the scratch-view test (no _scratch_view).
+  - test_asy_bmp3xx_driver.py: :574 (no _pt_burst); :668 and :691 (the burst skipped get_register_into); :1559 (CFG_READ logged every cycle); :725 (stack-overflow flag not set).
+  - test_asy_isl29125_driver.py: :245 (a bytes() copy); :794 (no _rgb_burst); :882 (a fresh snapshot on every call); :3197 (flag not set in the status handler).
+- Bites: the snapshot-reorder guard failed at :2256 when I made the buffer change without the reorder; the step-98 silent_false guard failed at :3350 against a planted driver copy (S/u30/laneS1/bite98/). Nothing planted is committed.
+- Decisions (agent, 2026-10-20):
+  - Register writes also slice the held view.
+  - The whole-buffer test is `end is None or end == len(buf)`, because the packet's `end in (None, len(buf))` builds a tuple on every call.
+  - One shared _point_at() helper does the pointer write.
+  - _read_sensor_dict() decodes the snapshot before the divergence check can await.
+  - reset() keeps get_register_bytes.
+  - _init_bmp() clears the episode flag.
+  - The L1 tests reset the fatal flag between cases, the way microtest does.
+- Checks: ruff on my 6 files clean; main mypy clean, both with no arguments and with `src tests tests_hardware/device_scripts`; the 12 convention checks 781 passed, run before each commit. Not run, expected red: tests_scripts/test_twin_record.py (you re-record it at W1).
+- Silent-failure scan, all classes: the handler change only closes the swallowed-overflow case. Behaviour is the same in STA, AP, Silent, Off and USB: same bytes on the wire, fewer allocations; a recorded overflow reaches lane C's supervisor in every mode. No new findings beyond the ones you already routed (config manager to C; c_stack_budget and G.2/I.2 to X).
+- Final times in seconds, after vs base at -1/32768, all within 10 %, none passed only on retry:
+  - test_asy_i2c_driver 1.48/1.60 vs 1.47/1.61
+  - test_asy_bmp3xx_driver 13.62/14.25 vs 12.98/13.37 (+4.9 %/+6.6 %)
+  - test_asy_isl29125_driver 2.55/3.72 vs 2.57/3.53 (+5.4 % at 32768)
+  - hazard_multi_device 3.24/4.80 vs 3.36/5.13; hazard_generated 63.5/64.1 vs 63.6/64.3
+  - twin bus-hazard concurrency 151.3/156.0 vs 150.9/156.3; twin bmp3xx 0.07/0.08 vs 0.07/0.08; twin isl29125 autorange 54.2/54.5 vs 54.2/54.5
+- Runs: every run over a minute has its start and exit lines in S/u21/RUNS.md, all rc 0, plus an appended note for two 09:15 runs that exited rc=1 (stale generated tree before the rebuild) but were logged rc=0 by a helper defect, now fixed.
+- State: nothing of mine is running, the tree is clean, the typings symlink is removed. Logs are in S/u30/laneS1/.

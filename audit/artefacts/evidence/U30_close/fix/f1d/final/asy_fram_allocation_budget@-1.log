@@ -1,0 +1,3 @@
+PASS test_blank_setup_stays_within_its_allocation_budget
+PASS test_valid_setup_stays_within_its_allocation_budget
+2/2 passed, 0 failed, 0 skipped

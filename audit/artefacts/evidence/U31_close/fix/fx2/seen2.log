@@ -1,0 +1,3 @@
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u31/fx2/seen2/test_shared_helpers.py", line 16, in <module>
+ImportError: can't import name check_sleep_ms

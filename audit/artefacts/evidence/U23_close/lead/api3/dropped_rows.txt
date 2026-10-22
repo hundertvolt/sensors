@@ -1,0 +1,3 @@
+# u23/api3/dropped_rows.txt: the six rows 9a8700f dropped from tests_scripts/_decision_vocab_allowlist.txt
+All six name tests_js/render.test.js (the wave-2 finals retired their wordings); rows 536 and 537 stay.
+git -C <repo> show 9a8700f -- tests_scripts/_decision_vocab_allowlist.txt shows the six removed lines.

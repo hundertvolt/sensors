@@ -1,0 +1,29 @@
+light0	0	20.4	465 passed in 18.25s
+light1	0	18.2	479 passed in 17.69s
+light2	0	10.2	173 passed in 9.50s
+light3	0	19.3	153 passed in 18.36s
+light4	0	22.0	130 passed in 21.51s
+light5	0	14.0	47 passed in 13.57s
+test_api_reference	0	4.3	98 passed in 3.62s
+test_bench_control_restore	0	0.6	90 passed in 0.35s
+test_bench_harness_helpers	0	2.8	322 passed in 2.05s
+test_build_device_websites_sh	0	7.2	15 passed in 6.98s
+test_build_firmware	0	7.7	53 passed, 6 skipped in 7.25s
+test_build_frozen_html_sh	0	0.9	8 passed in 0.66s
+test_build_website_sh	0	7.5	15 passed in 7.33s
+test_buildgen_defaults	0	0.4	13 passed in 0.16s
+test_buildgen_definitions	0	3.7	399 passed in 2.92s
+test_buildgen_driver_registry	0	0.6	47 passed in 0.27s
+test_buildgen_generate	0	5.2	361 passed in 4.62s
+test_buildgen_reproducible	0	1.3	1 passed in 1.13s
+test_buildgen_validate	0	6.0	409 passed in 5.00s
+test_ci_workflow	0	0.3	17 passed in 0.09s
+test_config_schemas	0	1.9	12 passed in 1.48s
+test_coverage_runner	0	2.4	19 passed in 2.15s
+test_cross_browser_page_load_connections	0	3.3	11 passed in 3.09s
+test_cross_browser_smoke_probe	0	2.1	20 passed in 1.67s
+test_device_script_gc_threshold	0	0.8	7 passed in 0.58s
+test_device_tomls	0	1.0	36 passed in 0.67s
+test_digital_twin_boot_contiguity	1	1.7	24 failed, 12 passed in 1.50s
+test_digital_twin_ci_suite_errcount	0	0.9	91 passed in 0.52s
+test_digital_twin_ci_suite_soak	0	0.4	20 passed in 0.20s

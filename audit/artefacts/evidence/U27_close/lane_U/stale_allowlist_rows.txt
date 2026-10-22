@@ -1,0 +1,4 @@
+E           tests/test_setter_microdot_integration.py	WP5
+E           tests/test_setter_microdot_integration.py	Deliberate difference from the BMP3xx equivalent above, worth stating rather tha
+E           tests/test_setter_microdot_integration.py	scripts/test.sh's MICROPYPATH deliberately excludes ext/, and changing that woul
+E           tests/test_setter_microdot_integration.py	setWiFiLED (unlike setNetwork) passes no post_fct at all - toggling the WiFi sta

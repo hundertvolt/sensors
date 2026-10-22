@@ -1,0 +1,6 @@
+.                                                                        [100%]
+============================= slowest 3 durations ==============================
+0.63s call     tests_scripts/test_buildgen_fuzz.py::test_a_real_device_rewritten_only_in_order_or_name_builds
+
+(2 durations < 0.005s hidden.  Use -vv to show these durations.)
+1 passed, 1 deselected in 0.69s

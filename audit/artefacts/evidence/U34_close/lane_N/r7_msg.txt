@@ -1,0 +1,32 @@
+U34 lane N: UDPSocket loses write_and_recvfrom(), which nothing calls
+
+src/asy_udp_socket.py: write_and_recvfrom() and its range(tries) guard
+leave. No src/ caller remains: the resolver checks its own write() before
+each recvfrom() (asy_dns_client.py, whose tries guard already catches
+OverflowError as well as TypeError), the NTP client does the same once
+(asy_ntp_client.py), and the captive DNS uses recvfrom()/sendto(). The
+frozen asy_udp_socket.mpy shrinks from 2195 to 2056 bytes (mpy-cross
+v1.29.0, -march=armv6m); nothing else in the image changes.
+
+tests/test_asy_udp_socket.py, in the same commit:
+- the method's own tests leave (the retry-budget section, tries=0 and
+  the malformed-tries sentinel), and with them the two tunables only
+  they read, l1.asy_udp_socket_attempt_timeout_ms and
+  l1.asy_udp_socket_exhaust_timeout_ms;
+- the three NTP-pattern tests now drive the call shape
+  asy_ntp_client.py's _fetch_ntp_reply() uses: write() checked, then
+  recvfrom() into the shipped 48-byte buffer (_NTP_PACKET_LEN, read from
+  source), disconnect() in finally, asserting (sent, reply, torn down);
+  the garbage reply is one 27-byte copy, inside that buffer;
+- the section, zero-length and malformed-input comments name the
+  callers' own checks instead of the removed method.
+
+Effect per mode: STA (NTP, DNS) and AP (captive DNS) keep their own
+unchanged write()/recvfrom()/sendto() calls; Silent and Off send no UDP;
+USB is unaffected. The method had no caller, so no mode loses a path.
+
+SPECIFICATION.md still carries the two tunables' register rows and the
+method's mention; they leave with that file's own change.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

@@ -1,0 +1,15 @@
+.........................................................                [100%]
+============================= slowest 12 durations =============================
+2.20s call     tests_scripts/test_hardware_runners.py::test_each_hardware_step_keeps_its_own_three_runs
+0.71s call     tests_scripts/test_hardware_runners.py::test_the_bench_runner_runs_flash_then_bench_as_two_steps
+0.70s call     tests_scripts/test_hardware_runners.py::test_the_bench_runner_gives_test_paths_to_the_bench_step_only
+0.50s call     tests_scripts/test_hardware_runners.py::test_the_device_loop_is_derived_and_skips_leaked_test_fixtures
+0.48s call     tests_scripts/test_hardware_runners.py::test_the_flash_runner_runs_every_lower_level_first_in_order
+0.48s call     tests_scripts/test_hardware_runners.py::test_a_failing_flash_step_stops_the_bench_runner_before_the_bench_level
+0.44s call     tests_scripts/test_hardware_runners.py::test_a_callers_marker_expression_narrows_each_runners_floor[last-of-several-bench]
+0.42s call     tests_scripts/test_hardware_runners.py::test_a_callers_marker_expression_narrows_each_runners_floor[narrowed-bench]
+0.41s call     tests_scripts/test_hardware_runners.py::test_every_runner_step_excludes_the_soak_and_rollover_markers[run_bench_hardware_suite.sh-2]
+0.40s call     tests_scripts/test_hardware_runners.py::test_the_bench_runner_without_lower_levels_is_not_clean
+0.37s call     tests_scripts/test_hardware_runners.py::test_a_callers_marker_expression_narrows_each_runners_floor[floor-bench]
+0.30s call     tests_scripts/test_hardware_runners.py::test_a_callers_marker_expression_narrows_each_runners_floor[floor-soak]
+57 passed in 13.13s

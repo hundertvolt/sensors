@@ -1,0 +1,38 @@
+Using CPython 3.11.15 interpreter at: /usr/local/bin/python3
+Creating virtual environment at: /home/user/sensors/.venv
+Downloading shellcheck-py (3.6MiB)
+Downloading ast-serialize (1.3MiB)
+Downloading mypy (14.7MiB)
+Downloading ruff (9.9MiB)
+Downloading zizmor (9.0MiB)
+Downloading pygments (1.2MiB)
+   Building actionlint-py==1.7.12.25
+ Downloading pygments
+ Downloading ast-serialize
+ Downloading shellcheck-py
+      Built actionlint-py==1.7.12.25
+ Downloading zizmor
+ Downloading ruff
+ Downloading mypy
+Prepared 20 packages in 13.81s
+Installed 20 packages in 55ms
+ + actionlint-py==1.7.12.25
+ + ast-serialize==0.12.1
+ + coverage==7.16.2
+ + iniconfig==2.3.0
+ + librt==0.16.0
+ + mpremote==1.29.0
+ + mypy==2.4.0
+ + mypy-extensions==1.1.0
+ + packaging==26.3
+ + pathspec==1.1.1
+ + platformdirs==4.12.3
+ + pluggy==1.6.0
+ + pygments==2.21.0
+ + pyserial==3.5
+ + pytest==9.1.1
+ + ruff==0.16.10
+ + shellcheck-py==0.11.0.1
+ + types-pyserial==3.5.0.20260712
+ + typing-extensions==4.16.0
+ + zizmor==1.30.1

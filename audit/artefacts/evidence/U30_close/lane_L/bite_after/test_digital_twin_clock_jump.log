@@ -1,0 +1,26 @@
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+PASS test_a_backup_dated_after_a_backward_step_is_expired_under_a_max_age_and_kept_under_none
+UART_init Planted: planted fault
+UART_resp Planted: planted fault
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+PASS test_a_reader_stamps_each_sample_with_the_clock_as_stepped
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+PASS test_a_year_forward_then_two_back_leave_sync_and_its_age_on_the_ticks
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+PASS test_an_ntp_offset_change_clears_synced_and_the_next_sync_applies_it
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+PASS test_cettime_follows_the_clock_across_the_march_switch_both_ways
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+NTP No reply from NTP server: 127.0.0.1
+PASS test_the_first_sync_sets_a_boot_default_clock_and_restarts_its_age
+6/6 passed, 0 failed, 0 skipped

@@ -1,0 +1,8 @@
+tests/test_digital_twin_bus_hazard_concurrency.py@-1	150.15	0
+tests/test_digital_twin_uart_link.py@-1	55.35	0
+tests/test_asy_system_service.py@-1	24.92	0
+tests/test_asy_system_service.py@32768	26.40	0
+tests/test_asy_uart_link_driver.py@-1	2.35	0
+tests/test_asy_uart_link_driver.py@32768	2.43	0
+tests_scripts/test_buildgen_web_tag.py	3.63	0
+tests_scripts/test_uart_changelog.py	1.05	0

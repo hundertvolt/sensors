@@ -5,23 +5,25 @@
 name = "sensors-tooling"
 version = "0.1.0"
 description = "Dev-tooling config for the sensors firmware repo (ruff/mypy/pytest/uv), not an installable package."
-# >=3.11: scripts/typecheck.sh needs tomllib. At 3.10, `uv sync` once built a venv without it,
-# surfacing as a raw traceback (typecheck.sh now also checks explicitly; setup_toolchain.py pins the
-# same).
+# >=3.11: host tooling needs tomllib and datetime.UTC; at 3.10 `uv sync` once built a venv
+# without them, surfacing as a raw traceback. scripts/_require_python.sh checks every bare python3;
+# setup_toolchain.py's PEP 723 header pins the same.
 requires-python = ">=3.11"
 
 [tool.uv]
 package = false
+# Any other uv refuses to run in this tree (uv's own check); CI's uv-sync action and the chroot recipe install this one.
+required-version = "==0.8.17"
 
 [dependency-groups]
 dev = [
     # PINNED, like every tool here: select = ["ALL"] and a zero-findings gate turn an unpinned
     # upgrade's new rule into a hard CI failure nobody chose. Bump deliberately, re-running lint.sh
     # and typecheck.sh.
-    "mypy==2.3.1",
-    "ruff==0.16.6",
-    "pytest",
-    "mpremote",
+    "mypy==2.4.0",
+    "ruff==0.16.10",
+    "pytest==9.1.1",
+    "mpremote==1.29.0",
     # Stubs for pyserial (tests_hardware/harness.py; host_typecheck.ini has none otherwise). Pinned
     # like the tools: a stub release can change a signature and fail the gate.
     "types-pyserial==3.5.0.20260712",
@@ -29,19 +31,22 @@ dev = [
     # every setup_toolchain.py env tier) installs them. actionlint-py downloads its binary at
     # install time, so a fully offline sync lacks it.
     "shellcheck-py==0.11.0.1",
-    "actionlint-py==1.7.12.24",
+    "actionlint-py==1.7.12.25",
     # zizmor audits the workflows themselves (token scope, credential persistence, pinning); policy
     # in .github/zizmor.yml, pinned like the rest.
     "zizmor==1.30.1",
+    # The host-side coverage run of scripts/test.sh --coverage, pinned like the rest; scripts/_render_coverage.py's
+    # PEP 723 header pins the same (tests_scripts/test_script_metadata_pins.py).
+    "coverage==7.16.2",
 ]
 
 # The RPI_PICO_W MicroPython stubs are deliberately NOT a dependency group: they replace mypy's
 # typeshed, which would break type-checking of this venv's own tools, so scripts/typecheck.sh
 # installs them into typings/ (CLAUDE.md).
 
-# Lint/type scope is the eight directories CLAUDE.md's "Code quality tooling" lists; the legacy tree
-# (python/, modules/) is never in scope. tests_hardware/device_scripts/ joined after a driver
-# signature change broke two unchecked scripts for a day.
+# Lint/type scope is the eight directories CLAUDE.md's "Code quality tooling" lists, plus the generated
+# build/generated_src/; the legacy tree (legacy/) is never in scope. tests_hardware/device_scripts/
+# joined after a driver signature change broke two unchecked scripts for a day.
 
 [tool.ruff]
 # py310, not the venv's 3.11: the syntax floor of the CHECKED code (MicroPython; PEP 604 unions),
@@ -55,78 +60,47 @@ line-length = 320
 # every exclusion below is a justified decision. Preview rules stay off. This is why ruff is pinned.
 select = ["ALL"]
 
-# "×" is real content: bmp3xx's `# @web ... special:N="×N"` tags carry it into
-# html/definitions/*.json's oversampling labels, which RUF003 would flag as an "x" look-alike.
+# `×` is real content: bmp3xx's `@web` tag lines carry it into the generated oversampling labels, and RUF001-RUF003
+# would flag it as an `x` look-alike.
 allowed-confusables = ["×"]
 
+# Every entry still fires (tests_scripts/test_ruff_exemptions_live.py); a reason that holds for part of the tree
+# lives in the per-file block below instead.
 ignore = [
     # ---- Hand-chosen line breaks (see [tool.ruff] above) ----
     "E501",  # line length - not enforced
 
-    # One header block per module, per-function notes as # comments (CLAUDE.md, Part D.11): only the
-    # docstring-PRESENCE rules are off; the STYLE rules (D200/D205/D209/D4xx) police the headers
-    # that exist.
-    "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107",
-
-    # ---- Impossible on the MicroPython target ----
-    # No `pathlib` in the rp2 port at all, so every "use pathlib instead of os.path/open" finding
-    # is unimplementable rather than merely unwanted.
-    "PTH",
-    # No async file I/O either: config_manager.py's flash writes have no non-blocking form. The
-    # exposure is already structurally bounded - every real flash write is reachable only through
-    # the REST PUT path (CLAUDE.md hard rule) - and SPECIFICATION.md Part F.3 records the finding.
-    "ASYNC230",
-
-    # ---- Wrong tool for this codebase ----
-    # tests/ runs under the real MicroPython interpreter with microtest.py, not pytest (Part E.1),
-    # so every PT rule reasons about fixtures that do not exist.
-    "PT",
-    # `print()` is the log transport, not debug residue - print_log.py is built on it.
-    "T20",
-
-    # ---- Would change runtime behavior, which a lint pass does not ----
-    # asy_neopixel_driver.py's `while event.is_set(): await sleep(0)` is a yield handshake held
-    # inside start_signal_lock; an Event would change the protocol.
-    "ASYNC110",
-    # `global` is how tests/ keeps its per-process port and scratch counters (one process per test
-    # file); an object around one int buys nothing.
-    "PLW0603",
+    # One header block per module, per-function notes as # comments (CLAUDE.md, Part D.11): the class, method and
+    # function docstring-PRESENCE rules are off; D100/D104 stay on, since every module carries its header docstring,
+    # and the STYLE rules (D200, D4xx) police the headers that exist.
+    "D101", "D102", "D103", "D105", "D106", "D107",
 
     # ---- Mandated by this project's own shared-primitive spec ----
     # Part G.2 REQUIRES `except Exception` -> err_s() -> "Failed" around a caller-supplied callback,
     # which may raise anything.
     "BLE001",
 
-    # ---- Cost without a defect caught, on a 264KB-SRAM target ----
-    # TRY003/EM101/EM102 add exception classes and locals on the error path for no behavioral gain
-    # (Part D.4).
-    "TRY003", "EM101", "EM102",
-    # contextlib.suppress costs an import and a context-manager allocation per use, and contextlib
-    # is not in the frozen build.
-    "SIM105",
-
     # ---- The "fix" would itself be a behavior change ----
     # PERF203: `for x: try: ... except: log` degrades ONE iteration and carries on, Part I's
     # catch->degrade ladder; hoisting aborts the loop.
     "PERF203",
-    # S110 wants a log call at sites that are deliberately silent; its other escape,
-    # contextlib.suppress, is ruled out above.
+    # S110 wants a log call at sites that are deliberately silent; on the target its other escape,
+    # contextlib.suppress, is unavailable (per-file SIM105 below).
     "S110",
 
     # ---- Not expressible on the target runtime ----
-    # RUF005's `(*a, b)`: MicroPython has no PEP 448 unpacking in displays - `[*a, 3]` is a
-    # SyntaxError on the pinned interpreter (verified).
-    "RUF005",
     # RUF037's `deque(maxlen=N)`: MicroPython's deque takes no keyword arguments (TypeError,
     # verified); the positional form is the only one that runs.
     "RUF037",
     # RUF012 wants an unquoted ClassVar, which trips TC004's runtime `from typing import ClassVar`,
     # and neither typing nor __future__ exists at runtime: unsatisfiable together.
     "RUF012",
-
     # PYI024: typing.NamedTuple is a RUNTIME base class, and typing is not importable on MicroPython
     # (Part D.6), so collections.namedtuple stays.
     "PYI024",
+    # FURB122's `f.writelines()` does not exist on MicroPython file objects (AttributeError,
+    # verified on the pinned interpreter).
+    "FURB122",
 
     # ---- Stub-file conventions that are wrong for runtime code ----
     # PYI041: `int | float` is load-bearing - every `_push_*` callback tests `type(value) is not
@@ -147,36 +121,18 @@ ignore = [
     # it.
     "PLW1641",
 
-    # ---- Not expressible on the target runtime (continued) ----
-    # FURB122's `f.writelines()` does not exist on MicroPython file objects (AttributeError,
-    # verified on the pinned interpreter).
-    "FURB122",
-
     # ---- Polices call sites into APIs this project does not own ----
     # FBT001/002 stay on: our own boolean parameters are keyword-only. FBT003's remaining calls are
     # into C entry points that reject keywords, e.g. `wlan.active(True)`.
     "FBT003",
 
-    # ---- Deliberate, documented idiom ----
-    # `x != x` is asy_scd30_driver.py's NaN test in its two setters, commented at both sites; either
-    # spelling works there.
-    "PLR0124",
-
-    # ---- Documented accepted risk, decided by the project owner ----
-    # The webserver binds 0.0.0.0 deliberately.
-    "S104",
-    # S105/S106 stay ON globally: CLAUDE.md's no-credentials rule needs them to catch a NEW one. The
-    # three known, accepted sites are exempted per file below.
+    # S105/S106 stay on: the per-file block below names only test doubles' literal passwords; the hotspot password,
+    # accepted permanently (owner, 2026-09-26), lives in a shape these rules do not see.
 
     # ---- Identifiers deliberately mirror the datasheet / reference algorithm ----
-    # Part D.1/C.2: BMP3xx's T1/P1..P11 as printed in BST-BMP388-DS001 9.2/9.3, the VOC algorithm's
-    # L/X0/K, CO2, and C.2's acronym class names.
-    "N801",  # class name (SGP40_I2C, CRC8, VOC_Algorithm)
-    "N802",  # function name (get_CO2)
-    "N803",  # argument name (L, X0, K)
-    "N806",  # variable in function (T1..T3, P1..P11)
-    "N811",  # constant imported as non-constant (`from machine import I2C as FakeI2C`)
-    "N814",  # camelcase imported as constant (same acronym-vs-constant ambiguity)
+    # Part D.1/C.2: BMP3xx's T1/P1..P11 as printed in BST-BMP388-DS001 9.2/9.3 (N806), the VOC algorithm's L/X0/K
+    # (N803), acronym imports such as `from machine import I2C as FakeI2C` (N811).
+    "N803", "N806", "N811",
 
     # ---- Would push module headers past CLAUDE.md's 3-line cap ----
     # D205/D209 each ADD a line to a header already at the cap; D200 and D4xx, which add none, stay
@@ -188,9 +144,8 @@ ignore = [
     # __init__.py by design.
     "INP001",
 
-    # ---- Contradicts CLAUDE.md's own documentation rule (continued) ----
-    # CPY001: no file carries a copyright notice by design - one 3-line header per module,
-    # attribution in THIRD_PARTY_LICENSES.md.
+    # CPY001: project-authored files carry no copyright notice; files derived from third-party code carry an attribution
+    # header (SPDX where a license is named), and THIRD_PARTY_LICENSES.md holds every notice.
     "CPY001",
 ]
 
@@ -199,156 +154,194 @@ ignore = [
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
-# Ceilings sit at the measured maximum, so they gate regression without forcing a rewrite; ratchet
-# DOWN only. max-args 24 is WebserverService's keyword-defaulted wiring, raised one reviewed
-# parameter at a time (L.7, H.7, I.3).
+[tool.ruff.lint.pyflakes]
+# Imported for their side effect: frozen_html mounts the website; each manual step module registers its steps.
+# Every entry is still imported unused somewhere (tests_scripts/test_ruff_exemptions_live.py).
+allowed-unused-imports = ["frozen_html", "manual_bus_electrical", "manual_persistence", "manual_sensor_accuracy", "manual_toolchain", "manual_wifi"]
+
+# Ceilings sit at the measured maximum and only go down, enforced by
+# tests_scripts/test_lint_ceilings.py; a signature mirroring an external API is exempted per file
+# below, never by raising a limit (owner, 2026-09-26: "8 is fine").
 [tool.ruff.lint.mccabe]
 max-complexity = 20
 
 [tool.ruff.lint.pylint]
-max-args = 24
+max-args = 8
 max-branches = 20
-max-statements = 80
-max-returns = 12
+max-statements = 73
+max-returns = 10
 
-# Per-file exemptions live HERE, centrally and with a reason, never as scattered `# noqa` (owner's
-# direction: enable the strict rule, don't paper over it). Each is a property of what the file IS.
+# Per-file exemptions live HERE, centrally and with a reason, rather than as `# noqa` comments scattered inline (owner,
+# 2026-09-10: enable the strict rule, do not paper it over inline). Each is a property of what the file IS.
+#
+# MicroPython-run code (src/, build/generated_src/, tests/, digital_twin/, tests_hardware/device_scripts/) runs on the
+# board or the Unix port; host code (buildgen/, scripts/, toolchain/, tests_scripts/, the rest of tests_hardware/) runs
+# under CPython. tests_scripts/test_ruff_exemptions_live.py fails on an entry that no longer fires.
 [tool.ruff.lint.per-file-ignores]
-# Test code asserts, reaches into privates under test, imports lazily after sys.path setup (Part
-# E.3), and asserts literal expected values.
+# No pathlib (PTH), no async file I/O - every flash write is reachable only through the REST PUT path, SPECIFICATION.md
+# F.2 (ASYNC230) - no contextlib in the frozen build (SIM105), no PEP 448 unpacking in displays (RUF005), and zip()
+# takes no keyword, so strict= raises TypeError (B905; py/objzip.c, v1.29.0).
 #
-# ARG00x: a double must accept the real API's full signature, and mypy checks Protocol and
-# monkeypatch parameter NAMES, so `_buf` is a hard error. Every ARG finding here is that pattern;
-# src/ has none.
-"tests/**" = ["S101", "SLF001", "PLC0415", "PLR2004", "ARG001", "ARG002", "ARG004", "ARG005"]
-"digital_twin/**" = ["S101", "SLF001", "PLC0415", "PLR2004"]
-# tests_scripts/ and tests_hardware/ are test suites with the same properties, so the same set. S603
-# on top for tests_scripts/: running the repo's own scripts as subprocesses IS what it verifies,
-# every argv in-repo.
-"tests_scripts/**" = ["S101", "SLF001", "PLC0415", "PLR2004", "ARG001", "ARG002", "ARG004", "ARG005", "S603"]
-"tests_hardware/**" = ["S101", "SLF001", "PLC0415", "PLR2004", "ARG001", "ARG002", "ARG004", "ARG005"]
-# api_response.py calls a reader's `_set_dict_cfg` across objects by design: Part C.5.2 publishes
-# that setter-dispatch contract by name.
-"src/api_response.py" = ["SLF001"]
-# S106 below marks one of the three KNOWN, accepted hardcoded-credential sites (CLAUDE.md: the
-# hotspot fallback password, not to be rotated without the owner); exempted per file so S105/S106
-# still catch a new one anywhere else.
+# TRY003/EM101/EM102 add exception classes and locals on the error path for no behavioural gain on a 264KB-SRAM target
+# (Part D.4).
+"src/**" = ["ASYNC230", "B905", "EM101", "EM102", "PTH", "RUF005", "SIM105", "TRY003"]
+# The generated device modules: build_system() binds the device graph to the module globals the collectors and main()
+# read (PLW0603), and web_host defaults to every interface (S104, as the S104 block below). Any other finding is fixed
+# at the template.
+"build/generated_src/**" = ["PLW0603", "S104"]
+# The generated boot entries arm the watchdog, put .frozen first and reserve the emergency buffer before their imports,
+# an order the boot depends on; the no-autostart one prints its start line and imports asyncio and main for the REPL
+# that line is typed into.
+"build/generated_src/sensortask_*_main.py" = ["E402"]
+"build/generated_src/sensortask_*_main_noautostart.py" = ["E402", "F401", "T20"]
+# Test code asserts (S101), reaches into privates under test (SLF001) and asserts literal values (PLR2004; Part E.3); a
+# double accepts the real API's full signature, and mypy checks Protocol and monkeypatch parameter NAMES (ARG). Tests
+# print as their output (T20) and keep the function-level imports on test_import_placement.py's pending list (PLC0415).
 #
-# The machine fakes mirror MicroPython's own constructors, whose parameter really is `id` upstream,
-# and I2C writeto()/readfrom_into()'s positional-only `stop` (extmod/machine_i2c.c rejects kwargs):
-# a faithful double must match.
-"tests/machine.py" = ["A002", "FBT001", "FBT002", "ANN401"]  # ANN401: category 1 above - Timer.__init__ forwards **kwargs into self.init()
-# ANN401: _build_i2c_chip() returns Any on purpose - no single chip fake implements every _I2CDevice
-# method (see that function's comment).
-"digital_twin/machine.py" = ["A002", "FBT001", "FBT002", "ANN401"]
-# Same faithful-double reasoning: test_setup_toolchain_env.py's fake_run() doubles must accept
-# setup_toolchain.run()'s signature exactly, positional `check=True` included; its own helpers stay
-# keyword-only.
-"tests_scripts/test_setup_toolchain_env.py" = ["FBT001", "FBT002"]
-# The `_push_*` dispatch family takes the config-VALUE union, where bool is a JSON value, not a
-# flag, through Part C.5.2's single-positional-argument contract that D.10 forbids splitting.
-"src/asy_bmp3xx_driver.py" = ["FBT001"]
-"src/asy_scd30_driver.py" = ["FBT001"]
-"src/asy_wifi_service.py" = ["S106", "FBT001"]
-# ANN401, category 1 - heterogeneous **kwargs forwarded into a callee whose keywords have DIFFERENT
-# types (print()'s sep/end/file/flush; constructors with up to 21 keywords): object, str and str |
-# None all fail at 3.10-3.12.
+# tests/ and digital_twin/ run under microtest.py, not pytest (PT), poll a fake's plain state flag - the fakes expose no
+# Event to wait on (ASYNC110) - and keep per-process counters and module-level fake state (PLW0603).
 #
-# PEP 692's Unpack[TypedDict] is the real fix and unavailable: typings/' typing.pyi declares
-# TypedDict as a plain object.
-"src/print_log.py" = ["ANN401"]
-"tests/test_asy_uart_driver.py" = ["ANN401"]
-"tests/test_asy_uart_comm.py" = ["ANN401"]
-"tests/_uart_comm_harness.py" = ["ANN401"]
-"tests/test_asy_webserver_service.py" = ["ANN401"]
-# ANN401, category 2 - the asyncio.start_server() callback seam: MicroPython has ONE Stream for both
-# directions and CPython's StreamWriter has no aclose(), so no annotation fits both; everything past
-# _serve() is typed.
+# tests/ doubles also take machine.I2C's positional `stop` (FBT001/FBT002), await in loops a MicroPython comprehension
+# cannot hold (PERF401; py/compile.c, v1.29.0) and bind or compare the all-interfaces address the code under test uses
+# (S104).
+"tests/**" = ["ARG001", "ARG002", "ARG005", "ASYNC110", "ASYNC230", "B905", "EM101", "EM102", "FBT001", "FBT002", "PERF401", "PLC0415", "PLR2004", "PLW0603", "PT", "PTH", "RUF005", "S101", "S104", "SIM105", "SLF001", "T20", "TRY003"]
+"digital_twin/**" = ["ASYNC110", "ASYNC230", "B905", "EM101", "EM102", "PLR2004", "PLW0603", "PTH", "RUF005", "S101", "SIM105", "SLF001", "T20", "TRY003"]
+# Device scripts run on the board, never under pytest (PT), and await in loops as tests/ does (PERF401); rp2 has no
+# itertools, so pairwise() is unimplementable (RUF007); a script names its rendered includes under `if TYPE_CHECKING:`
+# for mypy alone, the render inlining their definitions (TC004). The tests_hardware/** entry below applies too.
+"tests_hardware/device_scripts/**" = ["ASYNC230", "B905", "EM101", "PERF401", "PT", "PTH", "RUF005", "RUF007", "SIM105", "TC004", "TRY003"]
+# Host tools print as their output (T20); a user error prints its message alone, with no traceback to duplicate it (EM101,
+# EM102, TRY003; error contract: owner, 2026-09-25; this exemption: agent, 2026-09-30).
+"buildgen/**" = ["EM101", "EM102", "T20", "TRY003"]
+"scripts/**" = ["EM101", "EM102", "T20", "TRY003"]
+"toolchain/**" = ["EM101", "EM102", "T20", "TRY003"]
+# The host test suites keep composite asserts, whose rewrite reports each operand (PT018; visit_BoolOp in pytest 9.1.1's
+# _pytest/assertion/rewrite.py), and literal raise messages, which are a test's failure text (EM101/EM102/TRY003)
+# (owner, 2026-10-19: "Default is ok", SPECIFICATION.md Part D.6).
 #
-# ANN401, category 3 - `_wlan` bridges the real WLAN board stub and tests/network.py's fake for
-# fake-only attributes; a three-file family (D.10), change all three or none.
-"tests/test_asy_wifi_service.py" = ["ANN401"]
-"tests/test_ntp_fram_system_integration.py" = ["ANN401"]
-"tests/test_ntp_wifi_dns_integration.py" = ["ANN401"]
-# ANN401, category 4 - this test deliberately passes a TYPE-INVALID value to prove the runtime
-# degrades cleanly. Typing the parameter honestly would make the call site a static error, which is
-# the very thing the test exists to exercise.
-"tests/test_asy_udp_socket.py" = ["ANN401"]
-# ANN401, category 5 - driver-agnostic fan-in seams (the `_ValueSource` Protocol, C.14/L.6.3): every
-# reader's get_data() returns its own NamedTuple, so no single element type fits every producer.
+# S603: running the repo's own scripts as subprocesses IS what tests_scripts/ verifies, every argv in-repo.
+"tests_scripts/**" = ["ARG001", "ARG002", "ARG005", "EM101", "EM102", "PLC0415", "PLR2004", "PT018", "S101", "S603", "SLF001", "T20", "TRY003"]
+"tests_hardware/**" = ["ARG001", "ARG002", "EM101", "EM102", "PLR2004", "PT018", "S101", "SLF001", "T20", "TRY003"]
+# Part C.5.2 publishes the `_set_dict_cfg` setter-dispatch contract by name, so these two call it across objects
+# (SLF001); asy_webserver_service.py imports asy_api_response.py's private _RequestLike Protocol for its routes (PYI046).
+"src/asy_api_response.py" = ["PYI046", "SLF001"]
+"src/asy_webserver_service.py" = ["SLF001"]
+# `print()` is the log transport, not debug residue - asy_print_log.py is built on it (T20); its one module flag, with
+# one writer, is the C-stack fatal flag report_if_fatal() sets (PLW0603).
+"src/asy_print_log.py" = ["PLW0603", "T20"]
+# The sensor drivers: the `_push_*` family takes the config-VALUE union through Part C.5.2's single-positional-argument
+# contract that D.10 forbids splitting (FBT001); C.2's `<CHIP>_<Role>` compounds and the Sensirion port's names (N801);
+# get_CO2 is the datasheet's name (N802); `x != x` is the NaN test at each site, commented there (PLR0124).
+"src/asy_bmp3xx_driver.py" = ["FBT001", "N801"]
+"src/asy_scd30_driver.py" = ["FBT001", "N801", "N802", "PLR0124"]
+"src/asy_sgp40_driver.py" = ["FBT001", "N801"]
+"src/asy_fram_driver.py" = ["N801"]
+"src/voc_algorithm.py" = ["N801"]
+# PLR0913: ISL29125_I2C.configure() takes one keyword per CONFIG1-3 field (FN8424 p10-11).
+"src/asy_isl29125_driver.py" = ["FBT001", "N801", "PLR0124", "PLR0913"]
+# PLR0913/PLR0917: UART.__init__/init() take machine.UART's twelve parameters plus the wrapper's own four.
+"src/asy_uart_driver.py" = ["PLR0913", "PLR0917"]
+# _DefaultSignalSink.request_signal() is a static no-op whose signature mirrors NeopixelDriver's exactly, so codegen
+# needs no special case (ARG004); `value != value` is the NaN test (PLR0124).
+"src/asy_notification_service.py" = ["ARG004", "PLR0124"]
+# One module flag each, with one writer: the UTC-valid flag the NTP client sets, and this boot's reset bits that
+# begin_boot() reads once (PLW0603).
+"src/asy_base_classes.py" = ["PLW0603"]
+"src/asy_system_service.py" = ["PLW0603"]
+# S104: the webserver (web_host's generated default) and the captive DNS bind every interface on a trusted home LAN
+# (owner, 2026-09-26; SPECIFICATION.md A.11); asy_dns_client.py and the twin's network.py and UDP shim only compare with
+# or name the unset address; the rogue responder binds the bench host's responder on the bench LAN.
+"src/asy_captive_dns.py" = ["S104"]
+"src/asy_dns_client.py" = ["S104"]
+"digital_twin/network.py" = ["S104"]
+"digital_twin/unixport/_unix_port_udp_addr_shim.py" = ["S104"]
+"tests_hardware/rogue_udp_responder.py" = ["S104"]
+# The machine fakes mirror MicroPython's own signatures - the constructors' `id` (A002), I2C writeto()/readfrom_into()'s
+# positional-only `stop` (FBT001/FBT002; extmod/machine_i2c.c rejects kwargs), machine.UART/SPI's parameter lists
+# (PLR0913) and Pin.__init__'s `id`, which __new__ resolved (ARG002): a faithful double must match.
 #
-# ARG002: _DefaultSignalSink.request_signal() is a no-op sink whose signature mirrors
-# NeopixelDriver's exactly, so codegen needs no special case.
-"src/asy_notification_service.py" = ["ANN401", "ARG002"]
-"src/asy_sgp40_driver.py" = ["ANN401", "FBT001"]
-"tests/test_asy_sgp40_driver.py" = ["ANN401"]
-"tests/test_notification_scd30_sgp40_integration.py" = ["ANN401"]
-"tests/test_notification_sgp40_integration.py" = ["ANN401"]
-"tests/test_setter_microdot_integration.py" = ["ANN401"]
-# ANN401, category 5 again: I2CHazardAdapter's callables each take one real driver instance,
-# genericness across the whole I2C_HAZARD_CATALOG being the point.
-"tests/_bus_hazard_catalog.py" = ["ANN401"]
-# ANN401, category 6 - a dynamically __import__()ed module (a device's sensortask_<device>, or the
-# twin's machine module) has no static type; ModuleType would reject every attribute these files
-# need.
-"digital_twin/run_generic_integration.py" = ["ANN401"]
-"tests_scripts/test_buildgen_twin_wiring.py" = ["ANN401"]
-"tests/_webserver_concurrency_scenarios.py" = ["ANN401"]
-# Category 6 too: the shared per-device scenario library imports whichever device's sensortask
-# module a parametrized scenario boots (L.4).
-"tests/_sensortask_scenarios.py" = ["ANN401"]
-# Category 6 too, for the construction scenarios split out of
-# test_digital_twin_sensortask_integration.py, whose remaining wozi-only tests import statically and
-# need no exemption.
-"tests/_digital_twin_construction_scenarios.py" = ["ANN401"]
-"digital_twin/launch.py" = ["S105"]
-"tests/test_digital_twin_network_neopixel.py" = ["S106"]
-# asy_webserver_service.py makes the same documented Part C.5.2 `_set_dict_cfg` dispatch call as
-# api_response.py above, and asserts its static mount is non-None purely to narrow the type for
-# mypy (the route is only ever registered when it isn't None).
-"src/asy_webserver_service.py" = ["SLF001", "S101", "ANN401"]  # ANN401: the asyncio.start_server() seam described above
-"digital_twin/_http_client.py" = ["ANN401"]  # ANN401: category 2 above, the reader-side half of the same one-Stream-for-both-directions seam - readinto() has no clean non-Any type either
-# S603 (untrusted subprocess input) has no satisfiable form for a build driver: build_firmware.py's
-# one call runs the repo's own build_website.sh by absolute path, shell=False. The rule stays live
-# everywhere else.
+# ANN401: tests/machine.py's _CallLog.__getitem__, UART._channel and mem_backup() return Any; the twin's
+# _build_i2c_chip() does on purpose, no single chip fake implementing every _I2CDevice method.
+"tests/machine.py" = ["A002", "ANN401", "PLR0913"]
+"digital_twin/machine.py" = ["A002", "ANN401", "ARG002", "FBT001", "FBT002", "PLR0913"]
+# A Pin double takes machine.Pin's own `id` parameter (A002); `result != result` is the NaN check (PLR0124).
+"tests/test_asy_i2c_driver.py" = ["A002", "PLR0124"]
+# A runner exec()s the test file, device script or generated entry it runs; two host tests exec a function's own source
+# or the test's fixture text (S102).
+"tests/_coverage_runner.py" = ["S102"]
+"tests/_threshold_runner.py" = ["S102"]
+"tests/test_generated_boot_entry.py" = ["S102"]
+"digital_twin/run_device_script.py" = ["S102"]
+"tests_scripts/test_fram_chunk_owner_sites.py" = ["S102"]
+"tests_scripts/test_strip_type_checking.py" = ["S102"]
+# eval() reads one literal or const() expression of a repository file, checked before it runs (S307).
+"tests/_src_const.py" = ["S307"]
+"tests/test_setter_microdot_integration.py" = ["S307"]
+"tests_scripts/test_const_mirrors.py" = ["S307"]
+# MicroPython has no subprocess module: os.system() on the file's own scratch paths (S605).
+"tests/test_async_harness.py" = ["S605"]
+"tests/test_microtest_hooks.py" = ["S605"]
+# Named as they read in use: with-block helpers named like contextlib.redirect_stdout (N801), and microtest's Skip
+# outcome as microtest prints it (N818).
+"tests/_udp_port_redirect.py" = ["N801"]
+"tests/test_tmp_scratch.py" = ["N801"]
+"tests/microtest.py" = ["N818"]
+# setattr() patches a module object known only at run time (B010).
+"digital_twin/_flash_stall.py" = ["B010"]
+"digital_twin/_wall_clock.py" = ["B010"]
+# No `from e`: MicroPython prints "exception chaining not supported" for it (B904); tests/ is absent from a standalone
+# twin's path, so _strict_json is imported where it is used (PLC0415, SPECIFICATION.md F.1).
+"digital_twin/_http_client.py" = ["B904", "PLC0415"]
+# The armed watchdog the script's checks feed, bound once in _main() (PLW0603).
+"tests_hardware/device_scripts/fram_pause_unpause_and_gating.py" = ["PLW0603"]
+# S603 has no satisfiable form for a subprocess driver; each runs an argv list, never a shell string: build_firmware.py
+# the repo's build_website.sh, the twin runners the Unix port on the repo's own scripts, _summary_block.py fixed git
+# subcommands, record_twin_instrument_runs.py a fixed pytest argv.
+#
+# _digital_twin_ci_suite.py keeps the pass label and summary its log helpers read as module state (PLW0603);
+# record_twin_instrument_runs.py parses pytest's own XML report, written just above (S314).
 "scripts/build_firmware.py" = ["S603"]
-# Same for _digital_twin_ci_suite.py: it spawns the Unix-port interpreter on the repo's own
-# run_generic_integration.py, argv built from its own constants and flags.
-"scripts/_digital_twin_ci_suite.py" = ["S603"]
-# setup_toolchain.py IS a subprocess driver (git, apt, make, nmcli). run() takes an argv list, never
-# a shell string, built from repo constants plus the installer's own versions.toml/CLI input.
+"scripts/_digital_twin_ci_suite.py" = ["PLW0603", "S603"]
+"scripts/_summary_block.py" = ["S603"]
+"scripts/_twin_process.py" = ["S603"]
+"scripts/record_twin_instrument_runs.py" = ["S314", "S603"]
+# _hardware_verdict.py answers the same verdict whatever the code (ARG002); _port_lock.py names the shell library's own
+# ${XDG_RUNTIME_DIR:-/tmp} (S108).
+"scripts/_hardware_verdict.py" = ["ARG002"]
+"scripts/_port_lock.py" = ["S108"]
+# setup_toolchain.py IS a subprocess driver (git, apt, make, nmcli), argv from repo constants plus versions.toml and its
+# CLI; the overrides' post-build proofs run the preprocessor, make and the built binary with the build's own flags.
 "toolchain/setup_toolchain.py" = ["S603"]
-# Same for the lwIP override's post-build check: `-E` only, with the argv CMake recorded in the real
-# build's flags.make.
 "toolchain/micropython_overrides.py" = ["S603"]
-# ---- tests_hardware/ (real-hardware tier) ----
-# S603/S607: shelling out to mpremote/picotool/nmcli/iw/iptables/tc IS this tier's job, argv from
-# repo constants and the serial path; tools resolve from PATH, where setup_toolchain.py puts them.
+# A seeded case generator, no secret (S311); the base class's log_message(format, ...) signature (A002); coreutils
+# sleep stands in for a lock holder's process (S607).
+"tests_scripts/test_buildgen_fuzz.py" = ["S311"]
+"tests_scripts/test_digital_twin_ci_suite_ceiling.py" = ["A002"]
+"tests_scripts/test_digital_twin_ci_suite_soak.py" = ["S607"]
+"tests_scripts/test_digital_twin_scenarios.py" = ["S607"]
+"tests_scripts/test_run_digital_twin_ci_sh.py" = ["S607"]
+# S603/S607: shelling out to mpremote/picotool/nmcli/iw/iptables/tc/sudo IS this tier's job, argv from repo constants
+# and the serial path; tools resolve from PATH, where setup_toolchain.py puts them.
 "tests_hardware/harness.py" = ["S603", "S607"]
 "tests_hardware/bench_control.py" = ["S603", "S607"]
+"tests_hardware/conftest.py" = ["S607"]
+"tests_hardware/twin_board.py" = ["S603"]
+"tests_hardware/bench/test_hotspot_role_reversal.py" = ["S603", "S607"]
+"tests_hardware/bench/test_reset_reasons.py" = ["S607"]
+"tests_hardware/bench/test_system_commands_over_rest.py" = ["S607"]
+"tests_hardware/bench/test_uart_link_crc16.py" = ["S603"]
+"tests_hardware/flash/test_system_commands.py" = ["S607"]
 "tests_hardware/flash/test_toolchain_flash_boot.py" = ["S603", "S607"]
 "tests_hardware/manual/manual_toolchain.py" = ["S603", "S607"]
-# S310: a fixed `http://` URL this module builds itself from a bench-LAN host/port pair, so the
-# `file:`/custom-scheme exposure the rule warns about is unreachable - there is no attacker-supplied
-# scheme to audit.
+# S310: a fixed `http://` URL this module builds from a bench-LAN host/port pair; no attacker-supplied scheme exists.
 "tests_hardware/http_client.py" = ["S310"]
-# S112: injected packet loss makes individual request failures the fault itself; the assertions are
-# about torn reads, and logging each would drown the finding.
-"tests_hardware/bench/test_bus_concurrency_under_api_load.py" = ["S112"]
-# S105/S106: tests that join the DUT's hotspot must know its accepted fallback password (see
-# asy_wifi_service.py above) - copies of an accepted risk, exempted per file.
-"tests_hardware/conftest.py" = ["S105"]
-"tests_hardware/bench/test_hotspot_role_reversal.py" = ["S105"]
-"tests_hardware/bench/test_network_resilience.py" = ["S105"]
-"tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py" = ["S106"]
-# S105: same "copy of an accepted risk, not a new credential" reasoning as the tests_hardware/
-# entries above, for buildgen's own [device].hotspot_password minimum-length boundary test - it
-# has to assert against the real WPA2 8-character floor literal, not a placeholder.
+# S105/S106 stay on everywhere else, so a new credential in keyword or assignment form is caught. The hotspot fallback
+# password is accepted permanently (owner, 2026-09-26; SPECIFICATION.md A.11); it lives in `_VAL_HOTSPOT_PW` and
+# devices/*.toml, a shape these rules do not see.
+#
+# Literal passwords of test doubles and bound checks (the twin's own AP, length limits) - not credentials.
+"digital_twin/launch.py" = ["S105"]
 "tests_scripts/test_buildgen_validate.py" = ["S105"]
-# RUF007: device_scripts/ is MicroPython firmware-target code uploaded to the board and run there
-# (see tests_hardware/README.md) - `itertools` does not exist in the rp2 port at all, so
-# `itertools.pairwise()` is unimplementable, exactly like the global RUF005/RUF037/FURB122 entries.
-"tests_hardware/device_scripts/**" = ["RUF007"]
 
 [tool.mypy]
 # The micropython-stubs project's documented setup: typings/ replaces mypy's typeshed so
@@ -360,33 +353,32 @@ follow_imports = "silent"
 # Extends `silent` to the (upstream-Beta) stub package itself: its types are used, its own issues
 # not reported.
 follow_imports_for_stubs = true
-# build/generated_src for device_scripts' one static `import sensortask_dev`; typecheck.sh generates
-# it first (B.15).
-mypy_path = ["typings", "src", "build/generated_src"]
+# typings/ is the board stub tree, ext/typings/ the vendored upstream Microdot stub, digital_twin/unixport/
+# the Unix-port shims (no hardware fake there); build/generated_src holds the generated device modules
+# (checked as sources) and the twin pass's imports - typecheck.sh generates it first.
+mypy_path = ["typings", "ext/typings", "src", "digital_twin/unixport", "build/generated_src"]
 custom_typeshed_dir = "typings"
 # Keeps the venv's own packages out: they need the real stdlib, not typings/' MicroPython subset.
 no_site_packages = true
 # A bare glob in `files` (e.g. "src/*.py") gets pre-expanded to an explicit file list, which
 # `exclude` can't then prune - passing the directory itself is what makes `exclude` actually take
 # effect during mypy's own directory walk.
-files = ["src", "tests", "digital_twin", "tests_hardware/device_scripts"]
+files = ["src", "tests", "digital_twin", "tests_hardware/device_scripts", "build/generated_src"]
 # Excluded, each for a reason B.15 states: tests/network.py would hijack the real `network` stub
-# project-wide; the twin's fakes collide with tests/machine.py; the rest need the twin's own API, so
-# digital_twin/typecheck.ini checks them.
+# project-wide, so typecheck.sh checks it alone; the twin's fakes collide with tests/machine.py and
+# tests/rp2.py; the rest need the twin's own API, so digital_twin/typecheck.ini checks them.
 exclude = [
     "tests/network\\.py$",
     "digital_twin/machine\\.py$",
+    "digital_twin/rp2\\.py$",
     "digital_twin/network\\.py$",
     "digital_twin/neopixel\\.py$",
     "digital_twin/launch\\.py$",
     "digital_twin/run_generic_integration\\.py$",
-    "digital_twin/segfault_stress_repro\\.py$",
+    "digital_twin/run_device_script\\.py$",
     "tests/test_digital_twin_.*\\.py$",
-    # Shared twin scenario libraries (leading underscore, so the glob above misses them), same
+    # The shared construction scenario library (leading underscore, so the glob above misses it), same
     # reason.
-    "tests/_webserver_concurrency_scenarios\\.py$",
-    # Same exception, same reason, one file over: tests/_digital_twin_construction_scenarios.py
-    # (imported by six tests/test_digital_twin_construction_<device>.py files).
     "tests/_digital_twin_construction_scenarios\\.py$",
 ]
 
@@ -397,6 +389,9 @@ pretty = true
 # Full --strict, spelled `strict` so a mypy bump surfaces new strict checks; `assignment` is
 # deliberately not disabled. The one exemption follows (B.15, CLAUDE.md).
 strict = true
+# a bare `# type: ignore` is itself an error, so no suppression hides its code
+enable_error_code = ["ignore-without-code"]
+disallow_any_explicit = true
 # Not part of --strict; kept from the pre-strict config because both remain useful here.
 no_implicit_optional = true
 warn_unreachable = true
@@ -406,13 +401,29 @@ warn_unreachable = true
 no_implicit_reexport = false
 
 [[tool.mypy.overrides]]
-# Vendored, unannotated microdot's @app.get()/@app.put() make every handler "untyped" under
-# --strict; this is the one file registering real routes (CLAUDE.md). Revisit if Microdot ships
-# hints.
-module = "test_setter_microdot_integration"
-disallow_untyped_decorators = false
+# frozen_html is the frozen website the generated modules import only to mount it; it exists on
+# no search path.
+module = "frozen_html"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# baseline: a module leaves this list once its explicit-`Any` findings are cleared; the list ends
+# empty (owner, 2026-09-28).
+module = [
+    "_boot_contiguity_probe",
+    "_sensortask_scenarios",
+    "_uart_link_contract",
+    "machine",
+    "test_asy_uart_comm",
+]
+disallow_any_explicit = false
 
 [tool.pytest.ini_options]
 # pytest runs tests_scripts/ only, the host build chain's CPython suite; tests/ runs under the real
 # MicroPython interpreter via scripts/test.sh (Part E.1).
 testpaths = ["tests_scripts"]
+# The repo root on sys.path for every pytest run, so `import buildgen` and `scripts.<module>` resolve: the
+# rootless import mode puts only each test file's own directory there.
+pythonpath = ["."]
+# A marker no conftest registers is a collection error, not a silent no-op: tests_hardware/markers.py holds the table.
+addopts = ["--strict-markers"]

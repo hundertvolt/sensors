@@ -1,0 +1,17 @@
+== dynamic import / test_import_graph: rc=1 :: 8 failed, 12 passed in 27.28s
+== dynamic import / test_zzold_test_import_graph: rc=1 :: 1 failed, 19 passed in 27.24s
+== handler install / test_exception_handler_contract: rc=1 :: 1 failed, 59 passed in 7.05s
+== handler install / test_zzold_test_exception_handler_contract: rc=0 :: 60 passed in 6.56s
+== unbounded counter step / test_counter_steps: rc=1 :: 1 failed, 8 passed in 5.15s
+== unbounded counter step / test_zzold_test_counter_steps: rc=0 :: 9 passed in 4.84s
+== dynamic import (detail) / test_import_graph:
+FAILED tests_scripts/test_import_graph.py::test_no_device_image_holds_a_dynamic_import_site[arzi]
+FAILED tests_scripts/test_import_graph.py::test_no_device_image_holds_a_dynamic_import_site[dev]
+FAILED tests_scripts/test_import_graph.py::test_no_device_image_holds_a_dynamic_import_site[grkizi]
+FAILED tests_scripts/test_import_graph.py::test_no_device_image_holds_a_dynamic_import_site[klkizi]
+FAILED tests_scripts/test_import_graph.py::test_no_device_image_holds_a_dynamic_import_site[schlafzi]
+FAILED tests_scripts/test_import_graph.py::test_no_device_image_holds_a_dynamic_import_site[wozi]
+FAILED tests_scripts/test_import_graph.py::test_outside_the_images_only_the_named_files_load_dynamically
+FAILED tests_scripts/test_import_graph.py::test_a_planted_import_in_a_frozen_module_fails_naming_every_device_and_the_site
+== dynamic import (detail) / test_zzold_test_import_graph:
+FAILED tests_scripts/test_zzold_test_import_graph.py::test_outside_the_images_only_the_named_files_load_dynamically

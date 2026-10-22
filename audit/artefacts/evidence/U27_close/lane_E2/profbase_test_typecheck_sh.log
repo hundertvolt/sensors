@@ -1,0 +1,22 @@
+..................                                                       [100%]
+============================== slowest durations ===============================
+0.06s call     tests_scripts/test_typecheck_sh.py::test_a_clean_run_counts_every_step_and_exits_0
+0.06s call     tests_scripts/test_typecheck_sh.py::test_a_failing_twin_pass_is_named_and_fails_the_run
+0.06s call     tests_scripts/test_typecheck_sh.py::test_every_pass_runs_even_after_one_fails
+0.04s call     tests_scripts/test_typecheck_sh.py::test_a_failing_stub_install_aborts_naming_its_stage
+0.03s call     tests_scripts/test_typecheck_sh.py::test_a_failing_board_stub_check_is_named_as_the_stub_install_stage
+0.02s call     tests_scripts/test_typecheck_sh.py::test_every_file_the_host_pass_excludes_is_checked_by_another_run
+0.02s call     tests_scripts/test_typecheck_sh.py::test_a_changed_or_missing_stub_spec_wipes_the_old_tree_first[micropython-rp2-rpi_pico_w-stubs==1.28.0.*]
+0.02s call     tests_scripts/test_typecheck_sh.py::test_a_changed_or_missing_stub_spec_wipes_the_old_tree_first[None]
+0.02s call     tests_scripts/test_typecheck_sh.py::test_an_unchanged_stub_spec_keeps_the_tree
+0.02s call     tests_scripts/test_typecheck_sh.py::test_the_resolved_stub_version_is_printed_and_recorded
+0.01s call     tests_scripts/test_typecheck_sh.py::test_not_exactly_one_board_stub_dist_info_fails_and_records_nothing[dist_infos0-2]
+0.01s call     tests_scripts/test_typecheck_sh.py::test_an_install_that_fails_leaves_no_record_so_the_next_run_starts_clean
+0.01s call     tests_scripts/test_typecheck_sh.py::test_not_exactly_one_board_stub_dist_info_fails_and_records_nothing[dist_infos1-0]
+0.01s call     tests_scripts/test_typecheck_sh.py::test_every_file_the_main_pass_excludes_is_a_twin_pass_target
+0.01s call     tests_scripts/test_typecheck_sh.py::test_the_host_exclusion_guard_sees_a_planted_unchecked_file
+0.01s call     tests_scripts/test_typecheck_sh.py::test_help_prints_the_usage_and_runs_nothing[-h]
+0.01s call     tests_scripts/test_typecheck_sh.py::test_help_prints_the_usage_and_runs_nothing[--help]
+
+(37 durations < 0.005s hidden.  Use -vv to show these durations.)
+18 passed in 0.60s

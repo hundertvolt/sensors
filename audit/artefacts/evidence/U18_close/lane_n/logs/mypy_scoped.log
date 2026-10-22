@@ -1,0 +1,33 @@
+src/asy_ntp_client.py:21:1: error: Module "asy_dns_client" has no attribute
+"DNS_LABEL_MAX"  [attr-defined]
+    from asy_dns_client import DNS_LABEL_MAX, host_label_ok, ipv4_to_int, ...
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+src/asy_ntp_client.py:21:1: error: Module "asy_dns_client" has no attribute
+"host_label_ok"  [attr-defined]
+    from asy_dns_client import DNS_LABEL_MAX, host_label_ok, ipv4_to_int, ...
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+src/asy_ntp_client.py:21:1: error: Module "asy_dns_client" has no attribute
+"ipv4_to_int"  [attr-defined]
+    from asy_dns_client import DNS_LABEL_MAX, host_label_ok, ipv4_to_int, ...
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+src/asy_ntp_client.py: note: In member "_resolve_ntp_server" of class "NTPClient":
+src/asy_ntp_client.py:345:20: error: Unexpected keyword argument "pr" for
+"resolve_ipv4"  [call-arg]
+            ip = await resolve_ipv4(ntp_host, servers, timeout_ms=self._dn...
+                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+src/asy_ntp_client.py:345:20: note: "resolve_ipv4" defined in "asy_dns_client"
+tests/test_ntp_wifi_dns_integration.py: note: In function "test_get_dns_server_ip_real_wlan_exception_is_treated_as_none_not_propagated":
+tests/test_ntp_wifi_dns_integration.py:209:18: error: Missing positional
+argument "fallback" in call to "_resolve_ntp_server" of "NTPClient"  [call-arg]
+        result = run(ntp._resolve_ntp_server("127.0.0.1", dns_server))
+                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_ntp_client.py:15:1: error: Cannot find implementation or library
+stub for module named "_udp_port_redirect"  [import-not-found]
+    from _udp_port_redirect import redirect_udp_port
+    ^
+tests/test_asy_ntp_client.py:15:1: note: See https://mypy.readthedocs.io/en/stable/running_mypy.html#missing-imports
+tests/test_asy_ntp_client.py:16:1: error: Cannot find implementation or library
+stub for module named "_unix_port_udp_addr_shim"  [import-not-found]
+    from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_por...
+    ^
+Found 7 errors in 3 files (checked 167 source files)

@@ -1,0 +1,32 @@
+........................................................................ [ 10%]
+........................................................................ [ 21%]
+........................................................................ [ 32%]
+........................................................................ [ 43%]
+........................................................................ [ 54%]
+........................................................................ [ 65%]
+........................................................................ [ 76%]
+........................................................................ [ 87%]
+........................................................................ [ 98%]
+F.........                                                               [100%]
+=================================== FAILURES ===================================
+_______________________________ test_no_min_step _______________________________
+
+modules = [('src/asy_api_response.py', <ast.Module object at 0x7f5d0c4b5480>), ('src/asy_base_classes.py', <ast.Module object at...ger.py', <ast.Module object at 0x7f5d0cb6df90>), ('src/asy_crc_checks.py', <ast.Module object at 0x7f5d0c9f3fd0>), ...]
+
+    def test_no_min_step(modules: list[tuple[str, ast.Module]]) -> None:
+        found = [line for path, tree in modules for line in min_steps(path, tree)]
+>       assert not found, "check the bound before stepping, never min() after it:\n" + "\n".join(found)
+E       AssertionError: check the bound before stepping, never min() after it:
+E         src/asy_print_log.py:191: min((self._kept - kept & _WRAP_MAX) + self._reset_repeat, len(self.history))
+E       assert not ['src/asy_print_log.py:191: min((self._kept - kept & _WRAP_MAX) + self._reset_repeat, len(self.history))']
+
+tests_scripts/test_counter_steps.py:156: AssertionError
+=============================== warnings summary ===============================
+tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30f3b/tests_scripts/test_citations.py:236: UserWarning: datasheets/ submodule not initialised - paths under it are not checked
+    datasheets=_datasheets_checked(),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests_scripts/test_counter_steps.py::test_no_min_step - AssertionError...
+1 failed, 657 passed, 1 warning in 26.41s

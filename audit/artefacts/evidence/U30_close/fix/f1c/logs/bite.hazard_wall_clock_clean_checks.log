@@ -1,0 +1,19 @@
+UART_A UART error: no ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+FAIL test_a_host_stall_cannot_fail_the_retention_check_nocrc:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 38, in _call
+  File "tests/_uart_comm_hazard_common.py", line 80, in run_one
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/f1c/bite_wall_clean/test_uart_comm_hazard.py", line 1366, in _check_a_host_stall_cannot_fail_the_retention_check
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/f1c/bite_wall_clean/test_uart_comm_hazard.py", line 644, in _retention
+AssertionError: 119
+UART_A UART error: no ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+FAIL test_a_host_stall_cannot_fail_the_sustained_hammer_nocrc:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 38, in _call
+  File "tests/_uart_comm_hazard_common.py", line 80, in run_one
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/f1c/bite_wall_clean/test_uart_comm_hazard.py", line 1370, in _check_a_host_stall_cannot_fail_the_sustained_hammer
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/f1c/bite_wall_clean/test_uart_comm_hazard.py", line 1152, in _hammer_clean
+AssertionError: only 149/150 hammered transactions completed
+0/2 passed, 2 failed, 0 skipped

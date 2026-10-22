@@ -1,0 +1,6 @@
+uart_comm_hazards.py gc=-1 rc=0 t=15.084124290s memerr=0 facts=8 done=1
+uart_comm_hazards.py gc=32768 rc=0 t=15.126389312s memerr=0 facts=8 done=1
+uart_comm_hazards.py gc=-1 rc=0 t=15.136027874s memerr=0 facts=8 done=1
+uart_comm_hazards.py gc=32768 rc=0 t=15.212560771s memerr=0 facts=8 done=1
+uart_comm_hazards.py gc=-1 rc=0 t=3.182585932s memerr=0 facts=6 done=1
+uart_comm_hazards.py gc=32768 rc=0 t=3.177518482s memerr=0 facts=6 done=1

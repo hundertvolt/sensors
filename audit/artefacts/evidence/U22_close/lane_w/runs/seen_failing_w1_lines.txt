@@ -1,0 +1,19 @@
+3761: assert code("E", "WLAN_GIVE_UP") not in kept and code("W", "WLAN_SILENT") not in kept, kept
+2342: assert client._conn_phase == _PHASE_SILENT
+2008: client._on_hotspot_window_end()
+2586: await client._run_silent_mode()  # arms the period; nothing is due yet
+1932: due = (client._silent_attempt_due, client._reconn_wifi)
+2834: assert seen == [(True, True), (False, False), (True, True), (True, True), (True, True)], seen
+2566: assert client._conn_phase == _PHASE_SILENT
+2028: run(client._arm_hotspot_timer())  # the hotspot's window, or the silent period
+1804: assert client._reconnect_fresh is True  # the settings hook: the next iteration lands in the fresh-boot state
+2628: real = client._run_silent_mode
+276: await client._run_silent_mode()
+2746: assert run(client._get_hotspot_stations()) is None  # the chip-down answer: a failed check
+2790: assert transitions == ["absent"] * 3, timer_running
+2507: assert client._conn_phase == _PHASE_SILENT
+2763: assert answers == [None, [(bytes(6),)] * (_STATIONS_UNSET - 1), [], None]
+1867: result = (client._reconn_wifi, client._reconnect_fresh)
+1975: return client._reconn_wifi, client._reconnect_fresh, client._hotspot_timer_running, client._ledflash is None
+2523: assert client._conn_phase == _PHASE_SILENT
+3003: assert (client._conn_phase, client._reconn_wifi) == (_PHASE_SILENT, True)

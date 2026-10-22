@@ -1,0 +1,7 @@
+RUN stage=-1 i=1 rc=0 ms=9523 load=0.65 0.81 1.32
+PROBE thr=-1 ok=True locked=True early=False first_red=53 ramp_end=None restore=103317 s2=22731 check=223020 margin_us=None sum_late_us=2951 max_late_us=1595 late_us=[1595, 1023, -677, 114, 129, 125, 141, 156, 175, 170] writes=15
+54/54 passed, 0 failed, 0 skipped
+RUN stage=32768 i=1 rc=0 ms=10035 load=0.71 0.82 1.31
+PROBE thr=32768 ok=True locked=True early=False first_red=383 ramp_end=None restore=106498 s2=22606 check=223831 margin_us=None sum_late_us=5851 max_late_us=2512 late_us=[1169, 1040, 157, 174, 108, 202, 2512, 138, 202, 149] writes=15
+54/54 passed, 0 failed, 0 skipped
+END 13:10:03

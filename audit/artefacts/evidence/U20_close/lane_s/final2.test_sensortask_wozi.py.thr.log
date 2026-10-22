@@ -1,0 +1,36 @@
+PASS test_debug_level_survives_a_simulated_reboot_through_build_system
+FAIL test_webserver_system_put_reboot_cmd_arms_the_real_reset_timer:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20s/tests/microtest.py", line 35, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20s/tests/_sensortask_scenarios.py", line 2207, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20s/tests/_sensortask_scenarios.py", line 1742, in _scenario_system_put_reboot
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20s/tests/_sensortask_scenarios.py", line 84, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20s/tests/_sensortask_scenarios.py", line 1009, in _reset_task_done
+AssertionError: the reset task never ran
+PASS test_every_logger_is_set_up_by_the_batch_before_any_task_starts
+PASS test_webserver_notification_put_light_cmd_led_rejects_non_numeric_field
+PASS test_build_system_constructs_every_real_module
+PASS test_webserver_status_put_reset_errors_is_not_undone_by_a_fram_loggers_later_setup
+PASS test_is_hotspot_active_wiring_put_to_unmatched_path_still_405_in_hotspot_mode
+PASS test_webserver_system_get_sends_the_unavailable_marker_for_an_unreadable_system_store
+PASS test_a_fresh_filesystem_boot_writes_each_config_file_once
+PASS test_a_declared_dead_fram_chip_escalates_to_a_reboot
+PASS test_webserver_sensors_get_sends_the_unavailable_marker_for_a_failed_chip_config_read
+PASS test_collect_timer_starters_includes_every_constructed_module
+PASS test_webserver_networking_put_hotspot_pw_configures_the_next_hotspot_and_reads_back_masked
+PASS test_setup_batch_runs_every_unit_in_the_collected_order
+PASS test_system_put_debug_level_updates_every_logger_in_the_object_graph
+PASS test_webserver_status_counts_a_refused_connection_in_http_dropped_until_reset_errors
+PASS test_webserver_status_in_ap_mode_reports_no_rssi_and_never_queries_it
+PASS test_collect_task_starters_never_touches_start_tasks
+PASS test_is_hotspot_active_wiring_redirects_when_conn_is_in_hotspot_phase
+PASS test_build_system_web_host_and_port_are_overridable
+PASS test_main_forwards_web_host_and_port_to_build_system
+PASS test_is_hotspot_active_wiring_default_sta_phase_still_404s
+PASS test_read_triggers_follow_the_stagger_on_the_real_sequencer
+PASS test_webserver_notification_put_light_cmd_led_rejects_non_numeric_t
+PASS test_one_supervisor_pass_over_dead_tasks_persists_at_most_one_entry_per_end
+PASS test_webserver_notification_put_pause_time_dispatches_to_the_real_coordinator

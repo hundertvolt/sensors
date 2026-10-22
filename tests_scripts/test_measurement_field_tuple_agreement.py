@@ -14,6 +14,10 @@ import ast
 from pathlib import Path
 
 import pytest
+import tomllib
+from _devices import DEVICE_NAMES, device_toml
+
+from buildgen.web_tag import parse_web_tags
 
 _SRC = Path(__file__).resolve().parent.parent / "src"
 
@@ -25,16 +29,19 @@ def _literal_tuple(node: ast.AST) -> tuple[str, ...] | None:
         node = node.args[0]
     if not isinstance(node, ast.Tuple):
         return None
-    if not all(isinstance(e, ast.Constant) and isinstance(e.value, str) for e in node.elts):
-        return None
-    return tuple(e.value for e in node.elts)  # type: ignore[attr-defined]
+    names: list[str] = []
+    for element in node.elts:
+        if not (isinstance(element, ast.Constant) and isinstance(element.value, str)):
+            return None
+        names.append(element.value)
+    return tuple(names)
 
 
 def _declarations(path: Path) -> tuple[dict[str, tuple[str, ...]], tuple[str, ...] | None]:
-    """Every `X = namedtuple("X", (...))` in the module, plus its module-level `_FIELDS` if any."""
+    # Every `X = namedtuple("X", (...))` in the module, plus its module-level `_FIELDS` if any.
     tuples: dict[str, tuple[str, ...]] = {}
     fields: tuple[str, ...] | None = None
-    for node in ast.parse(path.read_text()).body:
+    for node in ast.parse(path.read_text(encoding="utf-8")).body:
         if not isinstance(node, ast.Assign) or len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
             continue
         name = node.targets[0].id
@@ -48,6 +55,29 @@ def _declarations(path: Path) -> tuple[dict[str, tuple[str, ...]], tuple[str, ..
     return tuples, fields
 
 
+def _keyword_tuple(path: Path, function: str, keyword: str) -> "list[tuple[str, ...] | None]":
+    # The literal tuple passed as `keyword=` to `function(...)`, once per call in the module.
+    return [
+        _literal_tuple(k.value) for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == function
+        for k in node.keywords if k.arg == keyword
+    ]
+
+
+def _a_device_with(driver: str) -> str:
+    # The device name only labels a parse error, so any device whose TOML wires the driver will do.
+    return next(d for d in DEVICE_NAMES if any(i.get("driver") == driver for i in tomllib.loads(device_toml(d).read_text(encoding="utf-8")).get("instance", [])))
+
+
+def test_scd30_always_written_keys_equal_its_always_executed_tags() -> None:
+    # The firmware never reads @web tags, so its own always= tuple is pinned to them: ContMeas is a
+    # dispatch-only key handled apart from compare_before_write().
+    path = _SRC / "asy_scd30_driver.py"
+    tagged = {t.field_name for t in parse_web_tags(path, _a_device_with("scd30"), "scd30") if t.always_executed} - {"ContMeas"}
+    (always,) = _keyword_tuple(path, "compare_before_write", "always")
+    assert always is not None and set(always) == tagged, f"always={always}, tagged alwaysExecuted={sorted(tagged)}"
+
+
 _MODULES_WITH_FIELDS = sorted(p.name for p in _SRC.glob("*.py") if _declarations(p)[1] is not None)
 
 
@@ -57,19 +87,50 @@ def test_the_guard_actually_found_the_modules_it_guards() -> None:
     assert len(_MODULES_WITH_FIELDS) >= 7, f"expected every measurement-publishing src/ module to be found, got {_MODULES_WITH_FIELDS}"
 
 
+def _reader_tuple(path: Path, tuples: "dict[str, tuple[str, ...]]") -> "str | None":
+    # The NamedTuple the module's reader passes as the first positional argument of its super().__init__().
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        func = node.func if isinstance(node, ast.Call) else None
+        if isinstance(node, ast.Call) and isinstance(func, ast.Attribute) and func.attr == "__init__" and ast.unparse(func.value) == "super()" and node.args:
+            first = node.args[0]
+            if isinstance(first, ast.Call) and isinstance(first.func, ast.Name) and first.func.id in tuples:
+                return first.func.id
+    return None
+
+
+def _field_problems(path: Path) -> "list[str]":
+    # _FIELDS must equal the NamedTuple the reader fills, bound through its super().__init__() call - never
+    # merely some NamedTuple of equal content (asy_ntp_client.py also declares GMTimeStruct, for one).
+    tuples, fields = _declarations(path)
+    assert fields is not None
+    bound = _reader_tuple(path, tuples)
+    if bound is None:
+        return [f"src/{path.name}: its reader passes no NamedTuple of the module as super().__init__()'s first argument"]
+    if tuples[bound] == fields:
+        return []
+    drift = f"src/{path.name}'s _FIELDS has drifted from {bound}, the NamedTuple its reader fills.\n  _FIELDS: {fields}\n  {bound}: {tuples[bound]}\n"
+    return [drift + "  make_dict() keys /measurements by _FIELDS, so this drift publishes wrong or missing keys."]
+
+
 @pytest.mark.parametrize("module", _MODULES_WITH_FIELDS)
 def test_fields_tuple_matches_its_own_named_tuple(module: str) -> None:
-    tuples, fields = _declarations(_SRC / module)
-    assert fields is not None
-    # The module's own measurement NamedTuple is the one whose fields _FIELDS claims to mirror -
-    # matched by content, since a module may declare several (asy_ntp_client.py also has
-    # GMTimeStruct, asy_sgp40_driver.py _ConstValue) and only one of them is the published shape.
-    named = {name: decl for name, decl in tuples.items() if not name.startswith("_")}
-    assert named, f"src/{module} declares _FIELDS but no public NamedTuple to agree with"
-    matching = [name for name, decl in named.items() if decl == fields]
-    assert matching, (
-        f"src/{module}'s _FIELDS has drifted from every NamedTuple it declares.\n"
-        f"  _FIELDS: {fields}\n"
-        + "".join(f"  {name}: {decl}\n" for name, decl in sorted(named.items()))
-        + "  make_dict() keys /measurements by _FIELDS, so this drift publishes wrong or missing keys."
-    )
+    problems = _field_problems(_SRC / module)
+    assert not problems, "\n".join(problems)
+
+
+_TWIN = (
+    '_FIELDS = const(("A", "B", "TS"))\nX = namedtuple("X", ("A", "C", "TS"))\nTWIN = namedtuple("TWIN", ("A", "B", "TS"))\n\n\n'
+    "class X_Reader(SensorReader):\n    def __init__(self):\n        super().__init__(X(None, None, None), _NAME)\n"
+)
+
+
+def test_a_fields_tuple_equal_only_to_a_twin_of_the_readers_tuple_fails(tmp_path: Path) -> None:
+    # The reader publishes X; a second NamedTuple that happens to equal _FIELDS proves nothing about it.
+    (tmp_path / "asy_x_driver.py").write_text(_TWIN, encoding="utf-8")
+    problems = _field_problems(tmp_path / "asy_x_driver.py")
+    assert len(problems) == 1 and "X" in problems[0], problems
+
+
+def test_a_reader_passing_no_named_tuple_fails_naming_its_module(tmp_path: Path) -> None:
+    (tmp_path / "asy_x_driver.py").write_text(_TWIN.replace("X(None, None, None)", "None"), encoding="utf-8")
+    assert _field_problems(tmp_path / "asy_x_driver.py") == ["src/asy_x_driver.py: its reader passes no NamedTuple of the module as super().__init__()'s first argument"]

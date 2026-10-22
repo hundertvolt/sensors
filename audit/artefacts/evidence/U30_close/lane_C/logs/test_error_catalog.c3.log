@@ -1,0 +1,14 @@
+..........F.............................                                 [100%]
+=================================== FAILURES ===================================
+________________ test_no_test_tier_keeps_its_own_copy_of_a_code ________________
+
+    def test_no_test_tier_keeps_its_own_copy_of_a_code() -> None:
+        problems, _flagged = _test_side_copies()
+>       assert not problems, "\n".join(problems)
+E       AssertionError: tests/test_asy_print_log.py:671 test_a_reset_while_storage_is_paused_clears_nothing_and_the_history_survives_the_pause() compares a logged code with the literal(s) [2] - use code()
+E       assert not ('tests/test_asy_print_log.py:671 test_a_reset_while_storage_is_paused_clears_nothing_and_the_history_survives_the_pause() compares a logged code with the literal(s) [2] - use code()',)
+
+tests_scripts/test_error_catalog.py:635: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_error_catalog.py::test_no_test_tier_keeps_its_own_copy_of_a_code
+1 failed, 39 passed in 5.43s

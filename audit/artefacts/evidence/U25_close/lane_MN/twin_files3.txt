@@ -1,0 +1,6 @@
+tests/test_digital_twin_construction_arzi.py
+tests/test_digital_twin_construction_dev.py
+tests/test_digital_twin_construction_grkizi.py
+tests/test_digital_twin_construction_klkizi.py
+tests/test_digital_twin_construction_schlafzi.py
+tests/test_digital_twin_construction_wozi.py

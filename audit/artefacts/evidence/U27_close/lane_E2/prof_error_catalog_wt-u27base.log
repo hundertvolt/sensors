@@ -1,0 +1,17 @@
+........................................                                 [100%]
+============================= slowest 15 durations =============================
+16.70s call     tests_scripts/test_error_catalog.py::test_no_test_tier_keeps_its_own_copy_of_a_code
+1.43s call     tests_scripts/test_error_catalog.py::test_generated_modules_follow_the_catalog
+1.20s call     tests_scripts/test_error_catalog.py::test_every_pending_seed_name_is_still_flagged
+0.45s call     tests_scripts/test_error_catalog.py::test_a_renamed_code_keyword_passes_the_sweep_and_fails_its_floor
+0.30s call     tests_scripts/test_error_catalog.py::test_a_retired_code_has_no_live_site
+0.27s call     tests_scripts/test_error_catalog.py::test_every_code_argument_is_built_from_catalog_names
+0.26s call     tests_scripts/test_error_catalog.py::test_the_sweep_reads_every_code_keyword
+0.10s call     tests_scripts/test_error_catalog.py::test_device_script_bindings_equal_the_catalog
+0.09s call     tests_scripts/test_error_catalog.py::test_every_logging_call_passes_its_code_by_keyword
+0.08s call     tests_scripts/test_error_catalog.py::test_every_live_code_has_a_live_site
+0.01s call     tests_scripts/test_error_catalog.py::test_every_code_constant_equals_its_catalog_entry_and_owner
+0.01s call     tests_scripts/test_error_catalog.py::test_no_code_constant_holds_a_non_catalog_value
+
+(3 durations < 0.005s hidden.  Use -vv to show these durations.)
+40 passed in 21.03s

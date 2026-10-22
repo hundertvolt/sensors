@@ -1,0 +1,27 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23c
+
+No test files found, exiting with code 1
+
+filter: tests_js/accessibility.test.js
+
+|chromium| 
+
+include: tests_js/**/*.test.js
+exclude:  **/node_modules/**, **/.git/**
+
+== Summary: npm test ==
+Commit: aa1d2a8 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 0 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 1
+Failed:
+  - vitest run: exit code 1 with no failing test recorded
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing:
+  - npm test: no test case ran
+Result: FAIL
+Exit code: 1

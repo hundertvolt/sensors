@@ -1,0 +1,26 @@
+........................................................................ [ 11%]
+........................................................................ [ 23%]
+........................................................................ [ 35%]
+........................................................................ [ 46%]
+........................................................................ [ 58%]
+........................................................................ [ 70%]
+........................................................................ [ 81%]
+........................................................................ [ 93%]
+..........................F.............                                 [100%]
+=================================== FAILURES ===================================
+__________________ test_each_pending_header_is_still_missing ___________________
+
+    def test_each_pending_header_is_still_missing() -> None:
+        # The pending set only shrinks: a file that has gained its header leaves it.
+        gained = sorted(p for p in _HEADER_PENDING if _has_header(p, (REPO_ROOT / p).read_text(encoding="utf-8")))
+>       assert gained == [], f"these now open with a header - delete their _HEADER_PENDING rows: {gained}"
+E       AssertionError: these now open with a header - delete their _HEADER_PENDING rows: ['.github/actions/setup-micropython-toolchain/action.yml', '.github/workflows/ci.yml', 'eslint.config.js', 'vitest.config.js']
+E       assert ['.github/act...st.config.js'] == []
+E         
+E         Left contains 4 more items, first extra item: '.github/actions/setup-micropython-toolchain/action.yml'
+E         Use -v to get more diff
+
+tests_scripts/test_comment_block_cap.py:273: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_comment_block_cap.py::test_each_pending_header_is_still_missing
+1 failed, 615 passed in 4.64s

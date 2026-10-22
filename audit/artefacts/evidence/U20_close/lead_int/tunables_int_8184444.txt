@@ -1,0 +1,8 @@
+AssertionError: buildgen/codegen.py:814: gc.emergency_exc_buf_bytes is tagged but has no SPECIFICATION.md Part N row
+SPECIFICATION.md:9788: l3.heap_layout_after_full_boot_sequence_starter_loop_grace_ms is a tuned row, but no file carries its @tunable tag
+SPECIFICATION.md:9789: l3.heap_layout_after_full_boot_sequence_starter_poll_ms is a tuned row, but no file carries its @tunable tag
+devices/dev.toml:174: dev.uart_max_transfer_bytes is tagged but has no SPECIFICATION.md Part N row
+devices/dev.toml:185: dev.uart_max_transfer_bytes is tagged but has no SPECIFICATION.md Part N row
+devices/dev.toml:55: dev.uart_rx_ring is tagged but has no SPECIFICATION.md Part N row
+devices/dev.toml:70: dev.uart_rx_ring is tagged but has no SPECIFICATION.md Part N row
+tests_scripts/test_buildgen_reproducible.py:16: l0.buildgen_reproducible_timeout_s is tagged but has no SPECIFICATION.md Part N row

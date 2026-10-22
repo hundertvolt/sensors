@@ -1,0 +1,93 @@
+PASS test_parse_fault_spec_rejects_times_for_wlan
+Usage: micropython digital_twin/launch.py [options]
+  --seed N                 random seed for the chip fakes (default: none)
+  --fram-state-path PATH   persist the FRAM image there (default: in memory)
+  --scd30-state-path PATH  persist the SCD30's NVM there (default: in memory)
+  --fault DEVICE:OP[:TIMES]          inject an OSError (repeatable; TIMES default 1)
+  --hang DEVICE:OP:SECONDS[:TIMES]   inject a blocking hang (repeatable; TIMES default 1)
+  --wifi-outcome OUTCOME   scripted connect outcome (repeatable): connect_fail, no_ap, success, wrong_password
+  --no-wdt-feed            never feed the watchdog (default: fed)
+  --duration SECONDS       stop after this long (default: run until interrupted)
+  -h, --help               print this and exit 0
+Usage: micropython digital_twin/launch.py [options]
+  --seed N                 random seed for the chip fakes (default: none)
+  --fram-state-path PATH   persist the FRAM image there (default: in memory)
+  --scd30-state-path PATH  persist the SCD30's NVM there (default: in memory)
+  --fault DEVICE:OP[:TIMES]          inject an OSError (repeatable; TIMES default 1)
+  --hang DEVICE:OP:SECONDS[:TIMES]   inject a blocking hang (repeatable; TIMES default 1)
+  --wifi-outcome OUTCOME   scripted connect outcome (repeatable): connect_fail, no_ap, success, wrong_password
+  --no-wdt-feed            never feed the watchdog (default: fed)
+  --duration SECONDS       stop after this long (default: run until interrupted)
+  -h, --help               print this and exit 0
+Usage: micropython digital_twin/launch.py [options]
+  --seed N                 random seed for the chip fakes (default: none)
+  --fram-state-path PATH   persist the FRAM image there (default: in memory)
+  --scd30-state-path PATH  persist the SCD30's NVM there (default: in memory)
+  --fault DEVICE:OP[:TIMES]          inject an OSError (repeatable; TIMES default 1)
+  --hang DEVICE:OP:SECONDS[:TIMES]   inject a blocking hang (repeatable; TIMES default 1)
+  --wifi-outcome OUTCOME   scripted connect outcome (repeatable): connect_fail, no_ap, success, wrong_password
+  --no-wdt-feed            never feed the watchdog (default: fed)
+  --duration SECONDS       stop after this long (default: run until interrupted)
+  -h, --help               print this and exit 0
+PASS test_parse_args_help_exits_zero_before_parsing_anything_else
+PASS test_parse_args_seed_is_parsed_as_int
+PASS test_parse_args_rejects_a_flag_missing_its_value
+PASS test_parse_fault_spec_rejects_an_op_not_valid_for_the_device
+PASS test_parse_fault_spec_honors_an_explicit_times
+PASS test_parse_args_fault_is_repeatable_and_accumulates_in_order
+PASS test_parse_args_rejects_an_unrecognized_wifi_outcome
+PASS test_parse_fault_spec_rejects_a_times_below_one
+PASS test_parse_fault_spec_accepts_every_documented_device_and_op
+PASS test_parse_args_combines_every_flag_together
+digital_twin/launch.py starting - seed=7 fram_state_path=None scd30_state_path=None no_wdt_feed=True duration=0.5 faults=[('wlan', 'connect', 1)] hangs=[] wifi_outcomes=[]
+WLAN: startup failed: [Errno 5] EIO: digital_twin/launch.py --fault wlan:connect
+WLAN: status -> 0
+SGP40: raw=29493 ticks
+BMP3XX: pressure=966.4hPa temp=19.3C
+digital_twin/launch.py summary: {'would_have_triggered_count': 0, 'readings': 2, 'wifi_status': 0}
+PASS test_main_a_wlan_fault_is_isolated_and_still_returns_a_summary
+PASS test_parse_fault_spec_defaults_times_to_one
+digital_twin/launch.py starting - seed=99 fram_state_path=None scd30_state_path=None no_wdt_feed=True duration=2.5 faults=[('sgp40', 'writeto', 1), ('bmp3xx', 'readfrom_mem', 1)] hangs=[] wifi_outcomes=[-2]
+WLAN: status -> 1
+SGP40: read failed: [Errno 5] EIO: digital_twin/launch.py --fault sgp40:writeto
+BMP3XX: read failed: [Errno 5] EIO: digital_twin/launch.py --fault bmp3xx:readfrom_mem
+WLAN: status -> -2
+SCD30: co2=1828.9ppm temp=24.2C hum=28.9%
+SGP40: raw=28718 ticks
+BMP3XX: pressure=960.5hPa temp=19.5C
+digital_twin/launch.py summary: {'would_have_triggered_count': 0, 'readings': 3, 'wifi_status': -2}
+PASS test_main_with_scripted_faults_and_wifi_outcome_still_completes
+digital_twin/launch.py starting - seed=55 fram_state_path=None scd30_state_path=None no_wdt_feed=False duration=4.5 faults=[] hangs=[] wifi_outcomes=[]
+WLAN: status -> 1
+SGP40: raw=29440 ticks
+BMP3XX: pressure=962.3hPa temp=19.1C
+WLAN: status -> 3
+SCD30: co2=1805.1ppm temp=24.4C hum=27.1%
+SGP40: raw=28821 ticks
+BMP3XX: pressure=966.5hPa temp=18.7C
+SCD30: co2=1817.4ppm temp=24.3C hum=29.5%
+SGP40: raw=28548 ticks
+BMP3XX: pressure=970.7hPa temp=19.3C
+digital_twin/launch.py summary: {'would_have_triggered_count': 0, 'readings': 8, 'wifi_status': 3}
+PASS test_main_long_enough_duration_reaches_a_real_wdt_feed_and_scd30s_timer_driven_reading
+PASS test_a_fault_naming_a_chip_this_run_never_wired_is_refused_by_name
+PASS test_parse_args_scd30_state_path_is_passed_through
+PASS test_a_wlan_fault_still_bypasses_the_wiring_check
+PASS test_parse_args_no_wdt_feed_is_a_bare_flag
+PASS test_parse_args_duration_is_parsed_as_float
+PASS test_parse_args_with_no_flags_returns_all_defaults
+PASS test_parse_fault_spec_rejects_a_malformed_shape
+digital_twin/launch.py starting - seed=1234 fram_state_path=None scd30_state_path=None no_wdt_feed=True duration=0.5 faults=[] hangs=[] wifi_outcomes=[]
+WLAN: status -> 1
+SGP40: raw=29522 ticks
+BMP3XX: pressure=971.7hPa temp=19.3C
+digital_twin/launch.py summary: {'would_have_triggered_count': 0, 'readings': 2, 'wifi_status': 1}
+PASS test_main_runs_end_to_end_and_returns_a_summary
+PASS test_parse_fault_spec_rejects_an_unrecognized_device
+PASS test_a_hang_naming_a_chip_this_run_never_wired_is_refused_the_same_way
+PASS test_parse_args_rejects_an_unrecognized_flag
+Warning: exception chaining not supported
+PASS test_parse_fault_spec_rejects_a_non_integer_times
+PASS test_parse_args_fram_state_path_is_passed_through
+PASS test_parse_args_wifi_outcome_is_repeatable_and_resolves_to_real_network_constants
+29/29 passed, 0 failed, 0 skipped

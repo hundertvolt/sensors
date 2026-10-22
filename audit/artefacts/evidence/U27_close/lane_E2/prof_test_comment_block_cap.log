@@ -1,0 +1,19 @@
+........................................................................ [ 11%]
+........................................................................ [ 23%]
+........................................................................ [ 35%]
+........................................................................ [ 47%]
+........................................................................ [ 59%]
+........................................................................ [ 71%]
+........................................................................ [ 83%]
+........................................................................ [ 95%]
+..............................                                           [100%]
+============================= slowest 8 durations ==============================
+0.71s setup    tests_scripts/test_comment_block_cap.py::test_the_scan_actually_reaches_every_scope_with_files_in_it
+0.34s call     tests_scripts/test_comment_block_cap.py::test_the_scan_actually_reaches_every_scope_with_files_in_it
+0.19s call     tests_scripts/test_comment_block_cap.py::test_no_comment_or_docstring_block_exceeds_three_lines[tests/test_asy_webserver_service.py]
+0.17s call     tests_scripts/test_comment_block_cap.py::test_no_comment_or_docstring_block_exceeds_three_lines[tests/test_asy_system_service.py]
+0.16s call     tests_scripts/test_comment_block_cap.py::test_no_comment_or_docstring_block_exceeds_three_lines[tests/test_asy_ntp_client.py]
+0.16s call     tests_scripts/test_comment_block_cap.py::test_no_comment_or_docstring_block_exceeds_three_lines[tests/test_asy_isl29125_driver.py]
+0.15s call     tests_scripts/test_comment_block_cap.py::test_no_comment_or_docstring_block_exceeds_three_lines[tests/_sensortask_scenarios.py]
+0.15s call     tests_scripts/test_comment_block_cap.py::test_no_comment_or_docstring_block_exceeds_three_lines[tests/test_asy_fram_driver.py]
+606 passed in 6.68s

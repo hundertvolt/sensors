@@ -1,0 +1,13 @@
+before test_uart_comm_hazard e rc=1 wall=61.9s 67/104 passed, 37 failed, 0 skipped
+before test_uart_comm_hazard f rc=1 wall=66.4s 67/104 passed, 37 failed, 0 skipped
+before test_uart_comm_hazard s rc=1 wall=89.2s 67/104 passed, 37 failed, 0 skipped
+draft1 test_uart_comm_hazard e rc=1 wall=110.5s 122/131 passed, 9 failed, 0 skipped
+after test_uart_comm_hazard e rc=1 wall=110.5s 122/131 passed, 9 failed, 0 skipped
+after test_uart_comm_hazard f rc=1 wall=119.3s 122/131 passed, 9 failed, 0 skipped
+after test_uart_comm_hazard s rc=1 wall=150.6s 122/131 passed, 9 failed, 0 skipped
+aftershadow test_uart_comm_hazard e rc=0 wall=110.1s 131/131 passed, 0 failed, 0 skipped
+aftershadow test_uart_comm_hazard f rc=0 wall=118.7s 131/131 passed, 0 failed, 0 skipped
+aftershadow test_uart_comm_hazard s rc=0 wall=145.1s 131/131 passed, 0 failed, 0 skipped
+withC test_uart_comm_hazard e rc=0 wall=108.7s 131/131 passed, 0 failed, 0 skipped
+withC test_uart_comm_hazard f rc=0 wall=117.5s 131/131 passed, 0 failed, 0 skipped
+withC test_uart_comm_hazard s rc=0 wall=146.6s 131/131 passed, 0 failed, 0 skipped

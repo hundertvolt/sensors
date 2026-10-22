@@ -1,0 +1,29 @@
+........................................................................ [  6%]
+........................................................................ [ 13%]
+........................................................................ [ 20%]
+........................................................................ [ 27%]
+........................................................................ [ 34%]
+......................................................................F. [ 41%]
+........................................................................ [ 48%]
+........................................................................ [ 55%]
+........................................................................ [ 62%]
+........................................................................ [ 69%]
+........................................................................ [ 75%]
+........................................................................ [ 82%]
+........................................................................ [ 89%]
+........................................................................ [ 96%]
+...................................                                      [100%]
+=================================== FAILURES ===================================
+_________ test_every_code_list_is_ascending_and_comma_space_separated __________
+
+    def test_every_code_list_is_ascending_and_comma_space_separated() -> None:
+>       assert not _of("order"), "\n".join(_of("order"))
+E       AssertionError: tests/test_asy_scd30_driver.py:2214: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_sgp40_driver.py:3387: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E       assert not ["tests/test_asy_scd30_driver.py:2214: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-a...e: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)"]
+E        +  where ["tests/test_asy_scd30_driver.py:2214: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-a...e: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)"] = _of('order')
+
+tests_scripts/test_suppression_form.py:148: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_suppression_form.py::test_every_code_list_is_ascending_and_comma_space_separated
+1 failed, 1042 passed in 167.72s (0:02:47)

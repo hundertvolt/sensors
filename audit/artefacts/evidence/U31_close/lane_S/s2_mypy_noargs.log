@@ -1,0 +1,6 @@
+tests/test_neopixel_wifi_integration.py: note: In function "test_real_neopixel_driver_on_off_toggle_through_wifi_service_ext_led":
+tests/test_neopixel_wifi_integration.py:59:5: error: "NeopixelDriver" has no
+attribute "neopixel_dt"  [attr-defined]
+        pixel.neopixel_dt = 0.01
+        ^~~~~~~~~~~~~~~~~
+Found 1 error in 1 file (checked 260 source files)

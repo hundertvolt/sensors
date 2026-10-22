@@ -1,0 +1,3 @@
+PASS test_a_silent_period_that_cannot_be_armed_feeds_the_hardware_streak
+PASS test_a_failed_period_arm_is_persisted_and_retried_in_the_silent_mode
+selected: 2 failed: 0

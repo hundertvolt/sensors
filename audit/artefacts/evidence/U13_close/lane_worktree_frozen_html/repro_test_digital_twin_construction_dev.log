@@ -1,0 +1,49 @@
+FAIL test_a_real_bus_fault_degrades_to_a_clean_response_not_a_crash:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_digital_twin_construction_scenarios.py", line 231, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_digital_twin_construction_scenarios.py", line 207, in _scenario_bus_fault_degrades
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_digital_twin_construction_scenarios.py", line 42, in run_timed
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_digital_twin_construction_scenarios.py", line 175, in scenario
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_digital_twin_construction_scenarios.py", line 102, in _boot_device
+  File "build/generated_src/sensortask_dev.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_build_system_boots_against_the_real_twin_buses_without_exception:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_digital_twin_construction_scenarios.py", line 231, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_digital_twin_construction_scenarios.py", line 135, in _scenario_boots_against_real_twin_buses
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_digital_twin_construction_scenarios.py", line 42, in run_timed
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_digital_twin_construction_scenarios.py", line 131, in scenario
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_digital_twin_construction_scenarios.py", line 102, in _boot_device
+  File "build/generated_src/sensortask_dev.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_get_measurements_and_sensors_are_reachable_and_shaped_correctly:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_digital_twin_construction_scenarios.py", line 231, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_digital_twin_construction_scenarios.py", line 164, in _scenario_measurements_and_sensors_shape
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_digital_twin_construction_scenarios.py", line 42, in run_timed
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_digital_twin_construction_scenarios.py", line 146, in scenario
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_digital_twin_construction_scenarios.py", line 102, in _boot_device
+  File "build/generated_src/sensortask_dev.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+0/3 passed, 3 failed, 0 skipped

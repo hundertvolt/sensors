@@ -1,7 +1,8 @@
-"""Covers tests_hardware/harness.py's resolve_board_device() over fabricated /sys, /dev and
-by-id trees: which device it identifies (USB vendor ID, never a bare ttyACM scan) and which name
-it returns for it (the stable by-id symlink). No hardware - the directories are injectable."""
+"""Covers tests_hardware/harness.py's resolve_board_device() over fabricated /sys, /dev and by-id trees: it delegates to
+the installer's resolve_board_serial() (MicroPython's by-id name and USB vendor ID, never a bare ttyACM scan) and
+returns the stable by-id symlink. No hardware - the directories are injectable."""
 
+import ast
 import sys
 from pathlib import Path
 
@@ -16,8 +17,8 @@ _ARDUINO_VENDOR = "2341"  # the bench's UART peer: a real ACM device that is NOT
 
 
 class _Tree:
-    """One fabricated host: `/sys/class/tty`, `/dev` and `/dev/serial/by-id`, laid out exactly as
-    the kernel does (by-id entries are `../../ttyACMx` relative symlinks)."""
+    # One fabricated host: `/sys/class/tty`, `/dev` and `/dev/serial/by-id`, laid out exactly as
+    # the kernel does (by-id entries are `../../ttyACMx` relative symlinks).
 
     def __init__(self, root: Path) -> None:
         self.sys_tty = root / "sys" / "class" / "tty"
@@ -31,10 +32,10 @@ class _Tree:
         usb_device = self._usb / tty
         interface = usb_device / f"{tty}:1.0"
         interface.mkdir(parents=True)
-        (usb_device / "idVendor").write_text(f"{vendor}\n")
+        (usb_device / "idVendor").write_text(f"{vendor}\n", encoding="utf-8")
         (self.sys_tty / tty).mkdir()
         (self.sys_tty / tty / "device").symlink_to(interface)
-        (self.dev / tty).write_text("")
+        (self.dev / tty).write_text("", encoding="utf-8")
         if by_id_name is not None:
             (self.by_id / by_id_name).symlink_to(Path("..") / ".." / tty)
 
@@ -48,9 +49,9 @@ def _pico_by_id(serial_no: str) -> str:
 
 def test_a_single_board_resolves_to_its_stable_by_id_symlink(tmp_path: Path) -> None:
     tree = _Tree(tmp_path)
-    tree.add("ttyACM0", _PICO_VENDOR, by_id_name=_pico_by_id("e66130100f372d34"))
+    tree.add("ttyACM0", _PICO_VENDOR, by_id_name=_pico_by_id("0123456789abcdef"))
     # The by-id name, not /dev/ttyACM0: the index moves when a hard reset re-enumerates the device.
-    assert tree.resolve() == str(tree.by_id / _pico_by_id("e66130100f372d34"))
+    assert tree.resolve() == str(tree.by_id / _pico_by_id("0123456789abcdef"))
 
 
 def test_a_foreign_acm_device_is_never_selected_even_when_it_sorts_first(tmp_path: Path) -> None:
@@ -59,8 +60,8 @@ def test_a_foreign_acm_device_is_never_selected_even_when_it_sorts_first(tmp_pat
     # mpremote open ITS port; vendor-ID identification cannot.
     tree = _Tree(tmp_path)
     tree.add("ttyACM0", _ARDUINO_VENDOR)
-    tree.add("ttyACM1", _PICO_VENDOR, by_id_name=_pico_by_id("e66130100f372d34"))
-    assert tree.resolve() == str(tree.by_id / _pico_by_id("e66130100f372d34"))
+    tree.add("ttyACM1", _PICO_VENDOR, by_id_name=_pico_by_id("0123456789abcdef"))
+    assert tree.resolve() == str(tree.by_id / _pico_by_id("0123456789abcdef"))
 
 
 def test_a_foreign_acm_device_alone_reports_no_board_rather_than_being_opened(tmp_path: Path) -> None:
@@ -90,14 +91,23 @@ def test_an_unreadable_sysfs_still_resolves_through_the_by_id_glob(tmp_path: Pat
     # Identification falls back to the by-id name, which is Pico-specific in its own right, so the
     # fallback cannot pick a stranger either.
     tree = _Tree(tmp_path)
-    tree.add("ttyACM0", _PICO_VENDOR, by_id_name=_pico_by_id("e66130100f372d34"))
+    tree.add("ttyACM0", _PICO_VENDOR, by_id_name=_pico_by_id("0123456789abcdef"))
     missing_sysfs = tmp_path / "sys" / "class" / "absent"
     assert resolve_board_device(by_id_dir=tree.by_id, sys_tty_dir=missing_sysfs, dev_dir=tree.dev) == str(
-        tree.by_id / _pico_by_id("e66130100f372d34"),
+        tree.by_id / _pico_by_id("0123456789abcdef"),
     )
 
 
-def test_a_board_with_no_by_id_entry_falls_back_to_its_dev_node(tmp_path: Path) -> None:
+def test_a_board_with_no_by_id_entry_is_no_board(tmp_path: Path) -> None:
+    # The by-id link is what survives a reset's re-enumeration; a node without one is never driven by its index.
     tree = _Tree(tmp_path)
     tree.add("ttyACM0", _PICO_VENDOR)
-    assert tree.resolve() == str(tree.dev / "ttyACM0")
+    assert tree.resolve() == _NO_BOARD_DEVICE
+
+
+def test_the_harness_keeps_no_board_glob_or_scan_of_its_own() -> None:
+    # One identification rule, the installer's: a second copy would drift from the one `env --tier flash` checks.
+    source = (Path(__file__).resolve().parent.parent / "tests_hardware" / "harness.py").read_text(encoding="utf-8")
+    names = {node.id for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Name)} | {node.attr for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Attribute)}
+    assert "resolve_board_serial" in names
+    assert not names & {"_BOARD_BY_ID_GLOB", "BOARD_BY_ID_GLOB", "detect_pico_serial_devices", "_stable_name_for"}

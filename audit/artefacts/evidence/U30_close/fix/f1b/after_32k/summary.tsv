@@ -1,0 +1,9 @@
+test_asy_print_log	32768	0.45	rc=0	mem=0	102/102 passed, 0 failed, 0 skipped
+test_asy_bmp3xx_driver	32768	13.72	rc=0	mem=0	137/137 passed, 0 failed, 0 skipped
+test_asy_scd30_driver	32768	28.67	rc=0	mem=0	130/130 passed, 0 failed, 0 skipped
+test_asy_system_service	32768	24.84	rc=0	mem=0	173/173 passed, 0 failed, 0 skipped
+test_asy_webserver_service	32768	7.21	rc=0	mem=0	219/219 passed, 0 failed, 0 skipped
+test_microtest_hooks	32768	0.09	rc=0	mem=0	7/7 passed, 0 failed, 0 skipped
+test_asy_base_classes	32768	0.48	rc=0	mem=0	189/189 passed, 0 failed, 0 skipped
+test_asy_fram_driver	32768	0.21	rc=0	mem=0	104/104 passed, 0 failed, 0 skipped
+test_asy_fram_manager	32768	5.82	rc=0	mem=0	143/143 passed, 0 failed, 0 skipped

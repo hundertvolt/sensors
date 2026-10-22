@@ -1,0 +1,202 @@
+tests/test_asy_api_response.py: note: In function "test_parse_cmd_request_valid_command_returns_the_json_and_no_error":
+tests/test_asy_api_response.py:143:38: error: Argument 1 to "parse_cmd_request"
+has incompatible type "_FakeRequest"; expected "_RequestLike"  [arg-type]
+        data, err = ar.parse_cmd_request(req, ["setThing", "getThing"])
+                                         ^~~
+tests/test_asy_api_response.py:143:38: note: Following member(s) of "_FakeRequest" have conflicts:
+tests/test_asy_api_response.py:143:38: note:     sock: expected "tuple[_Holder, _Holder]", got "tuple[_NoopHolder, _NoopHolder]"
+tests/test_asy_api_response.py: note: In function "test_parse_cmd_request_body_raises_returns_invalid_json_error":
+tests/test_asy_api_response.py:150:38: error: Argument 1 to "parse_cmd_request"
+has incompatible type "_FakeRequest"; expected "_RequestLike"  [arg-type]
+        data, err = ar.parse_cmd_request(req, ["setThing"])
+                                         ^~~
+tests/test_asy_api_response.py:150:38: note: Following member(s) of "_FakeRequest" have conflicts:
+tests/test_asy_api_response.py:150:38: note:     sock: expected "tuple[_Holder, _Holder]", got "tuple[_NoopHolder, _NoopHolder]"
+tests/test_asy_api_response.py: note: In function "test_parse_cmd_request_body_is_none_returns_invalid_json_error":
+tests/test_asy_api_response.py:157:38: error: Argument 1 to "parse_cmd_request"
+has incompatible type "_FakeRequest"; expected "_RequestLike"  [arg-type]
+        data, err = ar.parse_cmd_request(req, ["setThing"])
+                                         ^~~
+tests/test_asy_api_response.py:157:38: note: Following member(s) of "_FakeRequest" have conflicts:
+tests/test_asy_api_response.py:157:38: note:     sock: expected "tuple[_Holder, _Holder]", got "tuple[_NoopHolder, _NoopHolder]"
+tests/test_asy_api_response.py: note: In function "test_parse_cmd_request_body_is_a_non_dict_json_value_returns_invalid_json_error":
+tests/test_asy_api_response.py:168:42: error: Argument 1 to "parse_cmd_request"
+has incompatible type "_FakeRequest"; expected "_RequestLike"  [arg-type]
+            data, err = ar.parse_cmd_request(req, ["setThing"])
+                                             ^~~
+tests/test_asy_api_response.py:168:42: note: Following member(s) of "_FakeRequest" have conflicts:
+tests/test_asy_api_response.py:168:42: note:     sock: expected "tuple[_Holder, _Holder]", got "tuple[_NoopHolder, _NoopHolder]"
+tests/test_asy_api_response.py: note: In function "test_parse_cmd_request_missing_cmd_key_returns_missing_error":
+tests/test_asy_api_response.py:176:38: error: Argument 1 to "parse_cmd_request"
+has incompatible type "_FakeRequest"; expected "_RequestLike"  [arg-type]
+        data, err = ar.parse_cmd_request(req, ["setThing"])
+                                         ^~~
+tests/test_asy_api_response.py:176:38: note: Following member(s) of "_FakeRequest" have conflicts:
+tests/test_asy_api_response.py:176:38: note:     sock: expected "tuple[_Holder, _Holder]", got "tuple[_NoopHolder, _NoopHolder]"
+tests/test_asy_api_response.py: note: In function "test_parse_cmd_request_cmd_not_in_allowed_keys_returns_invalid_command_error":
+tests/test_asy_api_response.py:183:38: error: Argument 1 to "parse_cmd_request"
+has incompatible type "_FakeRequest"; expected "_RequestLike"  [arg-type]
+        data, err = ar.parse_cmd_request(req, ["setThing", "getThing"])
+                                         ^~~
+tests/test_asy_api_response.py:183:38: note: Following member(s) of "_FakeRequest" have conflicts:
+tests/test_asy_api_response.py:183:38: note:     sock: expected "tuple[_Holder, _Holder]", got "tuple[_NoopHolder, _NoopHolder]"
+tests/test_asy_api_response.py: note: In function "test_parse_cmd_request_empty_keys_list_rejects_every_cmd":
+tests/test_asy_api_response.py:190:38: error: Argument 1 to "parse_cmd_request"
+has incompatible type "_FakeRequest"; expected "_RequestLike"  [arg-type]
+        data, err = ar.parse_cmd_request(req, [])
+                                         ^~~
+tests/test_asy_api_response.py:190:38: note: Following member(s) of "_FakeRequest" have conflicts:
+tests/test_asy_api_response.py:190:38: note:     sock: expected "tuple[_Holder, _Holder]", got "tuple[_NoopHolder, _NoopHolder]"
+tests/test_setter_microdot_integration.py: note: In function "test_mocked_request_fine_data_applies_and_reports_ok":
+tests/test_setter_microdot_integration.py:161:56: error: Argument 2 to
+"_simulated_set_network_endpoint" has incompatible type "_FakeRequest"; expected
+"_RequestLike"  [arg-type]
+        resp = run(_simulated_set_network_endpoint(client, req))
+                                                           ^~~
+tests/test_setter_microdot_integration.py:161:56: note: "_FakeRequest" is missing following "_RequestLike" protocol member:
+tests/test_setter_microdot_integration.py:161:56: note:     sock
+tests/test_setter_microdot_integration.py: note: In function "test_mocked_request_partially_fine_data_reports_mixed_per_field_results":
+tests/test_setter_microdot_integration.py:176:56: error: Argument 2 to
+"_simulated_set_network_endpoint" has incompatible type "_FakeRequest"; expected
+"_RequestLike"  [arg-type]
+        resp = run(_simulated_set_network_endpoint(client, req))
+                                                           ^~~
+tests/test_setter_microdot_integration.py:176:56: note: "_FakeRequest" is missing following "_RequestLike" protocol member:
+tests/test_setter_microdot_integration.py:176:56: note:     sock
+tests/test_setter_microdot_integration.py: note: In function "test_mocked_request_garbage_body_is_rejected_before_dispatch":
+tests/test_setter_microdot_integration.py:187:56: error: Argument 2 to
+"_simulated_set_network_endpoint" has incompatible type "_FakeRequest"; expected
+"_RequestLike"  [arg-type]
+        resp = run(_simulated_set_network_endpoint(client, req))
+                                                           ^~~
+tests/test_setter_microdot_integration.py:187:56: note: "_FakeRequest" is missing following "_RequestLike" protocol member:
+tests/test_setter_microdot_integration.py:187:56: note:     sock
+tests/test_setter_microdot_integration.py: note: In function "test_mocked_request_unparseable_body_is_rejected_before_dispatch":
+tests/test_setter_microdot_integration.py:195:56: error: Argument 2 to
+"_simulated_set_network_endpoint" has incompatible type "_FakeRequest"; expected
+"_RequestLike"  [arg-type]
+        resp = run(_simulated_set_network_endpoint(client, req))
+                                                           ^~~
+tests/test_setter_microdot_integration.py:195:56: note: "_FakeRequest" is missing following "_RequestLike" protocol member:
+tests/test_setter_microdot_integration.py:195:56: note:     sock
+tests/test_setter_microdot_integration.py: note: In function "test_mocked_request_missing_cmd_field_is_rejected_before_dispatch":
+tests/test_setter_microdot_integration.py:203:56: error: Argument 2 to
+"_simulated_set_network_endpoint" has incompatible type "_FakeRequest"; expected
+"_RequestLike"  [arg-type]
+        resp = run(_simulated_set_network_endpoint(client, req))
+                                                           ^~~
+tests/test_setter_microdot_integration.py:203:56: note: "_FakeRequest" is missing following "_RequestLike" protocol member:
+tests/test_setter_microdot_integration.py:203:56: note:     sock
+tests/test_setter_microdot_integration.py: note: In function "test_mocked_request_unrecognized_cmd_is_rejected_before_dispatch":
+tests/test_setter_microdot_integration.py:210:56: error: Argument 2 to
+"_simulated_set_network_endpoint" has incompatible type "_FakeRequest"; expected
+"_RequestLike"  [arg-type]
+        resp = run(_simulated_set_network_endpoint(client, req))
+                                                           ^~~
+tests/test_setter_microdot_integration.py:210:56: note: "_FakeRequest" is missing following "_RequestLike" protocol member:
+tests/test_setter_microdot_integration.py:210:56: note:     sock
+tests/test_setter_microdot_integration.py: note: In function "test_mocked_request_unknown_field_key_reported_individually_not_whole_request":
+tests/test_setter_microdot_integration.py:219:56: error: Argument 2 to
+"_simulated_set_network_endpoint" has incompatible type "_FakeRequest"; expected
+"_RequestLike"  [arg-type]
+        resp = run(_simulated_set_network_endpoint(client, req))
+                                                           ^~~
+tests/test_setter_microdot_integration.py:219:56: note: "_FakeRequest" is missing following "_RequestLike" protocol member:
+tests/test_setter_microdot_integration.py:219:56: note:     sock
+tests/test_setter_microdot_integration.py: note: In function "test_mocked_request_hotspot_password_applies_in_the_identity_group_and_reconnects":
+tests/test_setter_microdot_integration.py:228:56: error: Argument 2 to
+"_simulated_set_network_endpoint" has incompatible type "_FakeRequest"; expected
+"_RequestLike"  [arg-type]
+        resp = run(_simulated_set_network_endpoint(client, req))
+                                                           ^~~
+tests/test_setter_microdot_integration.py:228:56: note: "_FakeRequest" is missing following "_RequestLike" protocol member:
+tests/test_setter_microdot_integration.py:228:56: note:     sock
+tests/test_setter_microdot_integration.py: note: In function "test_mocked_request_hotspot_password_outside_8_to_63_characters_is_refused":
+tests/test_setter_microdot_integration.py:239:56: error: Argument 2 to
+"_simulated_set_network_endpoint" has incompatible type "_FakeRequest"; expected
+"_RequestLike"  [arg-type]
+        resp = run(_simulated_set_network_endpoint(client, req))
+                                                           ^~~
+tests/test_setter_microdot_integration.py:239:56: note: "_FakeRequest" is missing following "_RequestLike" protocol member:
+tests/test_setter_microdot_integration.py:239:56: note:     sock
+tests/test_setter_microdot_integration.py: note: In function "test_mocked_request_empty_body_dict_is_valid_but_changes_nothing":
+tests/test_setter_microdot_integration.py:248:56: error: Argument 2 to
+"_simulated_set_network_endpoint" has incompatible type "_FakeRequest"; expected
+"_RequestLike"  [arg-type]
+        resp = run(_simulated_set_network_endpoint(client, req))
+                                                           ^~~
+tests/test_setter_microdot_integration.py:248:56: note: "_FakeRequest" is missing following "_RequestLike" protocol member:
+tests/test_setter_microdot_integration.py:248:56: note:     sock
+tests/test_setter_microdot_integration.py: note: In function "test_mocked_set_network_rejects_led_wifi_on_and_does_not_reconnect":
+tests/test_setter_microdot_integration.py:266:56: error: Argument 2 to
+"_simulated_set_network_endpoint" has incompatible type "_FakeRequest"; expected
+"_RequestLike"  [arg-type]
+        resp = run(_simulated_set_network_endpoint(client, req))
+                                                           ^~~
+tests/test_setter_microdot_integration.py:266:56: note: "_FakeRequest" is missing following "_RequestLike" protocol member:
+tests/test_setter_microdot_integration.py:266:56: note:     sock
+tests/test_setter_microdot_integration.py: note: In function "test_mocked_set_network_hostname_change_still_reconnects_alongside_rejected_led_field":
+tests/test_setter_microdot_integration.py:275:56: error: Argument 2 to
+"_simulated_set_network_endpoint" has incompatible type "_FakeRequest"; expected
+"_RequestLike"  [arg-type]
+        resp = run(_simulated_set_network_endpoint(client, req))
+                                                           ^~~
+tests/test_setter_microdot_integration.py:275:56: note: "_FakeRequest" is missing following "_RequestLike" protocol member:
+tests/test_setter_microdot_integration.py:275:56: note:     sock
+tests/test_setter_microdot_integration.py: note: In function "test_mocked_set_wifi_led_rejects_ssid_and_leaves_it_untouched":
+tests/test_setter_microdot_integration.py:283:57: error: Argument 2 to
+"_simulated_set_wifi_led_endpoint" has incompatible type "_FakeRequest";
+expected "_RequestLike"  [arg-type]
+        resp = run(_simulated_set_wifi_led_endpoint(client, req))
+                                                            ^~~
+tests/test_setter_microdot_integration.py:283:57: note: "_FakeRequest" is missing following "_RequestLike" protocol member:
+tests/test_setter_microdot_integration.py:283:57: note:     sock
+tests/test_setter_microdot_integration.py: note: In function "test_mocked_set_wifi_led_applies_its_own_field_without_reconnecting":
+tests/test_setter_microdot_integration.py:292:57: error: Argument 2 to
+"_simulated_set_wifi_led_endpoint" has incompatible type "_FakeRequest";
+expected "_RequestLike"  [arg-type]
+        resp = run(_simulated_set_wifi_led_endpoint(client, req))
+                                                            ^~~
+tests/test_setter_microdot_integration.py:292:57: note: "_FakeRequest" is missing following "_RequestLike" protocol member:
+tests/test_setter_microdot_integration.py:292:57: note:     sock
+tests/test_setter_microdot_integration.py: note: In function "_wifi_app":
+tests/test_setter_microdot_integration.py:334:62: error: Argument 2 to
+"_simulated_set_network_endpoint" has incompatible type "Request"; expected
+"_RequestLike"  [arg-type]
+            return await _simulated_set_network_endpoint(client, request)
+                                                                 ^~~~~~~
+tests/test_setter_microdot_integration.py:334:62: note: Following member(s) of "Request" have conflicts:
+tests/test_setter_microdot_integration.py:334:62: note:     sock: expected "tuple[_Holder, _Holder]", got "tuple[StreamReader, StreamWriter]"
+tests/test_setter_microdot_integration.py: note: In function "_bmp_app":
+tests/test_setter_microdot_integration.py:463:42: error: Argument 1 to
+"parse_cmd_request" has incompatible type "Request"; expected "_RequestLike" 
+[arg-type]
+            data, err = ar.parse_cmd_request(request, ["setBMP"])
+                                             ^~~~~~~
+tests/test_setter_microdot_integration.py:463:42: note: Following member(s) of "Request" have conflicts:
+tests/test_setter_microdot_integration.py:463:42: note:     sock: expected "tuple[_Holder, _Holder]", got "tuple[StreamReader, StreamWriter]"
+tests/test_setter_microdot_integration.py: note: In function "_ntp_setter_app":
+tests/test_setter_microdot_integration.py:577:42: error: Argument 1 to
+"parse_cmd_request" has incompatible type "Request"; expected "_RequestLike" 
+[arg-type]
+            data, err = ar.parse_cmd_request(request, ["setTiming"])
+                                             ^~~~~~~
+tests/test_setter_microdot_integration.py:577:42: note: Following member(s) of "Request" have conflicts:
+tests/test_setter_microdot_integration.py:577:42: note:     sock: expected "tuple[_Holder, _Holder]", got "tuple[StreamReader, StreamWriter]"
+tests/test_setter_microdot_integration.py: note: In function "_sgp_app":
+tests/test_setter_microdot_integration.py:705:42: error: Argument 1 to
+"parse_cmd_request" has incompatible type "Request"; expected "_RequestLike" 
+[arg-type]
+            data, err = ar.parse_cmd_request(request, ["setSGP"])
+                                             ^~~~~~~
+tests/test_setter_microdot_integration.py:705:42: note: Following member(s) of "Request" have conflicts:
+tests/test_setter_microdot_integration.py:705:42: note:     sock: expected "tuple[_Holder, _Holder]", got "tuple[StreamReader, StreamWriter]"
+tests/test_setter_microdot_integration.py: note: In function "_scd_app":
+tests/test_setter_microdot_integration.py:799:58: error: Argument 2 to
+"_simulated_set_scd_endpoint" has incompatible type "Request"; expected
+"_RequestLike"  [arg-type]
+            return await _simulated_set_scd_endpoint(reader, request)
+                                                             ^~~~~~~
+tests/test_setter_microdot_integration.py:799:58: note: Following member(s) of "Request" have conflicts:
+tests/test_setter_microdot_integration.py:799:58: note:     sock: expected "tuple[_Holder, _Holder]", got "tuple[StreamReader, StreamWriter]"
+Found 26 errors in 2 files (checked 168 source files)

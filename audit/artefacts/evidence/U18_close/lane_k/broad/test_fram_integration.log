@@ -1,0 +1,25 @@
+PASS test_two_sensorreaders_sharing_one_manager_keep_independent_error_histories
+PASS test_persisted_error_log_and_value_chunk_both_survive_a_simulated_reboot
+PASS test_many_write_read_cycles_with_crc32_and_verify_show_no_state_leak
+PASS test_torn_write_on_printloghistorystore_chunk_self_heals_across_a_simulated_reboot
+PASS test_torn_write_on_both_blocks_wipes_the_history_cleanly_rather_than_partially
+PASS test_value_chunk_crc_trailer_corruption_self_heals_through_the_full_chain
+PASS test_value_chunk_timestamp_corruption_hard_fails_without_crc_through_the_full_chain
+FAIL test_pause_blocks_persisted_write_but_in_memory_error_tracking_still_works:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18k/tests/microtest.py", line 35, in run
+  File "tests/test_fram_integration.py", line 442, in test_pause_blocks_persisted_write_but_in_memory_error_tracking_still_works
+AssertionError: 
+FAIL test_real_chip_fault_degrades_fram_persistence_but_keeps_in_memory_error_tracking_correct:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18k/tests/microtest.py", line 35, in run
+  File "tests/test_fram_integration.py", line 127, in test_real_chip_fault_degrades_fram_persistence_but_keeps_in_memory_error_tracking_correct
+AssertionError: 
+FAIL test_after_a_chip_loss_ten_logger_writes_add_no_fram_log_entry_beyond_the_loss:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18k/tests/microtest.py", line 35, in run
+  File "tests/test_fram_integration.py", line 177, in test_after_a_chip_loss_ten_logger_writes_add_no_fram_log_entry_beyond_the_loss
+AssertionError: 
+PASS test_printloghistorystore_chunk_and_a_separate_value_chunk_share_one_manager_without_overlap
+PASS test_sensorreader_runs_in_degraded_mode_when_fram_setup_never_succeeded
+9/12 passed, 3 failed, 0 skipped

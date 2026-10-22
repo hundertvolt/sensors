@@ -1,0 +1,18 @@
+U23 lead: a shell test pins the section switch's hand-over of the left section's GET
+
+renderSection()'s stop hands the left section's GET on the wire to the next section only when that section
+is rendered into the same main element in the same turn. That holds only while startShell()'s section
+switch calls the old stop and the new render with no await between them, nothing pinned it, and a broken
+coupling shows only as a device peer reset (W48) on navigation (agent, 2026-10-13: keep the mechanism,
+pin the coupling). The new shell case switches sections with a GET on the wire: the left GET's signal
+stays unaborted, the next section's first GET is sent only once the left one is answered, and a page stop
+right after a switch aborts the GET the switch took over.
+
+A guard (it passes on the tree), seen failing on three plants in scratch copies of js/shell.js, never in
+the tree: an await between the old stop and the new render (the left GET aborted; three existing cases
+fail too, on their synchronous headings); the old stop moved after the new render, both still synchronous
+(the left GET aborted; the only one of the file's 15 cases that fails); and a page stop that leaves the
+section running (the taken-over GET never aborted).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

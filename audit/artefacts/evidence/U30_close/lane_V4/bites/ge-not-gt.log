@@ -1,0 +1,100 @@
+FFF..                                                                    [100%]
+=================================== FAILURES ===================================
+_ test_strings_at_the_limit_or_never_interned_by_the_runs_mode_still_run[plain at the limit] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v4-bite')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11384/test_strings_at_the_limit_or_n0')
+case = 'plain at the limit'
+
+    @pytest.mark.parametrize("case", ["plain at the limit", "coverage at the limit", "home-relative entry", "threshold runs lwip through its runner", "coverage runs no lwip file"])
+    def test_strings_at_the_limit_or_never_interned_by_the_runs_mode_still_run(repo_root: Path, tmp_path: Path, case: str) -> None:
+        # The boundary's other side: 255 bytes everywhere, a ~/ entry the interpreter builds from $HOME, and a directory no
+        # launch of the mode runs a script from (the GC stage and --coverage start every file from tests/'s own runner).
+        root, layout, coverage, env, raw_dir, files = _padded_root(tmp_path, "tests/lwip_host", _LIMIT + 1), _UNIT_LAYOUT, False, {}, "/raw", ()
+        if case == "plain at the limit":
+            root, layout, files = _padded_root(tmp_path, "tests/lwip_host", _LIMIT), f"src:{'m' * _LIMIT}", (f"tests/test_{'t' * (_LIMIT - 14)}.py",)
+        elif case == "coverage at the limit":
+            coverage, raw_dir = True, "/" + "r" * (_LIMIT - len("/test_p[fixture-device-b].json") - 1)
+        elif case == "home-relative entry":
+            root, layout = _padded_root(tmp_path, "tests/lwip_host", _LIMIT), f"src:~/{'m' * _LIMIT}"
+        elif case == "threshold runs lwip through its runner":
+            env = {"GC_THRESHOLD": "32768"}
+        else:
+            coverage = True
+        done = _run_intern_check(repo_root, tmp_path, root, coverage=coverage, layout=layout, raw_dir=raw_dir, files=files, env=env)
+>       assert (done.returncode, done.stdout, done.stderr) == (0, "PASSED\n", ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/pytest-of-root/pytest-11384/test_strings_at_the_limit_or_n0/intern_check.sh'...tttttttttt.py (255 bytes) - the Unix port interns each as a qstr of at most 255 bytes and dies before a file starts
+E         ")
+E       assert (2, '', 'erro...ile starts\n') == (0, 'PASSED\n', '')
+E         
+E         At index 0 diff: 2 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_test_sh.py:1402: AssertionError
+_ test_strings_at_the_limit_or_never_interned_by_the_runs_mode_still_run[coverage at the limit] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v4-bite')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11384/test_strings_at_the_limit_or_n1')
+case = 'coverage at the limit'
+
+    @pytest.mark.parametrize("case", ["plain at the limit", "coverage at the limit", "home-relative entry", "threshold runs lwip through its runner", "coverage runs no lwip file"])
+    def test_strings_at_the_limit_or_never_interned_by_the_runs_mode_still_run(repo_root: Path, tmp_path: Path, case: str) -> None:
+        # The boundary's other side: 255 bytes everywhere, a ~/ entry the interpreter builds from $HOME, and a directory no
+        # launch of the mode runs a script from (the GC stage and --coverage start every file from tests/'s own runner).
+        root, layout, coverage, env, raw_dir, files = _padded_root(tmp_path, "tests/lwip_host", _LIMIT + 1), _UNIT_LAYOUT, False, {}, "/raw", ()
+        if case == "plain at the limit":
+            root, layout, files = _padded_root(tmp_path, "tests/lwip_host", _LIMIT), f"src:{'m' * _LIMIT}", (f"tests/test_{'t' * (_LIMIT - 14)}.py",)
+        elif case == "coverage at the limit":
+            coverage, raw_dir = True, "/" + "r" * (_LIMIT - len("/test_p[fixture-device-b].json") - 1)
+        elif case == "home-relative entry":
+            root, layout = _padded_root(tmp_path, "tests/lwip_host", _LIMIT), f"src:~/{'m' * _LIMIT}"
+        elif case == "threshold runs lwip through its runner":
+            env = {"GC_THRESHOLD": "32768"}
+        else:
+            coverage = True
+        done = _run_intern_check(repo_root, tmp_path, root, coverage=coverage, layout=layout, raw_dir=raw_dir, files=files, env=env)
+>       assert (done.returncode, done.stdout, done.stderr) == (0, "PASSED\n", ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/pytest-of-root/pytest-11384/test_strings_at_the_limit_or_n1/intern_check.sh'...evice-a].json (255 bytes) - the Unix port interns each as a qstr of at most 255 bytes and dies before a file starts
+E         ')
+E       assert (2, '', 'erro...ile starts\n') == (0, 'PASSED\n', '')
+E         
+E         At index 0 diff: 2 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_test_sh.py:1402: AssertionError
+_ test_strings_at_the_limit_or_never_interned_by_the_runs_mode_still_run[home-relative entry] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v4-bite')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11384/test_strings_at_the_limit_or_n2')
+case = 'home-relative entry'
+
+    @pytest.mark.parametrize("case", ["plain at the limit", "coverage at the limit", "home-relative entry", "threshold runs lwip through its runner", "coverage runs no lwip file"])
+    def test_strings_at_the_limit_or_never_interned_by_the_runs_mode_still_run(repo_root: Path, tmp_path: Path, case: str) -> None:
+        # The boundary's other side: 255 bytes everywhere, a ~/ entry the interpreter builds from $HOME, and a directory no
+        # launch of the mode runs a script from (the GC stage and --coverage start every file from tests/'s own runner).
+        root, layout, coverage, env, raw_dir, files = _padded_root(tmp_path, "tests/lwip_host", _LIMIT + 1), _UNIT_LAYOUT, False, {}, "/raw", ()
+        if case == "plain at the limit":
+            root, layout, files = _padded_root(tmp_path, "tests/lwip_host", _LIMIT), f"src:{'m' * _LIMIT}", (f"tests/test_{'t' * (_LIMIT - 14)}.py",)
+        elif case == "coverage at the limit":
+            coverage, raw_dir = True, "/" + "r" * (_LIMIT - len("/test_p[fixture-device-b].json") - 1)
+        elif case == "home-relative entry":
+            root, layout = _padded_root(tmp_path, "tests/lwip_host", _LIMIT), f"src:~/{'m' * _LIMIT}"
+        elif case == "threshold runs lwip through its runner":
+            env = {"GC_THRESHOLD": "32768"}
+        else:
+            coverage = True
+        done = _run_intern_check(repo_root, tmp_path, root, coverage=coverage, layout=layout, raw_dir=raw_dir, files=files, env=env)
+>       assert (done.returncode, done.stdout, done.stderr) == (0, "PASSED\n", ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/pytest-of-root/pytest-11384/test_strings_at_the_limit_or_n2/intern_check.sh'...sts/lwip_host (255 bytes) - the Unix port interns each as a qstr of at most 255 bytes and dies before a file starts
+E         ")
+E       assert (2, '', 'erro...ile starts\n') == (0, 'PASSED\n', '')
+E         
+E         At index 0 diff: 2 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_test_sh.py:1402: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_test_sh.py::test_strings_at_the_limit_or_never_interned_by_the_runs_mode_still_run[plain at the limit]
+FAILED tests_scripts/test_test_sh.py::test_strings_at_the_limit_or_never_interned_by_the_runs_mode_still_run[coverage at the limit]
+FAILED tests_scripts/test_test_sh.py::test_strings_at_the_limit_or_never_interned_by_the_runs_mode_still_run[home-relative entry]
+3 failed, 2 passed, 185 deselected in 0.58s

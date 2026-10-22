@@ -1,0 +1,46 @@
+U23 lane Y WIP Y1: the docs follow the website build, the confirmation dialogs and the done JS items
+
+README.md: the website tooling list gains `npm run lint:html:built`
+(html-validate over every device's staged page, staged into
+build/staged_html/<device>/ first), marked a local check and not a CI
+step, so "All five CI-covered checks" stays true; the list's comments
+move three columns right to fit it (whitespace only). "Building real
+firmware" gains `scripts/build_website.sh --stage-only wozi <dir>` and
+both forms of `scripts/build_device_websites.sh`; its lead-in names one
+device or every device.
+
+BACKLOG.md: the build-environment list gains its 2026-10-13 entry: the
+new stager `scripts/_stage_website.py` (CPython standard library only,
+Python 3.11 or newer, run under the bare python3 build_website.sh
+already uses), `--stage-only` on both site scripts, the
+`lint:html:built` npm script, the core ESLint rule
+`no-restricted-properties` (no plugin), one explicit-Any baseline entry
+gone from pyproject.toml and one from host_typecheck.ini, and the four
+new pytest-tier files in the host typecheck pass; no dependency, pin,
+lock or toolchain change. "Deferred" loses its two JS items as done:
+initNav() returns dispose(), which removes every listener it added, and
+both entries start the one shell (startShell()), with no selectSection()
+left in either.
+
+DEVICE_REFERENCE.md: DNSFallback's "set through the API, since the
+website cannot send an empty value" becomes the Networking page's Clear
+button, which empties the list after asking "Clear Fallback DNS
+Servers?". "Clearing the error logs": a "Failed" reset now reads "could
+not be cleared" (a source whose reset raised answers "Failed" too, and
+every reset is still awaited), and a closing sentence states the page's
+confirmation ("Reset All Errors?") with the owner's decision, asked
+about "A confirmation before clearing the DNS fallback list" (owner,
+2026-10-01: 'Fine, and add a dialog to all system commands and the
+clear error history as well. But only on the website, not on the API
+side. The API stays single command.'); the doc quotes it from "add a
+dialog" to "not on the API side.", the cut marked "...".
+
+CLAUDE.md: js/definitions.js's @typedef run is ~51 lines (lines 6-56),
+not ~37: a stale-fact correction. No meaning change.
+
+Not yet written, waiting on relayed facts: the build-environment
+entry's addendum for the code still landing, and digital_twin/README.md's
+frozen-website sizes.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

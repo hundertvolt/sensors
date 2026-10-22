@@ -1,0 +1,6 @@
+>       assert after == before, f"{first}'s files changed although {second} failed: {sorted(str(p.name) for p in after if after[p] != before.get(p))}"
+E       AssertionError: arzi's files changed although dev failed: ['sensortask_arzi.py']
+E       AssertionError: assert 'Pruned 2 stale output(s): api/gone.json, sensortask_gone.py' in 'Generated 1 device module(s) + boot entries + expected facts + wiring plan(s) + definitions + API reference(s) into /tmp/pytest-of-root/pytest-9849/test_the_prune_reports_what_it0/build/generated_src\n'
+FAILED tests_scripts/test_generate_sensortask_modules.py::test_a_later_device_failing_writes_nothing_for_any_device
+FAILED tests_scripts/test_generate_sensortask_modules.py::test_the_prune_reports_what_it_removed
+2 failed, 14 deselected in 1.71s

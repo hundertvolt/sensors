@@ -1,0 +1,276 @@
+....FFFFFFFFFFFFF                                                        [100%]
+=================================== FAILURES ===================================
+______ test_every_apt_fetch_is_bounded_and_retried_as_the_installers_are _______
+
+script = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/setup_cross_browser_toolchain.sh')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10541/test_every_apt_fetch_is_bounde0')
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/toolchain/setup_toolchain.py'>
+
+    def test_every_apt_fetch_is_bounded_and_retried_as_the_installers_are(script: Path, tmp_path: Path, setup_toolchain: ModuleType) -> None:
+        stub_bin, log = _stub_tree(tmp_path)
+        assert _run(script, tmp_path, stub_bin).returncode == 0
+        calls = _calls(log, "apt-get")
+        assert len(calls) >= 2, calls  # the Xvfb and WebKit installs and the updates before them
+        options = " ".join(setup_toolchain.apt_options())
+        for call in calls:
+>           assert call.startswith(f"apt-get {options} "), f"an apt-get call without the installer's fetch bound and retries ({options}): {call}"
+E           AssertionError: an apt-get call without the installer's fetch bound and retries (-o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30): apt-get update
+E           assert False
+E            +  where False = <built-in method startswith of str object at 0x7f38e2f94470>('apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 ')
+E            +    where <built-in method startswith of str object at 0x7f38e2f94470> = 'apt-get update'.startswith
+
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:165: AssertionError
+_ test_with_xvfb_and_webkit_present_no_apt_call_is_made_and_the_summary_names_xvfb _
+
+script = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/setup_cross_browser_toolchain.sh')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10541/test_with_xvfb_and_webkit_pres0')
+
+    def test_with_xvfb_and_webkit_present_no_apt_call_is_made_and_the_summary_names_xvfb(script: Path, tmp_path: Path) -> None:
+        stub_bin, log = _stub_tree(tmp_path, present=("microsoft-edge-stable", "firefox", "Xvfb", "WebKitWebDriver"))
+        result = _run(script, tmp_path, stub_bin)
+        assert result.returncode == 0, result.stderr
+        assert _calls(log, "apt-get") == []
+>       assert f"Xvfb:            {stub_bin / 'Xvfb'}" in result.stdout
+E       AssertionError: assert 'Xvfb:            /tmp/pytest-of-root/pytest-10541/test_with_xvfb_and_webkit_pres0/bin/Xvfb' in '== webkit2gtk-driver already installed, skipping\n== Microsoft Edge already installed, skipping\n== Firefox + geckodr...   /tmp/pytest-of-root/pytest-10541/test_with_xvfb_and_webkit_pres0/cross-browser/mamba_root/envs/ff/bin/geckodriver\n'
+E        +  where '== webkit2gtk-driver already installed, skipping\n== Microsoft Edge already installed, skipping\n== Firefox + geckodr...   /tmp/pytest-of-root/pytest-10541/test_with_xvfb_and_webkit_pres0/cross-browser/mamba_root/envs/ff/bin/geckodriver\n' = CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...st-of-root/pytest-10541/test_with_xvfb_and_webkit_pres0/cross-browser/mamba_root/envs/ff/bin/geckodriver\n', stderr='').stdout
+
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:173: AssertionError
+_____________ test_webkit_present_without_xvfb_installs_only_xvfb ______________
+
+script = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/setup_cross_browser_toolchain.sh')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10541/test_webkit_present_without_xv0')
+
+    def test_webkit_present_without_xvfb_installs_only_xvfb(script: Path, tmp_path: Path) -> None:
+        stub_bin, log = _stub_tree(tmp_path, present=("microsoft-edge-stable", "firefox", "WebKitWebDriver"))
+        assert _run(script, tmp_path, stub_bin).returncode == 0
+        installs = [call for call in _calls(log, "apt-get") if " install " in call]
+>       assert len(installs) == 1 and installs[0].endswith(" xvfb"), installs
+E       AssertionError: []
+E       assert (0 == 1)
+E        +  where 0 = len([])
+
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:180: AssertionError
+__________ test_xvfb_present_without_webkit_installs_only_the_driver ___________
+
+script = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/setup_cross_browser_toolchain.sh')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10541/test_xvfb_present_without_webk0')
+
+    def test_xvfb_present_without_webkit_installs_only_the_driver(script: Path, tmp_path: Path) -> None:
+        stub_bin, log = _stub_tree(tmp_path, present=("microsoft-edge-stable", "firefox", "Xvfb"))
+        assert _run(script, tmp_path, stub_bin).returncode == 0
+        installs = [call for call in _calls(log, "apt-get") if " install " in call]
+>       assert len(installs) == 1 and installs[0].endswith(" webkit2gtk-driver"), installs
+E       AssertionError: ['apt-get install -y --no-install-recommends webkit2gtk-driver xvfb']
+E       assert (1 == 1 and False)
+E        +  where 1 = len(['apt-get install -y --no-install-recommends webkit2gtk-driver xvfb'])
+E        +  and   False = <built-in method endswith of str object at 0x7f38e3251c30>(' webkit2gtk-driver')
+E        +    where <built-in method endswith of str object at 0x7f38e3251c30> = 'apt-get install -y --no-install-recommends webkit2gtk-driver xvfb'.endswith
+
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:187: AssertionError
+______ test_a_key_with_another_fingerprint_exits_1_and_writes_no_keyring _______
+
+script = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/setup_cross_browser_toolchain.sh')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10541/test_a_key_with_another_finger0')
+
+    def test_a_key_with_another_fingerprint_exits_1_and_writes_no_keyring(script: Path, tmp_path: Path) -> None:
+        stub_bin, log = _stub_tree(tmp_path, present=("firefox", "Xvfb", "WebKitWebDriver"), key_fingerprints=(_OTHER_FINGERPRINT,))
+        result = _run(script, tmp_path, stub_bin)
+        assert result.returncode == 1, result.stderr
+>       assert _OTHER_FINGERPRINT in result.stderr and _constant(script.read_text(encoding="utf-8"), "EDGE_KEY_FINGERPRINT") in result.stderr
+E       AssertionError: assert ('0123456789ABCDEF0123456789ABCDEF01234567' in '/tmp/pytest-of-root/pytest-10541/test_a_key_with_another_finger0/bin/curl: line 5: : No such file or directory\n/tmp/pytest-of-root/pytest-10541/test_a_key_with_another_finger0/bin/gpg: line 5: : No such file or directory\n')
+E        +  where '/tmp/pytest-of-root/pytest-10541/test_a_key_with_another_finger0/bin/curl: line 5: : No such file or directory\n/tmp/pytest-of-root/pytest-10541/test_a_key_with_another_finger0/bin/gpg: line 5: : No such file or directory\n' = CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...tory\n/tmp/pytest-of-root/pytest-10541/test_a_key_with_another_finger0/bin/gpg: line 5: : No such file or directory\n').stderr
+
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:194: AssertionError
+_______________ test_a_key_file_carrying_a_second_key_is_refused _______________
+
+script = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/setup_cross_browser_toolchain.sh')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10541/test_a_key_file_carrying_a_sec0')
+
+    def test_a_key_file_carrying_a_second_key_is_refused(script: Path, tmp_path: Path) -> None:
+>       expected = _constant(script.read_text(encoding="utf-8"), "EDGE_KEY_FINGERPRINT")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:200: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+text = '#!/usr/bin/env bash\n# Installs the three non-Chromium engines scripts/cross_browser_smoke.mjs drives (WebKitGTK, rea...and -v microsoft-edge-stable)"\necho "   Firefox:         $FIREFOX_BIN"\necho "   geckodriver:     $GECKODRIVER_BIN"\n'
+name = 'EDGE_KEY_FINGERPRINT'
+
+    def _constant(text: str, name: str) -> str:
+        match = re.search(rf"^{name}=(\S+)$", text, re.MULTILINE)
+>       assert match is not None, f"the script no longer sets {name}"
+E       AssertionError: the script no longer sets EDGE_KEY_FINGERPRINT
+E       assert None is not None
+
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:102: AssertionError
+_ test_microsofts_key_is_fetched_failing_on_http_errors_and_dearmored_once_checked _
+
+script = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/setup_cross_browser_toolchain.sh')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10541/test_microsofts_key_is_fetched0')
+
+    def test_microsofts_key_is_fetched_failing_on_http_errors_and_dearmored_once_checked(script: Path, tmp_path: Path) -> None:
+>       expected = _constant(script.read_text(encoding="utf-8"), "EDGE_KEY_FINGERPRINT")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:207: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+text = '#!/usr/bin/env bash\n# Installs the three non-Chromium engines scripts/cross_browser_smoke.mjs drives (WebKitGTK, rea...and -v microsoft-edge-stable)"\necho "   Firefox:         $FIREFOX_BIN"\necho "   geckodriver:     $GECKODRIVER_BIN"\n'
+name = 'EDGE_KEY_FINGERPRINT'
+
+    def _constant(text: str, name: str) -> str:
+        match = re.search(rf"^{name}=(\S+)$", text, re.MULTILINE)
+>       assert match is not None, f"the script no longer sets {name}"
+E       AssertionError: the script no longer sets EDGE_KEY_FINGERPRINT
+E       assert None is not None
+
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:102: AssertionError
+______ test_an_http_error_on_the_micromamba_download_leaves_no_executable ______
+
+script = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/setup_cross_browser_toolchain.sh')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10541/test_an_http_error_on_the_micr0')
+
+    def test_an_http_error_on_the_micromamba_download_leaves_no_executable(script: Path, tmp_path: Path) -> None:
+        stub_bin, _ = _stub_tree(tmp_path, present=("microsoft-edge-stable", "Xvfb", "WebKitWebDriver"), http_error=True)
+        assert _run(script, tmp_path, stub_bin).returncode != 0
+>       assert list((tmp_path / "cross-browser").rglob("micromamba*")) == []
+E       AssertionError: assert [PosixPath('/.../micromamba')] == []
+E         
+E         Left contains one more item: PosixPath('/tmp/pytest-of-root/pytest-10541/test_an_http_error_on_the_micr0/cross-browser/bin/micromamba')
+E         Use -v to get more diff
+
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:221: AssertionError
+_____ test_a_micromamba_checksum_mismatch_exits_1_and_leaves_no_executable _____
+
+script = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/setup_cross_browser_toolchain.sh')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10541/test_a_micromamba_checksum_mis0')
+
+    def test_a_micromamba_checksum_mismatch_exits_1_and_leaves_no_executable(script: Path, tmp_path: Path) -> None:
+        stub_bin, log = _stub_tree(tmp_path, present=("microsoft-edge-stable", "Xvfb", "WebKitWebDriver"))
+        result = _run(script, tmp_path, stub_bin)
+>       assert result.returncode == 1, result.stderr
+E       AssertionError: 
+E       assert 0 == 1
+E        +  where 0 = CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/...st-of-root/pytest-10541/test_a_micromamba_checksum_mis0/cross-browser/mamba_root/envs/ff/bin/geckodriver\n', stderr='').returncode
+
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:227: AssertionError
+____ test_a_verified_micromamba_of_the_pinned_release_is_installed_and_run _____
+
+script = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/setup_cross_browser_toolchain.sh')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10541/test_a_verified_micromamba_of_0')
+
+    def test_a_verified_micromamba_of_the_pinned_release_is_installed_and_run(script: Path, tmp_path: Path) -> None:
+        stub_bin, log = _stub_tree(tmp_path, present=("microsoft-edge-stable", "Xvfb", "WebKitWebDriver"))
+>       result = _run(_matching_copy(script, tmp_path), tmp_path, stub_bin)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:235: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:109: in _matching_copy
+    pinned = _constant(text, "MICROMAMBA_SHA256")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+text = '#!/usr/bin/env bash\n# Installs the three non-Chromium engines scripts/cross_browser_smoke.mjs drives (WebKitGTK, rea...and -v microsoft-edge-stable)"\necho "   Firefox:         $FIREFOX_BIN"\necho "   geckodriver:     $GECKODRIVER_BIN"\n'
+name = 'MICROMAMBA_SHA256'
+
+    def _constant(text: str, name: str) -> str:
+        match = re.search(rf"^{name}=(\S+)$", text, re.MULTILINE)
+>       assert match is not None, f"the script no longer sets {name}"
+E       AssertionError: the script no longer sets MICROMAMBA_SHA256
+E       assert None is not None
+
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:102: AssertionError
+_____ test_an_unverified_micromamba_left_by_an_older_run_is_fetched_again ______
+
+script = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/setup_cross_browser_toolchain.sh')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10541/test_an_unverified_micromamba_0')
+
+    def test_an_unverified_micromamba_left_by_an_older_run_is_fetched_again(script: Path, tmp_path: Path) -> None:
+        stub_bin, log = _stub_tree(tmp_path, present=("microsoft-edge-stable", "Xvfb", "WebKitWebDriver"))
+        stale = tmp_path / "cross-browser" / "bin" / "micromamba"
+        stale.parent.mkdir(parents=True)
+        _write_stub(stale, "<html>an HTTP error body an unchecked download kept</html>\n")
+>       assert _run(_matching_copy(script, tmp_path), tmp_path, stub_bin).returncode == 0
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:250: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:109: in _matching_copy
+    pinned = _constant(text, "MICROMAMBA_SHA256")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+text = '#!/usr/bin/env bash\n# Installs the three non-Chromium engines scripts/cross_browser_smoke.mjs drives (WebKitGTK, rea...and -v microsoft-edge-stable)"\necho "   Firefox:         $FIREFOX_BIN"\necho "   geckodriver:     $GECKODRIVER_BIN"\n'
+name = 'MICROMAMBA_SHA256'
+
+    def _constant(text: str, name: str) -> str:
+        match = re.search(rf"^{name}=(\S+)$", text, re.MULTILINE)
+>       assert match is not None, f"the script no longer sets {name}"
+E       AssertionError: the script no longer sets MICROMAMBA_SHA256
+E       assert None is not None
+
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:102: AssertionError
+______________ test_no_temporary_file_outlives_the_run[expected] _______________
+
+script = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/setup_cross_browser_toolchain.sh')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10541/test_no_temporary_file_outlive0')
+fingerprint = 'expected'
+
+    @pytest.mark.parametrize("fingerprint", ["expected", _OTHER_FINGERPRINT])
+    def test_no_temporary_file_outlives_the_run(script: Path, tmp_path: Path, fingerprint: str) -> None:
+>       expected = _constant(script.read_text(encoding="utf-8"), "EDGE_KEY_FINGERPRINT")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:257: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+text = '#!/usr/bin/env bash\n# Installs the three non-Chromium engines scripts/cross_browser_smoke.mjs drives (WebKitGTK, rea...and -v microsoft-edge-stable)"\necho "   Firefox:         $FIREFOX_BIN"\necho "   geckodriver:     $GECKODRIVER_BIN"\n'
+name = 'EDGE_KEY_FINGERPRINT'
+
+    def _constant(text: str, name: str) -> str:
+        match = re.search(rf"^{name}=(\S+)$", text, re.MULTILINE)
+>       assert match is not None, f"the script no longer sets {name}"
+E       AssertionError: the script no longer sets EDGE_KEY_FINGERPRINT
+E       assert None is not None
+
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:102: AssertionError
+_ test_no_temporary_file_outlives_the_run[0123456789ABCDEF0123456789ABCDEF01234567] _
+
+script = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/setup_cross_browser_toolchain.sh')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10541/test_no_temporary_file_outlive1')
+fingerprint = '0123456789ABCDEF0123456789ABCDEF01234567'
+
+    @pytest.mark.parametrize("fingerprint", ["expected", _OTHER_FINGERPRINT])
+    def test_no_temporary_file_outlives_the_run(script: Path, tmp_path: Path, fingerprint: str) -> None:
+>       expected = _constant(script.read_text(encoding="utf-8"), "EDGE_KEY_FINGERPRINT")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:257: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+text = '#!/usr/bin/env bash\n# Installs the three non-Chromium engines scripts/cross_browser_smoke.mjs drives (WebKitGTK, rea...and -v microsoft-edge-stable)"\necho "   Firefox:         $FIREFOX_BIN"\necho "   geckodriver:     $GECKODRIVER_BIN"\n'
+name = 'EDGE_KEY_FINGERPRINT'
+
+    def _constant(text: str, name: str) -> str:
+        match = re.search(rf"^{name}=(\S+)$", text, re.MULTILINE)
+>       assert match is not None, f"the script no longer sets {name}"
+E       AssertionError: the script no longer sets EDGE_KEY_FINGERPRINT
+E       assert None is not None
+
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:102: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_setup_cross_browser_toolchain_sh.py::test_every_apt_fetch_is_bounded_and_retried_as_the_installers_are
+FAILED tests_scripts/test_setup_cross_browser_toolchain_sh.py::test_with_xvfb_and_webkit_present_no_apt_call_is_made_and_the_summary_names_xvfb
+FAILED tests_scripts/test_setup_cross_browser_toolchain_sh.py::test_webkit_present_without_xvfb_installs_only_xvfb
+FAILED tests_scripts/test_setup_cross_browser_toolchain_sh.py::test_xvfb_present_without_webkit_installs_only_the_driver
+FAILED tests_scripts/test_setup_cross_browser_toolchain_sh.py::test_a_key_with_another_fingerprint_exits_1_and_writes_no_keyring
+FAILED tests_scripts/test_setup_cross_browser_toolchain_sh.py::test_a_key_file_carrying_a_second_key_is_refused
+FAILED tests_scripts/test_setup_cross_browser_toolchain_sh.py::test_microsofts_key_is_fetched_failing_on_http_errors_and_dearmored_once_checked
+FAILED tests_scripts/test_setup_cross_browser_toolchain_sh.py::test_an_http_error_on_the_micromamba_download_leaves_no_executable
+FAILED tests_scripts/test_setup_cross_browser_toolchain_sh.py::test_a_micromamba_checksum_mismatch_exits_1_and_leaves_no_executable
+FAILED tests_scripts/test_setup_cross_browser_toolchain_sh.py::test_a_verified_micromamba_of_the_pinned_release_is_installed_and_run
+FAILED tests_scripts/test_setup_cross_browser_toolchain_sh.py::test_an_unverified_micromamba_left_by_an_older_run_is_fetched_again
+FAILED tests_scripts/test_setup_cross_browser_toolchain_sh.py::test_no_temporary_file_outlives_the_run[expected]
+FAILED tests_scripts/test_setup_cross_browser_toolchain_sh.py::test_no_temporary_file_outlives_the_run[0123456789ABCDEF0123456789ABCDEF01234567]
+13 failed, 4 passed in 0.34s

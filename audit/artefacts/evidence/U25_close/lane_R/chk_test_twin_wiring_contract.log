@@ -1,0 +1,17 @@
+................F......                                                  [100%]
+=================================== FAILURES ===================================
+____________ test_every_key_a_consumer_reads_off_a_plan_is_declared ____________
+
+    def test_every_key_a_consumer_reads_off_a_plan_is_declared() -> None:
+        reads = {path.relative_to(_REPO).as_posix(): _plan_key_reads(ast.parse(path.read_text(encoding="utf-8"))) for path in _consumers()}
+        undeclared = [f"{path}:{line}: {owner}[{key!r}]" for path, found in reads.items() for line, owner, key in found if key not in _DECLARED[owner]]
+>       assert undeclared == []
+E       assert ["digital_twi...Plan['pins']"] == []
+E         
+E         Left contains 2 more items, first extra item: "digital_twin/launch.py:225: TwinWiringPlan['pins']"
+E         Use -v to get more diff
+
+tests_scripts/test_twin_wiring_contract.py:207: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_twin_wiring_contract.py::test_every_key_a_consumer_reads_off_a_plan_is_declared
+1 failed, 22 passed in 2.05s

@@ -1,0 +1,90 @@
+........................................................................ [ 18%]
+........................................................................ [ 36%]
+........................................................................ [ 54%]
+........................................................................ [ 72%]
+........................................................................ [ 90%]
+......................................F                                  [100%]
+=================================== FAILURES ===================================
+____________________ test_cli_never_leaves_a_partial_output ____________________
+
+name = 'buildgen.definitions.os', package = None
+
+    def import_module(name, package=None):
+        """Import a module.
+    
+        The 'package' argument is required when performing a relative import. It
+        specifies the package to use as the anchor point from which to resolve the
+        relative import to an absolute import.
+    
+        """
+        level = 0
+        if name.startswith('.'):
+            if not package:
+                msg = ("the 'package' argument is required to perform a relative "
+                       "import for {!r}")
+                raise TypeError(msg.format(name))
+            for character in name:
+                if character != '.':
+                    break
+                level += 1
+>       return _bootstrap._gcd_import(name[level:], package, level)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       ModuleNotFoundError: No module named 'buildgen.definitions.os'; 'buildgen.definitions' is not a package
+
+/usr/lib/python3.11/importlib/__init__.py:126: ModuleNotFoundError
+
+The above exception was the direct cause of the following exception:
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10565/test_cli_never_leaves_a_partia0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fb684934150>
+capsys = <_pytest.capture.CaptureFixture object at 0x7fb684936690>
+
+    def test_cli_never_leaves_a_partial_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+        # The file is written beside the target and renamed over it: a failed rename keeps the old file and no temporary.
+        out = tmp_path / "definitions.json"
+        out.write_text("old", encoding="utf-8")
+    
+        def refuse(_src: object, _dst: object) -> None:
+            raise PermissionError(13, "injected for the rename")
+    
+>       monkeypatch.setattr("buildgen.definitions.os.replace", refuse)
+
+tests_scripts/test_buildgen_definitions.py:1481: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/home/user/sensors/.venv/lib/python3.11/site-packages/_pytest/monkeypatch.py:107: in derive_importpath
+    target = resolve(module)
+             ^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'buildgen.definitions.os'
+
+    def resolve(name: str) -> object:
+        # Simplified from zope.dottedname.
+        parts = name.split(".")
+    
+        used = parts.pop(0)
+        found: object = importlib.import_module(used)
+        for part in parts:
+            used += "." + part
+            try:
+                found = getattr(found, part)
+            except AttributeError:
+                pass
+            else:
+                continue
+            # We use explicit un-nesting of the handling block in order
+            # to avoid nested exceptions.
+            try:
+                importlib.import_module(used)
+            except ImportError as ex:
+                expected = str(ex).split()[-1]
+                if expected == used:
+                    raise
+                else:
+>                   raise ImportError(f"import error in {used}: {ex}") from ex
+E                   ImportError: import error in buildgen.definitions.os: No module named 'buildgen.definitions.os'; 'buildgen.definitions' is not a package
+
+/home/user/sensors/.venv/lib/python3.11/site-packages/_pytest/monkeypatch.py:88: ImportError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_buildgen_definitions.py::test_cli_never_leaves_a_partial_output
+1 failed, 398 passed in 3.36s

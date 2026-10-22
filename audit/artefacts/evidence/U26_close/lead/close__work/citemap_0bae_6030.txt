@@ -1,0 +1,4 @@
+MOVE /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u26/close/of_new.md: tests_scripts/test_exception_handler_contract.py:521 -> :526
+MOVE /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u26/close/of_new.md: tests_scripts/test_exception_handler_contract.py:469-471 -> :474-476
+MOVE /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u26/close/of_new.md: tests_scripts/test_exception_handler_contract.py:529 -> :534
+MOVE /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u26/close/of_updates.md: tests_scripts/test_exception_handler_contract.py:521 -> :526

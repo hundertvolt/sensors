@@ -1,0 +1,32 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+______ test_help_answers_with_usage_and_touches_nothing[scripts/lint.sh] _______
+
+tool = 'scripts/lint.sh'
+safe_path = '/tmp/pytest-of-root/pytest-10518/safe_bin0'
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+
+    @pytest.mark.parametrize("tool", TOOLS)
+    def test_help_answers_with_usage_and_touches_nothing(tool: str, safe_path: str, micropython_bin: Path) -> None:
+        command = _command(tool, micropython_bin)
+        if command[0] == "node" and shutil.which("node") is None:
+            pytest.fail("node is a hard prerequisite of the host tier, and is not on PATH")
+        env = {**os.environ, "PATH": safe_path, "MICROPYPATH": _TWIN_MICROPYPATH}
+        if command[0] in ("bash", "node"):
+            command[0] = str(shutil.which(command[0]))
+        before = _tree_state()
+        done = subprocess.run(command, cwd=REPO_ROOT, env=env, capture_output=True, text=True, timeout=_TIMEOUT_S, check=False)
+        after = _tree_state()
+        assert done.returncode == 0, f"{tool} --help exited {done.returncode}:\n{done.stdout}\n{done.stderr}"
+        # argparse spells its own block "usage:"; either spelling opens the synopsis.
+        assert _USAGE_LINE.search(done.stdout), f"{tool} --help printed no usage block on stdout:\n{done.stdout}\n{done.stderr}"
+        created, removed = sorted(after.keys() - before.keys()), sorted(before.keys() - after.keys())
+        changed = sorted(name for name in after.keys() & before.keys() if after[name] != before[name] and not (REPO_ROOT / name).is_dir())
+>       assert not (created or removed or changed), f"{tool} --help touched the tree: created {created}, removed {removed}, changed {changed}"
+E       AssertionError: scripts/lint.sh --help touched the tree: created ['planted_by_help'], removed [], changed []
+E       assert not (['planted_by_help'])
+
+tests_scripts/test_tool_help.py:125: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/lint.sh]
+1 failed in 0.22s

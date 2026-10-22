@@ -1,0 +1,48 @@
+test_voc_algorithm.py	-1	A	1	wt-u30r	2.615	2.508	0.006	0	46/46 passed, 0 failed, 0 skipped	0
+test_voc_algorithm.py	-1	B	1	wt-u30r2	2.625	2.501	0.028	0	46/46 passed, 0 failed, 0 skipped	0
+test_voc_algorithm.py	32768	B	1	wt-u30r2	5.998	5.873	0.024	0	46/46 passed, 0 failed, 0 skipped	0
+test_voc_algorithm.py	32768	A	1	wt-u30r	20.714	20.332	0.023	0	46/46 passed, 0 failed, 0 skipped	0
+test_asy_scd30_driver.py	-1	A	1	wt-u30r	22.231	1.709	0.093	0	130/130 passed, 0 failed, 0 skipped	0
+test_asy_scd30_driver.py	-1	B	1	wt-u30r2	22.238	1.713	0.104	0	130/130 passed, 0 failed, 0 skipped	0
+test_asy_scd30_driver.py	32768	B	1	wt-u30r2	29.037	8.249	0.094	0	130/130 passed, 0 failed, 0 skipped	0
+test_asy_scd30_driver.py	32768	A	1	wt-u30r	43.406	22.617	0.096	0	130/130 passed, 0 failed, 0 skipped	0
+test_asy_webserver_service.py	-1	B	1	wt-u30r2	4.222	1.540	0.071	0	218/218 passed, 0 failed, 0 skipped	0
+test_asy_webserver_service.py	-1	A	1	wt-u30r	4.299	1.613	0.081	0	218/218 passed, 0 failed, 0 skipped	0
+test_asy_webserver_service.py	32768	B	1	wt-u30r2	7.007	4.358	0.036	0	218/218 passed, 0 failed, 0 skipped	0
+test_asy_webserver_service.py	32768	A	1	wt-u30r	12.216	9.459	0.069	0	218/218 passed, 0 failed, 0 skipped	0
+test_asy_framing_codecs.py	-1	A	1	wt-u30r	0.662	0.614	0.040	0	20/20 passed, 0 failed, 0 skipped	0
+test_asy_framing_codecs.py	-1	B	1	wt-u30r2	0.695	0.675	0.016	0	20/20 passed, 0 failed, 0 skipped	0
+test_asy_framing_codecs.py	32768	B	1	wt-u30r2	0.726	0.701	0.023	0	20/20 passed, 0 failed, 0 skipped	0
+test_asy_framing_codecs.py	32768	A	1	wt-u30r	1.134	1.126	0.004	0	20/20 passed, 0 failed, 0 skipped	0
+test_digital_twin_uart_link.py	-1	A	1	wt-u30r	0.071	0.054	0.015	1	RuntimeError: build/generated_src/ is missing or stale - run: uv run scripts/_generate_sensortask_modules.py	0
+test_digital_twin_uart_link.py	-1	B	1	wt-u30r2	67.032	9.307	0.755	0	21/21 passed, 0 failed, 0 skipped	0
+test_digital_twin_uart_link.py	32768	A	1	wt-u30r	0.122	0.105	0.016	1	RuntimeError: build/generated_src/ is missing or stale - run: uv run scripts/_generate_sensortask_modules.py	0
+test_digital_twin_uart_link.py	32768	B	1	wt-u30r2	70.074	14.949	0.685	0	21/21 passed, 0 failed, 0 skipped	0
+test_bus_hazard_multi_device.py	-1	A	1	wt-u30r	3.188	0.713	0.090	0	23/23 passed, 0 failed, 0 skipped	0
+test_bus_hazard_multi_device.py	-1	B	1	wt-u30r2	3.249	0.746	0.111	0	23/23 passed, 0 failed, 0 skipped	0
+test_bus_hazard_multi_device.py	32768	B	1	wt-u30r2	3.714	1.212	0.076	0	23/23 passed, 0 failed, 0 skipped	0
+test_bus_hazard_multi_device.py	32768	A	1	wt-u30r	4.905	2.423	0.062	0	23/23 passed, 0 failed, 0 skipped	0
+test_voc_algorithm.py	-1	A	2	wt-u30r2	2.386	2.286	0.019	0	46/46 passed, 0 failed, 0 skipped	0
+test_voc_algorithm.py	-1	B	2	wt-u30r	2.671	2.571	0.014	0	46/46 passed, 0 failed, 0 skipped	0
+test_voc_algorithm.py	32768	B	2	wt-u30r	6.691	6.553	0.009	0	46/46 passed, 0 failed, 0 skipped	0
+test_voc_algorithm.py	32768	A	2	wt-u30r2	19.375	19.059	0.014	0	46/46 passed, 0 failed, 0 skipped	0
+test_asy_scd30_driver.py	-1	B	2	wt-u30r	22.274	1.691	0.081	0	130/130 passed, 0 failed, 0 skipped	0
+test_asy_scd30_driver.py	-1	A	2	wt-u30r2	22.429	1.783	0.069	0	130/130 passed, 0 failed, 0 skipped	0
+test_asy_scd30_driver.py	32768	B	2	wt-u30r	28.500	7.880	0.073	0	130/130 passed, 0 failed, 0 skipped	0
+test_asy_scd30_driver.py	32768	A	2	wt-u30r2	42.670	21.858	0.111	0	130/130 passed, 0 failed, 0 skipped	0
+test_asy_webserver_service.py	-1	B	2	wt-u30r	4.499	1.686	0.073	0	218/218 passed, 0 failed, 0 skipped	0
+test_asy_webserver_service.py	-1	A	2	wt-u30r2	4.618	1.878	0.049	0	218/218 passed, 0 failed, 0 skipped	0
+test_asy_webserver_service.py	32768	B	2	wt-u30r	7.350	4.614	0.054	0	218/218 passed, 0 failed, 0 skipped	0
+test_asy_webserver_service.py	32768	A	2	wt-u30r2	12.514	9.734	0.054	0	218/218 passed, 0 failed, 0 skipped	0
+test_asy_framing_codecs.py	-1	A	2	wt-u30r2	0.667	0.643	0.020	0	20/20 passed, 0 failed, 0 skipped	0
+test_asy_framing_codecs.py	-1	B	2	wt-u30r	0.710	0.667	0.037	0	20/20 passed, 0 failed, 0 skipped	0
+test_asy_framing_codecs.py	32768	B	2	wt-u30r	0.707	0.688	0.019	0	20/20 passed, 0 failed, 0 skipped	0
+test_asy_framing_codecs.py	32768	A	2	wt-u30r2	1.395	1.355	0.014	0	20/20 passed, 0 failed, 0 skipped	0
+test_digital_twin_uart_link.py	-1	B	2	wt-u30r	0.073	0.059	0.012	1	RuntimeError: build/generated_src/ is missing or stale - run: uv run scripts/_generate_sensortask_modules.py	0
+test_digital_twin_uart_link.py	-1	A	2	wt-u30r2	69.213	13.654	0.677	0	21/21 passed, 0 failed, 0 skipped	0
+test_digital_twin_uart_link.py	32768	B	2	wt-u30r	0.101	0.071	0.024	1	RuntimeError: build/generated_src/ is missing or stale - run: uv run scripts/_generate_sensortask_modules.py	0
+test_digital_twin_uart_link.py	32768	A	2	wt-u30r2	79.254	32.245	0.596	0	21/21 passed, 0 failed, 0 skipped	0
+test_bus_hazard_multi_device.py	-1	B	2	wt-u30r	3.256	0.745	0.112	0	23/23 passed, 0 failed, 0 skipped	0
+test_bus_hazard_multi_device.py	-1	A	2	wt-u30r2	3.268	0.757	0.119	0	23/23 passed, 0 failed, 0 skipped	0
+test_bus_hazard_multi_device.py	32768	B	2	wt-u30r	3.700	1.223	0.067	0	23/23 passed, 0 failed, 0 skipped	0
+test_bus_hazard_multi_device.py	32768	A	2	wt-u30r2	4.834	2.338	0.068	0	23/23 passed, 0 failed, 0 skipped	0

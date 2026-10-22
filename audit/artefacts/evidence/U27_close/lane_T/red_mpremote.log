@@ -1,0 +1,8 @@
+_ test_a_failed_resolution_exits_1_with_the_resolvers_message_and_no_mpremote __
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9930/test_a_failed_resolution_exits0')
+    def test_a_failed_resolution_exits_1_with_the_resolvers_message_and_no_mpremote(repo_root: Path, tmp_path: Path) -> None:
+FAILED tests_scripts/test_mpremote_connect_sh.py::test_without_mpremote_device_the_resolvers_board_is_connected
+FAILED tests_scripts/test_mpremote_connect_sh.py::test_a_failed_resolution_exits_1_with_the_resolvers_message_and_no_mpremote
+FAILED tests_scripts/test_mpremote_connect_sh.py::test_help_names_the_resolver_and_runs_nothing[-h]
+FAILED tests_scripts/test_mpremote_connect_sh.py::test_help_names_the_resolver_and_runs_nothing[--help]
+4 failed, 1 passed in 0.19s

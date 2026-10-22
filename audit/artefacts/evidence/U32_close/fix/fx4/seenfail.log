@@ -1,0 +1,124 @@
+.....F....FFF.....                                                       [100%]
+=================================== FAILURES ===================================
+_ test_a_supervised_loop_started_outside_its_starter_fails[in-a-timer-starter] _
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-12155/test_a_supervised_loop_started1/src')
+name = 'asy_ntp_client.py', cls = 'NTPClient', method = 'start_check_timer'
+loop = '_sync_loop'
+
+    @pytest.mark.parametrize(
+        ("name", "cls", "method", "loop"),
+        [("asy_neopixel_driver.py", "NeopixelDriver", "toggle", "_signal_loop"), ("asy_ntp_client.py", "NTPClient", "start_check_timer", "_sync_loop")],
+        ids=["in-a-plain-method", "in-a-timer-starter"],  # start_timers() discards a timer starter's result: no supervisor watches its task
+    )
+    def test_a_supervised_loop_started_outside_its_starter_fails(src_copy: Path, name: str, cls: str, method: str, loop: str) -> None:
+        _edit(src_copy, name, f"    def {method}(self) -> None:\n", f"    def {method}(self) -> None:\n        asyncio.create_task(self.{loop}())\n")
+        findings = task_tops(src_copy)[0]
+>       assert len(findings) == 1 and f"{cls}.{method}(): its task {cls}.{loop}() ({name}:" in findings[0], findings
+E       AssertionError: []
+E       assert (0 == 1)
+E        +  where 0 = len([])
+
+tests_scripts/test_task_tops.py:253: AssertionError
+_______ test_a_top_that_does_not_cover_its_task_fails[work-in-its-else] ________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-12155/test_a_top_that_does_not_cover4/src')
+name = 'asy_wifi_service.py'
+old = '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n'
+new = '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        else:\n            self._led_off()\n'
+
+    @pytest.mark.parametrize(
+        ("name", "old", "new"),
+        [
+            ("asy_config_manager.py", "        except Exception as e:  # an unsupervised task's top", "        except OSError as e:  # an unsupervised task's top"),
+            ("asy_config_manager.py", '"- flush task failed:", e, errno=', '"- flush task failed:", errno='),
+            ("asy_config_manager.py", "            report_if_fatal(e)\n            self.unpersisted = True  # the finally", "            self.unpersisted = True  # the finally"),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        else:\n            self._led_off()\n'),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        finally:\n            self._led_off()\n'),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n            raise\n'),
+            ("asy_captive_dns.py", "            while True:\n                try:\n", "            while True:\n                await asyncio.sleep(0)\n                try:\n"),
+            ("asy_webserver_service.py", '                report_if_fatal(e)\n                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n', '                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'),
+        ],
+        ids=["narrowed", "cause-not-logged", "fatal-not-reported", "work-after-the-top", "work-in-its-else", "work-in-its-finally", "raised-after-the-log", "loop-pass-outside-the-top", "callback-fatal-not-reported"],
+    )
+    def test_a_top_that_does_not_cover_its_task_fails(src_copy: Path, name: str, old: str, new: str) -> None:
+        _edit(src_copy, name, old, new)
+        findings = task_tops(src_copy)[0]
+>       assert len(findings) == 1 and f" ({name}:" in findings[0] and findings[0].endswith(") ends in no top"), findings  # the task's own file
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: []
+E       assert (0 == 1)
+E        +  where 0 = len([])
+
+tests_scripts/test_task_tops.py:274: AssertionError
+______ test_a_top_that_does_not_cover_its_task_fails[work-in-its-finally] ______
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-12155/test_a_top_that_does_not_cover5/src')
+name = 'asy_wifi_service.py'
+old = '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n'
+new = '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        finally:\n            self._led_off()\n'
+
+    @pytest.mark.parametrize(
+        ("name", "old", "new"),
+        [
+            ("asy_config_manager.py", "        except Exception as e:  # an unsupervised task's top", "        except OSError as e:  # an unsupervised task's top"),
+            ("asy_config_manager.py", '"- flush task failed:", e, errno=', '"- flush task failed:", errno='),
+            ("asy_config_manager.py", "            report_if_fatal(e)\n            self.unpersisted = True  # the finally", "            self.unpersisted = True  # the finally"),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        else:\n            self._led_off()\n'),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        finally:\n            self._led_off()\n'),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n            raise\n'),
+            ("asy_captive_dns.py", "            while True:\n                try:\n", "            while True:\n                await asyncio.sleep(0)\n                try:\n"),
+            ("asy_webserver_service.py", '                report_if_fatal(e)\n                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n', '                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'),
+        ],
+        ids=["narrowed", "cause-not-logged", "fatal-not-reported", "work-after-the-top", "work-in-its-else", "work-in-its-finally", "raised-after-the-log", "loop-pass-outside-the-top", "callback-fatal-not-reported"],
+    )
+    def test_a_top_that_does_not_cover_its_task_fails(src_copy: Path, name: str, old: str, new: str) -> None:
+        _edit(src_copy, name, old, new)
+        findings = task_tops(src_copy)[0]
+>       assert len(findings) == 1 and f" ({name}:" in findings[0] and findings[0].endswith(") ends in no top"), findings  # the task's own file
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: []
+E       assert (0 == 1)
+E        +  where 0 = len([])
+
+tests_scripts/test_task_tops.py:274: AssertionError
+_____ test_a_top_that_does_not_cover_its_task_fails[raised-after-the-log] ______
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-12155/test_a_top_that_does_not_cover6/src')
+name = 'asy_wifi_service.py'
+old = '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n'
+new = '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n            raise\n'
+
+    @pytest.mark.parametrize(
+        ("name", "old", "new"),
+        [
+            ("asy_config_manager.py", "        except Exception as e:  # an unsupervised task's top", "        except OSError as e:  # an unsupervised task's top"),
+            ("asy_config_manager.py", '"- flush task failed:", e, errno=', '"- flush task failed:", errno='),
+            ("asy_config_manager.py", "            report_if_fatal(e)\n            self.unpersisted = True  # the finally", "            self.unpersisted = True  # the finally"),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        else:\n            self._led_off()\n'),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        finally:\n            self._led_off()\n'),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n            raise\n'),
+            ("asy_captive_dns.py", "            while True:\n                try:\n", "            while True:\n                await asyncio.sleep(0)\n                try:\n"),
+            ("asy_webserver_service.py", '                report_if_fatal(e)\n                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n', '                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'),
+        ],
+        ids=["narrowed", "cause-not-logged", "fatal-not-reported", "work-after-the-top", "work-in-its-else", "work-in-its-finally", "raised-after-the-log", "loop-pass-outside-the-top", "callback-fatal-not-reported"],
+    )
+    def test_a_top_that_does_not_cover_its_task_fails(src_copy: Path, name: str, old: str, new: str) -> None:
+        _edit(src_copy, name, old, new)
+        findings = task_tops(src_copy)[0]
+>       assert len(findings) == 1 and f" ({name}:" in findings[0] and findings[0].endswith(") ends in no top"), findings  # the task's own file
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: []
+E       assert (0 == 1)
+E        +  where 0 = len([])
+
+tests_scripts/test_task_tops.py:274: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_task_tops.py::test_a_supervised_loop_started_outside_its_starter_fails[in-a-timer-starter]
+FAILED tests_scripts/test_task_tops.py::test_a_top_that_does_not_cover_its_task_fails[work-in-its-else]
+FAILED tests_scripts/test_task_tops.py::test_a_top_that_does_not_cover_its_task_fails[work-in-its-finally]
+FAILED tests_scripts/test_task_tops.py::test_a_top_that_does_not_cover_its_task_fails[raised-after-the-log]
+4 failed, 14 passed in 1.48s

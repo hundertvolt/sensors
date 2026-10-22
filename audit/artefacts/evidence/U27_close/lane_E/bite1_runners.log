@@ -1,0 +1,34 @@
+F......F.................................................                [100%]
+=================================== FAILURES ===================================
+_________ test_the_flash_runner_runs_every_lower_level_first_in_order __________
+
+tree = PosixPath('/tmp/pytest-of-root/pytest-10325/test_the_flash_runner_runs_eve0/repo')
+
+    def test_the_flash_runner_runs_every_lower_level_first_in_order(tree: Path) -> None:
+        result, calls = _run(tree, "run_flash_hardware_suite.sh")
+        assert result.returncode == 0, result.stdout + result.stderr
+>       assert _lower(calls) == ["test.sh", "test.sh:32768", "npm:test", *(f"twin:{d}" for d in _devices(tree))]
+E       AssertionError: assert ['test.sh', '...:grkizi', ...] == ['test.sh', '...:grkizi', ...]
+E         
+E         At index 1 diff: 'npm:test' != 'test.sh:32768'
+E         Use -v to get more diff
+
+../../../wt-u27e/tests_scripts/test_hardware_runners.py:169: AssertionError
+___________ test_the_bench_runner_runs_flash_then_bench_as_two_steps ___________
+
+tree = PosixPath('/tmp/pytest-of-root/pytest-10325/test_the_bench_runner_runs_fla0/repo')
+
+    def test_the_bench_runner_runs_flash_then_bench_as_two_steps(tree: Path) -> None:
+        result, calls = _run(tree, "run_bench_hardware_suite.sh")
+        assert result.returncode == 0, result.stdout + result.stderr
+>       assert _lower(calls)[:3] == ["test.sh", "test.sh:32768", "npm:test"]
+E       AssertionError: assert ['test.sh', '...est.sh:32768'] == ['test.sh', '...', 'npm:test']
+E         
+E         At index 1 diff: 'npm:test' != 'test.sh:32768'
+E         Use -v to get more diff
+
+../../../wt-u27e/tests_scripts/test_hardware_runners.py:213: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_hardware_runners.py::test_the_flash_runner_runs_every_lower_level_first_in_order
+FAILED tests_scripts/test_hardware_runners.py::test_the_bench_runner_runs_flash_then_bench_as_two_steps
+2 failed, 55 passed in 7.74s

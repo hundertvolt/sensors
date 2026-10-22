@@ -1,0 +1,192 @@
+### A.U26.35 Soak runs are named durations and claim liveness only
+   DOCS: `tests_hardware/README.md:85-90, 137-160, 1376`; README.md:370-373, 400-403 (the "soak" row leaves the level table: a duration on top of L4, harmonization 20 — U36's with A.U7.01); BACKLOG S4 row names the renamed test (U36)
+### A.U26.74 Markers registered strictly; every flag is `--allow-<marker>`
+   DOCS: `tests_hardware/README.md:76-160, 1309-1390`, README.md:376-403, SPEC E.6.3/C.8 mentions (U36 merges the rename into its text)
+### A.U20.05 Generate a no-autostart boot-entry variant
+   DOCS: SPEC L.4 `:6267-6271` names both variants; README build section and `--help` are U27's (OR15.a (1))
+### A.U26.02 Every image build writes an image record beside its `.uf2`
+   DOCS: SPEC B.11 (build output) names the record; README build section one line (U27 owns the section)
+### A.U6.03 Build every device's site from generated definitions only
+   DOCS: — SPEC H.2 (:4316-4323), H.5 (:4419-4426), H.7 (:4536-4538 "build the real production `wozi` website"), README:278-281 (U36)
+### A.U6.04 Retire the hand-written definitions and their golden test
+   DOCS: — SPEC H.2 :4299, H.5 :4391, SPEC:648, :4408, :4410-4426, H.5.1 :4501-4510 ("Correctness proof", "Not yet built"), K.4 :5803, K.8 :5915-5920, K.11 :5990, C.11 :2344-2346, `digital_twin/README.md:838-842`, README:236-244, :278, BACKLOG:506-511 ("generated *and committed*"), :819-834, `pyproject.toml:58-59` comment ("html/definitions/*.json's oversampling labels" → "generated definitions.json's"), `vitest.config.js:37-39` comment (U36 for docs; the two config comments here)
+### A.U26.05 Commit the twin runner every instrument passes before silicon
+   DOCS: `tests_hardware/README.md` "Writing a new device script" (`:235-257`) gains habit 5 "run it in the twin first (`scripts/record_twin_instrument_runs.py`), then commit the record"; `HEAP_FRAGMENTATION_MEASUREMENTS.md:310` row points to the committed runner (U36's placement)
+### A.U26.22 Save FRAM evidence through one primitive before anything clears it
+   DOCS: CLAUDE.md FRAM rule's "save, then clear" and SPEC C.7 are U36's; `tests_hardware/README.md:481-485` "Residue is the accepted outcome" → "each script clears its chunk after the session's save and leaves nothing behind" (V15 corrected by OR38.a (4); the README line is U36's per G1/R11, A-C merges)
+### A.U26.43 The chunk reset race lands on each named seam, and a stale seed cannot pass
+   DOCS: `tests_hardware/README.md` FRAM reset-race section
+### A.U26.66 Conformance probes for every bus chip, twin and silicon alike
+   DOCS: `tests_hardware/README.md:404-415` ("The ISL29125 mock-conformance probe" → "Chip conformance probes"); SPEC C.11.1 → Part K (U36)
+### A.U26.04 The DHCP-lease test asserts the pinned server's range
+   DOCS: `tests_hardware/README.md` DHCP scope text (A.U26.63) says "MicroPython's DHCP server"
+### A.U26.39 Role reversal: restore on every path, ordered, every test asserting
+   DOCS: `tests_hardware/README.md` role-reversal section; SPEC E.6 exception row (U7's list, A.U7.25)
+### A.U26.63 DHCP is out of scope for the owner's reason, stated once
+### A.U26.01 Name the bench board by a TOML property, never a literal
+   DOCS: SPEC L.3 key table gains `bench` ("the board `tests_hardware/` flashes and tests; at most one device"), `tests_hardware/README.md` Prerequisites (`:18-51`) and Environment variables (`:52-75`) gain `BENCH_DEVICE`/`--bench-device`; CLAUDE.md WoZi rule is U36's (G1/R36 doc clause) and may cite the key
+### A.U26.27 The bench checks DebugLevel first; the NTP test proves a real sync
+   DOCS: `tests_hardware/README.md` bench prerequisites: "DebugLevel 5 (checked)"
+### A.U26.37 A USB rebind that did not happen is reported as such
+   DOCS: `tests_hardware/README.md` prerequisites: the passwordless-sudo entries the rebind needs (A.U21.26 checks the bench's sudo rules)
+### A.U26.40 One statement of what the network-fault injections reach
+### A.U26.55 Injected network faults prove they took effect
+   DOCS: A.U26.40's section
+### A.U26.56 The two spoofing tests: land the spoof in time, and attempt the off-subnet case
+   DOCS: A.U26.40's section; SPEC E.6 row
+### A.U26.23 Derive the FRAM-backed logger set in both hardware checks
+   DOCS: CLAUDE.md FRAM rule's hand list → rule + pointer (U36, G1/R12); `tests_hardware/README.md:1391-1425` capacity section says the lists are derived
+### A.U26.13 A transient mpremote retry never re-runs a script
+   DOCS: `tests_hardware/README.md` "Writing a new bench-tier test … two traps" (`:258-284`) one line
+### A.U26.17 A flash run ends on a serving board
+   DOCS: `tests_hardware/README.md` traps section: "every flash run ends with one hard reset"
+### A.U26.25 The watchdog tests stop reading `reset_cause()` and share one closing reset
+   DOCS: `tests_hardware/README.md:396-400` trap (U14's doc clause, G1/R14)
+### A.U26.29 Every hard-reset fallback is one reported recovery helper
+   DOCS: `tests_hardware/README.md:625-641` (A.U26.30), traps section names the CLI
+### A.U26.60 Raw-REPL facts stated in the harness where they act
+### A.U26.65 Every harness workaround names its defect, bound and removal trigger
+### A.S0930.19 The wear gate counts `"resetconfig"` as a persisting write
+   DOCS: README as above
+### Tests for the two commands — every type at every level (OR118.a, OR120.a (3), OR122.a (1))
+### A.S0930.15 Reset reasons 7, 8 and 9 for the two commands
+   DOCS: SPEC A.8 code table rows; `tests_hardware/README.md` "Reset codes proven on the bench" rows (A.U26.28)
+### A.S0930.28 L3: the commands on the dev board over USB
+   DOCS: `tests_hardware/README.md` "System commands" subsection (what each test spends: scratch flash writes behind `persistence_write`; the erase destroys the FRAM logs after the raw save)
+### A.S0930.29 L4: the commands over REST on the bench
+   DOCS: `tests_hardware/README.md` "System commands" subsection (restore mechanics, hotspot join, evidence saved first) and the reset-code table (A.U26.28) rows 7/8
+### A.S0930.39 L3: reboot and bootloader on the dev board over USB
+   DOCS: `tests_hardware/README.md` "System commands" subsection gains the two commands
+### A.S0930.40 L4: reboot and bootloader over REST on the bench
+   DOCS: `tests_hardware/README.md` "System commands" subsection and "Reset codes proven on the bench" rows 3/4 (A.U26.28) name these tests
+### A.U10.09 Describe the reboot and starve paths as they are
+   DOCS: the A.2 text describes U11's fixed supervisor path (G5/R02 D4.04/D4.11): co-lands with U11's change; BACKLOG `:90-92` is also rewritten by A.U0.38 (V33) — A-C merges the paragraph
+### A.U14.02 Rewrite the reset-diagnosis trap in `tests_hardware/README.md`
+   DOCS: the `:390-392` bullet ("A test that polls `is_reachable()` right after a reset must end with `hard_reset()`") stays; U26's G1/R14 test changes cite this trap
+### A.U26.28 Prove every reset code on the bench through `/status`
+   DOCS: `tests_hardware/README.md` gains "Reset codes proven on the bench" (one row per code, the test that proves it)
+### A.U26.86 One wording for the mock-only UART fault catalog in the hardware README
+### A.U8C.112 Tag the tuned literals of `harness.py`
+   DOCS: SPEC Part N rows; `tests_hardware/README.md` timing statements cite the IDs
+### A.U19.23 Client-triggered console output cannot starve the watchdog
+   DOCS: SPEC A.5 gains "client traffic prints nothing at the shipped `DebugLevel` 0; a raised level with a connected USB host that does not read can stall the loop 500 ms per line"; `tests_hardware/README.md` the bench note (U26)
+### A.U26.03 The bench tier proves the board runs this round's image first
+   DOCS: `tests_hardware/README.md` "Verify the image" paragraph (`:329-335`) states the fixture; "How a round runs" (U36, G1/R02) cites it
+### A.U26.48 Heap figures name their threshold; the threshold check sees every spelling
+   DOCS: `tests_hardware/README.md` "Measuring heap" (every figure names the threshold)
+### A.U26.64 The owner's OpenHAB case runs as a named bench scenario
+   DOCS: `tests_hardware/README.md` "Measuring heap and serving under load" names the scenario
+### A.U24.52 A missing interpreter fails the live JS tier
+   DOCS: README test recipes ("the live tier needs the toolchain built") and SPEC H.7 (U36)
+### A.U24.65 Per-device suites run from the derived device set, no wrapper files
+   DOCS: SPEC E.2.1 (per-device libraries), E.3.1 (heap split per device job), README test recipes (`TEST_DEVICE=… micropython … tests/test_sensortask.py`) (U36)
+### A.U25.48 System-level L2 runs every derived device; no variant literal in twin files
+   DOCS: README `:388-391` (the "wozi (default)" example), `:161-162`, `:6` (U36); root `README.md:518-519` (`scripts/run_digital_twin_ci.sh # wozi (default)`: the usage example names a device, no default)
+### A.U26.07 SCD30 prerequisite: check, then start at most once per session
+   DOCS: `tests_hardware/README.md:101-107` and the SCD30 section: "a default run normally writes the SCD30's NVM zero times and at most once (the start command, only when measurement is off)"
+### A.U26.09 Re-derive the SCD30 write budget after compare-before-write
+   DOCS: as Site; SPEC C.8/E wear sentence (U36 carries CLAUDE.md)
+### A.U26.11 The ISL29125 envelope's config pushes are gated and cleaned up
+   DOCS: `tests_hardware/README.md:111-116, 218-234` ("spends no write of any kind" → "seven scratch flash writes, gated"); `conftest.py:55-68` help "Spends no write of any kind, so it is its own flag rather than a persistence one" → "its config pushes also need --allow-persistence-writes"
+### A.U26.14 The reflash test retries only BOOTSEL enumeration and ends passively
+   DOCS: `tests_hardware/README.md:76-120` (running: the new flag), `:1309-1390` gate list
+### A.U26.36 The rollover check observes a running board over REST
+   DOCS: `tests_hardware/README.md:92-96` (the recipe names the bench module); BACKLOG G6 row → scheduled in phase C (U36)
+### A.U26.42 Manual checks can fail, and their instructions match the firmware
+   DOCS: `tests_hardware/README.md` manual section and rig section
+### A.U26.75 Hardware runs never trigger an implicit `uv` sync
+   DOCS: `tests_hardware/README.md` Running: "a runner syncs once (retried); nothing inside a run syncs"
+### A.U26.68 Device scripts emit facts; the host test gives the verdict
+   DOCS: SPEC E.9 (U36)
+### A.U25.19 Twin `Timer`: rp2's arguments, one schedule per Timer, a bounded alarm pool
+   DOCS: fidelity row (soft-callback exception row, A.U25.01)
+### A.U26.58 The scheduler-drop probe forces the drop and asserts it
+   DOCS: SPEC F.1 soft-timer fact (U14) cites the probe
+### A.U26.12 The boot-log check reads DebugLevel; it never writes the production file
+   DOCS: `tests_hardware/README.md` "≥ 3" vs "5" (G1/R19: made 5; grep `DebugLevel` there)
+### A.U26.26 One boot-line helper for every log-based boot or reboot oracle
+   DOCS: `tests_hardware/README.md` "≥ 3" vs "5" → "the standard state holds DebugLevel 5; boot oracles need ≥ 3" (grep `DebugLevel` in the README)
+### A.U26.30 README: the power-cycle backstop is a judged trade-off, reported
+### A.U26.41 Instruments for the boot order and the trigger spacing on silicon
+   DOCS: `tests_hardware/README.md` "How a round runs" (U36) lists the boot log as a round artefact
+### A.U26.77 The hardware README states current facts, not resolved questions
+### A.U26.72 A gated bench measurement: does Altitude apply at once with AmbPres 0
+   DOCS: the answer, once measured, goes into SPEC M (SCD30) and the Altitude help text (U15/U23), and the BACKLOG hardware row closes (U36)
+### A.U26.79 A round starts and ends in the standard board state
+   DOCS: `tests_hardware/README.md` "How a round runs" (U36): start and end state checked by fixtures
+### A.U26.85 The phase-C lwIP stall proof as a bench module
+   DOCS: BACKLOG's owed row (A.U21.14) names this module
+### A.S0930.05 L3: the crossover device scripts run in both CRC modes
+   DOCS: `tests_hardware/README.md` UART section "each crossover script runs with no CRC and with CRC16"
+### A.S0930.06 L4: the bench link suite runs once per mode; CRC16 behind `flash_cycle`
+   DOCS: `tests_hardware/README.md` flash-cycle list gains this test ("two reflashes: the CRC16 image and back")
+### A.U26.59 Fold the raw UART stall script into the driver script
+   DOCS: SPEC F.5.8 (U14) cites the driver script only; `tests_hardware/README.md:443-444` names the driver script and its own measured figures (the old figures were the raw script's and go); `:1256-1264` is cut (its gap is the fold itself); `uart_driver_read_never_blocks_the_loop.py:25` comment names no deleted file
+### A.U26.82 UART comm hazards across the jumper and under API load
+   DOCS: `tests_hardware/README.md` UART section
+### A.U26.87 The UART link carries a multi-chunk SET under load at L3 and L4 (N.27)
+   DOCS: as (3); SPEC J.7 tier map (U36, from A.U17.25) marks the multi-chunk SET L3/L4
+### A.U20.06 Generated `main()`: setup list, task starts, timers, then NTP; split the supervisor
+   DOCS: SPEC A.7 boot order paragraph (A.U11.11 states it), step list `:363-579` (`start_and_check_tasks` → `start_tasks`/`supervise_tasks`), SPEC I.4(f.1) names `start_tasks()` for the second list (A.U11.10's text follows the rename), CLAUDE.md memory rule ("`start_and_check_tasks()`'s starter loop" → "`start_tasks()`")
+### A.U26.32 Add the SCD30 config-write arm to the bench hazard suite
+   DOCS: `tests_hardware/README.md:1138-1145, 1181-1183` (A.U4.07 already rewrites them to "added behind persistence_write")
+### A.U26.57 Hardware claims in the hardware docs cite the datasheets the repo holds
+### A.U26.62 The no-task-ended guard covers methods, helper-injected faults and both levels
+   DOCS: `tests_hardware/README.md:838-845` names the scope
+### A.U26.34 Every silicon-only recovery rung has its L3/L4 test
+   DOCS: as (4); SPEC E.6 exception list rows (U7/U36)
+### A.U26.51 Name the twin scenarios each hardware module covers
+   DOCS: SPEC E.6 exception list rows (U7/U36)
+### A.U26.33 The UART recovery script uses its baud-desync injector and times recovery
+   DOCS: SPEC J.7 tier map (U36, from A.U17.25) marks "baud desync: L3"; `UART_C_PORT_CHANGELOG.md` — (a test change; no protocol behaviour changes)
+### A.S0930.24 L1: watchdog ownership proven
+   DOCS: —
+### A.U16.07 Commit the FRAM hold-timing script as a flash-tier test
+   DOCS: SPEC F.5.8 (`:4001-4017`) "whether to yield … is open (BACKLOG.md, T4)" is A.U0.33's rewrite; add "pinned on the bench by `device_scripts/fram_command_hold_timing.py`"; `tests_hardware/README.md`'s flash-tier FRAM entries (`:717-750`) gain one bullet naming the script and its bound
+### A.U26.16 Device scripts park the shared rig on every exit
+   DOCS: `tests_hardware/README.md` "Writing a new device script" habits gain "park the rig in `finally`"
+### A.U26.18 Scratch config files are removed on every path, leftovers first
+   DOCS: `tests_hardware/README.md` device-script conventions: "scratch is removed on every path; a leftover is removed first; the removal is an allowed prerequisite write (owner, 2026-09-26)"
+### A.U26.19 Retire the two WiFi reconnect repro scripts
+   DOCS: as Site; SUPP_recovery's A.U18.R01 planned its L3 radio-rung step inside `wifi_reconnect_after_failed_attempts_repro.py` — that step moves to the new rung script of A.U26.34 (A-C amends A.U18.R01's blast)
+### A.U26.24 Pin raw FRAM scratch regions against the build's layout
+   DOCS: `tests_hardware/README.md` device-script conventions: "raw FRAM writes only inside a declared `_SCRATCH_REGIONS`, above the build's allocation"
+### A.U26.44 Device scripts take the bench board's facts from one rendered dict
+   DOCS: `tests_hardware/README.md` "Writing a new device script" habit: "take every board fact from `BENCH`"; SPEC E.6.5 device-script convention (U36)
+### A.U26.49 Product values the hardware levels copy are read or pinned
+   DOCS: `tests_hardware/README.md` bench conventions: "board values come from the TOML/`src/`, never literals"
+### A.U26.61 A device script that can outlast the watchdog feeds it in short steps
+   DOCS: `tests_hardware/README.md` "Writing a new device script" habit "feed the watchdog every ≤ 2 s" names the check
+### A.U26.78 Share the hardware levels' cloned helpers
+   DOCS: `tests_hardware/README.md` device-script habits: "shared code lives in `_shared/`, included at render"
+### A.U13.R02 Bus-hazard coverage for the bus rung at every tier
+   DOCS: `tests_hardware/README.md` lists the new script and the held-SDA technique; SPEC C.8's bus-hazard standing rule names the recovery scenario
+### A.U16.R01 Retry a WREN whose latch did not set, once
+   DOCS: SPEC C.3.1 FRAM bullet: "a WREN whose latch did not set is repeated once, like WRDI"
+### A.U16.R03 A chip lost mid-operation stops FRAM access and escalates
+   DOCS: SPEC A.4 FRAM bullet (A.U16.17's text) gains "A chip that stops answering its identification after boot stops all FRAM access, ends the manager's task and is set up again by its restart; a chip that stays lost reboots the device through the supervisor"; SPEC A.7 task list; SPEC C.7.1 row for errno 54 (A.U2.22 generates); Part N rows
+### A.U18.R01 WiFi: re-initialise the radio as the participant rung
+   DOCS: SPEC A.4 WiFi bullet: "repeated WLAN hardware errors first re-initialise the radio (power-cycled by the driver) before the task gives up"; SPEC F.2 (A.U14.R01)
+### A.U26.45 No variant name left in the hardware levels
+   DOCS: —
+### A.U26.46 Record the bench facts the docs disagree on, from the bench
+### A.U26.21 Bench network restores are verified, and leftovers cleared at start
+   DOCS: `tests_hardware/README.md` bench-host section: "every injection is undone and verified absent; a run starts by clearing and reporting a killed run's leftovers"
+### A.U26.38 Stale-credential recovery scans only with the AP down
+   DOCS: `tests_hardware/README.md` bench facts: the single-radio rule and its check
+### A.U26.10 Full-build scripts build over a scratch config path
+   DOCS: `tests_hardware/README.md` tooling-write table (moved there by U1's G1/R07 doc clause): row "full-build scripts: no write"
+### A.U8C.116 Tag the tuned literals of `manual/manual_sensor_accuracy.py`
+   DOCS: SPEC Part N rows (A.U8.01)
+### A.U26.15 Bench config writers restore on every path and repair leftovers
+   DOCS: `tests_hardware/README.md` hygiene rule paragraph (SPEC Part E hygiene section is U36's)
+### A.U26.31 Collect the hardware levels with nothing attached under every option
+   DOCS: SPEC E.6 (L3/L4 row): "collectible with nothing attached under every option, checked in L0" (U36's E.6 text; A.U7.01 owns E.6.1)
+### A.U26.08 The seven SCD30 dependents: five run by default, two own writes
+   DOCS: `tests_hardware/README.md:101-107`, `:1309-1390` (gating section), SPEC C.8 bus-hazard checklist wear sentence (U4's A.U4.07 already edits `:2166-2168`; A-C merges)
+### A.U15.07 Prove every two-decimal TempOffs is stored as typed
+   DOCS: —
+### A.U26.06 The wear guard sees device scripts, class markers and raw sockets
+   DOCS: `tests_hardware/README.md` "Persistence-write gating" section (`:1309-1390`) lists the checks in one paragraph; CLAUDE.md wear rule keeps its pointer (U36)
+### A.U26.71 The wear marker follows what a PUT really writes
+   DOCS: `tests_hardware/README.md` gating section: "a PUT whose every field is rejected, unknown, unchanged or dispatch-only needs no marker; an always-executed field always does"

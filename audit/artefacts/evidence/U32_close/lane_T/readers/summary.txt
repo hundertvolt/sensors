@@ -1,0 +1,14 @@
+pure rc=0 98.132193653 s
+bench_control_restore rc=0 .727943406 s
+bench_harness_helpers rc=0 3.289614826 s
+device_script_fram_regions rc=0 1.858950179 s
+exception_handler_contract rc=0 4.587297407 s
+gc_collect_sites rc=0 1.950778778 s
+host_cli_exit_idiom rc=0 2.129525224 s
+persistence_write_marker_completeness rc=0 5.098514619 s
+ruff_exemptions_live rc=0 7.559428446 s
+tests_hardware_collect_matrix rc=0 9.340498253 s
+digital_twin_boot_contiguity rc=0 12.150708532 s
+twin_record rc=1 .670317474 s
+collect_only rc=0 1.179622453 s
+ALLDONE

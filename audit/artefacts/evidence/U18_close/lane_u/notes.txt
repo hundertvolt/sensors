@@ -1,0 +1,12 @@
+lane U notes
+WIP U1 commit 8f61712 (on c11ca0a): src/asy_udp_socket.py API + tests/_udp_port_redirect.py.
+- before figures test_asy_udp_socket.py (c11ca0a): e 9.33s, f 9.35s, settrace 9.39s, 64/64.
+- console seen failing on HEAD: u18u/t_console.py vs head_src overlay -> all 7 arms print nothing (console_head.log); pass with WIP+ov (console_wip.log, _f).
+- WIP: own test file 59/64 fail (bytes sockaddr TypeError etc.) until phase 2 (wip_e.log).
+- callers broken by WIP (other lanes): src/asy_ntp_client.py:196 write_and_recvfrom without tries (N, 5m); tests/test_asy_dns_client.py:75-76 conn_tries (R);
+  tests/test_asy_ntp_client.py:879, 2145-2147 (N); tests/test_ntp_fram_system_integration.py:216-218, tests/test_ntp_wifi_dns_integration.py:288-290 (I);
+  runtime-only (bytes sockaddr via getaddrinfo): tests/test_asy_captive_dns.py:103 users 665,891,924,957 (C); tests/test_asy_wifi_service.py:2404/2420 (W);
+  tests/test_asy_ntp_client.py:199 users (N); test_ntp_fram_system_integration.py:193; test_ntp_wifi_dns_integration.py:265.
+- mypy: only src error in my tree is console import (K); in mt copy with K overlay my files clean.
+- test_tunables_register red: poll_wait_ms/poll_idle_ms rows missing, conn_tries_default/round_trip_tries_default/ready_poll_ms rows orphan (D).
+- the one-attempt _connect shape landed in WIP (conn_tries removal leaves no loop count; identical to old default).

@@ -1,0 +1,110 @@
+FAIL test_a_booted_reader_on_a_constant_co2_twin_reaches_frc_ready_and_keeps_its_frc_settings:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/test_digital_twin_scd30.py", line 590, in test_a_booted_reader_on_a_constant_co2_twin_reaches_frc_ready_and_keeps_its_frc_settings
+AttributeError: 'SCD30Chip' object has no attribute 'temp'
+FAIL test_a_booted_reader_on_a_constant_co2_twin_reaches_frc_ready_and_keeps_its_frc_settings: left a task parked on the scheduler
+PASS test_a_fault_for_zero_times_is_refused
+PASS test_a_fault_matched_to_the_read_out_spares_a_data_ready_read_and_hits_the_next_read_out
+FAIL test_a_forced_recalibration_reference_outside_400_to_2000_is_ignored:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/test_digital_twin_scd30.py", line 209, in test_a_forced_recalibration_reference_outside_400_to_2000_is_ignored
+AssertionError: 
+FAIL test_a_hang_for_zero_times_is_refused:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/test_digital_twin_scd30.py", line 689, in test_a_hang_for_zero_times_is_refused
+AssertionError: expected ValueError
+FAIL test_a_measurement_interval_outside_2_to_1800_is_ignored_and_arms_no_timer:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/test_digital_twin_scd30.py", line 217, in test_a_measurement_interval_outside_2_to_1800_is_ignored_and_arms_no_timer
+AssertionError: 0
+PASS test_a_reading_reports_the_sensors_temperature_less_the_offset
+FAIL test_a_soft_reset_drops_the_unread_measurement_and_the_frc_reference:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/test_digital_twin_scd30.py", line 154, in test_a_soft_reset_drops_the_unread_measurement_and_the_frc_reference
+AssertionError: 
+PASS test_a_stuck_high_rdy_line_warns_once_after_five_empty_reads_and_new_data_ends_it
+PASS test_a_timer_factory_builds_one_timer_that_setting_the_interval_re_arms
+PASS test_a_write_fault_keyed_to_a_command_word_spares_the_other_commands
+PASS test_altitude_set_then_get_round_trips
+PASS test_ambient_pressure_set_then_get_round_trips
+FAIL test_an_argument_with_a_wrong_crc_changes_nothing_and_is_counted:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/test_digital_twin_scd30.py", line 229, in test_an_argument_with_a_wrong_crc_changes_nothing_and_is_counted
+AssertionError: 
+FAIL test_an_unloadable_state_file_says_why_and_leaves_factory_fresh_settings:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/test_digital_twin_scd30.py", line 808, in test_an_unloadable_state_file_says_why_and_leaves_factory_fresh_settings
+AssertionError: ('scd30_malformed.json', [])
+FAIL test_an_unprovisioned_chip_measures_nothing_until_started:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/test_digital_twin_scd30.py", line 251, in test_an_unprovisioned_chip_measures_nothing_until_started
+AssertionError: 
+PASS test_construction_draws_an_initial_value_within_range_without_needing_a_reading_produced
+PASS test_corrupt_next_measurement_stays_orthogonal_to_the_walk
+PASS test_data_ready_starts_false
+FAIL test_default_ranges_stay_inside_the_datasheets_own_documented_ranges:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/test_digital_twin_scd30.py", line 363, in test_default_ranges_stay_inside_the_datasheets_own_documented_ranges
+AttributeError: 'SCD30Chip' object has no attribute 'co2'
+PASS test_fault_injection_can_corrupt_the_next_measurement_crc
+PASS test_fault_injection_on_writeto_and_readfrom_into
+PASS test_fault_injector_clear_of_one_op_leaves_other_ops_armed
+PASS test_fault_injector_clear_with_no_op_clears_every_queue
+PASS test_live_readings_and_in_flight_protocol_state_are_not_persisted
+PASS test_measurement_interval_set_then_get_round_trips
+PASS test_missing_state_file_starts_from_factory_fresh_settings_without_raising
+PASS test_nvm_writes_counts_each_accepted_nvm_command_and_nothing_else
+FAIL test_persisted_file_is_json_with_the_five_nvm_backed_settings_and_the_measuring_status:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/test_digital_twin_scd30.py", line 753, in test_persisted_file_is_json_with_the_five_nvm_backed_settings_and_the_measuring_status
+AssertionError: 
+PASS test_power_cycle_drops_the_unread_measurement_and_keeps_the_nvm_interval
+PASS test_produce_new_reading_sets_data_ready_true
+PASS test_produce_new_reading_step_delta_is_clamped_to_the_default_step_bound
+PASS test_produce_new_reading_step_is_clamped_to_the_configured_max
+PASS test_produce_new_reading_step_is_clamped_to_the_configured_min
+PASS test_produce_new_reading_steps_from_the_previous_value_rather_than_a_fresh_draw
+PASS test_rdy_pin_goes_high_on_new_reading_and_fires_a_registered_rising_edge_handler
+PASS test_rdy_stuck_high_holds_the_line_high_while_no_new_measurement_arrives
+PASS test_read_firmware_version_reports_the_fixed_plausible_value
+PASS test_read_measurement_clears_data_ready
+PASS test_read_measurement_returns_crc_valid_buffer_decoding_to_the_produced_values
+PASS test_readfrom_into_with_an_unrecognized_last_command_returns_zero_bytes
+PASS test_save_state_then_construct_a_fresh_chip_from_the_same_path_reads_back_identical_settings
+PASS test_self_calibration_enabled_set_then_get_round_trips
+PASS test_state_is_not_written_until_save_state_is_called
+PASS test_state_path_none_never_touches_disk
+PASS test_step_bounds_are_configurable_via_the_constructor
+FAIL test_stop_ends_the_measurements_and_a_start_resumes_them:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/test_digital_twin_scd30.py", line 240, in test_stop_ends_the_measurements_and_a_start_resumes_them
+AssertionError: 
+PASS test_temperature_offset_set_then_get_round_trips_as_raw_centidegrees
+FAIL test_the_forced_recalibration_reference_reads_back_the_last_one_until_a_power_up:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/test_digital_twin_scd30.py", line 197, in test_the_forced_recalibration_reference_reads_back_the_last_one_until_a_power_up
+AssertionError: 
+FAIL test_the_measuring_status_round_trips_through_the_state_file:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c/tests/test_digital_twin_scd30.py", line 769, in test_the_measuring_status_round_trips_through_the_state_file
+AssertionError: 
+PASS test_the_oldest_fault_a_key_matches_fires_first_and_an_unmatched_one_stays_queued
+PASS test_the_real_reader_accepts_a_reading_at_the_largest_temperature_offset
+PASS test_two_identical_puts_write_the_chip_nvm_only_for_the_always_sent_commands
+PASS test_two_raises_of_one_queued_fault_are_distinct_fresh_exceptions
+PASS test_without_a_timer_factory_the_chip_starts_no_timer
+42/55 passed, 13 failed, 0 skipped
+WALL 1.563

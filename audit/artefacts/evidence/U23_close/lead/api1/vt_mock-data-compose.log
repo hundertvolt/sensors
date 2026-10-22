@@ -1,0 +1,219 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api
+
+ ❯ |chromium| tests_js/mock-data-compose.test.js (26 tests | 12 failed) 1094ms
+   ❯ arzi's composed mock data (4)
+     × gives every field of every group a value of its kind 172ms
+     × composes no key the definitions do not name 80ms
+     ✓ has an entry for every errcount row 1ms
+     ✓ holds only codes the definitions' code tables describe 1ms
+   ❯ dev's composed mock data (4)
+     × gives every field of every group a value of its kind 94ms
+     × composes no key the definitions do not name 72ms
+     ✓ has an entry for every errcount row 1ms
+     ✓ holds only codes the definitions' code tables describe 0ms
+   ❯ grkizi's composed mock data (4)
+     × gives every field of every group a value of its kind 85ms
+     × composes no key the definitions do not name 83ms
+     ✓ has an entry for every errcount row 0ms
+     ✓ holds only codes the definitions' code tables describe 0ms
+   ❯ klkizi's composed mock data (4)
+     × gives every field of every group a value of its kind 84ms
+     × composes no key the definitions do not name 83ms
+     ✓ has an entry for every errcount row 0ms
+     ✓ holds only codes the definitions' code tables describe 0ms
+   ❯ schlafzi's composed mock data (4)
+     × gives every field of every group a value of its kind 78ms
+     × composes no key the definitions do not name 82ms
+     ✓ has an entry for every errcount row 1ms
+     ✓ holds only codes the definitions' code tables describe 0ms
+   ❯ wozi's composed mock data (4)
+     × gives every field of every group a value of its kind 81ms
+     × composes no key the definitions do not name 88ms
+     ✓ has an entry for every errcount row 0ms
+     ✓ holds only codes the definitions' code tables describe 0ms
+   ✓ composeMockData (2)
+     ✓ throws for a group no sample matches 2ms
+     ✓ reports a value of the wrong kind and a stray key, so the checks above cannot pass vacuously 1ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 12 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > arzi's composed mock data > gives every field of every group a value of its kind
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > grkizi's composed mock data > gives every field of every group a value of its kind
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > klkizi's composed mock data > gives every field of every group a value of its kind
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > schlafzi's composed mock data > gives every field of every group a value of its kind
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > wozi's composed mock data > gives every field of every group a value of its kind
+AssertionError: expected [ …(2) ] to deeply equal []
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/arzi-s-composed-mock-data---gives-every-field-of-every-group-a-value-of-its-kind.png
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/grkizi-s-composed-mock-data---gives-every-field-of-every-group-a-value-of-its-kind.png
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/klkizi-s-composed-mock-data---gives-every-field-of-every-group-a-value-of-its-kind.png
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/schlafzi-s-composed-mock-data---gives-every-field-of-every-group-a-value-of-its-kind.png
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/wozi-s-composed-mock-data---gives-every-field-of-every-group-a-value-of-its-kind.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "status/sensors/SGP40_BackupTS: no value",[39m
+[31m+   "status/sensors/SGP40_RestoreTS: no value",[39m
+[31m+ ][39m
+
+ ❯ tests_js/mock-data-compose.test.js:177:43
+    175|
+    176|     it("gives every field of every group a value of its kind", () => {
+    177|         expect(fieldProblems(defs, data)).toEqual([]);
+       |                                           ^
+    178|     });
+    179|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/12]⎯
+
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > arzi's composed mock data > composes no key the definitions do not name
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > grkizi's composed mock data > composes no key the definitions do not name
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > klkizi's composed mock data > composes no key the definitions do not name
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > schlafzi's composed mock data > composes no key the definitions do not name
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > wozi's composed mock data > composes no key the definitions do not name
+AssertionError: expected [ …(2) ] to deeply equal []
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/arzi-s-composed-mock-data---composes-no-key-the-definitions-do-not-name.png
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/grkizi-s-composed-mock-data---composes-no-key-the-definitions-do-not-name.png
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/klkizi-s-composed-mock-data---composes-no-key-the-definitions-do-not-name.png
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/schlafzi-s-composed-mock-data---composes-no-key-the-definitions-do-not-name.png
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/wozi-s-composed-mock-data---composes-no-key-the-definitions-do-not-name.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "status.sensors.SGP40.BackupTS",[39m
+[31m+   "status.sensors.SGP40.RestoreTS",[39m
+[31m+ ][39m
+
+ ❯ tests_js/mock-data-compose.test.js:181:39
+    179|
+    180|     it("composes no key the definitions do not name", () => {
+    181|         expect(strayKeys(defs, data)).toEqual([]);
+       |                                       ^
+    182|     });
+    183|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/12]⎯
+
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > dev's composed mock data > gives every field of every group a value of its kind
+AssertionError: expected [ …(4) ] to deeply equal []
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/dev-s-composed-mock-data---gives-every-field-of-every-group-a-value-of-its-kind.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "status/sensors/SGP40_BackupTS: no value",[39m
+[31m+   "status/sensors/SGP40_RestoreTS: no value",[39m
+[31m+   "status/sensors/UARTLINK_Transfers: no value",[39m
+[31m+   "status/sensors/UARTLINK_Failures: no value",[39m
+[31m+ ][39m
+
+ ❯ tests_js/mock-data-compose.test.js:177:43
+    175|
+    176|     it("gives every field of every group a value of its kind", () => {
+    177|         expect(fieldProblems(defs, data)).toEqual([]);
+       |                                           ^
+    178|     });
+    179|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/12]⎯
+
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > dev's composed mock data > composes no key the definitions do not name
+AssertionError: expected [ …(4) ] to deeply equal []
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/dev-s-composed-mock-data---composes-no-key-the-definitions-do-not-name.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "status.sensors.SGP40.BackupTS",[39m
+[31m+   "status.sensors.SGP40.RestoreTS",[39m
+[31m+   "status.sensors.UARTLINK.Transfers",[39m
+[31m+   "status.sensors.UARTLINK.Failures",[39m
+[31m+ ][39m
+
+ ❯ tests_js/mock-data-compose.test.js:181:39
+    179|
+    180|     it("composes no key the definitions do not name", () => {
+    181|         expect(strayKeys(defs, data)).toEqual([]);
+       |                                       ^
+    182|     });
+    183|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/12]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  12 failed | 14 passed (26)
+   Start at  07:01:43
+   Duration  2.47s (tests 79%, worker 14%, import 8%)
+
+== Summary: npm test ==
+Commit: 3d29af9
+Levels: L0
+Counts (tests): passed 14 · failed 12 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/mock-data-compose.test.js > arzi's composed mock data > gives every field of every group a value of its kind: expected [ …(2) ] to deeply equal []
+  - tests_js/mock-data-compose.test.js > arzi's composed mock data > composes no key the definitions do not name: expected [ …(2) ] to deeply equal []
+  - tests_js/mock-data-compose.test.js > dev's composed mock data > gives every field of every group a value of its kind: expected [ …(4) ] to deeply equal []
+  - tests_js/mock-data-compose.test.js > dev's composed mock data > composes no key the definitions do not name: expected [ …(4) ] to deeply equal []
+  - tests_js/mock-data-compose.test.js > grkizi's composed mock data > gives every field of every group a value of its kind: expected [ …(2) ] to deeply equal []
+  - tests_js/mock-data-compose.test.js > grkizi's composed mock data > composes no key the definitions do not name: expected [ …(2) ] to deeply equal []
+  - tests_js/mock-data-compose.test.js > klkizi's composed mock data > gives every field of every group a value of its kind: expected [ …(2) ] to deeply equal []
+  - tests_js/mock-data-compose.test.js > klkizi's composed mock data > composes no key the definitions do not name: expected [ …(2) ] to deeply equal []
+  - tests_js/mock-data-compose.test.js > schlafzi's composed mock data > gives every field of every group a value of its kind: expected [ …(2) ] to deeply equal []
+  - tests_js/mock-data-compose.test.js > schlafzi's composed mock data > composes no key the definitions do not name: expected [ …(2) ] to deeply equal []
+  - tests_js/mock-data-compose.test.js > wozi's composed mock data > gives every field of every group a value of its kind: expected [ …(2) ] to deeply equal []
+  - tests_js/mock-data-compose.test.js > wozi's composed mock data > composes no key the definitions do not name: expected [ …(2) ] to deeply equal []
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

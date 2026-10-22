@@ -1,0 +1,22 @@
+test_decision_vocabulary rc=1 10s :: 2 failed, 4 passed in 9.25s
+>       assert not new, "decision vocabulary with no '(owner|agent, YYYY-MM-DD)' tag or source - tag the sentence:\n" + "\n".join(f"  {p}: {s}" for p, s in new)
+E       AssertionError: decision vocabulary with no '(owner|agent, YYYY-MM-DD)' tag or source - tag the sentence:
+E           tests/test_asy_wifi_service.py: Three failed checks with the window running, or stopped by a client: each runs t
+E       assert not [('tests/test_asy_wifi_service.py', 'Three failed checks with the window running, or stopped by a client: each runs t')]
+>       assert not stale, "allow-list entries that no longer occur - delete these lines (or --regenerate):\n" + "\n".join(f"  {p}\t{s}" for p, s in stale)
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           tests/test_asy_wifi_service.py	A task restart (e.g. after the _hw_op_failed streak gives up) must NOT pull the
+E           tests/test_asy_wifi_service.py	All four _conn_phase values are exercised deliberately: a regression narrowed to
+E       assert not [('tests/test_asy_wifi_service.py', 'A task restart (e.g. after the _hw_op_failed streak gives up) must NOT pull the'), ('tests/test_asy_wifi_service.py', 'All four _conn_phase values are exercised deliberately: a regression narrowed to')]
+FAILED tests_scripts/test_decision_vocabulary.py::test_decision_vocabulary_names_its_actor_or_is_allow_listed
+FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+test_citations rc=0 7s :: 15 passed in 7.23s
+test_comment_block_cap rc=0 3s :: 452 passed in 2.86s
+test_tunables_register rc=0 3s :: 15 passed in 2.96s
+test_legacy_paths rc=0 2s :: 3 passed in 1.29s
+test_import_placement rc=0 5s :: 7 passed in 5.50s
+test_code_conventions rc=0 3s :: 23 passed in 2.00s
+test_host_annotations rc=0 1s :: 12 passed in 1.30s
+test_lint_ceilings rc=0 7s :: 19 passed in 6.89s
+test_mypy_any_baseline rc=0 1s :: 7 passed in 0.06s
+test_memory_error_gate_agreement rc=0 3s :: 13 passed in 2.74s

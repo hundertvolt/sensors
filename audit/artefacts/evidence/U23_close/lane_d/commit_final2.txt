@@ -1,0 +1,8 @@
+U23 lane D: the default-decimals test site carries its tunable tag
+
+tests_scripts/test_buildgen_definitions.py asserts the shipped site default
+(2); the line now carries # @tunable web.default_decimals = 2 like the
+generator's own site, so Part N's row lists both. No behaviour change.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

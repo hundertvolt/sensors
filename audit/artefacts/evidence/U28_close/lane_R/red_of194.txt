@@ -1,0 +1,166 @@
+FFF                                                                      [100%]
+=================================== FAILURES ===================================
+_________ test_a_failed_image_move_leaves_no_record_and_the_old_image __________
+
+build_firmware = <module 'build_firmware' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28r/scripts/build_firmware.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10647/test_a_failed_image_move_leave0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f4dff86be50>
+capsys = <_pytest.capture.CaptureFixture object at 0x7f4dff86bf90>
+
+    def test_a_failed_image_move_leaves_no_record_and_the_old_image(build_firmware: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+        output = tmp_path / "firmware.uf2"
+        output.write_bytes(b"UF2\nold image")
+        output.with_suffix(".json").write_text('{"stale": true}', encoding="utf-8")
+    
+        def failing_replace(*_args: object) -> None:
+            raise OSError(28, "disk full")
+    
+        monkeypatch.setattr(build_firmware.os, "replace", failing_replace)
+>       assert _build_with_fakes(build_firmware, tmp_path, monkeypatch, _A_DEVICE, "--output", str(output)).exit == 1
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_build_firmware.py:486: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_build_firmware.py:420: in _build_with_fakes
+    built.exit = build_firmware.main()
+                 ^^^^^^^^^^^^^^^^^^^^^
+scripts/build_firmware.py:322: in main
+    return _build(args, work_dir)
+           ^^^^^^^^^^^^^^^^^^^^^^
+scripts/build_firmware.py:310: in _build
+    write_image(uf2, output, image_record)
+scripts/build_firmware.py:199: in write_image
+    _replace_written(output, uf2.read_bytes())
+scripts/build_firmware.py:191: in _replace_written
+    tmp.replace(path)
+/usr/lib/python3.11/pathlib.py:1188: in replace
+    os.replace(self, target)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+_args = (PosixPath('/tmp/pytest-of-root/pytest-10647/test_a_failed_image_move_leave0/firmware.uf2.tmp'), PosixPath('/tmp/pytest-of-root/pytest-10647/test_a_failed_image_move_leave0/firmware.uf2'))
+
+    def failing_replace(*_args: object) -> None:
+>       raise OSError(28, "disk full")
+E       OSError: [Errno 28] disk full
+
+tests_scripts/test_build_firmware.py:483: OSError
+----------------------------- Captured stdout call -----------------------------
+
+== Toolchain: MicroPython v1.29.0 (0123abcd), recorded in /tmp/pytest-of-root/pytest-10647/test_a_failed_image_move_leave0/toolchain/toolchain-record.json
+
+== Staged modules and manifest: /tmp/pytest-of-root/pytest-10647/test_a_failed_image_move_leave0/work/arzi
+
+== Building firmware for BOARD=RPI_PICO_W, device='arzi'
+
+== Image: 700000 B of 1228800 B before the filesystem (57.0 %), 528800 B free
+______ test_an_unwritable_output_is_one_line_naming_it[parent-is-a-file] _______
+
+build_firmware = <module 'build_firmware' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28r/scripts/build_firmware.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10647/test_an_unwritable_output_is_o0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f4dffa39e50>
+capsys = <_pytest.capture.CaptureFixture object at 0x7f4dffa38290>
+shape = 'parent-is-a-file'
+
+    @pytest.mark.parametrize("shape", ["parent-is-a-file", "output-is-a-directory"])
+    def test_an_unwritable_output_is_one_line_naming_it(build_firmware: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], shape: str) -> None:
+        # Two shapes no write permission can lift, so the case holds under root too: a user error, never a traceback.
+        if shape == "parent-is-a-file":
+            (tmp_path / "taken").write_text("a file, not a directory\n", encoding="utf-8")
+            output = tmp_path / "taken" / "firmware.uf2"
+        else:
+            output = tmp_path / "firmware.uf2"
+            output.mkdir()
+>       assert _build_with_fakes(build_firmware, tmp_path, monkeypatch, _A_DEVICE, "--output", str(output)).exit == 1
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_build_firmware.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_build_firmware.py:420: in _build_with_fakes
+    built.exit = build_firmware.main()
+                 ^^^^^^^^^^^^^^^^^^^^^
+scripts/build_firmware.py:322: in main
+    return _build(args, work_dir)
+           ^^^^^^^^^^^^^^^^^^^^^^
+scripts/build_firmware.py:252: in _build
+    output.parent.mkdir(parents=True, exist_ok=True)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/tmp/pytest-of-root/pytest-10647/test_an_unwritable_output_is_o0/taken')
+mode = 511, parents = True, exist_ok = True
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+>           os.mkdir(self, mode)
+E           FileExistsError: [Errno 17] File exists: '/tmp/pytest-of-root/pytest-10647/test_an_unwritable_output_is_o0/taken'
+
+/usr/lib/python3.11/pathlib.py:1116: FileExistsError
+____ test_an_unwritable_output_is_one_line_naming_it[output-is-a-directory] ____
+
+build_firmware = <module 'build_firmware' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28r/scripts/build_firmware.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10647/test_an_unwritable_output_is_o1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f4dff913a10>
+capsys = <_pytest.capture.CaptureFixture object at 0x7f4dff9138d0>
+shape = 'output-is-a-directory'
+
+    @pytest.mark.parametrize("shape", ["parent-is-a-file", "output-is-a-directory"])
+    def test_an_unwritable_output_is_one_line_naming_it(build_firmware: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], shape: str) -> None:
+        # Two shapes no write permission can lift, so the case holds under root too: a user error, never a traceback.
+        if shape == "parent-is-a-file":
+            (tmp_path / "taken").write_text("a file, not a directory\n", encoding="utf-8")
+            output = tmp_path / "taken" / "firmware.uf2"
+        else:
+            output = tmp_path / "firmware.uf2"
+            output.mkdir()
+>       assert _build_with_fakes(build_firmware, tmp_path, monkeypatch, _A_DEVICE, "--output", str(output)).exit == 1
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_build_firmware.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_build_firmware.py:420: in _build_with_fakes
+    built.exit = build_firmware.main()
+                 ^^^^^^^^^^^^^^^^^^^^^
+scripts/build_firmware.py:322: in main
+    return _build(args, work_dir)
+           ^^^^^^^^^^^^^^^^^^^^^^
+scripts/build_firmware.py:310: in _build
+    write_image(uf2, output, image_record)
+scripts/build_firmware.py:199: in write_image
+    _replace_written(output, uf2.read_bytes())
+scripts/build_firmware.py:191: in _replace_written
+    tmp.replace(path)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/tmp/pytest-of-root/pytest-10647/test_an_unwritable_output_is_o1/firmware.uf2.tmp')
+target = PosixPath('/tmp/pytest-of-root/pytest-10647/test_an_unwritable_output_is_o1/firmware.uf2')
+
+    def replace(self, target):
+        """
+        Rename this path to the target path, overwriting if that path exists.
+    
+        The target path may be absolute or relative. Relative paths are
+        interpreted relative to the current working directory, *not* the
+        directory of the Path object.
+    
+        Returns the new Path instance pointing to the target path.
+        """
+>       os.replace(self, target)
+E       IsADirectoryError: [Errno 21] Is a directory: '/tmp/pytest-of-root/pytest-10647/test_an_unwritable_output_is_o1/firmware.uf2.tmp' -> '/tmp/pytest-of-root/pytest-10647/test_an_unwritable_output_is_o1/firmware.uf2'
+
+/usr/lib/python3.11/pathlib.py:1188: IsADirectoryError
+----------------------------- Captured stdout call -----------------------------
+
+== Toolchain: MicroPython v1.29.0 (0123abcd), recorded in /tmp/pytest-of-root/pytest-10647/test_an_unwritable_output_is_o1/toolchain/toolchain-record.json
+
+== Staged modules and manifest: /tmp/pytest-of-root/pytest-10647/test_an_unwritable_output_is_o1/work/arzi
+
+== Building firmware for BOARD=RPI_PICO_W, device='arzi'
+
+== Image: 700000 B of 1228800 B before the filesystem (57.0 %), 528800 B free
+=========================== short test summary info ============================
+FAILED tests_scripts/test_build_firmware.py::test_a_failed_image_move_leaves_no_record_and_the_old_image
+FAILED tests_scripts/test_build_firmware.py::test_an_unwritable_output_is_one_line_naming_it[parent-is-a-file]
+FAILED tests_scripts/test_build_firmware.py::test_an_unwritable_output_is_one_line_naming_it[output-is-a-directory]
+3 failed, 56 deselected in 0.33s

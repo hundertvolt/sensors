@@ -1,0 +1,11 @@
+# mutant m9_stale_due against the lane snapshot prestreak/asy_wifi_service.py
+--- base/asy_wifi_service.py
++++ mutant/m9_stale_due
+@@ -674,7 +674,6 @@
+             # Silent, never off (owner, 2026-10-08: "Don't permanently switch WiFi off, only stop retrying to connect."):
+             # the radio stays as the failed attempt left it, and the first attempt is due one period from now.
+             self._conn_phase = _PHASE_SILENT
+-            self._silent_attempt_due = False
+             if self._ledflash is not None:
+                 self._ledflash.cancel()
+                 self._ledflash = None

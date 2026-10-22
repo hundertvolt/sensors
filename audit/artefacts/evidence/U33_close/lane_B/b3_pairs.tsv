@@ -1,0 +1,21 @@
+1	citations	base	11.886	exit 0
+1	citations	head	11.243	exit 0
+1	decision_vocabulary	base	10.071	exit 0
+1	decision_vocabulary	head	8.737	exit 0
+1	legacy_paths	base	1.904	exit 0
+1	legacy_paths	head	1.942	exit 0
+1	no_variant_literals	base	8.949	exit 0
+1	no_variant_literals	head	8.511	exit 0
+1	comment_block_cap	base	5.492	exit 0
+1	comment_block_cap	head	4.985	exit 0
+2	citations	base	11.064	exit 0
+2	citations	head	11.100	exit 0
+2	decision_vocabulary	base	9.160	exit 0
+2	decision_vocabulary	head	9.317	exit 0
+2	legacy_paths	base	1.980	exit 0
+2	legacy_paths	head	2.045	exit 0
+2	no_variant_literals	base	8.801	exit 0
+2	no_variant_literals	head	8.512	exit 0
+2	comment_block_cap	base	4.911	exit 0
+2	comment_block_cap	head	4.817	exit 0
+done

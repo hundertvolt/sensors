@@ -1,0 +1,8 @@
+U33 P1: [65] 305304 tokens
+U33 P2: [40] (see notification)
+U33 S1: [48]
+B1 55
+U33 B2: [68]
+U33 S2: [37]
+U33 B3: [38]
+U33 REC: [61]

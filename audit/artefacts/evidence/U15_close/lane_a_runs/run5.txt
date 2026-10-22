@@ -1,0 +1,7 @@
+test_digital_twin_bus_hazard_concurrency [plain] rc=0 146s :: 19/19 passed, 0 failed, 0 skipped :: mem=0 :: 
+test_digital_twin_bus_hazard_concurrency [gc] rc=0 149s :: 19/19 passed, 0 failed, 0 skipped :: mem=0 :: 
+test_bus_hazard_multi_device [plain] rc=0 1s :: 18/18 passed, 0 failed, 0 skipped :: mem=0 :: 
+test_bus_hazard_multi_device [gc] rc=0 2s :: 18/18 passed, 0 failed, 0 skipped :: mem=0 :: 
+test_bus_hazard_generated [plain] rc=0 84s :: 36/36 passed, 0 failed, 0 skipped :: mem=0 :: 
+test_bus_hazard_generated [gc] rc=0 85s :: 36/36 passed, 0 failed, 0 skipped :: mem=0 :: 
+DONE

@@ -1,0 +1,18 @@
+............F...........                                                 [100%]
+=================================== FAILURES ===================================
+________________ test_asyncio_run_is_called_only_in_the_harness ________________
+
+    def test_asyncio_run_is_called_only_in_the_harness() -> None:
+        sites = _asyncio_run_sites(_TESTS)
+        assert sites.pop(_HARNESS, []), "the harness's own asyncio.run() call was not found - the scan reads nothing"
+>       assert sites == {}
+E       AssertionError: assert {'test_digita...on.py': [597]} == {}
+E         
+E         Left contains 1 more item:
+E         {'test_digital_twin_run_generic_integration.py': [597]}
+E         Use -v to get more diff
+
+tests_scripts/test_microtest.py:298: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_microtest.py::test_asyncio_run_is_called_only_in_the_harness
+1 failed, 23 passed in 5.18s

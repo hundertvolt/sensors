@@ -1,0 +1,2 @@
+PASS test_debug_level_survives_a_simulated_reboot_through_build_system
+PASS test_every_api_write_is_refused_from_a_system_commands_acceptance_to_its_reset

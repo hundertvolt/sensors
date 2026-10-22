@@ -1,0 +1,32 @@
+U32 plan block P1: [68]
+U32 plan block P2: [53]
+U32 W1: [47] 199785 tokens
+U32 C1: [47] 222499 tokens
+U32 U1: [56] 216767 tokens
+U32 D1: [55] 222076 tokens
+U32 C2: [80] 253437 tokens
+U32 T1: [37] 176944 tokens
+U32 T2: [63] 219681 tokens
+U32 C3: [62] 250584 tokens
+U32 W2: [65] 216190 tokens
+U32 T3: [34] 178369 tokens
+U32 C4: [74] 269154 tokens
+U32 U2: [71] 233443 tokens
+U32 U3: [48] 194538 tokens
+U32 L1: [76] 285434 tokens
+U32 D2: [79] 236618 tokens
+U32 X39: [62] 246917 tokens
+U32 RD: [57] 218835 tokens
+U32 RB: [56] 225171 tokens
+U32 RC: [92] 246526 tokens
+U32 RA: [66]
+U32 FX2: [61] 181629 tokens
+U32 FX5: [58] 198921 tokens
+U32 FX6: [85] 215488 tokens (5 past the valve)
+U32 FX4: [84] 240340 tokens (4 past the valve)
+U32 FX7: [56] 172114 tokens
+U32 FX1: [50] 165523 tokens
+U32 FX3: [69] (counted from its transcript; the completion notice was lost in a container restart)
+U32 REC: [65]
+U32 FX8: [57] (16 visible after resume; transcript count 57)
+U32 FX9: [47]

@@ -1,0 +1,4 @@
+poll 0 errno 0
+poll 10 errno 0
+codec frame-1 errno 0
+timeout ceiling+1 errno 0

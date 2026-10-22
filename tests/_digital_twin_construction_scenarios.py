@@ -1,6 +1,6 @@
-"""Shared scenario library: digital-twin-tier construction/wiring/REST across all 6 real devices
-(SPECIFICATION.md Part L.4), fast, no real wall-clock waits. Not a test file - the export is
-register_for_device(); SPECIFICATION.md Part E.2.1 has the per-device split and why it exists."""
+"""Shared scenario library: twin-tier construction, wiring and boot across every generated device (SPECIFICATION.md Part
+L.4), fast, no wall-clock waits. Not a test file: it exports register_for_device() and load_device(), after the caller's
+prewarm and UDP shim (tests/test_digital_twin_construction.py); Part E.2.1 has the per-device split."""
 
 import asyncio
 import json
@@ -9,22 +9,19 @@ import sys
 sys.path.insert(0, "ext")  # same convention as tests/_sensortask_scenarios.py's own comment
 sys.path.insert(0, "digital_twin")  # see tests/test_digital_twin_sgp40.py's own comment for why
 
-import _http_client
-from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
-from unix_port_poll_prewarm import prewarm_poll_set
-
-# Before any poll object is registered: the Unix port's pollfds growth corrupts non-fd entries
-# already in it, a segfault rather than a failure (digital_twin/README.md "Known gaps").
-prewarm_poll_set()
-
-# Must run before AsyUDPSocket is constructed (DNSServer, inside AsyConnTime.__init__, built for
-# every device below) - same reasoning as tests/test_digital_twin_sensortask_integration.py's own
-# identical call.
-patch_asy_udp_socket_for_unix_port()
-
-import machine  # noqa: E402
-from _shared_rest_roundtrip import assert_named_modules_constructed, assert_sensor_payload_not_self_wrapped  # noqa: E402
-from _tmp_scratch import TmpScratch  # noqa: E402
+import machine
+import microtest
+import network
+import run_generic_integration
+from _async_harness import cancel, run_timed
+from _boot_recorder import BootRecorder, expected_entries
+from _generated_module import ERROR_LEVEL, boot_entry_watchdog, boot_generated, write_error_level_config
+from _generated_tree import require_fresh
+from _offline_ntp_config import write_offline_ntp_config  # _generated_module's import put its directory on the path
+from _port_bands import PortAllocator
+from _shared_rest_roundtrip import assert_named_modules_constructed
+from _tmp_scratch import TmpScratch
+from _twin_devices import generated_devices, wiring_plan
 
 try:
     from typing import TYPE_CHECKING
@@ -32,56 +29,34 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
-    from typing import Any, TypeVar
+    from collections.abc import Callable
+    from types import ModuleType
+    from typing import TypedDict, TypeVar, cast
+
+    from launch import _Plan
 
     T = TypeVar("T")
 
+    class _ExpectedFacts(TypedDict):
+        # The part of buildgen's expected facts these scenarios read.
+        boot_sequence: dict[str, list[str]]
 
-def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float) -> "T":
-    return asyncio.run(asyncio.wait_for(coro, timeout_s))
+else:
 
+    def cast(_typ: object, val: "T") -> "T":  # no typing module on MicroPython: the identity at run time
+        return val
 
-# Every real device (devices/*.toml) - buildgen generates each one's own module + wiring plan into
-# build/generated_src/ before scripts/test.sh ever runs this file (scripts/_generate_sensortask_modules.py).
-_DEVICES = ("wozi", "dev", "arzi", "klkizi", "grkizi", "schlafzi")
+require_fresh()  # every scenario boots a generated module and reads its plan
 
-
-def _wiring_plan(device: str) -> "dict[str, Any]":
-    with open(f"build/generated_src/sensortask_{device}_wiring_plan.json") as f:
-        plan: dict[str, Any] = json.load(f)
-    return plan
-
-
-async def _cancel(task: "asyncio.Task[Any]") -> None:
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-
-
-# Per-test config-file isolation via tests/_tmp_scratch.py - own scratch key and port range per device,
-# distinct from test_digital_twin_sensortask_integration.py's 19100+/"dtsi", which keeps its own wozi-only
-# heavy tests, and from every other twin-tier file's claimed range (19300+, 19400+, 19700+).
-_PORT_BASE_BY_DEVICE = {device: 19500 + 10 * i for i, device in enumerate(_DEVICES)}
+# @tunable l2.construction_scenarios_run_timeout_s = 10.0
+_RUN_TIMEOUT_S = 10.0
+# The product's own maintenance modules, which every generated build_system() constructs whatever its TOML declares.
+_MAINTENANCE = ("conn", "ntp", "sysfunct", "webserver")
+# Where each IRQ-wired driver keeps its line: (the reader's Pin attribute, its chip fake's Pin attribute).
+_IRQ_ATTRIBUTES = {"scd30": ("_irq_pin", "_rdy_pin"), "isl29125": ("irq_pin", "_int_pin")}
 
 _scratch: "TmpScratch | None" = None
-_next_port = 0
-
-
-def _tmp_cfg_dir() -> str:
-    assert _scratch is not None, "register_for_device() must run before any scenario calls _tmp_cfg_dir()"
-    return _scratch.dir()
-
-
-def _next_test_port() -> int:
-    global _next_port
-    assert _next_port != 0, "register_for_device() must run before any scenario calls _next_test_port()"
-    _next_port += 1
-    return _next_port
-
-
+_ports: "PortAllocator | None" = None
 _PARAM_SCENARIOS: "list[tuple[str, Callable[[str], None]]]" = []
 
 
@@ -93,114 +68,133 @@ def _register_param(name: str) -> "Callable[[Callable[[str], None]], Callable[[s
     return deco
 
 
-async def _boot_device(port: int, device: str) -> "Any":
-    machine.configure_wiring(_wiring_plan(device))
-    module = __import__(f"sensortask_{device}")
-    await module.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+async def _boot_device(port: int, device: str) -> "ModuleType":
+    module = _fresh_board(device)
+    module, _watchdog = await boot_generated(module, device, cfg_path=_tmp_cfg_dir(), log_errors=True, web_host="127.0.0.1", web_port=port)
     return module
 
 
-def _present_optional_instances(module: "Any", device: str) -> "tuple[str, ...]":
-    # Derived from the wiring plan's pre-construction "instances" list, not the built module's attributes -
-    # see tests/_sensortask_scenarios.py's identical helper for why: a construction bug that silently drops
-    # a declared driver reads back as though the device never had it, which getattr cannot tell apart.
-    plan_instances = set(_wiring_plan(device)["instances"])
-    all_names = ("scd30", "sgp40", "bmp3xx", "isl29125", "neopixel", "notification")
-    present = tuple(name for name in all_names if name in plan_instances)
-    for name in all_names:
-        if name in present:
-            assert getattr(module, name, None) is not None, f"{name} is in devices/{device}.toml's own instances but build_system() never constructed it"
+def _constructed_names(module: "ModuleType") -> "set[str]":
+    # Every module global holding a constructed product module (it has setup() and loggers), as the boot recorder finds them.
+    return {name for name in dir(module) if not name.startswith("_") and not isinstance(getattr(module, name), type) and hasattr(getattr(module, name), "setup") and hasattr(getattr(module, name), "get_loggers")}
+
+
+def _expected_facts(device: str) -> "_ExpectedFacts":
+    # What buildgen alone derives for the device (its boot sequence among them), written beside the module.
+    with open(f"build/generated_src/sensortask_{device}_expected.json") as f:
+        facts: _ExpectedFacts = json.load(f)
+    return facts
+
+
+def _fresh_board(device: str) -> "ModuleType":
+    # A new board for each boot: no bus or interface of an earlier one, then the device's own plan, then its module.
+    machine.reset_peripherals()
+    network.reset_interfaces()
+    machine.configure_wiring(wiring_plan(device))
+    return load_device(device)
+
+
+def _next_test_port() -> int:
+    assert _ports is not None, "register_for_device() must run before any scenario calls _next_test_port()"
+    return _ports.next()
+
+
+@_register_param("boot_sequence_matches_the_generated_expectation")
+def _scenario_boot_sequence(device: str) -> None:
+    # The real main() up to the supervisor, every setup() doing its real chip I/O on the twin: exactly the sequence
+    # buildgen derived, the first NTP sync after the timer starts, and the boot never near the watchdog's timeout.
+    async def scenario() -> None:
+        cfg_path = _tmp_cfg_dir()
+        write_offline_ntp_config(cfg_path)
+        write_error_level_config(cfg_path)
+        module = _fresh_board(device)
+        await module.build_system(watchdog=boot_entry_watchdog(module, device), cfg_path=cfg_path, debug=ERROR_LEVEL, web_host="127.0.0.1", web_port=0)
+        recorder = BootRecorder(module)  # it names its classes from a built module
+        module = _fresh_board(device)
+        module.__dict__["webserver"] = None  # the global the runner's wait reads: this boot's, not the build's above
+        watchdog = boot_entry_watchdog(module, device)
+        main_task = asyncio.get_event_loop().create_task(module.main(watchdog=watchdog, cfg_path=cfg_path, debug=ERROR_LEVEL, web_host="127.0.0.1", web_port=_next_test_port()))
+        try:
+            # The runner's own steps between build_system() and the setups: a UART link's bounded pollers, as on CI.
+            await run_generic_integration._wait_until_built(module)
+            # The runner's _Plan and tests' TwinWiringPlan type the one wiring-plan JSON from each side (the twin
+            # cannot import the tests' type), so the plan crosses that boundary by a cast.
+            plan: _Plan = cast("_Plan", wiring_plan(device))
+            run_generic_integration._wire_uart_crossover(module, plan)
+            await main_task
+        except Exception as e:
+            if not recorder.stopped_by(e):
+                raise
         else:
-            # The reverse direction matters too - see tests/_sensortask_scenarios.py's own identical
-            # check for why (a wiring plan that silently under-reports a driver must not let this
-            # check quietly agree with it and stop testing a real, live object).
-            assert getattr(module, name, None) is None, f"{name} is NOT in devices/{device}.toml's own instances, but build_system() constructed it anyway"
-    return present
+            raise AssertionError("main() returned")
+        finally:
+            recorder.restore()
+            if not main_task.done():
+                await cancel(main_task)
+        entries = recorder.entries()
+        assert entries == expected_entries(_expected_facts(device)["boot_sequence"]), entries
+        assert entries.index(("call", "ntp_force_sync")) > entries.index(("return", "start_timers")), entries
+        assert watchdog.would_have_triggered_count == 0
+
+    run_timed(scenario(), timeout_s=_RUN_TIMEOUT_S)
 
 
 @_register_param("build_system_boots_against_the_real_twin_buses_without_exception")
 def _scenario_boots_against_real_twin_buses(device: str) -> None:
-    # Confirms every FRAM chunk (SPECIFICATION.md Part A.7) allocates cleanly against the twin's
-    # real FramChip, not just tests/machine.py's fake. Shared shape with the mock's own equivalent
-    # test (tests/_shared_rest_roundtrip.py); adds "webserver" since this file exercises real HTTP.
+    # Every FRAM chunk (Part A.7) allocates against the twin's real chip fakes. The names come from the device's plan
+    # (each bus it declares) and buildgen's construction list, and exactly those globals hold a constructed module.
     async def scenario() -> None:
         module = await _boot_device(_next_test_port(), device)
-        mandatory = ("conn", "ntp", "i2c0", "i2c1", "spi0", "fram", "sysfunct", "neopixel", "notification", "webserver", "watchdog")
-        assert_named_modules_constructed(module, mandatory + _present_optional_instances(module, device))
+        plan = wiring_plan(device)
+        construction = _expected_facts(device)["boot_sequence"]["construction"]
+        unmatched = [driver for driver in plan["instances"] if not any(name == driver or name.startswith(driver + "_") for name in construction)]
+        assert unmatched == [], f"plan instances {unmatched} have no construction in the expected facts"
+        assert_named_modules_constructed(module, tuple(sorted(set(plan["pins"]) | set(construction) | set(_MAINTENANCE))))
+        assert _constructed_names(module) == set(construction) | {"webserver"}, sorted(_constructed_names(module))
 
-    run_timed(scenario(), timeout_s=10.0)
-
-
-@_register_param("get_measurements_and_sensors_are_reachable_and_shaped_correctly")
-def _scenario_measurements_and_sensors_shape(device: str) -> None:
-    # Shared shape with the mock's own equivalent check (tests/_shared_rest_roundtrip.py) -
-    # regression guard for the {name: {name: {...}}} self-wrapping bug (see
-    # asy_webserver_service.py's comments), over a real socket against the real twin.
-    port = _next_test_port()
-
-    async def scenario() -> None:
-        module = await _boot_device(port, device)
-        task = module.webserver.get_task_starters()[0]()
-        # See test_digital_twin_sensortask_integration.py's own _start_webserver() comment: WP1
-        # made webserver.pr real-FRAM-backed on every real device, so _run() now awaits a real
-        # self.pr.setup() before start_server()/bind - measured at ~400ms here too.
-        await asyncio.sleep(1.0)
-        try:
-            expected = {name.upper() for name in _present_optional_instances(module, device) if name in ("scd30", "sgp40", "bmp3xx", "isl29125")}
-            res = await _http_client.fetch("127.0.0.1", port, "GET", "/measurements")
-            assert res.status_code == 200
-            assert_sensor_payload_not_self_wrapped(res.json(), expected)
-
-            res = await _http_client.fetch("127.0.0.1", port, "GET", "/sensors")
-            assert res.status_code == 200
-            assert_sensor_payload_not_self_wrapped(res.json(), expected)
-        finally:
-            await _cancel(task)
-
-    run_timed(scenario(), timeout_s=10.0)
+    run_timed(scenario(), timeout_s=_RUN_TIMEOUT_S)
 
 
-@_register_param("a_real_bus_fault_degrades_to_a_clean_response_not_a_crash")
-def _scenario_bus_fault_degrades(device: str) -> None:
-    # A concrete example of the "might point us to oversights" value owner decision 10 called out: a real
-    # twin-injected I2C fault flowing through the real driver, the real webserver and a real HTTP response,
-    # which no tests/machine.py-backed test can do, that fake having no comparable fault surface.
-    port = _next_test_port()
+@_register_param("irq_pins_are_shared_by_chip_fake_and_driver")
+def _scenario_irq_pins_shared(device: str) -> None:
+    # Each IRQ line the plan wires is one Pin object, held by the booted reader and driven by its chip fake; the
+    # ISL29125 INT line idles high (open drain with a pull-up, datasheet p6).
+    plan = wiring_plan(device)
+    wired = [(bus, attachment) for bus, attachments in sorted(plan["buses"].items()) for attachment in attachments if "irq_pin" in attachment]
+    if not wired:
+        raise microtest.Skip(f"{device} declares no IRQ-wired chip")
 
     async def scenario() -> None:
-        module = await _boot_device(port, device)
-        import errno
+        module = await _boot_device(_next_test_port(), device)
+        for bus, attachment in wired:
+            driver = attachment["driver"]
+            assert driver in _IRQ_ATTRIBUTES, f"no IRQ attribute known for {driver}: add it to _IRQ_ATTRIBUTES"
+            reader_attribute, chip_attribute = _IRQ_ATTRIBUTES[driver]
+            reader = getattr(module, driver + ("_" + attachment["name_ext"] if attachment["name_ext"] else ""))
+            line = machine.Pin(attachment["irq_pin"])
+            assert getattr(reader, reader_attribute) is line, (driver, attachment)
+            assert getattr(getattr(module, bus)._i2c.devices[attachment["address"]], chip_attribute) is line, (driver, attachment)
+            if driver == "isl29125":
+                assert line.value() == 1, f"{device}'s ISL29125 INT line reads {line.value()} at idle"
 
-        # SGP40 is fixed-address (0x59) on every real device (buildgen.twin_wiring.FIXED_ADDRESSES),
-        # but which bus it's actually wired to varies by device (wozi/dev already differ from each
-        # other) - resolved here from the device's own real wiring plan, never assumed to be i2c1.
-        plan = _wiring_plan(device)
-        sgp40_bus_name = next(bus_name for bus_name, attachments in plan["buses"].items() if any(a["driver"] == "sgp40" for a in attachments))
-        bus = getattr(module, sgp40_bus_name)
-        # asy_i2c_driver.I2C wraps the real machine.I2C at its private _i2c attribute, and the twin's chip-
-        # fake registry lives on that wrapped object, not the wrapper. Only None before init() runs, which
-        # __init__ calls unconditionally - set by now, just not statically provable from the type.
-        assert bus._i2c is not None
-        sgp40_chip = bus._i2c.devices[0x59]
-        # A handful is enough: this test makes exactly one HTTP request, and the Unix-port heap is small
-        # enough that a needlessly large `times`, each entry queued separately, measurably adds to this
-        # file's cumulative memory pressure across its several real build_system() calls.
-        sgp40_chip.fault.inject_fault("writeto", OSError(errno.EIO, "test-injected"), times=5)
-        task = module.webserver.get_task_starters()[0]()
-        # See test_digital_twin_sensortask_integration.py's own _start_webserver() comment: WP1
-        # made webserver.pr real-FRAM-backed on every real device, so _run() now awaits a real
-        # self.pr.setup() before start_server()/bind - measured at ~400ms here too.
-        await asyncio.sleep(1.0)
-        try:
-            res = await _http_client.fetch("127.0.0.1", port, "GET", "/measurements")
-            assert res.status_code == 200  # never a 500 - a sensor read failure degrades to
-            # whatever get_dict_data() already returns for a not-yet-successfully-read sensor, not
-            # an unhandled exception reaching the HTTP layer.
-            assert "SGP40" in res.json()
-        finally:
-            await _cancel(task)
+    run_timed(scenario(), timeout_s=_RUN_TIMEOUT_S)
 
-    run_timed(scenario(), timeout_s=10.0)
+
+@_register_param("load_device_returns_the_devices_own_generated_module")
+def _scenario_load_device_returns_the_generated_module(device: str) -> None:
+    # The one loader the twin files share: the device's generated module, and a device the generator never wrote refused.
+    assert load_device(device).__name__ == f"sensortask_{device}"
+    try:
+        load_device(device + "-not-generated")
+    except AssertionError as e:
+        assert "is not a generated device" in str(e), e
+    else:
+        raise AssertionError("load_device() accepted a device the generator never wrote")
+
+
+def _tmp_cfg_dir() -> str:
+    assert _scratch is not None, "register_for_device() must run before any scenario calls _tmp_cfg_dir()"
+    return _scratch.dir()
 
 
 # ---------------------------------------------------------------------------
@@ -213,11 +207,21 @@ def _scenario_bus_fault_degrades(device: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+def load_device(device: str) -> "ModuleType":
+    # The one loader of a device's generated module the twin files share (its named import, SPECIFICATION.md F.1).
+    devices = generated_devices()
+    if device not in devices:
+        raise AssertionError(f"{device!r} is not a generated device {devices!r}")
+    return __import__(f"sensortask_{device}")
+
+
 def register_for_device(device: str) -> "dict[str, Callable[[], None]]":
-    global _scratch, _next_port
-    assert device in _DEVICES, f"{device!r} is not one of this module's own real devices {_DEVICES!r}"
+    global _scratch, _ports
+    assert device in generated_devices(), f"{device!r} is not a generated device {generated_devices()!r}"
+    defined = sorted(name for name in globals() if name.startswith("_scenario_"))
+    assert len(defined) == len(_PARAM_SCENARIOS), f"{len(defined)} _scenario_* functions, {len(_PARAM_SCENARIOS)} registered: one lacks its @_register_param"
     _scratch = TmpScratch(f"dtcs_{device}")
-    _next_port = _PORT_BASE_BY_DEVICE[device]
+    _ports = PortAllocator("_digital_twin_construction_scenarios", device)
 
     tests: dict[str, Callable[[], None]] = {}
     for scenario_name, scenario_fn in _PARAM_SCENARIOS:

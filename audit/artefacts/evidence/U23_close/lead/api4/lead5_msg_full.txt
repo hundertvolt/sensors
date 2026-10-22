@@ -1,0 +1,10 @@
+U23 lead: the decision-vocabulary allow-list drops the rows S's final retired
+
+The allow-list only shrinks: each row whose text no longer occurs in its file goes. Dropped rows:
+- tests_js/_live_matrix_command.js (row 519): "@param {{ sectionKey: string, groupKey: string, fieldKey: string, field: import("
+- tests_js/_live_matrix_command.js (row 522): "eslint-disable-next-line no-await-in-loop -- deliberate sequential polling"
+- tests_js/_live_twin_command.js (row 524): "eslint-disable-next-line no-await-in-loop -- deliberate sequential polling"
+- tests_js/live-backend.test.js (row 528): ""Valid" or "Unchanged" both mean the backend accepted the write, matching every"
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

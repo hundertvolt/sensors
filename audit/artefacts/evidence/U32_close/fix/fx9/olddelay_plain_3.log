@@ -1,0 +1,222 @@
+
+> sensors-website@0.1.0 pretest
+> npm run build:site
+
+
+> sensors-website@0.1.0 build:site
+> npm run build:definitions && scripts/build_device_websites.sh
+
+
+> sensors-website@0.1.0 build:definitions
+> uv run scripts/_generate_sensortask_modules.py
+
+Generated 6 device module(s) + boot entries + expected facts + wiring plan(s) + definitions + API reference(s) into /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8/build/generated_src
+== Website work dir: build/website/arzi
+== Gzip tree: build/website/arzi/gzipped
+Writing Python file build/generated_html/arzi/frozen_html.py.
+Appended folder build/website/arzi/gzipped as /.
+Appended file   build/website/arzi/gzipped/index.html.gz (13940 bytes) as /index.html.gz
+Appended folder build/website/arzi/gzipped/js as /js
+Appended file   build/website/arzi/gzipped/js/app.js.gz (28533 bytes) as /js/app.js.gz
+Sum of file sizes 42473 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+build/generated_html/arzi/frozen_html.py written successfully.
+Wrote build/generated_html/arzi/frozen_html.py (mounts at /html on import)
+== Website work dir: build/website/dev
+== Gzip tree: build/website/dev/gzipped
+Writing Python file build/generated_html/dev/frozen_html.py.
+Appended folder build/website/dev/gzipped as /.
+Appended file   build/website/dev/gzipped/index.html.gz (16438 bytes) as /index.html.gz
+Appended folder build/website/dev/gzipped/js as /js
+Appended file   build/website/dev/gzipped/js/app.js.gz (28533 bytes) as /js/app.js.gz
+Sum of file sizes 44971 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+build/generated_html/dev/frozen_html.py written successfully.
+Wrote build/generated_html/dev/frozen_html.py (mounts at /html on import)
+== Website work dir: build/website/grkizi
+== Gzip tree: build/website/grkizi/gzipped
+Writing Python file build/generated_html/grkizi/frozen_html.py.
+Appended folder build/website/grkizi/gzipped as /.
+Appended file   build/website/grkizi/gzipped/index.html.gz (13942 bytes) as /index.html.gz
+Appended folder build/website/grkizi/gzipped/js as /js
+Appended file   build/website/grkizi/gzipped/js/app.js.gz (28533 bytes) as /js/app.js.gz
+Sum of file sizes 42475 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+build/generated_html/grkizi/frozen_html.py written successfully.
+Wrote build/generated_html/grkizi/frozen_html.py (mounts at /html on import)
+== Website work dir: build/website/klkizi
+== Gzip tree: build/website/klkizi/gzipped
+Writing Python file build/generated_html/klkizi/frozen_html.py.
+Appended folder build/website/klkizi/gzipped as /.
+Appended file   build/website/klkizi/gzipped/index.html.gz (13942 bytes) as /index.html.gz
+Appended folder build/website/klkizi/gzipped/js as /js
+Appended file   build/website/klkizi/gzipped/js/app.js.gz (28533 bytes) as /js/app.js.gz
+Sum of file sizes 42475 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+build/generated_html/klkizi/frozen_html.py written successfully.
+Wrote build/generated_html/klkizi/frozen_html.py (mounts at /html on import)
+== Website work dir: build/website/schlafzi
+== Gzip tree: build/website/schlafzi/gzipped
+Writing Python file build/generated_html/schlafzi/frozen_html.py.
+Appended folder build/website/schlafzi/gzipped as /.
+Appended file   build/website/schlafzi/gzipped/index.html.gz (13943 bytes) as /index.html.gz
+Appended folder build/website/schlafzi/gzipped/js as /js
+Appended file   build/website/schlafzi/gzipped/js/app.js.gz (28533 bytes) as /js/app.js.gz
+Sum of file sizes 42476 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+build/generated_html/schlafzi/frozen_html.py written successfully.
+Wrote build/generated_html/schlafzi/frozen_html.py (mounts at /html on import)
+== Website work dir: build/website/wozi
+== Gzip tree: build/website/wozi/gzipped
+Writing Python file build/generated_html/wozi/frozen_html.py.
+Appended folder build/website/wozi/gzipped as /.
+Appended file   build/website/wozi/gzipped/index.html.gz (14380 bytes) as /index.html.gz
+Appended folder build/website/wozi/gzipped/js as /js
+Appended file   build/website/wozi/gzipped/js/app.js.gz (28533 bytes) as /js/app.js.gz
+Sum of file sizes 42913 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+build/generated_html/wozi/frozen_html.py written successfully.
+Wrote build/generated_html/wozi/frozen_html.py (mounts at /html on import)
+
+> sensors-website@0.1.0 test
+> vitest run tests_js/shell.test.js
+
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8
+
+stderr | tests_js/shell.test.js > startShell > never reloads while the build stays the same, or when /system carries no build object
+Could not refresh Measurements: [Error: Request to /measurements timed out after 15000ms]
+ ❯ |chromium| tests_js/shell.test.js (15 tests | 4 failed) 5571ms
+   ❯ startShell (13)
+     ✓ opens the landing section, and leaves no timer, listener or request behind once stopped 63ms
+     ✓ leaves one set of listeners after start, stop and start again 5ms
+     × reloads once when the second watch sees a different build, stopping first 1256ms
+     × never reloads while the build stays the same, or when /system carries no build object 1122ms
+     ✓ pauses the watch while the page is hidden and watches once on becoming visible 104ms
+     ✓ neither reloads nor rejects unhandled when the watch's /system request fails 109ms
+     × shows ages against the device's clock: unknown until /status carries UnixTime, then tracking it as time passes 1165ms
+     × defers a reload for a changed build until the pending Apply has settled 1164ms
+     ✓ watches once more as soon as a section's failing episode ends, not only at its own cadence 154ms
+     ✓ pushes one history entry per menu selection of another section, none for the current one 4ms
+     ✓ selects the popped section without pushing: Back, then Forward, then back to the landing entry 2ms
+     ✓ on a switch lets the left section's GET on the wire end before the next section's first GET, and a page stop right after a switch aborts it 314ms
+     ✓ opens a deep-linked section, and the landing section for an unknown key, pushing nothing 3ms
+   ✓ historyOf and visibilityOf (2)
+     ✓ reads the section from the URL hash, pushes one entry per key and reports a Back as a pop 103ms
+     ✓ reads the document's visibility and reports each change until released 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/shell.test.js > startShell > reloads once when the second watch sees a different build, stopping first
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/shell.test.js/startShell---reloads-once-when-the-second-watch-sees-a-different-build--stopping-first.png
+
+ ❯ tests_js/shell.test.js:307:47
+    305|
+    306|         await vi.advanceTimersByTimeAsync(WATCH_INTERVAL_MS);
+    307|         await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(1)…
+       |                                               ^
+    308|         const before = requests.total();
+    309|         await vi.advanceTimersByTimeAsync(3 * WATCH_INTERVAL_MS);
+ ❯ checkCallback node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/index.C4tKZ0yW-Bgp1i2x2.js?v=2181bc04:7045:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  |chromium| tests_js/shell.test.js > startShell > never reloads while the build stays the same, or when /system carries no build object
+AssertionError: expected 1 to be 2 // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/shell.test.js/startShell---never-reloads-while-the-build-stays-the-same--or-when--system-carries-no-build-object.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 2[39m
+[31m+ 1[39m
+
+ ❯ tests_js/shell.test.js:323:66
+    321|         const { reload } = start();
+    322|         await vi.advanceTimersByTimeAsync(WATCH_INTERVAL_MS);
+    323|         await vi.waitFor(() => expect(requests.count("/system")).toBe(…
+       |                                                                  ^
+    324|         build = undefined;
+    325|         await vi.advanceTimersByTimeAsync(WATCH_INTERVAL_MS);
+ ❯ checkCallback node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/index.C4tKZ0yW-Bgp1i2x2.js?v=2181bc04:7045:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  |chromium| tests_js/shell.test.js > startShell > shows ages against the device's clock: unknown until /status carries UnixTime, then tracking it as time passes
+AssertionError: expected 1 to be 2 // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/shell.test.js/startShell---shows-ages-against-the-device-s-clock--unknown-until--status-carries-UnixTime--then-tracking-it-as-time-passes.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 2[39m
+[31m+ 1[39m
+
+ ❯ tests_js/shell.test.js:382:66
+    380|         unixTime = deviceNowS;
+    381|         await vi.advanceTimersByTimeAsync(WATCH_INTERVAL_MS);
+    382|         await vi.waitFor(() => expect(requests.count("/system")).toBe(…
+       |                                                                  ^
+    383|         reopen();
+    384|         await vi.waitFor(() => expect(age()).toBe("2 min ago"));
+ ❯ checkCallback node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/index.C4tKZ0yW-Bgp1i2x2.js?v=2181bc04:7045:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  |chromium| tests_js/shell.test.js > startShell > defers a reload for a changed build until the pending Apply has settled
+AssertionError: expected 1 to be 2 // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/shell.test.js/startShell---defers-a-reload-for-a-changed-build-until-the-pending-Apply-has-settled.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 2[39m
+[31m+ 1[39m
+
+ ❯ tests_js/shell.test.js:423:52
+    421|         version = "2.0.0";
+    422|         await vi.advanceTimersByTimeAsync(WATCH_INTERVAL_MS);
+    423|         await vi.waitFor(() => expect(statusCalls).toBe(2));
+       |                                                    ^
+    424|
+    425|         // The second watch's /status is held while Apply is pressed: …
+ ❯ checkCallback node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/index.C4tKZ0yW-Bgp1i2x2.js?v=2181bc04:7045:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 11 passed (15)
+   Start at  14:30:46
+   Duration  7.18s (tests 94%, worker 5%, import 1%)
+
+== Summary: npm test ==
+Commit: c6b8a07 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 11 · failed 4 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/shell.test.js > startShell > reloads once when the second watch sees a different build, stopping first: expected "vi.fn()" to be called 1 times, but got 0 times
+  - tests_js/shell.test.js > startShell > never reloads while the build stays the same, or when /system carries no build object: expected 1 to be 2 // Object.is equality
+  - tests_js/shell.test.js > startShell > shows ages against the device's clock: unknown until /status carries UnixTime, then tracking it as time passes: expected 1 to be 2 // Object.is equality
+  - tests_js/shell.test.js > startShell > defers a reload for a changed build until the pending Apply has settled: expected 1 to be 2 // Object.is equality
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1
+
+real	0m15.276s
+user	0m8.540s
+sys	0m2.520s

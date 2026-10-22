@@ -1,0 +1,68 @@
+PASS test_a_bus_key_names_its_port_for_both_bus_kinds
+PASS test_a_shared_spi_bus_fails_loud_for_a_driver_with_no_catalog_adapter
+PASS test_address_sweep_scenario_fails_loud_for_a_driver_with_no_catalog_adapter
+PASS test_arzi_i2c0_each_real_occupant_never_touches_an_unexpected_address
+PASS test_arzi_i2c0_same_occupant_own_write_does_not_disturb_own_concurrent_read_across_timing_offsets
+PASS test_arzi_i2c1_each_real_occupant_never_touches_an_unexpected_address
+PASS test_arzi_i2c1_same_occupant_own_write_does_not_disturb_own_concurrent_read_across_timing_offsets
+PASS test_build_bus_occupants_fails_loud_for_a_driver_with_no_catalog_adapter
+PASS test_dev_i2c0_each_real_occupant_never_touches_an_unexpected_address
+PASS test_dev_i2c0_same_occupant_own_write_does_not_disturb_own_concurrent_read_across_timing_offsets
+PASS test_dev_i2c1_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets
+FAIL test_dev_i2c1_a_isl29125_write_does_not_disturb_concurrent_sibling_reads_across_timing_offsets:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneD/bite/isl_stray_read/tests/microtest.py", line 38, in _call
+  File "tests/test_bus_hazard_generated.py", line 92, in test_a_write_does_not_disturb_concurrent_sibling_reads_across_timing_offsets
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneD/bite/isl_stray_read/tests/_async_harness.py", line 101, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneD/bite/isl_stray_read/tests/_async_harness.py", line 43, in _drive
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneD/bite/isl_stray_read/tests/_bus_hazard_catalog.py", line 501, in scenario_a_write_does_not_disturb_concurrent_sibling_reads
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneD/bite/isl_stray_read/tests/_bus_hazard_catalog.py", line 476, in _run_write_vs_siblings_at_offset
+  File "asyncio/funcs.py", line 1, in gather
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneD/bite/isl_stray_read/tests/_bus_hazard_catalog.py", line 467, in reader_loop
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneD/bite/isl_stray_read/tests/_bus_hazard_catalog.py", line 256, in _read_once_sgp40
+  File "src/asy_sgp40_driver.py", line 802, in measure_raw
+  File "src/asy_sgp40_driver.py", line 687, in _measure_in_session
+  File "src/asy_sgp40_driver.py", line 707, in _read_word_from_command
+RuntimeError: CRC check failed while reading data
+PASS test_dev_i2c1_a_scd30_write_does_not_disturb_concurrent_sibling_reads_across_timing_offsets
+PASS test_dev_i2c1_all_real_occupants_concurrent_reads_stay_correct_and_genuinely_interleave
+PASS test_dev_i2c1_bus_membership_matches_the_real_toml_group
+FAIL test_dev_i2c1_each_real_occupant_never_touches_an_unexpected_address:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneD/bite/isl_stray_read/tests/microtest.py", line 38, in _call
+  File "tests/test_bus_hazard_generated.py", line 103, in test_each_real_occupant_never_touches_an_unexpected_address
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneD/bite/isl_stray_read/tests/_async_harness.py", line 101, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneD/bite/isl_stray_read/tests/_async_harness.py", line 43, in _drive
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneD/bite/isl_stray_read/tests/_bus_hazard_catalog.py", line 762, in scenario_each_occupant_never_touches_an_unexpected_address
+AssertionError: 'isl29125''s own sweep touched [68, 89], expected exactly [68]
+PASS test_dev_i2c1_general_call_broadcast_does_not_disturb_concurrent_siblings_across_timing_offsets
+PASS test_dev_i2c1_same_occupant_own_write_does_not_disturb_own_concurrent_read_across_timing_offsets
+PASS test_grkizi_i2c0_each_real_occupant_never_touches_an_unexpected_address
+PASS test_grkizi_i2c0_same_occupant_own_write_does_not_disturb_own_concurrent_read_across_timing_offsets
+PASS test_grkizi_i2c1_each_real_occupant_never_touches_an_unexpected_address
+PASS test_grkizi_i2c1_same_occupant_own_write_does_not_disturb_own_concurrent_read_across_timing_offsets
+PASS test_klkizi_i2c0_each_real_occupant_never_touches_an_unexpected_address
+PASS test_klkizi_i2c0_same_occupant_own_write_does_not_disturb_own_concurrent_read_across_timing_offsets
+PASS test_klkizi_i2c1_each_real_occupant_never_touches_an_unexpected_address
+PASS test_klkizi_i2c1_same_occupant_own_write_does_not_disturb_own_concurrent_read_across_timing_offsets
+PASS test_schlafzi_i2c0_each_real_occupant_never_touches_an_unexpected_address
+PASS test_schlafzi_i2c0_same_occupant_own_write_does_not_disturb_own_concurrent_read_across_timing_offsets
+PASS test_schlafzi_i2c1_each_real_occupant_never_touches_an_unexpected_address
+PASS test_schlafzi_i2c1_same_occupant_own_write_does_not_disturb_own_concurrent_read_across_timing_offsets
+PASS test_wozi_i2c0_each_real_occupant_never_touches_an_unexpected_address
+PASS test_wozi_i2c0_same_occupant_own_write_does_not_disturb_own_concurrent_read_across_timing_offsets
+PASS test_wozi_i2c1_a_bmp3xx_write_does_not_disturb_concurrent_sibling_reads_across_timing_offsets
+PASS test_wozi_i2c1_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets
+PASS test_wozi_i2c1_all_real_occupants_concurrent_reads_stay_correct_and_genuinely_interleave
+PASS test_wozi_i2c1_bus_membership_matches_the_real_toml_group
+PASS test_wozi_i2c1_each_real_occupant_never_touches_an_unexpected_address
+PASS test_wozi_i2c1_general_call_broadcast_does_not_disturb_concurrent_siblings_across_timing_offsets
+PASS test_wozi_i2c1_same_occupant_own_write_does_not_disturb_own_concurrent_read_across_timing_offsets
+37/39 passed, 2 failed, 0 skipped

@@ -1,0 +1,84 @@
+th=-1 mode=pre n=1 D=50 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=pre n=1 D=90 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=pre n=1 D=98 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=pre n=1 D=102 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=pre n=1 D=110 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=pre n=1 D=150 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=pre n=1 D=250 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=pre n=2 D=50 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=pre n=2 D=90 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=pre n=2 D=98 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=pre n=2 D=102 -> FAIL AssertionError: {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'], 'ErrCount': 1, 'ErrNum': [0, 0, 0, 0, 0, 0, 0, 0, 0, 50]}    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 0, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'] ErrCount=1 
+th=-1 mode=pre n=2 D=110 -> FAIL AssertionError: {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'], 'ErrCount': 1, 'ErrNum': [0, 0, 0, 0, 0, 0, 0, 0, 0, 50]}    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 0, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'] ErrCount=1 
+th=-1 mode=pre n=2 D=150 -> FAIL AssertionError: {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'], 'ErrCount': 1, 'ErrNum': [0, 0, 0, 0, 0, 0, 0, 0, 0, 50]}    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 0, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'] ErrCount=1 
+th=-1 mode=pre n=2 D=250 -> FAIL AssertionError: {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'], 'ErrCount': 1, 'ErrNum': [0, 0, 0, 0, 0, 0, 0, 0, 0, 50]}    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 0, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'] ErrCount=1 
+th=-1 mode=pre n=3 D=50 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=pre n=3 D=90 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=pre n=3 D=98 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=pre n=3 D=102 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=pre n=3 D=110 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=pre n=3 D=150 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=pre n=3 D=250 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=post n=1 D=50 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=post n=1 D=90 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=post n=1 D=98 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=post n=1 D=102 -> FAIL AssertionError: {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'], 'ErrCount': 1, 'ErrNum': [0, 0, 0, 0, 0, 0, 0, 0, 0, 50]}    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 0, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'] ErrCount=1 
+th=-1 mode=post n=1 D=110 -> FAIL AssertionError: {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'], 'ErrCount': 1, 'ErrNum': [0, 0, 0, 0, 0, 0, 0, 0, 0, 50]}    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 0, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'] ErrCount=1 
+th=-1 mode=post n=1 D=150 -> FAIL AssertionError: {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'], 'ErrCount': 1, 'ErrNum': [0, 0, 0, 0, 0, 0, 0, 0, 0, 50]}    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 0, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'] ErrCount=1 
+th=-1 mode=post n=1 D=250 -> FAIL AssertionError: {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'], 'ErrCount': 1, 'ErrNum': [0, 0, 0, 0, 0, 0, 0, 0, 0, 50]}    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 0, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'] ErrCount=1 
+th=-1 mode=post n=2 D=50 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=post n=2 D=90 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=post n=2 D=98 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=post n=2 D=102 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=post n=2 D=110 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=post n=2 D=150 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=post n=2 D=250 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=post n=3 D=50 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=post n=3 D=90 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=post n=3 D=98 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=post n=3 D=102 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=post n=3 D=110 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=post n=3 D=150 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=-1 mode=post n=3 D=250 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=pre n=1 D=50 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=pre n=1 D=90 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=pre n=1 D=98 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=pre n=1 D=102 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=pre n=1 D=110 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=pre n=1 D=150 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=pre n=1 D=250 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=pre n=2 D=50 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=pre n=2 D=90 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=pre n=2 D=98 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=pre n=2 D=102 -> FAIL AssertionError: {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'], 'ErrCount': 1, 'ErrNum': [0, 0, 0, 0, 0, 0, 0, 0, 0, 50]}    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 0, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'] ErrCount=1 
+th=32768 mode=pre n=2 D=110 -> FAIL AssertionError: {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'], 'ErrCount': 1, 'ErrNum': [0, 0, 0, 0, 0, 0, 0, 0, 0, 50]}    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 0, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'] ErrCount=1 
+th=32768 mode=pre n=2 D=150 -> FAIL AssertionError: {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'], 'ErrCount': 1, 'ErrNum': [0, 0, 0, 0, 0, 0, 0, 0, 0, 50]}    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 0, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'] ErrCount=1 
+th=32768 mode=pre n=2 D=250 -> FAIL AssertionError: {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'], 'ErrCount': 1, 'ErrNum': [0, 0, 0, 0, 0, 0, 0, 0, 0, 50]}    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 0, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'] ErrCount=1 
+th=32768 mode=pre n=3 D=50 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=pre n=3 D=90 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=pre n=3 D=98 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=pre n=3 D=102 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=pre n=3 D=110 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=pre n=3 D=150 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=pre n=3 D=250 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=post n=1 D=50 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=post n=1 D=90 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=post n=1 D=98 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=post n=1 D=102 -> FAIL AssertionError: {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'], 'ErrCount': 1, 'ErrNum': [0, 0, 0, 0, 0, 0, 0, 0, 0, 50]}    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 0, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'] ErrCount=1 
+th=32768 mode=post n=1 D=110 -> FAIL AssertionError: {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'], 'ErrCount': 1, 'ErrNum': [0, 0, 0, 0, 0, 0, 0, 0, 0, 50]}    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 0, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'] ErrCount=1 
+th=32768 mode=post n=1 D=150 -> FAIL AssertionError: {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'], 'ErrCount': 1, 'ErrNum': [0, 0, 0, 0, 0, 0, 0, 0, 0, 50]}    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 0, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'] ErrCount=1 
+th=32768 mode=post n=1 D=250 -> FAIL AssertionError: {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'], 'ErrCount': 1, 'ErrNum': [0, 0, 0, 0, 0, 0, 0, 0, 0, 50]}    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 0, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W'] ErrCount=1 
+th=32768 mode=post n=2 D=50 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=post n=2 D=90 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=post n=2 D=98 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=post n=2 D=102 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=post n=2 D=110 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=post n=2 D=150 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=post n=2 D=250 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=post n=3 D=50 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=post n=3 D=90 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=post n=3 D=98 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=post n=3 D=102 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=post n=3 D=110 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=post n=3 D=150 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 
+th=32768 mode=post n=3 D=250 -> PASS    ErrNum=[0, 0, 0, 0, 0, 0, 0, 0, 49, 50] ErrType=['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'W'] ErrCount=2 

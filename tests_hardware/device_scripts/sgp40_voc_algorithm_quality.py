@@ -1,101 +1,73 @@
-"""Isolated-driver device script: real SGP40 raw-signal readings driven through the real
-voc_algorithm.py end to end. Checks VOC in [0,500]/Raw in [0,65535] post-blackout (45s), and basic
-stability (not stuck, no implausible single-step jump) - a sanity check, not an accuracy claim."""
+"""Isolated-driver device script: real SGP40 raw readings driven through the real voc_algorithm.py end to end, sampled
+after the algorithm's blackout - VOC, raw and the largest single-step jump reported for the host to check against
+plausibility_bounds.py and a stability bound. A sanity check, not an accuracy claim."""
 
 import asyncio
-from collections import namedtuple
-
-import machine
 
 import asy_i2c_driver
+from asy_base_classes import ValueRef
 from asy_sgp40_driver import SGP40_Reader
 
-VOC_MIN, VOC_MAX = 0, 500
-RAW_MIN, RAW_MAX = 0, 65535
-BLACKOUT_WAIT_S = 60.0  # 45s documented blackout + margin for a real 1s-cadence read loop to catch up
-N_QUALITY_SAMPLES = 8
-SAMPLE_INTERVAL_S = 2.0
-MAX_SINGLE_STEP_JUMP = 300  # generous relative to the algorithm's own adaptive-lowpass smoothing
-_WDT_FEED_INTERVAL_S = 2.0  # comfortably under the 8.388s hardware ceiling
+# @include _shared/facts.py
+# @include _shared/watchdog.py
+# @include _shared/fixed_source.py
 
-_FixedValue = namedtuple("_FixedValue", ("value",))
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython
+    TYPE_CHECKING = False
 
+if TYPE_CHECKING:
+    from _shared.facts import done, fact
+    from _shared.fixed_source import FixedSource
+    from _shared.watchdog import arm, fed_sleep_ms
+    from bench_facts import BenchFacts
 
-class _FixedSource:
-    """Local temperature_source/humidity_source stand-in (SPECIFICATION.md Part L.6.3): a fixed,
-    not sensor-derived, datasheet Table 10 compensation default - same get_data() ->
-    object-with-.value contract asy_sgp40_driver.py's own _Default* providers use."""
+BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
-    def __init__(self, value: float) -> None:
-        self._data = _FixedValue(value)
-
-    async def get_data(self) -> "_FixedValue":
-        return self._data
-
-
-async def _sleep_feeding_wdt(duration_s: float, wdt: machine.WDT) -> None:
-    remaining = duration_s
-    while remaining > 0:
-        await asyncio.sleep(min(_WDT_FEED_INTERVAL_S, remaining))
-        wdt.feed()
-        remaining -= _WDT_FEED_INTERVAL_S
+# The 45 s documented blackout plus margin for the real 1 s read loop to catch up.
+# @tunable l3.sgp40_voc_algorithm_quality_blackout_wait_s = 60.0
+_BLACKOUT_WAIT_S = 60.0
+_N_QUALITY_SAMPLES = 8
+# @tunable l3.sgp40_voc_algorithm_quality_sample_interval_s = 2.0
+_SAMPLE_INTERVAL_S = 2.0
+# Generous against the algorithm's own adaptive low-pass smoothing.
+# @tunable l3.sgp40_voc_algorithm_quality_max_single_step_jump = 300
+_MAX_SINGLE_STEP_JUMP = 300
+# The compensation the datasheet's Table 10 defaults to: fixed, not sensor-derived (SPECIFICATION.md Part L.6.3).
+_COMPENSATION = (25.0, 50.0)
 
 
 async def _main() -> None:
-    wdt = machine.WDT(timeout=8000)  # matches src/system_service.py's own production value
-    i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000)
-    reader = SGP40_Reader(
-        i2c1,
-        _FixedSource(25.0),
-        "value",
-        _FixedSource(50.0),
-        "value",
-        max_module_error=999,
-        fram_storage=None,
-        fram_ntp_callback=None,
-        debug=None,
-    )
-    reader.start_timer()  # 1s fixed period - the algorithm's own sampling interval assumption
+    wdt = arm()
+    bus = BENCH["bus"][BENCH["instances"]["sgp40"]["bus"]]
+    i2c = asy_i2c_driver.I2C(bus["id"], bus["scl_pin"], bus["sda_pin"], frequency=bus["frequency"], timeout=bus.get("timeout"))
+    temperature, humidity = (ValueRef(FixedSource(value), "value") for value in _COMPENSATION)
+    reader = SGP40_Reader(i2c, temperature, humidity, max_module_error=999)
+    reader.start_timer()  # the algorithm's own fixed 1 s sampling period
     read_task = reader.start_asy_read()
-
-    async def _cancel() -> None:
-        read_task.cancel()
-        try:
-            await read_task
-        except (asyncio.CancelledError, Exception):
-            pass
-
-    # Wait out the documented blackout window before sampling for real data.
-    await _sleep_feeding_wdt(BLACKOUT_WAIT_S, wdt)
-
-    samples: list[tuple[int | None, int | None]] = []
-    for _ in range(N_QUALITY_SAMPLES):
+    await fed_sleep_ms(wdt, int(_BLACKOUT_WAIT_S * 1000))
+    samples = []
+    for _ in range(_N_QUALITY_SAMPLES):
         data = await reader.get_data()
-        samples.append((data.VOC, data.Raw))
-        await _sleep_feeding_wdt(SAMPLE_INTERVAL_S, wdt)
-
-    await _cancel()
-
-    if any(voc is None or raw is None for voc, raw in samples):
-        print(f"RESULT: FAIL one or more post-blackout samples had no VOC/Raw reading - sensor not responding or not wired to i2c1: {samples}")
-        return
-
-    voc_values = [voc for voc, _ in samples if voc is not None]
-    raw_values = [raw for _, raw in samples if raw is not None]
-    failures = [f"VOC={voc!r} outside [{VOC_MIN}, {VOC_MAX}]" for voc in voc_values if not (VOC_MIN <= voc <= VOC_MAX)]
-    failures.extend(f"Raw={raw!r} outside [{RAW_MIN}, {RAW_MAX}]" for raw in raw_values if not (RAW_MIN <= raw <= RAW_MAX))
-
-    if len(set(voc_values)) == 1 and len(voc_values) > 1:
-        failures.append(f"all {len(voc_values)} post-blackout VOC samples were identical ({voc_values[0]}) - algorithm may be frozen/not responding to real readings")
-
-    for prev, cur in zip(voc_values, voc_values[1:]):  # noqa: B905 - MicroPython zip() rejects strict=, same list length by construction
-        if abs(cur - prev) > MAX_SINGLE_STEP_JUMP:
-            failures.append(f"implausible single-step VOC jump {prev} -> {cur} (> {MAX_SINGLE_STEP_JUMP})")
-
-    if failures:
-        print(f"RESULT: FAIL {'; '.join(failures)}")
-    else:
-        print(f"RESULT: PASS VOC samples={voc_values} Raw samples={raw_values}")
+        samples.append([data.VOC, data.Raw])
+        await fed_sleep_ms(wdt, int(_SAMPLE_INTERVAL_S * 1000))
+    read_task.cancel()
+    died = None
+    try:
+        await read_task
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:  # a read task that died on its own is a fact the host fails on
+        died = repr(e)
+    reader.stop_timer()
+    voc = [v for v, _raw in samples if v is not None]
+    fact("samples", samples)
+    fact("max_step_jump", max((abs(b - a) for a, b in zip(voc, voc[1:])), default=0))
+    fact("max_step_jump_bound", _MAX_SINGLE_STEP_JUMP)
+    fact("blackout_s", _BLACKOUT_WAIT_S)
+    fact("died", died)
+    done()
 
 
 asyncio.run(_main())

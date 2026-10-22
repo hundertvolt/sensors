@@ -1,0 +1,20 @@
+U18 lane W: the WiFi state machine, one LED flash task, the GET overlay and the radio rung
+
+- STA path: an empty SSID returns to the hotspot with no failure streak (and no result to judge);
+  the 60 s retry wait after a lost link runs outside wifi_mode_lock; the connect poll stops at
+  STAT_GOT_IP, words BADAUTH as "authentication or handshake failed" and persists one no-verdict
+  warning; the fallback to the hotspot and the permanent deactivation persist a warning each.
+- Mode switch returns a bool; the hotspot bring-up is split out, a selected AP without a link is
+  brought up again in place and counts as no client; an unknown stations list or an unreadable
+  status is unknown, never "no client" or "down", each persisting one warning.
+- The uptime tick records its arm and _connect_loop() retries a failed one (E17); a hotspot timer
+  that cannot arm persists E17; a missing configuration keeps LEDWifiOn on its default.
+- One flash task through _run_led_pattern(): hotspot 2.9/0.1 s, a station on the hotspot 1.5/1.5 s,
+  deactivated 0.1/2.9 s; a cancel touches no LED; a task that ended on a fault starts again.
+- GET /networking shows the value the radio uses (_cfg_overlay(), _value_in_use()); _recover_device()
+  re-selects the current mode as the participant rung (None while deactivated).
+- Named CYW43 values (_STAT_JOINED_NO_IP, _PM_NO_POWERSAVE), comments and docstring; the tests for
+  every change, the captive-DNS integration on plain tuples through the shim with an ordered proof.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

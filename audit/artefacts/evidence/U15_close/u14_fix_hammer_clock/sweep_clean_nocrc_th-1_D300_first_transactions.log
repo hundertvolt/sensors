@@ -1,0 +1,40 @@
+ok   k=1 D=300 stalled=1 window_sleeps=3164 window_failed_calls=0 responder_failed_listens=0+0 1785ms: pass
+ok   k=2 D=300 stalled=1 window_sleeps=3156 window_failed_calls=0 responder_failed_listens=0+0 1774ms: pass
+FLIP k=3 D=300 stalled=1 window_sleeps=4089 window_failed_calls=1 responder_failed_listens=1+0 2498ms: FAIL AssertionError: only 149/150 hammered transactions completed
+FLIP k=4 D=300 stalled=1 window_sleeps=4115 window_failed_calls=1 responder_failed_listens=1+0 2475ms: FAIL AssertionError: only 149/150 hammered transactions completed
+FLIP k=5 D=300 stalled=1 window_sleeps=4136 window_failed_calls=1 responder_failed_listens=1+0 2460ms: FAIL AssertionError: only 149/150 hammered transactions completed
+ok   k=6 D=300 stalled=1 window_sleeps=3153 window_failed_calls=0 responder_failed_listens=0+0 1759ms: pass
+FLIP k=7 D=300 stalled=1 window_sleeps=4542 window_failed_calls=1 responder_failed_listens=1+0 2691ms: FAIL AssertionError: only 149/150 hammered transactions completed
+FLIP k=8 D=300 stalled=1 window_sleeps=4546 window_failed_calls=1 responder_failed_listens=1+0 2690ms: FAIL AssertionError: only 149/150 hammered transactions completed
+FLIP k=9 D=300 stalled=1 window_sleeps=4569 window_failed_calls=1 responder_failed_listens=1+0 2713ms: FAIL AssertionError: only 149/150 hammered transactions completed
+ok   k=10 D=300 stalled=1 window_sleeps=3132 window_failed_calls=0 responder_failed_listens=0+0 1742ms: pass
+FLIP k=11 D=300 stalled=1 window_sleeps=4136 window_failed_calls=1 responder_failed_listens=1+0 2448ms: FAIL AssertionError: only 149/150 hammered transactions completed
+FLIP k=12 D=300 stalled=1 window_sleeps=4127 window_failed_calls=1 responder_failed_listens=1+0 2486ms: FAIL AssertionError: only 149/150 hammered transactions completed
+FLIP k=13 D=300 stalled=1 window_sleeps=4119 window_failed_calls=1 responder_failed_listens=1+0 2462ms: FAIL AssertionError: only 149/150 hammered transactions completed
+FLIP k=14 D=300 stalled=1 window_sleeps=4578 window_failed_calls=1 responder_failed_listens=1+0 2708ms: FAIL AssertionError: only 149/150 hammered transactions completed
+FLIP k=15 D=300 stalled=1 window_sleeps=4524 window_failed_calls=1 responder_failed_listens=1+0 2685ms: FAIL AssertionError: only 149/150 hammered transactions completed
+FLIP k=16 D=300 stalled=1 window_sleeps=4555 window_failed_calls=1 responder_failed_listens=1+0 2721ms: FAIL AssertionError: only 149/150 hammered transactions completed
+FLIP k=17 D=300 stalled=1 window_sleeps=4552 window_failed_calls=1 responder_failed_listens=1+0 2695ms: FAIL AssertionError: only 149/150 hammered transactions completed
+FLIP k=18 D=300 stalled=1 window_sleeps=4121 window_failed_calls=1 responder_failed_listens=1+0 2438ms: FAIL AssertionError: only 149/150 hammered transactions completed
+FLIP k=19 D=300 stalled=1 window_sleeps=4142 window_failed_calls=1 responder_failed_listens=1+0 2456ms: FAIL AssertionError: only 149/150 hammered transactions completed
+FLIP k=20 D=300 stalled=1 window_sleeps=4101 window_failed_calls=1 responder_failed_listens=1+0 2475ms: FAIL AssertionError: only 149/150 hammered transactions completed
+FLIP k=21 D=300 stalled=1 window_sleeps=4109 window_failed_calls=1 responder_failed_listens=1+0 2499ms: FAIL AssertionError: only 149/150 hammered transactions completed
+ok   k=22 D=300 stalled=1 window_sleeps=3139 window_failed_calls=0 responder_failed_listens=0+0 1752ms: pass
+FLIP k=23 D=300 stalled=1 window_sleeps=4555 window_failed_calls=1 responder_failed_listens=1+0 2710ms: FAIL AssertionError: only 149/150 hammered transactions completed
+FLIP k=24 D=300 stalled=1 window_sleeps=4544 window_failed_calls=1 responder_failed_listens=1+0 2706ms: FAIL AssertionError: only 149/150 hammered transactions completed
+ok   k=25 D=300 stalled=1 window_sleeps=3160 window_failed_calls=0 responder_failed_listens=0+0 1756ms: pass
+ok   k=26 D=300 stalled=1 window_sleeps=3150 window_failed_calls=0 responder_failed_listens=0+0 1739ms: pass
+FLIP k=27 D=300 stalled=1 window_sleeps=4148 window_failed_calls=1 responder_failed_listens=0+0 2484ms: FAIL AssertionError: only 149/150 hammered transactions completed
+FLIP k=28 D=300 stalled=1 window_sleeps=4142 window_failed_calls=1 responder_failed_listens=0+0 2469ms: FAIL AssertionError: only 149/150 hammered transactions completed
+FLIP k=29 D=300 stalled=1 window_sleeps=4148 window_failed_calls=1 responder_failed_listens=0+0 2483ms: FAIL AssertionError: only 149/150 hammered transactions completed
+ok   k=30 D=300 stalled=1 window_sleeps=3154 window_failed_calls=0 responder_failed_listens=0+0 1745ms: pass
+ok   k=31 D=300 stalled=1 window_sleeps=3162 window_failed_calls=0 responder_failed_listens=0+0 1761ms: pass
+ok   k=32 D=300 stalled=1 window_sleeps=3167 window_failed_calls=0 responder_failed_listens=0+0 1762ms: pass
+ok   k=33 D=300 stalled=1 window_sleeps=3157 window_failed_calls=0 responder_failed_listens=0+0 1748ms: pass
+ok   k=34 D=300 stalled=1 window_sleeps=3156 window_failed_calls=0 responder_failed_listens=0+0 1764ms: pass
+FLIP k=35 D=300 stalled=1 window_sleeps=4133 window_failed_calls=1 responder_failed_listens=1+0 2477ms: FAIL AssertionError: only 149/150 hammered transactions completed
+FLIP k=36 D=300 stalled=1 window_sleeps=4120 window_failed_calls=1 responder_failed_listens=1+0 2444ms: FAIL AssertionError: only 149/150 hammered transactions completed
+FLIP k=37 D=300 stalled=1 window_sleeps=4122 window_failed_calls=1 responder_failed_listens=1+0 2448ms: FAIL AssertionError: only 149/150 hammered transactions completed
+ok   k=38 D=300 stalled=1 window_sleeps=3156 window_failed_calls=0 responder_failed_listens=0+0 1755ms: pass
+FLIP k=39 D=300 stalled=1 window_sleeps=4570 window_failed_calls=1 responder_failed_listens=1+0 2742ms: FAIL AssertionError: only 149/150 hammered transactions completed
+FLIP k=40 D=300 stalled=1 window_sleeps=4573 window_failed_calls=1 responder_failed_listens=1+0 2694ms: FAIL AssertionError: only 149/150 hammered transactions completed

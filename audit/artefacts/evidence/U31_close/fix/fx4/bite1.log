@@ -1,0 +1,24 @@
+.F                                                                       [100%]
+=================================== FAILURES ===================================
+_ test_the_settle_window_begins_after_the_stop_and_drops_no_led_frame[one LED frame of lag] _
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u31/fx4/bite_tree/scripts/_digital_twin_scenarios.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11837/test_the_settle_window_begins_1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f5869561950>
+capsys = <_pytest.capture.CaptureFixture object at 0x7f5869838d90>
+after = (2000, 0, 900), settles = False
+
+    @pytest.mark.parametrize(("after", "settles"), [((60000, -1, 60000), True), ((2000, 0, 900), False)], ids=["the window after the straddling one", "one LED frame of lag"])
+    def test_the_settle_window_begins_after_the_stop_and_drops_no_led_frame(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], after: "tuple[int, int, int]", settles: bool) -> None:
+        # The line after the straddling one closes a window begun after the stop: it settles under one LED frame (the
+        # neopixel driver's frame period), and neither the straddling window nor a later one stands in for it.
+        frame_us = 1000 // module_int_const(harness.SRC_DIR, "asy_neopixel_driver.py", "_NEOPIXEL_FREQ_HZ") * 1000
+        failures, _printed, _evidence = _lag_run(harness, tmp_path, monkeypatch, capsys, [240000, 3000, 2500, 2800], (after[0], frame_us + after[1], after[2]))
+>       assert (failures == []) if settles else any("did not settle" in f for f in failures), failures
+E       AssertionError: []
+E       assert False
+
+../../../wt-u31fx4/tests_scripts/test_digital_twin_scenarios.py:306: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_the_settle_window_begins_after_the_stop_and_drops_no_led_frame[one LED frame of lag]
+1 failed, 1 passed, 55 deselected in 0.26s

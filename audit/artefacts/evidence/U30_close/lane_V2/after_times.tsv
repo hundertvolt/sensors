@@ -1,0 +1,7 @@
+py:tests_scripts/test_digital_twin_ci_suite_errcount.py	1.08	0	0	0
+py:tests_scripts/test_twin_process_spawn.py	0.35	0	0	0
+py:tests_scripts/test_digital_twin_scenarios.py	1.10	1	0	0
+scen:dev@-1	449.41	0	0	0
+scen:dev@32768	454.51	0	0	0
+scen:wozi@-1	353.39	0	0	0
+scen:wozi@32768	356.53	0	0	0

@@ -1,0 +1,25 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_____________ test_the_runner_never_writes_the_github_step_summary _____________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/laneC/bite_summary')
+
+    def test_the_runner_never_writes_the_github_step_summary(repo_root: Path) -> None:
+        # Its verdict reaches GitHub as ::error annotations and the summary block on stdout, never the step summary: no
+        # file it sources or runs as a helper for its summary names it either, the list read from its own lines.
+        text = _test_sh_text(repo_root)
+        imported = [f"scripts/{name}.py" for name in re.findall(r"^import (_\w+)$", text, re.MULTILINE)]  # a heredoc's, scripts/ on its path
+        helpers = sorted(set(re.findall(r"^\s*(?:source|\.)\s+(scripts/[\w.]+)", text, re.MULTILINE) + re.findall(r"\buv run (?:--no-sync )?(scripts/[\w.]+)", text) + imported))
+        assert {"scripts/_summary_block.sh", "scripts/_summary_block.py", "scripts/_archive_evidence.py"} <= set(helpers), helpers
+        for path in ["scripts/test.sh", *helpers]:
+>           assert "GITHUB_STEP_SUMMARY" not in (repo_root / path).read_text(encoding="utf-8"), f"{path} writes the GitHub step summary"
+E           AssertionError: scripts/_summary_block.py writes the GitHub step summary
+E           assert 'GITHUB_STEP_SUMMARY' not in '#!/usr/bin/...EP_SUMMARY\n'
+E             
+E             'GITHUB_STEP_SUMMARY' is contained here:
+E                planted: GITHUB_STEP_SUMMARY
+
+tests_scripts/test_test_sh.py:2044: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_test_sh.py::test_the_runner_never_writes_the_github_step_summary
+1 failed, 169 deselected in 0.29s
