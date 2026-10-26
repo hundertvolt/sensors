@@ -148,6 +148,7 @@ def test_real_device_boot_entry_records_every_exception_ending_the_loop_before_t
     stmts = _body(_real(device).boot_entry_source)
     record_import = "from asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record"
     assert _index(stmts, record_import) > _index(stmts, f"from sensortask_{device} import main")
+    assert _index(stmts, "from asy_print_log import console, report_if_fatal") > _index(stmts, f"from sensortask_{device} import main")
     tail = stmts[-1]
     assert isinstance(tail, ast.Try)
     assert ast.unparse(stmts[-2]) == "ended: BaseException | None = None"  # bound first, so the handler's binding never grows the globals dict
@@ -156,14 +157,14 @@ def test_real_device_boot_entry_records_every_exception_ending_the_loop_before_t
     assert interrupt.type is not None and ast.unparse(interrupt.type) == "KeyboardInterrupt" and interrupt.name is None
     assert [ast.unparse(s) for s in interrupt.body] == ["write_reset_record(RR_INTERRUPTED)", "raise"]
     assert other.type is not None and ast.unparse(other.type) == "BaseException" and other.name == "ended"
-    assert [ast.unparse(s) for s in other.body] == ["record_loop_end()", "print('event loop ended with an exception:')", "sys.print_exception(ended)"]
+    assert [ast.unparse(s) for s in other.body] == ["report_if_fatal(ended)", "record_loop_end()", "console('SYSTEM', 'event loop ended with an exception:')", "sys.print_exception(ended)"]
     assert not tail.orelse
     assert [ast.unparse(s) for s in tail.finalbody] == ["asyncio.new_event_loop()"]
     # Every name the tail calls is one the entry binds before it.
     bound = {alias.asname or alias.name for stmt in stmts if isinstance(stmt, (ast.Import, ast.ImportFrom)) for alias in stmt.names}
     bound |= {target.id for stmt in stmts if isinstance(stmt, ast.Assign) for target in stmt.targets if isinstance(target, ast.Name)}
     called = {node.func.id if isinstance(node.func, ast.Name) else ast.unparse(node.func).split(".")[0] for node in ast.walk(tail) if isinstance(node, ast.Call)}
-    assert called - {"print"} <= bound, called - bound
+    assert called <= bound, called - bound
 
 
 def _function(source: str, name: str) -> "ast.FunctionDef | ast.AsyncFunctionDef":
@@ -627,7 +628,7 @@ def _setup_names(source: str) -> "list[str]":
 
 def _shared_head(stmts: "list[ast.stmt]") -> "list[str]":
     # Up to gc.threshold(), without the watchdog lines and the reset records' import.
-    own = {"from machine import WDT", f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})", "from asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record"}
+    own = {"from machine import WDT", f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})", "from asy_print_log import console, report_if_fatal", "from asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record"}
     texts = [ast.unparse(stmt) for stmt in stmts]
     return [t for t in texts[: texts.index("gc.threshold(32768)") + 1] if t not in own]
 

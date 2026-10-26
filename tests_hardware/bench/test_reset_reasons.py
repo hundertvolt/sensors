@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from harness import Board
     from http_client import JSONObject
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_12_reset_reasons",)
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_12_reset_reasons", "loop_end")
 
 _SRC = "asy_system_service.py"
 _RR = {name: module_int_const(SRC_DIR, _SRC, f"_RR_{name}") for name in ("UNKNOWN", "WATCHDOG", "BOOTLOADER", "TASK_BUDGET", "STACK_EXHAUSTED", "STARVE_ARM_FAILED", "COMMAND_INCOMPLETE", "BOOT_FAILURE", "LOOP_ENDED")}
