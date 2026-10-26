@@ -33,7 +33,8 @@ _MID_WRITE_ROUNDS = 3
 _RR_POWER_ON, _RR_REBOOT, _RR_INTERRUPTED, _RR_BOOT_FAILURE, _BOOT_CONSTRUCTION = (
     module_int_const(SRC_DIR, "asy_system_service.py", name) for name in ("_RR_POWER_ON", "_RR_REBOOT", "RR_INTERRUPTED", "_RR_BOOT_FAILURE", "BOOT_CONSTRUCTION")
 )
-# The running firmware's attribution, read over USB: after a cut config reset the board may serve on its hotspot only.
+# The running firmware's attribution, read over USB through exec_live(): after a cut config reset the board may serve on
+# its hotspot only. The read ends main.py and the armed watchdog then resets the board (record 21); the reason kept is the read's.
 _READ_REASON = "import sys\nm = [v for k, v in sys.modules.items() if k.startswith('sensortask_') and getattr(v, 'sysfunct', None) is not None]\nprint('REASON', m[0].sysfunct.get_reset_reason() if m else None)\n"
 
 
@@ -207,7 +208,7 @@ def test_power_loss_during_the_shutdown_commands() -> None:
     countdown(3, "Cut power at the end of this count (2.5-4.0 s after the answer)")
     countdown(_POWER_OFF_S, "Keep power off, then restore it")
     confirm("Press Enter once power is restored and the board has booted (it may serve its hotspot only)")
-    reason = next((line.split()[1] for line in board.exec(_READ_REASON).splitlines() if line.startswith("REASON ")), None)
+    reason = next((line.split()[1] for line in board.exec_live(_READ_REASON).splitlines() if line.startswith("REASON ")), None)
     print_instruction(f"resetconfig cut: ResetReason {reason} (read over USB). Next: config_files_restore.py rewrites the saved config files once, one flash write per file.")
     confirm("Press Enter to write them back")
     restored = parse_facts(board.run_isolated(DEVICE_SCRIPTS_DIR / "config_files_restore.py", files=[f"{name}:{text}" for name, text in saved.items()]))

@@ -52,8 +52,8 @@ _RESET_ERRORS_TIMEOUT_S = 30.0
 _ERRCOUNT_TIMEOUT_S = 10.0
 # A task-level raise: a supervised task's, or the supervisor's own, which ends in a watchdog reset.
 _RAISED = (code("E", "TASK_RAISED"), code("E", "SUPERVISOR_RAISED"))
-# The flash tier has no network client: the live firmware's own SYSTEM logger read over the REPL, from its RAM copy
-# only (no FRAM access). Entering the REPL interrupts the firmware, so a caller reads outside its observed window.
+# The flash tier has no network client: the live firmware's own SYSTEM logger read through exec_live(), which keeps its
+# modules, from its RAM copy only (no FRAM access). The read ends main.py, so a caller reads outside its observed window.
 _READ_SYSTEM_LOG = (
     "import asyncio, json, sys\n"
     "m = [v for k, v in sys.modules.items() if k.startswith('sensortask_') and getattr(v, 'sysfunct', None) is not None]\n"
@@ -147,7 +147,7 @@ def new_task_raised(before: "dict[str, ErrcountEntry]", after: "dict[str, Errcou
 
 def read_live_system_log(board: "Board") -> "dict[str, ErrcountEntry]":
     # SYSTEM's log in /status's errcount shape, read off the running firmware over the REPL (see _READ_SYSTEM_LOG).
-    output = board.exec(_READ_SYSTEM_LOG)
+    output = board.exec_live(_READ_SYSTEM_LOG)
     line = next((ln for ln in output.splitlines() if ln.startswith("SYSLOG ")), None)
     assert line is not None, f"the board printed no SYSLOG line:\n{output}"
     entry = json.loads(line[len("SYSLOG ") :])

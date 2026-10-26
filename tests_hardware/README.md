@@ -246,6 +246,7 @@ sudo nmcli connection delete br0-wifi-ap br0-eth0 br0
 | Operation | Flash write | What it does to the running firmware |
 |---|---|---|
 | `mpremote` `exec`, `run`, `mount`, `ls`, `cat` | none | enters the raw REPL with Ctrl-C, which stops the running `main.py` (`tools/mpremote/mpremote/transport_serial.py`'s `enter_raw_repl()`, v1.29.0); the soft reset that follows keeps the armed watchdog, the GC threshold, `ticks_ms()` and the pin muxing and never re-runs `main.py`, so every raw-REPL session ends in a hard reset (SPECIFICATION.md Part F.1) |
+| `mpremote` `resume exec` (`Board.exec_live()`) | none | the same Ctrl-C, but no soft reset (`resume` clears mpremote's auto soft reset, `tools/mpremote/mpremote/commands.py`'s `do_resume()`, v1.29.0): `main.py`'s `KeyboardInterrupt` clause writes reset record 21 and the REPL keeps every module, so the read meets the running firmware's objects; nothing feeds the armed watchdog after it, which resets the board within one period of the firmware's last feed |
 | `mpremote` `reset` | none | an `exec` of `machine.reset()` (the shortcut table in `tools/mpremote/mpremote/main.py`, v1.29.0): the firmware restarts |
 | `mpremote` `cp`, `rm`, `mkdir`, `rmdir` | the flash filesystem | stops `main.py` like the row above, then writes |
 | a script under `mpremote run` that persists config | the flash filesystem | `_set_dict_cfg()` → `ConfigManager.write_config()` → `flush_pending()` writes the config file like any test's write, counted against `persistence_write` |
@@ -1148,8 +1149,14 @@ a live question:
   **resolved: no.** Confirmed against the pinned MicroPython C source and empirically on real
   hardware: only a genuine `hard_reset()` resumes the live system; `exec()`/`run_isolated()` never
   do, regardless of `soft_reset_after`. See `harness.Board.run_isolated()`'s own docstring for the
-  full finding. Tests that need to observe the *real* boot sequence correctly use `hard_reset()` +
-  `tail_log()` instead, for exactly this reason.
+  full finding. The two read paths differ in what they meet: `exec()`'s raw-REPL Ctrl-D soft reset
+  (`ports/rp2/main.c`'s `soft_reset_exit`, then `mp_deinit()`/`mp_init()`) leaves a fresh
+  interpreter whose `sys.modules` holds no firmware module, so a read of the running firmware's
+  objects goes through `exec_live()` (`mpremote resume exec`), which skips that reset and meets the
+  parked firmware; the armed watchdog then resets the board, cause WDT, record 21
+  (`tests_scripts/test_harness_mpremote_retry.py` pins both, and that every such read uses it).
+  Tests that need to observe the *real* boot sequence correctly use `hard_reset()` + `tail_log()`
+  instead, for exactly this reason.
 - **A device script's heap reading is taken inside `main.py`'s aged heap, so a standalone figure and
   an in-suite one are not comparable.** Same consequence as the bullet above, and it has produced a
   false conclusion once: freshly flashed, the heap probe read 95,104 B and passed; deep in a suite

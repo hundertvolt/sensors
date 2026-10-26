@@ -34,7 +34,7 @@ from buildgen.graph import build_construction_order
 from buildgen.jsontypes import JsonDict
 from buildgen.schema_ast import extract_field_schemas
 from buildgen.source_ast import parse_source
-from buildgen.validate import build_model, device_max_connections_by_name
+from buildgen.validate import _WDT_TIMEOUT_MS, build_model, device_max_connections_by_name
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -866,13 +866,27 @@ class Board:
         self._mpremote("exec", "import machine; machine.bootloader()", timeout_s=_MPREMOTE_SHORT_TIMEOUT_S)
 
     def exec(self, expr: str, timeout_s: "float | None" = None) -> str:
-        # `mpremote exec "<expr>"` in a fresh raw-REPL session, which stops main.py first; never for passive
-        # observation of a live system - tail_log() is for that.
+        # `mpremote exec "<expr>"`: its Ctrl-C stops main.py, then the auto soft reset (Ctrl-D in the raw REPL) runs it in
+        # a fresh interpreter that holds no firmware module - exec_live() reads the running firmware, tail_log() watches it.
         result = self._mpremote("exec", expr, timeout_s=timeout_s)
         if result.returncode != 0:
             # Both streams included: a device-side traceback prints on mpremote's stdout, not
             # stderr, and would otherwise be silently dropped.
             raise HardwareTestFailureError(f"mpremote exec {expr!r} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+        return result.stdout
+
+    def exec_live(self, expr: str, timeout_s: "float | None" = None) -> str:
+        # `mpremote resume exec "<expr>"`: no soft reset. Its Ctrl-C ends main.py through the boot entry's KeyboardInterrupt
+        # clause (record 21; its new_event_loop() keeps the dead loop's tasks from resuming under the read's asyncio.run()),
+        # and the REPL keeps every module. Nothing feeds the armed watchdog then: it resets the board, cause WDT, record 21.
+        window = _WDT_TIMEOUT_MS / 1000  # that reset comes within one period of the firmware's last feed: the read ends first
+        if timeout_s is not None and timeout_s > window:
+            raise ValueError(f"exec_live() bound {timeout_s}s outlives the {window}s watchdog period the parked firmware resets within")
+        # Never retried: past its Ctrl-C a retry meets the parked interpreter with less of the window left, or after the
+        # watchdog's reset a fresh boot it would interrupt and read as the boot under test.
+        result = self._mpremote("resume", "exec", expr, timeout_s=timeout_s or window, allow_recovery=False)
+        if result.returncode != 0:
+            raise HardwareTestFailureError(f"mpremote resume exec {expr!r} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
         return result.stdout
 
     def hard_reset(self) -> None:
