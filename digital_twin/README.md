@@ -262,6 +262,7 @@ acceptance carrying its reason and its actor's tag, or `assumption` with its BAC
 | Fault surface | the port raises only certain faults | faults it cannot produce are refused | — | L2 | fixed: `D fram::write_fault_injection_is_refused`, `D launch::parse_fault_spec_has_no_fram_write_fault` |
 | Fault surface | no rp2 bus call raises a stack overflow | `--fault DEVICE:OP:stack` queues one, a twin-only knob proving the reboot path | `py/runtime.c:1786` | L2 only | fixed: `D launch::a_stack_fault_raises_one_stack_exhaustion_on_the_chips_next_read` |
 | Fault surface | the FRAM chip's writes | `write_count`/`writes_at`, a test surface, not chip behaviour | — | L2 | a test surface: `D fram::payload_writes_are_counted_by_address` |
+| Runtime | the watchdog counts down in hardware, whatever the program does | the countdown is a task on the runner's loop, so it dies with that loop: a runner-cancelled `main()` keeps the loop and the countdown alive | `ports/rp2/machine_wdt.c` | L2 | accepted (agent, 2026-10-26): `--test-watchdog-fault main-exit` cancels only `main()`, the scenario harness's `watchdog_fault_main_exit` |
 
 The twin's `machine` fake meets the same contract as the unit tier's (`tests/_machine_contract.py`,
 `D machine::the_twin_meets_the_shared_machine_contract_but_for_its_pending_checks`), and every rp2
@@ -328,9 +329,10 @@ NTP config pointing at the local responder it starts, so the device syncs withou
 bare, no-flags run just launches the real object graph and serves forever, the same as a real rp2040
 boot would. There is no `--soak` flag: the automated HTTP+memory-trend soak check is host-side
 (SPECIFICATION.md's "Driver/DUT process separation" Part): the twin only exposes the one
-piece of itself a host-side driver genuinely cannot get any other way, `gc.mem_free()`, via the
-opt-in `--mem-sample-interval-ms N` flag (prints `MEM_SAMPLE <time.time()> <gc.mem_free()>` lines
-to its own stdout on that cadence; unset by default, no sampling). `--stop-file PATH` makes
+piece of itself a host-side driver cannot get as a stream, `gc.mem_free()` (`/status`'s `MemFree`
+is one poll's reading), via the opt-in `--mem-sample-interval-ms N` flag (prints
+`MEM_SAMPLE <time.ticks_ms()> <gc.mem_free()>` lines to its own stdout on that cadence; unset by
+default, no sampling). `--stop-file PATH` makes
 `--duration` an upper bound: the run ends as soon as `PATH` exists, on the same clean path a finished
 duration takes (`tests_scripts/test_digital_twin_generated_boot.py` writes it once its smoke loop is
 done, rather than idling out the bound) (agent, 2026-10-08). See "Runner flags" below for every flag,
@@ -465,11 +467,16 @@ host-side harness reads:
 | `--test-loop-lag-ms N` | `LOOP_LAG max_us=<n> p99_us=<n> samples=<n> <link key>=<transfers> ...` | a task sleeping N ms at a time records each wake's overshoot; one line per 5 s window, that window's figures alone (SPECIFICATION.md Part F.3's `lag.loop`), ending with each wired `uart_link`'s transfers so far, one `<link key>=<transfers>` per link |
 | `--test-drop-timer-fire reset\|sequencer` | `DROP_ARMED <site>`, `FIRE_DROPPED <site> callbacks=<n>` | the twin's soft-callback drop is set before that one-shot's arm and cleared once its fire was dropped, as rp2's full scheduler queue loses it (SPECIFICATION.md Part F.1) |
 | `--test-kbd-traceback` | `KBD_CAPTURED <bool>`, `KBD_TRACEBACK` | the interpreter's one `KeyboardInterrupt` object, caught at start through a SIGINT to itself; a `KBD_TRACEBACK` line on stdin prints where the newest interrupt was raised |
+| `--test-watchdog-fault supervisor-raise\|main-exit\|block` | `WDT_AT_FAULT <feed_count>` | after the supervisor's first feed, one fault that ends the feeding: the dead-task report raises as a task ends, the product's `main()` is cancelled, or the whole loop blocks past the watchdog timeout |
+
+`main-exit` keeps the runner's loop alive, since the twin's WDT countdown dies with its loop.
 
 The runner prints `WATCHDOG_WOULD_TRIGGER count=<n>` whenever its WDT would have reset silicon, and
 one shutdown line naming `would_have_triggered_count`, `feed_count`, `largest_feed_gap_ms`,
 `wdt_timeout_ms`, the kept scratch registers, `public_destinations_refused`, `flash_stall_longest_ms`,
-`gc_block_bytes` and, per UART link, its transfers, failures and overruns (laps and receive errors
+`gc_block_bytes`, the FRAM chip's payload writes (`fram_writes`, `fram_writes_by` per FRAM-backed
+logger, `fram_silent_writes`, `fram_silent_wrens`, and `fram_writes_unattributed` once the address
+table is full) and, per UART link, its transfers, failures and overruns (laps and receive errors
 counted together). The line comes after a `gc.collect()` and `micropython.mem_info()`'s GC summary,
 whose last line ends `max free sz: <blocks>`; `scripts/_twin_process.py`'s `ShutdownLine` refuses a
 line without that summary above it and reads the largest free block from it. Exit codes: 0 a clean
@@ -509,6 +516,22 @@ allocation of the whole image is needed (MicroPython's GC never relocates live b
 (16385 bytes for a 0x2000-byte FRAM), which failed with a real `MemoryError` after a few seconds of
 the real task supervisor fragmenting the heap, with ~1.5MB of *total* `gc.mem_free()` still
 available. Chunked reads/writes only ever need one small chunk contiguous at a time.
+
+**A save writes the image only up to the chip's last nonzero byte** (the header's `"used"`; a file
+without it holds the whole chip, and one naming more than the chip holds loads blank): the blank
+tail a factory-fresh chip reads as zeros is never written to the host, CLAUDE.md's host-wear rule.
+A twin process saves once, at its shutdown, and a `dev` pass of the twin CI launches 94 in its suite
+parts alone: each save of the 256 KB chip wrote 524,328 bytes of hex before, up to 49.3 MB over
+those 94, and the 63 images one pass left behind now hold 45-2,328 bytes (agent, 2026-10-26).
+
+**`writes_at` is sized for its 2048-key cap when the chip is built** (`dict.fromkeys()` over 2048
+items, then one `del`: `py/objdict.c:288-296`, `py/map.c:281-290`), so counting a new address never
+rehashes. A rehash needs one contiguous table, 19,568 bytes from 919 to 1223 slots on the Unix port
+(`py/map.c:68-73, 131-148`), and inside the product's erase on a fragmented -1 heap that allocation
+failed: the shutdown's catch-all ended the sequence (`asy_system_service.py`), nothing fed the
+watchdog, and the twin, whose watchdog only records, hung until the suite killed it, so the next
+boot read a power-on. Run 13's erasefram cell went red in 1 of 8 replays before and 0 of 40 after
+(agent, 2026-10-26).
 
 **The memory itself is held in 4KB pages (`_PagedMemory`), never one bytearray for the whole chip.**
 Same cause, at chip construction: dev's 256KB MB85RS2MTA as one `bytearray` needs a 256KB contiguous
@@ -667,14 +690,17 @@ link runs in both CRC modes. The
 fault matrix in runs 3/4/5c/10 is derived from that device's own real wiring plan and instances,
 never a hardcoded driver list, and every fault it leaves out is printed with its reason (`_LEFT_OUT`):
 
-1. **Baseline boot** — walk every `GET` route of the device's API reference and `/`; with no
-   station link the clock has never synced, so
-   `UTCTime` and `LocalTime` read null. Then `PUT` a setting on each of
-   `/system` (`DebugLevel=5`), `/notification` (`WarnCO2=1800`), `/sensors`
-   (`SCD30.MeasInterval=4`), `/networking` (`Hostname`), and `/status` (`ResetErrors`) — every route
-   that accepts `PUT`. Shut down cleanly (`SIGINT`, matching the documented Ctrl-C path — a plain
-   `SIGTERM`/`terminate()` would skip `run_generic_integration.py`'s own FRAM/SCD30 flush) and confirm
-   the state files actually landed on disk.
+1. **Baseline boot, then the reformat relaunch** — walk every `GET` route of the device's API
+   reference and `/`, then read, keep (`runs/run1_errcount.json`) and check the logs — no error or
+   warning entry from any module — then clear them (`ResetErrors`); with no station link the clock
+   has never synced, so `UTCTime`, `LocalTime` and `TimeStale` read null. Shut down cleanly through
+   the stop file (`main()`'s clean path, which flushes the FRAM/SCD30 state as the `SIGINT` handler
+   does; `SIGINT` is the fallback, never `SIGTERM`) and confirm the state files landed on disk. Then
+   relaunch on an emptied config directory beside the kept FRAM state, as a reformatted filesystem
+   leaves a unit: `SYSTEM` logs exactly one W `CONFIG_LOST` (kept in `runs/`), and a setting is
+   `PUT` on each of `/system` (`DebugLevel=5`), `/notification` (`WarnCO2=1800`), `/sensors`
+   (`SCD30.MeasInterval=4`), `/networking` (`Hostname`) and `/status` (`ResetErrors`) — every
+   route that accepts `PUT`.
 2. **Real reboot, settings persistence** — a fresh subprocess against the *same* persisted state
    (the whole point is testing what survives). Confirms every setting
    from run 1 is still there after a genuine process restart, and that the now-persisted
@@ -773,13 +799,13 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
 11. **Clean soak run — host-driven, not a twin-side `--soak` flag.** A fresh clean-boot twin
     subprocess is armed with `--mem-sample-interval-ms` only; the *host* (this script's own
     `_run_11_soak()`, plain CPython) drives warm-up cycles until no cycle has set a new `MEM_SAMPLE`
-    floor for 20 cycles (`l2.soak_plateau_cycles`; at most 100, `l2.soak_warmup_cycles`), then 20
+    floor for 20 cycles (`l2.soak_plateau_cycles`; at most 100, `l2.soak_warmup_cycles`), then 80
     measured cycles, each walking every `GET` route of the device's API reference and `/` directly
-    over HTTP (see "Run 11's two calibrated numbers" below), checks zero HTTP failures and
-    `would_have_triggered_count == 0`, then parses
-    the twin's own captured `MEM_SAMPLE <time.time()> <gc.mem_free()>` log lines (`gc.mem_free()`
-    has no REST route and no other way out of the process — SPECIFICATION.md's "Driver/DUT process
-    separation" Part) and computes the early-quarter-vs-late-quarter memory-trend check
+    over HTTP (see "Run 11's calibrated numbers" below), checks zero HTTP failures and
+    `would_have_triggered_count == 0`, then parses the twin's own captured
+    `MEM_SAMPLE <time.ticks_ms()> <gc.mem_free()>` log lines lying between the cycles' first and
+    last byte offsets in the log (`/status`'s `MemFree` is one poll's reading, not a stream —
+    SPECIFICATION.md's "Driver/DUT process separation" Part) and computes the early-quarter-vs-late-quarter memory-trend check
     (`_mem_trend()`, unit-tested directly in
     `tests_scripts/test_digital_twin_ci_suite_soak.py` — no live subprocess needed for that half).
     One boot, one verdict (owner, 2026-09-26: 'A retry or a longer timeout never counts as a race
@@ -866,15 +892,16 @@ if any check fails, failing the CI job.
 Almost every request-driving and response-observing job moved host-side (SPECIFICATION.md's
 "Driver/DUT process separation"). Two things could not, and both are deliberate:
 
-- **`--mem-sample-interval-ms`** — `gc.mem_free()` exists only inside this process's own heap and
-  deliberately has no REST route. It samples on a fixed wall-clock timer rather than once per
-  host-driven cycle, because the host has no way to signal "a cycle finished" without adding the
-  very channel this design avoids, and a denser stream is at least as sensitive to a real trend.
-  Each line is timestamped off the same wall clock the host reads, so the host selects the samples
-  inside its own window — the same way it scrapes the watchdog counter from stdout, never by
-  calling back in. Its `gc.collect()` is measurement instrumentation, Part I.4(e)'s one twin
-  exception (owner, 2026-09-26), kept while a sparser sampling interval gives Run 11 the same
-  verdict, not a pressure workaround: on a fixed timer, reaching no webserver or driver, it
+- **`--mem-sample-interval-ms`** — `gc.mem_free()` is also published as `/status`'s `MemFree`, but
+  one poll's reading is not a stream: this flag samples it inside the process on a fixed timer
+  rather than once per host-driven cycle, because the host has no way to signal "a cycle finished"
+  without adding the very channel this design avoids. Each line carries `time.ticks_ms()` for
+  diagnostics only; the host selects the samples inside its window by their position in the log,
+  never by either process's clock — the same way it scrapes the watchdog counter from stdout, never
+  by calling back in. Its `gc.collect()` is measurement instrumentation, Part I.4(e)'s one twin
+  exception (owner, 2026-09-26), kept at the calibrated 100 ms, a quarter of the 25 ms it replaced,
+  where Run 11 still tells the planted leak below from the unplanted tree (agent, 2026-10-26), not
+  a pressure workaround: on a fixed timer, reaching no webserver or driver, it
   cannot mask a real `MemoryError`. Verified by removing it (2026-09-14) — the trend check got
   *worse*, swinging min=99808/max=1347104 on a healthy run, a false positive from incidental
   reactive-GC timing.
@@ -887,9 +914,9 @@ Almost every request-driving and response-observing job moved host-side (SPECIFI
   Clearing it changes nothing over-the-wire: nothing in the request path or `asy_uart_comm.py` ever
   reads it back.
 
-### Run 11's two calibrated numbers
+### Run 11's calibrated numbers
 
-**`_SOAK_WARMUP_CYCLES = 100`, not wozi's original 40.** `dev`'s two extra `uart_link` instances
+**`_SOAK_WARMUP_CYCLES = 100`: a device with more instances settles longer after boot.** `dev`'s two extra `uart_link` instances
 mean more one-time post-boot settling — module-level caches and config-derived structures
 populated once, the same asymptotically-decaying-then-flat shape wozi's boot shows on a smaller
 scale, not an unbounded leak. Confirmed 2026-09-14: `gc.mem_free()` plateaus for both devices given
@@ -920,6 +947,16 @@ difference the trend itself measures — so a genuine leak's decline cannot infl
 meant to catch it — and sets the tolerance as a generous multiple of that. Self-calibrating per
 device, run and quarter size, with no constant to re-derive, and it covers the observed worst case
 (5889 bytes) with room left.
+
+**80 measured cycles, a `MEM_SAMPLE` every 100 ms, a tolerance of 4.0 times the quarter noise**
+(agent, 2026-10-26), calibrated on `dev` against a planted leak, a 40-byte `bytearray` kept per
+request. The plant turned Run 11 red in all 4 boots, two per GC stage (a decline of 55.5-58.9 KB
+against tolerances of 33.2-41.5 KB), and the unplanted tree stayed green at both stages (7.1 KB
+against 23.9 KB at -1, 7.8 KB against 22.9 KB at 32768). The former 20 cycles at 3.0, sampled every
+25 ms, passed the same plant in all 6 boots (8.9-14.9 KB against 15.3-22.3 KB): 20 cycles of a slow
+leak stay inside one run's own noise. The owner accepted the longer run (owner, 2026-10-23, asked
+whether Run 11's calibrated leak check, about 75-90 s more per run, stays: "Question 1: This is
+okay, go ahead."). One attempt decides, with no retry.
 
 ### Two suite-table subtleties worth reading before changing one
 

@@ -411,9 +411,9 @@ def _link_directions(module_file: str, link: "machine.UARTLink") -> "dict[str, o
 
 
 async def _mem_sampler(interval_ms: int) -> None:
-    # Optional (--mem-sample-interval-ms): gc.mem_free() lives in this heap with no REST route, so these lines feed the CI
-    # suite's Run 11 memory-trend check (_run_11_soak()); its collect is the one twin exception the gc site checker allows
-    # (scripts/_check_gc_collect_sites.py) - README.md has the reasoning and measurement.
+    # Optional (--mem-sample-interval-ms): /status's MemFree is one poll's reading, not a stream, so these lines feed the CI
+    # suite's Run 11 memory-trend check (_run_11_soak()); its collect, kept, is the one twin exception the gc site checker
+    # allows (scripts/_check_gc_collect_sites.py) - README.md has the reasoning and the calibration.
     while True:
         await asyncio.sleep_ms(interval_ms)
         gc.collect()
