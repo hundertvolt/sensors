@@ -823,6 +823,25 @@ file the session fixtures' standard-state check names ("Prerequisites" item 4). 
 never failed on the figure: the host records it for SPECIFICATION.md Part F.3's
 `stall.flash_program` row.
 
+**The listener close on silicon** (`flash/test_modlwip_listener_close.py`,
+`device_scripts/listener_close_leaves_the_pcb_pools.py`, L3, ungated: no write of any kind, no flash
+cycle and no FRAM manager) checks SPECIFICATION.md B.14.4's close and `listen()` patches on the
+flashed image. The host reads the two TCP pcb pools' descriptors, slot arrays and free-list heads
+(`memp_TCP_PCB`, `memp_TCP_PCB_LISTEN`, their `memp_memory_*_base` and `memp_tab_*`) from
+`firmware.elf` in the toolchain's rp2 build directory (`harness.elf_symbols()`, `arm-none-eabi-nm`),
+once that build's `.uf2` equals the one beside the image record (`--image-record`) and it compiled
+the patched modlwip copy. The script, production stopped, reads each descriptor - unless the board
+reports the ELF's array and head it reads no pool byte - and takes both pools in one interrupts-off
+picture; it closes a listener, then a socket whose `listen()` met a locked heap, and takes a second.
+Every slot free in both, except the one each pool hands the script's own sockets, must be
+byte-identical (at least one per pool, or the check would pass on nothing), reported by pool, slot
+and offset, and no free slot may go missing, then or after the round trip (a third picture). A bind
+without `SO_REUSEADDR` must take the port again, and one loopback round trip runs: the twin echoes
+it, while rp2's lwIP has no loopback netif (`LWIP_NETIF_LOOPBACK` 0), so silicon's answer is
+`EHOSTUNREACH`. Memory is only read (`machine.mem32`), never written by address. On an unpatched
+image the listener's stray stores are NULLs, seen only where they land on non-zero bytes; the failed
+listen's `tcp_poll()` stores a function pointer, seen anywhere. `--twin` runs the socket half only.
+
 **The loop lag under combined load** (`device_scripts/loop_lag_under_combined_load.py`) runs the
 bench build's shipped `main()` beside a 10 ms lag probe, an allocation-churn task and FRAM block
 writes in the script's own scratch region (`fram_max_size - 0x200`), while the host's readers
