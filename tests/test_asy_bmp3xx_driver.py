@@ -15,6 +15,7 @@ from _recording_print import record_prints
 from _src_const import src_int
 from _src_schema import src_schema
 from _tmp_scratch import TmpScratch
+from _untraced import untraced
 from _write_counters import WriteCountingOpen
 from machine import I2C as FakeI2C
 from machine import Timer as FakeTimer
@@ -278,7 +279,7 @@ def _stack_overflow() -> RuntimeError:
         return dive(depth + 1)
 
     try:
-        dive(0)
+        untraced(lambda: dive(0))  # a limit reached inside the coverage tracer would end tracing for the whole file
     except RuntimeError as e:
         return e
     raise AssertionError("no recursion limit reached")

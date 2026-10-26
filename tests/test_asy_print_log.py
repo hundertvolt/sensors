@@ -11,6 +11,7 @@ from _error_codes import code
 from _fram_builders import make_fram_manager
 from _recording_print import record_prints
 from _src_const import src_const
+from _untraced import untraced
 
 import asy_print_log as print_log_module
 from asy_base_classes import RegionBuffer
@@ -1810,7 +1811,7 @@ def _stack_overflow() -> RuntimeError:
         return dive(depth + 1)
 
     try:
-        dive(0)
+        untraced(lambda: dive(0))  # a limit reached inside the coverage tracer would end tracing for the whole file
     except RuntimeError as e:
         return e
     raise AssertionError("no recursion limit reached")

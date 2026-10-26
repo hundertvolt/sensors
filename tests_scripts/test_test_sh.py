@@ -1778,6 +1778,49 @@ def test_a_test_failure_outranks_a_renderer_failure(repo_root: Path, tmp_path: P
     assert _block(out).endswith("Result: FAIL\nExit code: 1\n")
 
 
+_ENDED = "runner: tracing ended after src/x.py:3 - every traced line the file ran after it is missing from its coverage\n"
+
+
+def _tracer_notes(tmp_path: Path, *tags: str) -> None:
+    # tests/_coverage_runner.py's note beside a job's dump, its tracer ended early (SPECIFICATION.md E.5.1).
+    (tmp_path / "raw").mkdir()
+    for tag in tags:
+        (tmp_path / "raw" / f"{tag}.json.incomplete").write_text(_ENDED, encoding="utf-8")
+
+
+def test_a_tracer_that_ended_early_is_listed_by_job_and_exits_three_never_one(repo_root: Path, tmp_path: Path) -> None:
+    # Its tests passed and only its coverage is short: E.5.3's code 3, the Result line saying which kind of short.
+    _tracer_notes(tmp_path, "test_ok", "test_pd[wozi]")
+    jobs: dict[str, tuple[str | None, str | None, str | None]] = {"tests/test_ok.py": _passing("test_ok"), "tests/test_pd.py[wozi]": _passing("test_pd[wozi]"), "tests/test_fine.py": _passing("test_fine")}
+    code, out, _ = _run_tail(repo_root, tmp_path, jobs, coverage=1)
+    assert code == 3, out
+    block = _block(out)
+    tail = "coverage incomplete: tracing ended after src/x.py:3 - every traced line the file ran after it is missing from its coverage"
+    assert f"\nNotes:\n  - tests/test_ok.py: {tail}\n  - tests/test_pd.py[wozi]: {tail}\nChecked nothing: none\n" in block, block
+    assert block.endswith("Result: PASS (coverage incomplete in 2 job(s), listed under Notes)\nExit code: 3\n"), block
+
+
+def test_a_tracer_note_and_a_failed_render_are_both_named(repo_root: Path, tmp_path: Path) -> None:
+    _tracer_notes(tmp_path, "test_ok")
+    code, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok")}, coverage=1, render_fails=True)
+    assert code == 3, out
+    assert _block(out).endswith("Result: PASS (coverage report not rendered; coverage incomplete in 1 job(s), listed under Notes)\nExit code: 3\n")
+
+
+def test_a_test_failure_outranks_a_tracer_note(repo_root: Path, tmp_path: Path) -> None:
+    _tracer_notes(tmp_path, "test_ok")
+    code, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok"), "tests/test_x.py": ("FAIL\n", None, None)}, coverage=1)
+    assert code == 1
+    assert _block(out).endswith("Result: FAIL\nExit code: 1\n")
+
+
+def test_a_plain_run_never_reads_a_tracer_note(repo_root: Path, tmp_path: Path) -> None:
+    _tracer_notes(tmp_path, "test_ok")
+    code, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok")})
+    assert code == 0, out
+    assert "coverage incomplete" not in out
+
+
 def test_nothing_follows_the_block_on_stdout(repo_root: Path, tmp_path: Path) -> None:
     _, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok")})
     assert out.endswith("Exit code: 0\n")
