@@ -153,6 +153,7 @@ _watchdog: "machine.WDT | None" = None  # the WDT main() builds and passes to th
 # read by _print_shutdown_line()'s two call sites: the generated module keeps no watchdog global.
 _module: "ModuleType | None" = None  # the booted module, whose FRAM-backed loggers the shutdown line attributes writes to
 _shutdown_printed = False
+_boot_phase_device = ""  # the device of the latest in-process main(), which each boot-phase line names
 _uart_counts: "list[tuple[str, _ExercisedLink, _RxCounts]]" = []  # each wired uart_link's counters, for the shutdown line
 
 # The same value and one-time placement the real firmware boot entry uses, so a twin run models
@@ -460,7 +461,9 @@ def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "T
 
 def _print_boot_phases(device: str) -> None:
     # Each boot-phase mark (asy_system_service's region-1 write) also printed as one line, so a booted run's log shows its
-    # boot order (SPECIFICATION.md Part A.7); the write is unchanged. Once per process: an in-process main() again keeps it.
+    # boot order (SPECIFICATION.md Part A.7); the write is unchanged. Installed once per process, naming the latest main()'s device.
+    global _boot_phase_device
+    _boot_phase_device = device
     service = sys.modules.get("asy_system_service")
     if service is None or service._write_region.__name__ == "_boot_phase_line":
         return
@@ -470,7 +473,7 @@ def _print_boot_phases(device: str) -> None:
     def _boot_phase_line(region: int, magic: int, value: int) -> None:
         write(region, magic, value)
         if region == 1:
-            print(f"{_LINE_PREFIX} [{device}] boot phase: {names.get(value, value)}")
+            print(f"{_LINE_PREFIX} [{_boot_phase_device}] boot phase: {names.get(value, value)}")
 
     service.__dict__["_write_region"] = _boot_phase_line  # the module global boot_phase() calls
 

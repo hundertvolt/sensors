@@ -482,6 +482,11 @@ whose last line ends `max free sz: <blocks>`; `scripts/_twin_process.py`'s `Shut
 line without that summary above it and reads the largest free block from it. Exit codes: 0 a clean
 end, 1 an error, 3 a simulated reset, 4 a bootloader entry, 5 a simulated power loss.
 
+Each boot-phase mark the product writes (`asy_system_service.boot_phase()`, SPECIFICATION.md Part
+A.7) also prints as one `[<device>] boot phase: <BOOT_NAME>` line, so a run's log shows its boot
+order. The printer is installed once per process; in a process that boots more than once (a test
+file calling `main()` again) each line names the device of the latest boot.
+
 ### FRAM persistence
 
 The FRAM twin reads back exactly what was written, including across process restarts, but only
