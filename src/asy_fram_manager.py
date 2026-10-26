@@ -797,8 +797,8 @@ class FRAMManager:
         return ok
 
     async def erase_ready(self) -> bool:
-        # The driver's own flag first: it clears on finding a loss, before `lost` is set (FRAM_SPI.set_values() yields between).
-        return self.initialized and self.fram.initialized and not self.fram.lost.is_set() and not await self.fram.get_write_protected()
+        # The driver's readiness first: it ends on finding a loss, before `lost` is set (FRAM_SPI.set_values() yields between).
+        return self.initialized and self.fram.is_ready() and not self.fram.lost.is_set() and not await self.fram.get_write_protected()
 
     async def quiesce(self, step_done: "Callable[[], None]") -> None:
         # Pauses the chunk layer, then waits out each chunk's operation in flight, calling step_done() after
