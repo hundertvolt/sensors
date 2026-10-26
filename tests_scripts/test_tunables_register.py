@@ -56,6 +56,14 @@ class Row:
     line: int
 
 
+def _is_comment_line(path: Path, line: str) -> bool:
+    return line.strip().startswith("#" if path.suffix in _HASH_SUFFIXES | {".py"} else "//")
+
+
+def _cells(line: str) -> "list[str]":
+    return [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", line.strip().strip("|"))]
+
+
 def _comments(path: Path, lines: "list[str]") -> "list[tuple[int, str, bool]]":
     # Every comment as (line, text without its marker, whether the comment has its line to itself).
     if path.suffix == ".py":
@@ -77,10 +85,6 @@ def _comments(path: Path, lines: "list[str]") -> "list[tuple[int, str, bool]]":
         if at != -1:
             found.append((number, raw[at + len(marker) :].strip(), False))
     return found
-
-
-def _is_comment_line(path: Path, line: str) -> bool:
-    return line.strip().startswith("#" if path.suffix in _HASH_SUFFIXES | {".py"} else "//")
 
 
 def _near_miss(word: str) -> bool:
@@ -111,63 +115,6 @@ def _scan_file(root: Path, path: Path, tags: "list[Tag]", problems: "list[str]")
         tags.append(Tag(rel, number, match["id"], literal))
 
 
-def collect_tags(root: Path) -> "tuple[list[Tag], list[str]]":
-    # Every tag under the scanned scopes, plus every malformed, misplaced or literal-less one.
-    files = [root / name for name in _SCAN_FILES if (root / name).is_file()]
-    for scope in _SCAN_DIRS:
-        for directory, subdirs, names in os.walk(root / scope):
-            subdirs[:] = sorted(d for d in subdirs if d not in _SKIP_DIRS)
-            files += [Path(directory) / n for n in sorted(names) if Path(n).suffix in _HASH_SUFFIXES | _SLASH_SUFFIXES | _UNREAD_SUFFIXES | {".py"}]
-    tags: list[Tag] = []
-    problems: list[str] = []
-    unread = [f for f in files if f.suffix in _UNREAD_SUFFIXES]
-    problems += [f"{f.relative_to(root).as_posix()}: holds a @{_NAME} tag in a file type this check cannot read" for f in unread if f"@{_NAME}" in f.read_text(encoding="utf-8")]
-    files = [f for f in files if f.suffix not in _UNREAD_SUFFIXES]
-    for path in files:
-        _scan_file(root, path, tags, problems)
-    return tags, problems
-
-
-def _cells(line: str) -> "list[str]":
-    return [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", line.strip().strip("|"))]
-
-
-def parse_register(spec_text: str) -> "tuple[list[Row], list[str]]":
-    # Part N's rows. A table under an N.4 heading, or one with a "Checked by" or rule-valued Kind
-    # column, holds rule rows; every other table between the markers holds tuned rows.
-    if spec_text.count(_BEGIN) != 1 or spec_text.count(_END) != 1 or spec_text.index(_BEGIN) > spec_text.index(_END):
-        return [], [f"SPECIFICATION.md must hold Part N's register exactly once between {_BEGIN} and {_END}"]
-    start = spec_text[: spec_text.index(_BEGIN)].count("\n") + 1
-    body = spec_text[spec_text.index(_BEGIN) : spec_text.index(_END)].splitlines()
-    rows: list[Row] = []
-    problems: list[str] = []
-    heading = ""
-    header: list[str] | None = None
-    for offset, raw in enumerate(body):
-        line = raw.strip()
-        if line.startswith("#"):
-            heading, header = line, None
-            continue
-        if not line.startswith("|"):
-            header = None
-            continue
-        cells = _cells(line)
-        if header is None:
-            header = [re.sub(r"\s*\(.*\)$", "", c).lower() for c in cells]
-            continue
-        if all(re.fullmatch(r":?-{3,}:?", c) for c in cells):
-            continue
-        named = dict(zip(header, cells, strict=False))
-        row_id = named.get("id", "").strip("`")
-        kind_cell = named.get("kind", "").strip("`").lower()
-        kind = "rule" if kind_cell == "rule" or "checked by" in header or "N.4" in heading else "tuned"
-        if not _ID_RE.match(row_id):
-            problems.append(f"SPECIFICATION.md:{start + offset}: row ID {row_id!r} does not match <area>.<name>")
-            continue
-        rows.append(Row(row_id, kind, named, start + offset))
-    return rows, problems
-
-
 def _sites(cell: str) -> "tuple[Counter[tuple[str, str]], list[str]]":
     # Each (file, literal) once, with the tag count it states: 1 unless written "(n tags)".
     sites: Counter[tuple[str, str]] = Counter()
@@ -181,6 +128,26 @@ def _sites(cell: str) -> "tuple[Counter[tuple[str, str]], list[str]]":
             continue
         sites[match["path"], match["literal"]] = int(match["count"] or 1)
     return sites, bad
+
+
+def _tag(tunable_id: str, literal: str) -> str:
+    return f"# @{_NAME} {tunable_id} = {literal}\n"
+
+
+def _tree(tmp_path: Path, source: str, rows: "list[str]") -> Path:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "mod.py").write_text(source, encoding="utf-8")
+    (tmp_path / "SPECIFICATION.md").write_text(f"# Part N\n\n{_BEGIN}\n## N.3\n\n{_HEAD}\n" + "\n".join(rows) + f"\n{_END}\n", encoding="utf-8")
+    return tmp_path
+
+
+def _values(tags: "list[Tag]", tunable_id: str) -> "list[float]":
+    literals = sorted({t.literal for t in tags if t.id == tunable_id})
+    assert literals, f"{tunable_id} is tagged nowhere, so its relation cannot be checked"
+    try:
+        return [float(v) for v in literals]
+    except ValueError as e:
+        raise AssertionError(f"{tunable_id}'s literals {literals} are not numbers") from e
 
 
 def check_register(tags: "list[Tag]", rows: "list[Row]") -> "list[str]":
@@ -230,20 +197,64 @@ def check_tree(root: Path) -> "list[str]":
     return problems + register_problems + check_register(tags, rows)
 
 
+def collect_tags(root: Path) -> "tuple[list[Tag], list[str]]":
+    # Every tag under the scanned scopes, plus every malformed, misplaced or literal-less one.
+    files = [root / name for name in _SCAN_FILES if (root / name).is_file()]
+    for scope in _SCAN_DIRS:
+        for directory, subdirs, names in os.walk(root / scope):
+            subdirs[:] = sorted(d for d in subdirs if d not in _SKIP_DIRS)
+            files += [Path(directory) / n for n in sorted(names) if Path(n).suffix in _HASH_SUFFIXES | _SLASH_SUFFIXES | _UNREAD_SUFFIXES | {".py"}]
+    tags: list[Tag] = []
+    problems: list[str] = []
+    unread = [f for f in files if f.suffix in _UNREAD_SUFFIXES]
+    problems += [f"{f.relative_to(root).as_posix()}: holds a @{_NAME} tag in a file type this check cannot read" for f in unread if f"@{_NAME}" in f.read_text(encoding="utf-8")]
+    files = [f for f in files if f.suffix not in _UNREAD_SUFFIXES]
+    for path in files:
+        _scan_file(root, path, tags, problems)
+    return tags, problems
+
+
+def parse_register(spec_text: str) -> "tuple[list[Row], list[str]]":
+    # Part N's rows. A table under an N.4 heading, or one with a "Checked by" or rule-valued Kind
+    # column, holds rule rows; every other table between the markers holds tuned rows.
+    if spec_text.count(_BEGIN) != 1 or spec_text.count(_END) != 1 or spec_text.index(_BEGIN) > spec_text.index(_END):
+        return [], [f"SPECIFICATION.md must hold Part N's register exactly once between {_BEGIN} and {_END}"]
+    start = spec_text[: spec_text.index(_BEGIN)].count("\n") + 1
+    body = spec_text[spec_text.index(_BEGIN) : spec_text.index(_END)].splitlines()
+    rows: list[Row] = []
+    problems: list[str] = []
+    heading = ""
+    header: list[str] | None = None
+    for offset, raw in enumerate(body):
+        line = raw.strip()
+        if line.startswith("#"):
+            heading, header = line, None
+            continue
+        if not line.startswith("|"):
+            header = None
+            continue
+        cells = _cells(line)
+        if header is None:
+            header = [re.sub(r"\s*\(.*\)$", "", c).lower() for c in cells]
+            continue
+        if all(re.fullmatch(r":?-{3,}:?", c) for c in cells):
+            continue
+        named = dict(zip(header, cells, strict=False))
+        row_id = named.get("id", "").strip("`")
+        kind_cell = named.get("kind", "").strip("`").lower()
+        kind = "rule" if kind_cell == "rule" or "checked by" in header or "N.4" in heading else "tuned"
+        if not _ID_RE.match(row_id):
+            problems.append(f"SPECIFICATION.md:{start + offset}: row ID {row_id!r} does not match <area>.<name>")
+            continue
+        rows.append(Row(row_id, kind, named, start + offset))
+    return rows, problems
+
+
 @pytest.fixture(scope="module")
 def real_tags(repo_root: Path) -> "list[Tag]":
     tags, problems = collect_tags(repo_root)
     assert not problems, "\n".join(problems)
     return tags
-
-
-def _values(tags: "list[Tag]", tunable_id: str) -> "list[float]":
-    literals = sorted({t.literal for t in tags if t.id == tunable_id})
-    assert literals, f"{tunable_id} is tagged nowhere, so its relation cannot be checked"
-    try:
-        return [float(v) for v in literals]
-    except ValueError as e:
-        raise AssertionError(f"{tunable_id}'s literals {literals} are not numbers") from e
 
 
 def test_every_tag_is_well_formed_and_sits_above_its_literal(repo_root: Path) -> None:
@@ -280,23 +291,8 @@ def test_one_page_load_fits_the_largest_shipped_connection_ceiling(repo_root: Pa
         assert per_load <= ceiling, f"one page load opens {per_load:g} connections, above the largest shipped max_connections ({ceiling})"
 
 
-# ---------------------------------------------------------------------------
-# The check on a tmp tree: each planted defect is reported, and the clean tree reports nothing.
-# ---------------------------------------------------------------------------
-
 _ROW = "| `{id}` | {value} | `{sites}` | none | owner decision (owner, 2026-09-26) | 2x | any change |"
 _HEAD = "| ID | Value | Sites (file — literal) | Dependants | Basis | Margin | Re-check trigger |\n|---|---|---|---|---|---|---|"
-
-
-def _tree(tmp_path: Path, source: str, rows: "list[str]") -> Path:
-    (tmp_path / "src").mkdir()
-    (tmp_path / "src" / "mod.py").write_text(source, encoding="utf-8")
-    (tmp_path / "SPECIFICATION.md").write_text(f"# Part N\n\n{_BEGIN}\n## N.3\n\n{_HEAD}\n" + "\n".join(rows) + f"\n{_END}\n", encoding="utf-8")
-    return tmp_path
-
-
-def _tag(tunable_id: str, literal: str) -> str:
-    return f"# @{_NAME} {tunable_id} = {literal}\n"
 
 
 def test_a_clean_tree_reports_nothing(tmp_path: Path) -> None:
