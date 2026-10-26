@@ -6,6 +6,7 @@ import ast
 import re
 from typing import TYPE_CHECKING
 
+import serial
 from error_log_helpers import get_errcount, save_errcount
 from harness import DEVICE_SCRIPTS_DIR, SRC_DIR, Board, device_toml, fram_backed_logger_names, parse_facts, save_fram_raw, wait_until
 from runner import confirm, confirm_pass, countdown, dut_ip, observe, print_instruction, put_by_hand, record_assertion, register, rest_get
@@ -23,10 +24,13 @@ _POWER_OFF_S = 10
 _SERVING_TIMEOUT_S = 120.0
 # @tunable l4.manual_persistence_script_timeout_s = 180.0
 _SCRIPT_TIMEOUT_S = 180.0
+# @tunable l4.manual_persistence_repl_prompt_s = 3.0
+_REPL_PROMPT_S = 3.0
 _POWER_ON_BIT = 0x100  # ResetBits' CHIP_RESET HAD_POR (src/asy_system_service.py's _CHIP_RESET_BITS)
 _RUN_BIT = 0x10000  # ResetBits' CHIP_RESET HAD_RUN
+_WATCHDOG_BITS = 0x3  # ResetBits' REASON half, TIMER and FORCE: both clear when no watchdog reset followed the power-on
 _MID_WRITE_ROUNDS = 3
-_RR_POWER_ON, _RR_REBOOT = (module_int_const(SRC_DIR, "asy_system_service.py", name) for name in ("_RR_POWER_ON", "_RR_REBOOT"))
+_RR_POWER_ON, _RR_REBOOT, _RR_INTERRUPTED = (module_int_const(SRC_DIR, "asy_system_service.py", name) for name in ("_RR_POWER_ON", "_RR_REBOOT", "RR_INTERRUPTED"))
 # The running firmware's attribution, read over USB: after a cut config reset the board may serve on its hotspot only.
 _READ_REASON = "import sys\nm = [v for k, v in sys.modules.items() if k.startswith('sensortask_') and getattr(v, 'sysfunct', None) is not None]\nprint('REASON', m[0].sysfunct.get_reset_reason() if m else None)\n"
 
@@ -65,6 +69,11 @@ def _power_cycle(context: str) -> "JSONObject":
     print_instruction("Now restore power.")
     confirm("Press Enter once power is restored")
     return _served_after_power(context, amb_before)
+
+
+def _power_on_bits(context: str, system: "JSONObject") -> None:
+    bits = system.get("ResetBits")
+    assert isinstance(bits, int) and bits & _POWER_ON_BIT and not bits & _WATCHDOG_BITS, f"{context}: ResetBits {bits}, not HAD_POR alone in the watchdog's absence"
 
 
 def _served_after_power(context: str, amb_before: object) -> "JSONObject":
@@ -253,3 +262,43 @@ def test_run_pin_reset_keeps_or_clears_the_record() -> None:
     record_assertion()
     assert "run_not_pressed" not in facts, "RUN was not pressed within the script's wait"
     confirm_pass("Record those two figures in the round's notes - done? [y/N]")
+
+
+@register(
+    "console_soft_reset_keeps_the_reset_record",
+    "Two steps on one power cycle, no flash write: reset_code_invalid_record.py (STATE valid_record_wait) holds a valid reset record (code 3), the watchdog fed, while the operator cuts power - the boot after reads 1 only if the cut cleared the scratch registers; on that power-on boot a Ctrl-C at the REPL, then a Ctrl-D inside the watchdog window - the soft reset's boot must read 21, its ResetBits naming no watchdog reset.",
+    "[USB+WiFi][MANUAL]",
+)
+def test_console_soft_reset_keeps_the_reset_record() -> None:
+    board = Board()
+    save_errcount(dut_ip(), "manual-console-soft-reset")
+    save_fram_raw(board, "manual-console-soft-reset")
+    board.hard_reset()
+    wait_until(lambda: bool(rest_get("/status")), timeout_s=_SERVING_TIMEOUT_S, description="the DUT serving after the evidence dump")
+    print_instruction(f"When you press Enter the script writes a valid reset record and waits, fed, for a minute: within it, physically remove the board's power (NOT a reset button), keep it off {_POWER_OFF_S:g} seconds, then restore it.")
+    confirm("Press Enter to start it, your hand on the power")
+    output = board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "reset_code_invalid_record.py", timeout_s=_SCRIPT_TIMEOUT_S, STATE="valid_record_wait")
+    facts = parse_facts(output, allow_missing_done=True)
+    record_assertion()
+    assert "run_not_pressed" not in facts and isinstance(facts.get("valid_record"), list), f"no record written, or no power cut within the script's wait: {facts}"
+    confirm("Press Enter once power is restored")
+    _power_on_bits("the boot after the cut", _served_after_power("a valid record held across the cut", None))
+    # Ctrl-C ends the loop (the entry records 21, the friendly REPL takes over); Ctrl-D at its empty prompt soft-resets
+    # and re-runs main.py before the armed watchdog fires (shared/runtime/pyexec.c:676-681, ports/rp2/main.c:246-265).
+    with serial.Serial(board.device, 115200, timeout=_REPL_PROMPT_S) as port:
+        port.write(b"\x03")
+        prompt = port.read_until(b">>> ")
+        record_assertion()
+        assert prompt.endswith(b">>> "), f"no REPL prompt within {_REPL_PROMPT_S:g} s of the Ctrl-C: {prompt[-200:]!r}"
+        port.write(b"\x04")
+        reboot = port.read_until(b"soft reboot")
+    print_instruction(f"Console after the Ctrl-D: {reboot[-60:]!r}")
+    record_assertion()
+    assert reboot.endswith(b"soft reboot"), f"no soft reboot within {_REPL_PROMPT_S:g} s of the Ctrl-D: {reboot[-200:]!r}"
+    wait_until(lambda: bool(rest_get("/status")), timeout_s=_SERVING_TIMEOUT_S, description="the DUT serving after the console soft reset")
+    system = rest_get("/status").get("system")
+    assert isinstance(system, dict), "GET /status carries no system block"
+    print_instruction(f"After the soft reset: ResetReason {system.get('ResetReason')}, ResetBits {system.get('ResetBits')}.")
+    assert system.get("ResetReason") == _RR_INTERRUPTED, f"the soft reset's boot read ResetReason {system.get('ResetReason')}, not the recorded {_RR_INTERRUPTED}"
+    _power_on_bits("the soft reset's boot", system)
+    confirm_pass()

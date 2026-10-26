@@ -22,7 +22,7 @@ BANDS = {
     "_live_twin_command": (19481, 19481, "tcp"),
     "_live_matrix_command": (19482, 19482, "tcp"),
     "_digital_twin_construction_scenarios": (19500, 19599, "tcp"),
-    "test_digital_twin_loop_end": (19600, 19659, "tcp"),
+    "test_digital_twin_loop_end": (19600, 19719, "tcp"),
     "_digital_twin_scenarios": (20000, 20999, "tcp"),
     "asy_udp_socket": (21000, 21999, "udp"),
     "test_asy_captive_dns": (22000, 22999, "udp"),
