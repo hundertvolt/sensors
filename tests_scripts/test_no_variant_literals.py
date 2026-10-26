@@ -26,7 +26,6 @@ _REASON_FIXTURE_COMMENT = "the fixture's comments name the property each block c
 # File -> the content change that removes its literal. Only shrinks: an entry whose file is clean fails.
 _NOT_YET_CLEANED: "dict[str, str]" = {
     "tests/test_digital_twin_bus_hazard_concurrency.py": _REASON_UNIT_TEST,
-    "tests/test_digital_twin_machine.py": _REASON_UNIT_TEST,
     "tests/test_digital_twin_run_generic_integration.py": _REASON_UNIT_TEST,
     "tests_scripts/_citation_allowlist.txt": _REASON_ALLOWLIST,
     "tests_scripts/_decision_vocab_allowlist.txt": _REASON_ALLOWLIST,
