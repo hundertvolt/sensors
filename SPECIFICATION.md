@@ -3257,7 +3257,7 @@ Pick by where config values live. The write orchestration (validate, stage, push
 sensor settings that reset on power-cycle. A driver whose values live partly in the chip uses a
 composite store: the SCD30 keeps six keys in its NVM, read back from a fresh chip snapshot and
 written through `compare_before_write()` (G.2), so only a changed value is written,
-`AmbPres`/`ForceCalRef` always (A.4's `AmbPres` note), and three FRC keys in its file
+`AmbPres`/`ForceCalRef` whenever a PUT carries them (A.4's `AmbPres` note), and three FRC keys in its file
 (`SensorReaderConfig`, A.4). A body whose chip snapshot fails is refused whole, its FRC keys
 included; a body with no chip key reads no snapshot; a GET whose snapshot fails answers the
 unavailable marker (C.6) without reading the file, as does a GET whose FRC file cannot be read. A
@@ -4724,8 +4724,8 @@ pillars, a completely central important rule."): every write to a limited-endura
 filesystem (a littlefs create, write, rename or remove) and the SCD30's NVM, is the fewest the job
 needs: a file written directly, once per change, with no temporary or sibling file and no rename or
 copy step, and an unchanged setting never written (compare-before-write, G.2); the SCD30 commands
-the owner keeps sent on every PUT are the exception (A.4's `AmbPres` and `ForceCalRef`, C.8's
-`ContMeas=false`); FRAM writes are not wear (owner, 2026-09-26). A change that adds, multiplies or
+a PUT carries are the exception, sent as given and never compared with the current value (A.4's
+`AmbPres` and `ForceCalRef`, C.8's `ContMeas=false`); FRAM writes are not wear (owner, 2026-09-26). A change that adds, multiplies or
 reshapes such a write, in `src/`, buildgen's templates, the generated modules or a test, is the
 owner's question (owner, 2026-10-22: "a condition strictly to be avoided by rule and nothing you
 were allowed to decide without even asking"). `tests_scripts/test_firmware_write_sites.py` pins each
@@ -8033,7 +8033,7 @@ generator still sets `dispatch` on every webserver action field (`SystemCmd`, `P
 `LightCmdLED`, `ResetErrors`) and on every tag carrying `dispatch=true`, and `alwaysExecuted` from
 the tags (`AmbPres`, `ForceCalRef`, `ContMeas`), so both never-"Unchanged" classes (H.6) are
 readable from the definitions alone. No field carries a synthetic baseline: an always-executed
-toggle a GET never reports (`ContMeas`, which the device runs on every write) has no current value,
+toggle a GET never reports (`ContMeas`, which the device runs whenever a PUT carries it) has no current value,
 so the page shows no state for it — "—" with `aria-pressed="mixed"` — and sends it only once it is
 set (agent, 2026-09-30; owner-reviewed, 2026-10-02).
 
@@ -11669,8 +11669,12 @@ outside their formulas' domains, unlogged, since a physical reading there is an 
 counts nothing, and every init resets it; the not-ready cycle's restamp is A.4's named exception.
 
 **NVM.** SCD30 NVM (no published endurance figure in any Sensirion document) is written only by an
-accepted PUT that changed a value, or by `AmbPres`/`ForceCalRef`/`ContMeas=false`, which always
-write; nothing periodic or boot-time writes it (owner, 2026-09-26); the test-side budget is C.8's.
+accepted PUT that changed a value, or by `AmbPres`/`ForceCalRef`/`ContMeas=false`, which write
+whenever a PUT carries them; nothing periodic or boot-time writes it (owner, 2026-09-26); the
+test-side budget is C.8's. A body carrying both `AmbPres` and `ContMeas=false` is applied in the
+driver's fixed order with the stop last, so the sensor ends stopped (owner, 2026-10-26: "And the
+order of application of the commands is okay."; the question, paraphrase: whether a stop sent after
+the same body's `AmbPres` is the right order).
 0x0010's argument persistence and read-back are undocumented: 1.4.1 says only that the
 continuous-measurement status is kept in NVM, and the driver reads the pressure back through the
 same word as legacy did (owner, 2026-07-22, `75f2e11`).
