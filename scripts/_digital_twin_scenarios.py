@@ -117,6 +117,16 @@ _UART_LOAD_S = 20.0  # the concurrent-load window
 # @tunable l2.scenario_uart_load_faults = 3
 _UART_LOAD_FAULTS = 3  # SGP40 measure reads failed under the UART load: logged and persisted, below any restart
 _SGP40_MEASURE_RAW = 0x260F  # the command whose following read the fault matches, so setup stays healthy
+# Per sensor driver, the bus op and key of one read its config snapshot (get_config_snapshot()) makes, from src/: once the
+# boot is done, BMP3XX's CONFIG and SCD30's temperature offset are read by nothing else unless a write or recovery runs.
+_SNAPSHOT_READS = {
+    "bmp3xx": ("readfrom_mem", module_int_const(SRC_DIR, "asy_bmp3xx_driver.py", "_REGISTER_CONFIG")),
+    "isl29125": ("readfrom_mem", module_int_const(SRC_DIR, "asy_isl29125_driver.py", "_REGISTER_CONFIG1")),
+    "scd30": ("readfrom_into", module_int_const(SRC_DIR, "asy_scd30_driver.py", "_CMD_SET_TEMPERATURE_OFFSET")),
+}
+_SNAPSHOT_FAULTS = 2  # ISL29125's verify takes at most one per 1 s cycle, so a GET loop always takes the other
+_VERIFY_FAILED = "Config read-back for reconciliation failed"  # asy_isl29125_driver.py's _verify_config(): a fault no GET took
+_UNAVAILABLE = {"error": "unavailable"}  # asy_base_classes.py's UNAVAILABLE marker, sent in place of a module's map
 # @tunable l2.loop_lag_load_s = 20.0
 _LOOP_LAG_LOAD_S = 20.0  # the storm's faults, one per read at the longest read trigger, then one whole LOOP_LAG window (agent, 2026-10-21)
 _LOOP_LAG_REST_MAX_MS = module_int_const(REPO_ROOT / "buildgen", "codegen.py", "_DNS_TIMEOUT_MS")  # one DNS query (`con.dns_query`), the generated module's
@@ -855,6 +865,39 @@ def _expect(condition: object, msg: str) -> None:
         raise AssertionError(msg)
 
 
+@scenario("failed_config_snapshot_is_sent_as_unavailable", family="sensortask_integration")
+def _failed_config_snapshot(ctx: Context) -> None:
+    """Per driver, a config snapshot read failing after the boot sends the module's unavailable marker, all else intact.
+    Armed at BOOT_DONE (--test-defer-faults), since the boot's config applies read the same registers; ISL29125's
+    per-cycle _verify_config() reads the CONFIG1 burst too, so there a fault is the GET's or the verify's, both counted."""
+    targets = [driver for driver in sorted(_SNAPSHOT_READS) if driver in ctx.drivers]
+    if not targets:
+        raise UnmetPremiseError(f"the device wires none of {sorted(_SNAPSHOT_READS)}")
+    for driver in targets:
+        key, name = _first_instance(ctx, driver)
+        op, register = _SNAPSHOT_READS[driver]
+        token = f"{key}:{op}="
+        with ctx.boot("--fault", f"{key}:{op}:{_SNAPSHOT_FAULTS}:{register:X}", "--test-defer-faults", "--test-fault-status-interval-ms", str(_FAULT_STATUS_INTERVAL_MS)) as twin:
+            _expect(twin.wait_line("boot phase: BOOT_DONE", 0, _SERVING_TIMEOUT_S) is not None, f"{name}: the boot never reached BOOT_DONE")
+            _expect(_pending_faults(twin, token) == 0, f"{name}: a fault was queued before FAULT_ARM")
+            armed = twin.mark()
+            twin.trigger("FAULT_ARM")
+            _expect(twin.wait_line("FAULTS_ARMED", armed, _DRAIN_WAIT_S) is not None, f"{name}: the twin never armed its faults")
+            unavailable, left, deadline = 0, _SNAPSHOT_FAULTS, time.monotonic() + _DRAIN_WAIT_S
+            while left > 0 and time.monotonic() < deadline:
+                body = _object(_request(twin.port, "GET", "/sensors"))
+                others = {k: v for k, v in body.items() if k != name}
+                _expect(all(isinstance(v, dict) and v and "error" not in v for v in others.values()), f"{name}'s fault reached another module: {others!r}")
+                unavailable += body.get(name) == _UNAVAILABLE
+                left = _pending_faults(twin, token)
+            verified = log_from(twin.run.log_path, armed).count(_VERIFY_FAILED)
+            _expect(left == 0, f"{name}: {left} of {_SNAPSHOT_FAULTS} faults still queued after {_DRAIN_WAIT_S} s of GETs")
+            _expect(unavailable >= 1 and unavailable + verified == _SNAPSHOT_FAULTS, f"{name}: {unavailable} GET(s) sent the marker and the verify took {verified} of {_SNAPSHOT_FAULTS} faults")
+            _expect(_has_entry(_errcount(twin.port, name), "E", _src_int(f"asy_{driver}_driver.py", "_ERR_CHIP_GET")), f"{name}'s errcount holds no CHIP_GET entry")
+            block = _object(_request(twin.port, "GET", "/sensors")).get(name)
+            _expect(isinstance(block, dict) and block and "error" not in block, f"{name} once its faults are spent: {block!r}")
+
+
 def _first_instance(ctx: Context, driver: str) -> "tuple[str, str]":
     # The device's first instance of a sensor driver by key: its --fault key and its error source's name.
     key, ext = next((key, ext) for key, d, ext in ctx.instances if d == driver)
@@ -1387,6 +1430,14 @@ def _pause_time_counts_down(ctx: Context) -> None:
             if current == 0:
                 return
         raise AssertionError(f"PauseTime never reached 0 within {_PAUSE_COUNTDOWN_S}s (last {last!r})")
+
+
+def _pending_faults(twin: Twin, token: str) -> int:
+    # The faults still queued under `token` ("<key>:<op>=") on the next FAULT_PENDING line; a spent queue prints none.
+    line = twin.wait_line("FAULT_PENDING", twin.mark(), _DRAIN_WAIT_S)
+    if line is None:
+        raise AssertionError("the twin printed no FAULT_PENDING line - boot it with --test-fault-status-interval-ms")
+    return next((int(t.split("=", 1)[1]) for t in line.split()[1:] if t.startswith(token)), 0)
 
 
 @scenario("realistic_mixed_polling_and_a_concurrent_real_config_write", family="webserver_concurrency")

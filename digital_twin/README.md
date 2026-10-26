@@ -468,6 +468,7 @@ host-side harness reads:
 | `--test-drop-timer-fire reset\|sequencer` | `DROP_ARMED <site>`, `FIRE_DROPPED <site> callbacks=<n>` | the twin's soft-callback drop is set before that one-shot's arm and cleared once its fire was dropped, as rp2's full scheduler queue loses it (SPECIFICATION.md Part F.1) |
 | `--test-kbd-traceback` | `KBD_CAPTURED <bool>`, `KBD_TRACEBACK` | the interpreter's one `KeyboardInterrupt` object, caught at start through a SIGINT to itself; a `KBD_TRACEBACK` line on stdin prints where the newest interrupt was raised |
 | `--test-watchdog-fault supervisor-raise\|main-exit\|block` | `WDT_AT_FAULT <feed_count>` | after the supervisor's first feed, one fault that ends the feeding: the dead-task report raises as a task ends, the product's `main()` is cancelled, or the whole loop blocks past the watchdog timeout |
+| `--test-defer-faults` | `FAULTS_ARMED` | every `--fault` is held back until a `FAULT_ARM` line arrives on stdin, then queued at once, so the boot meets none of them and a fault matching a read the boot shares reaches only what runs after it; a later `FAULT_ARM` queues nothing more |
 
 `main-exit` keeps the runner's loop alive, since the twin's WDT countdown dies with its loop.
 

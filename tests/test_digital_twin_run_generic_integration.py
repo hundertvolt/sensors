@@ -168,13 +168,14 @@ def test_the_cut_system_entry_is_held_after_its_first_blocks_busy_mark_and_only_
 
 
 def test_every_test_only_flag_is_off_by_default_and_parses_when_named() -> None:
-    assert runner.TestFlags(False, None, None, None, None, False, False, None, False, None, None, None) == runner._NO_TEST_FLAGS
+    assert runner.TestFlags(False, None, None, None, None, False, False, None, False, None, None, None, False) == runner._NO_TEST_FLAGS
     config = _parse(
         "--test-hold-closing-slot", "--test-stall-loop-ms", "40", "--test-conn-status-interval-ms", "50",
         "--test-fault-status-interval-ms", "60", "--test-shutdown-hang", "S5erase", "--test-flash-stall-max", "--test-uart-over-cap",
         "--test-hold-system-entry", "25", "--test-kbd-traceback", "--test-loop-lag-ms", "10", "--test-drop-timer-fire", "sequencer", "--test-watchdog-fault", "block",
+        "--test-defer-faults",
     )
-    assert config.instrumentation == runner.TestFlags(True, 40, 50, 60, "S5erase", True, True, (25, False), True, 10, "sequencer", "block")
+    assert config.instrumentation == runner.TestFlags(True, 40, 50, 60, "S5erase", True, True, (25, False), True, 10, "sequencer", "block", True)
     assert _parse("--test-hold-system-entry", "25:cut").instrumentation.hold_system_entry == (25, True)
     refused = (("--test-shutdown-hang", "S7"), ("--test-stall-loop-ms", "0"), ("--test-conn-status-interval-ms", "x"), ("--test-hold-system-entry", "0"), ("--test-hold-system-entry", "25:never"), ("--test-hold-system-entry", "0:cut"), ("--test-loop-lag-ms", "0"), ("--test-drop-timer-fire", "ntp"), ("--test-watchdog-fault", "reboot"))
     for flags in refused:
@@ -779,6 +780,20 @@ def test_the_held_closing_slot_releases_on_its_trigger() -> None:
         await cancel_all([t for t in booted.sysfunct._tasks if t is not None])
 
     run_timed(scenario(), _RUN_BOUND_S)
+
+
+def test_the_deferred_faults_are_queued_at_the_first_arm_trigger_alone() -> None:
+    plan: _Plan = {"device": "fixture-device", "buses": {"i2c0": [{"driver": "sgp40", "name_ext": "", "address": 0x59}]}, "spi": {}, "uart": None, "pins": {}}
+    machine.configure_wiring(plan)
+    machine.I2C(0, scl=machine.Pin(13), sda=machine.Pin(12))
+    chips = launch._collect_chips(plan)
+    said: list[str] = []
+    trigger = runner._test_arm_faults(lambda: launch._apply_fault(launch.parse_fault_spec("sgp40:writeto:2"), chips, network.WLAN(network.STA_IF)), said.append)
+    assert runner._test_fault_line(chips) == "FAULT_PENDING -"  # nothing queued until the trigger
+    trigger()
+    assert (runner._test_fault_line(chips), said) == ("FAULT_PENDING sgp40:writeto=2", ["FAULTS_ARMED"])
+    trigger()
+    assert (runner._test_fault_line(chips), said) == ("FAULT_PENDING sgp40:writeto=2", ["FAULTS_ARMED", "FAULTS_ARMED"])
 
 
 def test_the_status_lines_name_the_gauge_the_backlog_and_each_queued_fault() -> None:
