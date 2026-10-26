@@ -190,6 +190,7 @@ class NTPClient(SensorReaderConfig):
         self._retry_wait_s = self._retry_s  # current backoff step; reset by a sync or a forced resync
         self._unsynced_wait_s = 0  # seconds since the last unsynced attempt was triggered
         self._ntp_sec_count = 0
+        self._cadence = TickSeconds()  # the resync cadence's elapsed seconds, read at each synced tick
         self._ntp_retries = 0
         self._sync_age = TickSeconds()
         self._clock_valid = False  # ntp_clock_valid(): set by each successful sync, unset by a settings change
@@ -359,6 +360,7 @@ class NTPClient(SensorReaderConfig):
 
     async def _refresh_loop(self) -> None:  # NTP refresh timer
         self._ntp_sec_count = 0
+        self._cadence.restart(0)
         while True:
             await self._ntp_timer_trigger_event.wait()
             ntp_interv = await self.cfgmgr.get_int_values(_VAL_NTP_INTERVAL)
@@ -373,12 +375,13 @@ class NTPClient(SensorReaderConfig):
                 if self._sync_age.read() >= _NTP_ASYNC_INTERV * ntp_interv[0] * 3600:
                     await self._set_synced(value=False)
                 else:
-                    self._ntp_sec_count += _NTP_CHECK_INTERV
+                    self._ntp_sec_count = self._cadence.read()  # elapsed time, as the stale rule reads: a dropped tick delays nothing
 
             self.pr.all("Sync-age tick counter at", self._ntp_sec_count)
             if await self.ntp_issynced():
                 due = self._ntp_sec_count >= (ntp_interv[0] * 60 * 60)
             else:
+                self._cadence.restart(self._ntp_sec_count)  # time out of sync never counts towards the cadence
                 self._unsynced_wait_s += _NTP_CHECK_INTERV
                 due = self._unsynced_wait_s >= self._retry_wait_s
             if due:
@@ -386,6 +389,7 @@ class NTPClient(SensorReaderConfig):
                 self._ntp_retries = 0
                 self._ntp_sync_trigger_event.set()
                 self._ntp_sec_count = 0
+                self._cadence.restart(0)
                 self._unsynced_wait_s = 0
                 self.pr.evt("NTP resync triggered.")
             del ntp_interv

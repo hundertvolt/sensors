@@ -3349,6 +3349,67 @@ def test_a_put_queued_behind_the_put_lock_when_the_store_closes_is_refused() -> 
         _remove(_SHARED_CFG_DIR + "config_queuedput.cfg")
 
 
+
+class _RaisingStoreReader(SensorReader):
+    # A RAM store whose pre-write read, write or recovery write raises on demand: no file, so no host disk write.
+    def __init__(self, raise_at: str) -> None:
+        super().__init__(Meas(20.0, 50), "RAISE", max_module_error=3)
+        self.raise_at = raise_at
+        self.writes = 0
+        self.stored: dict[str, int | float | str | bool | None] = {"SampleInterval": 5}
+
+    async def _get_mgr_cfg(self, cfg: "list[str]") -> "dict[str, int | float | str | bool | None] | None":
+        if self.raise_at == "snapshot":
+            raise RuntimeError("store read refused")
+        return {key: self.stored.get(key) for key in cfg}
+
+    async def _set_mgr_cfg(self, data: "JsonMapping", _cfg_vals: "cm.ConfigSchema") -> "tuple[bool, cm.WriteValidity]":
+        self.writes += 1
+        if (self.raise_at, self.writes) in (("write", 1), ("recovery_write", 2)):
+            raise RuntimeError("store write refused")
+        self.stored.update(data)  # type: ignore[arg-type]
+        return True, dict.fromkeys(data, "Valid")
+
+
+def _logged_by_a_put(raise_at: str, *, push: str = "ok", getter: bool = False) -> "list[int]":
+    # The E codes one PUT of SampleInterval leaves; push "ok", "fails" (False) or "raises", and a raising getter.
+    reader = _RaisingStoreReader(raise_at)
+
+    async def pushed(_value: "int | float | str | bool | None") -> bool:
+        if push == "raises":
+            raise RuntimeError("push refused")
+        return push == "ok"
+
+    async def read_back() -> "int | float | str | bool | None":
+        raise RuntimeError("read-back refused")
+
+    reader._push_callbacks["SampleInterval"] = pushed
+    if getter:
+        reader._get_callbacks["SampleInterval"] = read_back
+    run(reader._set_dict_cfg({"SampleInterval": 42}, _TEST_SCHEMA_SI))
+    log = run(reader.pr.get_log())[reader.pr.name]
+    return [log["ErrNum"][i] for i in range(len(log["ErrNum"])) if log["ErrType"][i] == "E"]
+
+
+def test_a_raising_pre_write_read_is_logged_as_cfg_snapshot_raised() -> None:
+    assert _logged_by_a_put("snapshot") == [code("E", "CFG_SNAPSHOT_RAISED")]
+
+
+def test_a_raising_store_write_is_logged_as_cfg_set_raised() -> None:
+    assert _logged_by_a_put("write") == [code("E", "CFG_SET_RAISED")]
+
+
+def test_a_raising_push_is_logged_as_push_raised() -> None:
+    assert _logged_by_a_put("", push="raises") == [code("E", "PUSH_RAISED")]
+
+
+def test_a_raising_recovery_read_back_is_logged_as_recovery_read_raised() -> None:
+    assert _logged_by_a_put("", push="fails", getter=True) == [code("E", "RECOVERY_READ_RAISED")]
+
+
+def test_a_raising_recovery_write_is_logged_as_recovery_write_raised() -> None:
+    assert _logged_by_a_put("recovery_write", push="fails") == [code("E", "RECOVERY_WRITE_RAISED")]
+
 if __name__ == "__main__":
     import microtest
 

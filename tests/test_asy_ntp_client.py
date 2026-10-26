@@ -1878,27 +1878,29 @@ def test_ntp_time_hours_counter_does_not_retrigger_while_synced_and_under_interv
 
 
 def test_ntp_time_hours_counter_retriggers_once_interval_elapses() -> None:
-    # NTPInterval=1 -> 3600s / _NTP_CHECK_INTERV(10s) = 360 ticks to reach the interval.
+    # NTPInterval=1 -> 3600s of measured time, 360 check ticks of _NTP_CHECK_INTERV (10s), to reach the interval.
     json_text = '{"NTPHost": "pool.ntp.org", "NTPOffset": 0, "NTPInterval": 1, "GMTOffset": 3600, "DSTOffset": 3600}'
-    client = _make_client_with_json(json_text)
+    with _SteppedClock() as clock:
+        client = _make_client_with_json(json_text)
 
-    async def scenario() -> bool:
-        await client._set_synced(value=True)
-        task = asyncio.create_task(client._refresh_loop())
-        await tick(client._ntp_timer_trigger_event, 360)
-        try:
-            await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
-            fired = True
-        except asyncio.TimeoutError:
-            fired = False
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-        return fired
+        async def scenario() -> bool:
+            await client._set_synced(value=True)
+            task = asyncio.create_task(client._refresh_loop())
+            await asyncio.sleep(0)  # the loop starts its cadence before the first tick's time passes
+            await tick(client._ntp_timer_trigger_event, 360, clock, _CHECK_INTERVAL_S * 1000)
+            try:
+                await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
+                fired = True
+            except asyncio.TimeoutError:
+                fired = False
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            return fired
 
-    assert run(scenario())
+        assert run(scenario())
 
 
 _TM = (2026, 1, 1, 0, 0, 0, 0, 0)  # a parsed reply's time, for the success path
@@ -2000,6 +2002,7 @@ def test_the_due_counter_never_exceeds_one_interval() -> None:
             await asyncio.sleep(0)
             await client._handle_ntp_sync_success(_TM)
             task = asyncio.create_task(client._refresh_loop())
+            await asyncio.sleep(0)  # the loop starts its cadence before the first tick's time passes
             changes = await _drive_refresh(client, clock, 3 * period, record)
             await cancel(task)
             await cancel(sync_task)
@@ -3321,6 +3324,35 @@ def test_a_responder_back_mid_backoff_syncs_at_the_next_attempt() -> None:
     seen = _against_responder(_responder_client(), NtpResponder(_PORTS.next()), ["silent", "silent", "serve"])
     assert [s[:3] for s in seen] == [s[:3] for s in _FAILED_TWICE] + [(True, 0, _RETRY_S)]
 
+
+
+def test_a_dropped_check_tick_does_not_delay_the_due_resync() -> None:
+    # The resync cadence reads elapsed time, as the stale rule does: with one check tick dropped (a soft-Timer
+    # callback can be, SPECIFICATION.md F.1), the resync is still due at one NTPInterval of measured time.
+    with _SteppedClock() as clock:
+        client = _hourly_client()
+
+        async def scenario() -> "int | None":
+            await client._handle_ntp_sync_success(_TM)
+            task = asyncio.create_task(client._refresh_loop())
+            await asyncio.sleep(0)  # the loop starts its cadence before the first tick's time passes
+            due_at = None
+            for n in range(1, 3600 // _CHECK_INTERVAL_S + 2):
+                clock.advance(_CHECK_INTERVAL_S * 1000)
+                if n == 100:
+                    continue  # this tick's callback is dropped: its time passes, no tick arrives
+                await tick(client._ntp_timer_trigger_event)
+                if client._ntp_sync_trigger_event.state:
+                    due_at = n * _CHECK_INTERVAL_S
+                    break
+            await cancel(task)
+            return due_at
+
+        try:
+            due_at = run(scenario())
+        finally:
+            asy_base_classes.set_utc_valid(valid=False)
+    assert due_at == 3600, due_at
 
 if __name__ == "__main__":
     import microtest

@@ -3407,6 +3407,23 @@ def test_a_drain_that_cannot_run_clears_the_previous_drains_verdict() -> None:
     assert comm._drain_bound_hit is False
 
 
+
+def test_an_ack_arriving_at_a_listener_is_logged_as_the_wrong_kind() -> None:
+    # A listener expects a GET or a SET; any other legal command is a frame of the wrong kind, not a malformed one.
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()), RUN_LIMIT_S)
+    bus = pair.responder._uart
+    assert bus is not None
+
+    async def scenario() -> ListenResult:
+        ack = build_frame(cmd=_CMD_ACK, size=0, chunks=1, cur=1)
+        encoded = await bus.framing.encode_into(ack, len(ack))
+        assert encoded is not None
+        pair.fake_b.feed_rx(bytes(encoded))
+        return await pair.responder.uart_listen()
+
+    assert run(scenario(), RUN_LIMIT_S).cmd_id is None
+    assert persisted(pair.responder) == [_e("UART_WRONG_KIND")], persisted(pair.responder)
+
 if __name__ == "__main__":
     import microtest
 

@@ -1518,7 +1518,7 @@ def _yielding(rig: _Rig) -> list[int]:
         return start(purpose)
 
     async def yielding_ready() -> bool:
-        await asyncio.sleep(0)  # the chip-loss window: get_write_protected()'s err_s() suspends
+        await asyncio.sleep(0)  # a preflight that suspends: the gate never relies on erase_ready() running through
         return await ready()
 
     rig.svc._shutdown_sequence = counted  # type: ignore[method-assign]
