@@ -693,8 +693,6 @@ class SGP40_I2C:
     async def _exchange(self, sgp40: DeviceSession, delay_ms: int, words: int) -> None:
         # Sends self._command_buffer, waits delay_ms, reads back `words` CRC-checked words into the reply buffer.
         replylen = words * 3
-        if replylen > len(self._reply_buffer):
-            raise ValueError("reply longer than the reply buffer")
         async with sgp40.i2c_device as i2c:  # bus session
             if not await i2c.write(self._command_buffer):
                 raise OSError("I2C bus not initialized")

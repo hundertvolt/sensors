@@ -276,7 +276,7 @@ class SCD30_Reader(SensorReaderConfig):
         # TempOffset compares in chip ticks; the primitive applies the rounding only to a value the schema validated as a float.
         resolution = {"TempOffset": _temp_offset_ticks}
         outcome = compare_before_write(rest, cfg_vals, current, always=("AmbPres", "ForceCalRef"), resolution=resolution)  # type: ignore[arg-type]  # _temp_offset_ticks takes TempOffset's validated float, not any CfgValue
-        if outcome is None:
+        if outcome is None:  # Unreachable: rest is a dict, and compare_before_write() answers None only for a non-dict - kept to narrow the Optional for the type checker
             return False, {}
         write, results = outcome
         for key, result in results.items():

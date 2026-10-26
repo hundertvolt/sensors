@@ -4308,6 +4308,18 @@ def test_nothing_is_written_to_a_peer_that_reset_while_its_body_was_read() -> No
     assert run(service._open_conns.get_value()) == 0
 
 
+def test_a_readable_field_named_error_is_never_taken_for_the_unavailable_marker() -> None:
+    # The marker is its whole shape, one key and error == UNAVAILABLE, as js/api-contract.js reads it: a readable
+    # module's field named error is a value like any other, and a field the module does not hold is left out.
+    for endpoint in _SETTINGS_ENDPOINTS:
+        mixed = _NestedCfgModule("STORE", {"error": UNAVAILABLE, "DebugLevel": 2})
+        lone = _NestedCfgModule("OTHER", {"error": "E5"})
+        groups = [SettingsGroup(mixed, ("DebugLevel", "SSID", "error")), SettingsGroup(lone, ("Hostname",))]
+        _service, app = _make_service(settings={endpoint: groups})
+        res = run(app.dispatch_request(_make_request(app, "GET", "/" + endpoint, None)))
+        assert _json(status_body(res)) == {"DebugLevel": 2, "error": UNAVAILABLE}, endpoint
+
+
 if __name__ == "__main__":
     import microtest
 
