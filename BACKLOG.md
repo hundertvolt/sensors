@@ -1090,6 +1090,17 @@ gates, traps).
   - CI only: `.github/workflows/ci.yml`'s four Playwright browser caches are keyed on the runner
     identity too (runner image, compiler and C library, computed as the toolchain action's identity
     step computes it); no chroot leg runs it.
+  **2026-10-26, the patched modlwip copy's two listener patches, by the leg that covers each change**:
+  - installer leg: `toolchain/micropython_overrides.py` generates a different `modlwip.c` copy (the
+    EAGAIN patch plus the listener-close guard and `listen()`'s allocation order, SPECIFICATION.md
+    B.14.4) for every rp2 image and for `build-lwip`, each patch checked against its own anchor in the
+    pinned source; nothing new is installed;
+  - `scripts/test.sh` leg: the changed `micropython_overrides.py` hash makes a reused chroot's
+    `scripts/_unix_port.sh ensure` rebuild the three Unix binaries once; the lwIP host tier gains
+    `tests/lwip_host/test_modlwip_listener_close.py`, which aborts on a `build-lwip` built before the
+    change; the backgrounded pytest tier's `tests_scripts/test_micropython_overrides.py` covers the
+    new anchors;
+  - lint and typecheck legs: the two changed files above, host Python only, no new dependency.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot

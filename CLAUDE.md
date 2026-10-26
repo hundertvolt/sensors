@@ -50,9 +50,11 @@ information):
   Part B.14) — each `verify_*()` there already fails loudly on its own if its anchor text drifted,
   but re-reading the real mechanism behind each anchor (not just whether the literal string still
   matches) is still part of this practice, the same as everything else it covers. For the
-  `modlwip_eagain` override it also asks whether the new pin carries a real upstream fix for
-  micropython issue 19704 (PRs 19705/19708) — if so the override is removed, not re-anchored (owner,
-  2026-09-30).
+  `modlwip_eagain` override it also asks, patch by patch, whether the new pin carries a real upstream
+  fix: micropython issue 19704 (PRs 19705/19708) for the EAGAIN patch, a listener close that skips
+  lwIP's forbidden callbacks and a `listen()` that stores its backlog size only after allocating the
+  queue for the two listener patches (SPECIFICATION.md B.14.4). A fixed patch is removed, not
+  re-anchored, and the override goes with its last patch (owner, 2026-09-30; owner, 2026-10-26).
 - **Every external dependency is refreshed as one step, not only MicroPython** (owner, 2026-09-30:
   "Check all external dependencies for updates - both modules, repos and tooling, just
   everything."): the vendored `ext/` code (only as an unmodified upstream tag or commit), the stub
