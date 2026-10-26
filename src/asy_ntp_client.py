@@ -188,7 +188,8 @@ class NTPClient(SensorReaderConfig):
         self._retry_s = max(timing.retry_s, _NTP_CHECK_INTERV)
         self._retry_max_s = max(timing.retry_max_s, self._retry_s)
         self._retry_wait_s = self._retry_s  # current backoff step; reset by a sync or a forced resync
-        self._unsynced_wait_s = 0  # seconds since the last unsynced attempt was triggered
+        self._unsynced_wait_s = 0  # seconds since the last unsynced attempt was triggered, in whole check intervals
+        self._tick_gap = TickSeconds()  # the time since the last check tick, so the unsynced wait still counts a dropped one
         self._ntp_sec_count = 0
         self._cadence = TickSeconds()  # the resync cadence's elapsed seconds, read at each synced tick
         self._ntp_retries = 0
@@ -361,8 +362,11 @@ class NTPClient(SensorReaderConfig):
     async def _refresh_loop(self) -> None:  # NTP refresh timer
         self._ntp_sec_count = 0
         self._cadence.restart(0)
+        self._tick_gap.restart(0)
         while True:
             await self._ntp_timer_trigger_event.wait()
+            gap = self._tick_gap.read()
+            self._tick_gap.restart(0)
             ntp_interv = await self.cfgmgr.get_int_values(_VAL_NTP_INTERVAL)
             if ntp_interv is None or len(ntp_interv) != 1:
                 ntp_interv = [12]
@@ -382,7 +386,8 @@ class NTPClient(SensorReaderConfig):
                 due = self._ntp_sec_count >= (ntp_interv[0] * 60 * 60)
             else:
                 self._cadence.restart(self._ntp_sec_count)  # time out of sync never counts towards the cadence
-                self._unsynced_wait_s += _NTP_CHECK_INTERV
+                # The check intervals since the last tick, rounded, and at least its own: a dropped tick delays no retry.
+                self._unsynced_wait_s += max(_NTP_CHECK_INTERV, (gap + _NTP_CHECK_INTERV // 2) // _NTP_CHECK_INTERV * _NTP_CHECK_INTERV)
                 due = self._unsynced_wait_s >= self._retry_wait_s
             if due:
                 self._ntp_retry_timer.deinit()
