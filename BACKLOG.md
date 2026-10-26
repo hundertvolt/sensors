@@ -1104,8 +1104,9 @@ gates, traps).
   **2026-10-26, `scripts/test.sh --coverage`'s exit 3 for a tracer that ended early, shell and host
   Python only, no build impact**: a job whose coverage tracer ended early (SPECIFICATION.md E.5.1)
   leaves a note beside its dump, listed under `Notes:`, and the run exits 3, its `Result:` line naming
-  what is short; `scripts/_summary_block.sh`/`.py` take a reason for code 3. A chroot's
-  `scripts/test.sh` leg runs it with nothing new to install.
+  what is short; `scripts/_summary_block.sh`/`.py` take a reason for code 3, and `ci.yml`'s exit-3
+  warning names both causes (its text only). A chroot's `scripts/test.sh` leg runs it with nothing new
+  to install.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot
