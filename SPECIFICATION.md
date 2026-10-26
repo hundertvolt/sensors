@@ -6963,8 +6963,7 @@ reset, and that boot reports the 21 or 22 recorded before it, or the 10 + p of a
 during boot (which records nothing, A.7), ResetBits showing no watchdog bit. A real power-on still
 reads 1, its regions being empty; so do a torn record under a power-on cause and a soft reset after
 a completed boot, whose marker reads `BOOT_DONE`, outside the boot range. A torn record beside an
-in-boot marker reads 10 + p under any cause (before the marker moved up: 0, or 1 under a power-on
-cause). A write into the cleared record cannot tear it (`_write_region()` stores the magic last and
+in-boot marker reads 10 + p under any cause. A write into the cleared record cannot tear it (`_write_region()` stores the magic last and
 `begin_boot()` clears the magic first, so a cut leaves word 0 at 0, which reads as no record); it
 takes a second write over a valid one in a boot still below `BOOT_DONE` (a system command's 9, then its own
 code, or the entry's 21 after either), cut by a watchdog reset between that write's value and check
