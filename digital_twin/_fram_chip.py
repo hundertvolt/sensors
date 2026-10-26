@@ -299,8 +299,10 @@ class FRAMChip:
         tmp = self.state_path + ".tmp"
         with open(tmp, "w") as f:
             f.write(f'{{"size": {self.size}, "used": {used}, "memory_hex": "')
-            for start in range(0, used, _SAVE_CHUNK_SIZE):
-                f.write(self.memory[start : min(start + _SAVE_CHUNK_SIZE, used)].hex())
+            whole = used - used % _SAVE_CHUNK_SIZE  # the last, partial chunk written on its own: no bound applied after a step
+            for start in range(0, whole, _SAVE_CHUNK_SIZE):
+                f.write(self.memory[start : start + _SAVE_CHUNK_SIZE].hex())
+            f.write(self.memory[whole:used].hex())
             f.write('"}')
         os.rename(tmp, self.state_path)  # atomic, POSIX rename(2) (extmod/vfs_posix.c:340-349): a cut save keeps the old image
 
