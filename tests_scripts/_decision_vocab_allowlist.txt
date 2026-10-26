@@ -103,7 +103,6 @@ buildgen/requires_tag.py	"#+" so a "## @requires ..." section-style comment is a
 buildgen/tag_comments.py	"label=" or "special:0=" - deliberately not anchored to a specific key name, sin
 buildgen/tag_comments.py	Deliberately not the
 buildgen/web_tag.py	"#+" so a "## @web ..." section-style comment is accepted, matching every other
-digital_twin/README.md	- **`--mem-sample-interval-ms`** — `gc.mem_free()` exists only inside this proce
 digital_twin/README.md	Once the interpreter unfreezes, `asy_system_service.py`'s periodic `feed()` (its
 digital_twin/README.md	The value sits just **above** the server's own `outer_cap_s`, deliberately: belo
 digital_twin/README.md	Two things could not, and both are deliberate:
