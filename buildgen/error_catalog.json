@@ -204,8 +204,8 @@
       "14": {"text": "boot failure in phase 4 (timer starts)"},
       "15": {"text": "boot failure in phase 5 (first NTP sync)"},
       "20": {"text": "supervisor escalation (a handler recorded a C-stack overflow)"},
-      "21": {"text": "interrupted: Ctrl-C on the console ended the run, the watchdog reset followed"},
-      "22": {"text": "the event loop ended with an exception after boot, the watchdog reset followed"}
+      "21": {"text": "interrupted: Ctrl-C on the console ended the run, the watchdog reset or a console soft reset followed"},
+      "22": {"text": "the event loop ended with an exception after boot, the watchdog reset or a console soft reset followed"}
     },
     "VOCState": {
       "0": {"text": "blackout (first 46 samples, index 0)"},

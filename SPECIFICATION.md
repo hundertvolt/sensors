@@ -688,12 +688,13 @@ circumvent it'; Part N `wdt.timeout_ms`) — then puts `.frozen` first on `sys.p
 the emergency exception buffer (I.4(e)), imports the device module, sets `gc.threshold(32768)`
 (I.4(f)) and runs `asyncio.run(main(watchdog=watchdog))`; a Ctrl-C on the console ends the whole
 event loop, so the entry writes reset reason 21 before the interrupt reaches the REPL, and the armed
-watchdog then resets the unit (A.8). Every other exception leaving `asyncio.run()` (a non-`Exception`
+watchdog then resets the unit, unless a Ctrl-D at that REPL soft-resets it first, whose boot reads the
+same 21 (A.8, F.5.4). Every other exception leaving `asyncio.run()` (a non-`Exception`
 `BaseException` out of a task, the loop core failing outside any task) goes to the entry's second
 clause: `record_loop_end()` writes 22 after `BOOT_DONE` unless a valid record already names the reset
 underway, which is kept, and writes nothing during boot, so 10 + phase stands (agent, 2026-10-26); the
 exception is printed with no heap use and never re-raised, so the entry ends and the watchdog resets
-the unit (F.5.4 has why a `SystemExit` must not reach rp2's `pyexec`). The no-autostart entry
+the unit (F.5.4 has what a `SystemExit` reaching rp2's `pyexec` would do). The no-autostart entry
 `sensortask_<device>_main_noautostart.py` arms nothing and prints the manual start line (B.11).
 `main(*, watchdog, cfg_path="", debug=None, web_host="0.0.0.0", web_port=80)`: the four keywords
 after `watchdog` are the documented manual-start options (owner, 2026-09-30: 'they are worth for
@@ -1080,8 +1081,8 @@ settings.
 | 14 | boot failure in phase 4 (timer starts) |
 | 15 | boot failure in phase 5 (first NTP sync) |
 | 20 | supervisor escalation (a handler recorded a C-stack overflow) |
-| 21 | interrupted: Ctrl-C on the console ended the run, the watchdog reset followed |
-| 22 | the event loop ended with an exception after boot, the watchdog reset followed |
+| 21 | interrupted: Ctrl-C on the console ended the run, the watchdog reset or a console soft reset followed |
+| 22 | the event loop ended with an exception after boot, the watchdog reset or a console soft reset followed |
 
 - **Real production bug, fixed**: `_get_measurements()`/`_get_sensors()` must build results with
   `.update()`, never `result[name] = await module.get_dict_data()` — every driver's own return is
@@ -6914,8 +6915,10 @@ in this project's own built firmware (`strings firmware.elf | grep -x mem_backup
 the 1.29 stubs. Backed by the RP2040 watchdog scratch registers: **28 bytes** in two regions
 (`scratch[0..3]`, 16 B, and `scratch[5..7]`, 12 B; `scratch[4]` is reserved by the pico-sdk;
 `ports/rp2/machine_mem_backup.c:36-40`), `itemsize=4`, returned as a writable `memoryview`.
-**Survives a WDT reset, `machine.reset()` and a deepsleep wake; cleared by power-off and by the RUN
-pin** (RP2040 datasheet §4.7.4).
+**Survives a WDT reset, `machine.reset()`, a soft reset and a deepsleep wake; cleared by power-off
+and by the RUN pin** (RP2040 datasheet §4.7.4: a `rst_n_run` from the RUN pin or a DVDD cycle resets
+the scratch registers, and §2.13.1 lists the watchdog among the blocks it resets; the pinned
+`docs/library/machine.rst` note: kept across a soft reset, lost on power-off and poweron-style resets).
 
 **Adopted for the reset reason** (owner, 2026-09-26: 'Use this mechanism, integrate it into the
 system service and its endpoints'), in RAM only, never flash or FRAM (owner, 2026-09-29: 'for sure
@@ -6929,10 +6932,12 @@ command incomplete, 10 + p a boot failure in phase p (region 1's marker, phases 
 C-stack overflow (the supervisor's escalation, outside the boot-failure band), 21 a run
 ended by an interrupt (Ctrl-C on the console), which the boot entry records before the armed
 watchdog resets the unit (A.7), 22 a run whose event loop any other exception ended after boot,
-recorded by the boot entry's `record_loop_end()` (A.7). The entry never re-raises that exception: a
-`SystemExit` leaving main.py is rp2's soft-reset request (`shared/runtime/pyexec.c:166-185`,
-`ports/rp2/main.c:246-249`, v1.29.0), and the boot after a soft reset reads the reset registers the
-last hard reset left, so `begin_boot()`'s power-on check, which runs first, would drop the record.
+recorded by the boot entry's `record_loop_end()` (A.7). The entry never re-raises that exception. A
+`SystemExit` leaving main.py would be rp2's soft-reset request (`shared/runtime/pyexec.c:166-185`,
+`ports/rp2/main.c:246-249`, v1.29.0): `soft_reset_exit` (`main.c:265-305`) releases the network,
+DMA, PIO, PWM, pins, UARTs and soft timers, but not the I2C or SPI controllers (F.5.1), and main.py
+runs again at once, its boot keeping the recorded 22 (the decode order below); unraised, every loop
+end ends in the watchdog's reset, which ResetBits mark with TIMER.
 That is the reset class the 2026-09-08 `WDT_RESET` investigation
 could not diagnose (see CLAUDE.md's FRAM-log rule). Every generated device calls `begin_boot()` as
 `build_system()`'s first statement and marks each boot phase from `main()` (A.7), and `/status`
@@ -6941,6 +6946,19 @@ adopted** (project owner, 2026-09-11): a write per tick is cost with no current 
 stays a tool to reach for if a severe, hard-to-debug reset appears that the FRAM logs cannot
 explain - deliberate, temporary instrumentation, never normal-path code; the per-transition phase
 marker is all that is kept.
+
+**`begin_boot()` reads a valid record before the power-on cause** (owner, 2026-10-26: "B is fine,
+very rare edge case"; the question, paraphrase: whether the boot should read a valid reset record
+before its power-on check, so a console soft reset inside the watchdog window keeps a recorded 21 or
+22). The order: a valid region-0 record (its code), the power-on cause (1), a torn record (0), a
+region-1 boot phase (10 + p), else 2. Power-off and the RUN pin clear both regions (above), so a valid
+record under a power-on cause means a soft reset: a friendly-REPL Ctrl-D
+(`shared/runtime/pyexec.c:676-681`) leaves for `soft_reset_exit` and main.py runs again
+(`ports/rp2/main.c:246-262`) while `reset_cause()` still reads the last hard reset, and that boot
+reports the 21 or 22 recorded before it, ResetBits showing no watchdog bit. A real power-on still
+reads 1, its regions being empty, and so does a torn record under a power-on cause. The raw REPL's
+soft reset (`mpremote`'s) does not run main.py (`main.c:246`): only a device script calling
+`begin_boot()` itself reads the record there.
 
 **`machine.reset_cause()` separates power-on from everything else, nothing more.** It returns
 `WDT_RESET` (3) when the watchdog caused the last reboot and `PWRON_RESET` (1) otherwise
@@ -12907,6 +12925,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l3.isl29125_real_irq_edge_dark_settle_ms` | 300 ms | `tests_hardware/device_scripts/isl29125_real_irq_edge.py` — `300` | a WS2812 latches its last value; the dark scene reaches the part before the first conversion | estimated (agent, 2026-10-14) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.manual_persistence_power_cut_window_s` | 20 s | `tests_hardware/manual/manual_persistence.py` — `20` | the operator instructions state it | estimated (agent, `c6c2565`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.manual_persistence_power_off_s` | 10 s | `tests_hardware/manual/manual_persistence.py` — `10` | the operator instruction states it | estimated (agent, `c6c2565`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
+| `l4.manual_persistence_repl_prompt_s` | 3.0 s | `tests_hardware/manual/manual_persistence.py` — `3.0` | each console read of the soft-reset step, the REPL prompt after the Ctrl-C and the soft reboot after the Ctrl-D, both inside the 8 s watchdog window | estimated (agent, 2026-10-26) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l3.record_twin_flash_run_timeout_s` | 3600.0 s | `scripts/record_twin_instrument_runs.py` — `3600.0` | the whole flash tier under `--twin`, one pytest process | estimated (agent, 2026-10-14) — measurement owed: the flash tier's elapsed under `--twin` on the slowest host that records it, L3 in the twin | against that measurement, once taken | the code under test or the host class changes |
 | `l4.bench_load_probe_timeout_s` | 10.0 s | `tests_hardware/bench/_load.py` — `10.0` | `bench/_load.py`'s readiness probes | estimated (agent, 2026-10-14) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.board_image_system_timeout_s` | 10.0 s | `tests_hardware/bench/conftest.py` — `10.0` | `board_image`'s `GET /system` read | estimated (agent, 2026-10-14) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |

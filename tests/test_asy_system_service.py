@@ -3840,10 +3840,36 @@ def test_an_escalation_whose_entry_cannot_even_be_built_on_a_full_heap_still_reb
     assert budget == [True, _const("_RR_TASK_BUDGET"), True, True, 1], budget
 
 
-def test_power_on_reads_1_even_with_a_stale_valid_record() -> None:
+def test_a_console_soft_reset_after_a_power_on_boot_reads_the_recorded_code() -> None:
+    # A Ctrl-D inside the watchdog window re-runs main.py with no hard reset: the cause stays the power-on's, the regions
+    # keep the entry's 21 or 22, and the boot reads that code and clears it.
+    def interrupted() -> None:
+        write_reset_record(asy_system_service.RR_INTERRUPTED)
+
+    for record in (interrupted, asy_system_service.record_loop_end):
+        machine.power_on()
+        begin_boot()
+        _make_service().boot_phase(BOOT_DONE)
+        record()
+        expected = machine.mem_backup(0)[1]
+        assert machine.reset_cause() == machine.PWRON_RESET
+        assert begin_boot() == expected and expected in (21, _const("_RR_LOOP_ENDED")), expected
+        assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
+
+
+def test_a_power_cycle_after_a_record_reads_1() -> None:
+    machine.power_on()
+    begin_boot()
+    write_reset_record(asy_system_service.RR_INTERRUPTED)
+    machine.power_on()  # power-off clears both regions (SPECIFICATION.md F.5.4)
+    assert begin_boot() == _const("_RR_POWER_ON")
+
+
+def test_a_torn_record_under_a_power_on_cause_reads_1() -> None:
     machine.power_on()
     write_reset_record(_const("_RR_REBOOT"))
-    machine.reset_cause_value = machine.PWRON_RESET
+    machine.mem_backup(0)[2] ^= 1
+    assert machine.reset_cause() == machine.PWRON_RESET
     assert begin_boot() == _const("_RR_POWER_ON")
     assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
 
