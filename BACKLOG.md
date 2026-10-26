@@ -1107,6 +1107,9 @@ gates, traps).
   what is short; `scripts/_summary_block.sh`/`.py` take a reason for code 3, and `ci.yml`'s exit-3
   warning names both causes (its text only). A chroot's `scripts/test.sh` leg runs it with nothing new
   to install.
+  **2026-10-26, `pyproject.toml`'s ruff per-file-ignores, lint only, no build impact**: the generated boot
+  entries' block adds F811 for the loop-end handler's pre-bound name (the template binds it before the loop so the
+  handler's rebinding grows no dict); a chroot's `scripts/lint.sh` leg runs it with nothing new to install.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot
