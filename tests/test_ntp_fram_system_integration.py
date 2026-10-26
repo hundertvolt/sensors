@@ -86,10 +86,6 @@ def _wlan(conn: WifiService) -> "_FakeWLAN":
     return conn._wlan  # type: ignore[return-value]  # the fake, which mypy sees as the board stub's WLAN
 
 
-# ---------------------------------------------------------------------------
-# Fixtures: the conn/ntp construction of test_ntp_wifi_dns_integration.py, the shared FRAM builder.
-# ---------------------------------------------------------------------------
-
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
 # module's own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
 _scratch = TmpScratch("ntpfram")
@@ -138,11 +134,6 @@ async def _connect_wlan(conn: WifiService, dns_server: str = "192.0.2.53") -> No
 def connect_wlan(conn: WifiService) -> None:
     run(_connect_wlan(conn))
 
-
-# ---------------------------------------------------------------------------
-# Real UDP NTP round trip: the shared tests/_ntp_frames.py FakeNtpServer, port 123 pointed at it by
-# tests/_udp_port_redirect.py.
-# ---------------------------------------------------------------------------
 
 # This file's own band of tests/_port_bands.py: files run concurrently, and a UDP collision is a silent timeout.
 _PORTS = PortAllocator("test_ntp_fram_system_integration")
