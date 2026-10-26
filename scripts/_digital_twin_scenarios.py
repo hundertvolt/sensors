@@ -170,6 +170,11 @@ class RefusedError(Exception):
     pass
 
 
+class UnmetPremiseError(Exception):
+    # A premise this host cannot give the scenario (file modes that do not bind, say): it skips with that reason.
+    pass
+
+
 _SCENARIO_ERRORS = (AssertionError, RefusedError, OSError, HTTPException, ValueError, TypeError, RuntimeError)  # a verdict, never the run's
 
 
@@ -766,6 +771,29 @@ def _errcount(port: int, name: str) -> JSONObject:
 def _error_table(port: int) -> "dict[str, JSONObject]":
     # Every error source's entry from one GET /status, strict: an unusable answer raises.
     return errcount_table(HTTPStatus.OK, _status(port))
+
+
+@scenario("an_escalation_entry_held_past_its_bound_is_cut_and_the_reset_still_follows", family="system_commands", drivers=("fram", "scd30"))
+def _escalation_entry_cut(ctx: Context) -> None:
+    """An escalation entry write held inside its first block past its bound is cancelled there: code 20, the cut block healed and logged."""
+    key, _name = _first_instance(ctx, "scd30")
+    state = ctx.logs_dir / "state_escalation_cut"
+    errno = _src_int(_SYSTEM, "_ERR_STACK_EXHAUSTED")
+    busy, repaired = _src_int("asy_fram_manager.py", "_ERR_FRAM_STATUS_BYTE"), _src_int("asy_fram_manager.py", "_WRN_FRAM_BLOCK_INVALID")
+    with ctx.boot("--fault", f"{key}:readfrom_into:stack", "--test-hold-system-entry", f"{errno}:cut", state_dir=state) as twin:
+        _expect(twin.wait_line("ENTRY_HELD", 0, _src_int(_SYSTEM, "_TASK_CHECK_TIME") + _COMMANDED_RESET_MARGIN_S) is not None, "the escalation's entry write never reached its first block's busy mark")
+        _exits_with(twin, 3, "the escalation whose entry write was held inside its first block")
+        _expect("its entry write did not finish within" in read_log(twin.run.log_path), "the reset came without the bound cancelling the held write")
+    with ctx.boot(state_dir=state) as twin:
+        status = _status(twin.port)
+        reason = _group(status, "system").get("ResetReason")
+        _expect(reason == _src_int(_SYSTEM, "_RR_STACK_EXHAUSTED"), f"the relaunch reads ResetReason {reason!r}")
+        table = errcount_table(HTTPStatus.OK, status)
+        _expect(not _has_entry(table.get("SYSTEM"), "E", errno), f"the cut entry reached the relaunch's SYSTEM history ({table.get('SYSTEM')!r})")
+        _expect(_has_entry(table.get("FRAM"), "E", busy) and _has_entry(table.get("FRAM"), "W", repaired), f"the relaunch logged no busy block and its repair ({table.get('FRAM')!r})")
+    with ctx.boot(state_dir=state) as twin:
+        fram = _errcount(twin.port, "FRAM")
+        _expect(not _has_entry(fram, "E", busy) and not _has_entry(fram, "W", repaired), f"the block the relaunch repaired reads busy again ({fram!r})")
 
 
 @scenario("every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly", family="sensortask_integration")
@@ -1430,6 +1458,32 @@ def _refusal_counted(ctx: Context) -> None:
         _expect(isinstance(before, int) and after == before + refused, f"HTTPDropped {before!r} -> {after!r} after {refused} refusal(s)")
 
 
+@scenario("refused_config_write_is_reported_unpersisted", family="sensortask_integration")
+def _refused_config_write(ctx: Context) -> None:
+    """A config write the flash refuses answers Valid, is reported in ConfigUnpersisted and CFGMGR_NTP, and the next landed write clears it."""
+    state = ctx.logs_dir / "state_unpersisted"
+    with ctx.boot(state_dir=state) as twin:
+        path = state_paths(state).config_dir / "config_NTP.cfg"
+        offset = _object(_request(twin.port, "GET", "/networking")).get("NTPOffset")
+        if not isinstance(offset, int) or not path.is_file():
+            raise AssertionError(f"NTPOffset reads {offset!r}; its config file {path} exists: {path.is_file()}")
+        modes = [(p, p.stat().st_mode) for p in (path, path.parent)]
+        try:
+            path.chmod(0o444)
+            path.parent.chmod(0o555)
+            if _writable(path):
+                raise UnmetPremiseError(f"file modes do not bind for this process (a write probe opened the 0444 {path.name}), so the twin's write cannot be refused")
+            _expect(_result(_request(twin.port, "PUT", "/networking", {"NTPOffset": offset + 1}), "NTPOffset") == "Valid", "the refused write's PUT did not answer Valid")
+            _expect(_wait_unpersisted(twin.port, ["NTP"]), "ConfigUnpersisted never named NTP after its refused write")
+            _expect(_has_entry(_errcount(twin.port, "CFGMGR_NTP"), "E", _src_int("asy_config_manager.py", "_ERR_CFG_FILE_WRITE")), "CFGMGR_NTP holds no CFG_FILE_WRITE entry")
+        finally:
+            for p, mode in modes:
+                p.chmod(mode)
+        _expect(_result(_request(twin.port, "PUT", "/networking", {"NTPOffset": offset + 2}), "NTPOffset") == "Valid", "the second PUT did not answer Valid")
+        _expect(_wait_unpersisted(twin.port, []), "ConfigUnpersisted still names a store after a write that landed")
+        _expect(_wait_stored(state, "NTP", "NTPOffset", offset + 2), "the second write never reached the config file")
+
+
 def _refused_reset_errors(port: int, before: "dict[str, JSONObject]", when: str) -> None:
     # One ResetErrors answering Failed, then no error count below what `before` read: nothing was cleared.
     answer = _request(port, "PUT", "/status", {"ResetErrors": True})
@@ -1577,11 +1631,14 @@ def _route_out(host: str) -> bool:
 def _run_one(item: Scenario, ctx: Context, *, group_ends: bool = True) -> Outcome:
     # One scenario's verdict; on a shared boot its idle check, and the shutdown its failure or the group's end needs.
     started = time.monotonic()
+    skipped = ""
     if item.needs_site and not (SITES_DIR / ctx.device / "frozen_html.py").is_file():
         ctx.failures.append(f"build/generated_html/{ctx.device} is not built - run scripts/build_device_websites.sh")
     else:
         try:
             item.body(ctx)
+        except UnmetPremiseError as exc:
+            skipped = str(exc)
         except _SCENARIO_ERRORS as exc:  # one scenario's verdict, never the run's
             ctx.failures.insert(0, f"{type(exc).__name__}: {exc}")
     if ctx.shared is not None:
@@ -1589,6 +1646,8 @@ def _run_one(item: Scenario, ctx: Context, *, group_ends: bool = True) -> Outcom
     elapsed = time.monotonic() - started
     if ctx.failures:
         return Outcome(item.name, "failed", "; ".join(ctx.failures) + f" ({elapsed:.1f}s)")
+    if skipped:
+        return Outcome(item.name, "skipped", skipped)
     return Outcome(item.name, "passed", f"{elapsed:.1f}s")
 
 
@@ -2042,6 +2101,16 @@ def _wait_stored(state: Path, store: str, key: str, value: JSONValue, timeout_s:
         time.sleep(_LINE_POLL_S)
     return False
 
+def _wait_unpersisted(port: int, stores: "list[str]", timeout_s: float = _DRAIN_WAIT_S) -> bool:
+    # Whether GET /status's ConfigUnpersisted reads `stores` by the deadline: the write's deferred flush ran.
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if _group(_status(port), "system").get("ConfigUnpersisted") == stores:
+            return True
+        time.sleep(_LINE_POLL_S)
+    return False
+
+
 def _watchdog_fault(ctx: Context, kind: str) -> None:
     # One --test-watchdog-fault after the supervisor's first feed: the starved watchdog engages with the twin still up.
     # Past a raise or main()'s end nothing feeds again; a blocked loop's own supervisor feeds once it resumes.
@@ -2076,6 +2145,15 @@ def _watchdog_fault_main_exit(ctx: Context) -> None:
 def _watchdog_fault_supervisor_raise(ctx: Context) -> None:
     """A raise escaping the supervisor's dead-task report stops every feed, and the starved watchdog engages."""
     _watchdog_fault(ctx, "supervisor-raise")
+
+
+def _writable(path: Path) -> bool:
+    # A write probe: whether this process may open `path` for writing whatever its mode (root's CAP_DAC_OVERRIDE may).
+    try:
+        with path.open("a", encoding="utf-8"):
+            return True
+    except PermissionError:
+        return False
 
 
 def _write_until_answered(port: int, index: int) -> "tuple[int, JSONValue]":

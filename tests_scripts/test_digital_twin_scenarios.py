@@ -379,6 +379,18 @@ def test_the_run_record_names_each_scenarios_outcome(harness: ModuleType, tmp_pa
     assert outcomes["needs_isl"] == ("skipped", "device wires no isl29125")
 
 
+def test_a_scenario_whose_premise_this_host_cannot_give_skips_with_its_reason(harness: ModuleType, tmp_path: Path) -> None:
+    def no_premise(_ctx: object) -> None:
+        """Skips."""
+        raise harness.UnmetPremiseError("file modes do not bind here")
+
+    item = harness.Scenario("no_premise", no_premise, "Skips.", "fixture")
+    ctx = harness.Context(DEVICE_NAMES[0], "micropython", -1, tmp_path, (), iter(()), "host")
+    assert harness._run_one(item, ctx) == harness.Outcome("no_premise", "skipped", "file modes do not bind here")
+    ctx.failures.append("twin 1: the SIGINT shutdown ended killed")  # a boot's own failure still fails it
+    assert harness._run_one(item, ctx).outcome == "failed"
+
+
 @pytest.mark.usefixtures("own_lock_root")
 def test_a_run_that_passed_nothing_is_no_pass(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def ok(_ctx: object) -> None:

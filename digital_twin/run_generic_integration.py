@@ -174,6 +174,8 @@ _GC_BLOCK_BYTES = 4 * struct.calcsize("P")
 _TEST_TRAIN_CMD_ID = 0x02  # the exerciser's ECHO (asy_uart_link_driver.py), the one SET its responder takes
 _SIGINT = 2  # Linux's signal number (signal(7)): MicroPython has no signal module
 _WATCHDOG_FAULT_KINDS = ("supervisor-raise", "main-exit", "block")
+_HOLD_CUT = "cut"  # --test-hold-system-entry's unreleased mode: the held entry's write cut inside its first block
+_FRAM_STATUS_BUSY = 0x02  # asy_fram_manager.py's _STATUS_BUSY, a const() and so no attribute: a block mid-write
 _WDT_FAULT_BLOCK_MS = _WDT_TIMEOUT_MS + 1000  # past the armed timeout: the starved countdown fires once the loop resumes
 
 
@@ -196,7 +198,7 @@ if TYPE_CHECKING:
         shutdown_hang: str | None
         flash_stall_max: bool
         uart_over_cap: bool
-        hold_system_entry: int | None
+        hold_system_entry: tuple[int, bool] | None  # (errno, cut)
         kbd_traceback: bool
         loop_lag_ms: int | None
         drop_timer_fire: str | None
@@ -268,7 +270,8 @@ _USAGE = f"""Usage: micropython digital_twin/run_generic_integration.py --module
   --test-hold-closing-slot, --test-stall-loop-ms N, --test-conn-status-interval-ms N,
   --test-fault-status-interval-ms N, --test-shutdown-hang S1|S2|S3|S4|S5reset|S5erase|S6,
   --test-flash-stall-max (every flush at its datasheet maximum), --test-uart-over-cap (one train past each link's cap),
-  --test-hold-system-entry ERRNO (SYSTEM's entry with that errno waits for ENTRY_RELEASE, its bounded wait starting there),
+  --test-hold-system-entry ERRNO[:cut] (SYSTEM's entry with that errno waits for ENTRY_RELEASE, its bounded wait starting
+        there; with :cut its write is held inside its first block after the busy mark, never released, so the bound cuts it),
   --test-kbd-traceback (KBD_TRACEBACK prints the interrupt object's traceback),
   --test-loop-lag-ms N (a LOOP_LAG line every {_LOOP_LAG_REPORT_MS // 1000} s from a task sleeping N ms at a time, each link's transfers on it),
   --test-drop-timer-fire reset|sequencer (that one-shot's fire lost as rp2's full scheduler queue loses it),
@@ -441,7 +444,10 @@ def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "T
     elif arg == "--test-uart-over-cap":
         over_cap = True
     elif arg == "--test-hold-system-entry":
-        entry = _positive_int(arg, "ERRNO", _pop_value(remaining, arg))
+        errno_text, _sep, mode = _pop_value(remaining, arg).partition(":")
+        if mode not in ("", _HOLD_CUT):
+            raise ValueError(f"{arg} mode {mode!r} not recognized - expected ERRNO or ERRNO:{_HOLD_CUT}")
+        entry = (_positive_int(arg, "ERRNO", errno_text), mode == _HOLD_CUT)
     elif arg == "--test-kbd-traceback":
         kbd = True
     elif arg == "--test-loop-lag-ms":
@@ -650,7 +656,7 @@ def _test_hold_closing_slot(module: "ModuleType") -> "Callable[[], None]":
     return release
 
 
-def _test_hold_system_entry(module: "ModuleType", errno_held: int, say: "Callable[[str], None]" = print) -> "Callable[[], None]":
+def _test_hold_system_entry(module: "ModuleType", errno_held: int, say: "Callable[[str], None]" = print, *, cut: bool = False) -> "Callable[[], None]":
     # SystemService's logger writes its entry with errno_held only after ENTRY_RELEASE: ENTRY_HELD marks the call's start,
     # so the host acts inside that write (the supervisor's escalation entry); the returned callback releases it. The
     # service's bounded wait on a held entry starts at the release, so the host's own pace never counts against it.
@@ -658,6 +664,26 @@ def _test_hold_system_entry(module: "ModuleType", errno_held: int, say: "Callabl
     if service is None:
         raise RuntimeError("asy_system_service is not imported, so the held entry's bounded wait cannot start at its release")
     real_err_s = logger.err_s
+    if cut:  # the entry's real write starts and is held after its first block's busy mark: the bound counts the hold
+        chunk = getattr(logger, "fram", None)
+        if chunk is None:
+            raise RuntimeError("SystemService's logger has no FRAM chunk, so no block of its entry can be cut")
+        real_status, armed = chunk._handle_status_bytes, [False]
+
+        async def status_then_hold(fram: object, addr: int, val: int, *, check_idle: bool) -> "bool | None":
+            done: bool | None = await real_status(fram, addr, val, check_idle=check_idle)
+            if armed[0] and val == _FRAM_STATUS_BUSY and done is not None:
+                armed[0] = False
+                say("ENTRY_HELD")
+                await asyncio.Event().wait()  # never set: only the bound's cancel ends this write
+            return done
+
+        def cut_entry(*args: object, **kwargs: object) -> "Coroutine[object, object, None]":
+            armed[0] = armed[0] or kwargs.get("errno") == errno_held
+            return cast("Coroutine[object, object, None]", real_err_s(*args, **kwargs))
+
+        logger.err_s, chunk._handle_status_bytes = cut_entry, status_then_hold
+        return lambda: None  # never released: the cut is the mode
     unstarted: list[Coroutine[object, object, None]] = []  # held entries no bounded wait has started yet
 
     async def hold() -> None:
@@ -837,7 +863,7 @@ def _test_start(
     if flags.stall_loop_ms:
         triggers["STALL_TRIGGER"] = _test_stall_loop(flags.stall_loop_ms)
     if flags.hold_system_entry:
-        triggers["ENTRY_RELEASE"] = _test_hold_system_entry(module, flags.hold_system_entry)
+        triggers["ENTRY_RELEASE"] = _test_hold_system_entry(module, flags.hold_system_entry[0], cut=flags.hold_system_entry[1])
     if flags.kbd_traceback:
         triggers["KBD_TRACEBACK"] = _test_kbd_traceback()
     if flags.hold_closing_slot or flags.stall_loop_ms or flags.hold_system_entry or flags.kbd_traceback:
