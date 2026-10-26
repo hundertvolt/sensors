@@ -673,10 +673,10 @@ that file's archived record ("archive §7R" below).
   every console-tail memory gate also reads SYSTEM's task-end log around its window and fails on a
   new `TASK_RAISED` or `SUPERVISOR_RAISED` (`error_log_helpers.assert_no_new_task_raised()`): over
   `GET /status` on the bench, over the REPL on the flash tier (`read_live_system_log()`, which
-  interrupts the firmware, so the flash soak hard-resets after each read). A test that clears the
-  logs reads them first. A device script running the firmware's `main()` installs an always-printing
-  report before it, as the PC tiers do; `tests_scripts/test_exception_handler_contract.py` pins all
-  three.
+  interrupts the firmware, so the flash soak hard-resets after each read, and reads the first only once
+  a hard reset's boot line has come). A test that clears the logs reads them first. A device script
+  running the firmware's `main()` installs an always-printing report before it, as the PC tiers do;
+  `tests_scripts/test_exception_handler_contract.py` pins all three.
 - **Peak is not rounds.** Rounds of N parallel requests with pauses are typical load and overstate
   free heap (archive §7R.4). Peak is as many back-to-back clients as the limit plus forced internal work (the
   hammer test's dispatch-only SGP40 reset PUT every 3 s), on the full task graph, over every path a

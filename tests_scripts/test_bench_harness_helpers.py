@@ -181,6 +181,7 @@ class _Recorder:
         self.calls.append("kick_all_stations")
 
 
+
 def _bare_resets(tree: ast.Module) -> "list[str]":
     # Every board.hard_reset() a bench module makes itself: a recovery must go through recover_by_reset() or
     # kick_then_reset(), so it is reported and never skips the kick.
@@ -468,6 +469,16 @@ def test_kick_then_reset_kicks_the_stations_before_the_one_reset() -> None:
     fake = _Recorder()
     harness.kick_then_reset(fake, fake)  # type: ignore[arg-type]
     assert fake.calls == ["kick_all_stations", "hard_reset"]
+
+
+def test_the_soak_reads_systems_log_first_only_after_a_hard_reset_and_a_fresh_boot() -> None:
+    # Its calls in source order, no twin: without a bench the session's own reset leaves the board mid-boot, so the
+    # first live read must follow a reset of the soak's own, the board back on USB and the boot line.
+    tree = ast.parse((TESTS_HARDWARE / "flash" / "test_memory_stress.py").read_text(encoding="utf-8"))
+    soak = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "test_single_core_timing_headroom_holds_under_normal_full_task_load")
+    calls = sorted((node for node in ast.walk(soak) if isinstance(node, ast.Call)), key=lambda call: (call.lineno, call.col_offset))
+    order = [_call_name(call) for call in calls if _call_name(call) in {"hard_reset", "wait_until", "wait_for_boot", "read_live_system_log"}]
+    assert order[: order.index("read_live_system_log") + 1] == ["hard_reset", "wait_until", "wait_for_boot", "read_live_system_log"], order
 
 
 def test_elf_symbols_drops_a_name_nm_lists_more_than_once(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
