@@ -3874,6 +3874,48 @@ def test_a_torn_record_under_a_power_on_cause_reads_1() -> None:
     assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
 
 
+def test_a_console_soft_reset_after_a_boot_phase_failure_reads_10_plus_the_phase() -> None:
+    # A loop ended during boot records nothing; a Ctrl-D after a power-on boot keeps the cause and the phase marker.
+    for p in range(BOOT_CONSTRUCTION, BOOT_NTP + 1):
+        machine.power_on()
+        begin_boot()
+        svc = _make_service()
+        for q in range(BOOT_CONSTRUCTION, p + 1):
+            svc.boot_phase(q)
+        asy_system_service.record_loop_end()
+        assert list(machine.mem_backup(0)) == [0, 0, 0, 0], p
+        assert machine.reset_cause() == machine.PWRON_RESET
+        assert begin_boot() == _const("_RR_BOOT_FAILURE") + p, p
+
+
+def test_a_boot_done_marker_under_a_power_on_cause_reads_1() -> None:
+    machine.power_on()
+    begin_boot()
+    _make_service().boot_phase(BOOT_DONE)
+    assert machine.reset_cause() == machine.PWRON_RESET
+    assert begin_boot() == _const("_RR_POWER_ON")
+
+
+def test_a_power_cycle_during_boot_reads_1() -> None:
+    machine.power_on()
+    begin_boot()
+    _make_service().boot_phase(BOOT_NTP)
+    machine.power_on()  # power-off clears both regions (SPECIFICATION.md F.5.4)
+    assert begin_boot() == _const("_RR_POWER_ON")
+
+
+def test_a_torn_record_beside_an_in_boot_phase_reads_10_plus_the_phase_under_either_cause() -> None:
+    # The phase marker is read before the power-on cause and the torn record (owner, 2026-10-26).
+    for cause in (machine.PWRON_RESET, machine.WDT_RESET):
+        machine.power_on()
+        begin_boot()  # marks phase 1
+        write_reset_record(_const("_RR_REBOOT"))
+        machine.mem_backup(0)[2] ^= 1
+        machine.reset_cause_value = cause
+        assert begin_boot() == _const("_RR_BOOT_FAILURE") + BOOT_CONSTRUCTION, cause
+        assert list(machine.mem_backup(0)) == [0, 0, 0, 0], cause
+
+
 def test_no_record_after_a_complete_boot_reads_watchdog() -> None:
     machine.power_on()
     begin_boot()

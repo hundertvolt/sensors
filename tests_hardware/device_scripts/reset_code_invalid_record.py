@@ -1,10 +1,10 @@
 """Isolated-driver device script: a reset-reason record that is not valid - a non-magic word in mem_backup(0)'s magic
 slot, then machine.reset() - which the next boot must read as code 0. STATE="valid_record_wait" writes a valid record
-(code 3) instead and waits, fed, for the operator's RUN-pin reset; no flash write either way, the facts first."""
+(code 3) and waits, fed; STATE="boot_phase" calls begin_boot() and returns fed; no flash write in any state."""
 
 import machine
 
-from asy_system_service import write_reset_record
+from asy_system_service import begin_boot, write_reset_record
 
 # @include _shared/facts.py
 # @include _shared/watchdog.py
@@ -15,7 +15,7 @@ except ImportError:  # typing has no runtime presence on MicroPython
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from _shared.facts import fact
+    from _shared.facts import done, fact
     from _shared.watchdog import arm, fed_wait_ms
     from bench_facts import BenchFacts
 
@@ -41,6 +41,14 @@ def _main() -> None:
     wdt = arm()
     state = BENCH.get("STATE", "invalid")
     fact("state", state)
+    if state == "boot_phase":
+        # The boot's own call: it reads and clears the 21 that mpremote's Ctrl-C recorded and marks boot phase 1.
+        fact("begin_boot", begin_boot())
+        fact("record", list(machine.mem_backup(0)))
+        fact("phase", list(machine.mem_backup(1)))
+        wdt.feed()  # the host's console soft reset must come within one watchdog period of this feed
+        done()
+        return
     if state == "valid_record_wait":
         write_reset_record(_RR_REBOOT)  # magic last, as every intended reset writes it
         record = machine.mem_backup(0)
