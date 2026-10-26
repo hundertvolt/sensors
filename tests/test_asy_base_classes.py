@@ -3349,6 +3349,17 @@ def test_a_put_queued_behind_the_put_lock_when_the_store_closes_is_refused() -> 
         _remove(_SHARED_CFG_DIR + "config_queuedput.cfg")
 
 
+def test_a_reader_given_a_logger_writes_through_it_and_keeps_its_own_name() -> None:
+    # logger= shares a built sibling's logger in place of making one (a library feature, no device wires it today);
+    # the reader's own name still comes from name and name_ext, and without logger= it makes its own as before.
+    shared = PrintLogHistory(name="SIBLING")
+    reader = SensorReader(Meas(1, 2), "TEST", name_ext="b", logger=shared)
+    assert reader.pr is shared
+    assert reader.name == "TEST_b"
+    own = SensorReader(Meas(1, 2), "TEST")
+    assert own.pr is not shared and own.pr.name == own.name == "TEST"
+
+
 if __name__ == "__main__":
     import microtest
 

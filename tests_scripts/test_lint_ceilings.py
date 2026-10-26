@@ -49,7 +49,8 @@ _MAX_ARGS_EXEMPT = frozenset({
 })
 
 _TAIL = ("max_module_error", "name_ext", "cfg_path")
-# The classes whose test-only `logger=` reach-through stays for now (C.7): no other constructor takes one.
+# The classes that take `logger=`, sharing an already-built sibling's logger in place of making one (no device wires it;
+# tests do): no other constructor takes one.
 _LOGGER_ALLOWED = frozenset({
     ("src/asy_uart_comm.py", "UARTComm"),
     ("src/asy_uart_link_driver.py", "UARTLinkDriver"),
@@ -188,7 +189,7 @@ def _tail_problem(params: "list[str]", *, logger_allowed: bool) -> "str | None":
     rest = list(params)
     if rest and rest[-1] == "logger":
         if not logger_allowed:
-            return "takes logger=, which only the classes C.7 names keep"
+            return "takes logger=, which only the classes in _LOGGER_ALLOWED keep"
         rest.pop()
     if not rest or rest[-1] != "log":
         return "log is not its last parameter (logger= aside)"

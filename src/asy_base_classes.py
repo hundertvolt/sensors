@@ -411,11 +411,12 @@ class SensorReader:
         max_module_error: int = 5,
         name_ext: str = "",
         log: LogConfig = DEFAULT_LOG,
+        logger: "PrintLogHistory | None" = None,
     ) -> None:
-        # name_ext="" (every module today) reproduces `name` unchanged - see instance_name()'s own
-        # comment and SPECIFICATION.md Part C.14. Resolved once here, so self.pr.name and self.name agree.
+        # name_ext="" (every module today) reproduces `name` unchanged - see instance_name()'s own comment and SPECIFICATION.md
+        # Part C.14. Resolved once here: self.pr.name agrees with it unless logger= shares a sibling's logger.
         resolved_name = instance_name(name, name_ext)
-        self.pr = make_logger(log, resolved_name)
+        self.pr = logger if logger is not None else make_logger(log, resolved_name)  # reach-through: reuse a directly-bound sibling object's own logger
         self.name = resolved_name  # matches self.pr.name - the _ModuleLike registration shape
         # asy_webserver_service.py's registration lists key on (sensors=/error_sources=/settings=).
         self._datastruct = init_data
