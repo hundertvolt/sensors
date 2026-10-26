@@ -28,6 +28,7 @@ from _recording_print import record_prints
 from _src_const import py_value, src_const, src_int
 from _src_schema import src_schema
 from _tmp_scratch import TmpScratch
+from _untraced import untraced
 from _write_counters import WriteCountingOpen
 from machine import Timer
 from microdot import Microdot, Request, Response
@@ -3633,7 +3634,8 @@ def test_a_stack_overflow_caught_by_a_level_setter_reboots_through_the_superviso
     def bottomless(value: int) -> bool:
         return bottomless(value + 1)
 
-    svc = _make_service(level_setters=lambda: [bottomless])
+    # Untraced: a limit reached inside the coverage tracer would end tracing for the whole file.
+    svc = _make_service(level_setters=lambda: [lambda value: untraced(lambda: bottomless(value))])
 
     async def scenario() -> None:
         await svc.setup()

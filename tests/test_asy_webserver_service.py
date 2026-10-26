@@ -31,6 +31,7 @@ from _src_const import src_int
 from _src_schema import src_schema
 from _strict_json import strict_loads
 from _tmp_scratch import TmpScratch
+from _untraced import untraced
 from _write_counters import WriteCountingOpen
 from freezefs.ffsmount import VfsFrozen  # type: ignore[import-not-found]
 from microdot import Microdot, Request, Response
@@ -4170,7 +4171,7 @@ def _stack_overflow() -> RuntimeError:
         return dive(depth + 1)
 
     try:
-        dive(0)
+        untraced(lambda: dive(0))  # a limit reached inside the coverage tracer would end tracing for the whole file
     except RuntimeError as e:
         return e
     raise AssertionError("no recursion limit reached")

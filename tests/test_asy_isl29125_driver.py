@@ -14,6 +14,7 @@ from _fast_sleep import FastAsyncSleep, check_sleep_ms
 from _src_const import src_float, src_int, src_strs
 from _ticks30 import TICKS_PERIOD, Ticks30Time
 from _tmp_scratch import TmpScratch
+from _untraced import untraced
 from machine import I2C as FakeI2C
 from machine import Pin as FakePin
 from machine import Timer as FakeTimer
@@ -184,7 +185,7 @@ def _stack_overflow() -> RuntimeError:
         return dive(depth + 1)
 
     try:
-        dive(0)
+        untraced(lambda: dive(0))  # a limit reached inside the coverage tracer would end tracing for the whole file
     except RuntimeError as e:
         return e
     raise AssertionError("no recursion limit reached")

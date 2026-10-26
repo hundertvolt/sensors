@@ -59,6 +59,7 @@ from _strict_json import strict_loads  # noqa: E402 - imported after the prewarm
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_common import Injections, StatePaths  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_devices import generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
+from _untraced import untraced  # noqa: E402 - imported after the prewarm and the UDP shim
 
 import asy_config_manager  # noqa: E402 - imported after the prewarm and the UDP shim
 import asy_ntp_client  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -507,7 +508,8 @@ def test_the_held_system_entry_waits_for_its_release_and_lets_every_other_entry_
 def test_the_kbd_traceback_flag_catches_the_interrupt_object_by_a_sigint_and_prints_where_it_was_raised() -> None:
     said: list[str] = []
     out = io.StringIO()
-    show = runner._test_kbd_traceback(said.append, out)
+    # Untraced: an interrupt raised inside the coverage tracer would end tracing for the whole file.
+    show = untraced(lambda: runner._test_kbd_traceback(said.append, out))
     assert said == ["KBD_CAPTURED True"], said
     show()
     text = out.getvalue()

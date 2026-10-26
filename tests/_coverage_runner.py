@@ -7,6 +7,8 @@ import json
 import os
 import sys
 
+import _untraced  # beside this runner: its `tracer` is what untraced() restores, so an exhausting call cannot end tracing
+
 try:
     from typing import TYPE_CHECKING
 except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
@@ -22,6 +24,10 @@ if TYPE_CHECKING:
 _TRACED_PREFIXES = ("src/", "digital_twin/", "build/generated_src/")
 _INCOMPLETE = "runner: {} ended without microtest's exit - no trailer, or it never ran"
 _S_IFDIR = 0x4000  # os.ilistdir()'s entry type for a directory (extmod/vfs.h MP_S_IFDIR)
+# One line under a traced name, run after the file: unrecorded, the tracer ended early (_tracing_ended()).
+_PROBE_FILE = "src/<tracer probe>"
+_PROBE = compile("_ = 1\n", _PROBE_FILE, "exec")
+_ENDED = "runner: tracing ended after {} - every traced line the file ran after it is missing from its coverage"
 
 
 def _add_tables(tables: dict[str, bytearray], directory: str) -> None:
@@ -54,6 +60,8 @@ _HITS: dict[str, dict[int, bool]] = {}  # a traced file or line no table holds: 
 # Part E.5.2). Garbage at the next collection: a collected heap measures the same, a collection-free window 32 B more.
 _SCAN_STEP = 1.0
 _SCAN_MARK = [_SCAN_STEP]
+_last_file = ""  # the last traced line, which a note of an ended tracer names: two stores per line, nothing allocated
+_last_line = 0
 
 
 def _global_trace(frame: "FrameType", event: str, _arg: object) -> "_Trace | None":
@@ -80,10 +88,13 @@ def _line_tables() -> dict[str, bytearray]:
 
 
 def _local_trace(frame: "FrameType", event: str, _arg: object) -> "_Trace":
+    global _last_file, _last_line
     if event == "line":
         filename = frame.f_code.co_filename
         table = _TABLES.get(filename)
         lineno = frame.f_lineno
+        _last_file = filename
+        _last_line = lineno
         if table is not None and lineno < len(table):
             table[lineno] = 1
         elif filename.startswith(_TRACED_PREFIXES):
@@ -101,6 +112,7 @@ def _run() -> int:
     _TABLES.update(_line_tables())
     sys.argv[:] = [test_file]  # what the file sees when run directly
 
+    _untraced.tracer = _global_trace
     sys.settrace(_global_trace)
     try:
         with open(test_file) as f:
@@ -124,9 +136,24 @@ def _run() -> int:
         print(_INCOMPLETE.format(test_file))
         exit_code = 1
     finally:
-        sys.settrace(None)
-        _dump(out_path)  # every path: a failing or incomplete file's lines still count
+        try:
+            ended = _tracing_ended()
+        finally:
+            sys.settrace(None)
+            _dump(out_path)  # every path: a failing or incomplete file's lines still count
+        if ended is not None:
+            print(_ENDED.format(ended))
+            with open(out_path + ".incomplete", "w") as f:
+                f.write(_ENDED.format(ended) + "\n")
     return exit_code
+
+
+def _tracing_ended() -> "str | None":
+    # A raise inside the trace callback (a C-stack limit, an interrupt) leaves its is-executing flag set, and from then
+    # on nothing is traced (py/profile.c:168-173, py/vm.c:161-185, v1.29.0): the last traced line, or None if alive.
+    last = "{}:{}".format(_last_file or "<none>", _last_line)  # read first: the probe's own line replaces it
+    exec(_PROBE, {})
+    return None if _HITS.pop(_PROBE_FILE, None) is not None else last
 
 
 sys.exit(_run())

@@ -34,7 +34,8 @@ Environment:
   GC_THRESHOLD              gc.threshold() for every test file, e.g. 32768 (default: unset, the reactive -1)
 
 Exit codes: 0 every test passed; 1 a test failed or an allocation failure was seen; 2 a usage or
-setting error; 3 (--coverage only) every test passed and only a coverage report failed to render.
+setting error; 3 (--coverage only) every test passed and only the coverage is short: a report
+failed to render, or a file's tracer ended early (listed under Notes).
 EOF
 }
 
@@ -1027,6 +1028,19 @@ if [ "$coverage" = "1" ]; then
     uv run coverage html --data-file="$results_dir/host.coverage" -d htmlcov_host || coverage_render_failed=1
     uv run coverage report --data-file="$results_dir/host.coverage" --format=markdown >coverage_summary_host.md || coverage_render_failed=1
 fi
+# A job whose tracer ended early has tests/_coverage_runner.py's note beside its dump: its tests passed and only its
+# coverage is short (SPECIFICATION.md E.5.1), so each note is listed and the run exits 3, as for a failed render.
+coverage_incomplete=0
+if [ "$coverage" = "1" ]; then
+    for job in "${job_list[@]}"; do
+        note_file="$raw_dir/$(_job_tag "$job").json.incomplete"
+        if [ -f "$note_file" ]; then
+            coverage_incomplete=$((coverage_incomplete + 1))
+            note_text="$(<"$note_file")"
+            summary_note "$job" "coverage incomplete: ${note_text#runner: }"
+        fi
+    done
+fi
 
 if [ "${#memory_error_files[@]}" -gt 0 ]; then
     echo "MemoryError seen (caught-and-logged counts too - SPECIFICATION.md Part I.4(e)):"
@@ -1072,13 +1086,17 @@ if [ -n "${GITHUB_ACTIONS:-}" ]; then
 fi
 
 # Three outcomes, three codes, because the caller acts differently on each: 1 = a test failed,
-# 3 = every test passed and only the report could not be rendered, 0 = both fine. CI gates on 1
-# and tolerates 3 (SPECIFICATION.md Part E.5.3); a test failure is never advisory.
+# 3 = every test passed and only the coverage is short (a report not rendered, a tracer ended early), 0 = all fine.
+# CI gates on 1 and tolerates 3 (SPECIFICATION.md Part E.5.3); a test failure is never advisory.
 exit_code=0
+coverage_short=()
+[ "$coverage_render_failed" -eq 0 ] || coverage_short+=("coverage report not rendered")
+[ "$coverage_incomplete" -eq 0 ] || coverage_short+=("coverage incomplete in $coverage_incomplete job(s), listed under Notes")
 if [ "$failed" -ne 0 ]; then
     exit_code=1
-elif [ "$coverage_render_failed" -ne 0 ]; then
+elif [ "${#coverage_short[@]}" -gt 0 ]; then
     exit_code=3
+    summary_result_reason "$(_join_reasons "${coverage_short[@]}")"
 fi
 
 # The deciding logs of every failed, no-verdict, allocation-flagged and retried file, plus the

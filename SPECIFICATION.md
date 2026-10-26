@@ -5481,6 +5481,19 @@ multi-line statement's continuation line, an `else:` or `finally:` header, or a 
 `if` body (a `pass` in a loop body does fire), each confirmed on `build-settrace` with a probe
 function (agent, 2026-10-22).
 
+The tracer can also end early, and then every later line of its file reads as missed. An exception
+raised while the trace callback itself runs (a test's recursion hitting the C-stack limit inside it,
+an interrupt delivered there) leaves the callback's is-executing flag set (`py/profile.c:168-173`);
+every frame entry and line event checks that flag first (`py/vm.c:161-185`, v1.29.0), and nothing
+clears it, `sys.settrace()` included, so tracing ends for the rest of the process and nothing says
+so (CPython documents the same end for its own tracer: an error in the trace function unsets it).
+`tests/_coverage_runner.py` therefore runs one line under a traced `src/` name after the file; when
+that line goes unrecorded it writes `<dump>.json.incomplete` naming the last traced line, and
+`scripts/test.sh` lists each such job under `Notes:` and exits 3 (E.5.3). A test runs such a call
+through `tests/_untraced.py`'s `untraced()`, which switches the tracer off for that call alone and
+restores it in `finally` (a plain call outside a coverage run): the lines that call runs are not
+counted, so a `src/` or `digital_twin/` line reached only inside it reads as missed (agent, 2026-10-26).
+
 A branch no input can reach is removed. It stays only as a guard of an overridable extension point
 or of a documented runtime failure; such a guard is exercised through a double (a raising fake, a
 substituted name), or, when no test can provoke it, listed in E.5.1 with its reason (owner,
@@ -5602,13 +5615,14 @@ The fix separates the two signals rather than making the whole rerun gating, whi
 |---|---|---|
 | `0` | every test passed and every report rendered | job green |
 | `1` | a test failed, or a `MemoryError` marker was seen | **job red** |
-| `3` | every test passed; only the coverage rendering failed | tolerated, job green |
+| `3` | every test passed; only the coverage is short: a rendering failed, or a tracer ended early (E.5.1) | tolerated, job green |
 
 Every render — the three `_render_coverage.py` runs and the host report's `coverage html` and
 `coverage report` — is `|| coverage_render_failed=1`-guarded for this: under `set -euo pipefail` a
 bare call would abort the script with the *renderer's* exit code, which a caller cannot tell from a
-failed test. The summary block says which happened
-(`Result: PASS (coverage report not rendered)`, E.10), and the owner's decision of 2026-09-22 chose
+failed test. The summary block's `Result:` line says which happened (E.10):
+`PASS (coverage report not rendered)`, `PASS (coverage incomplete in N job(s), listed under Notes)`,
+or both joined by `; `. The owner's decision of 2026-09-22 chose
 this split over the alternative of running one settrace-built file in a gating lane.
 
 ## E.6 Shared behaviors and the real-hardware test tier
@@ -6071,7 +6085,8 @@ Exit code: <n>
   it also lists each `tests/lwip_host/` file there, as `<file>: not run under --coverage (the plain
   pass runs them)`, while a plain run counts those files in L1 (E.1).
 - `Result:` reads `PASS` only when the exit status is 0 and nothing failed or checked nothing;
-  `FAIL` for exit 1; `USAGE ERROR` for 2; `PASS (coverage report not rendered)` for 3; `NOT CLEAN
+  `FAIL` for exit 1; `USAGE ERROR` for 2; `PASS (<reason>)` for 3, the reason defaulting to
+  `coverage report not rendered` (`scripts/test.sh` names what is short, E.5.3); `NOT CLEAN
   (<reason>)` for 4 (a hardware runner with `--skip-lower-levels` reads `NOT CLEAN (lower levels
   skipped: L0 L1 L2)`); a hardware `--collect-only` reads `NOT A RUN (collection only)` with exit 0.
   `Exit code:` equals the process's real exit status.
@@ -6079,8 +6094,8 @@ Exit code: <n>
 **Exit codes**: 0 — every item passed; 1 — an item failed or an allocation-failure marker was seen;
 2 — a usage or setting error (an unknown option, a missing or invalid argument or environment
 value), in every runner, `scripts/test.sh` included, with no exception (owner,
-2026-10-01); 3 — `scripts/test.sh --coverage` only: every test passed and only the coverage rendering
-failed (`Result: PASS (coverage report not rendered)`, E.5.3); 4 — NOT CLEAN, a run that cannot be
+2026-10-01); 3 — `scripts/test.sh --coverage` only: every test passed and only the coverage is short,
+a rendering failed or a tracer ended early (`Result: PASS (<what is short>)`, E.5.3); 4 — NOT CLEAN, a run that cannot be
 read as clean. A usage error prints the usage line on stderr.
 
 **Emitters**: `scripts/_summary_block.sh` and `scripts/_summary_block.py` print byte-identical

@@ -155,6 +155,7 @@ _CASES: list[tuple[int, list[tuple[str, str, str]], Opts]] = [
     (1, _ITEMS, _FULL),
     (2, [("failed", "usage", "unknown argument --x")], {}),
     (3, [("passed", "a", "")], {"gc_stage": "coverage run (settrace)"}),
+    (3, [("passed", "a", "")], {"gc_stage": "coverage run (settrace)", "reason": "coverage incomplete in 1 job(s), listed under Notes"}),
     (4, [("passed", "a", "")], {"levels": "L3", "reason": "lower levels skipped: L0 L1 L2"}),
     (4, [("passed", "a", "")], {}),
     (130, [("failed", "t", "aborted by operator"), ("skipped", "u", "not run (run aborted)")], {"unit": "manual steps"}),
@@ -235,9 +236,15 @@ def test_a_nonzero_failure_code_is_never_changed(emitter: ModuleType, tmp_path: 
         assert out.endswith(f"Exit code: {given}\n"), out
 
 
-@pytest.mark.parametrize(("exit_code", "result"), [(0, "PASS"), (1, "FAIL"), (2, "USAGE ERROR"), (3, "PASS (coverage report not rendered)"), (4, "NOT CLEAN (why)"), (124, "FAIL")])
+@pytest.mark.parametrize(("exit_code", "result"), [(0, "PASS"), (1, "FAIL"), (2, "USAGE ERROR"), (3, "PASS (why)"), (4, "NOT CLEAN (why)"), (124, "FAIL")])
 def test_the_result_and_exit_code_lines_follow_the_given_code(emitter: ModuleType, tmp_path: Path, exit_code: int, result: str) -> None:
     for out in (_bash_render(tmp_path, "r", exit_code, [], {"reason": "why"}), _py_render(emitter, tmp_path, "r", exit_code, [], {"reason": "why"})):
+        assert out.endswith(f"Result: {result}\nExit code: {exit_code}\n")
+
+
+@pytest.mark.parametrize(("exit_code", "result"), [(3, "PASS (coverage report not rendered)"), (4, "NOT CLEAN")])
+def test_a_code_with_a_reason_reads_its_default_without_one(emitter: ModuleType, tmp_path: Path, exit_code: int, result: str) -> None:
+    for out in (_bash_render(tmp_path, "r", exit_code, [], {}), _py_render(emitter, tmp_path, "r", exit_code, [], {})):
         assert out.endswith(f"Result: {result}\nExit code: {exit_code}\n")
 
 
