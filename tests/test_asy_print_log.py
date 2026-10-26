@@ -11,7 +11,7 @@ from _error_codes import code
 from _fram_builders import make_fram_manager
 from _recording_print import record_prints
 from _src_const import src_const
-from _untraced import untraced
+from _stack_overflow import stack_overflow
 
 import asy_print_log as print_log_module
 from asy_base_classes import RegionBuffer
@@ -1805,38 +1805,26 @@ def test_make_logger_builds_a_store_or_a_ram_history_by_config() -> None:
     assert DEFAULT_LOG == (None, 10, None)
 
 
-def _stack_overflow() -> RuntimeError:
-    # The interpreter's own C-stack exhaustion, from a real one (py/runtime.c:1786, v1.29.0).
-    def dive(depth: int) -> int:
-        return dive(depth + 1)
-
-    try:
-        untraced(lambda: dive(0))  # a limit reached inside the coverage tracer would end tracing for the whole file
-    except RuntimeError as e:
-        return e
-    raise AssertionError("no recursion limit reached")
-
-
 def test_the_stack_exhausted_text_is_the_interpreters_own_message() -> None:
-    assert src_const("src/asy_print_log.py", "_STACK_EXHAUSTED") == str(_stack_overflow())
+    assert src_const("src/asy_print_log.py", "_STACK_EXHAUSTED") == str(stack_overflow())
 
 
 def test_report_if_fatal_flags_only_a_stack_overflow() -> None:
     # Every other exception leaves the flag clear, the same text under another class included; the real overflow sets it,
     # last, so no case is checked from a set flag.
-    text = str(_stack_overflow())
+    text = str(stack_overflow())
     others = (RuntimeError("CRC check failed while reading data"), RuntimeError(), ValueError(text), OSError(5, text), MemoryError("injected for the fatal check"))
     for other in others:
         report_if_fatal(other)
         assert fatal_reported() is False, repr(other)
-    report_if_fatal(_stack_overflow())
+    report_if_fatal(stack_overflow())
     assert fatal_reported() is True
     print_log_module._fatal = False  # as at boot: microtest fails a test that leaves it set
 
 
 def test_report_if_fatal_allocates_and_prints_nothing() -> None:
     # It may run with the C stack nearly spent: with the heap locked it neither raises nor prints, and the flag still sets.
-    error = _stack_overflow()
+    error = stack_overflow()
     raised = reported = False
     with record_prints() as recorder:
         micropython.heap_lock()

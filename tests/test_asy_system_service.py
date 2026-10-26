@@ -2779,11 +2779,14 @@ def test_start_task_returns_the_real_task_on_success() -> None:
         async def _coro() -> None:
             pass
 
+        created: list[asyncio.Task[None]] = []
+
         def starter() -> "asyncio.Task[None]":
-            return asyncio.create_task(_coro())
+            created.append(asyncio.create_task(_coro()))
+            return created[0]
 
         task = await svc._start_task(starter, 0)
-        assert task is not None
+        assert task is created[0]
         await task
 
     run(scenario())
