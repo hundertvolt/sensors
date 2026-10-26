@@ -553,7 +553,9 @@ information):
   tag lines are data, not commentary, and are exempt**: `# @web`, `# @web-group`, `# @wiring`,
   `# @value-wiring`, `# @limits` and `# @requires` are buildgen's input, one line per field by
   construction (SPECIFICATION.md Part L.6.4), and `# @tunable` (`// @tunable` in JS) is the
-  tunable register's (Part N) — the prose introducing them is not exempt. **JSDoc
+  tunable register's (Part N), and `# @include` is the device-script renderer's
+  (`tests_hardware/harness.py`; owner, 2026-10-26: "These lines are not comments, they count as productive code.")
+  — the prose introducing them is not exempt. **JSDoc
   `@typedef`/`@param`/`@returns` annotations are the same case** — `npm run typecheck` really
   checks them with `tsc`, so `js/definitions.js`'s ~51-line `@typedef` run is a type declaration,
   not a comment; the prose above it is not exempt. **PEP 723 inline script metadata is the same

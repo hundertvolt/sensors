@@ -24,9 +24,9 @@ CAP = 3
 # characters"). None counts every line as one; the one switch for the length rule.
 _WRAP_WIDTH: int | None = 120
 
-# Data, not commentary: a tag line leaves the count, its block's other lines count. CLAUDE.md names the buildgen tags;
-# the last is the tunable register's (tests_scripts/test_tunables_register.py). The list grows only on the owner's word.
-_TAGS = ("web", "web-group", "wiring", "value-wiring", "limits", "requires", "tunable")
+# Data, not commentary: a tag line leaves the count, its block's other lines count. CLAUDE.md names them all: the
+# buildgen tags, the tunable register's and the device-script renderer's include. It grows only on the owner's word.
+_TAGS = ("web", "web-group", "wiring", "value-wiring", "limits", "requires", "tunable", "include")
 _TAG_LINE = re.compile(r"^#+\s*@(?:" + "|".join(re.escape(tag) for tag in _TAGS) + r")(?:\s|$)")
 # PEP 723 inline script metadata is uv's input: punctuation only between its own opening and closing lines.
 _PEP723_OPEN, _PEP723_CLOSE = "# /// script", "# ///"
@@ -320,6 +320,8 @@ def test_a_tag_line_leaves_the_count_and_its_block_still_counts() -> None:
     assert _comment_blocks(["# one", "# @requires bus.timeout>=200000", "# two", "# three", "# @wiring a b", "# four"]) == [(1, 4)]
     assert _comment_blocks(["# one", "# @web A section=x", "# @web-group B", "# two", "# three"]) == []
     assert _comment_blocks(["# a prose line naming @requires mid-sentence", "# two", "# three", "# four"]) == [(1, 4)]
+    assert _comment_blocks(["# @include _shared/a.py", "# @include _shared/b.py", "# @include _shared/c.py", "# @include _shared/d.py"]) == []
+    assert _comment_blocks(["# @included", "# two", "# three", "# four"]) == [(1, 4)]
 
 
 def test_a_long_line_counts_its_length_over_120_rounded_up(monkeypatch: pytest.MonkeyPatch) -> None:
