@@ -458,6 +458,44 @@ def _slots(client: NTPClient) -> "tuple[int, list[int]]":
     return int(entry["ErrCount"]), [nums[i] for i in range(len(nums)) if types[i] != "N"]
 
 
+def _synced_due_at(phase_ms: int, latency_ms: int, cycles: int) -> "list[int]":
+    # A synced hourly client, each resync succeeding: its check timer fires on its own phase, `phase_ms` off the loop's
+    # start, and each await of a tick's handling takes `latency_ms`. Only the ticks around each boundary arrive (the
+    # cadence reads elapsed time, so the rest change nothing): the measured seconds of each fire that triggered a resync.
+    with _SteppedClock() as clock:
+        client = _hourly_client()
+        issynced = client.ntp_issynced
+
+        async def slow_issynced() -> bool:
+            clock.advance(latency_ms)
+            return await issynced()
+
+        client.ntp_issynced = slow_issynced  # type: ignore[method-assign]
+
+        async def scenario() -> "list[int]":
+            await client._handle_ntp_sync_success(_TM)
+            task = asyncio.create_task(client._refresh_loop())
+            await asyncio.sleep(0)  # the loop starts its cadence at 0 ms
+            period = 3600 // _CHECK_INTERVAL_S
+            due_at: list[int] = []
+            for cycle in range(1, cycles + 1):
+                for n in range(cycle * period - 2, cycle * period + 3):
+                    fire_ms = phase_ms + n * _CHECK_INTERVAL_S * 1000
+                    clock.advance(fire_ms - clock.now)  # the timer's phase, whatever the last tick's handling took
+                    await tick(client._ntp_timer_trigger_event)
+                    if client._ntp_sync_trigger_event.state:
+                        client._ntp_sync_trigger_event.clear()
+                        due_at.append(fire_ms // 1000)
+                        await client._handle_ntp_sync_success(_TM)
+            await cancel(task)
+            return due_at
+
+        try:
+            return run(scenario())
+        finally:
+            asy_base_classes.set_utc_valid(valid=False)
+
+
 def _timing(
     dns_timeout_ms: int = _DNS_TIMEOUT_MS,
     dns_tries: int = _DNS_TRIES,
@@ -3353,6 +3391,22 @@ def test_a_dropped_check_tick_does_not_delay_the_due_resync() -> None:
         finally:
             asy_base_classes.set_utc_valid(valid=False)
     assert due_at == 3600, due_at
+
+
+def test_the_boundary_tick_triggers_the_resync_though_the_cadence_restarted_after_a_fire() -> None:
+    # The due tick restarts the cadence after its own awaits, a few ms past its fire, and later fires keep the timer's
+    # phase: each boundary tick reads just under one NTPInterval and still triggers, cycle after cycle.
+    due_at = _synced_due_at(0, 2, 3)
+    assert due_at == [3600, 7200, 10800], due_at
+
+
+def test_the_resync_goes_to_the_check_tick_nearest_its_boundary() -> None:
+    # A cadence started off the timer's phase (a restarted loop): the tick 4 s before the boundary triggers, and the
+    # one 6 s before it does not.
+    early = _synced_due_at(-4000, 0, 2)
+    assert early == [3596, 7196], early
+    late = _synced_due_at(4000, 0, 1)
+    assert late == [3604], late
 
 
 def _unsynced_due_at(step_ms: int, dropped: int) -> "int | None":

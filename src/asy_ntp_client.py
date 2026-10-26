@@ -154,6 +154,11 @@ def _dns_fallback_ok(value: object) -> bool:
     return len(items) <= _DNS_FALLBACK_MAX and all(ipv4_to_int(item) is not None for item in items)
 
 
+def _nearest_tick_s(seconds: int) -> int:
+    # Elapsed seconds rounded to the nearest whole check interval: a tick waking a little early or late counts on time.
+    return (seconds + _NTP_CHECK_INTERV // 2) // _NTP_CHECK_INTERV * _NTP_CHECK_INTERV
+
+
 def _ntp_host_ok(value: object) -> bool:
     # hostName shape: an IPv4 literal, or dot-separated RFC 1123 labels of at most 63 characters.
     if type(value) is not str:
@@ -281,7 +286,7 @@ class NTPClient(SensorReaderConfig):
             ):  # if not synced at all, self._refresh_loop() will permanently try to sync
                 self.pr.evt("Waiting for NTP sync retry.")
                 try:
-                    # ONE_SHOT: a dropped fire loses only this retry; _refresh_loop()'s due check starts the next sync once NTPInterval (default 12 h) has passed.
+                    # ONE_SHOT: a dropped fire loses only this retry; _refresh_loop()'s due check starts the next sync at the check tick nearest NTPInterval (default 12 h).
                     self._ntp_retry_timer.init(
                         period=_NTP_RETRY_INTERV * 1000,
                         mode=Timer.ONE_SHOT,
@@ -383,11 +388,13 @@ class NTPClient(SensorReaderConfig):
 
             self.pr.all("Sync-age tick counter at", self._ntp_sec_count)
             if await self.ntp_issynced():
-                due = self._ntp_sec_count >= (ntp_interv[0] * 60 * 60)
+                # The tick nearest the boundary is due: the cadence restarts a few ms after a fire, so the boundary tick reads
+                # just under one interval (agent, 2026-10-26).
+                due = _nearest_tick_s(self._ntp_sec_count) >= (ntp_interv[0] * 60 * 60)
             else:
                 self._cadence.restart(self._ntp_sec_count)  # time out of sync never counts towards the cadence
                 # The check intervals since the last tick, rounded, and at least its own: a dropped tick delays no retry.
-                self._unsynced_wait_s += max(_NTP_CHECK_INTERV, (gap + _NTP_CHECK_INTERV // 2) // _NTP_CHECK_INTERV * _NTP_CHECK_INTERV)
+                self._unsynced_wait_s += max(_NTP_CHECK_INTERV, _nearest_tick_s(gap))
                 due = self._unsynced_wait_s >= self._retry_wait_s
             if due:
                 self._ntp_retry_timer.deinit()
