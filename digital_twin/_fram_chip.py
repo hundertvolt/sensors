@@ -114,6 +114,18 @@ class _PagedMemory:
             raise IndexError("FRAM memory takes no negative addresses")
         return start, max(start, stop)
 
+    def used(self) -> int:
+        # One past the last nonzero byte, 0 for a blank chip: pages compare whole against one zero block, then one by byte.
+        blank = memoryview(bytes(min(_PAGE_SIZE, self._size)))
+        for index in range(len(self._pages) - 1, -1, -1):
+            page = self._pages[index]
+            if page != blank[: len(page)]:
+                end = len(page)
+                while not page[end - 1]:
+                    end -= 1
+                return index * _PAGE_SIZE + end
+        return 0
+
     def zero(self) -> None:
         # Blanks the chip in place, one page-sized zero block at a time: no allocation of the whole size.
         blank = bytes(min(_PAGE_SIZE, self._size))
@@ -121,12 +133,13 @@ class _PagedMemory:
             page[:] = memoryview(blank)[: len(page)]
 
 
-def _header_size(prefix: str) -> "int | None":
-    # The "size" a state file's header names, or None when it names none.
-    idx = prefix.find('"size": ')
+def _header_int(prefix: str, key: str) -> "int | None":
+    # The number a state file's header names for key ("size", "used"), or None when it names none.
+    field = '"' + key + '": '
+    idx = prefix.find(field)
     if idx == -1:
         return None
-    digits = prefix[idx + len('"size": ') :].split(",", 1)[0].strip()
+    digits = prefix[idx + len(field) :].split(",", 1)[0].strip()
     return int(digits) if digits.isdigit() else None
 
 
@@ -147,7 +160,10 @@ class FRAMChip:
         self.silent = False
         # Twin-only test surface: the payload WRITEs that reached the array (more than one data byte), and by start address.
         self.write_count = 0
-        self.writes_at: dict[int, int] = {}
+        # Sized for its cap here: a rehash inside the product's erase needs one contiguous block (py/map.c:131-148) a
+        # fragmented -1 heap may lack, so counting a new address never allocates (py/objdict.c:288-296, py/map.c:281-290).
+        self.writes_at: dict[int, int] = dict.fromkeys(bytes(_WRITES_AT_MAX_KEYS), 0)
+        del self.writes_at[0]
         self.writes_at_dropped = 0  # writes at a new address once writes_at holds _WRITES_AT_MAX_KEYS
         self.silent_write_count = 0  # payload WRITEs issued while silent, by write_count's filter: Run 3's rate check reads it
         self._silent_write_open = False  # a WRITE header arrived while silent, so the next write() is its data phase
@@ -186,18 +202,20 @@ class FRAMChip:
         try:
             # Hand-parsed, not json.load() - same contiguous-allocation risk as save_state()'s own
             # fixed bug, avoided here on the read path too (see _SAVE_CHUNK_SIZE's own comment).
-            header = f.read(128)  # the '{"size": N, "memory_hex": "' prefix is always well under this
+            header = f.read(128)  # the '{"size": N, "used": U, "memory_hex": "' prefix is always well under this
             marker = '"memory_hex": "'
             idx = header.find(marker)
             if idx == -1:
                 self._not_loaded("marker")
                 return
-            if _header_size(header[:idx]) != self.size:  # missing, malformed or the other chip's size
+            used = _header_int(header[:idx], "used")
+            used = self.size if used is None else used  # an image without "used" holds the whole chip
+            if _header_int(header[:idx], "size") != self.size or used > self.size:  # missing, malformed or the other chip's size
                 self._not_loaded("size")
                 return
             pending = header[idx + len(marker) :]
             pos = 0
-            while pos < self.size:
+            while pos < used:
                 chunk = f.read(_LOAD_CHUNK_CHARS)
                 piece = pending + chunk
                 pending = ""
@@ -211,12 +229,12 @@ class FRAMChip:
                     pending = piece[-1:]  # trailing nibble for the next round instead of mis-pairing
                     piece = piece[:-1]
                 if piece:
-                    n = min(len(piece) // 2, self.size - pos)
+                    n = min(len(piece) // 2, used - pos)
                     self.memory[pos : pos + n] = bytearray.fromhex(piece[: n * 2])
                     pos += n
                 if done or not chunk:
                     break
-            if pos < self.size:
+            if pos < used:
                 self._not_loaded("truncated")
         finally:
             f.close()
@@ -274,14 +292,15 @@ class FRAMChip:
     def save_state(self) -> None:
         if self.state_path is None:
             return
-        # Streamed by hand (not json.dump()) - see _SAVE_CHUNK_SIZE's own comment above for why a
-        # single-shot bytes(self.memory).hex() is a real fragmentation risk. The written file is
-        # still exactly the JSON object _load_state() expects (hex digits never need escaping).
+        # Streamed by hand (not json.dump()), _SAVE_CHUNK_SIZE says why, and only up to the last nonzero byte: the blank
+        # tail a fresh chip reads as is never written (the host-wear rule, README "FRAM persistence"). The file is still
+        # the JSON object _load_state() expects (hex digits never need escaping).
+        used = self.memory.used()
         tmp = self.state_path + ".tmp"
         with open(tmp, "w") as f:
-            f.write(f'{{"size": {self.size}, "memory_hex": "')
-            for start in range(0, self.size, _SAVE_CHUNK_SIZE):
-                f.write(self.memory[start : start + _SAVE_CHUNK_SIZE].hex())
+            f.write(f'{{"size": {self.size}, "used": {used}, "memory_hex": "')
+            for start in range(0, used, _SAVE_CHUNK_SIZE):
+                f.write(self.memory[start : min(start + _SAVE_CHUNK_SIZE, used)].hex())
             f.write('"}')
         os.rename(tmp, self.state_path)  # atomic, POSIX rename(2) (extmod/vfs_posix.c:340-349): a cut save keeps the old image
 

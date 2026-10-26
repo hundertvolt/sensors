@@ -18,6 +18,7 @@ patch_asy_udp_socket_for_unix_port()  # before any UDPSocket is constructed (dig
 
 import _fram_chip  # noqa: E402 - imported after the prewarm and the UDP shim
 import machine  # noqa: E402 - imported after the prewarm and the UDP shim
+import micropython  # noqa: E402 - imported after the prewarm and the UDP shim
 import microtest  # noqa: E402 - imported after the prewarm and the UDP shim
 import network  # noqa: E402 - imported after the prewarm and the UDP shim
 from _async_harness import cancel, run  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -908,6 +909,54 @@ def test_a_booted_device_whose_fram_goes_silent_restarts_its_task_and_recovers_o
             await cancel(supervisor)
 
     run(scenario())
+
+
+
+def test_counting_writes_at_new_addresses_allocates_nothing() -> None:
+    # The address table is sized for its cap when the chip is built: a rehash would need one contiguous block inside the
+    # product's erase, where a fragmented -1 heap may have none (README "FRAM persistence").
+    chip = FRAMChip(0x40000, _MB85RS2MTA_RDID)
+    counted = 0
+    micropython.heap_lock()
+    try:
+        for addr in range(_fram_chip._WRITES_AT_MAX_KEYS):
+            chip._count_write(addr)
+            counted += 1
+    except MemoryError:
+        pass  # reported below by count, never by the interpreter's own text
+    finally:
+        micropython.heap_unlock()
+    assert counted == _fram_chip._WRITES_AT_MAX_KEYS, f"counting allocated after {counted} new addresses"
+    assert (len(chip.writes_at), chip.write_count, chip.writes_at_dropped) == (counted, counted, 0)
+
+
+def test_a_save_writes_the_image_only_up_to_its_last_nonzero_byte() -> None:
+    # The blank tail a factory-fresh chip reads as is never written to the host, and a load gives it back as zeros.
+    path = _tmp_path("fram_used_span.json")
+    chip1 = FRAMChip(0x2000, _MB85RS64V_RDID, state_path=path)
+    _wren(chip1)
+    _write_mem(chip1, 0x0100, b"\x01\x02\x00")
+    chip1.save_state()
+    expected = '{"size": 8192, "used": 258, "memory_hex": "' + "00" * 0x100 + '0102"}'
+    assert os.stat(path)[6] == len(expected), os.stat(path)[6]
+    with open(path) as f:
+        assert f.read() == expected
+    chip2 = FRAMChip(0x2000, _MB85RS64V_RDID, state_path=path)
+    assert chip2.memory == chip1.memory
+    blank_path = _tmp_path("fram_blank_span.json")
+    FRAMChip(0x2000, _MB85RS64V_RDID, state_path=blank_path).save_state()
+    with open(blank_path) as f:
+        assert f.read() == '{"size": 8192, "used": 0, "memory_hex": ""}'
+
+
+def test_a_state_file_naming_more_used_bytes_than_the_chip_holds_says_so_and_loads_blank() -> None:
+    path = _tmp_path("fram_used_past_size.json")
+    with open(path, "w") as f:
+        f.write('{"size": 4, "used": 5, "memory_hex": "0102030405"}')
+    with _PrintRecorder() as lines:
+        chip = FRAMChip(4, _MB85RS64V_RDID, state_path=path)  # must not raise
+    assert lines == [("FRAM state", path, "not loaded (size): starting from a factory-fresh chip")], lines
+    assert _read_mem(chip, 0x0000, 4) == bytes(4)
 
 
 if __name__ == "__main__":
