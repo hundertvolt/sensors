@@ -152,16 +152,16 @@ def begin_boot() -> int:
     _reset_bits = (mem32[_WATCHDOG_REASON] & _REASON_BITS) | (mem32[_CHIP_RESET] & _CHIP_RESET_BITS)
     record = mem_backup(0)
     phase = mem_backup(1)
-    # A valid record first: power-off and the RUN pin clear both regions (SPECIFICATION.md F.5.4), so one seen under a
-    # power-on cause is a console soft reset, which keeps the last hard reset's cause (owner, 2026-10-26).
+    # A valid record, then an in-boot phase: power-off and the RUN pin clear both regions (SPECIFICATION.md F.5.4), so
+    # either under a power-on cause is a console soft reset, keeping the last hard reset's cause (owner, 2026-10-26).
     if record[0] == _RR_MAGIC and record[2] == record[1] ^ _RR_CHECK:
         code: int = record[1]
+    elif phase[0] == _BP_MAGIC and phase[2] == phase[1] ^ _RR_CHECK and BOOT_CONSTRUCTION <= phase[1] < BOOT_DONE:
+        code = _RR_BOOT_FAILURE + phase[1]
     elif reset_cause() == PWRON_RESET:
         code = _RR_POWER_ON
     elif record[0] != 0:
         code = _RR_UNKNOWN
-    elif phase[0] == _BP_MAGIC and phase[2] == phase[1] ^ _RR_CHECK and BOOT_CONSTRUCTION <= phase[1] < BOOT_DONE:
-        code = _RR_BOOT_FAILURE + phase[1]
     else:
         code = _RR_WATCHDOG
     for i in range(len(record)):

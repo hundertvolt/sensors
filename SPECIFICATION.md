@@ -694,7 +694,8 @@ same 21 (A.8, F.5.4). Every other exception leaving `asyncio.run()` (a non-`Exce
 clause: `record_loop_end()` writes 22 after `BOOT_DONE` unless a valid record already names the reset
 underway, which is kept, and writes nothing during boot, so 10 + phase stands (agent, 2026-10-26); the
 exception is printed with no heap use and never re-raised, so the entry ends and the watchdog resets
-the unit (F.5.4 has what a `SystemExit` reaching rp2's `pyexec` would do). The no-autostart entry
+the unit, unless a Ctrl-D at the REPL soft-resets it first, whose boot reads the same 22 or 10 + phase
+(F.5.4, which also has what a `SystemExit` reaching rp2's `pyexec` would do). The no-autostart entry
 `sensortask_<device>_main_noautostart.py` arms nothing and prints the manual start line (B.11).
 `main(*, watchdog, cfg_path="", debug=None, web_host="0.0.0.0", web_port=80)`: the four keywords
 after `watchdog` are the documented manual-start options (owner, 2026-09-30: 'they are worth for
@@ -1075,11 +1076,11 @@ settings.
 | 7 | reboot after "Reset to defaults" |
 | 8 | reboot after "Erase FRAM" |
 | 9 | reboot after either command whose purpose did not complete |
-| 11 | boot failure in phase 1 (construction) |
-| 12 | boot failure in phase 2 (setup batch) |
-| 13 | boot failure in phase 3 (task starts) |
-| 14 | boot failure in phase 4 (timer starts) |
-| 15 | boot failure in phase 5 (first NTP sync) |
+| 11 | boot failure in phase 1 (construction), the watchdog reset or a console soft reset followed |
+| 12 | boot failure in phase 2 (setup batch), the watchdog reset or a console soft reset followed |
+| 13 | boot failure in phase 3 (task starts), the watchdog reset or a console soft reset followed |
+| 14 | boot failure in phase 4 (timer starts), the watchdog reset or a console soft reset followed |
+| 15 | boot failure in phase 5 (first NTP sync), the watchdog reset or a console soft reset followed |
 | 20 | supervisor escalation (a handler recorded a C-stack overflow) |
 | 21 | interrupted: Ctrl-C on the console ended the run, the watchdog reset or a console soft reset followed |
 | 22 | the event loop ended with an exception after boot, the watchdog reset or a console soft reset followed |
@@ -6947,18 +6948,29 @@ stays a tool to reach for if a severe, hard-to-debug reset appears that the FRAM
 explain - deliberate, temporary instrumentation, never normal-path code; the per-transition phase
 marker is all that is kept.
 
-**`begin_boot()` reads a valid record before the power-on cause** (owner, 2026-10-26: "B is fine,
-very rare edge case"; the question, paraphrase: whether the boot should read a valid reset record
-before its power-on check, so a console soft reset inside the watchdog window keeps a recorded 21 or
-22). The order: a valid region-0 record (its code), the power-on cause (1), a torn record (0), a
-region-1 boot phase (10 + p), else 2. Power-off and the RUN pin clear both regions (above), so a valid
-record under a power-on cause means a soft reset: a friendly-REPL Ctrl-D
-(`shared/runtime/pyexec.c:676-681`) leaves for `soft_reset_exit` and main.py runs again
-(`ports/rp2/main.c:246-262`) while `reset_cause()` still reads the last hard reset, and that boot
-reports the 21 or 22 recorded before it, ResetBits showing no watchdog bit. A real power-on still
-reads 1, its regions being empty, and so does a torn record under a power-on cause. The raw REPL's
-soft reset (`mpremote`'s) does not run main.py (`main.c:246`): only a device script calling
-`begin_boot()` itself reads the record there.
+**`begin_boot()` reads a valid record, then an in-boot phase marker, before the power-on cause**
+(owner, 2026-10-26: "B is fine, very rare edge case"; the question, paraphrase: whether the boot
+should read a valid reset record before its power-on check, so a console soft reset inside the
+watchdog window keeps a recorded 21 or 22; and owner, 2026-10-26: "Option b, should be in line with
+the prior similar decision"; the question, paraphrase: whether a valid in-boot phase marker should
+also be read before the power-on check, so a console soft reset after a failure during boot keeps
+10 + phase). The order: a valid region-0 record (its code), a valid region-1 marker of a boot phase
+(10 + p, `BOOT_CONSTRUCTION <= p < BOOT_DONE`), the power-on cause (1), a torn record (0), else 2.
+Power-off and the RUN pin clear both regions (above), so either seen under a power-on cause means a
+soft reset: a friendly-REPL Ctrl-D (`shared/runtime/pyexec.c:676-681`) leaves for `soft_reset_exit`
+and main.py runs again (`ports/rp2/main.c:246-262`) while `reset_cause()` still reads the last hard
+reset, and that boot reports the 21 or 22 recorded before it, or the 10 + p of a loop that ended
+during boot (which records nothing, A.7), ResetBits showing no watchdog bit. A real power-on still
+reads 1, its regions being empty; so do a torn record under a power-on cause and a soft reset after
+a completed boot, whose marker reads `BOOT_DONE`, outside the boot range. A torn record beside an
+in-boot marker reads 10 + p under any cause (before the marker moved up: 0, or 1 under a power-on
+cause). A write into the cleared record cannot tear it (`_write_region()` stores the magic last and
+`begin_boot()` clears the magic first, so a cut leaves word 0 at 0, which reads as no record); it
+takes a second write over a valid one in a boot still below `BOOT_DONE` (a system command's 9, then its own
+code, or the entry's 21 after either), cut by a watchdog reset between that write's value and check
+stores, and 10 + p is then still true of that boot. The raw REPL's soft reset (`mpremote`'s) does
+not run main.py (`main.c:246`): only a device script calling `begin_boot()` itself reads the regions
+there.
 
 **`machine.reset_cause()` separates power-on from everything else, nothing more.** It returns
 `WDT_RESET` (3) when the watchdog caused the last reboot and `PWRON_RESET` (1) otherwise

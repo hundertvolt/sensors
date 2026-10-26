@@ -301,6 +301,16 @@ def test_a_console_soft_reset_after_a_loop_end_reads_22() -> None:
     _power_on_bits(system)
 
 
+def test_a_console_soft_reset_after_a_loop_ended_during_boot_reads_10_plus_its_phase() -> None:
+    # No record during boot: the soft reset's boot reads the phase marker it kept, though the cause is the power-on's.
+    _first_device_only()
+    plant, escaped, system = _case("core", _BOOT_SETUP, "soft")
+    assert escaped is None, escaped
+    assert _BOOT_SETUP <= plant.raised_in_phase < _BOOT_DONE, plant.raised_in_phase
+    assert system.get("ResetReason") == src_int(_SRC, "_RR_BOOT_FAILURE") + plant.raised_in_phase, system
+    _power_on_bits(system)
+
+
 def test_a_power_cycle_after_ctrl_c_reads_1() -> None:
     _first_device_only()
     plant, escaped, system = _case("interrupt", _BOOT_DONE, "power")
