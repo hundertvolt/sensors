@@ -1906,7 +1906,8 @@ def test_err_s_and_wrn_s_below_their_level_print_a_caught_memory_error_once_and_
     assert with_memory[0] == [("S", err), ("S", err)], with_memory[0]
     assert with_socket[0] == [], with_socket[0]
     assert with_memory[1:] == with_socket[1:], (with_memory[1:], with_socket[1:])
-    assert with_memory[1] == {"S": {"ErrCount": 2, "ErrNum": [0, 3, 2], "ErrType": ["N", "E", "W"]}}, with_memory[1]
+    _lines, memory_log, _writes, _payload = with_memory
+    assert memory_log == {"S": {"ErrCount": 2, "ErrNum": [0, 3, 2], "ErrType": ["N", "E", "W"]}}, memory_log
     at_one = _logged_with(err, 1)  # err_s at its own level, wrn_s still below its own
     assert at_one[0] == [("S", "err_s:", err), ("S", err)], at_one[0]
     assert at_one[1:] == with_memory[1:], at_one[1:]
