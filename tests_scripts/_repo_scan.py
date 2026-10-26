@@ -1,6 +1,6 @@
 """Shared walk for the whole-repo checks (citations, decision vocabulary, import placement): the tracked
 files, the prose each holds (Markdown text; comments and docstrings in code and config), and the
-allow-list reader/writer behind each check's --regenerate mode."""
+allow-list reader/writer behind each check's --regenerate mode; and the pinned ruff the lint checks run."""
 
 import ast
 import fnmatch
@@ -16,6 +16,8 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
+
+import tomllib
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 _GIT = shutil.which("git") or "git"
@@ -230,6 +232,19 @@ def git_lines(*args: str) -> list[str]:
 
 def git_succeeds(*args: str) -> bool:
     return subprocess.run([_GIT, *args], cwd=REPO_ROOT, capture_output=True, check=False).returncode == 0
+
+
+def pinned_ruff() -> str:
+    # The venv's own ruff first, then PATH's; either must be the pinned one, since another version selects other rules.
+    sibling = Path(sys.executable).with_name("ruff")
+    found = str(sibling) if sibling.is_file() else shutil.which("ruff")
+    assert found, "ruff is not installed - run `uv sync` (it is a pinned dev dependency)"
+    with (REPO_ROOT / "pyproject.toml").open("rb") as f:
+        groups = tomllib.load(f)["dependency-groups"].values()
+    pins = [d for group in groups for d in group if isinstance(d, str) and d.startswith("ruff==")]
+    version = subprocess.run([found, "--version"], capture_output=True, text=True, check=True).stdout.split()[-1]
+    assert pins == [f"ruff=={version}"], f"{found} is ruff {version}, pyproject.toml pins {pins} - run the pinned ruff"
+    return found
 
 
 def prose_blocks(path: str, text: str) -> list[Block]:

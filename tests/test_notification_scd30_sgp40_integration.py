@@ -240,7 +240,7 @@ def test_one_sensor_i2c_fault_stays_isolated_and_the_healthy_sibling_still_trigg
     # sensor's driver neither blocks nor corrupts the sibling's independent chain, and is attributed only to
     # the faulted sensor's own error log.
     #
-    # That matches Part C.7's "each driver owns its own error log" separation, now proven across two real
+    # That is Part C.7's per-module logging (each module's own `self.pr`), now proven across two real
     # sensors sharing one downstream coordinator rather than one sensor in isolation.
     scd_reader, scd_i2c = _make_scd_reader()
     scd_i2c.inject_fault("writeto", OSError, errno.EIO, "simulated bus fault")

@@ -6,15 +6,14 @@ A policy entry with no site is listed with its reason."""
 
 import fnmatch
 import json
-import shutil
 import subprocess
-import sys
 from functools import cache
 from pathlib import Path
 
 import pytest
 import tomllib
 from _devices import DEVICE_NAMES, device_toml
+from _repo_scan import pinned_ruff
 
 from buildgen.generate import _output_names, generate_device
 
@@ -58,20 +57,6 @@ def _live(table: str, glob: str, code: str, findings: "list[Finding]") -> bool:
     return any(_selects(code, found) and (table == "ignore" or _glob_matches(glob, path)) for path, found, _ in findings)
 
 
-@cache
-def _ruff() -> str:
-    # The venv's own ruff first, then PATH's; either must be the pinned one, since another version selects other rules.
-    sibling = Path(sys.executable).with_name("ruff")
-    found = str(sibling) if sibling.is_file() else shutil.which("ruff")
-    assert found, "ruff is not installed - run `uv sync` (it is a pinned dev dependency)"
-    with (_REPO_ROOT / "pyproject.toml").open("rb") as f:
-        groups = tomllib.load(f)["dependency-groups"].values()
-    pins = [d for group in groups for d in group if isinstance(d, str) and d.startswith("ruff==")]
-    version = subprocess.run([found, "--version"], capture_output=True, text=True, check=True).stdout.split()[-1]
-    assert pins == [f"ruff=={version}"], f"{found} is ruff {version}, pyproject.toml pins {pins} - run the pinned ruff"
-    return found
-
-
 def _selects(selector: str, code: str) -> bool:
     # A selector names a rule (ARG002) or a prefix (PT, T20); PT must not select PTH105.
     rest = code[len(selector) :]
@@ -95,7 +80,7 @@ def lifted(tmp_path_factory: pytest.TempPathFactory) -> "list[Finding]":
         result = generate_device(device_toml(device), _REPO_ROOT / "src", _REPO_ROOT / "ext")
         for name, text in zip(_output_names(device), (result.module_source, result.boot_entry_source, result.boot_entry_noautostart_source), strict=True):
             (generated / name).write_text(text, encoding="utf-8")
-    cmd = [_ruff(), "check", "--no-cache", "--ignore-noqa", "--exit-zero", "--output-format", "json", "--config", str(_REPO_ROOT / "pyproject.toml"),
+    cmd = [pinned_ruff(), "check", "--no-cache", "--ignore-noqa", "--exit-zero", "--output-format", "json", "--config", str(_REPO_ROOT / "pyproject.toml"),
            "--config", 'lint.select = ["ALL"]', "--config", "lint.per-file-ignores = {}", "--config", "lint.allowed-confusables = []",
            "--config", "lint.pyflakes.allowed-unused-imports = []", *_SCOPES, str(generated)]
     done = subprocess.run(cmd, cwd=_REPO_ROOT, capture_output=True, text=True, check=False)

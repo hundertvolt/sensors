@@ -46,6 +46,7 @@ def test_real_neopixel_driver_on_off_toggle_through_wifi_service_ext_led() -> No
     pixel._frame_ms = 10
     run(pixel.setup())  # the boot batch's setup(), before any task starts
     conn = WifiService(WifiConfig("SensorNode", "12345678", 5, 5), ext_led=pixel, cfg_path=_tmp_cfg_dir())
+    run(conn.setup())
 
     def last_is(colour: "tuple[int, int, int]") -> "Callable[[], bool]":
         return lambda: pixel._pixel.writes[-1:] == [[colour]]

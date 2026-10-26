@@ -5,7 +5,6 @@ ends with the fixed tail (SPECIFICATION.md D.10, C.2). The ESLint half: tests_js
 import ast
 import os
 import re
-import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -14,7 +13,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 import tomllib
-from _repo_scan import REPO_ROOT
+from _repo_scan import pinned_ruff
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -121,7 +120,7 @@ def _decorator_names(node: "ast.FunctionDef | ast.AsyncFunctionDef") -> "set[str
 
 def _findings(repo_root: Path, ceiling: _Ceiling, value: int, paths: "tuple[str, ...]" = _SCOPES) -> "list[str]":
     # Ruff's findings for one ceiling at `value` - per-file ignores applied, no cache written.
-    cmd = [_ruff(), "check", "--no-cache", "--quiet", "--output-format", "concise", "--select", ceiling.rule,
+    cmd = [pinned_ruff(), "check", "--no-cache", "--quiet", "--output-format", "concise", "--select", ceiling.rule,
            "--config", f"lint.{ceiling.section}.{ceiling.option}={value}", *paths]
     result = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True, check=False)
     assert result.returncode in {0, 1}, f"ruff itself failed: {result.stderr}"
@@ -155,7 +154,7 @@ def _lint_tables(repo_root: Path) -> "dict[str, dict[str, object]]":
 
 def _linted_files(repo_root: Path, paths: "tuple[str, ...]" = _SCOPES) -> "list[Path]":
     # The exact file set ruff checks (its own exclusions and .gitignore applied).
-    result = subprocess.run([_ruff(), "check", "--no-cache", "--show-files", *paths], cwd=repo_root, capture_output=True, text=True, check=True)
+    result = subprocess.run([pinned_ruff(), "check", "--no-cache", "--show-files", *paths], cwd=repo_root, capture_output=True, text=True, check=True)
     root = repo_root.resolve()
     return sorted(Path(line.strip()).resolve().relative_to(root) for line in result.stdout.splitlines() if line.strip().endswith(".py"))
 
@@ -169,19 +168,6 @@ def _over_max_args(repo_root: Path, files: "list[Path]", limit: int) -> "set[tup
             if count is not None and count > limit:
                 over.add((path.as_posix(), name))
     return over
-
-
-def _ruff() -> str:
-    # The venv's own ruff first, then PATH's; either must be the pinned one, since another version selects other rules.
-    sibling = Path(sys.executable).with_name("ruff")
-    found = str(sibling) if sibling.is_file() else shutil.which("ruff")
-    assert found, "ruff is not installed - run `uv sync` (it is a pinned dev dependency)"
-    with (REPO_ROOT / "pyproject.toml").open("rb") as f:
-        groups = tomllib.load(f)["dependency-groups"].values()
-    pins = [d for group in groups for d in group if isinstance(d, str) and d.startswith("ruff==")]
-    version = subprocess.run([found, "--version"], capture_output=True, text=True, check=True).stdout.split()[-1]
-    assert pins == [f"ruff=={version}"], f"{found} is ruff {version}, pyproject.toml pins {pins} - run the pinned ruff"
-    return found
 
 
 def _tail_problem(params: "list[str]", *, logger_allowed: bool) -> "str | None":
@@ -301,9 +287,9 @@ def test_the_venv_ruff_comes_before_a_stray_one_on_path(repo_root: Path, tmp_pat
     venv, stray = fake(tmp_path / "venv", pins[0].removeprefix("ruff==")), fake(tmp_path / "stray", pins[0].removeprefix("ruff=="))
     monkeypatch.setenv("PATH", f"{stray.parent}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setattr(sys, "executable", str(venv.with_name("python")))
-    assert _ruff() == str(venv)
+    assert pinned_ruff() == str(venv)
     venv.unlink()
-    assert _ruff() == str(stray)
+    assert pinned_ruff() == str(stray)
     fake(stray.parent, "0.0.0")
     with pytest.raises(AssertionError, match=r"pyproject\.toml pins"):
-        _ruff()
+        pinned_ruff()
