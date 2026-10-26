@@ -12,9 +12,9 @@ from _fake_time import UTCValid
 from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep, check_sleep_ms
 from _src_const import src_float, src_int, src_strs
+from _stack_overflow import stack_overflow
 from _ticks30 import TICKS_PERIOD, Ticks30Time
 from _tmp_scratch import TmpScratch
-from _untraced import untraced
 from machine import I2C as FakeI2C
 from machine import Pin as FakePin
 from machine import Timer as FakeTimer
@@ -177,18 +177,6 @@ def _record_reads(i2c: I2C) -> "list[object]":
 
     fake(i2c).readfrom_into = recording  # type: ignore[method-assign]
     return received
-
-
-def _stack_overflow() -> RuntimeError:
-    # The interpreter's own C-stack exhaustion, from a real one (py/runtime.c:1786, v1.29.0).
-    def dive(depth: int) -> int:
-        return dive(depth + 1)
-
-    try:
-        untraced(lambda: dive(0))  # a limit reached inside the coverage tracer would end tracing for the whole file
-    except RuntimeError as e:
-        return e
-    raise AssertionError("no recursion limit reached")
 
 
 def _threshold_bursts(i2c: I2C) -> "list[bytes]":
@@ -3236,8 +3224,8 @@ def test_a_stack_overflow_caught_by_either_read_handler_is_reported_for_the_supe
         return reported
 
     assert cycle_raising("read_status", RuntimeError("CRC check failed while reading data"), "ISL_STATUS_READ") is False
-    assert cycle_raising("read_status", _stack_overflow(), "ISL_STATUS_READ") is True
-    assert cycle_raising("read_counts", _stack_overflow(), "READ") is True
+    assert cycle_raising("read_status", stack_overflow(), "ISL_STATUS_READ") is True
+    assert cycle_raising("read_counts", stack_overflow(), "READ") is True
 
 
 def test_the_filter_coefficient_rejects_values_outside_its_band_with_bad_arg() -> None:
@@ -3995,7 +3983,8 @@ def test_a_failed_partner_read_logs_a_read_error_and_puts_the_range_back() -> No
         run(reader._measure_gain_ratio(2000))
     assert reader._measured_ratio() is None
     counter = (run(reader.get_error_counter()))["ISL29125"]
-    assert counter["ErrCount"] >= 1
+    # Both legs of the sandwich fail (the third always runs, to put the range back): one READ slot, its count raised once.
+    assert counter["ErrCount"] == 2 and [kind for kind in counter["ErrType"] if kind != "N"] == ["E"], counter
     err_num = counter["ErrNum"]
     assert isinstance(err_num, list)
     assert err_num[-1] == code("E", "READ"), f"the calibration leg's own failure must log READ, got {err_num}"

@@ -2217,10 +2217,11 @@ def test_the_window_started_line_follows_a_successful_arm_only() -> None:
 
 def test_hotspot_client_absent_starts_the_led_flash_task() -> None:
     client = _make_client()
+    assert client._ledflash is None
 
     async def scenario() -> None:
         await client._hotspot_client_absent()
-        assert client._ledflash is not None
+        assert client._ledflash is not None and not client._ledflash.done()
         await cancel(client._ledflash)
 
     run(scenario())

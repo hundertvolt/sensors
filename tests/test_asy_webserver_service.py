@@ -29,9 +29,9 @@ from _recording_print import record_prints
 from _shared_rest_roundtrip import drain_json_response_body
 from _src_const import src_int
 from _src_schema import src_schema
+from _stack_overflow import stack_overflow
 from _strict_json import strict_loads
 from _tmp_scratch import TmpScratch
-from _untraced import untraced
 from _write_counters import WriteCountingOpen
 from freezefs.ffsmount import VfsFrozen  # type: ignore[import-not-found]
 from microdot import Microdot, Request, Response
@@ -2048,8 +2048,8 @@ def test_d_webserver_own_errcount_entry_accumulates_a_warning_on_reclaim() -> No
     run_timed(service._serve(reader, writer), timeout_s=_SERVE_BOUND_S)
     log = run(service.get_error_counter())
     entry = next(iter(log.values()))
-    assert entry["ErrCount"] >= 1
-    assert "W" in entry["ErrType"]  # a warning, not an error - the owner's warning-not-error rule (SPEC A.8)
+    assert entry["ErrCount"] == 1, entry  # one reclaimed connection, one entry
+    assert [kind for kind in entry["ErrType"] if kind != "N"] == ["W"], entry  # a warning, not an error - the owner's warning-not-error rule (SPEC A.8)
 
 
 def test_d_status_put_malformed_json_body_is_a_clean_rejection_not_a_crash() -> None:
@@ -3602,7 +3602,7 @@ def _obj(value: object) -> "dict[str, object]":
 
 class _OverflowingSensorModule(_FakeModule):
     async def get_dict_data(self) -> "JsonDict":
-        raise _stack_overflow()
+        raise stack_overflow()
 
 
 def test_h1_a_handler_that_exhausts_the_c_stack_answers_500_and_reports_it() -> None:
@@ -3618,7 +3618,7 @@ def test_h1_a_handler_that_exhausts_the_c_stack_answers_500_and_reports_it() -> 
 
 class _OverflowingReader(_ScriptedReader):
     async def read(self, n: int) -> bytes:
-        raise _stack_overflow()
+        raise stack_overflow()
 
 
 def test_h1_a_request_read_that_exhausts_the_c_stack_answers_400_and_reports_it() -> None:
@@ -4183,18 +4183,6 @@ def test_i2b_hammer_concurrent_notification_requests_stay_valid() -> None:
 # -- Every memory-bounded GET route hammered concurrently for longer, maxing out every
 # situation this audit identified at once: 17 sensor modules (measurements/sensors), 17 error
 # sources plus this service's own entry (status/errcount), one settings group per flat endpoint.
-
-
-def _stack_overflow() -> RuntimeError:
-    # The interpreter's own C-stack exhaustion, from a real recursion (py/runtime.c:1786, v1.29.0).
-    def dive(depth: int) -> int:
-        return dive(depth + 1)
-
-    try:
-        untraced(lambda: dive(0))  # a limit reached inside the coverage tracer would end tracing for the whole file
-    except RuntimeError as e:
-        return e
-    raise AssertionError("no recursion limit reached")
 
 
 # Every GET route of the one route table (src/asy_webserver_service.py ROUTES): a route added there joins the hammer.

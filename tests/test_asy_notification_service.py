@@ -341,7 +341,7 @@ def test_write_all_valid_fields_at_once_succeeds() -> None:
         return await service._set_dict_cfg(data, service.get_cfg_schema())
 
     results = run(scenario())
-    assert all(v == "Valid" for v in results.values()), results
+    assert results == dict.fromkeys(data, "Valid"), results
 
 
 def test_each_int_float_field_boundary_values_accepted() -> None:

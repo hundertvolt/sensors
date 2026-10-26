@@ -185,8 +185,9 @@ async def _warnings(pr: PrintLogHistory) -> "tuple[int, list[int]]":  # (ErrCoun
 
 
 def test_ipv4_to_int_accepts_every_valid_dotted_quad() -> None:
-    for host in ("0.0.0.0", "255.255.255.255", "192.168.1.1", "8.8.8.8", "127.0.0.1", "1.2.3.4"):
-        assert ipv4_to_int(host) is not None
+    # Each value by hand (RFC 791 section 3.2): a.b.c.d is a * 2**24 + b * 2**16 + c * 2**8 + d.
+    for host, value in (("0.0.0.0", 0), ("255.255.255.255", 4294967295), ("192.168.1.1", 3232235777), ("8.8.8.8", 134744072), ("127.0.0.1", 2130706433), ("1.2.3.4", 16909060)):
+        assert ipv4_to_int(host) == value, host
 
 
 def test_ipv4_to_int_rejects_hostnames_and_malformed_input() -> None:

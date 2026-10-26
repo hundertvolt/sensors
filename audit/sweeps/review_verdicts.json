@@ -120,15 +120,15 @@
   ]
  },
  "tests/test_asy_bmp3xx_driver.py::test_reader_get_pressure_oversampling_logs_and_returns_none_on_bus_failure": {
-  "log_existence_only": [
-   "weak",
-   "open: one persisted E entry of the read's code"
+  "was:log_existence_only": [
+   "fixed",
+   "exactly one persisted E entry; bite: one extra entry passes the old form, fails the new"
   ]
  },
  "tests/test_asy_bmp3xx_driver.py::test_reader_set_pressure_oversampling_logs_and_returns_false_on_bus_failure": {
-  "log_existence_only": [
-   "weak",
-   "open: one persisted E entry of the write's code"
+  "was:log_existence_only": [
+   "fixed",
+   "exactly one persisted E entry; bite: one extra entry passes the old form, fails the new"
   ]
  },
  "tests/test_asy_bmp3xx_driver.py::test_temperature_oversampling_round_trip_every_valid_setting": {
@@ -210,9 +210,9 @@
   ]
  },
  "tests/test_asy_dns_client.py::test_ipv4_to_int_accepts_every_valid_dotted_quad": {
-  "weak_only": [
-   "weak",
-   "open: assert each quad's RFC 791 value, hand-computed"
+  "was:weak_only": [
+   "fixed",
+   "each quad's RFC 791 value, hand-computed; bite: an off-by-one value for 1.2.3.4 passes the old form, fails the new (bites_*.out)"
   ]
  },
  "tests/test_asy_fram_driver.py::test_aexit_tolerates_a_bus_lock_that_was_already_released": {
@@ -294,9 +294,9 @@
   ]
  },
  "tests/test_asy_isl29125_driver.py::test_a_failed_partner_read_logs_a_read_error_and_puts_the_range_back": {
-  "log_existence_only": [
-   "weak",
-   "open: exactly one entry"
+  "was:log_existence_only": [
+   "fixed",
+   "exactly one entry, READ; bite: one extra entry passes the old form, fails the new"
   ]
  },
  "tests/test_asy_isl29125_driver.py::test_a_periodic_only_switch_warns_after_five_consecutive_occurrences": {
@@ -348,9 +348,9 @@
   ]
  },
  "tests/test_asy_notification_service.py::test_write_all_valid_fields_at_once_succeeds": {
-  "loop_vacuous": [
-   "weak",
-   "open: assert the result names every written field"
+  "was:loop_vacuous": [
+   "fixed",
+   "the result names every written field Valid; bite: a result missing one field passes the old form, fails the new"
   ]
  },
  "tests/test_asy_ntp_client.py::test_ntp_time_hours_counter_missing_config_falls_back_to_12h_default_without_raising": {
@@ -652,9 +652,9 @@
   ]
  },
  "tests/test_asy_system_service.py::test_start_task_returns_the_real_task_on_success": {
-  "weak_only": [
-   "weak",
-   "open: assert the returned task is the starter's own"
+  "was:weak_only": [
+   "fixed",
+   "the returned task is the starter's own; bite: _start_task handing back another task passes the old form, fails the new"
   ]
  },
  "tests/test_asy_system_service.py::test_supervise_tasks_without_watchdog_does_not_raise": {
@@ -742,9 +742,9 @@
   ]
  },
  "tests/test_asy_webserver_service.py::test_d_webserver_own_errcount_entry_accumulates_a_warning_on_reclaim": {
-  "log_existence_only": [
-   "weak",
-   "open: the exact count and type"
+  "was:log_existence_only": [
+   "fixed",
+   "exactly one W entry and no other; bite: one extra entry passes the old form, fails the new"
   ]
  },
  "tests/test_asy_webserver_service.py::test_f2b_hammer_concurrent_mixed_bodies_bound_the_total_buffered_bytes": {
@@ -844,9 +844,9 @@
   ]
  },
  "tests/test_asy_wifi_service.py::test_hotspot_client_absent_starts_the_led_flash_task": {
-  "weak_only": [
-   "weak",
-   "open: assert no task before, a running task after"
+  "was:weak_only": [
+   "fixed",
+   "no task before, a running one after; bite: a flash task that ends at once passes the old form, fails the new"
   ]
  },
  "tests/test_asy_wifi_service.py::test_print_wlan_diagnostics_degrades_gracefully_when_ifconfig_raises": {
@@ -1040,9 +1040,9 @@
   ]
  },
  "tests/test_math_helpers.py::test_wet_bulb_boundary_values_accepted": {
-  "weak_only": [
-   "weak",
-   "open: assert each corner's value from Stull 2011 eq. 1, hand-computed"
+  "was:weak_only": [
+   "fixed",
+   "each corner against Stull 2011 eq. 1, hand-computed; bite: a +0.01 offset passes the old form, fails the new"
   ]
  },
  "tests/test_neopixel_wifi_integration.py::test_a_station_on_the_hotspot_swaps_the_real_pixels_pattern_and_its_leaving_restores_it": {
@@ -1982,9 +1982,9 @@
   ]
  },
  "tests_scripts/test_digital_twin_ci_suite_ceiling.py::test_concurrent_get_records_a_refused_request_as_its_error_repr": {
-  "loop_vacuous": [
-   "weak",
-   "open: assert one result per path"
+  "was:loop_vacuous": [
+   "fixed",
+   "one result per path; bite: an empty result passes the old form, fails the new"
   ]
  },
  "tests_scripts/test_digital_twin_ci_suite_errcount.py::test_the_sgp40_asymmetry_between_the_three_driver_sets_is_deliberate": {

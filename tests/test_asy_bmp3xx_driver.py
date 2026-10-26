@@ -14,8 +14,8 @@ from _fram_builders import make_fram_manager
 from _recording_print import record_prints
 from _src_const import src_int
 from _src_schema import src_schema
+from _stack_overflow import stack_overflow
 from _tmp_scratch import TmpScratch
-from _untraced import untraced
 from _write_counters import WriteCountingOpen
 from machine import I2C as FakeI2C
 from machine import Timer as FakeTimer
@@ -271,18 +271,6 @@ def _register_reads(i2c: I2C, register: int) -> int:
 async def _settle(n: int = 5) -> None:
     for _ in range(n):
         await asyncio.sleep(0)
-
-
-def _stack_overflow() -> RuntimeError:
-    # The interpreter's own C-stack exhaustion, from a real one (py/runtime.c:1786, v1.29.0).
-    def dive(depth: int) -> int:
-        return dive(depth + 1)
-
-    try:
-        untraced(lambda: dive(0))  # a limit reached inside the coverage tracer would end tracing for the whole file
-    except RuntimeError as e:
-        return e
-    raise AssertionError("no recursion limit reached")
 
 
 def _tmp_cfg_path(name: str) -> str:
@@ -807,7 +795,7 @@ def test_a_stack_overflow_caught_by_the_read_cycle_is_reported_for_the_superviso
         return fatal_reported()
 
     assert cycle_raising(RuntimeError("CRC check failed while reading data")) is False
-    assert cycle_raising(_stack_overflow()) is True
+    assert cycle_raising(stack_overflow()) is True
     asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
 
 
@@ -1191,7 +1179,7 @@ def test_reader_get_pressure_oversampling_logs_and_returns_none_on_bus_failure()
 
     value, counters = run(scenario())
     assert value is None
-    assert counters["BMP3XX"]["ErrCount"] > 0
+    assert counters["BMP3XX"]["ErrCount"] == 1 and [kind for kind in counters["BMP3XX"]["ErrType"] if kind != "N"] == ["E"], counters  # one failed read, one entry
 
 
 def test_reader_set_pressure_oversampling_logs_and_returns_false_on_bus_failure() -> None:
@@ -1204,7 +1192,7 @@ def test_reader_set_pressure_oversampling_logs_and_returns_false_on_bus_failure(
 
     ok, counters = run(scenario())
     assert ok is False
-    assert counters["BMP3XX"]["ErrCount"] > 0
+    assert counters["BMP3XX"]["ErrCount"] == 1 and [kind for kind in counters["BMP3XX"]["ErrType"] if kind != "N"] == ["E"], counters  # one failed write, one entry
 
 
 # ---------------------------------------------------------------------------
