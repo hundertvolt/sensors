@@ -2488,6 +2488,49 @@ def test_rr_interrupted_is_21_and_decodes_like_every_other_record() -> None:
     assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
 
 
+def _ended_in_phase(phase: int) -> None:
+    # A boot marked up to `phase`, then the boot entry's call for a loop that an exception other than Ctrl-C ended.
+    machine.power_on()
+    begin_boot()
+    asy_system_service._write_region(1, _const("_BP_MAGIC"), phase)
+    asy_system_service.record_loop_end()
+
+
+def test_a_loop_ended_after_boot_records_22_and_the_next_boot_decodes_it() -> None:
+    assert _const("_RR_LOOP_ENDED") == 22
+    _ended_in_phase(BOOT_DONE)
+    _watchdog_reset()
+    assert begin_boot() == 22
+    assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
+
+
+def test_a_loop_ended_during_boot_writes_nothing_so_the_next_boot_reads_its_phase() -> None:
+    for phase in range(BOOT_CONSTRUCTION, BOOT_DONE):
+        _ended_in_phase(phase)
+        assert list(machine.mem_backup(0)) == [0, 0, 0, 0], phase
+        _watchdog_reset()
+        assert begin_boot() == _const("_RR_BOOT_FAILURE") + phase, phase
+
+
+def test_a_record_already_written_is_kept_and_a_torn_one_is_replaced() -> None:
+    # A command's or an escalation's record names the reset already underway; a torn record names nothing.
+    for recorded in (_const("_RR_REBOOT"), _const("_RR_STACK_EXHAUSTED"), asy_system_service.RR_INTERRUPTED):
+        machine.power_on()
+        begin_boot()
+        write_reset_record(recorded)
+        asy_system_service._write_region(1, _const("_BP_MAGIC"), BOOT_DONE)
+        asy_system_service.record_loop_end()
+        _watchdog_reset()
+        assert begin_boot() == recorded, recorded
+    machine.power_on()
+    begin_boot()
+    machine.mem_backup(0)[0] = _const("_RR_MAGIC")  # the magic alone: its check word does not match
+    asy_system_service._write_region(1, _const("_BP_MAGIC"), BOOT_DONE)
+    asy_system_service.record_loop_end()
+    _watchdog_reset()
+    assert begin_boot() == 22
+
+
 def test_the_debug_level_range_is_the_loggers_level_range() -> None:
     # _apply_level() drops set_level()'s answer: safe only while the schema's bounds are the loggers' own.
     field = src_schema(_SRC, "_VAL_DEBUG_LEVEL")[0]

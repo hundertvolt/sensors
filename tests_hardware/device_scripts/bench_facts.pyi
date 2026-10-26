@@ -60,6 +60,8 @@ class BenchFacts(TypedDict, total=False):
     COMMAND: str
     STATE: str
     PHASE: str
+    KIND: str
+    BOOT_DONE: str
     ARM: str
     part: str
     mode: str

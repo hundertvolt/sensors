@@ -605,7 +605,7 @@ The rest, one fact each (occurrences: `HEAP_FRAGMENTATION_MEASUREMENTS.md` archi
   (`scripts/build_firmware.py <device> --no-autostart`), whose REPL keeps reading stdin
   (`shared/tinyusb/mp_usbd_cdc.c`, `ports/rp2/mphalport.c`, v1.29.0).
 - A Ctrl-C into the autostart image ends its whole event loop: the board records reset reason 21
-  and the watchdog resets it within its timeout; a change answered `Valid` whose deferred flush has
+  (any other exception ending the loop after boot records 22) and the watchdog resets it within its timeout; a change answered `Valid` whose deferred flush has
   not run yet is lost.
 - Every flash run ends with one hard reset to a serving board (`flash/conftest.py`'s
   `leave_board_serving`).
@@ -884,6 +884,7 @@ raw flags each reset kind leaves.
 | 11-15 | `bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed`, one case per boot phase 1-5 | L4 | not yet run |
 | 20 | `bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed` (`reset_code_stack_exhausted.py`: a reader recursing until the stack check raises; the handler that catches it records the overflow and the supervisor's next pass reboots with the stack code) | L4 | not yet run |
 | 21 | `bench/test_reset_reasons.py::test_a_console_interrupt_is_attributed` | L4 | not yet run |
+| 22 | `bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed`, an `OSError` and a `SystemExit` from the loop core (`reset_code_loop_end.py`: the frozen entry imported again after `mpremote`'s Ctrl-C, under the board's own config, no flash write) | L4 | not yet run |
 
 ## System commands
 
