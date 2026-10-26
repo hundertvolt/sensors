@@ -68,11 +68,17 @@ describe("renderSummary", () => {
     });
 
     test("states the result each exit code stands for", () => {
-        const cases = [[0, "PASS"], [1, "FAIL"], [2, "USAGE ERROR"], [3, "PASS (coverage report not rendered)"], [4, "NOT CLEAN (why)"], [130, "FAIL"]];
+        const cases = [[0, "PASS"], [1, "FAIL"], [2, "USAGE ERROR"], [3, "PASS (why)"], [4, "NOT CLEAN (why)"], [130, "FAIL"]];
         for (const [code, result] of /** @type {[number, string][]} */ (cases)) {
             const summary = createSummary("npm test", "abc1234");
             summary.notCleanReason = "why";
             expect(renderSummary(summary, code).endsWith(`Result: ${result}\nExit code: ${code}\n`)).toBe(true);
+        }
+    });
+
+    test("reads each reason-carrying code's default without a reason", () => {
+        for (const [code, result] of /** @type {[number, string][]} */ ([[3, "PASS (coverage report not rendered)"], [4, "NOT CLEAN"]])) {
+            expect(renderSummary(createSummary("npm test", "abc1234"), code).endsWith(`Result: ${result}\nExit code: ${code}\n`)).toBe(true);
         }
     });
 

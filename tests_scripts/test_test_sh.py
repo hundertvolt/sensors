@@ -1790,13 +1790,13 @@ def _tracer_notes(tmp_path: Path, *tags: str) -> None:
 
 def test_a_tracer_that_ended_early_is_listed_by_job_and_exits_three_never_one(repo_root: Path, tmp_path: Path) -> None:
     # Its tests passed and only its coverage is short: E.5.3's code 3, the Result line saying which kind of short.
-    _tracer_notes(tmp_path, "test_ok", "test_pd[wozi]")
-    jobs: dict[str, tuple[str | None, str | None, str | None]] = {"tests/test_ok.py": _passing("test_ok"), "tests/test_pd.py[wozi]": _passing("test_pd[wozi]"), "tests/test_fine.py": _passing("test_fine")}
+    _tracer_notes(tmp_path, "test_ok", "test_pd[fixture-device-a]")
+    jobs: dict[str, tuple[str | None, str | None, str | None]] = {"tests/test_ok.py": _passing("test_ok"), "tests/test_pd.py[fixture-device-a]": _passing("test_pd[fixture-device-a]"), "tests/test_fine.py": _passing("test_fine")}
     code, out, _ = _run_tail(repo_root, tmp_path, jobs, coverage=1)
     assert code == 3, out
     block = _block(out)
     tail = "coverage incomplete: tracing ended after src/x.py:3 - every traced line the file ran after it is missing from its coverage"
-    assert f"\nNotes:\n  - tests/test_ok.py: {tail}\n  - tests/test_pd.py[wozi]: {tail}\nChecked nothing: none\n" in block, block
+    assert f"\nNotes:\n  - tests/test_ok.py: {tail}\n  - tests/test_pd.py[fixture-device-a]: {tail}\nChecked nothing: none\n" in block, block
     assert block.endswith("Result: PASS (coverage incomplete in 2 job(s), listed under Notes)\nExit code: 3\n"), block
 
 
