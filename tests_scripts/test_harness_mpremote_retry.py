@@ -18,6 +18,11 @@ import harness
 from buildgen.validate import _WDT_TIMEOUT_MS
 
 _TRANSIENT = "could not enter raw repl"
+# mpremote v1.29.0 when it never enters the raw REPL: stdout carries its read as one bytes repr, or nothing, and stderr
+# the error, a traceback from ensure_raw_repl() or exec's CommandError (tools/mpremote/mpremote/transport_serial.py:178-210, 270-295).
+_RAW_REPL_TRACEBACK = 'Traceback (most recent call last):\n  File "mpremote/transport_serial.py", line 195, in enter_raw_repl\nmpremote.transport.TransportError: could not enter raw repl\n'
+_RAW_REPL_COMMAND_ERROR = "mpremote: could not enter raw repl\n"
+_NEVER_ENTERED = [("b''\n", _RAW_REPL_TRACEBACK), ("b'\\r\\nMicroPython v1.29.0 on 2026-09-10; Raspberry Pi Pico W with RP2040\\r\\n'\n", _RAW_REPL_TRACEBACK), ("b'w REPL; CTRL-B to exit\\r\\n'\n", _RAW_REPL_COMMAND_ERROR), ("", _RAW_REPL_COMMAND_ERROR)]
 _TESTS_HARDWARE = Path(__file__).resolve().parent.parent / "tests_hardware"
 _LIVE = "sys.modules"  # a snippet naming it reads the running firmware's modules, which only exec_live() keeps
 
@@ -93,16 +98,19 @@ def board(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> harness.Board:
     return harness.Board(device=str(tmp_path / "ttyACM-pinned"))
 
 
-def test_a_transient_failure_before_anything_ran_is_retried_once_and_recorded(board: harness.Board, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    run = _Scripted([(1, "", _TRANSIENT), (0, "probe\n", ""), (0, "", "")])
+@pytest.mark.parametrize(("stdout", "stderr"), _NEVER_ENTERED)
+def test_a_transient_failure_before_anything_ran_is_retried_once_and_recorded(board: harness.Board, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, stdout: str, stderr: str) -> None:
+    run = _Scripted([(1, stdout, stderr), (0, "probe\n", ""), (0, "", "")])
     monkeypatch.setattr(subprocess, "run", run)
     assert board.run_isolated(_script(tmp_path)) == "probe\n"
     assert [args[0] for args in run.mpremote_args()] == ["exec", "exec", "soft-reset"]
     assert len(board.recovery_events) == 1 and _TRANSIENT in board.recovery_events[0], board.recovery_events
 
 
-def test_a_transient_failure_after_the_script_printed_is_never_retried(board: harness.Board, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    run = _Scripted([(1, "probe\nhalf a line", _TRANSIENT)])
+@pytest.mark.parametrize(("stdout", "stderr"), [("probe\nhalf a line", _TRANSIENT), ("probe\nb'half a line'\n", _RAW_REPL_TRACEBACK), ("b'probe'\nb'half a line'\n", _RAW_REPL_TRACEBACK)])
+def test_a_transient_failure_after_the_script_printed_is_never_retried(board: harness.Board, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, stdout: str, stderr: str) -> None:
+    # Anything on stdout beyond mpremote's one echo of its read may be the script's own: that run is never repeated.
+    run = _Scripted([(1, stdout, stderr)])
     monkeypatch.setattr(subprocess, "run", run)
     with pytest.raises(harness.HardwareTestFailureError, match="half a line"):
         board.run_isolated(_script(tmp_path))
@@ -218,10 +226,11 @@ def test_an_expect_reset_run_that_never_reached_the_board_raises(monkeypatch: py
     monkeypatch.setattr(harness, "_USB_GRACE_S", 0.0)
     monkeypatch.setattr(harness, "_usb_reset_device", lambda _device: (False, "no /sys/class/tty/x/device to rebind"))
     monkeypatch.setattr(harness, "RENDERED_SCRIPTS_DIR", tmp_path / "rendered")
-    monkeypatch.setattr(subprocess, "run", _Scripted([(1, "", _TRANSIENT)]))
-    board = harness.Board(device=str(tmp_path / "ttyACM-pinned"))
-    with pytest.raises(harness.HardwareTestFailureError, match="never reached the board"):
-        board.run_isolated_expect_reset(_script(tmp_path))
+    for stdout, stderr in _NEVER_ENTERED:
+        monkeypatch.setattr(subprocess, "run", _Scripted([(1, stdout, stderr)]))
+        board = harness.Board(device=str(tmp_path / "ttyACM-pinned"))
+        with pytest.raises(harness.HardwareTestFailureError, match="never reached the board"):
+            board.run_isolated_expect_reset(_script(tmp_path))
     monkeypatch.setattr(subprocess, "run", _Scripted([(1, "FACT seeded=true\n", "device disconnected")]))
     assert board.run_isolated_expect_reset(_script(tmp_path)) == "FACT seeded=true\n"
 

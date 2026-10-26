@@ -11,6 +11,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, TypeVar
@@ -292,6 +293,18 @@ def _poll(check: "Callable[[], bool]", bound_s: float) -> bool:
     return True
 
 
+def _never_started(result: "MpremoteResult") -> bool:
+    # A transient marker with stdout empty or holding only the one bytes repr mpremote prints of its read: it raises "could
+    # not enter raw repl" only before a command's bytes go out, then exits (tools/mpremote/mpremote/transport_serial.py:
+    # 178-210, 270-295, v1.29.0), and a started script's own output is never that one repr alone.
+    lines = result.stdout.splitlines()
+    try:
+        echo_only = not lines or (len(lines) == 1 and isinstance(ast.literal_eval(lines[0]), bytes))
+    except (ValueError, SyntaxError):
+        echo_only = False
+    return echo_only and any(marker in result.stderr.lower() for marker in _TRANSIENT_MARKERS)
+
+
 def _retryable_picotool_exit(code: int) -> bool:
     return code == _PICOTOOL_NO_DEVICE_EXIT
 
@@ -502,12 +515,15 @@ def dut_hostname_candidates() -> "tuple[str, str]":
 
 def elf_symbols(elf: Path) -> "dict[str, tuple[int, int]]":
     # Every sized symbol of a linked image, local ones included, name -> (address, size): `nm -S` with the ARM nm the
-    # firmware build runs on PATH, as scripts/build_firmware.py's image report reads firmware.elf.
+    # firmware build runs on PATH, as scripts/build_firmware.py's image report reads firmware.elf. A name nm lists more
+    # than once (two local symbols of one name) is dropped, never one of them kept, so a caller asking fails on it.
     nm = shutil.which("arm-none-eabi-nm", path=setup_toolchain.BUILD_ENV_PATH)
     if nm is None:
         raise HardwareNotAvailableError(f"arm-none-eabi-nm is not on {setup_toolchain.BUILD_ENV_PATH} - install the toolchain's apt packages (uv run toolchain/setup_toolchain.py setup)")
     listing = subprocess.run([nm, "-S", str(elf)], capture_output=True, text=True, check=True, timeout=_ELF_SYMBOLS_TIMEOUT_S).stdout
-    return {parts[3]: (int(parts[0], 16), int(parts[1], 16)) for parts in (line.split() for line in listing.splitlines()) if len(parts) == _NM_SIZED_FIELDS}
+    rows = [line.split() for line in listing.splitlines() if line.strip()]
+    listed = Counter(parts[-1] for parts in rows)
+    return {parts[3]: (int(parts[0], 16), int(parts[1], 16)) for parts in rows if len(parts) == _NM_SIZED_FIELDS and listed[parts[3]] == 1}
 
 
 def fram_backed_logger_names(device: "str | None" = None) -> "list[str]":
@@ -816,7 +832,7 @@ class Board:
                 raise HardwareTestFailureError(f"mpremote {' '.join(args)} timed out after {timeout}s") from exc
             marker = next((m for m in _TRANSIENT_MARKERS if m in proc.stderr.lower()), None)
             result = MpremoteResult(proc.returncode, proc.stdout, proc.stderr)
-            if proc.returncode == 0 or marker is None or not allow_recovery or (proc.stdout and not retry_if_started):
+            if proc.returncode == 0 or marker is None or not allow_recovery or not (retry_if_started or _never_started(result)):
                 return result
             elapsed = time.monotonic() - started
             if time.monotonic() < grace_deadline:
@@ -934,7 +950,7 @@ class Board:
         rendered = render_device_script(Path(script_path), **extras)
         args = ["exec", _ARM_WATCHDOG, "run", *(["--no-follow"] if hold_unread_s is not None else []), str(rendered)]
         result = self._mpremote(*args, timeout_s=timeout_s, retry_if_started=False)
-        if result.returncode != 0 and not result.stdout and any(marker in result.stderr.lower() for marker in _TRANSIENT_MARKERS):
+        if result.returncode != 0 and _never_started(result):
             raise HardwareTestFailureError(f"mpremote never reached the board, so {Path(script_path).name} never ran (exit {result.returncode}): {result.stderr.strip()}")
         if hold_unread_s is None:
             return result.stdout
