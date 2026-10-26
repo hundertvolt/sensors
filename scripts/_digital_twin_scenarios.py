@@ -773,6 +773,29 @@ def _error_table(port: int) -> "dict[str, JSONObject]":
     return errcount_table(HTTPStatus.OK, _status(port))
 
 
+@scenario("an_escalation_entry_held_past_its_bound_is_cut_and_the_reset_still_follows", family="system_commands", drivers=("fram", "scd30"))
+def _escalation_entry_cut(ctx: Context) -> None:
+    """An escalation entry write held inside its first block past its bound is cancelled there: code 20, the cut block healed and logged."""
+    key, _name = _first_instance(ctx, "scd30")
+    state = ctx.logs_dir / "state_escalation_cut"
+    errno = _src_int(_SYSTEM, "_ERR_STACK_EXHAUSTED")
+    busy, repaired = _src_int("asy_fram_manager.py", "_ERR_FRAM_STATUS_BYTE"), _src_int("asy_fram_manager.py", "_WRN_FRAM_BLOCK_INVALID")
+    with ctx.boot("--fault", f"{key}:readfrom_into:stack", "--test-hold-system-entry", f"{errno}:cut", state_dir=state) as twin:
+        _expect(twin.wait_line("ENTRY_HELD", 0, _src_int(_SYSTEM, "_TASK_CHECK_TIME") + _COMMANDED_RESET_MARGIN_S) is not None, "the escalation's entry write never reached its first block's busy mark")
+        _exits_with(twin, 3, "the escalation whose entry write was held inside its first block")
+        _expect("its entry write did not finish within" in read_log(twin.run.log_path), "the reset came without the bound cancelling the held write")
+    with ctx.boot(state_dir=state) as twin:
+        status = _status(twin.port)
+        reason = _group(status, "system").get("ResetReason")
+        _expect(reason == _src_int(_SYSTEM, "_RR_STACK_EXHAUSTED"), f"the relaunch reads ResetReason {reason!r}")
+        table = errcount_table(HTTPStatus.OK, status)
+        _expect(not _has_entry(table.get("SYSTEM"), "E", errno), f"the cut entry reached the relaunch's SYSTEM history ({table.get('SYSTEM')!r})")
+        _expect(_has_entry(table.get("FRAM"), "E", busy) and _has_entry(table.get("FRAM"), "W", repaired), f"the relaunch logged no busy block and its repair ({table.get('FRAM')!r})")
+    with ctx.boot(state_dir=state) as twin:
+        fram = _errcount(twin.port, "FRAM")
+        _expect(not _has_entry(fram, "E", busy) and not _has_entry(fram, "W", repaired), f"the block the relaunch repaired reads busy again ({fram!r})")
+
+
 @scenario("every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly", family="sensortask_integration")
 def _every_get_endpoint(ctx: Context) -> None:
     """Every GET route answers 200 in its published shape, the settings routes with the device's own defaults."""

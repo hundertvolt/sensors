@@ -126,6 +126,46 @@ def test_parse_args_takes_the_config_dir_the_online_ntp_switch_and_in_memory_sta
     assert _parse("--mem-backup-state-path", "m.json").state.mem_backup == "m.json"
 
 
+def test_the_cut_system_entry_is_held_after_its_first_blocks_busy_mark_and_only_its_bound_ends_it() -> None:
+    said: list[str] = []
+    marks: list[int] = []
+
+    class _Chunk:
+        # SYSTEM's FRAM chunk as the cut reaches it: each status pair it marks, a busy mark first, the idle one after.
+        async def _handle_status_bytes(self, _fram: object, _addr: int, val: int, *, check_idle: bool) -> bool:
+            del check_idle
+            marks.append(val)
+            return False
+
+    async def scenario() -> None:
+        booted = _Booted(asyncio.create_task(_forever()))
+        logger, chunk = booted.sysfunct.pr, _Chunk()
+        logger.fram = chunk  # type: ignore[attr-defined]
+        written = logger.err_s
+
+        async def entry(*args: object, errno: int = 0, sep: str = " ", end: str = "\n") -> None:  # its block's busy, then idle mark
+            await written(*args, errno=errno, sep=sep, end=end)
+            await chunk._handle_status_bytes(None, 0, 0x02, check_idle=False)
+            await chunk._handle_status_bytes(None, 0, 0x01, check_idle=False)
+
+        logger.err_s = entry  # type: ignore[method-assign]
+        release = runner._test_hold_system_entry(_as_module(booted), 25, said.append, cut=True)
+        await asyncio.wait_for_ms(logger.err_s("Task error counter above", errno=24), 100)  # another errno: not held
+        assert marks == [2, 1] and said == [], (marks, said)
+        cut = asyncio.create_task(logger.err_s("C stack exhausted - reboot triggered", errno=25))
+        release()  # no release: ENTRY_RELEASE reaches nothing in this mode
+        try:
+            await asyncio.wait_for_ms(cut, 50)  # the service's own bound, counting the hold
+        except asyncio.TimeoutError:
+            pass
+        else:
+            raise AssertionError("the cut entry's write finished")
+        assert logger.written == [24, 25] and marks == [2, 1, 2] and said == ["ENTRY_HELD"], (logger.written, marks, said)
+        await cancel_all([t for t in booted.sysfunct._tasks if t is not None])
+
+    run_timed(scenario(), _RUN_BOUND_S)
+
+
 def test_every_test_only_flag_is_off_by_default_and_parses_when_named() -> None:
     assert runner.TestFlags(False, None, None, None, None, False, False, None, False, None, None, None) == runner._NO_TEST_FLAGS
     config = _parse(
@@ -133,8 +173,9 @@ def test_every_test_only_flag_is_off_by_default_and_parses_when_named() -> None:
         "--test-fault-status-interval-ms", "60", "--test-shutdown-hang", "S5erase", "--test-flash-stall-max", "--test-uart-over-cap",
         "--test-hold-system-entry", "25", "--test-kbd-traceback", "--test-loop-lag-ms", "10", "--test-drop-timer-fire", "sequencer", "--test-watchdog-fault", "block",
     )
-    assert config.instrumentation == runner.TestFlags(True, 40, 50, 60, "S5erase", True, True, 25, True, 10, "sequencer", "block")
-    refused = (("--test-shutdown-hang", "S7"), ("--test-stall-loop-ms", "0"), ("--test-conn-status-interval-ms", "x"), ("--test-hold-system-entry", "0"), ("--test-loop-lag-ms", "0"), ("--test-drop-timer-fire", "ntp"), ("--test-watchdog-fault", "reboot"))
+    assert config.instrumentation == runner.TestFlags(True, 40, 50, 60, "S5erase", True, True, (25, False), True, 10, "sequencer", "block")
+    assert _parse("--test-hold-system-entry", "25:cut").instrumentation.hold_system_entry == (25, True)
+    refused = (("--test-shutdown-hang", "S7"), ("--test-stall-loop-ms", "0"), ("--test-conn-status-interval-ms", "x"), ("--test-hold-system-entry", "0"), ("--test-hold-system-entry", "25:never"), ("--test-hold-system-entry", "0:cut"), ("--test-loop-lag-ms", "0"), ("--test-drop-timer-fire", "ntp"), ("--test-watchdog-fault", "reboot"))
     for flags in refused:
         _refused(_parse, *flags)
 
