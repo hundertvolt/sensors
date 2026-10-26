@@ -864,7 +864,7 @@ def generate_boot_entry_source(device: str, *, autostart: bool = True) -> str:
         "    # why first, or the next boot reads a plain watchdog reset.\n"
         "    write_reset_record(RR_INTERRUPTED)\n"
         "    raise\n"
-        "except BaseException as ended:\n"
+        "except BaseException as ended:  # noqa: F811 - rebinds the slot bound above, so the loop end grows no dict\n"
         "    # Any other exception ending the loop: recorded, printed with no heap use, then this entry ends and the\n"
         "    # armed watchdog resets the unit. Never re-raised: rp2 soft-resets on a SystemExit, running main.py again\n"
         "    # at once with no I2C or SPI controller reset (SPECIFICATION.md F.5.4).\n"
