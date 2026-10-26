@@ -66,3 +66,5 @@ class BenchFacts(TypedDict, total=False):
     part: str
     mode: str
     files: list[str]
+    pools: dict[str, dict[str, int]]
+    backlog: int

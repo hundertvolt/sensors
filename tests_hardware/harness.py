@@ -5,6 +5,7 @@ recovery helpers every hardware test shares - never run under the MicroPython Un
 import ast
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -93,6 +94,7 @@ _ARM_WATCHDOG = "import machine; machine.WDT(timeout=8000)"
 # picotool's ERROR_NO_DEVICE (-7, picotool errors/errors.h:16) as an exit status: no BOOTSEL device enumerated yet,
 # so nothing was written. Every other exit may already have written flash.
 _PICOTOOL_NO_DEVICE_EXIT = 249
+_NM_SIZED_FIELDS = 4  # `nm -S`: address, size, type, name
 _TRANSIENT_MARKERS = ("may be in use by another program", "could not enter raw repl", "could not open")
 
 # @tunable l4.harness_wait_until_poll_s = 1.0
@@ -140,6 +142,8 @@ _PRESENCE_PROBE_TIMEOUT_S = 0.2
 _MPREMOTE_RESET_TIMEOUT_S = 15.0
 # @tunable l4.harness_log_tail_read_timeout_s = 0.5
 _LOG_TAIL_READ_TIMEOUT_S = 0.5
+# @tunable l4.harness_elf_symbols_timeout_s = 120
+_ELF_SYMBOLS_TIMEOUT_S = 120
 # @tunable l4.observe_during_tail_after_s = 5.0
 _OBSERVE_TAIL_AFTER_S = 5.0
 # @tunable l4.observe_during_tail_step_s = 1.0
@@ -494,6 +498,16 @@ def dut_hostname_candidates() -> "tuple[str, str]":
     if not isinstance(hostname, str) or not isinstance(default, str):
         raise HardwareNotAvailableError(f"no string hostname in {device_toml()} or no _VAL_HOSTNAME default in src/")
     return hostname, default
+
+
+def elf_symbols(elf: Path) -> "dict[str, tuple[int, int]]":
+    # Every sized symbol of a linked image, local ones included, name -> (address, size): `nm -S` with the ARM nm the
+    # firmware build runs on PATH, as scripts/build_firmware.py's image report reads firmware.elf.
+    nm = shutil.which("arm-none-eabi-nm", path=setup_toolchain.BUILD_ENV_PATH)
+    if nm is None:
+        raise HardwareNotAvailableError(f"arm-none-eabi-nm is not on {setup_toolchain.BUILD_ENV_PATH} - install the toolchain's apt packages (uv run toolchain/setup_toolchain.py setup)")
+    listing = subprocess.run([nm, "-S", str(elf)], capture_output=True, text=True, check=True, timeout=_ELF_SYMBOLS_TIMEOUT_S).stdout
+    return {parts[3]: (int(parts[0], 16), int(parts[1], 16)) for parts in (line.split() for line in listing.splitlines()) if len(parts) == _NM_SIZED_FIELDS}
 
 
 def fram_backed_logger_names(device: "str | None" = None) -> "list[str]":
