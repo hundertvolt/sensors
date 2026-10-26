@@ -7,6 +7,7 @@ import functools
 import inspect
 import json
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -467,6 +468,15 @@ def test_kick_then_reset_kicks_the_stations_before_the_one_reset() -> None:
     fake = _Recorder()
     harness.kick_then_reset(fake, fake)  # type: ignore[arg-type]
     assert fake.calls == ["kick_all_stations", "hard_reset"]
+
+
+def test_elf_symbols_drops_a_name_nm_lists_more_than_once(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # A canned `nm -S` listing, no toolchain run: two local `tab`s and a `helper` listed once unsized could each be the
+    # one a caller means, so neither comes back; the unique sized `base` does, and the unsized `_start` never does.
+    listing = "20000100 00000010 b tab\n20000200 00000020 b tab\n20000300 00000004 d base\n10000400 t helper\n10000500 00000008 t helper\n10000000 T _start\n"
+    monkeypatch.setattr(shutil, "which", lambda *_args, **_kwargs: "/usr/bin/arm-none-eabi-nm")
+    monkeypatch.setattr(subprocess, "run", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, stdout=listing, stderr=""))
+    assert harness.elf_symbols(tmp_path / "firmware.elf") == {"base": (0x20000300, 4)}
 
 
 def test_the_kick_then_reset_cli_kicks_before_the_one_reset_on_the_named_board(monkeypatch: pytest.MonkeyPatch) -> None:
