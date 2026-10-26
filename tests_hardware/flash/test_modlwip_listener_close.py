@@ -85,11 +85,12 @@ def test_closing_a_listener_and_a_failed_listen_leave_the_pcb_pools_as_they_were
     expected = {name: [(pools[name]["bytes"] - (_MEM_ALIGNMENT - 1)) // counts[name], counts[name], pools[name]["base"], pools[name]["tab"]] for name in _POOLS}
     assert facts.get("pools") == expected and facts.get("pools_matched") is True, f"the board's pool descriptors are not the ELF's - another image is on the board: read {facts.get('pools')}, ELF {expected}"
     free, used, changed = facts.get("free"), facts.get("used"), facts.get("changed")
-    assert isinstance(free, dict) and isinstance(changed, dict) and set(free) == set(_POOLS), f"no free-list facts for every pool: {facts}"
+    assert isinstance(free, dict) and isinstance(used, dict) and isinstance(changed, dict) and set(free) == set(_POOLS), f"no free-list facts for every pool: {facts}"
     result_note(f"pools {expected}; free slots before/after/end {free}; the slots the sockets took {used}; changed words {changed}")
     for name, (before, after, end) in free.items():
         assert None not in (before, after, end), f"the {name} pool's free list is broken in one of the three pictures: {free[name]}"
         assert set(before) <= set(after) and set(before) <= set(end), f"the {name} pool lost free slots - a pcb leaked: before {before}, after {after}, end {end}"
+        assert set(before) - {used.get(name)}, f"the {name} pool had no free slot to compare but the one the sockets took ({used.get(name)}), so its byte check would pass on nothing: before {before}"
     assert changed["total"] == 0, f"{changed['total']} words of free slots changed across the two closes: {changed['first']}"
     # rp2's lwIP has no loopback netif (lwip/opt.h:1792), so ip4_route() refuses 127.0.0.1: the stack's own answer,
     # EHOSTUNREACH 113 on the host as in MicroPython (py/mperrno.h:81).

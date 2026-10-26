@@ -834,13 +834,13 @@ the patched modlwip copy. The script, production stopped, reads each descriptor 
 reports the ELF's array and head it reads no pool byte - and takes both pools in one interrupts-off
 picture; it closes a listener, then a socket whose `listen()` met a locked heap, and takes a second.
 Every slot free in both, except the one each pool hands the script's own sockets, must be
-byte-identical, reported by pool, slot and offset, and no free slot may go missing, then or after
-the round trip (a third picture). A bind without `SO_REUSEADDR` must take the port again, and one
-loopback round trip runs: the twin echoes it, while rp2's lwIP has no loopback netif
-(`LWIP_NETIF_LOOPBACK` 0), so silicon's answer is `EHOSTUNREACH`. Memory is only read
-(`machine.mem32`), never written by address. On an unpatched image the listener's stray
-stores are NULLs, seen only where they land on non-zero bytes; the failed listen's `tcp_poll()`
-stores a function pointer, seen anywhere. `--twin` runs the socket half only.
+byte-identical (at least one per pool, or the check would pass on nothing), reported by pool, slot
+and offset, and no free slot may go missing, then or after the round trip (a third picture). A bind
+without `SO_REUSEADDR` must take the port again, and one loopback round trip runs: the twin echoes
+it, while rp2's lwIP has no loopback netif (`LWIP_NETIF_LOOPBACK` 0), so silicon's answer is
+`EHOSTUNREACH`. Memory is only read (`machine.mem32`), never written by address. On an unpatched
+image the listener's stray stores are NULLs, seen only where they land on non-zero bytes; the failed
+listen's `tcp_poll()` stores a function pointer, seen anywhere. `--twin` runs the socket half only.
 
 **The loop lag under combined load** (`device_scripts/loop_lag_under_combined_load.py`) runs the
 bench build's shipped `main()` beside a 10 ms lag probe, an allocation-churn task and FRAM block
