@@ -484,7 +484,7 @@ async def _one_supervisor_pass(svc: SystemService, starts: "list[asyncio.Task[No
 def _make_bmp_reader(cfg_path: str, max_module_error: int = 1) -> BMP3XX_Reader:
     i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
     reader = BMP3XX_Reader(i2c, address=_BMP_ADDR, max_module_error=max_module_error, cfg_path=cfg_path)
-    run(reader.cfgmgr.setup())
+    run(reader.setup())  # the boot batch's setup(), before any task starts
     return reader
 
 
@@ -531,14 +531,15 @@ _SGP40_ADDR: int = src_int("src/asy_sgp40_driver.py", "_SGP40_ADDR")
 
 def _make_scd30_reader(cfg_path: str, max_module_error: int = 1) -> SCD30_Reader:
     i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
-    return SCD30_Reader(i2c, irq_pin=5, max_module_error=max_module_error, cfg_path=cfg_path)
+    reader = SCD30_Reader(i2c, irq_pin=5, trigger_s=3, max_module_error=max_module_error, cfg_path=cfg_path)
+    run(reader.setup())  # the boot batch's setup(), before any task starts
+    return reader
 
 
 def _make_sgp40_reader(cfg_path: str, max_module_error: int = 1) -> SGP40_Reader:
     i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
     # A real SCD30_Reader behind the temperature/humidity value references (SPECIFICATION.md Parts C.14 and L.6.3) -
-    # never read() or setup(), so its get_data() just returns its unmeasured-sentinel namedtuple with every
-    # field None, matching what the old _no_comp_data() returned directly.
+    # set up but never read, so its get_data() returns its unmeasured-sentinel namedtuple with every field None.
     scd_reader = _make_scd30_reader(cfg_path)
     reader = SGP40_Reader(
         i2c,
@@ -547,7 +548,7 @@ def _make_sgp40_reader(cfg_path: str, max_module_error: int = 1) -> SGP40_Reader
         max_module_error=max_module_error,
         cfg_path=cfg_path,
     )
-    run(reader.cfgmgr.setup())
+    run(reader.setup())  # the boot batch's setup(), before any task starts
     return reader
 
 

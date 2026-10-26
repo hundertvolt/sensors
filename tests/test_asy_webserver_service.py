@@ -159,6 +159,7 @@ _ERROR_LEVEL = 1  # pins src/asy_print_log.py _LOG_ERR
 
 # run_timed()'s default bound: section F below exercises timeout/hang scenarios, so a genuine bug in the
 # implementation under test (or in one of the fakes below) must surface as a fast FAIL, never a whole-suite stall.
+# @tunable l1.webserver_run_bound_s = 5.0
 _RUN_BOUND_S = 5.0
 
 
