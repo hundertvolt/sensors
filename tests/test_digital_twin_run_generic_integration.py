@@ -51,6 +51,7 @@ import microtest  # noqa: E402 - imported after the prewarm and the UDP shim
 import network  # noqa: E402 - imported after the prewarm and the UDP shim
 import run_generic_integration as runner  # noqa: E402 - imported after the prewarm and the UDP shim
 from _async_harness import cancel, cancel_all, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
+from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_tree import require_fresh  # noqa: E402 - imported after the prewarm and the UDP shim
 from _port_bands import PortAllocator  # noqa: E402 - imported after the prewarm and the UDP shim
 from _recording_print import record_prints  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -61,6 +62,8 @@ from _twin_devices import generated_devices, wiring_plan  # noqa: E402 - importe
 
 import asy_config_manager  # noqa: E402 - imported after the prewarm and the UDP shim
 import asy_ntp_client  # noqa: E402 - imported after the prewarm and the UDP shim
+import asy_system_service  # noqa: E402 - imported after the prewarm and the UDP shim
+import asy_wifi_service  # noqa: E402 - imported after the prewarm and the UDP shim
 
 require_fresh()  # the smoke boot loads a generated module and its plan
 microtest.after_each(machine.reset_test_state)
@@ -807,10 +810,10 @@ async def _times_out(aw: "Coroutine[object, object, object]") -> bool:
     return False
 
 
-async def _until_a_line_from(name: str, lines: "list[tuple[object, ...]]", run: "Coroutine[object, object, None]") -> None:
-    # Serves until `name`'s logger has printed a line, then ends the run on main()'s own shutdown path by its cancel.
+async def _until_returned(returned: "list[bool]", run: "Coroutine[object, object, None]") -> None:
+    # Serves until the held setup has returned, then ends the run on main()'s own shutdown path by its cancel.
     task = asyncio.create_task(run)
-    while not task.done() and not any(line and line[0] == name for line in lines):
+    while not task.done() and not returned:
         await asyncio.sleep_ms(runner._READY_POLL_MS)
     await cancel(task)
 
@@ -832,9 +835,31 @@ def test_main_boots_at_the_stored_error_level_arms_a_fault_writes_the_responder_
         run=runner.RunLimits(None, runner._GC_THRESHOLD_DEFAULT, None, None),  # served until that error's line, then cancelled
         environment=runner.RunEnvironment(config_dir, False, runner._NO_TEST_FLAGS, 1),
     )
-    with record_prints(echo=True) as printed:
-        run_timed(_until_a_line_from("CFGMGR_WIFI", printed.lines, runner.main(config)), timeout_s=_MAIN_RUN_BOUND_S)
-    assert any(line and line[0] == "CFGMGR_WIFI" for line in printed.lines), "the blocked config path printed nothing at error level"
+    returned: list[bool] = []
+    setup = asy_wifi_service.WifiService.setup
+
+    async def setup_then_hold(self: "asy_wifi_service.WifiService") -> bool:
+        # The run ends here (agent, 2026-10-26): the WIFI store's whole setup inside the window, no later setup or task in it.
+        ok = await setup(self)
+        returned.append(ok)
+        await asyncio.Event().wait()  # until main()'s shutdown path cancels the boot
+        return ok
+
+    asy_wifi_service.WifiService.setup = setup_then_hold  # type: ignore[method-assign]  # the class the generated module builds
+    try:
+        with record_prints(echo=True) as printed:
+            run_timed(_until_returned(returned, runner.main(config)), timeout_s=_MAIN_RUN_BOUND_S)
+    finally:
+        asy_wifi_service.WifiService.setup = setup  # type: ignore[method-assign]  # as above
+    assert returned, "the run ended before WifiService.setup() returned"
+    # Exact, per layer: the store's own logger holds the one fault and printed it once; the service's own is not read.
+    booted = runner._module
+    assert booted is not None
+    log = run_timed(booted.conn.cfgmgr.pr.get_log(), _RUN_BOUND_S)["CFGMGR_WIFI"]
+    entries = [(kind, num) for kind, num in zip(log["ErrType"], log["ErrNum"]) if kind != "N"]
+    assert (log["ErrCount"], entries) == (1, [("E", code("E", "CFG_PATH_IS_DIR"))]), log
+    lines = [line for line in printed.lines if line and line[0] == "CFGMGR_WIFI"]
+    assert len(lines) == 1, lines
     # The WDT the runner built and passed to the booted module's main(): an ordinary boot never starves it.
     watchdog = runner._watchdog
     assert watchdog is not None
@@ -920,6 +945,22 @@ def test_an_interrupt_in_the_shutdown_drain_is_let_through() -> None:
         del sys.modules["sensortask_idle"]
         _flash_stall_installed()
     assert interrupted, "the interrupt was swallowed: a per-file timeout could not end this run"
+
+
+def test_each_boot_phase_line_names_the_latest_in_process_boots_device() -> None:
+    # Installed once per process: a later main() of another device prints its phases under its own name.
+    kept = asy_system_service._write_region
+    said: list[str] = []
+    runner.print = said.append  # type: ignore[attr-defined]  # a module-global shadow of the builtin
+    try:
+        runner._print_boot_phases("first")
+        runner._print_boot_phases("second")
+        asy_system_service._write_region(1, 0, asy_system_service.BOOT_SETUP)
+        asy_system_service._write_region(0, 0, 7)  # region 0, the reset record: no line
+    finally:
+        del runner.print  # type: ignore[attr-defined]
+        asy_system_service.__dict__["_write_region"] = kept  # as found: installed by an earlier boot, or the product's
+    assert said == [runner._LINE_PREFIX + " [second] boot phase: BOOT_SETUP"], said
 
 
 def test_main_builds_the_booted_module_at_the_debug_level_asked_for() -> None:

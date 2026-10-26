@@ -190,7 +190,8 @@ def test_a_raw_write_that_fails_in_the_sweep_reads_as_no_verdict() -> None:
         loops = [start() for start in responder.get_task_starters()]
 
         async def sweep() -> None:
-            got.append(await initiator._sweep_fields(bytearray(initiator._frame), bytearray(initiator._frame + bus.crc.length())))
+            room = initiator._frame + bus.crc.length()  # the CRC's room in both, as the exerciser sizes them
+            got.append(await initiator._sweep_fields(bytearray(room), bytearray(room)))
 
         task = asyncio.create_task(sweep())
         try:
