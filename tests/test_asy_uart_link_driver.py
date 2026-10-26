@@ -32,6 +32,7 @@ import asy_uart_link_driver
 import asy_webserver_service
 from asy_base_classes import COUNTER_CAP, RegionBuffer
 from asy_config_manager import FAILED, INVALID, VALID
+from asy_crc_checks import CRC16
 from asy_print_log import LogConfig, PrintLogHistory, PrintLogHistoryStore, make_logger
 from asy_uart_comm import CMD_SET, ROLE_INITIATOR, ROLE_RESPONDER
 from asy_uart_driver import UART
@@ -229,6 +230,8 @@ def _check_a_crossing_whose_uid_aliases_the_peers_ack_fails_as_peer_initiated(cr
     errnos = _recorded_errnos(pair.initiator._comm)
     assert run(pair.setup(), RUN_LIMIT_S), "Pair.setup() failed"
     link = pair.initiator
+    bus = link._uart
+    assert bus is not None
     link._comm._uid = _UID_MAX  # the uid before 0: the SET's first frame goes out as uid 0
     got: list[object] = []
 
@@ -236,7 +239,7 @@ def _check_a_crossing_whose_uid_aliases_the_peers_ack_fails_as_peer_initiated(cr
         listen = pair.responder._comm.start_asy_listen()
 
         async def crossing() -> None:
-            got.append(await link._cross_both_ends(bytearray(link._frame)))
+            got.append(await link._cross_both_ends(bytearray(link._frame + bus.crc.length())))
 
         task = asyncio.create_task(crossing())
         await clock.run_until(task.done, _HAZARD_RUN_VIRTUAL_MS)
@@ -358,7 +361,7 @@ def _check_a_raw_write_that_fails_in_the_sweep_reads_as_no_verdict(crc: "CrcMake
         listen = pair.responder._comm.start_asy_listen()
 
         async def sweep() -> None:
-            got.append(await link._sweep_fields(bytearray(link._frame), bytearray(link._frame + bus.crc.length())))
+            got.append(await link._sweep_fields(bytearray(link._frame + bus.crc.length()), bytearray(link._frame + bus.crc.length())))
 
         task = asyncio.create_task(sweep())
         await clock.run_until(task.done, _HAZARD_RUN_VIRTUAL_MS)
@@ -880,6 +883,24 @@ register_both_crc_modes(
     ),
 )
 
+
+
+def test_a_hazard_run_sends_every_raw_frame_without_a_copy() -> None:
+    # Each raw frame goes out of one buffer with room for its CRC (writefrom()), never through write()'s CRC copy,
+    # which costs one allocation per frame; the run's verdicts, and so its bytes on the wire, are the CRC16 check's.
+    added: list[int] = []
+    real_add = CRC16.add
+
+    async def counted(self: "CRCBase", bytearr: bytearray, init: "int | None" = None) -> "bytearray | None":
+        added.append(len(bytearr))
+        return await real_add(self, bytearr, init)
+
+    CRC16.add = counted  # type: ignore[method-assign]  # the class, so every bus's CRC counts
+    try:
+        _check_a_hazard_run_reports_every_verdict_then_returns_to_the_echo(CRC16)
+    finally:
+        CRC16.add = real_add  # type: ignore[method-assign]
+    assert added == [], f"{len(added)} raw frames copied for their CRC"
 
 if __name__ == "__main__":
     import microtest

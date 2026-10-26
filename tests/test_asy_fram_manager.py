@@ -3474,6 +3474,34 @@ def test_the_watch_task_ends_at_once_for_a_chip_never_set_up() -> None:
     assert run(scenario()) is True
 
 
+def test_an_erase_asked_while_a_found_chip_loss_is_still_being_reported_is_refused() -> None:
+    # The driver's public set_values() yields between finding the loss (`initialized` cleared) and reporting it
+    # (`lost` set): an erase_ready() asked there answers False and logs nothing, so the loss stays one entry.
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
+    chip.silent = 0xFF  # the fixed-zero status bit set: the write's latch fault probes RDID at once
+
+    async def write() -> bool:
+        async with manager.fram as fram:
+            return await fram.set_values(b"data", 0)
+
+    async def scenario() -> "tuple[list[bool], bool]":
+        writer = asyncio.create_task(write())
+        answers = []
+        while not writer.done():
+            await asyncio.sleep(0)
+            if not manager.fram.initialized and not manager.fram.lost.is_set():
+                answers.append(await manager.erase_ready())
+        return answers, await writer
+
+    answers, wrote = run(scenario())
+    assert answers, "the write never stood between finding the loss and reporting it"
+    assert True not in answers, answers
+    assert wrote is False
+    assert manager.fram.lost.is_set()
+    assert _entries(run(manager.get_error_counter())) == [(code("E", "FRAM_CHIP_LOST"), "E")]
+
+
 if __name__ == "__main__":
     import microtest
 

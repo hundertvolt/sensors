@@ -184,7 +184,7 @@ class UARTLinkDriver:
         try:
             if bus is None:
                 return
-            frame = bytearray(self._frame)
+            frame = bytearray(self._frame + bus.crc.length())  # room for the CRC: _write_raw() sends it in place
             ack = bytearray(self._frame + bus.crc.length())
             two = await self._two_initiations()
             crossed = await self._cross_both_ends(frame)
@@ -228,11 +228,12 @@ class UARTLinkDriver:
                     task.cancel()  # a cancelled run leaves no transaction of its own behind
 
     async def _write_raw(self, frame: bytearray) -> bool:
+        # One frame from a buffer with room for its CRC, so writefrom() adds it in place: write() would copy the frame.
         bus = self._uart  # as _read_raw()
         if bus is None:
             return False
         async with bus as device:
-            return await device.write(frame, timeout_ms=self._timeout)
+            return await device.writefrom(frame, self._frame, timeout_ms=self._timeout)
 
     # -- starters ----------------------------------------------------------
 
