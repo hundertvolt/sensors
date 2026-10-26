@@ -3354,6 +3354,45 @@ def test_a_dropped_check_tick_does_not_delay_the_due_resync() -> None:
             asy_base_classes.set_utc_valid(valid=False)
     assert due_at == 3600, due_at
 
+
+def _unsynced_due_at(step_ms: int, dropped: int) -> "int | None":
+    # A never-synced client on a 40 s backoff step, one check tick per `step_ms` of measured time with tick `dropped`'s
+    # callback lost (a soft-Timer callback can be, SPECIFICATION.md F.1): the measured seconds its retry triggered at.
+    with _SteppedClock() as clock:
+        client = _make_client()
+        client._retry_wait_s = 40
+
+        async def scenario() -> "int | None":
+            task = asyncio.create_task(client._refresh_loop())
+            await asyncio.sleep(0)  # the loop starts before the first tick's time passes
+            due_at = None
+            for n in range(1, 7):
+                clock.advance(step_ms)
+                if n == dropped:
+                    continue  # its time passes, no tick arrives
+                await tick(client._ntp_timer_trigger_event)
+                if client._ntp_sync_trigger_event.state:
+                    due_at = n * _CHECK_INTERVAL_S
+                    break
+            await cancel(task)
+            return due_at
+
+        return run(scenario())
+
+
+def test_a_dropped_check_tick_does_not_delay_the_unsynced_retry() -> None:
+    # The tick after a dropped one counts both intervals, so the retry still triggers at 40 s of measured time.
+    due_at = _unsynced_due_at(_CHECK_INTERVAL_S * 1000, dropped=2)
+    assert due_at == 40, due_at
+
+
+def test_a_dropped_tick_between_early_wakes_still_counts() -> None:
+    # Each wake lands a little before a whole interval since the last (a loop's own latency varies): the gap rounds to
+    # the nearest interval, so the 19.998 s across the dropped tick still counts two.
+    due_at = _unsynced_due_at(_CHECK_INTERVAL_S * 1000 - 1, dropped=2)
+    assert due_at == 40, due_at
+
+
 if __name__ == "__main__":
     import microtest
 

@@ -1155,8 +1155,9 @@ def test_a_handler_exception_prints_nothing_at_level_zero_and_one_gated_line_abo
     assert [line[1] for line in lines] == ["Microdot caught:", "Unhandled exception in route handler:"], lines
     assert all(str(line[2]) == "probe" for line in lines), lines
     status, count, lines = exhausted
-    assert (status, count, [line[:2] for line in lines]) == (500, 3, [("WEBSERVER", "Microdot caught:")]), exhausted
-    assert str(lines[0][2]) == "injected for the handler"
+    # At level 0 a MemoryError keeps both on the console, each with its text: Microdot's print and the catch-all's line.
+    assert (status, count, [line[:2] for line in lines]) == (500, 3, [("WEBSERVER", "Microdot caught:"), ("WEBSERVER", sensor.exc)]), exhausted
+    assert [str(line[-1]) for line in lines] == ["injected for the handler"] * 2, lines
 
 
 def test_sends_the_stack_cannot_queue_end_at_the_per_call_timeout() -> None:
