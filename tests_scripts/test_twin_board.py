@@ -72,6 +72,17 @@ def test_twin_board_has_boards_public_methods_with_the_same_parameters() -> None
     assert twin == board, f"TwinBoard differs from Board: {sorted(set(twin.items()) ^ set(board.items()))}"
 
 
+def test_a_live_read_is_refused_on_the_twin_naming_why(monkeypatch: pytest.MonkeyPatch) -> None:
+    twin = twin_board.TwinBoard()
+
+    def ran(*_args: object, **_kwargs: object) -> str:
+        raise AssertionError("the refused live read started a twin run")
+
+    monkeypatch.setattr(twin, "_run", ran)
+    with pytest.raises(harness.HardwareNotAvailableError, match="no live interpreter"):
+        twin.exec_live("print(1)")
+
+
 def test_the_twin_runs_the_probes_binary_with_the_twins_one_micropypath(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repo_root: Path) -> None:
     binary = _plant_binary(tmp_path, reports="standard")
     seen: list[tuple[list[str], dict[str, str]]] = []

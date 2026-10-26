@@ -1,7 +1,8 @@
 """tests_hardware/harness.py's mpremote wrapper against a scripted subprocess.run: a transient failure is retried only
-while nothing reached the board, a started script is never re-run, a failed trailing soft reset never re-runs it,
-a timeout interrupts the board, a refused USB rebind is named, and every board call runs `uv run --no-sync`."""
+while nothing reached the board, a started script or a live read is never re-run, a timeout interrupts the board, a
+refused USB rebind is named, every call runs `uv run --no-sync`, and every live read goes through exec_live()."""
 
+import ast
 import subprocess
 import sys
 import time
@@ -14,7 +15,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests_hardware"
 
 import harness
 
+from buildgen.validate import _WDT_TIMEOUT_MS
+
 _TRANSIENT = "could not enter raw repl"
+_TESTS_HARDWARE = Path(__file__).resolve().parent.parent / "tests_hardware"
+_LIVE = "sys.modules"  # a snippet naming it reads the running firmware's modules, which only exec_live() keeps
 
 
 class _Scripted:
@@ -22,14 +27,57 @@ class _Scripted:
     def __init__(self, answers: "list[tuple[int, str, str]]") -> None:
         self.answers = answers
         self.argvs: list[list[str]] = []
+        self.timeouts: list[object] = []
 
     def __call__(self, argv: "list[str]", **kwargs: object) -> "subprocess.CompletedProcess[str]":
         self.argvs.append(list(argv))
+        self.timeouts.append(kwargs.get("timeout"))
         code, out, err = self.answers.pop(0)
         return subprocess.CompletedProcess(argv, code, out, err)
 
     def mpremote_args(self) -> "list[list[str]]":
         return [argv[argv.index("connect") + 2 :] for argv in self.argvs if "mpremote" in argv]
+
+
+def _is_live_argument(node: ast.AST, parents: "dict[ast.AST, ast.AST]") -> bool:
+    call = parents.get(node)
+    return isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute) and call.func.attr == "exec_live" and bool(call.args) and call.args[0] is node
+
+
+def _live_read_findings(root: Path) -> "tuple[list[str], list[str]]":
+    # Every string under root naming sys.modules (docstrings aside), and each one reaching the board other than as
+    # exec_live()'s first argument, directly or through the module-level name it is bound to.
+    trees = {path: ast.parse(path.read_text(encoding="utf-8")) for path in sorted(root.rglob("*.py"))}
+    parents = {path: {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)} for path, tree in trees.items()}
+    snippets: list[str] = []
+    findings: list[str] = []
+    bound: list[tuple[str, str]] = []
+    for path, tree in trees.items():
+        up = parents[path]
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Constant) and isinstance(node.value, str) and _LIVE in node.value):
+                continue
+            holder: ast.AST = node
+            while isinstance(up.get(holder), ast.JoinedStr | ast.BinOp):
+                holder = up[holder]
+            owner = up.get(holder)
+            if isinstance(owner, ast.Expr):
+                continue
+            label = f"{path.relative_to(root)}:{node.lineno}"
+            snippets.append(label)
+            target = owner.targets[0] if isinstance(owner, ast.Assign) and len(owner.targets) == 1 else owner.target if isinstance(owner, ast.AnnAssign) else None
+            if _is_live_argument(holder, up):
+                continue
+            if isinstance(target, ast.Name) and owner in tree.body:
+                bound.append((target.id, label))
+            else:
+                findings.append(f"{label}: a {_LIVE} snippet reaches the board other than through exec_live()")
+    for name, label in bound:
+        uses = [(path, n) for path, tree in trees.items() for n in ast.walk(tree) if isinstance(n, ast.Name) and n.id == name and isinstance(n.ctx, ast.Load)]
+        findings.extend(f"{path.relative_to(root)}:{n.lineno}: {name} ({label}) reaches the board other than through exec_live()" for path, n in uses if not _is_live_argument(n, parents[path]))
+        if not uses:
+            findings.append(f"{label}: {name} is never passed to exec_live()")
+    return snippets, findings
 
 
 def _script(tmp_path: Path) -> Path:
@@ -176,3 +224,37 @@ def test_an_expect_reset_run_that_never_reached_the_board_raises(monkeypatch: py
         board.run_isolated_expect_reset(_script(tmp_path))
     monkeypatch.setattr(subprocess, "run", _Scripted([(1, "FACT seeded=true\n", "device disconnected")]))
     assert board.run_isolated_expect_reset(_script(tmp_path)) == "FACT seeded=true\n"
+
+
+def test_exec_live_resumes_before_its_exec_and_a_plain_exec_does_not(board: harness.Board, monkeypatch: pytest.MonkeyPatch) -> None:
+    run = _Scripted([(0, "LIVE\n", ""), (0, "FRESH\n", "")])
+    monkeypatch.setattr(subprocess, "run", run)
+    assert board.exec_live("print('LIVE')") == "LIVE\n"
+    assert board.exec("print('FRESH')") == "FRESH\n"
+    assert run.mpremote_args() == [["resume", "exec", "print('LIVE')"], ["exec", "print('FRESH')"]]
+
+
+def test_exec_live_is_bounded_by_one_watchdog_period_and_refuses_a_longer_bound(board: harness.Board, monkeypatch: pytest.MonkeyPatch) -> None:
+    run = _Scripted([(0, "", ""), (0, "", "")])
+    monkeypatch.setattr(subprocess, "run", run)
+    window = _WDT_TIMEOUT_MS / 1000
+    board.exec_live("pass")
+    board.exec_live("pass", timeout_s=window / 2)
+    assert run.timeouts == [window, window / 2]
+    with pytest.raises(ValueError, match="watchdog"):
+        board.exec_live("pass", timeout_s=window + 1)
+    assert len(run.argvs) == 2, "a bound past the watchdog period still reached the board"
+
+
+def test_exec_live_never_retries_even_a_failure_that_printed_nothing(board: harness.Board, monkeypatch: pytest.MonkeyPatch) -> None:
+    run = _Scripted([(1, "", "failed to access /dev/ttyACM0 (it may be in use by another program)")])
+    monkeypatch.setattr(subprocess, "run", run)
+    with pytest.raises(harness.HardwareTestFailureError, match="may be in use"):
+        board.exec_live("pass")
+    assert len(run.argvs) == 1 and board.recovery_events == [], board.recovery_events
+
+
+def test_every_snippet_reading_the_running_firmwares_modules_reaches_the_board_through_exec_live() -> None:
+    snippets, findings = _live_read_findings(_TESTS_HARDWARE)
+    assert snippets, f"no {_LIVE} snippet under {_TESTS_HARDWARE}: the scan would pass on anything"
+    assert not findings, "\n".join(findings)
