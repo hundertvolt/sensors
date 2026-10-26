@@ -203,6 +203,7 @@ if TYPE_CHECKING:
         loop_lag_ms: int | None
         drop_timer_fire: str | None
         watchdog_fault: str | None
+        defer_faults: bool
 
     class RunEnvironment(NamedTuple):
         # The product's config directory, whether NTP may go online instead of the local responder, the test flags, and
@@ -216,12 +217,12 @@ else:
     RunLimits = namedtuple("RunLimits", ("duration", "gc_threshold", "mem_sample_interval_ms", "stop_file"))
     TestFlags = namedtuple(
         "TestFlags",
-        ("hold_closing_slot", "stall_loop_ms", "conn_status_interval_ms", "fault_status_interval_ms", "shutdown_hang", "flash_stall_max", "uart_over_cap", "hold_system_entry", "kbd_traceback", "loop_lag_ms", "drop_timer_fire", "watchdog_fault"),
+        ("hold_closing_slot", "stall_loop_ms", "conn_status_interval_ms", "fault_status_interval_ms", "shutdown_hang", "flash_stall_max", "uart_over_cap", "hold_system_entry", "kbd_traceback", "loop_lag_ms", "drop_timer_fire", "watchdog_fault", "defer_faults"),
     )
     RunEnvironment = namedtuple("RunEnvironment", ("config_dir", "online_ntp", "instrumentation", "debug_level"))
 
 
-_NO_TEST_FLAGS = TestFlags(False, None, None, None, None, False, False, None, False, None, None, None)
+_NO_TEST_FLAGS = TestFlags(False, None, None, None, None, False, False, None, False, None, None, None, False)
 _DEFAULT_ENVIRONMENT = RunEnvironment(_CONFIG_DIR_DEFAULT, False, _NO_TEST_FLAGS, None)
 _PERSISTENT_STATE = StatePaths(_FRAM_STATE_DEFAULT, _SCD30_STATE_DEFAULT, _MEM_BACKUP_STATE_DEFAULT)
 
@@ -277,6 +278,7 @@ _USAGE = f"""Usage: micropython digital_twin/run_generic_integration.py --module
   --test-drop-timer-fire reset|sequencer (that one-shot's fire lost as rp2's full scheduler queue loses it),
   --test-watchdog-fault supervisor-raise|main-exit|block (after the supervisor's first feed, one fault that ends the
     feeding; WDT_AT_FAULT <feed_count>)
+  --test-defer-faults (every --fault waits for a FAULT_ARM line, then is queued at once; FAULTS_ARMED)
   -h, --help               print this and exit 0"""
 
 
@@ -376,6 +378,17 @@ def _exit_code(error: "machine.SimulatedRebootError") -> int:
     return _EXIT_SIMULATED_BOOTLOADER if _reset_kind(error) == "bootloader" else _EXIT_SIMULATED_RESET
 
 
+def _fault_arm(faults: "list[FaultSpec]", chips: "dict[str, object]", wlan: "network.WLAN", *, deferred: bool) -> "Callable[[], None]":
+    # The call that queues every --fault on its chip, made here unless deferred (--test-defer-faults arms it at FAULT_ARM).
+    def arm() -> None:
+        for fault in faults:
+            _apply_fault(fault, chips, wlan, source=_SOURCE)
+
+    if not deferred:
+        arm()
+    return arm
+
+
 async def _feed_gap_folder(watchdog: "machine.WDT") -> None:
     while True:
         await asyncio.sleep_ms(_FEED_GAP_FOLD_MS)
@@ -426,7 +439,7 @@ async def _mem_sampler(interval_ms: int) -> None:
 
 def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "TestFlags | None":
     # `flags` with one --test-* flag set; None for an argument that is no test flag.
-    hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd, lag, drop, wdt_fault = flags
+    hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd, lag, drop, wdt_fault, defer = flags
     if arg == "--test-hold-closing-slot":
         hold = True
     elif arg == "--test-stall-loop-ms":
@@ -460,9 +473,11 @@ def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "T
         wdt_fault = _pop_value(remaining, arg)
         if wdt_fault not in _WATCHDOG_FAULT_KINDS:
             raise ValueError(f"--test-watchdog-fault {wdt_fault!r} not recognized - expected one of {_WATCHDOG_FAULT_KINDS}")
+    elif arg == "--test-defer-faults":
+        defer = True
     else:
         return None
-    return TestFlags(hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd, lag, drop, wdt_fault)
+    return TestFlags(hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd, lag, drop, wdt_fault, defer)
 
 
 def _print_boot_phases(device: str) -> None:
@@ -546,6 +561,20 @@ def _shutdown_line(device: str, watchdog: "_Watchdog", gaps: _FeedGaps, links: "
 # Test-only instrumentation (owner, 2026-09-30, paraphrase): the runner, never src/ or the image, may rebind a booted
 # object from outside or print internal state when a named --test-* flag asks;
 # tests_scripts/test_twin_runner_test_flags.py keeps every one off by default and out of the production entry path.
+
+
+def _test_arm_faults(arm: "Callable[[], None]", say: "Callable[[str], None]" = print) -> "Callable[[], None]":
+    # The FAULT_ARM trigger: the --fault injections main() held back are queued at the first one, so a boot meets none of
+    # them; FAULTS_ARMED follows each trigger, and a later one queues nothing more.
+    armed: list[bool] = []
+
+    def trigger() -> None:
+        if not armed:
+            armed.append(True)
+            arm()
+        say("FAULTS_ARMED")
+
+    return trigger
 
 
 async def _test_arm_shutdown_hang(module: "ModuleType", chips: "dict[str, object]", step: str) -> None:
@@ -854,7 +883,7 @@ def _test_stall_loop(stall_ms: int) -> "Callable[[], None]":
 
 
 def _test_start(
-    flags: "TestFlags", module: "ModuleType", chips: "dict[str, object]", links: "list[tuple[str, _ExercisedLink, _RxCounts]]", main_task: "asyncio.Task[None]", watchdog: "_Watchdog",
+    flags: "TestFlags", module: "ModuleType", chips: "dict[str, object]", links: "list[tuple[str, _ExercisedLink, _RxCounts]]", main_task: "asyncio.Task[None]", watchdog: "_Watchdog", arm: "Callable[[], None]",
 ) -> "list[asyncio.Task[None]]":
     # Each named flag's instrumentation, and only under its own flag; the runner tasks it started.
     loop, tasks, triggers = asyncio.get_event_loop(), [], {}
@@ -866,7 +895,9 @@ def _test_start(
         triggers["ENTRY_RELEASE"] = _test_hold_system_entry(module, flags.hold_system_entry[0], cut=flags.hold_system_entry[1])
     if flags.kbd_traceback:
         triggers["KBD_TRACEBACK"] = _test_kbd_traceback()
-    if flags.hold_closing_slot or flags.stall_loop_ms or flags.hold_system_entry or flags.kbd_traceback:
+    if flags.defer_faults:
+        triggers["FAULT_ARM"] = _test_arm_faults(arm)
+    if flags.hold_closing_slot or flags.stall_loop_ms or flags.hold_system_entry or flags.kbd_traceback or flags.defer_faults:
         tasks.append(loop.create_task(_test_stdin_lines(triggers)))
     if flags.conn_status_interval_ms:
         tasks.append(loop.create_task(_test_conn_status(module, flags.conn_status_interval_ms)))
@@ -1078,13 +1109,12 @@ async def main(config: RunConfig) -> None:
             tasks.append(loop.create_task(_wire_log_clearer(link)))
             chips.update(_link_directions(module_file, link))
         wlan = network.WLAN(network.STA_IF)  # the product's own station object: one per interface, as on rp2
-        for fault in injections.faults:
-            _apply_fault(fault, chips, wlan, source=_SOURCE)
+        arm_faults = _fault_arm(injections.faults, chips, wlan, deferred=config.instrumentation.defer_faults)
         for hang in injections.hangs:
             _apply_hang(hang, chips, source=_SOURCE)
         if injections.wifi_outcomes:
             wlan.script_connect_outcomes(injections.wifi_outcomes)
-        tasks.extend(_test_start(config.instrumentation, booted, chips, _uart_counts, main_task, watchdog))
+        tasks.extend(_test_start(config.instrumentation, booted, chips, _uart_counts, main_task, watchdog, arm_faults))
 
         if run.duration is None:
             print(f"Serving forever at http://{config.host}:{config.port}/ - Ctrl+C to stop")
