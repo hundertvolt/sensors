@@ -1222,6 +1222,18 @@ gates, traps).
   the stall stays. The `modlwip_eagain` build override (SPECIFICATION.md B.14.4) stays until the pin
   carries a real fix; the override's anchor check fails the build when upstream changes the loop
   (owner, 2026-09-30).
+- **modlwip listener close — watched upstream** (owner, 2026-10-26): at v1.29.0 `close()` calls
+  `tcp_err()` and `tcp_recv()` on every TCP pcb and `tcp_poll()` on all but a listening socket's,
+  three calls lwIP forbids on a `LISTEN` pcb. No upstream issue exists (nearest: PR 17333, `recv()`
+  on a listening socket, a different path). The same copy's second patch skips all three on the
+  pcb's own state, and its third allocates `listen()`'s accept queue before storing `alloc`, whose
+  byte a refused `listen()` otherwise leaves in the pbuf pointer `close()` frees (SPECIFICATION.md
+  B.14.4; agent, 2026-10-26). Each is removed, not re-anchored, once the pin fixes its defect; an
+  anchor check failing at a pin move is the watch. Same class, not reached by this
+  firmware and left as upstream's: `POLL_WR` (`extmod/modlwip.c:1639`), `send()`/`write()` (`:760`)
+  and a non-blocking `sendall()` (`:1417`) read `tcp_sndbuf()` past a listener, and
+  `setsockopt(TCP_NODELAY)` writes its flags (`:1528-1535`). asyncio polls a listener for reading
+  only (`extmod/asyncio/stream.py:149`), nothing sends on it, and no `TCP_NODELAY` call is made.
 - **Moving CI (and a dev box) to Ubuntu 26.04 is its own step** (agent, 2026-10-20): CI is pinned to
   `ubuntu-24.04` (SPECIFICATION.md B.10.1) since `ubuntu-latest` became 26.04 and broke runs from
   outside the tree. Found on run `39512651550` and reproduced here with 26.04's own
