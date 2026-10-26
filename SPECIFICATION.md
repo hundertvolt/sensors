@@ -2481,7 +2481,7 @@ carrying real persisted state there - CLAUDE.md's own "real hardware go-ahead" g
 SPECIFICATION.md Part C.8's flash/NVM write-safety rules apply to *validating* a chosen value on
 real hardware, not just to building it.
 
-### B.14.4 `modlwip_eagain` (implemented) - a non-blocking modlwip send returns `EAGAIN` on `ERR_MEM`, a listener's close skips lwIP's forbidden callbacks
+### B.14.4 `modlwip_eagain` (implemented) - a non-blocking modlwip send returns `EAGAIN` on `ERR_MEM`, a listener's close is safe
 
 **The problem** (B.14.2.1 has the pool account): `lwip_tcp_send()` (`extmod/modlwip.c:750-829`,
 v1.29.0) sizes a write by `tcp_sndbuf()`; when `tcp_write()` then answers `ERR_MEM` — the arena, the
@@ -2515,18 +2515,31 @@ finaliser (`__del__` is `close`, `extmod/modlwip.c:1719`) once the supervisor ha
 whose accept loop died. The copy skips all three whenever the pcb's own state is `LISTEN`, lwIP's own
 precondition, and runs them for every other pcb exactly as upstream does, in upstream's order;
 `tcp_arg()` (allowed on a listener) and `tcp_close()` (which frees a listener at once and returns
-`ERR_OK`, `tcp.c:392-396`) are unchanged. A `listen()` refused on its accept-queue allocation also
-leaves a `LISTEN` pcb under `STATE_NEW` (`extmod/modlwip.c:1091-1099`); that socket's close meets a
-separate defect before it reaches the guard (BACKLOG.md, open). No upstream issue exists; the
-nearest, PR 17333 (`recv()` on a listening socket, v1.26), is a different path.
+`ERR_OK`, `tcp.c:392-396`) are unchanged. No upstream issue exists; the nearest, PR 17333
+(`recv()` on a listening socket, v1.26), is a different path.
+
+**The third patch: the accept queue allocated first** (agent, 2026-10-26, under the owner's ruling of
+that day). `lwip_socket_listen()` stores the `LISTEN` pcb (`extmod/modlwip.c:1091`) and then
+`incoming.connection.alloc = backlog` (`:1098`) before `m_new0()` allocates the queue (`:1099`).
+`alloc` is the byte at offset 0 of the union whose `incoming.tcp.pbuf` view a `STATE_NEW` socket's
+close frees (`lwip_socket_free_incoming()`, `:380-386`), so a `MemoryError` there leaves the socket
+`STATE_NEW` with a `LISTEN` pcb and a pbuf pointer equal to the backlog: its close calls
+`pbuf_free()` on that address (a segfault on `build-lwip`, a bootrom address on rp2), and the
+socket-state test above would let tcp_err/tcp_recv/tcp_poll reach the `LISTEN` pcb — which is why
+the second patch tests the pcb. The firmware reaches this through the socket `asyncio.start_server()`
+drops when `listen()` raises (`extmod/asyncio/stream.py:188`), closed by its finaliser; its backlog
+is `max_connections + 1` (`src/asy_webserver_service.py:584`), so the queue is allocated. The copy
+stores the array first and `alloc` after it, so a `MemoryError` leaves the pbuf view `NULL`; a
+`listen()` that succeeds ends with the same two values as upstream's.
 
 **Mechanism** (`apply_modlwip_eagain_override()`): it writes
 `<toolchain-dir>/build_overrides/modlwip_eagain/modlwip.c` — the pinned file with that block
-inserted, `close()`'s three callback calls guarded (above), and `#include "modnetwork.h"` (`:40`)
+inserted, `listen()`'s two stores reordered and `close()`'s three callback calls guarded (above),
+and `#include "modnetwork.h"` (`:40`)
 rewritten to `#include "extmod/modnetwork.h"`, since
 the copy no longer sits beside it and `${MICROPY_DIR}` is on every rp2 include path
-(`py/py.cmake:5`), headed by a two-line generated comment naming the MicroPython version it came
-from (read from `py/mpconfig.h`) and both patches, with no `#line` directive, so a compiler diagnostic names the copy
+(`py/py.cmake:5`), headed by a three-line generated comment naming the MicroPython version it came
+from (read from `py/mpconfig.h`) and the three patches, with no `#line` directive, so a compiler diagnostic names the copy
 — and a `micropython.cmake` beside it that finds `${MICROPY_EXTMOD_DIR}/modlwip.c` in
 `MICROPY_SOURCE_EXTMOD`, stops the configure with `FATAL_ERROR` if it is not there, and replaces it
 with the copy. `build_firmware()` passes the directory as `USER_C_MODULES=`; `py/usermod.cmake`
@@ -2540,9 +2553,11 @@ in the original's place and nothing else changes. No manifest this project passe
 pin now carries a real fix for issue 19704 (then the override is retired, not re-anchored) or the
 patch must be re-derived: in `extmod/modlwip.c`, the 13-line retry loop (`:801-813`), its insertion
 point (`:806-809`) and the local include (`:40`), each exactly once — the loop's text holds the
-insertion point, so its one occurrence lies inside the loop; `close()`'s callback block
-(`:1682-1690`) exactly once, its miss asking instead whether the pin now skips the three calls for a
-listening pcb (then that patch is removed, not re-anchored); `extmod/extmod.cmake`'s modlwip line
+insertion point, so its one occurrence lies inside the loop; `listen()`'s two stores (`:1098-1099`)
+exactly once, a miss asking whether the pin now stores `alloc` only once the allocation has
+succeeded, or `close()` no longer frees the value it aliases; `close()`'s callback block
+(`:1682-1690`) exactly once, a miss asking whether the pin now skips the three calls for a listening
+pcb (either patch is then removed, not re-anchored); `extmod/extmod.cmake`'s modlwip line
 (`:27`) inside `set(MICROPY_SOURCE_EXTMOD`; in order in `ports/rp2/CMakeLists.txt`, the extmod
 include, the usermod include, the QSTR append and the `target_sources()` of `${MICROPY_SOURCE_PY}`
 and `${MICROPY_SOURCE_EXTMOD}`; `ports/rp2/Makefile`'s `-DUSER_C_MODULES` (`:40`); and
@@ -2592,7 +2607,7 @@ written: `extmod/extmod.mk`'s modlwip line, `MICROPY_PY_LWIP` and loopback block
 variant's `$(wildcard $(VARIANT_DIR)/*.c)` and the `mkrules.mk` include; `py/mkrules.mk`'s `vpath`;
 `py/mphal.h`'s `#ifndef MICROPY_INTERNAL_EVENT_HOOK`; the hook call in `py/scheduler.c`;
 `poll_sockets()`'s body; `lib/lwip/src/include/lwip/opt.h`'s `LWIP_HAVE_LOOPIF` and
-`LWIP_NETIF_LOOPBACK_MULTITHREADING` lines; rp2's six settings; B.14.1's anchor and the four `modlwip.c`
+`LWIP_NETIF_LOOPBACK_MULTITHREADING` lines; rp2's six settings; B.14.1's anchor and the five `modlwip.c`
 anchors; and `lib/lwip/src/core/tcp_out.c` present. **Its proof, after the build**
 (`verify_unix_lwip_host_in_build()`): `build-lwip/extmod/modlwip.P` names the copy first and never
 the original, the copy holds the `EAGAIN` block, and the binary runs `import lwip, socket, time;
@@ -2608,8 +2623,11 @@ every byte in order; capacity (10,400 B to a peer that never reads) came back af
 closed, the same in 20 rounds. A control build with the insertion step disabled, built once and
 deleted, failed all seven tests: single writes of 10,000-10,065 ms, or a different edge.
 `tests/lwip_host/test_modlwip_listener_close.py` (2026-10-26, both GC stages): a listener with an
-accept-queue array, one with a single slot, and a second listener on a closed one's port each close
-and leave the port free; on a `build-lwip` without the guard the first close aborts at `tcp.c:2070`.
+accept-queue array, one with a single slot, a second listener on a closed one's port, and a socket
+whose heap-locked `listen(4)` raised each close and leave the port free. Without the second patch
+the first close aborts at `tcp.c:2070`; with the second patch alone the last close segfaults in
+`pbuf_free()`; with the third patch alone, or beside a guard on the socket's state, it aborts at
+`tcp.c:2070`.
 
 **Cost.** `POLLOUT` reports writable while `tcp_sndbuf() > 0` (`extmod/modlwip.c:1639`), so with
 the arena full the retry is a cooperative busy wait until the peer acknowledges or the per-call
@@ -2623,7 +2641,9 @@ back-off after `EAGAIN`, not a larger bound (owner, 2026-09-30).
 
 **Removal triggers**, one per patch, each patch then removed, not re-anchored: the pin carries an
 upstream fix for micropython issue 19704 (PRs 19705/19708) (owner, 2026-09-30); the pin's `close()`
-skips `tcp_err()`, `tcp_recv()` and `tcp_poll()` for a listening pcb (owner, 2026-10-26). The copy
+skips `tcp_err()`, `tcp_recv()` and `tcp_poll()` for a listening pcb (owner, 2026-10-26); the pin's
+`listen()` stores `alloc` only once the allocation has succeeded, or its `close()` no longer frees
+the value `alloc` aliases (agent, 2026-10-26). The copy
 and its wiring go only with the last patch; an anchor check failing at a pin move is the upstream
 watch (BACKLOG.md). Its anchors are re-checked at every MicroPython version bump (Part F's opening
 checklist).
@@ -7391,6 +7411,7 @@ workaround.
 | `-Wno-array-bounds` for mbedtls's `mbedtls_xor()` under GCC ≥ 14 | `ctr_drbg.c` alone, in the generated Unix variant makefiles and rp2 board cmake of `toolchain/micropython_overrides.py` | mbedtls ≥ 3.6.6 (already met at `v1.29.0`) and a GCC ≥ 14 build of both targets clean without the flag | B.7.1 |
 | A non-blocking modlwip send returns `EAGAIN` on `ERR_MEM` instead of retrying up to 10 s (`modlwip_eagain` override, micropython issue 19704) | `toolchain/micropython_overrides.py`, every rp2 build and the lwIP host build | the pin carries a real fix for issue 19704 (PRs 19705/19708); this patch is then removed, not re-anchored (owner, 2026-09-30), the override with its last patch | B.14.4 |
 | A listening socket's close skips `tcp_err()`, `tcp_recv()` and `tcp_poll()`, which lwIP forbids on a `LISTEN` pcb (`modlwip_eagain` override, its second patch) | `toolchain/micropython_overrides.py`, every rp2 build and the lwIP host build | the pin's `close()` skips the three calls for a listening pcb; this patch is then removed, not re-anchored, the override with its last patch (owner, 2026-10-26) | B.14.4 |
+| `listen()` allocates its accept queue before storing `alloc`, so a `MemoryError` leaves the pbuf view `NULL` (`modlwip_eagain` override, its third patch) | `toolchain/micropython_overrides.py`, every rp2 build and the lwIP host build | the pin stores `alloc` only once the allocation has succeeded, or `close()` no longer frees the value it aliases; this patch is then removed, not re-anchored, the override with its last patch (agent, 2026-10-26) | B.14.4 |
 | `-Wno-sign-compare` and `-DSOMAXCONN=2` for `extmod/modlwip.o` in the lwIP host build | `toolchain/micropython_overrides.py`, the host variant makefile | upstream `modlwip.c` compiles clean under the Unix port's `-Wextra` and the Unix backlog default stops needing `<sys/socket.h>` | B.7, F.7 |
 | No `setsockopt(TCP_NODELAY)` call | absence in `src/` | `modlwip.c` NULL-checks the pcb and takes the lwIP lock there; lifting it is the owner's call (owner, 2026-09-30) | B.14.2 |
 | `peer_gone` write suppression after a connection reset | `src/asy_webserver_service.py` `_TimeoutStreamProxy` | `modlwip.c` refuses writes on a freed pcb with an error | H.7.1 |

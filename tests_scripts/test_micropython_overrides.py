@@ -92,6 +92,12 @@ _FAKE_MODLWIP_CLOSE_CALLBACKS = (
     "                }\n"
 )
 
+# lwip_socket_listen()'s accept-queue allocation as pinned: `alloc`, the byte the union's pbuf view reads, stored first.
+_FAKE_MODLWIP_LISTEN_ALLOC = (
+    "        socket->incoming.connection.alloc = backlog;\n"
+    "        socket->incoming.connection.tcp.array = m_new0(struct tcp_pcb *, backlog);\n"
+)
+
 # The rp2 wiring, file by file and in the order the build reads it.
 _FAKE_MODLWIP_WIRING = (
     ("extmod/extmod.cmake", ("set(MICROPY_SOURCE_EXTMOD\n", "    ${MICROPY_EXTMOD_DIR}/modlwip.c\n")),
@@ -140,9 +146,11 @@ _IMMEDIATE_HANDLER = '        sigprocmask(\n# 63 "unix_mphal.c" 3 4\n           
 # text its miss names.
 _EAGAIN_REVERIFY = "micropython issue 19704"
 _CLOSE_REVERIFY = r"skips tcp_err\(\), tcp_recv\(\) and tcp_poll\(\) for a listening pcb"
+_ALLOC_REVERIFY = r"stores alloc only once the allocation has succeeded"
 _EVERY_MODLWIP_ANCHOR = (
     *((anchor, _EAGAIN_REVERIFY) for anchor in (_FAKE_MODLWIP_LOOP, _FAKE_MODLWIP_INSERT_AFTER, _FAKE_MODLWIP_INCLUDE, *(anchor for _path, anchors in _FAKE_MODLWIP_WIRING for anchor in anchors))),
     (_FAKE_MODLWIP_CLOSE_CALLBACKS, _CLOSE_REVERIFY),
+    (_FAKE_MODLWIP_LISTEN_ALLOC, _ALLOC_REVERIFY),
 )
 
 # The host build's own anchors as the minimum text around them, file by file and in order.
@@ -168,7 +176,7 @@ _FAKE_LWIP_HOST_ANCHORS = (
 _FAKE_TCP_OUT = "lib/lwip/src/core/tcp_out.c"
 
 _EVERY_LWIP_HOST_ANCHOR = (
-    _REAL_ANCHOR_LINE, *_EVERY_GC_STACK_ANCHOR, _FAKE_MODLWIP_LOOP, _FAKE_MODLWIP_INSERT_AFTER, _FAKE_MODLWIP_INCLUDE, _FAKE_MODLWIP_CLOSE_CALLBACKS, _FAKE_POLL_SOCKETS,
+    _REAL_ANCHOR_LINE, *_EVERY_GC_STACK_ANCHOR, _FAKE_MODLWIP_LOOP, _FAKE_MODLWIP_INSERT_AFTER, _FAKE_MODLWIP_INCLUDE, _FAKE_MODLWIP_CLOSE_CALLBACKS, _FAKE_MODLWIP_LISTEN_ALLOC, _FAKE_POLL_SOCKETS,
     *(anchor for _path, anchors in _FAKE_LWIP_HOST_ANCHORS for anchor in anchors), _FAKE_TCP_OUT,
 )
 
@@ -387,6 +395,7 @@ def _write_fake_modlwip_tree(root: Path, *, drop: str | None = None) -> Path:
     # hold the lwIP override's files; `drop` leaves exactly one anchor out.
     source = [
         '#include "py/mphal.h"', _FAKE_MODLWIP_INCLUDE, _FAKE_POLL_SOCKETS, "static mp_uint_t lwip_tcp_send(void) {", "    err_t err;", _FAKE_MODLWIP_LOOP, "    return 0;", "}",
+        "static mp_obj_t lwip_socket_listen(void) {", "    } else {", _FAKE_MODLWIP_LISTEN_ALLOC, "    }", "}",
         "static mp_uint_t lwip_socket_ioctl(void) {", "                tcp_arg(socket->pcb.tcp, NULL);", _FAKE_MODLWIP_CLOSE_CALLBACKS, "    return 0;", "}",
     ]
     (root / "extmod").mkdir(parents=True, exist_ok=True)
@@ -1533,6 +1542,13 @@ def test_the_modlwip_anchors_hold_in_the_real_pinned_source(overrides: ModuleTyp
     overrides.verify_modlwip_eagain_anchor(micropython_dir)
 
 
+def test_the_queue_allocation_anchor_occurs_once_in_the_real_pinned_source(overrides: ModuleType, micropython_dir: Path) -> None:
+    source = micropython_dir / "extmod" / "modlwip.c"
+    if not source.is_file():
+        pytest.fail(f"no real toolchain checkout at {micropython_dir} - build it with `toolchain/setup_toolchain.py setup` (scripts/test.sh does)")
+    assert source.read_text(encoding="utf-8").count(overrides._MODLWIP_LISTEN_ALLOC) == 1
+
+
 @pytest.mark.parametrize(("dropped", "reverify"), _EVERY_MODLWIP_ANCHOR)
 def test_every_modlwip_anchor_is_load_bearing(overrides: ModuleType, tmp_path: Path, dropped: str, reverify: str) -> None:
     _write_fake_modlwip_tree(tmp_path, drop=dropped)
@@ -1541,15 +1557,15 @@ def test_every_modlwip_anchor_is_load_bearing(overrides: ModuleType, tmp_path: P
 
 
 def test_the_modlwip_parametrization_covers_every_anchor_the_code_checks(overrides: ModuleType) -> None:
-    in_code = {*overrides._MODLWIP_SOURCE_ANCHORS, overrides._MODLWIP_CLOSE_CALLBACKS, *(anchor for _path, anchors in overrides._MODLWIP_RP2_WIRING for anchor in anchors)}
+    in_code = {*overrides._MODLWIP_SOURCE_ANCHORS, overrides._MODLWIP_CLOSE_CALLBACKS, overrides._MODLWIP_LISTEN_ALLOC, *(anchor for _path, anchors in overrides._MODLWIP_RP2_WIRING for anchor in anchors)}
     assert {anchor for anchor, _reverify in _EVERY_MODLWIP_ANCHOR} == in_code
     assert len(_EVERY_MODLWIP_ANCHOR) == len(in_code)
     # The loop's own text holds the insertion point, so "exactly once" puts it inside the loop.
     assert overrides._MODLWIP_INSERT_AFTER in overrides._MODLWIP_ERR_MEM_LOOP
 
 
-@pytest.mark.parametrize("repeated", [_FAKE_MODLWIP_LOOP, _FAKE_MODLWIP_CLOSE_CALLBACKS])
-def test_a_repeated_retry_loop_or_close_block_is_refused(overrides: ModuleType, tmp_path: Path, repeated: str) -> None:
+@pytest.mark.parametrize("repeated", [_FAKE_MODLWIP_LOOP, _FAKE_MODLWIP_CLOSE_CALLBACKS, _FAKE_MODLWIP_LISTEN_ALLOC])
+def test_a_repeated_retry_loop_close_block_or_queue_allocation_is_refused(overrides: ModuleType, tmp_path: Path, repeated: str) -> None:
     source = _write_fake_modlwip_tree(tmp_path) / "extmod" / "modlwip.c"
     source.write_text(source.read_text(encoding="utf-8") + repeated, encoding="utf-8")
     with pytest.raises(overrides.OverrideError, match="found 2 times, not once"):
@@ -1585,14 +1601,15 @@ def test_apply_modlwip_never_writes_inside_the_checkout(overrides: ModuleType, t
     assert _tree_state(fake) == before
 
 
-def test_the_copy_differs_from_the_pinned_source_by_exactly_the_include_and_the_two_patches(overrides: ModuleType, tmp_path: Path) -> None:
+def test_the_copy_differs_from_the_pinned_source_by_exactly_the_include_and_the_three_patches(overrides: ModuleType, tmp_path: Path) -> None:
     fake = _write_fake_modlwip_tree(tmp_path / "micropython")
     copy_dir = Path(overrides.apply_modlwip_eagain_override(fake, tmp_path / "build_overrides")["USER_C_MODULES"])
-    lines = (copy_dir / "modlwip.c").read_text(encoding="utf-8").split("\n", 2)
-    header, copy = lines[:2], lines[2]
+    lines = (copy_dir / "modlwip.c").read_text(encoding="utf-8").split("\n", 3)
+    header, copy = lines[:3], lines[3]
     assert header == [
-        "// Generated by toolchain/micropython_overrides.py from extmod/modlwip.c of MicroPython 1.29.0, with two patches -",
-        "// EAGAIN on a non-blocking ERR_MEM send, no listener callbacks at close (SPECIFICATION.md B.14.4). Do not edit.",
+        "// Generated by toolchain/micropython_overrides.py from extmod/modlwip.c of MicroPython 1.29.0, with three patches -",
+        "// EAGAIN on a non-blocking ERR_MEM send, listen()'s accept queue allocated first, no listener callbacks at close",
+        "// (SPECIFICATION.md B.14.4). Do not edit.",
     ]
     diff = [line for line in difflib.ndiff((fake / "extmod" / "modlwip.c").read_text(encoding="utf-8").splitlines(), copy.splitlines()) if line[:2] in {"- ", "+ "}]
     assert diff == [
@@ -1604,6 +1621,9 @@ def test_the_copy_differs_from_the_pinned_source_by_exactly_the_include_and_the_
         "+             *_errno = MP_EAGAIN;",
         "+             return MP_STREAM_ERROR;",
         "+         }",
+        "+         // Patched: the queue first, so a MemoryError leaves the union's pbuf view NULL (SPECIFICATION.md B.14.4).",
+        "+         socket->incoming.connection.tcp.array = m_new0(struct tcp_pcb *, backlog);",
+        "-         socket->incoming.connection.tcp.array = m_new0(struct tcp_pcb *, backlog);",
         "+                 // Patched: lwIP forbids all three on a LISTEN pcb, under any socket state (SPECIFICATION.md B.14.4).",
         "+                 if (socket->pcb.tcp->state != LISTEN) {",
         "-                 tcp_err(socket->pcb.tcp, NULL);",
@@ -1614,6 +1634,15 @@ def test_the_copy_differs_from_the_pinned_source_by_exactly_the_include_and_the_
         "-                 if (socket->state != STATE_LISTENING) {",
         "+                 if (socket->state != STATE_LISTENING && socket->pcb.tcp->state != LISTEN) {",
     ]
+
+
+def test_the_queue_allocation_ends_in_upstreams_state_with_the_array_stored_first(overrides: ModuleType, tmp_path: Path) -> None:
+    # The same two stores as upstream's, so a listen() that succeeds ends identical; only their order differs.
+    fake = _write_fake_modlwip_tree(tmp_path / "micropython")
+    copy = (Path(overrides.apply_modlwip_eagain_override(fake, tmp_path / "build_overrides")["USER_C_MODULES"]) / "modlwip.c").read_text(encoding="utf-8")
+    alloc, array = _FAKE_MODLWIP_LISTEN_ALLOC.splitlines(keepends=True)
+    assert copy.count(alloc) == copy.count(array) == 1
+    assert copy.index(array) + len(array) == copy.index(alloc)
 
 
 def test_the_listener_guard_keeps_upstreams_close_for_every_other_pcb(overrides: ModuleType, tmp_path: Path) -> None:
@@ -1659,7 +1688,7 @@ def test_apply_modlwip_is_idempotent(overrides: ModuleType, tmp_path: Path) -> N
     assert {path.name: path.read_bytes() for path in Path(first["USER_C_MODULES"]).iterdir()} == written
 
 
-@pytest.mark.parametrize("dropped", [_FAKE_MODLWIP_LOOP, _FAKE_MODLWIP_CLOSE_CALLBACKS, "include(${USER_C_MODULE_PATH})", "#define MICROPY_VERSION_MINOR"])
+@pytest.mark.parametrize("dropped", [_FAKE_MODLWIP_LOOP, _FAKE_MODLWIP_CLOSE_CALLBACKS, _FAKE_MODLWIP_LISTEN_ALLOC, "include(${USER_C_MODULE_PATH})", "#define MICROPY_VERSION_MINOR"])
 def test_apply_modlwip_writes_nothing_when_an_anchor_or_the_version_is_missing(overrides: ModuleType, tmp_path: Path, dropped: str) -> None:
     fake = _write_fake_modlwip_tree(tmp_path / "micropython", drop=dropped)
     mpconfig = fake / "py" / "mpconfig.h"
@@ -1774,7 +1803,7 @@ def test_every_host_anchor_is_load_bearing(overrides: ModuleType, tmp_path: Path
 def test_the_host_parametrization_covers_every_anchor_the_code_checks(overrides: ModuleType) -> None:
     in_code = {
         overrides._UNIX_KBD_INTR_ANCHOR, *(anchor for _path, anchors in overrides._UNIX_GC_STACK_ANCHORS for anchor in anchors),
-        *overrides._MODLWIP_SOURCE_ANCHORS, overrides._MODLWIP_CLOSE_CALLBACKS, overrides._LWIP_HOST_TCP_OUT,
+        *overrides._MODLWIP_SOURCE_ANCHORS, overrides._MODLWIP_CLOSE_CALLBACKS, overrides._MODLWIP_LISTEN_ALLOC, overrides._LWIP_HOST_TCP_OUT,
         *(anchor for _path, anchors in overrides._LWIP_HOST_ANCHORS for anchor in anchors),
     }
     assert set(_EVERY_LWIP_HOST_ANCHOR) == in_code

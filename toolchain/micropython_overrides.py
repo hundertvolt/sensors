@@ -463,9 +463,9 @@ def apply_lwip_connection_counts_override(micropython_dir: Path, overrides_dir: 
 
 
 # ---------------------------------------------------------------------------------------------
-# modlwip_eagain: one patched copy of extmod/modlwip.c with two patches, each removed, not re-anchored, once the pin
-# fixes its defect: EAGAIN on a non-blocking ERR_MEM send (micropython issue 19704; owner, 2026-09-30) and no
-# listener callbacks at close (owner, 2026-10-26). The copy goes with the last. Full account: SPECIFICATION.md B.14.4.
+# modlwip_eagain: one patched copy of extmod/modlwip.c, three patches, each removed, not re-anchored, once the pin fixes
+# its defect: EAGAIN on a non-blocking ERR_MEM send (issue 19704; owner, 2026-09-30), no listener callbacks at close
+# (owner, 2026-10-26), listen()'s queue allocated first (agent, 2026-10-26). Account: SPECIFICATION.md B.14.4.
 # ---------------------------------------------------------------------------------------------
 
 MODLWIP_OVERRIDE_DIR_NAME = "modlwip_eagain"
@@ -518,6 +518,17 @@ _MODLWIP_CLOSE_CALLBACKS = (
     "                if (socket->state != STATE_LISTENING) {\n"
     f"{_MODLWIP_CLOSE_POLL}"
 )
+# listen() as pinned stores `alloc`, the byte the union's pbuf view reads, before allocating the queue: a MemoryError
+# then leaves a non-NULL pbuf that close() frees. The copy allocates first; a listen() that succeeds ends the same.
+_MODLWIP_LISTEN_ALLOC = (
+    "        socket->incoming.connection.alloc = backlog;\n"
+    "        socket->incoming.connection.tcp.array = m_new0(struct tcp_pcb *, backlog);\n"
+)
+_MODLWIP_LISTEN_ARRAY_FIRST = (
+    "        // Patched: the queue first, so a MemoryError leaves the union's pbuf view NULL (SPECIFICATION.md B.14.4).\n"
+    "        socket->incoming.connection.tcp.array = m_new0(struct tcp_pcb *, backlog);\n"
+    "        socket->incoming.connection.alloc = backlog;\n"
+)
 _MODLWIP_CLOSE_GUARDED = (
     "                // Patched: lwIP forbids all three on a LISTEN pcb, under any socket state (SPECIFICATION.md B.14.4).\n"
     "                if (socket->pcb.tcp->state != LISTEN) {\n"
@@ -552,6 +563,11 @@ _MODLWIP_CLOSE_REVERIFY = (
     "close()'s callback block changed upstream - check whether the pin now skips tcp_err(), tcp_recv() and tcp_poll() "
     "for a listening pcb (then remove this patch, not re-anchor it) or re-derive the patch (SPECIFICATION.md B.14.4)"
 )
+_MODLWIP_LISTEN_ALLOC_REVERIFY = (
+    "listen()'s accept-queue allocation changed upstream - check whether the pin now stores alloc only once the allocation "
+    "has succeeded, or close() no longer frees the value it aliases (then remove this patch, not re-anchor it), or "
+    "re-derive the patch (SPECIFICATION.md B.14.4)"
+)
 
 
 def _micropython_version(micropython_dir: Path, name: str) -> str:
@@ -568,34 +584,36 @@ def _micropython_version(micropython_dir: Path, name: str) -> str:
 
 
 def _verify_modlwip_source(micropython_dir: Path, name: str) -> str:
-    # The pinned extmod/modlwip.c, once its loop, the insertion point, the local include and close()'s callback
-    # block each occur exactly once - the loop's text holds the insertion point, so its one occurrence is inside
-    # the loop. Shared by the rp2 build and the host lwIP build.
+    # The pinned extmod/modlwip.c, once its loop, the insertion point, the local include, listen()'s queue allocation
+    # and close()'s callback block each occur exactly once - the loop's text holds the insertion point, so its one
+    # occurrence is inside the loop. Shared by the rp2 build and the host lwIP build.
     source = micropython_dir / "extmod" / "modlwip.c"
     text = _read_anchor_source(source, name)
     for anchor in _MODLWIP_SOURCE_ANCHORS:
         _count_once(text, anchor, source, name, _MODLWIP_REVERIFY)
+    _count_once(text, _MODLWIP_LISTEN_ALLOC, source, name, _MODLWIP_LISTEN_ALLOC_REVERIFY)
     _count_once(text, _MODLWIP_CLOSE_CALLBACKS, source, name, _MODLWIP_CLOSE_REVERIFY)
     return text
 
 
 def _modlwip_eagain_source(micropython_dir: Path, name: str) -> str:
-    # The patched copy's text: the pinned file with the EAGAIN block inserted, close()'s callbacks guarded and the
-    # include rewritten, no #line, so a compiler diagnostic names the copy. Same bytes for every build.
+    # The patched copy's text: the pinned file with the EAGAIN block inserted, listen()'s stores reordered, close()'s
+    # callbacks guarded and the include rewritten, no #line, so a diagnostic names the copy. Same bytes for every build.
     text = _verify_modlwip_source(micropython_dir, name)
     version = _micropython_version(micropython_dir, name)
     patched = text.replace(_MODLWIP_INSERT_AFTER, _MODLWIP_INSERT_AFTER + _MODLWIP_EAGAIN_BLOCK, 1).replace(_MODLWIP_CLOSE_CALLBACKS, _MODLWIP_CLOSE_GUARDED, 1)
-    patched = patched.replace(_MODLWIP_LOCAL_INCLUDE, _MODLWIP_COPY_INCLUDE, 1)
+    patched = patched.replace(_MODLWIP_LISTEN_ALLOC, _MODLWIP_LISTEN_ARRAY_FIRST, 1).replace(_MODLWIP_LOCAL_INCLUDE, _MODLWIP_COPY_INCLUDE, 1)
     return (
-        f"// Generated by toolchain/micropython_overrides.py from extmod/modlwip.c of MicroPython {version}, with two patches -\n"
-        "// EAGAIN on a non-blocking ERR_MEM send, no listener callbacks at close (SPECIFICATION.md B.14.4). Do not edit.\n"
+        f"// Generated by toolchain/micropython_overrides.py from extmod/modlwip.c of MicroPython {version}, with three patches -\n"
+        "// EAGAIN on a non-blocking ERR_MEM send, listen()'s accept queue allocated first, no listener callbacks at close\n"
+        "// (SPECIFICATION.md B.14.4). Do not edit.\n"
         f"{patched}"
     )
 
 
 def verify_modlwip_eagain_anchor(micropython_dir: Path) -> None:
-    # Every pinned-source fact the override relies on: the loop and its insertion point, the local include,
-    # close()'s callback block, and the CMake/Makefile wiring that swaps the copy in. Raises OverrideError naming it.
+    # Every pinned-source fact the override relies on: the loop and its insertion point, the local include, listen()'s
+    # queue allocation, close()'s callback block, and the CMake/Makefile wiring that swaps the copy in. Raises naming it.
     _verify_modlwip_source(micropython_dir, MODLWIP_OVERRIDE_DIR_NAME)
     for relative, anchors in _MODLWIP_RP2_WIRING:
         _require_in_order(micropython_dir, MODLWIP_OVERRIDE_DIR_NAME, relative, anchors, _MODLWIP_REVERIFY)

@@ -190,19 +190,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     faithfully. Both sightings sat inside `WLAN_NO_AP`/`WLAN_CONNECT_FAILED` (`W37`/`W38`) runs. The
     log text now says what the status means, and the bench outage check accepts `WLAN_AUTH_FAILED`
     as benign beside `WLAN_NO_AP`.
-30. **A `listen()` refused on its accept-queue allocation leaves a socket whose close is unsafe**
-    (agent, 2026-10-26). `lwip_socket_listen()` stores the `LISTEN` pcb (`extmod/modlwip.c:1091`) and
-    `incoming.connection.alloc = backlog` (`:1098`) before `m_new0()` allocates the queue (`:1099`);
-    a `MemoryError` there leaves the socket `STATE_NEW`, so `close()`'s `lwip_socket_free_incoming()`
-    (`:380-386`) reads the union's `incoming.tcp.pbuf`, whose low byte is now the backlog, and calls
-    `pbuf_free()` on that address: on `build-lwip` a segfault in `pbuf_free()` (`p` = 4 after
-    `listen(4)`), before `close()` reaches the listener guard (SPECIFICATION.md B.14.4); on rp2 a
-    `pbuf_free()` of a bootrom address. Reached through the socket `asyncio.start_server()` drops
-    when `listen()` raises (`extmod/asyncio/stream.py:188`), closed by its finaliser; the firmware's
-    backlog is `max_connections + 1` (`src/asy_webserver_service.py:584`), so the queue is allocated.
-    Measured on scratch `build-lwip` variants, heap-locked `listen(4)` then `close()`, both GC
-    stages: storing `alloc` after the allocation, with the listener guard, passes; the same with a
-    guard on `socket->state` instead aborts at `tcp.c:2070`. Open: the fix's shape, for the owner.
 
 ## Real-hardware work still owed
 
@@ -1239,8 +1226,10 @@ gates, traps).
   `tcp_err()` and `tcp_recv()` on every TCP pcb and `tcp_poll()` on all but a listening socket's,
   three calls lwIP forbids on a `LISTEN` pcb. No upstream issue exists (nearest: PR 17333, `recv()`
   on a listening socket, a different path). The same copy's second patch skips all three on the
-  pcb's own state (SPECIFICATION.md B.14.4) and is removed, not re-anchored, once the pin does the
-  same; its anchor check failing at a pin move is the watch. Same class, not reached by this
+  pcb's own state, and its third allocates `listen()`'s accept queue before storing `alloc`, whose
+  byte a refused `listen()` otherwise leaves in the pbuf pointer `close()` frees (SPECIFICATION.md
+  B.14.4; agent, 2026-10-26). Each is removed, not re-anchored, once the pin fixes its defect; an
+  anchor check failing at a pin move is the watch. Same class, not reached by this
   firmware and left as upstream's: `POLL_WR` (`extmod/modlwip.c:1639`), `send()`/`write()` (`:760`)
   and a non-blocking `sendall()` (`:1417`) read `tcp_sndbuf()` past a listener, and
   `setsockopt(TCP_NODELAY)` writes its flags (`:1528-1535`). asyncio polls a listener for reading

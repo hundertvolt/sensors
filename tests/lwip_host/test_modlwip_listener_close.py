@@ -1,10 +1,11 @@
-"""Closing a listening socket through the patched modlwip on build-lwip (SPECIFICATION.md B.14.4): close() returns
-and frees the listener, so its port binds again without SO_REUSEADDR. Upstream's close registers callbacks lwIP
-forbids on a LISTEN pcb, which aborts this build on lwIP's own assert."""
+"""Closing a listening socket through the patched modlwip on build-lwip (SPECIFICATION.md B.14.4): close() returns and
+frees the listener, also one whose listen() ran out of heap, so its port binds again without SO_REUSEADDR. Upstream's
+close aborts this build on lwIP's LISTEN-state assert, or frees a pbuf pointer the failed listen() left behind."""
 
 import errno
 
 import lwip
+import micropython
 
 _HOST = "127.0.0.1"
 _PORT = 50100
@@ -51,6 +52,23 @@ def test_a_restarted_server_listens_again_on_the_closed_listeners_port() -> None
     _listener(_PORT + 2, 4).close()
     _listener(_PORT + 2, 4).close()
     _assert_port_free(_PORT + 2)
+
+
+def test_closing_a_socket_whose_listen_ran_out_of_heap_frees_its_port() -> None:
+    # listen() takes the LISTEN pcb before it allocates the accept queue; a refusal there leaves the socket STATE_NEW.
+    sock = lwip.socket()
+    sock.bind((_HOST, _PORT + 3))
+    refused = False
+    micropython.heap_lock()
+    try:
+        sock.listen(4)
+    except MemoryError:
+        refused = True
+    finally:
+        micropython.heap_unlock()
+    sock.close()
+    assert refused, "listen(4) allocated its accept queue with the heap locked"
+    _assert_port_free(_PORT + 3)
 
 
 if __name__ == "__main__":
