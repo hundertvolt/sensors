@@ -24,7 +24,8 @@ if TYPE_CHECKING:
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_12_reset_reasons",)
 
 _SRC = "asy_system_service.py"
-_RR = {name: module_int_const(SRC_DIR, _SRC, f"_RR_{name}") for name in ("UNKNOWN", "WATCHDOG", "BOOTLOADER", "TASK_BUDGET", "STACK_EXHAUSTED", "STARVE_ARM_FAILED", "COMMAND_INCOMPLETE", "BOOT_FAILURE")}
+_RR = {name: module_int_const(SRC_DIR, _SRC, f"_RR_{name}") for name in ("UNKNOWN", "WATCHDOG", "BOOTLOADER", "TASK_BUDGET", "STACK_EXHAUSTED", "STARVE_ARM_FAILED", "COMMAND_INCOMPLETE", "BOOT_FAILURE", "LOOP_ENDED")}
+_BOOT_DONE = module_int_const(SRC_DIR, _SRC, "BOOT_DONE")
 _RR_INTERRUPTED = module_int_const(SRC_DIR, _SRC, "RR_INTERRUPTED")
 _TASK_CHECK_TIME, _RESET_DELAY = module_int_const(SRC_DIR, _SRC, "_TASK_CHECK_TIME"), module_int_const(SRC_DIR, _SRC, "_RESET_DELAY")
 _TIMER_BIT, _FORCED_BIT = 0x1, 0x2  # ResetBits' watchdog half: REASON bits 0-1, TIMER and FORCE (src/asy_system_service.py)
@@ -196,5 +197,21 @@ def test_a_console_interrupt_is_attributed(board: "Board", bench: "BenchBridge",
         wait_until(lambda: not board.is_device_present(), timeout_s=_WDT_TIMEOUT_MS / 1000 + _LOSS_MARGIN_S, description="the watchdog reset after a console interrupt")
         bits = _attributed(dut_ip, _RR_INTERRUPTED, result_note, "console interrupt")
         assert bits & _TIMER_BIT and not bits & _FORCED_BIT, f"the interrupt's watchdog reset must set the timer bit, never the forced one: {bits}"
+    finally:
+        restore_board_to_serving(board, bench, dut_ip)
+
+
+@pytest.mark.parametrize("kind", ["exception", "base"])
+def test_a_loop_ended_by_an_exception_after_boot_is_attributed(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]", kind: str) -> None:
+    # mpremote's Ctrl-C records 21, which the script's boot clears; its loop then ends by an OSError or a SystemExit at the
+    # first wait after BOOT_DONE: the entry records 22 and returns, and the watchdog resets. Normal boot, no flash write.
+    try:
+        _evidence(board, bench, dut_ip, f"reset-reason-loop-end-{kind}")
+        facts = parse_facts(board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "reset_code_loop_end.py", timeout_s=_SCRIPT_TIMEOUT_S, KIND=kind, BOOT_DONE=str(_BOOT_DONE)), allow_missing_done=True)
+        record = facts.get("record")
+        assert facts.get("raised_in_phase") == _BOOT_DONE and isinstance(record, list) and record[1:2] == [_RR["LOOP_ENDED"]], f"{kind}: the loop did not end after BOOT_DONE with its record written: {facts}"
+        wait_until(lambda: not board.is_device_present(), timeout_s=_WDT_TIMEOUT_MS / 1000 + _LOSS_MARGIN_S, description="the watchdog reset after the loop ended")
+        bits = _attributed(dut_ip, _RR["LOOP_ENDED"], result_note, f"loop ended by {kind}")
+        assert bits & _TIMER_BIT and not bits & _FORCED_BIT, f"{kind}: the loop end's watchdog reset must set the timer bit, never the forced one: {bits}"
     finally:
         restore_board_to_serving(board, bench, dut_ip)

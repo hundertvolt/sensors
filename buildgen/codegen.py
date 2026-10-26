@@ -853,15 +853,24 @@ def generate_boot_entry_source(device: str, *, autostart: bool = True) -> str:
         + "from machine import WDT\n\n"
         + f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})\n\n"
         + head
-        + "\nfrom asy_system_service import RR_INTERRUPTED, write_reset_record\n"
+        + "\nfrom asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record\n"
         + threshold
-        + "try:\n"
+        + "# bound before the loop, so the handler's binding replaces a slot and never grows the globals dict\n"
+        "ended: BaseException | None = None\n"
+        "try:\n"
         "    asyncio.run(main(watchdog=watchdog))\n"
         "except KeyboardInterrupt:\n"
         "    # Ctrl-C on the console ends the whole loop and the armed watchdog then resets the unit: record\n"
         "    # why first, or the next boot reads a plain watchdog reset.\n"
         "    write_reset_record(RR_INTERRUPTED)\n"
         "    raise\n"
+        "except BaseException as ended:\n"
+        "    # Any other exception ending the loop: recorded, printed with no heap use, then this entry ends and the\n"
+        "    # armed watchdog resets the unit. Never re-raised: rp2 soft-resets on a SystemExit, and the boot after a\n"
+        "    # soft reset reads the last hard reset's cause, a power-on losing the record (SPECIFICATION.md A.8).\n"
+        "    record_loop_end()\n"
+        '    print("event loop ended with an exception:")\n'
+        "    sys.print_exception(ended)\n"
         "finally:\n"
         "    asyncio.new_event_loop()\n"
     )

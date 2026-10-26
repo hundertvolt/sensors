@@ -95,6 +95,7 @@ _RR_COMMAND_INCOMPLETE = const(9)
 _RR_BOOT_FAILURE = const(10)  # + the boot phase that never completed
 _RR_STACK_EXHAUSTED = const(20)  # outside the 10 + phase band of boot failures
 RR_INTERRUPTED = const(21)  # Ctrl-C on the console ended the run and the watchdog reset followed; the boot entry imports it
+_RR_LOOP_ENDED = const(22)  # any other exception ended the event loop after boot, the watchdog reset followed
 # The chip's own reset flags, which reset_cause() collapses (ports/rp2/modmachine.c:74-89): WATCHDOG REASON bits 0-1
 # (TIMER, FORCE) and CHIP_RESET bits 8, 16, 20 (HAD_POR, HAD_RUN, HAD_PSM_RESTART; pico-sdk watchdog.h, vreg_and_chip_reset.h).
 _WATCHDOG_REASON = const(0x40058008)
@@ -165,6 +166,16 @@ def begin_boot() -> int:
         record[i] = 0
     _write_region(1, _BP_MAGIC, BOOT_CONSTRUCTION)
     return code
+
+
+def record_loop_end() -> None:
+    # The boot entry's call when an exception other than Ctrl-C ended the loop: after BOOT_DONE it writes 22 unless a
+    # valid record names the reset already underway, which is kept (agent, 2026-10-26); during boot it writes nothing.
+    record = mem_backup(0)
+    phase = mem_backup(1)
+    done = phase[0] == _BP_MAGIC and phase[1] == BOOT_DONE and phase[2] == BOOT_DONE ^ _RR_CHECK
+    if done and not (record[0] == _RR_MAGIC and record[2] == record[1] ^ _RR_CHECK):
+        write_reset_record(_RR_LOOP_ENDED)
 
 
 def write_reset_record(code: int) -> None:

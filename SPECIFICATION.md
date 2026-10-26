@@ -687,7 +687,12 @@ circumvent it'; Part N `wdt.timeout_ms`) — then puts `.frozen` first on `sys.p
 the emergency exception buffer (I.4(e)), imports the device module, sets `gc.threshold(32768)`
 (I.4(f)) and runs `asyncio.run(main(watchdog=watchdog))`; a Ctrl-C on the console ends the whole
 event loop, so the entry writes reset reason 21 before the interrupt reaches the REPL, and the armed
-watchdog then resets the unit (A.8). The no-autostart entry
+watchdog then resets the unit (A.8). Every other exception leaving `asyncio.run()` (a non-`Exception`
+`BaseException` out of a task, the loop core failing outside any task) goes to the entry's second
+clause: `record_loop_end()` writes 22 after `BOOT_DONE` unless a valid record already names the reset
+underway, which is kept, and writes nothing during boot, so 10 + phase stands (agent, 2026-10-26); the
+exception is printed with no heap use and never re-raised, so the entry ends and the watchdog resets
+the unit (F.5.4 has why a `SystemExit` must not reach rp2's `pyexec`). The no-autostart entry
 `sensortask_<device>_main_noautostart.py` arms nothing and prints the manual start line (B.11).
 `main(*, watchdog, cfg_path="", debug=None, web_host="0.0.0.0", web_port=80)`: the four keywords
 after `watchdog` are the documented manual-start options (owner, 2026-09-30: 'they are worth for
@@ -1075,6 +1080,7 @@ settings.
 | 15 | boot failure in phase 5 (first NTP sync) |
 | 20 | supervisor escalation (a handler recorded a C-stack overflow) |
 | 21 | interrupted: Ctrl-C on the console ended the run, the watchdog reset followed |
+| 22 | the event loop ended with an exception after boot, the watchdog reset followed |
 
 - **Real production bug, fixed**: `_get_measurements()`/`_get_sensors()` must build results with
   `.update()`, never `result[name] = await module.get_dict_data()` — every driver's own return is
@@ -6876,7 +6882,12 @@ supervisor task budget, 6 reset timer not armed (watchdog starved), 7 config res
 command incomplete, 10 + p a boot failure in phase p (region 1's marker, phases 1-5), 20 a recorded
 C-stack overflow (the supervisor's escalation, outside the boot-failure band), 21 a run
 ended by an interrupt (Ctrl-C on the console), which the boot entry records before the armed
-watchdog resets the unit (A.7). That is the reset class the 2026-09-08 `WDT_RESET` investigation
+watchdog resets the unit (A.7), 22 a run whose event loop any other exception ended after boot,
+recorded by the boot entry's `record_loop_end()` (A.7). The entry never re-raises that exception: a
+`SystemExit` leaving main.py is rp2's soft-reset request (`shared/runtime/pyexec.c:166-185`,
+`ports/rp2/main.c:246-249`, v1.29.0), and the boot after a soft reset reads the reset registers the
+last hard reset left, so `begin_boot()`'s power-on check, which runs first, would drop the record.
+That is the reset class the 2026-09-08 `WDT_RESET` investigation
 could not diagnose (see CLAUDE.md's FRAM-log rule). Every generated device calls `begin_boot()` as
 `build_system()`'s first statement and marks each boot phase from `main()` (A.7), and `/status`
 publishes the code as `ResetReason` (A.8). **A breadcrumb written on every supervisor tick stays not
