@@ -22,12 +22,20 @@ class _Stub:
         self.RR_INTERRUPTED = _RR_INTERRUPTED  # the entry imports it by this name
         self.calls: list[tuple[object, int]] = []
         self.records: list[object] = []
+        self.consoles: list[tuple[str, object, object]] = []
+        self.reported: list[BaseException] = []
         self._raises = raises
 
     async def main(self, *, watchdog: object, **_kw: object) -> None:
         self.calls.append((watchdog, gc.threshold()))
         if self._raises is not None:
             raise self._raises
+
+    def console(self, name: str, what: object, err: object = None) -> None:
+        self.consoles.append((name, what, err))
+
+    def report_if_fatal(self, e: BaseException) -> None:
+        self.reported.append(e)
 
     def record_loop_end(self) -> None:
         self.records.append(_LOOP_ENDED)
@@ -55,7 +63,7 @@ def _boot(device: str, entry: str, stub: _Stub) -> "tuple[_MicropythonStub, list
     # Executes one entry from this synchronous scope with the stubs in sys.modules; everything it changes comes back.
     with open(_GENERATED + entry) as f:
         code = compile(f.read(), _GENERATED + entry, "exec")
-    names = ("sensortask_" + device, "asy_system_service", "micropython")
+    names = ("sensortask_" + device, "asy_system_service", "asy_print_log", "micropython")
     saved_modules = {name: sys.modules.get(name) for name in names}
     saved_path, real_new_loop = sys.path[:], asyncio.new_event_loop
     micro, loops, printed = _MicropythonStub(), [], []
@@ -63,7 +71,7 @@ def _boot(device: str, entry: str, stub: _Stub) -> "tuple[_MicropythonStub, list
     def new_event_loop() -> None:
         loops.append(1)  # recorded; the process keeps its real loop
 
-    sys.modules.update({names[0]: stub, names[1]: stub, names[2]: micro})  # type: ignore[dict-item]  # stand-ins for the modules
+    sys.modules.update({names[0]: stub, names[1]: stub, names[2]: stub, names[3]: micro})  # type: ignore[dict-item]  # stand-ins for the modules
     asyncio.new_event_loop = new_event_loop  # type: ignore[assignment]  # the entry's finally, recorded
     raised = None
     try:
@@ -116,7 +124,8 @@ def test_any_other_exception_ending_the_loop_is_recorded_printed_and_ends_the_en
             _micro, loops, printed, raised = _boot(device, "sensortask_" + device + "_main.py", stub)
             assert raised is None, (device, planted, raised)
             assert stub.records == [_LOOP_ENDED], (device, planted, stub.records)
-            assert printed == [("event loop ended with an exception:",)], (device, printed)
+            assert stub.reported == [planted], (device, stub.reported)  # the stack-overflow check first, as every broad handler
+            assert stub.consoles == [("SYSTEM", "event loop ended with an exception:", None)] and printed == [], (device, stub.consoles)
             assert loops == [1], device
 
 

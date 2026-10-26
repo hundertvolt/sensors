@@ -5,7 +5,6 @@ then the next boot's GET /status ResetReason (SPECIFICATION.md A.7, F.5.4); Part
 import asyncio
 import asyncio.core as _core  # type: ignore[import-not-found]  # the loop's own queue and cur_task; no stub covers them
 import errno
-import json
 import os
 import sys
 
@@ -35,6 +34,7 @@ from _generated_module import ERROR_LEVEL, write_error_level_config  # noqa: E40
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _port_bands import PortAllocator  # noqa: E402 - imported after the prewarm and the UDP shim
 from _src_const import src_int  # noqa: E402 - imported after the prewarm and the UDP shim
+from _strict_json import strict_loads  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_devices import generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
 
@@ -188,7 +188,8 @@ async def _status(port: int) -> "dict[str, object]":
     finally:
         writer.close()
         await writer.wait_closed()
-    system = json.loads(raw.split(b"\r\n\r\n", 1)[1]).get("system")
+    body = strict_loads(raw.split(b"\r\n\r\n", 1)[1])
+    system = body.get("system") if isinstance(body, dict) else None
     assert isinstance(system, dict), raw
     return system
 
@@ -276,4 +277,6 @@ microtest.after_each(machine.reset_test_state)
 microtest.after_each(network.reset_test_state)
 
 if __name__ == "__main__":
+    import microtest
+
     microtest.run(globals())
