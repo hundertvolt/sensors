@@ -280,10 +280,6 @@ def test_one_page_load_fits_the_largest_shipped_connection_ceiling(repo_root: Pa
         assert per_load <= ceiling, f"one page load opens {per_load:g} connections, above the largest shipped max_connections ({ceiling})"
 
 
-# ---------------------------------------------------------------------------
-# The check on a tmp tree: each planted defect is reported, and the clean tree reports nothing.
-# ---------------------------------------------------------------------------
-
 _ROW = "| `{id}` | {value} | `{sites}` | none | owner decision (owner, 2026-09-26) | 2x | any change |"
 _HEAD = "| ID | Value | Sites (file — literal) | Dependants | Basis | Margin | Re-check trigger |\n|---|---|---|---|---|---|---|"
 
