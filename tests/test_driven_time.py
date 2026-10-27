@@ -9,6 +9,14 @@ from _async_harness import cancel, cancel_all, run
 from _fake_time import DrivenTime
 from _ticks30 import TICKS_PERIOD
 
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable
+
 
 class _Module:
     # A product module stand-in: DrivenTime replaces its `time` and, with sleeps, its `asyncio` for the block.
@@ -21,6 +29,11 @@ class _ClocklessModule:
     # A product module that reads no clock (asy_udp_socket): with sleeps only its `asyncio` is driven, and no `time` is lent.
     def __init__(self) -> None:
         self.asyncio = asyncio
+
+
+async def _awaits(sleep: "Awaitable[None]") -> None:
+    # A task of its own for a driven sleep: as on the board, a sleep is no coroutine that create_task() would take.
+    await sleep
 
 
 def _names(module: _Module) -> "tuple[object, object]":
@@ -109,7 +122,7 @@ def test_a_module_without_a_clock_gets_driven_sleeps_and_no_time() -> None:
     module, plain = _ClocklessModule(), _ClocklessModule()
 
     async def scenario(clock: DrivenTime) -> bool:
-        sleeper = asyncio.create_task(module.asyncio.sleep_ms(10))
+        sleeper = asyncio.create_task(_awaits(module.asyncio.sleep_ms(10)))
         await clock.elapse(10)
         return sleeper.done()
 
@@ -284,6 +297,39 @@ def test_a_cancelled_sleeper_leaves_the_queue_and_never_wakes() -> None:
     assert woke == []
 
 
+def test_a_driven_sleep_is_its_listed_wake_from_the_call_on() -> None:
+    # As core.sleep_ms() hands back its singleton, a driven sleep is no coroutine: the clock lists the wake at the call,
+    # and the task awaiting it parks on it until the clock passes it, with no frame or Event built for the sleep.
+    module = _Module()
+
+    async def scenario(clock: DrivenTime) -> "list[object]":
+        sleep = module.asyncio.sleep_ms(5)
+        listed = clock.wakes()
+        task = asyncio.create_task(_awaits(sleep))
+        await clock.elapse(4)
+        early = task.done()
+        await clock.elapse(1)
+        return [hasattr(sleep, "send"), listed, early, task.done(), clock.wakes()]
+
+    with DrivenTime(module, sleeps=True) as clock:
+        outcome = run(scenario(clock))
+    assert outcome == [False, [5], False, True, []], outcome
+
+
+def test_a_wake_its_awaiter_closes_or_throws_into_leaves_the_queue() -> None:
+    # However an awaiter lets go of a parked wake, a close or an exception as a cancel does, the clock lists it no more.
+    clock = DrivenTime(sleeps=True)
+    closed, thrown = clock._park(5), clock._park(7)
+    listed = clock.wakes()
+    closed.close()
+    try:
+        thrown.throw(ValueError("let go"))
+        said = "not raised"
+    except ValueError as e:
+        said = str(e)
+    assert (listed, clock.wakes(), said) == ([5, 7], [], "let go"), (listed, clock.wakes(), said)
+
+
 def test_run_until_stops_at_the_first_wake_that_makes_the_predicate_hold() -> None:
     module = _Module()
     woke: list[int] = []
@@ -442,7 +488,7 @@ def test_a_driven_sleep_or_bound_refuses_a_delay_rp2s_ticks_cannot_hold() -> Non
         return "accepted"
 
     async def scenario(clock: DrivenTime) -> "list[object]":
-        longest = asyncio.create_task(module.asyncio.sleep_ms((1 << 29) - 1))
+        longest = asyncio.create_task(_awaits(module.asyncio.sleep_ms((1 << 29) - 1)))
         await clock.elapse(0)
         parked = clock.wakes()
         await cancel(longest)
