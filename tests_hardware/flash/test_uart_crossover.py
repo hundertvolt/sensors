@@ -231,6 +231,7 @@ def test_no_frame_is_lost_while_interrupts_are_off(board: Board, crc_mode: str, 
         else:
             assert isinstance(window["overrun_detected"], int) and window["overrun_detected"] >= 1, f"no overrun reported past the ring's {bound} us bound: {window}"
             assert window["after_intact"] == window["after_sent"], f"frames after the overrun's resync were not intact: {window}"
+    _setup_ok(facts, "rxdmae_setup")
     rxdmae = _dict(facts["rxdmae_window"])
     assert rxdmae["oe_set"] is True and rxdmae["first_failed"] is True and rxdmae["next_ok"] is True, f"the RXDMAE-off overrun did not fail one transaction and recover: {rxdmae}"
 

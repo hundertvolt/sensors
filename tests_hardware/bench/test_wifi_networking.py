@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import _load
 import pytest
-from error_log_helpers import assert_module_error_log_contains, assert_no_task_ended, code, reset_all_error_logs
+from error_log_helpers import assert_module_logged_one_code, assert_no_task_ended, code, reset_all_error_logs
 from harness import Board, boot_lines, crash_lines, kick_then_reset, recover_by_reset
 
 if TYPE_CHECKING:
@@ -111,11 +111,11 @@ def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board:
     recover_by_reset(board, bench, ready=lambda: _load.serving(dut_ip), first_wait_s=_RECONNECT_TIMEOUT_S, retry_wait_s=_RECONNECT_TIMEOUT_S, skipped="the passive reconnect after the forced resync", note=result_note, description="the reconnect after the NTP-blocked boot")
     # A blocked port is handled in place by NTP (SPECIFICATION.md Part C.7.2): NTP_NO_REPLY is logged
     # and the task backs off; an ended task would cost the supervisor's reboot budget.
-    assert_module_error_log_contains(dut_ip, "NTP", code("E", "NTP_NO_REPLY"), "E")
+    assert_module_logged_one_code(dut_ip, "NTP", "E", code("E", "NTP_NO_REPLY"), events=None)  # the attempts the block met
     restarts = [ln for ln in lines if "Task ended - attempting restart" in ln]
     assert not restarts, "a blocked NTP server made a task end and be restarted:\n" + "\n".join(restarts)
     assert_no_task_ended(dut_ip, "a blocked NTP server")  # the persisted record, beyond the tail window
-    reset_all_error_logs(dut_ip, request.node.name)  # the provoked NTP_NO_REPLY legitimately logged
+    reset_all_error_logs(dut_ip, request.node.name)  # after the provoked NTP_NO_REPLY was read exactly
 
 
 def _networking(dut_ip: str) -> "JSONObject":

@@ -1202,9 +1202,9 @@
   ]
  },
  "tests_hardware/bench/test_hotspot_role_reversal.py::test_malformed_http_request_over_real_wireless_degrades_cleanly": {
-  "ns_allow_list": [
-   "CRr2",
-   "(b) the provoked HTTP_BAD_HEAD should be exactly one entry, not allowed (bench log mechanism)"
+  "was:ns_allow_list": [
+   "fixed",
+   "(b) exact: WEBSERVER holds W HTTP_BAD_HEAD alone, counted once (error_log_helpers.assert_module_logged_one_code). Bitten on synthetic errcount: nothing logged, and the code counted three times, pass the old allow-list and fail the new check"
   ]
  },
  "tests_hardware/bench/test_hotspot_role_reversal.py::test_rapid_associate_disassociate_churn_doesnt_wedge_station_management": {
@@ -1236,9 +1236,9 @@
   ]
  },
  "tests_hardware/bench/test_network_resilience.py::test_an_oversized_body_is_refused_before_it_is_read": {
-  "ns_allow_list": [
-   "CRr2",
-   "(b) the provoked refusal's codes should be exact, not allowed (bench log mechanism)"
+  "was:ns_allow_list": [
+   "fixed",
+   "(b) exact: W HTTP_CALL_TIMEOUT alone, counted once - the 413 logs nothing (tests/test_asy_webserver_connections.py:790-803) and a body that never arrives is one read-phase timeout (tests/test_asy_webserver_service.py:4338-4346). Bitten on synthetic errcount (a bad-head beside it)"
   ]
  },
  "tests_hardware/bench/test_network_resilience.py::test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog": {
@@ -1248,9 +1248,9 @@
   ]
  },
  "tests_hardware/bench/test_network_resilience.py::test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage": {
-  "ns_seed_text": [
-   "CRr2",
-   "(b) the provoked entry should be read exactly before the clear (bench log mechanism)"
+  "was:ns_seed_text": [
+   "fixed",
+   "(b) the provoked entry read exactly before the clear: NTP holds E NTP_NO_REPLY alone, counted once per attempt the block met. Bitten on synthetic errcount (the old test read nothing before its clear)"
   ]
  },
  "tests_hardware/bench/test_rest_endpoints_over_sta.py::test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value": {
@@ -1300,15 +1300,15 @@
    "CRr2",
    "the bench log fixture and marker / the flash tier's logs fact"
   ],
-  "same_callee": [
-   "CRr2",
-   "intact == total also passes when both facts are missing or total is 0 (a device-script fact)"
+  "was:same_callee": [
+   "fixed",
+   "total is an int above 0 and intact == total. Bitten on synthetic output (both facts missing: old passes, new fails)"
   ]
  },
  "tests_hardware/bench/test_wifi_networking.py::test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing": {
-  "ns_seed_text": [
-   "CRr2",
-   "(b) the provoked NTP_NO_REPLY should be read exactly before the clear (bench log mechanism)"
+  "was:ns_seed_text": [
+   "fixed",
+   "(b) contains became exact before the clear: NTP holds E NTP_NO_REPLY alone. Bitten on synthetic errcount (a teardown warning beside it passes contains, fails the new check)"
   ]
  },
  "tests_hardware/bench/test_wifi_radio_reinit.py::test_the_radio_reinit_rung_restores_the_link": {
@@ -1352,9 +1352,9 @@
   ]
  },
  "tests_hardware/flash/test_bus_concurrency.py::test_fram_cs_pin_hijack_fault_injection_and_recovery": {
-  "log_existence_only": [
-   "CRr2",
-   "(b) a provoked fault: the errnos fact should hold exactly one chip-lost entry (a device-script fact)"
+  "was:log_existence_only": [
+   "fixed",
+   "exactly one chip-lost entry: lost['errnos'].count(54) == 1, the driver's one entry per loss (src/asy_fram_driver.py _report_chip_lost). Bitten on synthetic output ([26, 54, 54]); the hijack is silicon-only (twin record)"
   ]
  },
  "tests_hardware/flash/test_bus_concurrency.py::test_fram_hard_reset_race_during_write_and_recovery": {
@@ -2175,6 +2175,42 @@
   "same_callee": [
    "biting",
    "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py::bus_concurrency_cross_device_scd30_sgp40": {
+  "ds_facts": [
+   "fixed",
+   "flash test_bus_concurrency.py test_cross_device_concurrent_sessions_genuinely_interleave now asserts reset_sibling_reads > 0 and heater_off_sibling_reads > 0: the zero-failure checks around both rungs passed when nothing was read. Bitten on synthetic output (each count 0: old passes, new fails; healthy passes both) and passing on the twin"
+  ]
+ },
+ "tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py::bmp3xx_same_device_rw_concurrency": {
+  "ds_facts": [
+   "fixed",
+   "test_bmp3xx_same_device_read_write_concurrency asserts reset_window_reads > 0 (a rung no read raced passed); reset_window_failures is the script's stated diagnostic (a read the reset lands in may fail cleanly). Bitten on synthetic output and passing on the twin"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_same_device_rw_concurrency.py::fram_same_device_rw_concurrency": {
+  "ds_facts": [
+   "fixed",
+   "test_fram_same_device_read_write_concurrency asserts baseline_read is True (a failed baseline compared every read against zeros); reads_torn is implied by reads_ok == reads_planned and the errors total. Bitten on synthetic output and passing on the twin"
+  ]
+ },
+ "tests_hardware/device_scripts/reset_code_command_incomplete.py::reset_code_command_incomplete": {
+  "ds_facts": [
+   "fixed",
+   "bench test_reset_reasons.py test_an_incomplete_command_is_attributed asserts no_reset_after_ms absent, as flash test_system_commands.py:95 does. Bitten on synthetic output (bench-only, no twin leg)"
+  ]
+ },
+ "tests_hardware/device_scripts/reset_code_stack_exhausted.py::reset_code_stack_exhausted": {
+  "ds_facts": [
+   "fixed",
+   "bench test_reset_reasons.py's stack-exhaustion test asserts no_reset_after_ms absent. Bitten on synthetic output (bench-only, no twin leg)"
+  ]
+ },
+ "tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py::uart_dma_ring_interrupts_off": {
+  "ds_facts": [
+   "fixed",
+   "flash test_uart_crossover.py test_no_frame_is_lost_while_interrupts_are_off asserts _setup_ok(facts, \"rxdmae_setup\"), as for the other windows' setup. Bitten on synthetic output; the window is silicon-only (twin record: no disable_irq())"
   ]
  }
 }

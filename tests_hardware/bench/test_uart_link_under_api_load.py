@@ -90,7 +90,8 @@ def test_a_multi_chunk_set_echoes_intact_under_serving_load(board: "Board", benc
     facts = parse_facts(output)
     assert facts.get("initiator_found") is True, f"the script found no initiating uart_link instance - {_TOML_HINT}: {facts}"
     assert facts.get("load_seen") is True, f"the host's load never reached the script's webserver, so nothing ran under load: {facts}"
-    assert facts.get("intact") == facts.get("total"), f"echoes came back damaged or missing under load: {facts}"
+    total = facts.get("total")
+    assert isinstance(total, int) and total > 0 and facts.get("intact") == total, f"echoes came back damaged or missing under load: {facts}"
     before, after = facts.get("before"), facts.get("after")
     assert isinstance(before, dict) and isinstance(after, dict) and after.get("Failures") == before.get("Failures"), f"the exerciser's own transfers failed during the echoes: {before!r} -> {after!r}"
     assert len(load.answered) >= _ECHO_MIN_ANSWERED, f"only {len(load.answered)} reads answered during the echoes, below {_ECHO_MIN_ANSWERED}: {load.failures[:5]}"
