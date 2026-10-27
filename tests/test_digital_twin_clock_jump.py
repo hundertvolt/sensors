@@ -1,6 +1,6 @@
 """Wall-clock consumers across an RTC step on the twin (the RTC is the wall clock, as on rp2): reader TS, backup age,
-NTP's cettime and staleness, and a real sync against the local NTP responder. Each case runs on one device
-tests/_twin_devices.py picks; the L1 suites cover every module."""
+NTP's cettime and staleness, and a real sync against the local NTP responder. Each case runs once per distinct wiring
+of the parts it reaches (tests/_twin_devices.py), cettime's on the first device; the L1 suites cover every module."""
 
 import asyncio
 import json
@@ -72,6 +72,14 @@ microtest.after_each(machine.reset_test_state)
 microtest.after_each(network.reset_test_state)
 
 
+async def _set_clock(module: "ModuleType") -> None:
+    # The clock as an NTP sync leaves it (_handle_ntp_sync_success()): Synced, the clock valid for UTCTime and the
+    # VOC backups, and every utc_now() a real time from here on.
+    await module.ntp._set_synced(value=True)
+    module.ntp._clock_valid = True
+    asy_base_classes.set_utc_valid()
+
+
 def _backup_after_a_backward_step_on(device: str) -> None:
     # The test above on one device, each boot on one driven clock: the SGP40's 1 s reset and datasheet waits pass in
     # driven time, as the backup's age reads only the wall clock (agent, 2026-10-27).
@@ -139,14 +147,6 @@ def _backup_after_a_backward_step_on(device: str) -> None:
     assert kept == stamp, f"BackupMaxAge 0 restored {kept}, not the backup of {stamp}"
 
 
-async def _set_clock(module: "ModuleType") -> None:
-    # The clock as an NTP sync leaves it (_handle_ntp_sync_success()): Synced, the clock valid for UTCTime and the
-    # VOC backups, and every utc_now() a real time from here on.
-    await module.ntp._set_synced(value=True)
-    module.ntp._clock_valid = True
-    asy_base_classes.set_utc_valid()
-
-
 async def _boot(device: str, cfg_path: "str | None" = None) -> "ModuleType":
     # A new board on the device's plan, built and set up as its boot entry does (offline NTP config), the wall clock
     # installed over the loaded product modules (the runner's own line).
@@ -166,9 +166,10 @@ async def _boot(device: str, cfg_path: "str | None" = None) -> "ModuleType":
     return module
 
 
-def _booted(device: str, responder: NtpResponder, scenario: "Callable[[ModuleType], Coroutine[object, object, T]]") -> "T":
+def _booted(device: str, responder: NtpResponder, scenario: "Callable[[ModuleType, DrivenTime], Coroutine[object, object, T]]") -> "T":
     # The device's real main() beside the responder (tests/test_digital_twin_ntp.py's shape): the responder's config, a
-    # station to join, the product's port 123 mapped to the responder's and the wall clock installed.
+    # station to join, the product's port 123 mapped to the responder's and the wall clock installed; the product's
+    # waits and the responder's rounds pass on one driven clock, which `scenario` drives (agent, 2026-10-27).
     cfg_path = _scratch.dir()
     machine.reset_peripherals()
     network.reset_test_state()
@@ -185,12 +186,14 @@ def _booted(device: str, responder: NtpResponder, scenario: "Callable[[ModuleTyp
         return getattr(module, "webserver", None) not in (None, earlier)
 
     async def whole() -> "T":
-        with redirect_udp_port(asy_ntp_client, 123, responder.port):
+        with redirect_udp_port(asy_ntp_client, 123, responder.port), DrivenWall(*_driven_modules(), sleeps=True) as clock:
             boot = module.main(watchdog=boot_entry_watchdog(module, device), cfg_path=cfg_path, debug=ERROR_LEVEL, web_host="127.0.0.1", web_port=0)
             tasks = [asyncio.create_task(responder.serve()), asyncio.create_task(boot)]
             try:
-                await _until(built, "no construction")
-                return await scenario(module)
+                await _driven_until(clock, built, "no construction")
+                runner_plan: _Plan = cast("_Plan", wiring_plan(device))
+                run_generic_integration._wire_uart_crossover(module, runner_plan)  # the runner's step before the setups (CLAUDE.md "Known hang cause")
+                return await scenario(module, clock)
             finally:
                 await cancel_all(tasks)
 
@@ -215,8 +218,9 @@ async def _driven(clock: "DrivenTime", what: str, coro: "Coroutine[object, objec
 
 
 def _driven_modules() -> "list[object]":
-    # Every src module holding asyncio and the twin's machine and network: one clock for each sleep and tick read.
-    return [m for name, m in sorted(sys.modules.items()) if (name.startswith("asy_") or name in ("machine", "network")) and getattr(m, "asyncio", None) is asyncio]
+    # Every src module holding asyncio, the twin's machine and network, and the responder: one clock for each sleep
+    # and tick read, a reply on loopback reaching the client at its next driven poll.
+    return [m for name, m in sorted(sys.modules.items()) if (name.startswith("asy_") or name in ("_ntp_responder", "machine", "network")) and getattr(m, "asyncio", None) is asyncio]
 
 
 async def _driven_until(clock: "DrivenTime", holds: "Callable[[], Coroutine[object, object, bool]]", what: str) -> None:
@@ -226,6 +230,44 @@ async def _driven_until(clock: "DrivenTime", holds: "Callable[[], Coroutine[obje
             return
         await clock.elapse(_POLL_MS)
     raise AssertionError(f"{what} within {_WAIT_TIMEOUT_S} driven s")
+
+
+def _first_sync_from_the_boot_default_on(device: str) -> None:
+    # The test below on one device.
+    responder = NtpResponder(_PORTS.next())
+    responder.mode = "silent"
+
+    async def scenario(module: "ModuleType", clock: "DrivenTime") -> "tuple[int, int, object]":
+        async def backed_off() -> bool:  # the boot's own attempt over, as tests/test_digital_twin_ntp.py waits it out
+            return bool(module.ntp._retry_wait_s == 2 * module.ntp._retry_s)
+
+        _clock().set_wall(_RP2_BOOT_CLOCK)
+        await _driven_until(clock, backed_off, "the boot's attempt never failed and doubled its step")
+        responder.mode = "serve"
+        await _ticks_to_attempt(module, responder, clock)
+        await _driven_until(clock, module.ntp.ntp_issynced, "no sync after the responder returned")
+        return _clock().time(), int(time.time()), (await module.ntp.get_data()).LastSyncAge
+
+    wall, host, age = _booted(device, responder, scenario)
+    assert abs(wall - host) <= 1, f"{device}: the sync left the clock at {wall}, not the served {host}"
+    assert age in (0, 1), f"{device}: LastSyncAge {age} right after the sync"
+
+
+def _offset_change_on(device: str) -> None:
+    # The test below on one device.
+    offset = 3600
+
+    async def scenario(module: "ModuleType", clock: "DrivenTime") -> "tuple[bool, int, int]":
+        await _driven_until(clock, module.ntp.ntp_issynced, "no first sync")
+        results = await module.webserver._apply_settings_groups("networking", {"NTPOffset": offset})
+        assert results == {"NTPOffset": "Valid"}, results
+        cleared = not await module.ntp.ntp_issynced()
+        await _driven_until(clock, module.ntp.ntp_issynced, "no sync under the new offset")
+        return cleared, _clock().time(), int(time.time())
+
+    cleared, wall, host = _booted(device, NtpResponder(_PORTS.next()), scenario)
+    assert cleared, f"{device}: the offset change left Synced true"
+    assert abs(wall - (host + offset)) <= 1, f"{device}: the clock reads {wall}, not the served time shifted by {offset}"
 
 
 async def _on_driven_clock(scenario: "Callable[[DrivenTime], Coroutine[object, object, T]]") -> "T":
@@ -264,12 +306,33 @@ def _stepped_stamps_on(device: str) -> None:
         assert isinstance(stamp, int) and abs(stamp - wall) <= 1, f"{device}: a sample stamped {stamp} under a clock reading {wall}"
 
 
-async def _ticks_to_attempt(module: "ModuleType", responder: NtpResponder) -> None:
+def _sync_age_across_steps_on(device: str) -> None:
+    # The test below on one device.
+    async def scenario(module: "ModuleType", clock: "DrivenTime") -> "tuple[object, object, int]":
+        await _driven_until(clock, module.ntp.ntp_issynced, "no first sync")
+        t0 = clock.ticks_ms()
+        _clock().step(365 * 86400)
+        _clock().step(-2 * 365 * 86400)
+
+        async def aged() -> bool:
+            age = (await module.ntp.get_data()).LastSyncAge
+            return age is not None and age >= 2
+
+        await _driven_until(clock, aged, "LastSyncAge never counted")
+        data = await module.ntp.get_data()
+        return data.Synced, data.LastSyncAge, clock.ticks_diff(clock.ticks_ms(), t0) // 1000
+
+    synced, age, elapsed = _booted(device, NtpResponder(_PORTS.next()), scenario)
+    assert synced is True, f"{device}: a clock step cleared Synced"
+    assert isinstance(age, int) and abs(age - elapsed) <= 1, f"{device}: LastSyncAge {age} after {elapsed} s of ticks"
+
+
+async def _ticks_to_attempt(module: "ModuleType", responder: NtpResponder, clock: "DrivenTime") -> None:
     # Fires the client's check tick, as its 10 s timer does, until the responder takes a request.
     before = responder.requests
     for _ in range(_TICKS_TO_RETRY):
         module.ntp._ntp_timer_trigger_event.set()
-        await asyncio.sleep_ms(_POLL_MS)
+        await clock.elapse(_POLL_MS)
         if responder.requests > before:
             return
     raise AssertionError(f"no attempt within {_TICKS_TO_RETRY} check ticks")
@@ -328,63 +391,28 @@ def test_cettime_follows_the_clock_across_the_march_switch_both_ways() -> None:
 def test_a_year_forward_then_two_back_leave_sync_and_its_age_on_the_ticks() -> None:
     # Synced against the responder at t0, the clock stepped a year forward and two back: Synced holds and LastSyncAge
     # counts the ticks since t0 only (its age is measured, never read off the wall clock).
-    async def scenario(module: "ModuleType") -> "tuple[object, object, int]":
-        await _until(module.ntp.ntp_issynced, "no first sync")
-        t0 = time.ticks_ms()
-        _clock().step(365 * 86400)
-        _clock().step(-2 * 365 * 86400)
-
-        async def aged() -> bool:
-            age = (await module.ntp.get_data()).LastSyncAge
-            return age is not None and age >= 2
-
-        await _until(aged, "LastSyncAge never counted")
-        data = await module.ntp.get_data()
-        return data.Synced, data.LastSyncAge, time.ticks_diff(time.ticks_ms(), t0) // 1000
-
-    synced, age, elapsed = _booted(generated_devices()[0], NtpResponder(_PORTS.next()), scenario)
-    assert synced is True, "a clock step cleared Synced"
-    assert isinstance(age, int) and abs(age - elapsed) <= 1, f"LastSyncAge {age} after {elapsed} s of ticks"
+    for device in distinct_wirings():
+        machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
+        network.reset_test_state()
+        _sync_age_across_steps_on(device)
 
 
 def test_the_first_sync_sets_a_boot_default_clock_and_restarts_its_age() -> None:
     # The responder silent through the boot, the clock at rp2's power-up default; then serving: the client's next
     # attempt (its own retry path) sets the clock to the served time and LastSyncAge starts from 0.
-    responder = NtpResponder(_PORTS.next())
-    responder.mode = "silent"
-
-    async def scenario(module: "ModuleType") -> "tuple[int, int, object]":
-        async def backed_off() -> bool:  # the boot's own attempt over, as tests/test_digital_twin_ntp.py waits it out
-            return bool(module.ntp._retry_wait_s == 2 * module.ntp._retry_s)
-
-        _clock().set_wall(_RP2_BOOT_CLOCK)
-        await _until(backed_off, "the boot's attempt never failed and doubled its step")
-        responder.mode = "serve"
-        await _ticks_to_attempt(module, responder)
-        await _until(module.ntp.ntp_issynced, "no sync after the responder returned")
-        return _clock().time(), int(time.time()), (await module.ntp.get_data()).LastSyncAge
-
-    wall, host, age = _booted(generated_devices()[0], responder, scenario)
-    assert abs(wall - host) <= 1, f"the sync left the clock at {wall}, not the served {host}"
-    assert age in (0, 1), f"LastSyncAge {age} right after the sync"
+    for device in distinct_wirings():
+        machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
+        network.reset_test_state()
+        _first_sync_from_the_boot_default_on(device)
 
 
 def test_an_ntp_offset_change_clears_synced_and_the_next_sync_applies_it() -> None:
     # NTPOffset changed through the client's own config-apply path: Synced false at once, and the next sync sets the
     # clock to the served time shifted by the offset.
-    offset = 3600
-
-    async def scenario(module: "ModuleType") -> "tuple[bool, int, int]":
-        await _until(module.ntp.ntp_issynced, "no first sync")
-        results = await module.webserver._apply_settings_groups("networking", {"NTPOffset": offset})
-        assert results == {"NTPOffset": "Valid"}, results
-        cleared = not await module.ntp.ntp_issynced()
-        await _until(module.ntp.ntp_issynced, "no sync under the new offset")
-        return cleared, _clock().time(), int(time.time())
-
-    cleared, wall, host = _booted(generated_devices()[0], NtpResponder(_PORTS.next()), scenario)
-    assert cleared, "the offset change left Synced true"
-    assert abs(wall - (host + offset)) <= 1, f"the clock reads {wall}, not the served time shifted by {offset}"
+    for device in distinct_wirings():
+        machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
+        network.reset_test_state()
+        _offset_change_on(device)
 
 
 if __name__ == "__main__":
