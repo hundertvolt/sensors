@@ -136,6 +136,7 @@ _PROMPT_HOLD_MS = 5
 _RECORDER_POLL_MS = 1  # the test's own real look at the sleep recorder's delays
 # @tunable l1.asy_uart_comm_gate_look_ms = 5
 _GATE_LOOK_MS = 5  # a real sleep in which the write gate takes its looks, its clock held
+# @tunable l1.asy_uart_comm_past_cancel_ack_hold_ms = 1300
 _PAST_CANCEL_ACK_HOLD_MS = 1300
 # @tunable l1.asy_uart_comm_cap_refusals = 50
 _REFUSALS = 50
