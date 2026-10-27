@@ -4,7 +4,7 @@ Requirement: every test in `tests/`, `tests_scripts/`, `tests_js/` and `tests_ha
 
 ## Counts
 
-Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_verdicts.json`: 8536 rows, 336 flagged. A flag is a candidate; the verdict is the reviewer's.
+Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_verdicts.json`: 8534 rows, 336 flagged. A flag is a candidate; the verdict is the reviewer's.
 
 | level | rows | flagged |
 |---|---|---|
@@ -15,7 +15,7 @@ Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_
 | manual (hardware) | 21 | 2 |
 | twin (MicroPython) | 670 | 24 |
 | twin scenario | 176 | 10 |
-| unit (MicroPython) | 3953 | 140 |
+| unit (MicroPython) | 3951 | 140 |
 | web (vitest) | 492 | 6 |
 
 | verdict (per row) | rows |
@@ -23,7 +23,7 @@ Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_
 | CRr2 | 83 |
 | fixed | 46 |
 | justified | 129 |
-| biting | 8278 |
+| biting | 8276 |
 
 | red flag | rows | verdicts |
 |---|---|---|
@@ -1802,20 +1802,18 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests/test_asy_neopixel_driver.py:917 | test_fram_backed_variant_survives_a_reboot | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_neopixel_driver.py:937 | test_the_log_config_sets_the_loggers_length_and_level | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_neopixel_driver.py:943 | test_in_memory_variant_works_without_fram | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_neopixel_driver.py:959 | test_clamp_byte_direct | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_neopixel_driver.py:976 | test_request_signal_infinite_rgb_clamped_not_raised | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_neopixel_driver.py:992 | test_request_signal_infinite_duration_falls_back_to_floor_not_raised | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_neopixel_driver.py:999 | test_request_signal_nan_duration_falls_back_to_floor_not_raised | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_neopixel_driver.py:1006 | test_request_signal_out_of_range_rgb_clamped_not_raised | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_neopixel_driver.py:1025 | test_led_signal_out_of_range_rgb_clamped_not_raised | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_neopixel_driver.py:1042 | test_overlay_bri_out_of_range_clamped_not_raised | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_neopixel_driver.py:1058 | test_a_non_numeric_signal_value_is_refused_without_a_frame | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_neopixel_driver.py:1096 | test_a_long_signal_is_capped_at_sixty_seconds | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_neopixel_driver.py:1103 | test_a_negative_duration_takes_the_floor | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_neopixel_driver.py:1112 | test_get_task_starters_returns_the_overlay_and_signal_starters | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_neopixel_driver.py:1117 | test_get_timer_starters_returns_empty_list | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_neopixel_driver.py:1122 | test_on_off_toggle_drive_the_pixel_through_the_overlay_task | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_neopixel_driver.py:1140 | test_the_driver_ceiling_on_a_signal_equals_the_rest_ceiling_on_t | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_neopixel_driver.py:958 | test_clamp_byte_direct | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_neopixel_driver.py:972 | test_request_signal_infinite_duration_falls_back_to_floor_not_raised | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_neopixel_driver.py:979 | test_request_signal_nan_duration_falls_back_to_floor_not_raised | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_neopixel_driver.py:986 | test_request_signal_out_of_range_rgb_clamped_not_raised | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_neopixel_driver.py:1005 | test_led_signal_out_of_range_rgb_clamped_not_raised | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_neopixel_driver.py:1022 | test_overlay_bri_out_of_range_clamped_not_raised | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_neopixel_driver.py:1057 | test_a_long_signal_is_capped_at_sixty_seconds | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_neopixel_driver.py:1064 | test_a_negative_duration_takes_the_floor | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_neopixel_driver.py:1073 | test_get_task_starters_returns_the_overlay_and_signal_starters | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_neopixel_driver.py:1078 | test_get_timer_starters_returns_empty_list | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_neopixel_driver.py:1083 | test_on_off_toggle_drive_the_pixel_through_the_overlay_task | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_neopixel_driver.py:1101 | test_the_driver_ceiling_on_a_signal_equals_the_rest_ceiling_on_t | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_notification_service.py:201 | test_signals_are_accepted_in_tuple_order | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_notification_service.py:208 | test_a_signal_colliding_with_an_accepted_one_is_refused | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_notification_service.py:216 | test_a_signal_colliding_with_the_own_schema_is_refused | unit (MicroPython) | biting | — | biting as is |
