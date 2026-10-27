@@ -1565,6 +1565,38 @@ def test_a_refused_preflight_answers_the_same_word_waiting_on_it_with_its_own_ou
         run(scenario())
 
 
+def test_a_raising_preflight_leaves_the_gate_as_a_refusal_does() -> None:
+    # The raise reaches the caller's catch; the gate then decides the next command afresh and a mempause is not refused.
+    rig = _Rig(tasks=0)
+    assert rig.manager is not None
+    manager, preflights = rig.manager, []
+
+    async def raising_ready() -> bool:
+        raise MemoryError("injected: no room for the preflight")
+
+    async def refusing_ready() -> bool:
+        preflights.append(1)
+        return False
+
+    async def scenario() -> None:
+        sup = await rig.start()
+        manager.erase_ready = raising_ready  # type: ignore[method-assign]
+        raised = ""
+        try:
+            await rig.svc.erase_fram()
+        except MemoryError as e:
+            raised = str(e)
+        assert raised.startswith("injected") and (rig.svc._shutdown, rig.svc._shutdown_task) == (0, None), raised
+        assert rig.svc.pause_permanent_storage(0) is True
+        manager.erase_ready = refusing_ready  # type: ignore[method-assign]
+        assert await rig.svc.erase_fram() is False and preflights == [1]
+        assert not (rig.svc._feed_owned or rig.svc._reset_decided)
+        await rig.stop(sup)
+
+    with FastAsyncSleep():
+        run(scenario())
+
+
 def test_a_raising_flush_reaches_the_reset_and_reads_9_unless_a_config_reset_deletes_it() -> None:
     for purpose in _PURPOSES:
         rig = _Rig(stores=0)

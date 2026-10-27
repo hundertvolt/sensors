@@ -384,12 +384,16 @@ class SystemService:
                 return self._shutdown == purpose
             self._shutdown = purpose
             refusal = ""
-            if self._reset_armed:
-                refusal = "a reset is already armed"
-            elif purpose == _RR_CONFIG_RESET and not self._config_stores:
-                refusal = "no config store"
-            elif purpose == _RR_FRAM_ERASED and (self._storage is None or not await self._storage.erase_ready()):
-                refusal = "FRAM missing, not set up or write-protected"
+            try:
+                if self._reset_armed:
+                    refusal = "a reset is already armed"
+                elif purpose == _RR_CONFIG_RESET and not self._config_stores:
+                    refusal = "no config store"
+                elif purpose == _RR_FRAM_ERASED and (self._storage is None or not await self._storage.erase_ready()):
+                    refusal = "FRAM missing, not set up or write-protected"
+            except BaseException:  # a raising preflight leaves the gate as a refusal does; the caller's catch logs it
+                self._shutdown = 0
+                raise
             if self._reset_armed:  # re-checked: the preflight can yield, and an escalation may have armed meanwhile
                 refusal = "a reset is already armed"
             if refusal:
