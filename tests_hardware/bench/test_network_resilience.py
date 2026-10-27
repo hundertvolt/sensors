@@ -158,13 +158,14 @@ _CEILING_TRACES = (code("W", "HTTP_REFUSED"), code("W", "HTTP_PEER_RESET"))
 
 @pytest.mark.provokes_log(
     "the real outage's WLAN warnings, checked by _assert_wifi_log_has_only_benign_outage_warnings, and an NTP attempt"
-    " already past its network check when the AP drops",
+    " already past its network check when the AP drops, or its whole retry chain where the link still reads as up",
     ("WIFI", "W", "WLAN_NO_AP"),
     ("WIFI", "W", "WLAN_AUTH_FAILED"),
     ("NTP", "E", "NTP_DNS_NOT_SENT"),
     ("NTP", "E", "NTP_DNS"),
     ("NTP", "E", "NTP_NOT_SENT"),
     ("NTP", "E", "NTP_NO_REPLY"),
+    ("NTP", "E", "NTP_RETRIES"),
 )
 def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)
@@ -182,13 +183,14 @@ def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, be
 
 @pytest.mark.provokes_log(
     "the repeated real outages' WLAN warnings, checked by _assert_wifi_log_has_only_benign_outage_warnings, and an NTP"
-    " attempt already past its network check when the AP drops",
+    " attempt already past its network check when the AP drops, or its whole retry chain where the link still reads as up",
     ("WIFI", "W", "WLAN_NO_AP"),
     ("WIFI", "W", "WLAN_AUTH_FAILED"),
     ("NTP", "E", "NTP_DNS_NOT_SENT"),
     ("NTP", "E", "NTP_DNS"),
     ("NTP", "E", "NTP_NOT_SENT"),
     ("NTP", "E", "NTP_NO_REPLY"),
+    ("NTP", "E", "NTP_RETRIES"),
 )
 def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)
