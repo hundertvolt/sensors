@@ -105,6 +105,26 @@ _SERVED_POLL_MS = 10
 _STOP_WRITE_DELAY_MS = 150
 # @tunable l2.run_generic_integration_hung_after_ms = 5
 _HUNG_AFTER_MS = 5  # a stand-in call still pending this long never returns
+# @tunable l2.run_generic_integration_ticker_period_ms = 3
+_TICKER_PERIOD_MS = 3
+# @tunable l2.run_generic_integration_drop_fire_ms = 15
+_DROP_FIRE_MS = 15  # the one-shot whose fire the drop flag loses
+# @tunable l2.run_generic_integration_rearm_fire_ms = 5
+_REARM_FIRE_MS = 5
+# @tunable l2.run_generic_integration_lag_report_ms = 20
+_LAG_REPORT_MS = 20
+# @tunable l2.run_generic_integration_lag_period_ms = 5
+_LAG_PERIOD_MS = 5
+# @tunable l2.run_generic_integration_lag_link_report_ms = 10
+_LAG_LINK_REPORT_MS = 10
+# @tunable l2.run_generic_integration_lag_link_period_ms = 2
+_LAG_LINK_PERIOD_MS = 2
+# @tunable l2.run_generic_integration_served_polls = 100
+_SERVED_POLLS = 100
+# @tunable l2.run_generic_integration_serve_bound_s = 30.0
+_SERVE_BOUND_S = 30.0  # a serving the stop file ends long before
+# @tunable l2.run_generic_integration_serve_short_s = 0.2
+_SERVE_SHORT_S = 0.2  # a serving with no stop file, waited out
 
 
 # MICROPY_BYTES_PER_GC_BLOCK, 4 x the object word (py/mpconfig.h:251, v1.29.0), the unit of mem_info()'s max free sz.
@@ -618,11 +638,11 @@ def test_the_drop_flag_loses_that_one_shots_next_fire_alone_and_every_timer_runs
 
     async def drive() -> int:
         cleared = asyncio.create_task(runner._test_drop_timer_fire(cast("ModuleType", module), "sequencer", said.append))
-        ticker = machine.Timer(period=3, callback=lambda _t: ticks.append(1))
-        sysfunct._sequencer_timer.init(period=15, mode=machine.Timer.ONE_SHOT, callback=lambda _t: fired.append(1))  # type: ignore[attr-defined]
+        ticker = machine.Timer(period=_TICKER_PERIOD_MS, callback=lambda _t: ticks.append(1))
+        sysfunct._sequencer_timer.init(period=_DROP_FIRE_MS, mode=machine.Timer.ONE_SHOT, callback=lambda _t: fired.append(1))  # type: ignore[attr-defined]
         await asyncio.wait_for_ms(cleared, _DROP_CLEAR_BOUND_MS)
         during = len(ticks)
-        sysfunct._sequencer_timer.init(period=5, mode=machine.Timer.ONE_SHOT, callback=lambda _t: fired.append(2))  # type: ignore[attr-defined]
+        sysfunct._sequencer_timer.init(period=_REARM_FIRE_MS, mode=machine.Timer.ONE_SHOT, callback=lambda _t: fired.append(2))  # type: ignore[attr-defined]
         await asyncio.sleep_ms(_REARM_RUN_MS)
         ticker.deinit()
         await asyncio.sleep_ms(0)  # the deinit's cancel lands before the run ends
@@ -643,10 +663,10 @@ def test_the_flash_stall_flag_puts_every_flush_at_its_datasheet_maximum() -> Non
 def test_the_loop_lag_flag_prints_each_windows_maximum_p99_and_samples() -> None:
     said: list[str] = []
     report = runner._LOOP_LAG_REPORT_MS
-    runner._LOOP_LAG_REPORT_MS = 20
+    runner._LOOP_LAG_REPORT_MS = _LAG_REPORT_MS
 
     async def drive() -> None:
-        lag = asyncio.create_task(runner._test_loop_lag(5, said.append))
+        lag = asyncio.create_task(runner._test_loop_lag(_LAG_PERIOD_MS, said.append))
         await asyncio.sleep_ms(_REACH_MS)
         time.sleep_ms(_STALL_MS)  # one synchronous stall of the whole loop
         await asyncio.sleep_ms(_LAG_RUN_MS)
@@ -675,10 +695,10 @@ def test_each_loop_lag_line_carries_every_links_transfers_so_far() -> None:
     link = Link()
     said: list[str] = []
     report = runner._LOOP_LAG_REPORT_MS
-    runner._LOOP_LAG_REPORT_MS = 10
+    runner._LOOP_LAG_REPORT_MS = _LAG_LINK_REPORT_MS
 
     async def drive() -> None:
-        lag = asyncio.create_task(runner._test_loop_lag(2, said.append, [("uart_link_init", link, None)]))
+        lag = asyncio.create_task(runner._test_loop_lag(_LAG_LINK_PERIOD_MS, said.append, [("uart_link_init", link, None)]))
         for _ in range(3):
             await asyncio.sleep_ms(_LAG_STEP_MS)
             link._transfers += 1
@@ -840,7 +860,7 @@ def test_each_accepted_socket_is_served_with_its_send_buffer_pinned_at_the_kerne
         server = await asyncio.start_server(booted.webserver._serve, "127.0.0.1", port)  # type: ignore[arg-type]
         try:
             _reader, writer = await asyncio.open_connection("127.0.0.1", port)
-            for _ in range(100):
+            for _ in range(_SERVED_POLLS):
                 if booted.webserver.served:
                     break
                 await asyncio.sleep_ms(_SERVED_POLL_MS)
@@ -908,7 +928,7 @@ def test_serving_ends_at_once_when_the_stop_file_already_exists() -> None:
     with open(stop, "w"):
         pass
     start = time.ticks_ms()
-    run_timed(runner._serve_until(30.0, stop), _RUN_BOUND_S)
+    run_timed(runner._serve_until(_SERVE_BOUND_S, stop), _RUN_BOUND_S)
     assert time.ticks_diff(time.ticks_ms(), start) < 1000  # a 30 s bound, left on the first look
 
 
@@ -923,7 +943,7 @@ def test_serving_ends_once_the_stop_file_appears() -> None:
 
         writer = asyncio.create_task(write_later())
         start = time.ticks_ms()
-        await runner._serve_until(30.0, stop)
+        await runner._serve_until(_SERVE_BOUND_S, stop)
         await writer
         return time.ticks_diff(time.ticks_ms(), start)
 
@@ -934,7 +954,7 @@ def test_serving_ends_once_the_stop_file_appears() -> None:
 def test_serving_without_the_stop_file_lasts_the_whole_duration() -> None:
     for stop in (None, _scratch.path("stop_never")):
         start = time.ticks_ms()
-        run_timed(runner._serve_until(0.2, stop), _RUN_BOUND_S)  # two stop-file polls
+        run_timed(runner._serve_until(_SERVE_SHORT_S, stop), _RUN_BOUND_S)  # two stop-file polls
         assert time.ticks_diff(time.ticks_ms(), start) >= 200, stop
 
 
