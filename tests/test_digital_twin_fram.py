@@ -954,6 +954,48 @@ def test_a_blank_read_whose_probe_meets_a_held_session_stays_blank_and_declares_
     assert bytes(chip.memory) == before, "the blank read wrote the chip"
 
 
+def test_two_valid_but_differing_copies_fail_each_read_with_one_slot_and_the_next_write_heals_them() -> None:
+    # A write torn between the copies: block 1 put back to the previous write, both blocks valid. Each read fails
+    # (no copy is picked, owner rule), the repeats share one E FRAM_COPIES_DIFFER slot, and the next write heals both.
+    manager, _bus, chip = _twin_manager()
+    chunk, _ts_chunk = _chunks(manager)
+    span = len(_PAYLOAD) + 1 + 2  # the payload, its CRC8 byte and the two status bytes
+    addr1 = chunk._block_addr[1]
+    assert run(chunk.write(_PAYLOAD)) is True
+    block1 = _read_mem(chip, addr1, span)
+    assert run(chunk.write(bytes(reversed(_PAYLOAD)))) is True
+    _wren(chip)
+    _write_mem(chip, addr1, block1)
+    reads = [run(chunk.read_into(chunk.get_buffer())) for _ in range(2)]
+    errnums = _errnums(manager)
+    assert run(chunk.write(_PAYLOAD)) is True
+    buf = chunk.get_buffer()
+    healed = run(chunk.read_into(buf))
+    assert reads == [False, False], f"the differing copies read {reads}"
+    assert errnums.count(code("E", "FRAM_COPIES_DIFFER")) == 1, f"two failed reads logged {errnums}"
+    assert healed is True and bytes(buf.get_data_buf() or b"") == _PAYLOAD, "the next write did not heal the copies"
+
+
+def test_a_paused_twin_fram_refuses_every_chunk_operation_with_one_slot_and_resumes_untouched() -> None:
+    # A commanded pause is no fault: write, read and clear are refused without reaching the chip, the refusals share
+    # one W FRAM_PAUSED slot, and once resumed the chunk reads what it held.
+    manager, _bus, chip = _twin_manager()
+    chunk, _ts_chunk = _chunks(manager)
+    assert run(chunk.write(_PAYLOAD)) is True
+    before = bytes(chip.memory)
+    manager.set_pause(value=True)
+    refused = (run(chunk.write(bytes(len(_PAYLOAD)))), run(chunk.read_into(chunk.get_buffer())), run(chunk.clear()))
+    untouched = bytes(chip.memory) == before
+    errnums = _errnums(manager)
+    manager.set_pause(value=False)
+    buf = chunk.get_buffer()
+    resumed = run(chunk.read_into(buf))
+    assert refused == (False, None, False), f"the paused operations answered {refused}"
+    assert untouched, "a paused operation reached the chip"
+    assert errnums.count(code("W", "FRAM_PAUSED")) == 1, f"the refusals logged {errnums}"
+    assert resumed is True and bytes(buf.get_data_buf() or b"") == _PAYLOAD, "the resumed chunk lost its data"
+
+
 def test_counting_writes_at_new_addresses_allocates_nothing() -> None:
     # The address table is sized for its cap when the chip is built: a rehash would need one contiguous block inside the
     # product's erase, where a fragmented -1 heap may have none (README "FRAM persistence").
