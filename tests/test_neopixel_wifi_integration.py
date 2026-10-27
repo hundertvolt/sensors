@@ -107,19 +107,19 @@ class _FlashSleeps:
         asyncio.sleep, asyncio.sleep_ms = self._real
 
 
-def _blocked_dir() -> str:
-    # A config path whose WIFI file is a directory: the store's setup() fails, as with no readable Wi-Fi configuration.
-    path = _tmp_cfg_dir()
-    os.mkdir(path + "config_WIFI.cfg")
-    return path
-
-
 def _devices_with_a_neopixel() -> "list[str]":
     # One device per distinct whole wiring among those wiring a neopixel, as the test reads each one's whole timer
     # collection; none wiring one fails in devices_with().
     require_fresh()
     wired = devices_with("neopixel")
     return [device for device in distinct_wirings() if device in wired]
+
+
+def _blocked_dir() -> str:
+    # A config path whose WIFI file is a directory: the store's setup() fails, as with no readable Wi-Fi configuration.
+    path = _tmp_cfg_dir()
+    os.mkdir(path + "config_WIFI.cfg")
+    return path
 
 
 def _frames(pixel: NeopixelDriver, start: int) -> "list[tuple[int, ...]]":

@@ -136,6 +136,14 @@ def _backup_after_a_backward_step_on(device: str) -> None:
     assert kept == stamp, f"BackupMaxAge 0 restored {kept}, not the backup of {stamp}"
 
 
+async def _set_clock(module: "ModuleType") -> None:
+    # The clock as an NTP sync leaves it (_handle_ntp_sync_success()): Synced, the clock valid for UTCTime and the
+    # VOC backups, and every utc_now() a real time from here on.
+    await module.ntp._set_synced(value=True)
+    module.ntp._clock_valid = True
+    asy_base_classes.set_utc_valid()
+
+
 async def _boot(device: str, cfg_path: "str | None" = None) -> "ModuleType":
     # A new board on the device's plan, built and set up as its boot entry does (offline NTP config), the wall clock
     # installed over the loaded product modules (the runner's own line).
@@ -193,14 +201,6 @@ def _clock() -> "_wall_clock.WallClock":
     clock = _wall_clock.installed()
     assert clock is not None, "no wall clock installed"
     return clock
-
-
-async def _set_clock(module: "ModuleType") -> None:
-    # The clock as an NTP sync leaves it (_handle_ntp_sync_success()): Synced, the clock valid for UTCTime and the
-    # VOC backups, and every utc_now() a real time from here on.
-    await module.ntp._set_synced(value=True)
-    module.ntp._clock_valid = True
-    asy_base_classes.set_utc_valid()
 
 
 def _stepped_stamps_on(device: str) -> None:
