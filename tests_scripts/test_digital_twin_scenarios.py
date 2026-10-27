@@ -164,9 +164,9 @@ def _shared_stub(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.Monkey
     return spawned
 
 
-def _spawned_boot(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **boot: object) -> "tuple[list[str], str | None]":
-    # One Context.boot() over a stub twin: the runner arguments spawn() was handed and the stored SYSTEM settings its
-    # state held at that moment (None: no file).
+def _spawned_boot(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, instances: "tuple[tuple[str, str, str], ...]" = (), **boot: object) -> "tuple[list[str], str | None]":
+    # One Context.boot() of a device wiring `instances` over a stub twin: the runner arguments spawn() was handed and the
+    # stored SYSTEM settings its state held at that moment (None: no file).
     seen: list[tuple[list[str], str | None]] = []
     tmp_path.mkdir(parents=True, exist_ok=True)
     log_path = tmp_path / "twin.log"
@@ -180,7 +180,7 @@ def _spawned_boot(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.Monke
     monkeypatch.setattr(harness, "spawn", spawn)
     monkeypatch.setattr(harness, "wait_until_serving", lambda *_a: None)
     monkeypatch.setattr(harness, "shutdown", lambda _run, _label: 0)
-    ctx = harness.Context("fixture-device", "/nonexistent", -1, tmp_path, (), iter([20000]), "fixture")
+    ctx = harness.Context("fixture-device", "/nonexistent", -1, tmp_path, instances, iter([20000]), "fixture")
     with ctx.boot("--test-flash-stall-max", **boot):
         pass
     assert ctx.failures == [] and len(seen) == 1, (ctx.failures, seen)
@@ -477,6 +477,13 @@ def test_every_boot_logs_at_error_level_from_its_build_and_its_stored_level(harn
     args, stored = _spawned_boot(harness, tmp_path, monkeypatch)
     assert args == ["--debug-level", str(level), "--test-kbd-traceback", "--test-flash-stall-max"], args
     assert stored is not None and json.loads(stored) == {"DebugLevel": level}, stored
+
+
+def test_a_device_wiring_a_uart_link_boots_its_link_on_the_driven_clock(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Its reply deadlines count the link's own waits, never the host's load; a device wiring none boots as before.
+    level = module_int_const(_REPO_ROOT / "src", "asy_print_log.py", "_LOG_ERR")
+    args, _stored = _spawned_boot(harness, tmp_path, monkeypatch, instances=(("uart_link_init", "uart_link", "init"),))
+    assert args == ["--debug-level", str(level), "--test-kbd-traceback", "--test-uart-driven-clock", "--test-flash-stall-max"], args
 
 
 def test_a_stored_level_is_kept_and_a_boot_not_logged_plants_nothing(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
