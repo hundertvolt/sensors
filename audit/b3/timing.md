@@ -35,3 +35,151 @@ Not exercised: a stall window straddling the 2**29 us alias (Y's finding at `dig
 by V's (start, length) windows) and a window exactly 2**30 us old (V's residual, `digital_twin/machine.py:937`).
 Left to B2 (agent, 2026-10-22): M.PROC.024 (1), every L1 file using ticks, and (2), the twin suite per device with the
 wrap inside Run 11's window; both need this file's measured wall clocks and Run 11's calibration.
+
+**M.PROC.024 (1), every L1 file whose code reads ticks, on `d78d8f5e`** (agent, 2026-10-27). `audit/sweeps/ticks30_batch.py`
+derives the set instead of listing it: every `tests/test_*.py` whose static import closure (over `build/generated_src`,
+`src`, `tests`, `digital_twin` and `frozen_modules`, plus the generated device modules a `__import__` by device name
+reaches) holds a module whose non-comment code names `ticks_ms`/`ticks_us`/`ticks_diff`/`ticks_add`. That is 84 of
+the 89 files, 109 jobs with the five `PER_DEVICE` files once per derived device; the other five import no tick reader
+(`test_digital_twin_poll_prewarm`, `test_math_helpers`, `test_microtest_hooks`, `test_strict_json`, `test_tmp_scratch`).
+The readers are A.U14.34's grep re-located on this base, now 10 `src/` modules and 53 sites (31 at U14:
+`asy_base_classes`, `asy_bmp3xx_driver`, `asy_i2c_driver`, `asy_isl29125_driver`, `asy_neopixel_driver`, `asy_notification_service`, `asy_system_service`, `asy_uart_comm`, `asy_uart_driver`, `asy_wifi_service`), 2 `digital_twin/` modules
+(`_flash_stall.py`, `run_generic_integration.py`) and 8 `tests/` helpers (`_async_harness.py`, `_bus_hazard_catalog.py`, `_fake_time.py`, `_fast_sleep.py`, `_sensortask_scenarios.py`, `_ticks30.py`, `_uart_comm_harness.py`, `machine.py`).
+The 25 files installing `DrivenTime` stay in: it replaces only the time of the modules handed it, while the
+asyncio scheduler and every other module read the real counter.
+
+Method. `measure` runs each job once on build-standard at -1 (its wall clock, 1349 s in all,
+every job green); `wrap` runs each on build-ticks30 at both GC stages with `TICKS30_WRAP_IN_MS` at a quarter, half and
+three quarters of that wall clock, one run per point: three runs per file per stage. The build fixes its offset at the
+process's first counter read, not at start (a 500 ms busy wait before the first read left the wrap the full 1000 ms out),
+so the batch's launcher reads `ticks_ms()` first, runs the file as `tests/_threshold_runner.py` does, and prints the
+period and the start and end ticks: every record reads period 1073741824 and start = 2**30 minus its wrap point, and a run
+counts only if its end tick is below its start (the counter crossed). On the wall clock, startup included, the last point
+of 4 short files fell after their exit (`test_asy_config_manager.py`, `test_asy_crc_checks.py`, `test_digital_twin_http_client.py`, `test_digital_twin_rp2_constants.py`; those runs passed,
+crossing nothing at that point); `rewrap`, which re-places all six of each one's runs on its in-run span (first read to
+exit), has not run yet. The load gate (CHECKLIST 12) holds each wall-time-bound file until at most 4 heavy processes run;
+another lane's four planted-fault processes (35-52 min each at 30-47 % CPU) held it for most of the last hour.
+
+State at the hand-back (partial, stopped at the tool-call valve): 377 of the 654 wrap runs recorded,
+62 of 109 jobs complete, the rest in the table as "not run yet". Every recorded run is green: exit 0, zero
+memory markers, period 1073741824, the counter crossed in all but the short files' runs named above; no failure so far,
+so (3) has nothing to fix yet. Logs: `S/u35/laneT/t4r3/l1/logs/`. Resume (it skips every recorded run):
+`S/u35/laneT/t4r3/tools/run.sh wrap3 "python3 -I audit/sweeps/ticks30_batch.py wrap $L1 $BIN && python3 -I audit/sweeps/ticks30_batch.py rewrap $L1 $BIN"`
+with `L1=S/u35/laneT/t4r3/l1`, `BIN=S/u35/laneT/t4r3/build/micropython/ports/unix/build-ticks30/micropython`, then `table $L1`.
+
+(2) is not run yet: `audit/sweeps/ticks30_twin.py <out> S/tc-t4r3 $BIN` (S/tc-t4r3 is `cp -a S/tc-int` with build-standard
+replaced by build-ticks30, sha256 7c241764...) runs, per derived device, one Run 11 with the counter 10**8 ms from its
+wrap (so each MEM_SAMPLE tick reads ms since the first read) to place the wrap mid-window, then the suite at both stages,
+recording the wrap's position in Run 11's window, the step across it, the binary's hash and any rebuild line.
+
+| file | build-standard -1 | wrap points (ms) | -1 on build-ticks30 | 32768 on build-ticks30 | time on build-ticks30 |
+|---|---|---|---|---|---|
+| `tests/test_asy_api_response.py` | 0.26 s, 25/25 passed, 0 failed, 0 skipped | 65, 130, 195 | 3/3 PASS 25/25 passed, 0 failed, 0 skipped | 3/3 PASS 25/25 passed, 0 failed, 0 skipped | 0.21-0.26 s |
+| `tests/test_asy_base_classes.py` | 0.37 s, 197/197 passed, 0 failed, 0 skipped | 92, 185, 278 | 3/3 PASS 197/197 passed, 0 failed, 0 skipped | 3/3 PASS 197/197 passed, 0 failed, 0 skipped | 0.36-0.42 s |
+| `tests/test_asy_bmp3xx_driver.py` | 13.66 s, 138/138 passed, 0 failed, 0 skipped | 3415, 6830, 10245 | 3/3 PASS 138/138 passed, 0 failed, 0 skipped | 3/3 PASS 138/138 passed, 0 failed, 0 skipped | 13.65-13.80 s |
+| `tests/test_asy_captive_dns.py` | 25.59 s, 66/66 passed, 0 failed, 0 skipped | 6398, 12795, 19192 | 3/3 PASS 66/66 passed, 0 failed, 0 skipped | 3/3 PASS 66/66 passed, 0 failed, 0 skipped | 25.60-25.64 s |
+| `tests/test_asy_config_manager.py` | 0.11 s, 240/240 passed, 0 failed, 0 skipped | 28, 55, 82 | 3/3 PASS 240/240 passed, 0 failed, 0 skipped, 2 crossed (re-place pending) | 3/3 PASS 240/240 passed, 0 failed, 0 skipped | 0.11-0.11 s |
+| `tests/test_asy_crc_checks.py` | 0.03 s, 78/78 passed, 0 failed, 0 skipped | 8, 15, 22 | 3/3 PASS 78/78 passed, 0 failed, 0 skipped, 2 crossed (re-place pending) | 3/3 PASS 78/78 passed, 0 failed, 0 skipped, 2 crossed (re-place pending) | 0.03-0.03 s |
+| `tests/test_asy_dns_client.py` | 0.87 s, 47/47 passed, 0 failed, 0 skipped | 218, 435, 652 | 3/3 PASS 47/47 passed, 0 failed, 0 skipped | 3/3 PASS 47/47 passed, 0 failed, 0 skipped | 0.87-0.92 s |
+| `tests/test_asy_fram_allocation_budget.py` | 0.06 s, 2/2 passed, 0 failed, 0 skipped | 15, 30, 45 | 3/3 PASS 2/2 passed, 0 failed, 0 skipped | 3/3 PASS 2/2 passed, 0 failed, 0 skipped | 0.11-0.11 s |
+| `tests/test_asy_fram_driver.py` | 0.16 s, 104/104 passed, 0 failed, 0 skipped | 40, 80, 120 | 3/3 PASS 104/104 passed, 0 failed, 0 skipped | 3/3 PASS 104/104 passed, 0 failed, 0 skipped | 0.16-0.21 s |
+| `tests/test_asy_fram_manager.py` | 0.57 s, 149/149 passed, 0 failed, 0 skipped | 142, 285, 428 | 3/3 PASS 149/149 passed, 0 failed, 0 skipped | 3/3 PASS 149/149 passed, 0 failed, 0 skipped | 0.62-1.42 s |
+| `tests/test_asy_fram_wire_trace.py` | 0.37 s, 9/9 passed, 0 failed, 0 skipped | 92, 185, 278 | 3/3 PASS 9/9 passed, 0 failed, 0 skipped | 3/3 PASS 9/9 passed, 0 failed, 0 skipped | 0.36-0.47 s |
+| `tests/test_asy_framing_codecs.py` | 0.52 s, 20/20 passed, 0 failed, 0 skipped | 130, 260, 390 | 3/3 PASS 20/20 passed, 0 failed, 0 skipped | 3/3 PASS 20/20 passed, 0 failed, 0 skipped | 0.57-0.62 s |
+| `tests/test_asy_i2c_driver.py` | 1.47 s, 119/119 passed, 0 failed, 0 skipped | 368, 735, 1102 | 3/3 PASS 119/119 passed, 0 failed, 0 skipped | 3/3 PASS 119/119 passed, 0 failed, 0 skipped | 1.47-1.47 s |
+| `tests/test_asy_isl29125_driver.py` | 2.47 s, 246/246 passed, 0 failed, 0 skipped | 618, 1235, 1852 | 3/3 PASS 246/246 passed, 0 failed, 0 skipped | 3/3 PASS 246/246 passed, 0 failed, 0 skipped | 2.47-2.72 s |
+| `tests/test_asy_neopixel_driver.py` | 0.72 s, 54/54 passed, 0 failed, 0 skipped | 180, 360, 540 | 3/3 PASS 54/54 passed, 0 failed, 0 skipped | 3/3 PASS 54/54 passed, 0 failed, 0 skipped | 0.67-0.77 s |
+| `tests/test_asy_notification_service.py` | 0.16 s, 70/70 passed, 0 failed, 0 skipped | 40, 80, 120 | 3/3 PASS 70/70 passed, 0 failed, 0 skipped | 3/3 PASS 70/70 passed, 0 failed, 0 skipped | 0.16-0.21 s |
+| `tests/test_asy_ntp_client.py` | 23.78 s, 196/196 passed, 0 failed, 0 skipped | 5945, 11890, 17835 | 3/3 PASS 196/196 passed, 0 failed, 0 skipped | 3/3 PASS 196/196 passed, 0 failed, 0 skipped | 23.78-24.28 s |
+| `tests/test_asy_print_log.py` | 0.37 s, 112/112 passed, 0 failed, 0 skipped | 92, 185, 278 | 3/3 PASS 112/112 passed, 0 failed, 0 skipped | 3/3 PASS 112/112 passed, 0 failed, 0 skipped | 0.37-0.47 s |
+| `tests/test_asy_scd30_driver.py` | 21.83 s, 133/133 passed, 0 failed, 0 skipped | 5458, 10915, 16372 | 3/3 PASS 133/133 passed, 0 failed, 0 skipped | 3/3 PASS 133/133 passed, 0 failed, 0 skipped | 21.82-27.19 s |
+| `tests/test_asy_sgp40_driver.py` | 7.79 s, 164/164 passed, 0 failed, 0 skipped | 1948, 3895, 5842 | 3/3 PASS 164/164 passed, 0 failed, 0 skipped | 3/3 PASS 164/164 passed, 0 failed, 0 skipped | 7.78-8.74 s |
+| `tests/test_asy_spi_driver.py` | 0.26 s, 67/67 passed, 0 failed, 0 skipped | 65, 130, 195 | 3/3 PASS 67/67 passed, 0 failed, 0 skipped | 3/3 PASS 67/67 passed, 0 failed, 0 skipped | 0.26-0.27 s |
+| `tests/test_asy_system_service.py` | 24.38 s, 198/198 passed, 0 failed, 0 skipped | 6095, 12190, 18285 | 3/3 PASS 198/198 passed, 0 failed, 0 skipped | 3/3 PASS 198/198 passed, 0 failed, 0 skipped | 24.28-25.70 s |
+| `tests/test_asy_uart_comm.py` | 61.7 s, 202/202 passed, 0 failed, 0 skipped | 15425, 30850, 46275 | 3/3 PASS 202/202 passed, 0 failed, 0 skipped | 3/3 PASS 202/202 passed, 0 failed, 0 skipped | 61.56-62.44 s |
+| `tests/test_asy_uart_driver.py` | 5.03 s, 166/166 passed, 0 failed, 0 skipped | 1258, 2515, 3772 | 3/3 PASS 166/166 passed, 0 failed, 0 skipped | 3/3 PASS 166/166 passed, 0 failed, 0 skipped | 4.98-8.49 s |
+| `tests/test_asy_uart_link_driver.py` | 3.73 s, 47/47 passed, 0 failed, 0 skipped | 932, 1865, 2798 | 3/3 PASS 47/47 passed, 0 failed, 0 skipped | 3/3 PASS 47/47 passed, 0 failed, 0 skipped | 3.78-5.28 s |
+| `tests/test_asy_udp_socket.py` | 5.93 s, 65/65 passed, 0 failed, 0 skipped | 1482, 2965, 4448 | 3/3 PASS 65/65 passed, 0 failed, 0 skipped | 3/3 PASS 65/65 passed, 0 failed, 0 skipped | 5.93-5.93 s |
+| `tests/test_asy_webserver_connections.py` | 1.32 s, 26/26 passed, 0 failed, 0 skipped | 330, 660, 990 | 3/3 PASS 26/26 passed, 0 failed, 0 skipped | 3/3 PASS 26/26 passed, 0 failed, 0 skipped | 1.32-1.42 s |
+| `tests/test_asy_webserver_service.py` | 4.08 s, 225/225 passed, 0 failed, 0 skipped | 1020, 2040, 3060 | 3/3 PASS 225/225 passed, 0 failed, 0 skipped | 3/3 PASS 225/225 passed, 0 failed, 0 skipped | 3.92-6.28 s |
+| `tests/test_asy_wifi_service.py` | 24.4 s, 270/270 passed, 0 failed, 0 skipped | 6100, 12200, 18300 | 3/3 PASS 270/270 passed, 0 failed, 0 skipped | 3/3 PASS 270/270 passed, 0 failed, 0 skipped | 24.38-24.89 s |
+| `tests/test_async_harness.py` | 0.06 s, 18/18 passed, 0 failed, 0 skipped | 15, 30, 45 | 3/3 PASS 18/18 passed, 0 failed, 0 skipped | 3/3 PASS 18/18 passed, 0 failed, 0 skipped | 0.06-0.06 s |
+| `tests/test_bus_hazard_generated.py` | 63.2 s, 39/39 passed, 0 failed, 0 skipped | 15800, 31600, 47400 | 3/3 PASS 39/39 passed, 0 failed, 0 skipped | 3/3 PASS 39/39 passed, 0 failed, 0 skipped | 63.19-63.36 s |
+| `tests/test_bus_hazard_multi_device.py` | 2.97 s, 22/22 passed, 0 failed, 0 skipped | 742, 1485, 2228 | 3/3 PASS 22/22 passed, 0 failed, 0 skipped | 3/3 PASS 22/22 passed, 0 failed, 0 skipped | 2.92-3.37 s |
+| `tests/test_digital_twin_bmp3xx.py` | 0.06 s, 26/26 passed, 0 failed, 0 skipped | 15, 30, 45 | 3/3 PASS 26/26 passed, 0 failed, 0 skipped | 3/3 PASS 26/26 passed, 0 failed, 0 skipped | 0.06-0.06 s |
+| `tests/test_digital_twin_bus_hazard_concurrency.py` | 92.77 s, 22/22 passed, 0 failed, 0 skipped | 23192, 46385, 69578 | 3/3 PASS 22/22 passed, 0 failed, 0 skipped | 3/3 PASS 22/22 passed, 0 failed, 0 skipped | 92.51-94.16 s |
+| `tests/test_digital_twin_clock_jump.py` | 24.38 s, 6/6 passed, 0 failed, 0 skipped | 6095, 12190, 18285 | 3/3 PASS 6/6 passed, 0 failed, 0 skipped | 3/3 PASS 6/6 passed, 0 failed, 0 skipped | 24.37-24.77 s |
+| `tests/test_digital_twin_construction.py[arzi]` | 1.72 s, 4/4 passed, 0 failed, 0 skipped | 430, 860, 1290 | 3/3 PASS 4/4 passed, 0 failed, 0 skipped | 3/3 PASS 4/4 passed, 0 failed, 0 skipped | 1.62-1.72 s |
+| `tests/test_digital_twin_construction.py[dev]` | 2.42 s, 4/4 passed, 0 failed, 0 skipped | 605, 1210, 1815 | 3/3 PASS 4/4 passed, 0 failed, 0 skipped | 3/3 PASS 4/4 passed, 0 failed, 0 skipped | 2.37-2.62 s |
+| `tests/test_digital_twin_construction.py[grkizi]` | 1.68 s, 4/4 passed, 0 failed, 0 skipped | 420, 840, 1260 | 3/3 PASS 4/4 passed, 0 failed, 0 skipped | 3/3 PASS 4/4 passed, 0 failed, 0 skipped | 1.62-1.78 s |
+| `tests/test_digital_twin_construction.py[klkizi]` | 1.63 s, 4/4 passed, 0 failed, 0 skipped | 408, 815, 1222 | 3/3 PASS 4/4 passed, 0 failed, 0 skipped | 3/3 PASS 4/4 passed, 0 failed, 0 skipped | 1.62-1.72 s |
+| `tests/test_digital_twin_construction.py[schlafzi]` | 1.67 s, 4/4 passed, 0 failed, 0 skipped | 418, 835, 1252 | 3/3 PASS 4/4 passed, 0 failed, 0 skipped | 3/3 PASS 4/4 passed, 0 failed, 0 skipped | 1.62-1.77 s |
+| `tests/test_digital_twin_construction.py[wozi]` | 1.98 s, 4/4 passed, 0 failed, 0 skipped | 495, 990, 1485 | 3/3 PASS 4/4 passed, 0 failed, 0 skipped | 3/3 PASS 4/4 passed, 0 failed, 0 skipped | 2.02-2.17 s |
+| `tests/test_digital_twin_fram.py` | 0.52 s, 54/54 passed, 0 failed, 0 skipped | 130, 260, 390 | 3/3 PASS 54/54 passed, 0 failed, 0 skipped | 3/3 PASS 54/54 passed, 0 failed, 0 skipped | 0.57-0.67 s |
+| `tests/test_digital_twin_fram_crash_points.py` | 9.39 s, 3/3 passed, 0 failed, 0 skipped | 2348, 4695, 7042 | 3/3 PASS 3/3 passed, 0 failed, 0 skipped | 3/3 PASS 3/3 passed, 0 failed, 0 skipped | 9.24-11.49 s |
+| `tests/test_digital_twin_generic_wiring.py` | 0.06 s, 15/15 passed, 0 failed, 0 skipped | 15, 30, 45 | 3/3 PASS 15/15 passed, 0 failed, 0 skipped | 3/3 PASS 15/15 passed, 0 failed, 0 skipped | 0.06-0.11 s |
+| `tests/test_digital_twin_hot_replug.py` | 7.79 s, 2/2 passed, 0 failed, 0 skipped | 1948, 3895, 5842 | 3/3 PASS 2/2 passed, 0 failed, 0 skipped | 3/3 PASS 2/2 passed, 0 failed, 0 skipped | 7.68-8.09 s |
+| `tests/test_digital_twin_http_client.py` | 0.06 s, 38/38 passed, 0 failed, 0 skipped | 15, 30, 45 | 3/3 PASS 38/38 passed, 0 failed, 0 skipped, 2 crossed (re-place pending) | 3/3 PASS 38/38 passed, 0 failed, 0 skipped, 2 crossed (re-place pending) | 0.06-0.07 s |
+| `tests/test_digital_twin_isl29125.py` | 0.06 s, 47/47 passed, 0 failed, 0 skipped | 15, 30, 45 | 3/3 PASS 47/47 passed, 0 failed, 0 skipped | 3/3 PASS 47/47 passed, 0 failed, 0 skipped | 0.06-0.07 s |
+| `tests/test_digital_twin_isl29125_autorange.py` | 54.17 s, 22/22 passed, 0 failed, 0 skipped | 13542, 27085, 40628 | 3/3 PASS 22/22 passed, 0 failed, 0 skipped | 3/3 PASS 22/22 passed, 0 failed, 0 skipped | 54.09-54.15 s |
+| `tests/test_digital_twin_launch.py` | 8.09 s, 26/26 passed, 0 failed, 0 skipped | 2022, 4045, 6068 | 3/3 PASS 26/26 passed, 0 failed, 0 skipped | 3/3 PASS 26/26 passed, 0 failed, 0 skipped | 8.08-8.08 s |
+| `tests/test_digital_twin_loop_end.py[arzi]` | 17.51 s, 8/8 passed, 0 failed, 0 skipped | 4378, 8755, 13132 | 3/3 PASS 8/8 passed, 0 failed, 0 skipped | 3/3 PASS 8/8 passed, 0 failed, 0 skipped | 17.61-18.06 s |
+| `tests/test_digital_twin_loop_end.py[dev]` | 3.47 s, 1/8 passed, 0 failed, 7 skipped | 868, 1735, 2602 | 3/3 PASS 1/8 passed, 0 failed, 7 skipped | 3/3 PASS 1/8 passed, 0 failed, 7 skipped | 3.47-3.62 s |
+| `tests/test_digital_twin_loop_end.py[grkizi]` | 2.62 s, 1/8 passed, 0 failed, 7 skipped | 655, 1310, 1965 | 3/3 PASS 1/8 passed, 0 failed, 7 skipped | 3/3 PASS 1/8 passed, 0 failed, 7 skipped | 2.62-2.72 s |
+| `tests/test_digital_twin_loop_end.py[klkizi]` | 2.62 s, 1/8 passed, 0 failed, 7 skipped | 655, 1310, 1965 | 3/3 PASS 1/8 passed, 0 failed, 7 skipped | 3/3 PASS 1/8 passed, 0 failed, 7 skipped | 2.62-2.72 s |
+| `tests/test_digital_twin_loop_end.py[schlafzi]` | 2.62 s, 1/8 passed, 0 failed, 7 skipped | 655, 1310, 1965 | 3/3 PASS 1/8 passed, 0 failed, 7 skipped | 3/3 PASS 1/8 passed, 0 failed, 7 skipped | 2.62-2.77 s |
+| `tests/test_digital_twin_loop_end.py[wozi]` | 3.12 s, 1/8 passed, 0 failed, 7 skipped | 780, 1560, 2340 | 3/3 PASS 1/8 passed, 0 failed, 7 skipped | 3/3 PASS 1/8 passed, 0 failed, 7 skipped | 3.07-3.17 s |
+| `tests/test_digital_twin_machine.py` | 1.17 s, 113/113 passed, 0 failed, 0 skipped | 292, 585, 878 | 3/3 PASS 113/113 passed, 0 failed, 0 skipped | 3/3 PASS 113/113 passed, 0 failed, 0 skipped | 1.17-1.22 s |
+| `tests/test_digital_twin_machine_uart.py` | 3.57 s, 25/25 passed, 0 failed, 0 skipped | 892, 1785, 2678 | 3/3 PASS 25/25 passed, 0 failed, 0 skipped | 3/3 PASS 25/25 passed, 0 failed, 0 skipped | 3.57-3.72 s |
+| `tests/test_digital_twin_network_neopixel.py` | 14.56 s, 44/44 passed, 0 failed, 0 skipped | 3640, 7280, 10920 | 3/3 PASS 44/44 passed, 0 failed, 0 skipped | 3/3 PASS 44/44 passed, 0 failed, 0 skipped | 14.55-14.70 s |
+| `tests/test_digital_twin_ntp.py` | 32.91 s, 16/16 passed, 0 failed, 0 skipped | 8228, 16455, 24682 | 3/3 PASS 16/16 passed, 0 failed, 0 skipped | 3/3 PASS 16/16 passed, 0 failed, 0 skipped | 32.89-34.11 s |
+| `tests/test_digital_twin_rp2_constants.py` | 0.03 s, 8/8 passed, 0 failed, 0 skipped | 8, 15, 22 | 3/3 PASS 8/8 passed, 0 failed, 0 skipped, 2 crossed (re-place pending) | 3/3 PASS 8/8 passed, 0 failed, 0 skipped, 2 crossed (re-place pending) | 0.03-0.03 s |
+| `tests/test_digital_twin_run_generic_integration.py` | 1.32 s, 43/43 passed, 0 failed, 0 skipped | 330, 660, 990 | 3/3 PASS 43/43 passed, 0 failed, 0 skipped | 3/3 PASS 43/43 passed, 0 failed, 0 skipped | 1.32-1.37 s |
+| `tests/test_digital_twin_scd30.py` | 0.21 s, 55/55 passed, 0 failed, 0 skipped | 52, 105, 158 | 3/3 PASS 55/55 passed, 0 failed, 0 skipped | 3/3 PASS 55/55 passed, 0 failed, 0 skipped | 0.21-0.36 s |
+| `tests/test_digital_twin_sensortask_integration.py[arzi]` | 59.74 s, 17/18 passed, 0 failed, 1 skipped | 14935, 29870, 44805 | 3/3 PASS 17/18 passed, 0 failed, 1 skipped | 2/2 PASS 17/18 passed, 0 failed, 1 skipped | 59.70-60.74 s |
+| `tests/test_digital_twin_sensortask_integration.py[dev]` | 21.88 s, 5/18 passed, 0 failed, 13 skipped |  | not run yet | not run yet | - |
+| `tests/test_digital_twin_sensortask_integration.py[grkizi]` | 19.93 s, 4/18 passed, 0 failed, 14 skipped |  | not run yet | not run yet | - |
+| `tests/test_digital_twin_sensortask_integration.py[klkizi]` | 20.02 s, 4/18 passed, 0 failed, 14 skipped |  | not run yet | not run yet | - |
+| `tests/test_digital_twin_sensortask_integration.py[schlafzi]` | 20.02 s, 4/18 passed, 0 failed, 14 skipped |  | not run yet | not run yet | - |
+| `tests/test_digital_twin_sensortask_integration.py[wozi]` | 20.68 s, 4/18 passed, 0 failed, 14 skipped |  | not run yet | not run yet | - |
+| `tests/test_digital_twin_sgp40.py` | 0.06 s, 24/24 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_digital_twin_timer_pool.py[arzi]` | 10.75 s, 4/4 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_digital_twin_timer_pool.py[dev]` | 12.5 s, 4/4 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_digital_twin_timer_pool.py[grkizi]` | 10.75 s, 4/4 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_digital_twin_timer_pool.py[klkizi]` | 10.7 s, 4/4 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_digital_twin_timer_pool.py[schlafzi]` | 10.75 s, 4/4 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_digital_twin_timer_pool.py[wozi]` | 11.5 s, 4/4 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_digital_twin_uart_comm_hazard.py` | 1.67 s, 10/10 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_digital_twin_uart_field_sweep.py` | 59.74 s, 10/10 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_digital_twin_uart_link.py` | 61.41 s, 22/22 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_digital_twin_unix_port_unretrieved_report.py` | 0.03 s, 10/10 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_digital_twin_wifi_modes.py` | 25.68 s, 1/1 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_driven_time.py` | 0.03 s, 19/19 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_fakes.py` | 0.06 s, 55/55 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_fram_integration.py` | 1.12 s, 12/12 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_generated_boot_entry.py` | 0.06 s, 5/5 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_machine_uart_link.py` | 0.16 s, 18/18 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_neopixel_wifi_integration.py` | 2.62 s, 8/8 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_notification_fram_integration.py` | 0.21 s, 3/3 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_notification_neopixel_integration.py` | 0.11 s, 6/6 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_notification_scd30_integration.py` | 0.42 s, 4/4 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_notification_scd30_sgp40_integration.py` | 0.37 s, 2/2 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_notification_sgp40_integration.py` | 0.11 s, 3/3 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_ntp_fram_system_integration.py` | 7.59 s, 12/12 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_ntp_wifi_dns_integration.py` | 1.47 s, 13/13 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_readiness_gates.py` | 0.11 s, 14/14 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_reset_call_site_invariant.py` | 0.31 s, 3/3 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_sensortask.py[arzi]` | 32.85 s, 105/105 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_sensortask.py[dev]` | 52.22 s, 105/105 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_sensortask.py[grkizi]` | 33.18 s, 105/105 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_sensortask.py[klkizi]` | 33.31 s, 105/105 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_sensortask.py[schlafzi]` | 32.97 s, 105/105 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_sensortask.py[wozi]` | 37.36 s, 105/105 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_setter_microdot_integration.py` | 0.22 s, 34/34 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_shared_helpers.py` | 0.42 s, 43/43 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_ticks_rollover.py` | 3.62 s, 23/23 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_uart_comm_cancel_sweep.py` | 37.32 s, 10/10 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_uart_comm_hazard.py` | 97.98 s, 123/123 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_voc_algorithm.py` | 2.02 s, 46/46 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_website_build_integration.py` | 0.17 s, 7/7 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |
+| `tests/test_write_counters.py` | 0.03 s, 9/9 passed, 0 failed, 0 skipped |  | not run yet | not run yet | - |

@@ -9,7 +9,7 @@ repo=$(cd "$(dirname "$0")/../.." && pwd)
 src=${PICO_TOOLCHAIN_DIR:-/root/pico-toolchain}/micropython
 mp="$scratch/micropython"
 bin="$mp/ports/unix/build-ticks30/micropython"
-py=/home/user/sensors/.venv/bin/python
+py=${PYTHON:-/home/user/sensors/.venv/bin/python}  # the interpreter from the environment, this one by default
 period=1073741824  # 1 << 30: rp2's MICROPY_PY_TIME_TICKS_PERIOD (31-bit small ints), as a literal so make's shell needs no quoting
 
 build() {
