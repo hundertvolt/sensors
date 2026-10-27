@@ -177,3 +177,14 @@ source.
   SGP40 round (a write the deadline sent outside one fails, bitten through the twin); the bench NTP backoff bounds read
   the bench device's own retry pair as the build does (no value change today; a TOML stating the keys would have left
   them wrong). A lane command that read its own background-job output file was refused and not worked around.
+- N11e (lead, 21:56): the UART hazard checks now poll at the rates the bench device's firmware ships (2/50 ms, read from
+  its generated build), not the harness's 1 ms; their virtual bound re-measured (22440 ms) and both bites red at both
+  stages. Six permanently stalled listeners drain for 1 s instead of 5 s (the slowest finishing drain is 186 ms; each
+  verdict unchanged), cutting test_asy_uart_comm from 63 s to 39 s. The last real waits are tagged and measured, no
+  value changed. Lead's call (CHECKLIST 1d): the factory-state hotspot test on the driven clock at the 250 ms look step
+  (396 ms instead of 953 ms; both plants still fail it). Lane deviation: one chained `rm -rf` on a variable path, on its
+  own scratch copy.
+- Found by N11e, checked by the lead: the twin tests' "one device per distinct wiring" pick ignores each bus's own
+  settings (I2C frequency and timeout, UART poll rates), and the twin shared-bus fixture fixes its timeout while
+  claiming to build the bus as generated. No pick changes today (0 of 14 call shapes); fixed in U35 anyway (WR1) so
+  a TOML that changes only a bus setting cannot hide behind it.

@@ -96,6 +96,8 @@ _DEADLOCK_WAIT_S = 0.2
 _FAST_POLL_WAIT_MS = 1
 # @tunable l1.asy_uart_driver_idle_poll_ms = 40
 _IDLE_POLL_MS = 40
+# @tunable l1.asy_uart_driver_ringless_poll_ms = 1
+_RINGLESS_POLL_MS = 1  # both rates of the ring-less UART: its two waits have deadlines, so only poll_wait_ms is slept
 # @tunable l1.asy_uart_driver_silent_line_timeout_ms = 30
 _SILENT_LINE_TIMEOUT_MS = 30
 # @tunable l1.asy_uart_driver_feed_delay_ms = 3
@@ -3148,7 +3150,7 @@ def test_a_channel_closed_during_the_copy_fails_the_copy_and_never_raises() -> N
 
 def test_a_uart_with_no_receive_ring_is_never_ready_and_reads_nothing() -> None:
     DMA.reset_registry()
-    uart = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=1, poll_idle_ms=1)
+    uart = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=_RINGLESS_POLL_MS, poll_idle_ms=_RINGLESS_POLL_MS)
     unpaced(uart)
     uart.poller = _StepPoller([select.POLLOUT])  # type: ignore[assignment]
     fake(uart).feed_rx(b"abcd")

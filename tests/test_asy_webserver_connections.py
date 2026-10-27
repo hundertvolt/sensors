@@ -93,6 +93,8 @@ _UNTIL_POLL_MS = 5
 _UNTIL_POLLS = 400
 # @tunable l1.asy_webserver_connections_feeder_tick_ms = 10
 _FEEDER_TICK_MS = 10
+# @tunable l1.asy_webserver_connections_refusal_per_call_s = 30.0
+_REFUSAL_PER_CALL_S = 30.0  # the per-call bound of the refusal, window and reset tests, which no call nears
 
 
 # ---------------------------------------------------------------------------
@@ -626,8 +628,8 @@ async def _until(predicate: "Callable[[], Awaitable[bool]]") -> bool:
 
 
 def test_seven_refusals_count_seven_and_spend_one_slot() -> None:
-    loud = _make_service(max_connections=1, per_call_timeout_s=30.0, debug=2)
-    quiet = _make_service(max_connections=1, per_call_timeout_s=30.0, debug=0)
+    loud = _make_service(max_connections=1, per_call_timeout_s=_REFUSAL_PER_CALL_S, debug=2)
+    quiet = _make_service(max_connections=1, per_call_timeout_s=_REFUSAL_PER_CALL_S, debug=0)
     console = _Console()
 
     async def refuse_seven(service: WebserverService) -> "tuple[int, int, list[tuple[int, str]], list[_Writer], int]":
@@ -681,7 +683,7 @@ def test_dropped_connections_leave_the_count_after_a_day() -> None:
     # The service's own uptime source drives the window; the error log keeps every entry regardless.
     uptime = _Uptime()
     uptime.now = 5000  # not on an hour boundary: the window's edge is the event's hour, 23-24 hours on
-    service = _make_service(max_connections=1, per_call_timeout_s=30.0, uptime=uptime)
+    service = _make_service(max_connections=1, per_call_timeout_s=_REFUSAL_PER_CALL_S, uptime=uptime)
 
     async def refuse(times: int) -> None:
         for _ in range(times):
@@ -712,7 +714,7 @@ def test_dropped_connections_leave_the_count_after_a_day() -> None:
 
 
 def test_reset_errors_clears_the_dropped_count() -> None:
-    service = _make_service(max_connections=1, per_call_timeout_s=30.0)
+    service = _make_service(max_connections=1, per_call_timeout_s=_REFUSAL_PER_CALL_S)
     body = b'{"ResetErrors": true}'
     put = _head("PUT /status HTTP/1.1", "Content-Type: application/json", f"Content-Length: {len(body)}") + body
 

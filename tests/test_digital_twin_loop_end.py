@@ -31,7 +31,7 @@ import run_generic_integration  # noqa: E402 - imported after the prewarm and th
 from _async_harness import cancel, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim
 from _fake_time import DrivenTime  # noqa: E402 - imported after the prewarm and the UDP shim
-from _generated_module import ERROR_LEVEL, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
+from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _port_bands import PortAllocator  # noqa: E402 - imported after the prewarm and the UDP shim
 from _src_const import src_int  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -67,7 +67,8 @@ _HAD_POR_BIT = 0x100  # ResetBits' CHIP_RESET HAD_POR: power-on or brown-out
 _BOOT_LIMIT_MS = 20000  # a boot past it is a failure of its own, never a planted fault
 # @tunable l2.loop_end_run_timeout_s = 30.0
 _RUN_TIMEOUT_S = 30.0
-_POLL_MS = 5
+# @tunable l2.loop_end_poll_ms = 5
+_POLL_MS = 5  # one look of the boot watcher on the driven clock, and of the next boot's /status wait in real time
 
 _scratch = TmpScratch(f"dtle_{device}")
 _ports = PortAllocator("test_digital_twin_loop_end", device)
@@ -204,7 +205,7 @@ def _next_boot_reads(cfg_path: str) -> "dict[str, object]":
         module = _fresh_board()
         module.__dict__["webserver"] = None  # the global the runner's wait reads: this boot's, not the ended one's
         port = _ports.next()
-        main_task = asyncio.create_task(module.main(watchdog=machine.WDT(timeout=8000), cfg_path=cfg_path, debug=ERROR_LEVEL, web_host="127.0.0.1", web_port=port))
+        main_task = asyncio.create_task(module.main(watchdog=boot_entry_watchdog(module, device), cfg_path=cfg_path, debug=ERROR_LEVEL, web_host="127.0.0.1", web_port=port))
         try:
             await _wired(module)
             phase = machine.mem_backup(1)

@@ -107,6 +107,8 @@ _NO_REPLY_FETCH_TIMEOUT_MS = 100
 _PAST_FETCH_TIMEOUT_MS = 200
 # @tunable l1.asy_ntp_client_responder_poll_tries = 500
 _RESPONDER_POLL_TRIES = 500
+# @tunable l1.asy_ntp_client_responder_poll_ms = 1
+_RESPONDER_POLL_MS = 1  # the real sleep between those looks, in the receive-error responder
 # @tunable l1.asy_ntp_client_fake_server_poll_tries = 1000
 _FAKE_SERVER_POLL_TRIES = 1000
 # @tunable l1.asy_ntp_client_synced_poll_tries = 50
@@ -430,7 +432,7 @@ async def _run_sync_task_briefly(client: NTPClient) -> "tuple[bool, ErrorLog]":
 
 def _serve_through(exc: OSError, times: int) -> "tuple[bytes | None, BaseException | None]":
     # One query to a FakeNtpServer whose receive raises `exc` `times` times: what the querier got and what serve_once() raised.
-    server = FakeNtpServer(_PORTS.next(), poll_ms=1, poll_tries=_RESPONDER_POLL_TRIES)
+    server = FakeNtpServer(_PORTS.next(), poll_ms=_RESPONDER_POLL_MS, poll_tries=_RESPONDER_POLL_TRIES)
     server.sock = _RaisingRecvSocket(server.sock, exc, times)  # type: ignore[assignment]  # the stand-in socket
     querier = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     querier.setblocking(False)

@@ -408,6 +408,7 @@ def test_a_recovery_during_a_held_bus_clear_lets_no_sibling_transfer_in() -> Non
     assert_no_transfer_inside_the_recovery(fake_bus, marks[0])
 
 
+# @tunable l1.bus_hazard_multi_device_host_stall_ms = 60
 _HOST_STALL_MS = 60  # a stall past asy_i2c_driver's 50 ms SCL-release bound
 
 

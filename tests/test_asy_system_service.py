@@ -693,7 +693,10 @@ def test_an_arm_failure_falls_back_to_a_sleep_and_still_starts_every_trigger() -
 # The reset path: reboot_system()/reboot_bootloader() through the command gate, and _reboot() - record, flush, pause, arm
 # ---------------------------------------------------------------------------
 
+# @tunable l1.system_service_sequence_bound_ms = 30_000
 _SETTLE_MS = 30_000  # a limit, not a timing claim: the 256 KB erase's sequence ends far inside it
+# @tunable l1.system_service_sequence_poll_ms = 1
+_SEQUENCE_POLL_MS = 1  # how often _sequence_done() looks at the sequence's task again, in real time
 
 
 async def _real_time(ms: int) -> None:
@@ -711,7 +714,7 @@ async def _sequence_done(svc: SystemService) -> None:
     while not task.done():
         if time.ticks_diff(time.ticks_ms(), start) > _SETTLE_MS:
             raise AssertionError("the shutdown sequence never finished")
-        await _real_time(1)
+        await _real_time(_SEQUENCE_POLL_MS)
     await task
 
 
@@ -1038,7 +1041,22 @@ def test_a_write_accepted_inside_the_countdown_is_on_flash_before_the_reset() ->
 # ---------------------------------------------------------------------------
 
 _ERASE_UNIT: int = src_int("src/asy_fram_manager.py", "_ERASE_UNIT")
+# @tunable l1.system_service_hang_watch_ms = 1000
 _HANG_WATCH_MS = 1000  # real time a hung step is watched: a fed step feeds well inside it
+# @tunable l1.system_service_hang_reach_ms = 300
+_HANG_REACH_MS = 300  # real time a command's sequence gets to reach the step a hang is planted in
+# @tunable l1.system_service_poll_ms = 10
+_POLL_MS = 10  # how often a bounded real-time wait for the supervisor's escalation looks again
+# @tunable l1.system_service_budget_poll_ms = 20
+_BUDGET_POLL_MS = 20  # how often the starved-supervisor wait looks again within the watchdog's budget
+# @tunable l1.system_service_arm_settle_ms = 10
+_ARM_SETTLE_MS = 10  # real time the escalation's arm gets to pause storage before the test reads the chip
+# @tunable l1.system_service_quiet_window_ms = 20
+_QUIET_WINDOW_MS = 20  # real time a command's refusal or its wait for the supervisor is watched not to move on
+# @tunable l1.system_service_held_window_ms = 50
+_HELD_WINDOW_MS = 50  # real time a sequence is watched holding behind an in-flight write or a PUT's lock
+# @tunable l1.system_service_stalled_window_ms = 100
+_STALLED_WINDOW_MS = 100  # real time a sequence is watched hung in its flush step
 _PURPOSES = ("_RR_REBOOT", "_RR_BOOTLOADER", "_RR_CONFIG_RESET", "_RR_FRAM_ERASED")
 _REST_WORDS = {"_RR_REBOOT": "reboot", "_RR_BOOTLOADER": "bootloader", "_RR_CONFIG_RESET": "resetconfig", "_RR_FRAM_ERASED": "erasefram"}
 
@@ -1440,7 +1458,7 @@ def _refused(rig: _Rig, purpose: str, *, before: "Callable[[], Coroutine[object,
         assert len(svc._reset_timer.arms) == arms
         assert machine.mem_backup(0)[1] == record, purpose  # a refusal records nothing
         fed = rig.wdt.feed_count
-        await _real_time(20)
+        await _real_time(_QUIET_WINDOW_MS)
         assert svc._supervisor_parked.is_set() is False and sup is not None and not sup.done()
         if not starved:
             assert rig.wdt.feed_count > fed, purpose  # the supervisor still feeds
@@ -1903,7 +1921,7 @@ def test_a_command_before_the_supervisor_runs_waits_for_its_first_pass() -> None
         await rig.start(supervise=False)
         fed = rig.wdt.feed_count
         assert await rig.svc.reboot_system() is True
-        await _real_time(20)
+        await _real_time(_QUIET_WINDOW_MS)
         assert rig.svc._shutdown_task is not None and not rig.svc._shutdown_task.done()
         rig.svc.feed_watchdog()
         assert rig.wdt.feed_count == fed + 1  # S1's first own feed alone
@@ -1983,7 +2001,7 @@ def test_a_fram_write_in_flight_completes_both_blocks_and_a_later_one_is_refused
             writer = asyncio.create_task(rig.svc.pr.err_s("in flight", errno=code("E", "CALLBACK")))
             await between.wait()
             assert await _word(rig.svc, purpose)() is True
-            await _real_time(50)
+            await _real_time(_HELD_WINDOW_MS)
             assert not rig.svc._shutdown_task.done()  # type: ignore[union-attr]  # S3 waits out the write
             gate.set()
             await rig.settle()
@@ -2111,9 +2129,9 @@ def test_an_escalation_armed_during_the_erase_preflight_refuses_the_command() ->
         for _ in range(_RUN_BOUND_S * 100):
             if rig.svc._reset_armed:
                 break
-            await _real_time(10)
+            await _real_time(_POLL_MS)
         assert rig.svc._reset_armed, "the supervisor never escalated"
-        await _real_time(10)  # the escalation's arm paused storage
+        await _real_time(_ARM_SETTLE_MS)  # the escalation's arm paused storage
         memory = bytes(rig.chip.memory)
         release.set()
         assert await command is False
@@ -2162,7 +2180,7 @@ def test_a_command_accepted_while_the_escalation_logs_keeps_its_own_reset() -> N
             for _ in range(_RUN_BOUND_S * 100):
                 if reached.is_set():
                     break
-                await _real_time(10)
+                await _real_time(_POLL_MS)
             assert reached.is_set(), "the supervisor never logged its budget reboot"
             fed = rig.wdt.feed_count
             assert await _word(rig.svc, purpose)() is True
@@ -2220,7 +2238,7 @@ def test_the_escalation_decides_the_reset_before_its_entry_write() -> None:
         for _ in range(_RUN_BOUND_S * 100):
             if _armed(rig.svc):
                 break
-            await _real_time(10)
+            await _real_time(_POLL_MS)
         await rig.stop(sup)
 
     with FastAsyncSleep():
@@ -2255,7 +2273,7 @@ def test_the_systems_own_log_reset_is_refused_from_the_reset_decision_on() -> No
         for _ in range(_RUN_BOUND_S * 100):
             if _armed(rig.svc):
                 break
-            await _real_time(10)
+            await _real_time(_POLL_MS)
         await rig.stop(sup)
         return await rig.svc.get_error_counter()
 
@@ -2353,7 +2371,7 @@ def _hang(rig: _Rig, purpose: str, plant: "Callable[[], Coroutine[object, object
         sup = await rig.start()
         await plant()
         assert await _word(rig.svc, purpose)() is True
-        await _real_time(300)  # the sequence reaches the planted hang
+        await _real_time(_HANG_REACH_MS)  # the sequence reaches the planted hang
         fed = rig.wdt.feed_count
         await _real_time(_HANG_WATCH_MS)
         assert rig.wdt.feed_count == fed, (purpose, fed, rig.wdt.feed_count)
@@ -2452,7 +2470,7 @@ def test_a_command_that_hangs_before_its_arm_reads_command_incomplete_at_the_nex
         async def scenario(rig: _Rig = rig) -> None:
             sup = await rig.start()
             assert await rig.svc.reboot_system() is True
-            await _real_time(100)
+            await _real_time(_STALLED_WINDOW_MS)
             assert rig.svc._shutdown_task is not None and not rig.svc._shutdown_task.done()
             await rig.stop(sup)
 
@@ -3643,7 +3661,7 @@ def test_a_config_put_mid_write_when_a_command_starts_is_flushed_before_the_arm(
             put = asyncio.create_task(_put(app, "/sensors", {"RESTMOD": {"Count": 9}}))
             await pushing.wait()
             assert _result(await _put(app, "/system", {"SystemCmd": _REST_WORDS[purpose]})) == {"SystemCmd": "Valid"}
-            await _real_time(50)
+            await _real_time(_HELD_WINDOW_MS)
             sequence = rig.svc._shutdown_task
             assert sequence is not None and not sequence.done() and not _armed(rig.svc)  # S2 waits on the PUT's lock
             assert _count_in(path, "RESTMOD") == 5  # the PUT's value is not on flash while its push runs
@@ -3821,7 +3839,7 @@ def test_a_command_accepted_while_the_stack_escalation_logs_keeps_its_own_reset(
         for _ in range(_RUN_BOUND_S * 100):
             if reached.is_set():
                 break
-            await _real_time(10)
+            await _real_time(_POLL_MS)
         assert reached.is_set(), "the supervisor never escalated"
         records.append(machine.mem_backup(0)[1])
         assert await rig.svc.reboot_system() is True
@@ -3892,7 +3910,7 @@ def test_an_escalation_whose_entry_write_waits_on_a_held_lock_still_records_code
         start = time.ticks_ms()
         asy_print_log.report_if_fatal(_stack_error())
         while not _armed(rig.svc) and time.ticks_diff(time.ticks_ms(), start) < budget_ms:
-            await _real_time(20)
+            await _real_time(_BUDGET_POLL_MS)
         seen.extend((time.ticks_diff(time.ticks_ms(), start), int(_armed(rig.svc)), machine.mem_backup(0)[1], rig.wdt.feed_count - fed))
         await _yields(10)
         seen.append(rig.wdt.feed_count - fed)  # nothing feeds after the starve

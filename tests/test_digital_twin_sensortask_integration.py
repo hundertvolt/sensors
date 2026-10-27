@@ -861,10 +861,12 @@ def test_a_factory_state_unit_returns_to_the_hotspot_after_every_window() -> Non
     # After its boot it touches no wired part, no FRAM write and no LED frame among them (measured), so one device runs it.
     _first_device_only()
 
-    async def scenario() -> None:
-        await _boot()
+    async def scenario(clock: DrivenTime) -> None:
+        await _driven(clock, "the boot", _boot())
         conn: WifiService = module.conn
-        asy_wifi_service.asyncio = _SteppedAsyncio(1)  # type: ignore[assignment, attr-defined]  # no join, so no wait is under test
+        held = asy_wifi_service.asyncio  # type: ignore[attr-defined]
+        # No join, so no wait is under test: each is cut to one step on the driven clock, a step no longer than one look.
+        asy_wifi_service.asyncio = _SteppedAsyncio(int(_WAIT_POLL_S * 1000), clock=clock)  # type: ignore[assignment, attr-defined]
         tasks = [conn.start_asy_connect(), conn.start_asy_hotspot_timeout()]
         previous: asyncio.Task[None] | None = None
 
@@ -873,7 +875,7 @@ def test_a_factory_state_unit_returns_to_the_hotspot_after_every_window() -> Non
 
         try:
             for window in range(3):  # the boot's own window, then one after each of two ends
-                assert await _wait_until(opened_after(previous), timeout_s=_HOTSPOT_WAIT_TIMEOUT_S), (
+                assert await _wait_until(opened_after(previous), timeout_s=_HOTSPOT_WAIT_TIMEOUT_S, clock=clock), (
                     f"window {window}: the hotspot never opened, phase {conn._conn_phase}"
                 )
                 previous = conn._dns_server_task
@@ -882,10 +884,10 @@ def test_a_factory_state_unit_returns_to_the_hotspot_after_every_window() -> Non
                     timer.callback(timer)  # type: ignore[misc]  # the window's end
             assert conn._conn_phase == _HOTSPOT_PHASE and conn.is_hotspot_active(), conn._conn_phase
         finally:
-            asy_wifi_service.asyncio = asyncio  # type: ignore[attr-defined]
+            asy_wifi_service.asyncio = held  # type: ignore[attr-defined]
             await _stop_hotspot(conn, tasks)
 
-    run(scenario())
+    run(_on_driven_clock(scenario))
 
 
 def test_a_failing_wlan_status_keeps_the_link_and_warns_once_per_unreadable_tick() -> None:

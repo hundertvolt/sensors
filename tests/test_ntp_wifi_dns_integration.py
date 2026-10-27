@@ -70,6 +70,8 @@ _SERVE_WAIT_S = 5
 _STATE_POLL_MS = 20
 # @tunable l1.asy_ntp_client_synced_poll_tries = 50
 _SYNCED_POLL_TRIES = 50
+# @tunable ntp.fetch_timeout_ms = 5000
+_FETCH_TIMEOUT_MS = 5000  # the generated wiring's fetch timeout (buildgen/codegen.py), which _make_ntp() passes by default
 # @tunable l1.asy_ntp_client_no_reply_fetch_timeout_ms = 100
 _FETCH_TIMEOUT_NO_REPLY_MS = 100
 # @tunable l1.ntp_wifi_dns_integration_past_fetch_timeout_ms = 150
@@ -108,7 +110,7 @@ def _make_ntp(
     conn: WifiService,
     ntp_host: str,
     cfg_path: "str | None" = None,
-    ntp_fetch_timeout_ms: int = 5000,  # the generated wiring's fetch timeout
+    ntp_fetch_timeout_ms: int = _FETCH_TIMEOUT_MS,
 ) -> NTPClient:
     # The generated build_system() wiring (buildgen/codegen.py): the three providers passed positionally, the real
     # bound methods, not a lambda standing in for them.

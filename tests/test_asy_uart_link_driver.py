@@ -16,8 +16,9 @@ from _cancel_sweep import assert_unlocked, cancel_at_each_await
 from _error_codes import code
 from _fake_time import DrivenTime
 from _fast_sleep import FastAsyncSleep
-from _generated_tree import devices
+from _generated_tree import devices, require_fresh
 from _src_const import src_bytes, src_int
+from _twin_devices import device_with, wiring_plan
 from _uart_comm_harness import POLL_WAIT_MS, RUN_LIMIT_S, TIMEOUT_MS, PollRoundClock, awaited_with_listener, copied_out, transfer_limits
 from _uart_comm_hazard_common import register_both_crc_modes
 from _write_counters import WriteCountingOpen
@@ -47,7 +48,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
-    from typing import TypeVar
+    from typing import TypedDict, TypeVar
 
     from _uart_comm_hazard_common import CrcMaker
 
@@ -56,7 +57,13 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
+    class PollRates(TypedDict, total=False):
+        # The poll keywords a UART construction passes; one it leaves out is the driver's own default.
+        poll_wait_ms: int
+        poll_idle_ms: int
+
 PAYLOAD_SIZE = 8
+_HARNESS_RATES: "PollRates" = {"poll_wait_ms": POLL_WAIT_MS, "poll_idle_ms": POLL_WAIT_MS}
 # @tunable l1.asy_uart_link_driver_round_poll_s = 0.005
 _ROUND_POLL_S = 0.005
 # @tunable l1.asy_uart_link_driver_ticker_step_ms = 1
@@ -75,11 +82,13 @@ _BANNER: bytes = src_bytes("src/asy_uart_link_driver.py", "_BANNER")
 class Pair:
     # One initiator and one responder UARTLinkDriver across a real crossover link - the same
     # shape tests/_uart_comm_harness.py's own Pair uses for bare UARTComm objects, one layer up.
-    def __init__(self, payload_size: int = PAYLOAD_SIZE, timeout: int = TIMEOUT_MS, crc: "CrcMaker" = None) -> None:
+    def __init__(self, payload_size: int = PAYLOAD_SIZE, timeout: int = TIMEOUT_MS, crc: "CrcMaker" = None, rates: "tuple[PollRates, PollRates] | None" = None) -> None:
         # `crc` builds one CRC per bus (CRCBase carries state), so both ends agree; None leaves the buses without one.
+        # `rates` polls the initiator's bus and the responder's as given; None polls both at the harness's POLL_WAIT_MS.
+        rates_a, rates_b = rates if rates is not None else (_HARNESS_RATES, _HARNESS_RATES)
         DMA.reset_registry()  # each link's ring holds two of the twelve channels: a later pair in one test frees them
-        self.uart_a = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, crc=None if crc is None else crc())
-        self.uart_b = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, crc=None if crc is None else crc())
+        self.uart_a = UART(0, tx_pin=0, rx_pin=1, crc=None if crc is None else crc(), **rates_a)
+        self.uart_b = UART(1, tx_pin=8, rx_pin=9, crc=None if crc is None else crc(), **rates_b)
         self.fake_a: FakeUART = self.uart_a._uart  # type: ignore[assignment]
         self.fake_b: FakeUART = self.uart_b._uart  # type: ignore[assignment]
         self.link = UARTLink(self.fake_a, self.fake_b)
@@ -227,7 +236,7 @@ def test_reset_error_counter_answers_the_comms_own_result() -> None:
 def _check_a_crossing_whose_uid_aliases_the_peers_ack_fails_as_peer_initiated(crc: "CrcMaker") -> None:
     # The other outcome: with the SET's first uid the raw GET's own 0, the GET's ACK confirms it and the peer's answer
     # lands where the next ACK is due. The SET still fails and the link still recovers.
-    pair = Pair(crc=crc)
+    pair = Pair(crc=crc, rates=_SHIPPED_RATES)
     errnos = _recorded_errnos(pair.initiator._comm)
     assert run(pair.setup(), RUN_LIMIT_S), "Pair.setup() failed"
     link = pair.initiator
@@ -259,7 +268,7 @@ def _check_a_crossing_whose_uid_aliases_the_peers_ack_fails_as_peer_initiated(cr
 
 def _check_a_hazard_run_reports_every_verdict_then_returns_to_the_echo(crc: "CrcMaker") -> None:
     # The live shape: the responder's own listen loop and the initiator's exercise loop, the request between two rounds.
-    pair = Pair(crc=crc)
+    pair = Pair(crc=crc, rates=_SHIPPED_RATES)
     errnos, peer = _recorded_errnos(pair.initiator._comm), _recorded_errnos(pair.responder._comm)
     assert run(pair.setup(), RUN_LIMIT_S), "Pair.setup() failed"  # on the real clock: inside the block nothing would advance it
 
@@ -342,7 +351,7 @@ def _check_a_persisted_fault_during_a_transfer_does_not_stall_other_tasks(crc: "
 def _check_a_raw_write_that_fails_in_the_sweep_reads_as_no_verdict(crc: "CrcMaker") -> None:
     # A planted failed raw write for an illegal value reads None, never the "not ACKed" that value is expected to give,
     # so the judge counts it; the legal value after it is still ACKed and the link recovers.
-    pair = Pair(crc=crc)
+    pair = Pair(crc=crc, rates=_SHIPPED_RATES)
     assert run(pair.setup(), RUN_LIMIT_S), "Pair.setup() failed"
     link = pair.initiator
     bus = link._uart
@@ -604,10 +613,36 @@ def _check_unanswerable_command_id_is_rejected_not_crashed(crc: "CrcMaker") -> N
         assert answer is None  # _get_callback returns (False, None) for an unknown command id
 
     run(go(), RUN_LIMIT_S)
-# From the request to the run's end on the driven clock, exact on any host: the measured figure in both CRC modes, with
-# no margin (agent, 2026-10-21).
-# @tunable l1.asy_uart_link_driver_hazard_run_virtual_ms = 21716
-_HAZARD_RUN_VIRTUAL_MS = 21716
+
+
+def _shipped_rates() -> "tuple[PollRates, PollRates]":
+    # Each end's poll rates on the device wiring the link, read from its generated bus constructions (buildgen writes
+    # them from its TOML). Defined here, out of D.15's order, because the constant below calls it at import.
+    require_fresh()
+    device = device_with("uart_link")
+    pair = wiring_plan(device)["uart"]
+    assert pair is not None, f"{device} wires uart_link but its plan names no UART pair"
+    with open(f"build/generated_src/sensortask_{device}.py") as f:
+        built = {line.split(" = ", 1)[0]: line for line in (raw.strip() for raw in f) if " = asy_uart_driver.UART(" in line}
+    found: list[PollRates] = []
+    for bus in (pair["initiator_bus"], pair["responder_bus"]):
+        assert bus in built, f"no generated construction of {bus} in {device}'s module: {sorted(built)}"
+        passed = {key: value for key, _, value in (part.partition("=") for part in built[bus].split("(", 1)[1].rstrip(")").split(", "))}
+        rates: PollRates = {}
+        if "poll_wait_ms" in passed:
+            rates["poll_wait_ms"] = int(passed["poll_wait_ms"])
+        if "poll_idle_ms" in passed:
+            rates["poll_idle_ms"] = int(passed["poll_idle_ms"])
+        found.append(rates)
+    return found[0], found[1]
+
+
+# The hazard runs poll as the firmware wiring the link ships, never at a rate no device uses (agent, 2026-10-27).
+_SHIPPED_RATES = _shipped_rates()
+# From the request to the run's end on the driven clock, exact on any host: the measured figure in both CRC modes at
+# _SHIPPED_RATES, with no margin (agent, 2026-10-27).
+# @tunable l1.asy_uart_link_driver_hazard_run_virtual_ms = 22440
+_HAZARD_RUN_VIRTUAL_MS = 22440
 
 
 def test_an_initiation_that_raises_is_logged_and_reads_as_no_verdict() -> None:

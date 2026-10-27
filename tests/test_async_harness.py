@@ -26,6 +26,10 @@ _scratch = TmpScratch("async_harness")
 _ANSWER_BOUND_S = 5  # a hang bound on a coroutine that answers at once
 # @tunable l1.async_harness_sleeper_bound_s = 0.01
 _SLEEPER_BOUND_S = 0.01  # waited out: the sleeper never returns
+# @tunable l1.async_harness_stuck_reap_ms = 60_000
+_STUCK_REAP_MS = 60_000  # the reap bound a task nothing can end is named inside of, never waited out
+# @tunable l1.async_harness_stubborn_reap_ms = 5
+_STUBBORN_REAP_MS = 5  # waited out: the reap bound a task running on after its cancellation outlasts
 
 
 class _Reboot(BaseException):  # stands in for the fakes' simulated reset, a BaseException
@@ -244,9 +248,9 @@ def test_a_task_nothing_can_wake_is_named_and_taken_off_without_waiting_out_the_
         left.append(asyncio.create_task(stuck()))
         await asyncio.sleep(0)
 
-    message, took_ms = _unended_message(main(), 60_000)
+    message, took_ms = _unended_message(main(), _STUCK_REAP_MS)
     assert "'stuck'" in message, message
-    assert took_ms < 60_000, took_ms
+    assert took_ms < _STUCK_REAP_MS, took_ms
     assert not left[0].done()  # named and taken off, not ended: nothing could end it
     assert _scheduler_empty()
 
@@ -265,7 +269,7 @@ def test_a_task_running_on_after_its_cancellation_is_named_once_the_bound_passes
         left.append(asyncio.create_task(stubborn()))
         await asyncio.sleep(0)
 
-    message, _took_ms = _unended_message(main(), 5)
+    message, _took_ms = _unended_message(main(), _STUBBORN_REAP_MS)
     assert "'stubborn'" in message, message
     assert not left[0].done()
     assert _scheduler_empty()

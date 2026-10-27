@@ -111,12 +111,12 @@ class Pair:
     def wire_from_responder(self) -> bytes:
         return bytes(self.link.direction_from(self.fake_b).wire_log)
 
-    async def with_listener(self, work: "Coroutine[object, object, T]", rounds: int = 1, *, listener_may_stall: bool = False) -> "T":
+    async def with_listener(self, work: "Coroutine[object, object, T]", rounds: int = 1, *, listener_may_stall: bool = False, drain_s: float = LISTENER_DRAIN_S) -> "T":
         # Runs the responder's listen loop alongside the initiator's call: a stop-and-wait exchange
         # only progresses when both ends are scheduled. A listener still short of its rounds after the
-        # drain fails the exchange, unless the test declares the stall (a frame it cut on purpose).
+        # drain_s drain fails the exchange, unless the test declares the stall (a frame it cut on purpose).
         listener = asyncio.create_task(self._listen_rounds(rounds))
-        return await awaited_with_listener(work, listener, rounds, may_stall=listener_may_stall)
+        return await awaited_with_listener(work, listener, rounds, may_stall=listener_may_stall, drain_s=drain_s)
 
 
 class PollRoundClock:
@@ -182,10 +182,10 @@ class PollRoundClock:
         return not self._stall[2] or self._stall[3] == 1
 
 
-async def _drain_listener(listener: "asyncio.Task[None]") -> bool:
+async def _drain_listener(listener: "asyncio.Task[None]", drain_s: float = LISTENER_DRAIN_S) -> bool:
     # True when the listener finished its rounds; a stalled one is cancelled and reported as False.
     try:
-        await asyncio.wait_for(listener, LISTENER_DRAIN_S)
+        await asyncio.wait_for(listener, drain_s)
     except asyncio.TimeoutError:
         listener.cancel()
         try:
@@ -203,15 +203,15 @@ def accept_set(exp_size: "int | None" = None) -> "CommCallback":
     return callback
 
 
-async def awaited_with_listener(work: "Coroutine[object, object, T]", listener: "asyncio.Task[None]", rounds: int, *, may_stall: bool) -> "T":
+async def awaited_with_listener(work: "Coroutine[object, object, T]", listener: "asyncio.Task[None]", rounds: int, *, may_stall: bool, drain_s: float = LISTENER_DRAIN_S) -> "T":
     # The initiator's own failure wins: a stall behind it is its consequence, never reported over it.
     try:
         result = await work
     except BaseException:
-        await _drain_listener(listener)
+        await _drain_listener(listener, drain_s)
         raise
-    if not await _drain_listener(listener) and not may_stall:
-        msg = f"the responder's listener did not finish its {rounds} round(s) within {LISTENER_DRAIN_S} s"
+    if not await _drain_listener(listener, drain_s) and not may_stall:
+        msg = f"the responder's listener did not finish its {rounds} round(s) within {drain_s} s"
         raise AssertionError(msg)
     return result
 

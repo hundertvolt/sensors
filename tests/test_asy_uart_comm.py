@@ -148,6 +148,10 @@ _HAMMER_RUN_BOUND_S = 120
 _FLUSH_RECOVERY_TRIES = 5
 # @tunable l1.asy_uart_comm_hold_off_look_ms = 30
 _HOLD_OFF_LOOK_MS = 30
+# The drain of a listener whose stall is permanent, no frame ever reaching its next round: the verdict does not depend
+# on it, so it only has to outlast a listener that does finish (agent, 2026-10-27).
+# @tunable l1.asy_uart_comm_stall_drain_s = 1
+_STALL_DRAIN_S = 1
 
 
 def logged(comm: UARTComm) -> "tuple[int, list[str]]":
@@ -1166,7 +1170,7 @@ def test_a_responder_that_never_finishes_its_rounds_fails_the_exchange() -> None
     # stalled responder must fail the test instead of being cancelled out of sight.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()), RUN_LIMIT_S)
     try:
-        run(pair.with_listener(pair.initiator.uart_set(3, b"hi"), rounds=2), RUN_LIMIT_S)
+        run(pair.with_listener(pair.initiator.uart_set(3, b"hi"), rounds=2, drain_s=_STALL_DRAIN_S), RUN_LIMIT_S)
     except AssertionError as exc:
         assert "did not finish" in str(exc), exc
     else:
@@ -1176,7 +1180,7 @@ def test_a_responder_that_never_finishes_its_rounds_fails_the_exchange() -> None
 @_on_poll_rounds
 def test_a_stall_the_test_declares_is_not_a_failure() -> None:
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()), RUN_LIMIT_S)
-    assert run(pair.with_listener(pair.initiator.uart_set(3, b"hi"), rounds=2, listener_may_stall=True), RUN_LIMIT_S) is True
+    assert run(pair.with_listener(pair.initiator.uart_set(3, b"hi"), rounds=2, listener_may_stall=True, drain_s=_STALL_DRAIN_S), RUN_LIMIT_S) is True
 
 
 def test_a_missing_ack_bounds_the_wait_and_resyncs() -> None:
@@ -1193,7 +1197,7 @@ def test_a_write_that_never_reaches_the_peer_fails_the_same_way() -> None:
     # Indistinguishable from a lost ACK at this layer, and the distinction is not invented.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()), RUN_LIMIT_S)
     pair.link.direction_from(pair.fake_a).silent = True
-    assert run(pair.with_listener(pair.initiator.uart_set(3, b"hi"), listener_may_stall=True), _SILENT_BOUND_S) is False
+    assert run(pair.with_listener(pair.initiator.uart_set(3, b"hi"), listener_may_stall=True, drain_s=_STALL_DRAIN_S), _SILENT_BOUND_S) is False
 
 
 def test_a_stale_ack_uid_is_rejected() -> None:
@@ -2224,7 +2228,7 @@ def test_an_out_of_range_command_id_is_refused_not_truncated() -> None:
     # different, valid command the peer executed while the call reported success. The header
     # fields were already guarded against exactly this (_prepare_tx); the command id was not.
     pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()), RUN_LIMIT_S)
-    assert run(pair.with_listener(pair.initiator.uart_set(0x101, b"x"), listener_may_stall=True), _RUN_BOUND_S) is False
+    assert run(pair.with_listener(pair.initiator.uart_set(0x101, b"x"), listener_may_stall=True, drain_s=_STALL_DRAIN_S), _RUN_BOUND_S) is False
     assert pair.wire_from_initiator() == b"", "a refused command id must not put a frame on the wire"
     assert run(pair.initiator.uart_set(-1, b"x"), RUN_LIMIT_S) is False
     assert run(pair.initiator.uart_get(0x100), RUN_LIMIT_S) is None
@@ -2250,7 +2254,7 @@ def test_a_negative_expected_size_is_refused_not_read_as_dont_care() -> None:
     # land on it, silently turning an exact-size GET into an unchecked one.
     pair = run(build_pair(get_callback=echo_get(b"hello"), set_callback=accept_set()), RUN_LIMIT_S)
     # Refused before anything is sent, so the responder's listen round never completes.
-    assert run(pair.with_listener(pair.initiator.uart_get(1, -5), listener_may_stall=True), _RUN_BOUND_S) is None
+    assert run(pair.with_listener(pair.initiator.uart_get(1, -5), listener_may_stall=True, drain_s=_STALL_DRAIN_S), _RUN_BOUND_S) is None
     # The contrast case: None really does mean don't care, and still works.
     assert copied_out(run(pair.with_listener(pair.initiator.uart_get(1)), _RUN_BOUND_S)) == b"hello"
 
@@ -2951,7 +2955,7 @@ def test_a_write_failing_at_each_point_of_a_get_reports_and_resyncs() -> None:
         initiating = side == "initiator"
         fail_write_after(pair.fake_a if initiating else pair.fake_b, successes)
         # A write cut at any point can leave the responder's round unfinished; that is the case under test.
-        got = run(pair.with_listener(pair.initiator.uart_get(1), listener_may_stall=True), _LISTENER_RUN_BOUND_S)
+        got = run(pair.with_listener(pair.initiator.uart_get(1), listener_may_stall=True, drain_s=_STALL_DRAIN_S), _LISTENER_RUN_BOUND_S)
         failing = pair.initiator if initiating else pair.responder
         return got, logged(failing), failing._holdoff_active
 

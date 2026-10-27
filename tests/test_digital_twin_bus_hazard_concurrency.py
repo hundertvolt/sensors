@@ -96,12 +96,16 @@ _DROPPED_WRENS = 8  # more WRENs than one write's retry sends: the write fails r
 _RUNG_OFFSETS = 6  # as many offsets as each loop has reads, the recovery case's own count
 _CANCEL_TURNS = 40  # scheduler turns into the SGP40's setup and measurement, which end well before
 _HOLD_SCD30_CYCLES = 3  # whole SCD30 cycles of real bus load the driven 60 s retry is held open for
+# @tunable l2.bus_hazard_concurrency_poll_s = 0.1
 _POLL_S = 0.1  # how often the ladder runs and the command waits look again
 _POLL_MS = int(_POLL_S * 1000)  # the same look on a driven clock
 _ERASE_UNIT: int = src_int("src/asy_fram_manager.py", "_ERASE_UNIT")
 _STA_RETRY_S: int = src_int("src/asy_wifi_service.py", "_STA_RETRY_AFTER_LOSS_S")
 _STA_ESTABLISHED: int = src_int("src/asy_wifi_service.py", "_PHASE_STA_ESTABLISHED")
+# @tunable l2.bus_hazard_concurrency_erase_us_per_byte = 8
 _ERASE_US_PER_BYTE = 8  # the erase's real wire time at the 1 MHz bus (asy_fram_manager.py's _ERASE_UNIT comment)
+# @tunable l2.bus_hazard_concurrency_shared_bus_timeout_us = 200000
+_SHARED_BUS_TIMEOUT_US = 200000  # the shared bus's SCL-release bound; its twin transfers complete at once
 _GENERAL_CALL_ENTRY = ("writeto", 0x00, b"\x06", True)
 # Which get_data() field, per driver, proves that driver produced a real reading under load - the twin tier's much
 # smaller analogue of tests/_bus_hazard_catalog.py's mock-tier adapters (Part C.8); a new driver needs an entry first.
@@ -390,7 +394,7 @@ def _shared_bus(device: str, bus_name: str) -> "asy_i2c_driver.I2C":
     machine.reset_peripherals()
     machine.configure_wiring(plan)
     machine.Pin.reset_registry()
-    return asy_i2c_driver.I2C(int(bus_name[3:]), pins["scl"], pins["sda"], frequency=50000, timeout=200000)  # type: ignore[typeddict-item]  # an I2C bus's pins
+    return asy_i2c_driver.I2C(int(bus_name[3:]), pins["scl"], pins["sda"], frequency=50000, timeout=_SHARED_BUS_TIMEOUT_US)  # type: ignore[typeddict-item]  # an I2C bus's pins
 
 
 def _sibling_read(device: str, sibling: str, bus: "asy_i2c_driver.I2C") -> "Callable[[], Coroutine[object, object, object]]":
