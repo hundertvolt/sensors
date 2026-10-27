@@ -4,7 +4,7 @@ Requirement: every test in `tests/`, `tests_scripts/`, `tests_js/` and `tests_ha
 
 ## Counts
 
-Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_verdicts.json`: 8544 rows, 336 flagged. A flag is a candidate; the verdict is the reviewer's.
+Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_verdicts.json`: 8539 rows, 336 flagged. A flag is a candidate; the verdict is the reviewer's.
 
 | level | rows | flagged |
 |---|---|---|
@@ -15,7 +15,7 @@ Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_
 | manual (hardware) | 21 | 2 |
 | twin (MicroPython) | 670 | 24 |
 | twin scenario | 176 | 10 |
-| unit (MicroPython) | 3961 | 140 |
+| unit (MicroPython) | 3956 | 140 |
 | web (vitest) | 492 | 6 |
 
 | verdict (per row) | rows |
@@ -23,7 +23,7 @@ Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_
 | CRr2 | 83 |
 | fixed | 46 |
 | justified | 129 |
-| biting | 8286 |
+| biting | 8281 |
 
 | red flag | rows | verdicts |
 |---|---|---|
@@ -3173,69 +3173,64 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests/test_asy_uart_link_driver.py:935 | test_a_double_initiation_cancelled_at_its_first_await_leaves_no_transaction_behind | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_udp_socket.py:185 | test_init_accepts_every_valid_mode | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_udp_socket.py:193 | test_init_rejects_a_pre_resolved_sockaddr | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:205 | test_init_rejects_invalid_mode | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:217 | test_init_rejects_malformed_addr_tuple | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:235 | test_init_rejects_addr_of_the_wrong_type_entirely | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:244 | test_init_rejects_multiple_invalid_parameters_at_once | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:271 | test_fresh_client_and_server_round_trip | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:298 | test_sendto_returns_byte_count_like_write | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:314 | test_recvfrom_returns_none_sentinel_on_timeout | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:374 | test_the_adversarial_peer_times_out_with_nothing_pending | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:394 | test_recvfrom_silently_truncates_an_oversized_datagram | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:417 | test_recvfrom_treats_a_zero_length_datagram_as_a_real_reply_not_a_timeout | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:441 | test_sendto_returns_none_sentinel_for_a_too_large_outgoing_payload | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:457 | test_arbitrary_binary_content_round_trips_untouched | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:480 | test_client_mode_filters_datagrams_from_unexpected_sources | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:517 | test_recvfrom_drains_a_burst_of_queued_datagrams_in_order | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:543 | test_recvfrom_respects_timeout_against_a_realistically_delayed_genuine_reply | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:606 | test_ready_with_a_deadline_polls_at_the_transaction_rate | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:614 | test_ready_without_a_deadline_polls_at_the_idle_rate | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:622 | test_a_failed_setup_backs_off_with_one_sleep_ms_of_the_shipped_value | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:648 | test_queued_datagrams_are_read_without_an_idle_sleep | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:693 | test_a_bounded_ready_leaves_no_poll_task_behind | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:735 | test_connect_setup_memoryerror_self_heals_instead_of_raising | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:775 | test_write_returns_none_sentinel_on_memoryerror | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:791 | test_sendto_returns_none_sentinel_on_memoryerror | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:807 | test_recvfrom_returns_none_sentinel_on_memoryerror | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1007 | test_an_allocation_failure_in_each_arm_prints_its_text_and_keeps_the_sentinel | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1013 | test_an_os_error_in_each_arm_prints_nothing_and_keeps_the_sentinel | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1039 | test_disconnect_clears_state_even_when_unregister_raises | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1073 | test_disconnect_clears_state_even_when_sock_close_raises | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1115 | test_ready_survives_a_concurrent_disconnect_mid_poll_loop | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1143 | test_connect_self_heals_after_a_failed_bind | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1175 | test_disconnect_is_idempotent_and_resets_state | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1195 | test_object_is_reusable_after_disconnect | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1227 | test_cancellation_propagates_out_of_recvfrom | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1253 | test_ready_sleeps_milliseconds_not_seconds | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1284 | test_connect_setup_failure_self_heals_instead_of_raising | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1311 | test_recvfrom_detects_pollerr_instead_of_waiting_out_the_full_timeout | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1345 | test_ntp_client_pattern_end_to_end_success | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1369 | test_ntp_client_pattern_no_server_reachable | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1377 | test_ntp_client_pattern_garbage_reply_is_delivered_not_rejected | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1402 | test_dns_server_pattern_bound_to_all_interfaces_end_to_end | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1433 | test_a_wildcard_server_bind_stays_on_the_loopback_beside_a_specific_address_holder | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1460 | test_dns_server_pattern_recvfrom_never_returns_a_mismatched_pair | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1486 | test_dns_server_pattern_sendto_failure_does_not_corrupt_subsequent_serving | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1523 | test_connect_self_heals_when_addr_mutated_to_a_malformed_value | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1537 | test_connect_treats_a_mutated_mode_as_server_like_without_crashing | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1551 | test_sendto_returns_none_sentinel_for_a_malformed_explicit_addr | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1567 | test_recvfrom_returns_none_sentinel_for_a_malformed_buf_with_real_pending_data | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1596 | test_disconnect_no_longer_crashes_a_concurrent_in_flight_connect_retry | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1622 | test_concurrent_caller_joins_an_in_flight_connect_instead_of_a_premature_none | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1650 | test_cancelling_a_task_that_holds_the_connect_lock_releases_it | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1679 | test_cancelling_a_task_waiting_on_the_connect_lock_leaves_it_healthy | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1715 | test_cancelling_connect_or_ready_at_each_await_leaves_the_lock_free | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1759 | test_write_on_an_unconnected_server_mode_socket_returns_none_sentinel | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1777 | test_sendto_empty_bytes_succeeds | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1793 | test_recvfrom_buf_zero_returns_empty_bytes_not_the_timeout_sentinel | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1816 | test_disconnect_on_a_fresh_never_connected_object_is_a_clean_no_op | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1835 | test_ready_returns_false_sentinel_for_a_malformed_timeout_ms | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1852 | test_ready_returns_false_sentinel_for_a_malformed_mask | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1869 | test_ready_cancellation_still_propagates_through_the_new_try_except | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1894 | test_recvfrom_propagates_readys_false_sentinel_for_a_malformed_timeout_ms | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1919 | test_the_port_redirect_maps_only_its_port_and_counts_constructions | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1938 | test_the_port_redirect_restores_the_module_after_an_exception | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_udp_socket.py:1948 | test_a_redirected_socket_reaches_the_fake_port | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:205 | test_init_rejects_malformed_addr_tuple | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:223 | test_init_rejects_addr_of_the_wrong_type_entirely | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:232 | test_init_rejects_multiple_invalid_parameters_at_once | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:259 | test_fresh_client_and_server_round_trip | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:286 | test_sendto_returns_byte_count_like_write | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:302 | test_recvfrom_returns_none_sentinel_on_timeout | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:362 | test_the_adversarial_peer_times_out_with_nothing_pending | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:382 | test_recvfrom_silently_truncates_an_oversized_datagram | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:405 | test_recvfrom_treats_a_zero_length_datagram_as_a_real_reply_not_a_timeout | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:429 | test_sendto_returns_none_sentinel_for_a_too_large_outgoing_payload | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:445 | test_arbitrary_binary_content_round_trips_untouched | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:468 | test_client_mode_filters_datagrams_from_unexpected_sources | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:505 | test_recvfrom_drains_a_burst_of_queued_datagrams_in_order | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:531 | test_recvfrom_respects_timeout_against_a_realistically_delayed_genuine_reply | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:594 | test_ready_with_a_deadline_polls_at_the_transaction_rate | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:602 | test_ready_without_a_deadline_polls_at_the_idle_rate | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:610 | test_a_failed_setup_backs_off_with_one_sleep_ms_of_the_shipped_value | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:636 | test_queued_datagrams_are_read_without_an_idle_sleep | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:681 | test_a_bounded_ready_leaves_no_poll_task_behind | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:723 | test_connect_setup_memoryerror_self_heals_instead_of_raising | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:763 | test_write_returns_none_sentinel_on_memoryerror | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:779 | test_sendto_returns_none_sentinel_on_memoryerror | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:795 | test_recvfrom_returns_none_sentinel_on_memoryerror | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:995 | test_an_allocation_failure_in_each_arm_prints_its_text_and_keeps_the_sentinel | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1001 | test_an_os_error_in_each_arm_prints_nothing_and_keeps_the_sentinel | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1027 | test_disconnect_clears_state_even_when_unregister_raises | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1061 | test_disconnect_clears_state_even_when_sock_close_raises | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1103 | test_ready_survives_a_concurrent_disconnect_mid_poll_loop | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1131 | test_connect_self_heals_after_a_failed_bind | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1163 | test_disconnect_is_idempotent_and_resets_state | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1183 | test_object_is_reusable_after_disconnect | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1215 | test_cancellation_propagates_out_of_recvfrom | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1241 | test_ready_sleeps_milliseconds_not_seconds | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1272 | test_connect_setup_failure_self_heals_instead_of_raising | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1299 | test_recvfrom_detects_pollerr_instead_of_waiting_out_the_full_timeout | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1333 | test_ntp_client_pattern_end_to_end_success | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1357 | test_ntp_client_pattern_no_server_reachable | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1365 | test_ntp_client_pattern_garbage_reply_is_delivered_not_rejected | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1390 | test_dns_server_pattern_bound_to_all_interfaces_end_to_end | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1421 | test_a_wildcard_server_bind_stays_on_the_loopback_beside_a_specific_address_holder | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1448 | test_dns_server_pattern_recvfrom_never_returns_a_mismatched_pair | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1474 | test_dns_server_pattern_sendto_failure_does_not_corrupt_subsequent_serving | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1511 | test_connect_self_heals_when_addr_mutated_to_a_malformed_value | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1525 | test_connect_treats_a_mutated_mode_as_server_like_without_crashing | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1539 | test_sendto_returns_none_sentinel_for_a_malformed_explicit_addr | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1562 | test_disconnect_no_longer_crashes_a_concurrent_in_flight_connect_retry | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1588 | test_concurrent_caller_joins_an_in_flight_connect_instead_of_a_premature_none | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1616 | test_cancelling_a_task_that_holds_the_connect_lock_releases_it | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1645 | test_cancelling_a_task_waiting_on_the_connect_lock_leaves_it_healthy | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1681 | test_cancelling_connect_or_ready_at_each_await_leaves_the_lock_free | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1725 | test_write_on_an_unconnected_server_mode_socket_returns_none_sentinel | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1743 | test_sendto_empty_bytes_succeeds | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1759 | test_recvfrom_buf_zero_returns_empty_bytes_not_the_timeout_sentinel | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1782 | test_disconnect_on_a_fresh_never_connected_object_is_a_clean_no_op | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1799 | test_ready_cancellation_still_propagates_through_the_new_try_except | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1829 | test_the_port_redirect_maps_only_its_port_and_counts_constructions | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1848 | test_the_port_redirect_restores_the_module_after_an_exception | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_udp_socket.py:1858 | test_a_redirected_socket_reaches_the_fake_port | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_webserver_connections.py:628 | test_seven_refusals_count_seven_and_spend_one_slot | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_webserver_connections.py:663 | test_a_connection_whose_trace_waits_closes_at_one_per_call_timeout_and_keeps_its_entry | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_webserver_connections.py:680 | test_dropped_connections_leave_the_count_after_a_day | unit (MicroPython) | biting | — | biting as is |

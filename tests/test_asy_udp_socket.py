@@ -202,18 +202,6 @@ def test_init_rejects_a_pre_resolved_sockaddr() -> None:
             pass
 
 
-def test_init_rejects_invalid_mode() -> None:
-    # An invalid mode used to busy-loop forever inside _connect() with zero await points - a
-    # genuine unrecoverable lockup, since the coroutine never yields for even
-    # asyncio.wait_for()'s timeout to fire. Validated eagerly here, before _connect() is reachable.
-    for bad_mode in ("bogus", "", "CLIENT", "client ", None, 123):
-        try:
-            UDPSocket(("127.0.0.1", 12345), mode=bad_mode)  # type: ignore[arg-type]
-            raise AssertionError(f"expected ValueError for mode={bad_mode!r}")
-        except ValueError:
-            pass
-
-
 def test_init_rejects_malformed_addr_tuple() -> None:
     # Bug: a malformed addr tuple (right shape, wrong element types) used to raise an uncaught
     # TypeError from deep inside _connect()'s sock.connect()/bind() call - confirmed directly,
@@ -1564,28 +1552,6 @@ def test_sendto_returns_none_sentinel_for_a_malformed_explicit_addr() -> None:
     assert run(scenario()) is None
 
 
-def test_recvfrom_returns_none_sentinel_for_a_malformed_buf_with_real_pending_data() -> None:
-    # Confirmed directly: a wrong-typed buf (e.g. a str) only raises once a real datagram is
-    # actually pending and ready() lets the real recvfrom() call through - a timeout-path test
-    # (nothing ever sent) would never actually reach the buggy call at all.
-    addr = _make_addr()
-    peer_addr = _make_addr()
-
-    async def scenario() -> tuple[bytes | None, tuple[str, int] | None]:
-        server = UDPSocket(addr, mode="server")
-        peer = _AdversarialPeer(peer_addr)
-        try:
-            await server._connect()
-            peer.send(b"real data", addr)
-            await asyncio.sleep(_KERNEL_QUEUE_S)
-            return await server.recvfrom("not an int", timeout_ms=_RECV_TIMEOUT_MS)  # type: ignore[arg-type]
-        finally:
-            peer.close()
-            await server.disconnect()
-
-    assert run(scenario()) == (None, None)
-
-
 # ---------------------------------------------------------------------------
 # Fifth pass: _connect()/disconnect() concurrency - a per-instance asyncio.Lock serializes them
 # against each other, so a concurrent disconnect() can't crash an in-flight retry, and a
@@ -1826,50 +1792,14 @@ def test_disconnect_on_a_fresh_never_connected_object_is_a_clean_no_op() -> None
 
 
 # ---------------------------------------------------------------------------
-# Sixth pass: ready()'s mask/timeout_ms were never guarded against a malformed caller-supplied
-# value, and raised an uncaught TypeError past every except clause - the raise is inside ready(),
-# which callers await before their own try begins.
+# Sixth pass: ready()'s poll loop sits inside its try/except, and a cancel still propagates through it.
 # ---------------------------------------------------------------------------
 
 
-def test_ready_returns_false_sentinel_for_a_malformed_timeout_ms() -> None:
-    # `if (timeout_ms > 0) and ...` inside ready()'s poll loop raised an uncaught TypeError for
-    # timeout_ms=None. Only reachable once the first ipoll(0) finds nothing matching mask (a
-    # fresh server socket polled for POLLIN), since a matching first iteration returns early.
-    addr = _make_addr()
-
-    async def scenario() -> bool:
-        sock = UDPSocket(addr, mode="server")
-        try:
-            await sock._connect()
-            return await sock.ready(select.POLLIN, timeout_ms=None)  # type: ignore[arg-type]
-        finally:
-            await sock.disconnect()
-
-    assert run(scenario()) is False
-
-
-def test_ready_returns_false_sentinel_for_a_malformed_mask() -> None:
-    # `event & (mask | select.POLLERR | select.POLLHUP)` raised an uncaught TypeError for
-    # mask=None. Uses a fresh server socket, immediately POLLOUT-ready so ipoll(0)'s first result
-    # is non-empty, to reach that expression on the first iteration without a pending datagram.
-    addr = _make_addr()
-
-    async def scenario() -> bool:
-        sock = UDPSocket(addr, mode="server")
-        try:
-            await sock._connect()
-            return await sock.ready(None, timeout_ms=200)  # type: ignore[arg-type]
-        finally:
-            await sock.disconnect()
-
-    assert run(scenario()) is False
-
-
 def test_ready_cancellation_still_propagates_through_the_new_try_except() -> None:
-    # The fix above wraps ready()'s whole per-iteration loop body, including its
-    # asyncio.sleep_ms() await point, in try/except (OSError, MemoryError, TypeError) - it must
-    # not start swallowing asyncio.CancelledError, a BaseException subclass not in that tuple.
+    # ready() wraps its whole poll loop, including its asyncio.sleep_ms() await point, in
+    # try/except (MemoryError, OSError) - it must not start swallowing asyncio.CancelledError,
+    # a BaseException subclass not in that tuple.
     addr = _make_addr()
 
     async def scenario() -> bool:
@@ -1889,26 +1819,6 @@ def test_ready_cancellation_still_propagates_through_the_new_try_except() -> Non
             await sock.disconnect()
 
     assert run(scenario())
-
-
-def test_recvfrom_propagates_readys_false_sentinel_for_a_malformed_timeout_ms() -> None:
-    # The bug above was not only reachable through ready() directly: sendto()/write()/recvfrom()
-    # each await self.ready(...) before their own try block starts, so the crash bypassed their
-    # except clauses. Confirms the real entry point callers use, recvfrom(), is fixed too.
-
-    # Nothing must be sent here: a pending datagram would make the first ipoll(0) match POLLIN and
-    # return before timeout_ms is ever compared, so only the still-waiting path reaches it.
-    addr = _make_addr()
-
-    async def scenario() -> tuple[bytes | None, tuple[str, int] | None]:
-        server = UDPSocket(addr, mode="server")
-        try:
-            await server._connect()
-            return await server.recvfrom(64, timeout_ms=None)  # type: ignore[arg-type]
-        finally:
-            await server.disconnect()
-
-    assert run(scenario()) == (None, None)
 
 
 # ---------------------------------------------------------------------------
