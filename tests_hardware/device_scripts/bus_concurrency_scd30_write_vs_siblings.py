@@ -75,6 +75,7 @@ async def _main() -> None:
         while (was_in_flight or not sgp_rec.in_flight) and time.ticks_diff(deadline, time.ticks_ms()) > 0:
             was_in_flight = sgp_rec.in_flight
             await asyncio.sleep_ms(0)
+        fact("write_in_sgp_round", sgp_rec.in_flight)  # read where the write begins: one the deadline sent outside a round shows
         start = time.ticks_ms()
         try:
             await scd.set_temperature_offset(_WRITE_OFFSET_C)  # owned writes: the offset, and its restore after the run

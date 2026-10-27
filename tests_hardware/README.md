@@ -1749,8 +1749,9 @@ only same-device write-vs-own-read (`bus_concurrency_same_device_scd30.py`,
   `--allow-scd30-extra-write` together ("Persistence-write gating" below), it spends two NVM writes
   (the offset and its restore) per invocation, never folded into the routine group's at most one
   (`scd30_measuring`'s start command; SPECIFICATION.md Part C.8's write-budget rule). The offset
-  write starts at the head of an SGP40 round, inside that sibling's session and ahead of its command,
-  and the test credits "not disturbed" only once a sibling read's window overlapped the write's
+  write starts at the head of an SGP40 round, inside that sibling's session and ahead of its command;
+  the script reports where it began (`write_in_sgp_round`), which the test asserts, and the test
+  credits "not disturbed" only once a sibling read's window overlapped the write's
   (`overlapped_reads`), as the ISL29125 test does.
 
 **Honesty note - neither test has been run against real hardware yet.** Both were written and typed
