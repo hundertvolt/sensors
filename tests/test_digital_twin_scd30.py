@@ -2,6 +2,7 @@
 commands src/asy_scd30_driver.py's SCD30_I2C sends. Real-time RDY-pin scheduling is exercised only via the synchronous
 _produce_new_reading() hook here; the real-time-firing check itself lives in test_digital_twin_machine.py."""
 
+import asyncio
 import errno
 import json
 import os
@@ -23,7 +24,7 @@ sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comme
 import _scd30_chip
 import machine
 import microtest
-from _async_harness import run
+from _async_harness import cancel, run
 from _crc8 import crc8, word
 from _error_codes import code
 from _fast_sleep import FastAsyncSleep
@@ -671,6 +672,41 @@ def test_a_stuck_high_rdy_line_warns_once_after_five_empty_reads_and_new_data_en
         seen, after = run(scenario())
     assert seen == [0, 0, 0, 0, 1]
     assert after == 1  # new data ended the episode: no further entry
+
+
+def test_a_silent_scd30_publishes_not_measuring_and_runs_no_cycle_streak_or_entry() -> None:
+    # Data-ready never rises after three readings (the helper stops the chip's own measurement Timer): the irq
+    # loop's base ticks find the line low, FRCState drops to 0 after two intervals, and nothing is retried or logged.
+    reader, chip = _reader_on_the_twin_bus(cfg_path=_scratch.dir())
+
+    async def scenario() -> "tuple[int | None, int | None, bool, int, int, int]":
+        assert await reader.setup() is True
+        assert await reader._init_scd() is True  # the chip answers its interval: 2 s, four 500 ms ticks
+        for _ in range(3):
+            chip._produce_new_reading()
+            results, new_data = await reader._read_scd()
+            assert await reader._error_check(results, condition=results[0] is None)
+            await reader._store_scd(results, new_data)
+        settling = (await reader.get_data()).FRCState
+        chip._measuring = False  # the chip falls silent: its restarted measurement Timer completes nothing more
+        chip._data_ready = False
+        chip._drive_rdy(0)
+        errors = (await reader.get_error_counter())["SCD30"]["ErrCount"]
+        reader._read_event.clear()  # the three readings' own RDY edges, which no read loop consumed here
+        loop = asyncio.get_event_loop().create_task(reader._irq_loop())
+        for _ in range(8):  # two intervals of base ticks, the line low throughout
+            reader._base_trigger_event.set()
+            for _turn in range(3):
+                await asyncio.sleep(0)
+        await cancel(loop)
+        after = (await reader.get_error_counter())["SCD30"]["ErrCount"]
+        return settling, (await reader.get_data()).FRCState, bool(reader._read_event.state), reader._err_cnt_internal, errors, after
+
+    with FastAsyncSleep():
+        settling, silent, triggered, streak, errors, after = run(scenario())
+    assert (settling, silent) == (1, 0), f"FRCState went {settling} -> {silent}, expected settling (1) then not measuring (0)"
+    assert not triggered, "a low data-ready line re-triggered a read"
+    assert (streak, after) == (0, errors), f"silence stepped the streak to {streak} or logged {after - errors} entr(ies)"
 
 
 def test_fault_injection_on_writeto_and_readfrom_into() -> None:
