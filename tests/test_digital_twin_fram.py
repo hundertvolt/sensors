@@ -27,7 +27,7 @@ from _error_codes import code  # noqa: E402 - imported after the prewarm and the
 from _fast_sleep import FastAsyncSleep  # noqa: E402 - imported after the prewarm and the UDP shim
 from _fram_chip import _PAGE_SIZE, FRAMChip  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import boot_generated  # noqa: E402 - imported after the prewarm and the UDP shim
-from _src_const import src_const  # noqa: E402 - imported after the prewarm and the UDP shim
+from _src_const import src_const, src_int  # noqa: E402 - imported after the prewarm and the UDP shim
 from _task_names import task_name  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_devices import distinct_wirings, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -916,6 +916,42 @@ def test_a_booted_device_whose_fram_goes_silent_restarts_its_task_and_recovers_o
         machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
         network.reset_test_state()
         _silent_fram_on(device)
+
+
+def test_a_blank_read_whose_probe_meets_a_held_session_stays_blank_and_declares_no_loss() -> None:
+    # A never-written chunk reads blank, so its read probes the chip; a sibling session takes the FRAM between the
+    # read and the probe and holds it past the probe's bounded wait: one E LOCK_TIMEOUT, blank (False), no loss.
+    manager, _bus, chip = _twin_manager()
+    chunk, _ts_chunk = _chunks(manager)
+    fram = manager.fram
+    real = fram.verify_present
+    hold_ms = src_int("src/asy_fram_driver.py", "_VERIFY_PRESENT_LOCK_TIMEOUT_MS") + 200
+    held: list[asyncio.Task[None]] = []
+
+    async def sibling() -> None:
+        async with fram.session_lock:
+            await asyncio.sleep_ms(hold_ms)
+
+    async def probe_behind_a_sibling() -> bool:
+        held.append(asyncio.get_event_loop().create_task(sibling()))
+        await _until("the sibling never took the session", fram.session_lock.locked)
+        return await real()
+
+    fram.verify_present = probe_behind_a_sibling  # type: ignore[method-assign]  # the sibling starts at the probe
+    before = bytes(chip.memory)
+
+    async def scenario() -> "bool | None":
+        try:
+            return await chunk.read_into(chunk.get_buffer())
+        finally:
+            for task in held:
+                await cancel(task)
+
+    assert run(scenario()) is False, "the blank read did not stay blank"
+    assert len(held) == 1, f"the read probed {len(held)} time(s), expected once"
+    assert not fram.lost.is_set() and fram.initialized, "a busy session was taken for a lost chip"
+    assert _errnums(manager).count(code("E", "LOCK_TIMEOUT")) == 1, f"the timed-out probe logged {_errnums(manager)}"
+    assert bytes(chip.memory) == before, "the blank read wrote the chip"
 
 
 def test_counting_writes_at_new_addresses_allocates_nothing() -> None:

@@ -32,7 +32,9 @@ from _tmp_scratch import TmpScratch
 from _twin_common import Walk
 from _twin_devices import device_with, wiring_plan
 from _twin_random import FixedRandom
+from _write_counters import WriteCountingOpen
 
+import asy_config_manager
 import asy_i2c_driver
 from asy_scd30_driver import SCD30_Reader
 
@@ -561,6 +563,36 @@ def test_two_identical_puts_write_the_chip_nvm_only_for_the_always_sent_commands
         second = run(reader._set_dict_cfg(body, reader.get_cfg_schema()))
     assert second == {"TempOffset": "Unchanged", "MeasInterval": "Unchanged", "AmbPres": "Valid", "Altitude": "Unchanged", "ForceCalRef": "Valid", "SelfCal": "Unchanged"}
     assert chip.nvm_writes == 8
+
+
+def test_a_failed_deferred_flush_is_healed_by_the_next_accepted_put() -> None:
+    # One PUT's config-file write fails: its value stays in effect and the store runs unpersisted, one E CFG_FILE_WRITE;
+    # the next accepted PUT writes the file once, holding both values, and the store is persisted again.
+    cfg_path = _scratch.dir()
+    reader, _chip = _reader_on_the_twin_bus(cfg_path=cfg_path)
+    store = reader.cfgmgr
+
+    async def put(body: "dict[str, CfgValue]") -> "dict[str, str]":
+        results = await reader._set_dict_cfg(body, reader.get_cfg_schema())
+        await store.flush_pending()  # the deferred write the PUT committed, landed or failed
+        return dict(results)
+
+    with FastAsyncSleep():  # the driver's command waits cost no real time
+        assert run(reader.setup()) is True  # the store loaded, as at boot
+        with WriteCountingOpen(asy_config_manager, fail_writes=True) as failing:
+            first = run(put({"FRCNoise": 25.0}))  # a file-held setting: the chip's own ones live in its NVM
+        unpersisted = store.unpersisted
+        with WriteCountingOpen(asy_config_manager) as counting:
+            second = run(put({"FRCWindow": 120}))
+    assert (first, second) == ({"FRCNoise": "Valid"}, {"FRCWindow": "Valid"}), (first, second)
+    assert (failing.writes, unpersisted) == (1, True), f"the failing PUT wrote {failing.writes} time(s), unpersisted={unpersisted}"
+    assert (counting.writes, store.unpersisted) == (1, False), f"the healing PUT wrote {counting.writes} time(s), unpersisted={store.unpersisted}"
+    with open(asy_config_manager.config_filename(cfg_path, reader.name)) as f:
+        saved = json.load(f)
+    assert (saved["FRCNoise"], saved["FRCWindow"]) == (25.0, 120), f"the healed file holds {saved}"
+    (log,) = run(store.pr.get_log()).values()
+    failures = [i for i in range(len(log["ErrNum"])) if log["ErrType"][i] == "E" and log["ErrNum"][i] == code("E", "CFG_FILE_WRITE")]
+    assert len(failures) == 1, f"the store logged {log}"
 
 
 def test_the_real_reader_accepts_a_reading_at_the_largest_temperature_offset() -> None:
