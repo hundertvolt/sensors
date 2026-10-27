@@ -1668,6 +1668,17 @@ def test_get_chunk_allocation_succeeds_at_exact_remaining_capacity_boundary() ->
     assert manager.get_chunk(1, owner="T2") is None  # nothing left at all
 
 
+def test_get_timestamped_chunk_allocation_succeeds_at_exact_remaining_capacity_boundary() -> None:
+    # The timestamped path's own capacity check: a chunk that exactly fills the chip is allocated, nothing after it.
+    sized, _sized_chip = _make_manager(max_size=4096)
+    run(_setup_manager(sized))
+    assert sized.get_timestamped_chunk(4, _synced, owner="T1") is not None
+    manager, _chip = _make_manager(max_size=sized._allocated_size)
+    run(_setup_manager(manager))
+    assert manager.get_timestamped_chunk(4, _synced, owner="T1") is not None  # an exact fit
+    assert manager.get_chunk(1, owner="T2") is None  # nothing left at all
+
+
 # ---------------------------------------------------------------------------
 # FRAMTimestampedChunk shares _FRAMBaseChunk behavior (inheritance) - pause/clear/verify
 # were only ever exercised through FRAMChunk above; confirm the shared base actually behaves

@@ -2106,9 +2106,9 @@ def test_bytes_lapped_during_the_copy_fail_the_read() -> None:
     assert uart.rx_overruns == before + 1
 
 
-def test_the_allocating_read_yields_rather_than_spinning_on_an_empty_ring() -> None:
-    # Nothing buffered yet: the loop must hand the scheduler a turn instead of calling ready() again
-    # at once, which on real hardware burns the whole latency budget inside one task.
+def test_an_allocating_read_started_before_its_bytes_arrive_returns_them_all() -> None:
+    # A multi-round read: the frame is fed only after the read has started, so it waits across ready()'s rounds
+    # and returns every byte.
     uart = _make_uart(poll_wait_ms=_FAST_POLL_WAIT_MS)
 
     async def scenario() -> "bytearray | None":
