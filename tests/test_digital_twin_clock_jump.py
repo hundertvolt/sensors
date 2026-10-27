@@ -30,7 +30,7 @@ from _ntp_responder import NtpResponder  # noqa: E402 - imported after the prewa
 from _offline_ntp_config import write_offline_ntp_config, write_responder_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _port_bands import PortAllocator  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
-from _twin_devices import device_with, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
+from _twin_devices import distinct_wirings, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
 from _udp_port_redirect import redirect_udp_port  # noqa: E402 - imported after the prewarm and the UDP shim
 
 import asy_base_classes  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -71,127 +71,8 @@ microtest.after_each(machine.reset_test_state)
 microtest.after_each(network.reset_test_state)
 
 
-async def _set_clock(module: "ModuleType") -> None:
-    # The clock as an NTP sync leaves it (_handle_ntp_sync_success()): Synced, the clock valid for UTCTime and the
-    # VOC backups, and every utc_now() a real time from here on.
-    await module.ntp._set_synced(value=True)
-    module.ntp._clock_valid = True
-    asy_base_classes.set_utc_valid()
-
-
-async def _boot(device: str, cfg_path: "str | None" = None) -> "ModuleType":
-    # A new board on the device's plan, built and set up as its boot entry does (offline NTP config), the wall clock
-    # installed over the loaded product modules (the runner's own line).
-    module = load_device(device)
-    plan = wiring_plan(device)
-    machine.reset_peripherals()
-    network.reset_interfaces()
-    machine.configure_wiring(plan)
-    cfg = cfg_path if cfg_path is not None else _scratch.dir()
-    write_offline_ntp_config(cfg)
-    write_error_level_config(cfg)
-    await module.build_system(watchdog=boot_entry_watchdog(module, device), cfg_path=cfg, debug=ERROR_LEVEL, web_host="127.0.0.1", web_port=0)
-    runner_plan: _Plan = cast("_Plan", plan)
-    run_generic_integration._wire_uart_crossover(module, runner_plan)  # before the setups (CLAUDE.md "Known hang cause")
-    await module.sysfunct.run_setups(module._collect_setups())
-    _wall_clock.install(run_generic_integration.product_modules())
-    return module
-
-
-def _booted(device: str, responder: NtpResponder, scenario: "Callable[[ModuleType], Coroutine[object, object, T]]") -> "T":
-    # The device's real main() beside the responder (tests/test_digital_twin_ntp.py's shape): the responder's config, a
-    # station to join, the product's port 123 mapped to the responder's and the wall clock installed.
-    cfg_path = _scratch.dir()
-    machine.reset_peripherals()
-    network.reset_test_state()
-    machine.configure_wiring(wiring_plan(device))
-    write_responder_ntp_config(cfg_path)
-    write_error_level_config(cfg_path)
-    with open(config_filename(cfg_path, "WIFI"), "w") as f:
-        f.write(json.dumps({"SSID": _SSID}))
-    module = load_device(device)
-    _wall_clock.install(run_generic_integration.product_modules())
-    earlier = getattr(module, "webserver", None)  # an earlier boot's, until main() constructs its own (the last one)
-
-    async def built() -> bool:
-        return getattr(module, "webserver", None) not in (None, earlier)
-
-    async def whole() -> "T":
-        with redirect_udp_port(asy_ntp_client, 123, responder.port):
-            boot = module.main(watchdog=boot_entry_watchdog(module, device), cfg_path=cfg_path, debug=ERROR_LEVEL, web_host="127.0.0.1", web_port=0)
-            tasks = [asyncio.create_task(responder.serve()), asyncio.create_task(boot)]
-            try:
-                await _until(built, "no construction")
-                return await scenario(module)
-            finally:
-                await cancel_all(tasks)
-
-    try:
-        return run_timed(whole(), 3 * _WAIT_TIMEOUT_S)
-    finally:
-        responder.close()
-
-
-def _clock() -> "_wall_clock.WallClock":
-    clock = _wall_clock.installed()
-    assert clock is not None, "no wall clock installed"
-    return clock
-
-
-async def _ticks_to_attempt(module: "ModuleType", responder: NtpResponder) -> None:
-    # Fires the client's check tick, as its 10 s timer does, until the responder takes a request.
-    before = responder.requests
-    for _ in range(_TICKS_TO_RETRY):
-        module.ntp._ntp_timer_trigger_event.set()
-        await asyncio.sleep_ms(_POLL_MS)
-        if responder.requests > before:
-            return
-    raise AssertionError(f"no attempt within {_TICKS_TO_RETRY} check ticks")
-
-
-async def _until(holds: "Callable[[], Coroutine[object, object, bool]]", what: str) -> None:
-    for _ in range(int(_WAIT_TIMEOUT_S * 1000) // _POLL_MS):
-        if await holds():
-            return
-        await asyncio.sleep_ms(_POLL_MS)
-    raise AssertionError(f"{what} within {_WAIT_TIMEOUT_S} s")
-
-
-def test_a_reader_stamps_each_sample_with_the_clock_as_stepped() -> None:
-    # A step back an hour and forward a day: the next cycle's TS is the stepped clock's (a reader stamps from the RTC,
-    # never from its own count). One BMP3XX, the reader the plans pick.
-    device = device_with("bmp3xx")
-
-    async def scenario() -> "list[tuple[int, object]]":
-        module = await _boot(device)
-        await _set_clock(module)
-        reader = module.bmp3xx
-        tasks = [starter() for starter in reader.get_task_starters()]
-        for starter in reader.get_trigger_starters():
-            starter()
-        seen: list[tuple[int, object]] = []
-        try:
-            for step in (0, -3600, 86400):
-                _clock().step(step)
-                before = reader._datastruct
-
-                async def fresh(before: object = before) -> bool:
-                    return reader._datastruct is not before and reader._datastruct.TS is not None
-
-                await _until(fresh, "no BMP3XX sample after the step")
-                seen.append((_clock().time(), reader._datastruct.TS))
-        finally:
-            await cancel_all(tasks)
-        return seen
-
-    for wall, stamp in run_timed(scenario(), 3 * _WAIT_TIMEOUT_S):
-        assert isinstance(stamp, int) and abs(stamp - wall) <= 1, f"{device}: a sample stamped {stamp} under a clock reading {wall}"
-
-
-def test_a_backup_dated_after_a_backward_step_is_expired_under_a_max_age_and_kept_under_none() -> None:
-    # One timestamped SGP40 backup, then the clock stepped back two hours: its age is negative, which BackupMaxAge 60
-    # refuses as expired (one W SGP_BACKUP_AGE) and 0 ("use every backup") keeps (asy_sgp40_driver.py's age check).
-    device = device_with("sgp40", "fram")
+def _backup_after_a_backward_step_on(device: str) -> None:
+    # The test above on one device.
     cfg_path = _scratch.dir()
     machine.configure_fram_state_path(cfg_path + "fram_state.json")
 
@@ -253,6 +134,140 @@ def test_a_backup_dated_after_a_backward_step_is_expired_under_a_max_age_and_kep
     assert (refused, warnings.count(code("W", "SGP_BACKUP_AGE"))) == (None, 1), (refused, warnings)
     kept, _warnings = run_timed(restored(0), 3 * _WAIT_TIMEOUT_S)
     assert kept == stamp, f"BackupMaxAge 0 restored {kept}, not the backup of {stamp}"
+
+
+async def _boot(device: str, cfg_path: "str | None" = None) -> "ModuleType":
+    # A new board on the device's plan, built and set up as its boot entry does (offline NTP config), the wall clock
+    # installed over the loaded product modules (the runner's own line).
+    module = load_device(device)
+    plan = wiring_plan(device)
+    machine.reset_peripherals()
+    network.reset_interfaces()
+    machine.configure_wiring(plan)
+    cfg = cfg_path if cfg_path is not None else _scratch.dir()
+    write_offline_ntp_config(cfg)
+    write_error_level_config(cfg)
+    await module.build_system(watchdog=boot_entry_watchdog(module, device), cfg_path=cfg, debug=ERROR_LEVEL, web_host="127.0.0.1", web_port=0)
+    runner_plan: _Plan = cast("_Plan", plan)
+    run_generic_integration._wire_uart_crossover(module, runner_plan)  # before the setups (CLAUDE.md "Known hang cause")
+    await module.sysfunct.run_setups(module._collect_setups())
+    _wall_clock.install(run_generic_integration.product_modules())
+    return module
+
+
+def _booted(device: str, responder: NtpResponder, scenario: "Callable[[ModuleType], Coroutine[object, object, T]]") -> "T":
+    # The device's real main() beside the responder (tests/test_digital_twin_ntp.py's shape): the responder's config, a
+    # station to join, the product's port 123 mapped to the responder's and the wall clock installed.
+    cfg_path = _scratch.dir()
+    machine.reset_peripherals()
+    network.reset_test_state()
+    machine.configure_wiring(wiring_plan(device))
+    write_responder_ntp_config(cfg_path)
+    write_error_level_config(cfg_path)
+    with open(config_filename(cfg_path, "WIFI"), "w") as f:
+        f.write(json.dumps({"SSID": _SSID}))
+    module = load_device(device)
+    _wall_clock.install(run_generic_integration.product_modules())
+    earlier = getattr(module, "webserver", None)  # an earlier boot's, until main() constructs its own (the last one)
+
+    async def built() -> bool:
+        return getattr(module, "webserver", None) not in (None, earlier)
+
+    async def whole() -> "T":
+        with redirect_udp_port(asy_ntp_client, 123, responder.port):
+            boot = module.main(watchdog=boot_entry_watchdog(module, device), cfg_path=cfg_path, debug=ERROR_LEVEL, web_host="127.0.0.1", web_port=0)
+            tasks = [asyncio.create_task(responder.serve()), asyncio.create_task(boot)]
+            try:
+                await _until(built, "no construction")
+                return await scenario(module)
+            finally:
+                await cancel_all(tasks)
+
+    try:
+        return run_timed(whole(), 3 * _WAIT_TIMEOUT_S)
+    finally:
+        responder.close()
+
+
+def _clock() -> "_wall_clock.WallClock":
+    clock = _wall_clock.installed()
+    assert clock is not None, "no wall clock installed"
+    return clock
+
+
+async def _set_clock(module: "ModuleType") -> None:
+    # The clock as an NTP sync leaves it (_handle_ntp_sync_success()): Synced, the clock valid for UTCTime and the
+    # VOC backups, and every utc_now() a real time from here on.
+    await module.ntp._set_synced(value=True)
+    module.ntp._clock_valid = True
+    asy_base_classes.set_utc_valid()
+
+
+def _stepped_stamps_on(device: str) -> None:
+    # The test above on one device.
+
+    async def scenario() -> "list[tuple[int, object]]":
+        module = await _boot(device)
+        await _set_clock(module)
+        reader = module.bmp3xx
+        tasks = [starter() for starter in reader.get_task_starters()]
+        for starter in reader.get_trigger_starters():
+            starter()
+        seen: list[tuple[int, object]] = []
+        try:
+            for step in (0, -3600, 86400):
+                _clock().step(step)
+                before = reader._datastruct
+                reader._read_event.set()  # the next cycle now, as its trigger timer would within a SampleInterval
+
+                async def fresh(before: object = before) -> bool:
+                    return reader._datastruct is not before and reader._datastruct.TS is not None
+
+                await _until(fresh, "no BMP3XX sample after the step")
+                seen.append((_clock().time(), reader._datastruct.TS))
+        finally:
+            await cancel_all(tasks)
+        return seen
+
+    for wall, stamp in run_timed(scenario(), 3 * _WAIT_TIMEOUT_S):
+        assert isinstance(stamp, int) and abs(stamp - wall) <= 1, f"{device}: a sample stamped {stamp} under a clock reading {wall}"
+
+
+async def _ticks_to_attempt(module: "ModuleType", responder: NtpResponder) -> None:
+    # Fires the client's check tick, as its 10 s timer does, until the responder takes a request.
+    before = responder.requests
+    for _ in range(_TICKS_TO_RETRY):
+        module.ntp._ntp_timer_trigger_event.set()
+        await asyncio.sleep_ms(_POLL_MS)
+        if responder.requests > before:
+            return
+    raise AssertionError(f"no attempt within {_TICKS_TO_RETRY} check ticks")
+
+
+async def _until(holds: "Callable[[], Coroutine[object, object, bool]]", what: str) -> None:
+    for _ in range(int(_WAIT_TIMEOUT_S * 1000) // _POLL_MS):
+        if await holds():
+            return
+        await asyncio.sleep_ms(_POLL_MS)
+    raise AssertionError(f"{what} within {_WAIT_TIMEOUT_S} s")
+
+
+def test_a_reader_stamps_each_sample_with_the_clock_as_stepped() -> None:
+    # A step back an hour and forward a day: the next cycle's TS is the stepped clock's (a reader stamps from the RTC,
+    # never from its own count). One BMP3XX, the reader the plans pick.
+    for device in distinct_wirings("bmp3xx"):
+        machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
+        network.reset_test_state()
+        _stepped_stamps_on(device)
+
+
+def test_a_backup_dated_after_a_backward_step_is_expired_under_a_max_age_and_kept_under_none() -> None:
+    # One timestamped SGP40 backup, then the clock stepped back two hours: its age is negative, which BackupMaxAge 60
+    # refuses as expired (one W SGP_BACKUP_AGE) and 0 ("use every backup") keeps (asy_sgp40_driver.py's age check).
+    for device in distinct_wirings("sgp40", "fram"):
+        machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
+        network.reset_test_state()
+        _backup_after_a_backward_step_on(device)
 
 
 def test_cettime_follows_the_clock_across_the_march_switch_both_ways() -> None:

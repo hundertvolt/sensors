@@ -36,7 +36,7 @@ from _offline_ntp_config import write_responder_ntp_config  # noqa: E402 - impor
 from _port_bands import PortAllocator  # noqa: E402 - imported after the prewarm and the UDP shim
 from _src_const import src_const, src_int  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
-from _twin_devices import device_with, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
+from _twin_devices import distinct_wirings, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
 from _udp_port_redirect import redirect_udp_port  # noqa: E402 - imported after the prewarm and the UDP shim
 
 import asy_ntp_client  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -44,14 +44,20 @@ import asy_udp_socket  # noqa: E402 - imported after the prewarm and the UDP shi
 from asy_config_manager import config_filename  # noqa: E402 - imported after the prewarm and the UDP shim
 
 try:
-    from typing import TYPE_CHECKING
+    from typing import TYPE_CHECKING, cast
 except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
     TYPE_CHECKING = False
+
+    def cast(_typ: object, val: "T") -> "T":  # type: ignore[no-redef]  # no-op at runtime either way
+        return val
+
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from types import ModuleType
     from typing import TypeVar
+
+    from launch import _Plan
 
     T = TypeVar("T")
 
@@ -109,6 +115,8 @@ def _booted(device: str, responder: NtpResponder, scenario: "Callable[[ModuleTyp
             tasks = [asyncio.create_task(responder.serve()), asyncio.create_task(boot)]
             try:
                 await _until(built, "no construction")
+                plan: _Plan = cast("_Plan", wiring_plan(device))
+                runner._wire_uart_crossover(module, plan)  # the runner's step before the setups (CLAUDE.md "Known hang cause")
                 return await scenario(module)
             finally:
                 await cancel_all(tasks)
@@ -237,6 +245,44 @@ def test_a_second_responder_on_a_held_port_waits_and_takes_it_once_freed() -> No
 # ---------------------------------------------------------------------------
 
 
+def _lost_sync_on(device: str) -> None:
+    # The test above on one device.
+    responder = NtpResponder(_PORTS.next())
+
+    async def scenario(module: "ModuleType") -> "tuple[bool, object, int, bool]":
+        notif, ntp = module.notification, module.ntp  # this boot's: _booted() waited out the construction
+        await _until(ntp.ntp_issynced, "no first sync")
+        local = await ntp.cettime()
+        assert local is not None
+        on_h, off_h = (local.hour - 1, local.hour - 2) if local.hour >= 2 else (23, local.hour + 2)
+        body = {"OnH": on_h, "OnM": 0, "OffH": off_h, "OffM": 0, "FlashDur": 0.5, "WarnCO2": 1}
+        results = await module.webserver._apply_settings_groups("notification", body)
+        assert set(results.values()) <= {"Valid", "Unchanged"}, results
+
+        async def measured() -> bool:
+            return (await module.scd30.get_data()).CO2 is not None
+
+        await _until(measured, "no CO2 reading")
+        responder.mode = "silent"
+        await ntp.ntp_force_sync()  # the networking group's post-PUT hook: Synced false until the next success
+        lost = await ntp.ntp_issynced()
+        before = _red_frames(module.neopixel)
+        task = notif.start_asy_monitor()  # one fresh monitor cycle, the boot's own sleeping out its FlashInterval
+        try:
+            async def flashed() -> bool:
+                return _red_frames(module.neopixel) > before and bool((await notif.get_data()).Triggered)
+
+            await _until(flashed, "no flash once the sync was lost")
+        finally:
+            await cancel_all([task])
+        return lost, await ntp.cettime(), _red_frames(module.neopixel) - before, await ntp.ntp_issynced()
+
+    lost, local, flashes, synced = _booted(device, responder, scenario, _scratch.dir())
+    assert lost is False and synced is False
+    assert local is not None  # cettime() still answers
+    assert flashes > 0
+
+
 def _red_frames(pixel: object) -> int:
     return sum(1 for frame in pixel._pixel.writes if frame[0][0] > 0 and frame[0][1] == 0 and frame[0][2] == 0)  # type: ignore[attr-defined]
 
@@ -268,7 +314,6 @@ def test_a_send_to_a_refused_address_fails_on_the_products_own_path() -> None:
     assert _unix_port_udp_addr_shim.public_destinations_refused == before + 1
 
 
-
 # ---------------------------------------------------------------------------
 # A generated device booted against the responder: the boot's first sync, an outage and its recovery, each failure
 # ---------------------------------------------------------------------------
@@ -280,6 +325,56 @@ _TICKS_TO_RETRY = 4  # check ticks fired by hand toward the next attempt: the ba
 _CHECK_S: int = src_int("src/asy_ntp_client.py", "_NTP_CHECK_INTERV")
 _SSID = "TestNet"
 _scratch = TmpScratch("digital_twin_ntp")
+
+
+def _restore_through_the_outage_on(device: str) -> None:
+    # The test above on one device.
+    cfg_path = _scratch.dir()
+    fram_state = cfg_path + "fram_state.json"
+
+    async def backed_up(module: "ModuleType") -> int:
+        async def reading() -> bool:  # past the reader's init, which zeroes the backup counter, and compensated
+            return (await module.sgp40.get_data()).Raw is not None and (await module.scd30.get_data()).Hum is not None
+
+        await _until(module.ntp.ntp_issynced, "no first sync")
+        await _until(reading, "no SGP40 and SCD30 reading")
+        module.sgp40._backup_counter = 59  # the next read cycle reaches the 60-cycle BackupPeriod
+        module.sgp40._read_event.set()  # that cycle now, as its 1 s trigger timer would
+
+        async def written() -> bool:
+            return (await module.sgp40.get_mem_status())[0] is not None
+
+        await _until(written, "no backup written")
+        stamp: int = (await module.sgp40.get_mem_status())[0]
+        return stamp
+
+    stamp = _booted(device, NtpResponder(_PORTS.next()), backed_up, cfg_path, fram_state)
+    machine.flush_fram()
+    responder = NtpResponder(_PORTS.next())
+    responder.mode = "silent"
+
+    async def restored(module: "ModuleType") -> "tuple[object, object, tuple[int, list[int]]]":
+        async def failed() -> bool:
+            return (await _log(module))[0] >= 1
+
+        # A lost reply is waited out at the file's own bound, not the product's 5 s: no assertion reads its length.
+        product_wait, module.ntp._ntp_fetch_timeout_ms = module.ntp._ntp_fetch_timeout_ms, _REPLY_WAIT_MS
+        await _until(failed, "the boot's attempt never failed")
+        waiting = (await module.sgp40.get_mem_status())[1]
+        module.ntp._ntp_fetch_timeout_ms = product_wait
+        responder.mode = "serve"
+        await _ticks_to_attempt(module, responder)
+
+        async def done() -> bool:
+            return (await module.sgp40.get_mem_status())[1] is not None
+
+        await _until(done, "no restore after the sync")
+        return waiting, (await module.sgp40.get_mem_status())[1], await _log(module, "SGP40")
+
+    waiting, restored_from, sgp_log = _booted(device, responder, restored, cfg_path, fram_state)
+    assert waiting is None  # no restore while the responder was silent
+    assert restored_from == stamp, (restored_from, stamp)
+    assert sgp_log == (0, []), sgp_log  # the wait and a timestamped restore print only
 
 
 def _served(responder: NtpResponder, request: bytes = _REQUEST) -> "bytes | None":
@@ -373,49 +468,10 @@ def test_an_outage_from_boot_backs_off_and_a_returning_responder_syncs_within_th
 
 def test_an_sgp40_restore_waits_out_the_outage_and_follows_the_sync() -> None:
     # A timestamped backup from a synced first boot; the second boots into an outage, WaitTimeNTP at its default.
-    device = device_with("sgp40", "fram")
-    cfg_path = _scratch.dir()
-    fram_state = cfg_path + "fram_state.json"
-
-    async def backed_up(module: "ModuleType") -> int:
-        async def reading() -> bool:  # past the reader's init, which zeroes the backup counter, and compensated
-            return (await module.sgp40.get_data()).Raw is not None and (await module.scd30.get_data()).Hum is not None
-
-        await _until(module.ntp.ntp_issynced, "no first sync")
-        await _until(reading, "no SGP40 and SCD30 reading")
-        module.sgp40._backup_counter = 59  # the next read cycle reaches the 60-cycle BackupPeriod
-
-        async def written() -> bool:
-            return (await module.sgp40.get_mem_status())[0] is not None
-
-        await _until(written, "no backup written")
-        stamp: int = (await module.sgp40.get_mem_status())[0]
-        return stamp
-
-    stamp = _booted(device, NtpResponder(_PORTS.next()), backed_up, cfg_path, fram_state)
-    machine.flush_fram()
-    responder = NtpResponder(_PORTS.next())
-    responder.mode = "silent"
-
-    async def restored(module: "ModuleType") -> "tuple[object, object, tuple[int, list[int]]]":
-        async def failed() -> bool:
-            return (await _log(module))[0] >= 1
-
-        await _until(failed, "the boot's attempt never failed")
-        waiting = (await module.sgp40.get_mem_status())[1]
-        responder.mode = "serve"
-        await _ticks_to_attempt(module, responder)
-
-        async def done() -> bool:
-            return (await module.sgp40.get_mem_status())[1] is not None
-
-        await _until(done, "no restore after the sync")
-        return waiting, (await module.sgp40.get_mem_status())[1], await _log(module, "SGP40")
-
-    waiting, restored_from, sgp_log = _booted(device, responder, restored, cfg_path, fram_state)
-    assert waiting is None  # no restore while the responder was silent
-    assert restored_from == stamp, (restored_from, stamp)
-    assert sgp_log == (0, []), sgp_log  # the wait and a timestamped restore print only
+    for device in distinct_wirings("sgp40", "fram", "scd30"):
+        machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
+        network.reset_test_state()
+        _restore_through_the_outage_on(device)
 
 
 def test_each_failing_reply_leaves_synced_false_with_its_catalog_code() -> None:
@@ -444,40 +500,10 @@ def test_each_failing_reply_leaves_synced_false_with_its_catalog_code() -> None:
 def test_a_lost_sync_keeps_the_local_time_and_the_alert_flashing() -> None:
     # Synced, then the responder silent and the settings hook's resync: the clock was set this boot, so the local time
     # and an alert above its threshold go on (the notification window around the current hour, WarnCO2 below any CO2).
-    responder = NtpResponder(_PORTS.next())
-
-    async def scenario(module: "ModuleType") -> "tuple[bool, object, int, bool]":
-        notif, ntp = module.notification, module.ntp  # this boot's: _booted() waited out the construction
-        await _until(ntp.ntp_issynced, "no first sync")
-        local = await ntp.cettime()
-        assert local is not None
-        on_h, off_h = (local.hour - 1, local.hour - 2) if local.hour >= 2 else (23, local.hour + 2)
-        body = {"OnH": on_h, "OnM": 0, "OffH": off_h, "OffM": 0, "FlashDur": 0.5, "WarnCO2": 1}
-        results = await module.webserver._apply_settings_groups("notification", body)
-        assert set(results.values()) <= {"Valid", "Unchanged"}, results
-
-        async def measured() -> bool:
-            return (await module.scd30.get_data()).CO2 is not None
-
-        await _until(measured, "no CO2 reading")
-        responder.mode = "silent"
-        await ntp.ntp_force_sync()  # the networking group's post-PUT hook: Synced false until the next success
-        lost = await ntp.ntp_issynced()
-        before = _red_frames(module.neopixel)
-        task = notif.start_asy_monitor()  # one fresh monitor cycle, the boot's own sleeping out its FlashInterval
-        try:
-            async def flashed() -> bool:
-                return _red_frames(module.neopixel) > before and bool((await notif.get_data()).Triggered)
-
-            await _until(flashed, "no flash once the sync was lost")
-        finally:
-            await cancel_all([task])
-        return lost, await ntp.cettime(), _red_frames(module.neopixel) - before, await ntp.ntp_issynced()
-
-    lost, local, flashes, synced = _booted(device_with("notification", "scd30"), responder, scenario, _scratch.dir())
-    assert lost is False and synced is False
-    assert local is not None  # cettime() still answers
-    assert flashes > 0
+    for device in distinct_wirings("notification", "scd30", "neopixel"):
+        machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
+        network.reset_test_state()
+        _lost_sync_on(device)
 
 
 if __name__ == "__main__":
