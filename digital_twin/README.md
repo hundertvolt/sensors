@@ -98,6 +98,20 @@ the UDP shim or the NTP responder (see "Running the twin's own tests" below).
   installs it into the product modules; the clock-jump tests drive it.
 - `_flash_stall.py` — a config flush holds the whole loop for the flash's erase and program time, as
   rp2 programs its flash with interrupts off; the runner installs it under `asy_config_manager`.
+- `unix_port_idle_poll.py` — `skip_idle_flag_polls()` removes a wait the Unix port adds and rp2 lacks.
+  With a non-fd stream registered (a `ThreadSafeFlag` a task waits on), `extmod/modselect.c:353-370`
+  (v1.29.0) calls `poll()` with `MICROPY_PY_SELECT_IOCTL_CALL_PERIOD_MS` (1 ms) even for a zero
+  timeout, while rp2 builds without `MICROPY_PY_SELECT_POSIX_OPTIMISATIONS` and polls once and
+  returns (:400-412). asyncio polls with a zero timeout before every task step, so each step cost the
+  twin about 1 ms while a flag waited: 1.4 s of each 2 s re-plug ladder in
+  `tests/test_digital_twin_hot_replug.py`, whose FRAM log writes yield once per CRC byte (measured;
+  agent, 2026-10-27). Only a zero-timeout round in which every registered stream is a clear
+  `ThreadSafeFlag` is skipped, the one round whose poll can report nothing; every other round takes
+  the real poll; `tests/test_digital_twin_unix_port_idle_poll.py` pins which rounds those are.
+  Called at module level after the prewarm and the UDP shim by the hot-replug and NTP files, each
+  shown on its own rounds at both GC stages to skip only rounds whose real poll wakes nothing and
+  leaves the stream map unchanged; the bus-hazard file measured no gain. It goes
+  when a pin re-check finds that branch bounding its wait by the timeout.
 - `unix_port_poll_prewarm.py` — a workaround for the Unix port's `extmod/modselect.c` poll-set
   growth, which corrupts a poll object registered over a non-fd stream (compiled out on rp2; the
   defect and its removal trigger: SPECIFICATION.md F.7, row 12). A known limitation, not reported
@@ -1226,4 +1240,5 @@ each bare `machine`/`network`/`neopixel` resolves to one file per run (SPECIFICA
 
 The one Unix-port defect the twin still works around, the poll-set growth `unix_port_poll_prewarm.py`
 prevents, is stated in SPECIFICATION.md F.7 (row 12) with its removal trigger; every other modelling
-gap is a row of the fidelity table above.
+gap is a row of the fidelity table above. `unix_port_idle_poll.py` removes a cost rather than a defect:
+its entry above names its removal trigger.

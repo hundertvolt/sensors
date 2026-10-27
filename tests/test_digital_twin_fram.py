@@ -30,7 +30,7 @@ from _generated_module import boot_generated  # noqa: E402 - imported after the 
 from _src_const import src_const  # noqa: E402 - imported after the prewarm and the UDP shim
 from _task_names import task_name  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
-from _twin_devices import device_with, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
+from _twin_devices import distinct_wirings, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
 
 import asy_base_classes  # noqa: E402 - imported after the prewarm and the UDP shim
 import asy_fram_driver  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -141,6 +141,39 @@ def _read_mem24(chip: FRAMChip, addr: int, nbytes: int) -> bytes:
     buf = bytearray(nbytes)
     chip.readinto(buf)
     return bytes(buf)
+
+
+def _silent_fram_on(device: str) -> None:
+    # The test above on one device.
+    module = load_device(device)
+    machine.reset_peripherals()
+    network.reset_interfaces()
+    machine.configure_wiring(wiring_plan(device))
+
+    async def scenario() -> None:
+        await boot_generated(module, device, cfg_path=_scratch.dir(), log_errors=True)
+        (spi_name,) = wiring_plan(device)["spi"]
+        bus = machine.peripheral(spi_name)
+        assert isinstance(bus, machine.SPI)
+        chip = bus.device
+        assert isinstance(chip, FRAMChip)
+        fram, sysfunct = module.fram.fram, module.sysfunct
+        with FastAsyncSleep():
+            await sysfunct.start_tasks([module.fram.start_asy_watch_chip], task_names=[task_name(module.fram, module.fram.start_asy_watch_chip)])
+            first = sysfunct._tasks[0]
+            supervisor = asyncio.create_task(sysfunct.supervise_tasks())
+            await _lose(fram, chip)
+            chip.silent = False
+            await _until("the watch task restarted and set the chip up", lambda: sysfunct._tasks[0] not in (None, first) and not fram.lost.is_set())
+            before = chip.write_count
+            await sysfunct.pr.err_s("planted", errno=code("E", "UNEXPECTED"))
+            assert chip.write_count > before, "the logger write after the recovery did not reach the chip"
+            await _lose(fram, chip)
+            await _until("the restart budget armed the reset", lambda: sysfunct._reset_armed)
+            sysfunct._reset_timer.deinit()  # asserted at the armed point: the in-process graph never takes the reset
+            await cancel(supervisor)
+
+    run(scenario())
 
 
 def _status_bytes(chip: FRAMChip, chunk: "FRAMChunk | FRAMTimestampedChunk") -> list[int]:
@@ -879,37 +912,10 @@ def test_a_logger_over_its_written_chunk_on_a_protected_chip_stays_uninitialised
 def test_a_booted_device_whose_fram_goes_silent_restarts_its_task_and_recovers_or_arms_the_reset() -> None:
     # Silent after boot: two refused writes find the loss and the chip watch task ends; the supervisor restarts it, the
     # restart sets the answering chip up again and a logger write lands; kept silent, the restart budget arms the reset.
-    device = device_with("fram")
-    module = load_device(device)
-    machine.reset_peripherals()
-    network.reset_interfaces()
-    machine.configure_wiring(wiring_plan(device))
-
-    async def scenario() -> None:
-        await boot_generated(module, device, cfg_path=_scratch.dir(), log_errors=True)
-        (spi_name,) = wiring_plan(device)["spi"]
-        bus = machine.peripheral(spi_name)
-        assert isinstance(bus, machine.SPI)
-        chip = bus.device
-        assert isinstance(chip, FRAMChip)
-        fram, sysfunct = module.fram.fram, module.sysfunct
-        with FastAsyncSleep():
-            await sysfunct.start_tasks([module.fram.start_asy_watch_chip], task_names=[task_name(module.fram, module.fram.start_asy_watch_chip)])
-            first = sysfunct._tasks[0]
-            supervisor = asyncio.create_task(sysfunct.supervise_tasks())
-            await _lose(fram, chip)
-            chip.silent = False
-            await _until("the watch task restarted and set the chip up", lambda: sysfunct._tasks[0] not in (None, first) and not fram.lost.is_set())
-            before = chip.write_count
-            await sysfunct.pr.err_s("planted", errno=code("E", "UNEXPECTED"))
-            assert chip.write_count > before, "the logger write after the recovery did not reach the chip"
-            await _lose(fram, chip)
-            await _until("the restart budget armed the reset", lambda: sysfunct._reset_armed)
-            sysfunct._reset_timer.deinit()  # asserted at the armed point: the in-process graph never takes the reset
-            await cancel(supervisor)
-
-    run(scenario())
-
+    for device in distinct_wirings("fram"):
+        machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
+        network.reset_test_state()
+        _silent_fram_on(device)
 
 
 def test_counting_writes_at_new_addresses_allocates_nothing() -> None:

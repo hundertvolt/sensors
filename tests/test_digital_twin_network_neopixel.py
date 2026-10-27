@@ -33,7 +33,7 @@ from _src_const import src_int  # noqa: E402 - imported after the prewarm and th
 from _task_names import task_names_of  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_common import COUNTER_CAP, LOG_MAXLEN  # noqa: E402 - imported after the prewarm and the UDP shim
-from _twin_devices import devices_with, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
+from _twin_devices import distinct_wirings, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
 from neopixel import NeoPixel  # noqa: E402 - imported after the prewarm and the UDP shim
 from network import (  # noqa: E402 - imported after the prewarm and the UDP shim
     AP_IF,
@@ -675,10 +675,10 @@ async def _yields_until(predicate: "Callable[[], bool]", max_yields: int) -> boo
 
 
 def test_a_restarted_signal_task_ends_dark_with_the_overlay_restored() -> None:
-    # Each device wiring a NeoPixel (its pin and FRAM its own), booted: a write fault mid-ramp ends its signal task and
-    # the real supervisor restarts it. The restart writes black, the overlay answers, no wait of the old ramp is left,
-    # and SYSTEM persists one task-end entry. The driver's clock is driven, and the test releases each supervisor pass.
-    for device in devices_with("neopixel"):
+    # One device per distinct NeoPixel and FRAM wiring, booted: a write fault mid-ramp ends its signal task and the real
+    # supervisor restarts it. The restart writes black, the overlay answers, no wait of the old ramp is left, and SYSTEM
+    # persists one task-end entry. The driver's clock is driven, and the test releases each supervisor pass.
+    for device in distinct_wirings("neopixel", "fram"):
         _restart_ends_dark(device)
 
 

@@ -1,6 +1,6 @@
 """In-process twin tier for the device named by TEST_DEVICE: its generated graph booted on the twin buses with no HTTP
-(requests are driven host-side by scripts/_digital_twin_scenarios.py). A driver-specific scenario runs on every device
-whose plan wires its drivers, each wired its own way (SPECIFICATION.md E.2.1)."""
+(requests are driven host-side by scripts/_digital_twin_scenarios.py). A driver-specific scenario runs once per distinct
+wiring of its drivers, devices wiring them identically sharing one run (SPECIFICATION.md E.2.1)."""
 
 import asyncio
 import gc
@@ -44,7 +44,7 @@ from _port_bands import PortAllocator  # noqa: E402 - imported after the prewarm
 from _src_const import src_const, src_int  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _twin_common import Walk  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
-from _twin_devices import device_with, devices_with, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
+from _twin_devices import device_with, distinct_wirings, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _twin_readiness import wait_for_value  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 
 import asy_base_classes  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
@@ -312,11 +312,11 @@ async def _dns_burst(counter: _CountingPoller) -> "tuple[int, int, int]":
 
 
 def _driver_specific(*drivers: str) -> None:
-    # A driver-specific scenario runs on every device whose plan wires its drivers, as each wires them its own way; none
-    # wiring them fails in devices_with() rather than skipping everywhere.
-    wired = devices_with(*drivers)
-    if device not in wired:
-        raise microtest.Skip(f"runs on {wired}, the devices wiring {list(drivers)}")
+    # A driver-specific scenario runs once per distinct wiring of its drivers, on the first device of each; devices wiring
+    # them identically share that run, and none wiring them fails in devices_with() rather than skipping everywhere.
+    chosen = distinct_wirings(*drivers)
+    if device not in chosen:
+        raise microtest.Skip(f"runs on {chosen}, one device per distinct wiring of {list(drivers)}")
 
 
 async def _fed_cycle(sgp: "SGP40_Reader") -> None:
@@ -337,7 +337,7 @@ def _fill_wire_logs() -> None:
 
 def _first_device_only() -> None:
     # A scenario of seconds of wall clock through a mechanism every device shares runs once, on the first generated
-    # device, as the driver-specific ones run on the device picked for them (SPECIFICATION.md E.2.1).
+    # device, as the driver-specific ones run once per distinct wiring of their drivers (SPECIFICATION.md E.2.1).
     first = generated_devices()[0]
     if device != first:
         raise microtest.Skip(f"runs on {first}, the first generated device: every device runs the same mechanism")
