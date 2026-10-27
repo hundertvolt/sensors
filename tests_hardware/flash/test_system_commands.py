@@ -75,6 +75,7 @@ def _after_boot(board: "Board", request: pytest.FixtureRequest, result_note: "Ca
 def _attributed_reset(board: "Board", request: pytest.FixtureRequest, result_note: "Callable[[str], None]", run: "tuple[str, dict[str, object]]", script: str, expected: int) -> None:
     # A state run's reset armed with the command's own code, no feed gap reaching the watchdog, the boot reading it.
     facts = _reset_facts(*run, script, "state run")
+    assert facts.get("state") != "mempause" or facts.get("mempause") == "Valid", f"{script}: the storage pause was refused, so the run reset unpaused: {facts}"
     reset = facts.get("reset")
     assert isinstance(reset, dict) and reset.get("code") == expected, f"{script}: the reset armed {reset}, not code {expected}: {facts}"
     assert isinstance(reset.get("max_gap_ms"), int) and reset["max_gap_ms"] < _WDT_TIMEOUT_MS, f"{script}: a feed gap reached the watchdog: {reset}"

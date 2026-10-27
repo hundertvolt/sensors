@@ -2216,7 +2216,7 @@
  "tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py::bus_concurrency_cross_device_scd30_sgp40": {
   "ds_facts": [
    "fixed",
-   "flash test_bus_concurrency.py test_cross_device_concurrent_sessions_genuinely_interleave now asserts reset_sibling_reads > 0 and heater_off_sibling_reads > 0: the zero-failure checks around both rungs passed when nothing was read. Bitten on synthetic output (each count 0: old passes, new fails; healthy passes both) and passing on the twin"
+   "flash test_bus_concurrency.py test_cross_device_concurrent_sessions_genuinely_interleave now asserts reset_sibling_reads > 0 and heater_off_sibling_reads > 0: the zero-failure checks around both rungs passed when nothing was read. Bitten on synthetic output (each count 0: old passes, new fails; healthy passes both) and passing on the twin; windows_with_interleaving is a diagnostic beside the asserted interleaved_total >= sgp_cycles (test_bus_concurrency.py:124)"
   ]
  },
  "tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py::bmp3xx_same_device_rw_concurrency": {
@@ -2234,19 +2234,523 @@
  "tests_hardware/device_scripts/reset_code_command_incomplete.py::reset_code_command_incomplete": {
   "ds_facts": [
    "fixed",
-   "bench test_reset_reasons.py test_an_incomplete_command_is_attributed asserts no_reset_after_ms absent, as flash test_system_commands.py:95 does. Bitten on synthetic output (bench-only, no twin leg)"
+   "bench test_reset_reasons.py test_an_incomplete_command_is_attributed asserts no_reset_after_ms absent, as flash test_system_commands.py:95 does. Bitten on synthetic output (bench-only, no twin leg); failure is implied (a pre-reset failure leaves answer or raised_at absent, both asserted); leftover_errno: the os.mkdir() of the same path follows (reset_code_command_incomplete.py:63) and raises on any leftover, so the run dies before the outcome facts its test asserts"
   ]
  },
  "tests_hardware/device_scripts/reset_code_stack_exhausted.py::reset_code_stack_exhausted": {
   "ds_facts": [
    "fixed",
-   "bench test_reset_reasons.py's stack-exhaustion test asserts no_reset_after_ms absent. Bitten on synthetic output (bench-only, no twin leg)"
+   "bench test_reset_reasons.py's stack-exhaustion test asserts no_reset_after_ms absent. Bitten on synthetic output (bench-only, no twin leg); failure is implied (a pre-reset failure leaves the asserted reset absent); leftover_errno: the os.mkdir() of the same path follows (reset_code_stack_exhausted.py:63) and raises on any leftover, so the run dies before the outcome facts its test asserts"
   ]
  },
  "tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py::uart_dma_ring_interrupts_off": {
   "ds_facts": [
    "fixed",
-   "flash test_uart_crossover.py test_no_frame_is_lost_while_interrupts_are_off asserts _setup_ok(facts, \"rxdmae_setup\"), as for the other windows' setup. Bitten on synthetic output; the window is silicon-only (twin record: no disable_irq())"
+   "flash test_uart_crossover.py test_no_frame_is_lost_while_interrupts_are_off asserts _setup_ok(facts, \"rxdmae_setup\"), as for the other windows' setup. Bitten on synthetic output; the window is silicon-only (twin record: no disable_irq()); both config-write tests now assert scratch_remove_errno absent (test_uart_crossover.py:267), bitten on synthetic output (silicon-only: the config-write window); setup is asserted through _setup_ok, heap in the result_note, state/crc_mode/gc_threshold echo the run"
+  ]
+ },
+ "tests_hardware/device_scripts/allocation_need_per_source.py::allocation_need_per_source": {
+  "ds_facts": [
+   "justified",
+   "block and rungs echo the script's _BLOCK and _LADDER constants; the host reads the block from the raw BLOCK= line (allocation_need_per_source.py:104, heap_map.py:183) and every rung from the sieve lines test_every_source_and_route_fits_a_small_free_run asserts"
+  ]
+ },
+ "tests_hardware/device_scripts/bmp3xx_alone_survives_a_general_call.py::bmp3xx_alone_survives_a_general_call": {
+  "ds_facts": [
+   "justified",
+   "naks is a stated diagnostic: a NAKed broadcast is counted as sent, 'counted, not a failure' (bmp3xx_alone_survives_a_general_call.py:70); devices_on_bus is recorded with it in the result_note (test_bus_concurrency.py:274); broadcasts, reads, before == after and por_after are asserted"
+  ]
+ },
+ "tests_hardware/device_scripts/bmp3xx_conformance_probe.py::bmp3xx_conformance_probe": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_chip_conformance.py::<module>, test_chip_conformance.py::test_bmp3xx_matches_its_twin_fake"
+  ]
+ },
+ "tests_hardware/device_scripts/bmp3xx_plausibility_read.py::bmp3xx_plausibility_read": {
+  "ds_facts": [
+   "justified",
+   "polls is the count shown in the no-reading assertion's message (test_sensor_accuracy.py:139), a diagnostic"
+  ]
+ },
+ "tests_hardware/device_scripts/bus_concurrency_isl29125_write_vs_siblings.py::bus_concurrency_isl29125_write_vs_siblings": {
+  "ds_facts": [
+   "justified",
+   "isl_windows is the raw write timeline, a diagnostic: test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads asserts write_count == planned, both sibling read counts > 0 and no errors (test_bus_concurrency.py:142). The extractor first counted it read because another test in the file asserts a key of that name"
+  ]
+ },
+ "tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py::bus_concurrency_same_device_scd30": {
+  "ds_facts": [
+   "justified",
+   "settle_failures counts the reads consumed to clear setup()'s first unsettled conversion, stated in the script (bus_concurrency_same_device_scd30.py:32); the measured phase is asserted (completed == planned, no errors)"
+  ]
+ },
+ "tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py::bus_concurrency_scd30_write_vs_siblings": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_bus_concurrency.py::test_scd30_config_write_does_not_disturb_concurrent_sibling_reads"
+  ]
+ },
+ "tests_hardware/device_scripts/bus_deinit_is_a_noop_on_real_hardware.py::bus_deinit_is_a_noop_on_real_hardware": {
+  "ds_facts": [
+   "justified",
+   "fram_setup, chunk, chunk_cleared_after_setup, baseline_write and raw_spi_present are the preconditions of the asserted spi_singleton and spi_read_after_deinit: no chunk or no raw SPI leaves both absent, so the test's facts[...] raises (test_bus_concurrency.py:338), and a failed setup or baseline write makes the read compare unequal to the pattern; chunk_cleared is asserted"
+  ]
+ },
+ "tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py::bus_topology_autodetect_and_hazard_sweep": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_bus_concurrency.py::test_bus_topology_autodetect_address_and_reserved_range_sweep"
+  ]
+ },
+ "tests_hardware/device_scripts/c_stack_budget.py::c_stack_budget": {
+  "ds_facts": [
+   "justified",
+   "the dynamic key is read by both names: c_stack_peak asserted <= limit // 2 (test_memory_stress.py:192), twin_c_stack_peak the twin's stated diagnostic ('reported, never compared', test_memory_stress.py:190); leaf_peaks in the result_note; leftover_errno: the os.mkdir() of the same path follows (c_stack_budget.py:57) and raises on any leftover, so the run dies before the outcome facts its test asserts"
+  ]
+ },
+ "tests_hardware/device_scripts/config_files_dump.py::config_files_dump": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: manual_persistence.py::test_power_loss_during_the_shutdown_commands, test_system_commands.py::test_config_reset_deletes_every_config_file_and_reboots, test_system_commands_over_rest.py::test_config_reset_over_rest_brings_back_the_defaults"
+  ]
+ },
+ "tests_hardware/device_scripts/config_files_restore.py::config_files_restore": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: manual_persistence.py::test_power_loss_during_the_shutdown_commands, test_system_commands_over_rest.py::test_config_reset_over_rest_brings_back_the_defaults"
+  ]
+ },
+ "tests_hardware/device_scripts/config_float_round_trip.py::config_float_round_trip": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_config_float_round_trip.py::test_config_floats_round_trip_unchanged"
+  ]
+ },
+ "tests_hardware/device_scripts/flash_write_loop_gap.py::flash_write_loop_gap": {
+  "ds_facts": [
+   "justified",
+   "flash_calls_us is stated recorded: 'the figure feeds F.3's flash stall row, so it is recorded here' (test_memory_stress.py:150), in the result_note"
+  ]
+ },
+ "tests_hardware/device_scripts/float_boundary_2pow24.py::float_boundary_2pow24": {
+  "ds_facts": [
+   "justified",
+   "above_rounded_to_2pow24 is the same comparison as the asserted above_value == 2**24 (test_bus_electrical_timing.py:61)"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_busy_status_lockout.py::fram_busy_status_lockout": {
+  "ds_facts": [
+   "justified",
+   "setup and allocated: no chunk returns before baseline_ok (fram_busy_status_lockout.py:57), which the test asserts True with the other outcome facts (test_fram_storage.py:192); cleared_first is the run's own precondition, its failure showing in baseline_ok; failures lists the same check() outcomes the test asserts one by one. The extractor first counted setup/allocated/cleared_first read because another test in the file loops over keys of those names"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_capacity_after_full_system_build.py::fram_capacity_after_full_system_build": {
+  "ds_facts": [
+   "justified",
+   "allocated_size and size are the figures in the result_note (test_fram_storage.py:221), beside the asserted logger sets; leftover_errno: the os.mkdir() of the same path follows (fram_capacity_after_full_system_build.py:40) and raises on any leftover, so the run dies before the outcome facts its test asserts"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_command_hold_timing.py::fram_command_hold_timing": {
+  "ds_facts": [
+   "justified",
+   "setup is implied: a FRAM that did not set up fails the asserted command_ok/block_ok (test_fram_storage.py:184). The extractor first counted it read through another test of the file"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_conformance_probe.py::fram_conformance_probe": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_chip_conformance.py::<module>, test_chip_conformance.py::test_fram_matches_its_twin_fake"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py::fram_cs_hijack_fault_injection_and_recovery": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_bus_concurrency.py::test_fram_cs_pin_hijack_fault_injection_and_recovery"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_error_log_reset_during_boot_window.py::fram_error_log_reset_during_boot_window": {
+  "ds_facts": [
+   "justified",
+   "setup and initialized: an uninitialized store returns before seeding (fram_error_log_reset_during_boot_window.py:44), failing the asserted seeded_count == 3 (test_fram_storage.py:130), as CR3 classed it"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py::fram_error_log_reset_race_seed_and_race": {
+  "ds_facts": [
+   "justified",
+   "setup and initialized: an uninitialized store returns before SEEDED (fram_error_log_reset_race_seed_and_race.py:46), failing the asserted SEEDED/LANDED lines (test_fram_storage.py:104); baseline is the cleared history the seed starts from, implied by the asserted seeded ErrCount == 3; not_reset_after_transfers is printed only when no reset came, when no LANDED line is printed"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_error_log_reset_race_verify.py::fram_error_log_reset_race_verify": {
+  "ds_facts": [
+   "fixed",
+   "test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write now asserts setup and initialized True (test_fram_storage.py:108): a store that never set up (no chunk) restores an empty history with ErrCount 0, which the accepted 'empty' outcome took, and every accepted outcome sets initialized. Bitten on synthetic output (vacuous output passes HEAD's test and fails the new one, healthy passes both: S/u35/laneC/crr2a2/bites.out); twin: S/u35/laneC/crr2a2/twin_race.log"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_error_log_roundtrip.py::fram_error_log_roundtrip": {
+  "ds_facts": [
+   "justified",
+   "setup and initialized: an uninitialized store returns before restored (fram_error_log_roundtrip.py:41), failing restored is True; cleared_first and rebooted_setup are implied by the asserted exact history (ErrCount 1, only the seeded entry, test_fram_storage.py:89)"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_manager_roundtrip.py::fram_manager_roundtrip": {
+  "ds_facts": [
+   "justified",
+   "rdid is the part ID in the result_note (test_fram_storage.py:61); every outcome fact is asserted in the loop after it"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_pause_unpause_and_gating.py::fram_pause_unpause_and_gating": {
+  "ds_facts": [
+   "justified",
+   "skipped is stated: 'a check whose premise failed is reported skipped' (fram_pause_unpause_and_gating.py:3), noted at test_fram_storage.py:167; setup/allocated: no chunk returns before the checks (fram_pause_unpause_and_gating.py:180), failing the asserted failures/cleared_last; cleared_first is the run's own precondition"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_raw_dump.py::fram_raw_dump": {
+  "ds_facts": [
+   "justified",
+   "saved evidence: the dump is saved verbatim with its facts before anything clears the part (harness.py:699), the stray-byte check reading its lines (test_system_commands.py:185)"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py::fram_reset_race_during_write_seed_and_race": {
+  "ds_facts": [
+   "justified",
+   "initialized: an uninitialized FRAM returns before seeding (fram_reset_race_during_write_seed_and_race.py:54), failing the asserted seeded == [True, True, True] (test_bus_concurrency.py:318). The extractor first counted it read through another test of the file"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py::fram_reset_race_during_write_verify_recovery": {
+  "ds_facts": [
+   "justified",
+   "initialized: an uninitialized FRAM returns before the guard reads (fram_reset_race_during_write_verify_recovery.py:63), so the test's facts['guard_before_ok'] raises (test_bus_concurrency.py:323). The extractor first counted it read through another test of the file"
+  ]
+ },
+ "tests_hardware/device_scripts/fram_write_protect_roundtrip.py::fram_write_protect_roundtrip": {
+  "ds_facts": [
+   "justified",
+   "setup and allocated: no chunk returns before the protection checks (fram_write_protect_roundtrip.py:76), failing the asserted blocked_write/blocked_read/data_survived/cleared_last (test_fram_storage.py:151). The extractor first counted both read through another test of the file"
+  ]
+ },
+ "tests_hardware/device_scripts/heap_headroom_after_full_system_build.py::heap_headroom_after_full_system_build": {
+  "ds_facts": [
+   "justified",
+   "the heap_* stage figures are collected by prefix into the result_note (test_memory_stress.py:117), diagnostics beside the asserted used/largest-block bounds and the block map; gc_threshold names the stage in the note and messages; leftover_errno: the os.mkdir() of the same path follows (heap_headroom_after_full_system_build.py:61) and raises on any leftover, so the run dies before the outcome facts its test asserts"
+  ]
+ },
+ "tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py::heap_layout_after_full_boot_sequence": {
+  "ds_facts": [
+   "justified",
+   "the heap_* figures and lists are per-stage diagnostics, counts/boot_ms/gc_threshold in the result_note (test_heap_layout.py:49); the verdict rests on the block maps, and the suppressed arm's control fails a boot whose lists build nothing (test_heap_layout.py:87); leftover_errno: the os.mkdir() of the same path follows (heap_layout_after_full_boot_sequence.py:142) and raises on any leftover, so the run dies before the outcome facts its test asserts"
+  ]
+ },
+ "tests_hardware/device_scripts/heap_under_connection_ceiling.py::heap_under_connection_ceiling": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_heap_under_connection_ceiling.py::test_heap_at_peak_while_a_full_ceiling_is_held"
+  ]
+ },
+ "tests_hardware/device_scripts/i2c_held_sda_recovery.py::i2c_held_sda_recovery": {
+  "ds_facts": [
+   "justified",
+   "no unread fact it emits: errors is the included bus_reader_loops.py's report_errors() key, which this script never calls (i2c_held_sda_recovery.py:18); its own facts are asserted by test_a_held_sda_line_is_cleared_and_every_device_answers"
+  ]
+ },
+ "tests_hardware/device_scripts/isl29125_cross_device_concurrency.py::isl29125_cross_device_concurrency": {
+  "ds_facts": [
+   "justified",
+   "windows_with_interleaving is a diagnostic beside the asserted interleaved > 0 (test_bus_concurrency.py:187)"
+  ]
+ },
+ "tests_hardware/device_scripts/isl29125_lighting_scenarios.py::isl29125_lighting_scenarios": {
+  "ds_facts": [
+   "biting",
+   "the scenario_<name> facts are read by prefix (test_sensor_accuracy.py:248) and each judged by _scenario_problems; the script emits one per scenario in its loop or dies without DONE"
+  ]
+ },
+ "tests_hardware/device_scripts/isl29125_mechanism_envelope.py::isl29125_mechanism_envelope": {
+  "ds_facts": [
+   "fixed",
+   "test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration now asserts leftover_errno and scratch_remove_errno absent (test_sensor_accuracy.py:209): unlike the mkdir scripts, nothing fails a leftover here, so the reader set up over a stale scratch config; overrange_at_full is asserted (its if appends a problem); reset_error_counter is a diagnostic: a failed reset leaves setup entries in ascending_log, which _log_problems fails. Bitten on synthetic output (vacuous output passes HEAD's test and fails the new one, healthy passes both: S/u35/laneC/crr2a2/bites.out); silicon-only (twin record: NeoPixel sweep)"
+  ]
+ },
+ "tests_hardware/device_scripts/isl29125_mock_conformance_probe.py::isl29125_mock_conformance_probe": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: conformance.py::<module>"
+  ]
+ },
+ "tests_hardware/device_scripts/isl29125_plausibility_read.py::isl29125_plausibility_read": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_sensor_accuracy.py::test_isl29125_real_reading_is_within_datasheet_plausible_bounds"
+  ]
+ },
+ "tests_hardware/device_scripts/isl29125_real_irq_edge.py::isl29125_real_irq_edge": {
+  "ds_facts": [
+   "justified",
+   "config1_restart is stated reported-only: 'whether a CONFIG1 write restarts a conversion is reported only' (test_bus_concurrency.py:222), noted after it"
+  ]
+ },
+ "tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py::isl29125_same_device_rw_concurrency": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_bus_concurrency.py::test_isl29125_same_device_read_write_concurrency"
+  ]
+ },
+ "tests_hardware/device_scripts/listener_close_leaves_the_pcb_pools.py::listener_close_leaves_the_pcb_pools": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_modlwip_listener_close.py::<module>, test_modlwip_listener_close.py::test_closing_a_listener_and_a_failed_listen_leave_the_pcb_pools_as_they_were"
+  ]
+ },
+ "tests_hardware/device_scripts/loop_lag_under_combined_load.py::loop_lag_under_combined_load": {
+  "ds_facts": [
+   "fixed",
+   "both tests now assert samples an int > 0 (test_memory_stress.py:180, test_memory_stress_bench.py:166): a probe that recorded nothing left lag_max 0 and passed the bound; lag_p99_us is in the result_note; leftover_errno: the os.mkdir() of the same path follows (loop_lag_under_combined_load.py:83) and raises on any leftover, so the run dies before the outcome facts its test asserts. Bitten on synthetic output (vacuous output passes HEAD's test and fails the new one, healthy passes both: S/u35/laneC/crr2a2/bites.out); the flash test passes on the twin (S/u35/laneC/crr2a2/twin_lag.log)"
+  ]
+ },
+ "tests_hardware/device_scripts/loop_stretch_timing.py::loop_stretch_timing": {
+  "ds_facts": [
+   "justified",
+   "gc_threshold and crc_total_us are in the result_note (test_memory_stress.py:141) beside the asserted stretches; leftover_errno: the os.mkdir() of the same path follows (loop_stretch_timing.py:54) and raises on any leftover, so the run dies before the outcome facts its test asserts"
+  ]
+ },
+ "tests_hardware/device_scripts/reboot_fallback_starves_the_watchdog.py::reboot_fallback_starves_the_watchdog": {
+  "ds_facts": [
+   "justified",
+   "armed_ms echoes the script's watchdog timeout, shown in the elapsed messages (test_watchdog_starvation.py:69)"
+  ]
+ },
+ "tests_hardware/device_scripts/reboot_persist_read.py::reboot_persist_read": {
+  "ds_facts": [
+   "fixed",
+   "test_config_value_survives_a_genuine_hard_reset now asserts remove_errno absent (test_reboot_persistence.py:37), as test_config_float_round_trip.py does (test_config_float_round_trip.py:24). Bitten on synthetic output (vacuous output passes HEAD's test and fails the new one, healthy passes both: S/u35/laneC/crr2a2/bites.out); passes on the twin (S/u35/laneC/crr2a2/twin_reboot.log)"
+  ]
+ },
+ "tests_hardware/device_scripts/reboot_persist_write.py::reboot_persist_write": {
+  "ds_facts": [
+   "justified",
+   "written's ok/validity is implied by the asserted marker == expected after the reset (test_reboot_persistence.py:36): a refused write leaves the default"
+  ]
+ },
+ "tests_hardware/device_scripts/reset_code_boot_phase_hang.py::reset_code_boot_phase_hang": {
+  "ds_facts": [
+   "justified",
+   "phase echoes the host's PHASE; marked_phase, printed only inside the hang, is asserted == phase (test_reset_reasons.py:169); leftover_errno: the os.mkdir() of the same path follows (reset_code_boot_phase_hang.py:62) and raises on any leftover, so the run dies before the outcome facts its test asserts"
+  ]
+ },
+ "tests_hardware/device_scripts/reset_code_invalid_record.py::reset_code_invalid_record": {
+  "ds_facts": [
+   "justified",
+   "state echoes the host's STATE; invalid_record is asserted (test_reset_reasons.py:139)"
+  ]
+ },
+ "tests_hardware/device_scripts/reset_code_loop_end.py::reset_code_loop_end": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed"
+  ]
+ },
+ "tests_hardware/device_scripts/scd30_argument_reaction.py::scd30_argument_reaction": {
+  "ds_facts": [
+   "justified",
+   "stated 'Recorded, not judged: the datasheet states no reaction to either write' (test_chip_conformance.py:172), each figure in the result_note; skipped absent, restored and interval_after == interval_before asserted; a bad interval_before CRC ends in skipped (scd30_argument_reaction.py:150)"
+  ]
+ },
+ "tests_hardware/device_scripts/scd30_conformance_probe.py::scd30_conformance_probe": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_chip_conformance.py::<module>, test_chip_conformance.py::test_scd30_matches_its_twin_fake"
+  ]
+ },
+ "tests_hardware/device_scripts/scd30_data_ready_wait.py::scd30_data_ready_wait": {
+  "ds_facts": [
+   "justified",
+   "co2/waited_s is the reading or the wait, a diagnostic; an error leaves measuring absent, which raises (scd30_prerequisite.py:55)"
+  ]
+ },
+ "tests_hardware/device_scripts/scd30_measurement_interval_read.py::scd30_measurement_interval_read": {
+  "ds_facts": [
+   "justified",
+   "error leaves interval absent, which raises (scd30_prerequisite.py:47)"
+  ]
+ },
+ "tests_hardware/device_scripts/scd30_plausibility_read.py::scd30_plausibility_read": {
+  "ds_facts": [
+   "justified",
+   "polls is the count in the no-reading message (test_sensor_accuracy.py:106)"
+  ]
+ },
+ "tests_hardware/device_scripts/scd30_real_irq_edge.py::scd30_real_irq_edge": {
+  "ds_facts": [
+   "justified",
+   "trigger_s echoes the script's fallback period, shown in the message (test_bus_electrical_timing.py:53)"
+  ]
+ },
+ "tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py::scd30_same_device_rw_concurrency": {
+  "ds_facts": [
+   "justified",
+   "settle_failures counts the reads consumed to clear the first unsettled conversion, stated in the script (scd30_same_device_rw_concurrency.py:30); ambient_sent is the value re-sent, beside the asserted write_done and absent write_error (test_bus_concurrency.py:103)"
+  ]
+ },
+ "tests_hardware/device_scripts/scd30_start_continuous_measurement.py::scd30_start_continuous_measurement": {
+  "ds_facts": [
+   "justified",
+   "sent and invalid_readback raise when wrong (scd30_prerequisite.py:69); ambient is the value re-sent; an error leaves sent False, which raises"
+  ]
+ },
+ "tests_hardware/device_scripts/scheduler_saturation_drop.py::scheduler_saturation_drop": {
+  "ds_facts": [
+   "justified",
+   "counts_busy/counts_heal are the per-timer counts in the message of the asserted all_self_healed (test_bus_electrical_timing.py:37)"
+  ]
+ },
+ "tests_hardware/device_scripts/serving_at_default_gc.py::serving_at_default_gc": {
+  "ds_facts": [
+   "justified",
+   "failure_maps is in the result_note (test_serving_heap_at_default_gc.py:100); the allocation failures themselves are asserted absent from the output"
+  ]
+ },
+ "tests_hardware/device_scripts/sgp40_conformance_probe.py::sgp40_conformance_probe": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_chip_conformance.py::<module>, test_chip_conformance.py::test_sgp40_matches_its_twin_fake"
+  ]
+ },
+ "tests_hardware/device_scripts/sgp40_fram_backup_restore.py::sgp40_fram_backup_restore": {
+  "ds_facts": [
+   "justified",
+   "setup/allocated: no VOC-state chunk returns before the backup (sgp40_fram_backup_restore.py:60), failing the asserted backup_written; cleared_first and rebooted_setup are implied by the asserted restored_state_matches"
+  ]
+ },
+ "tests_hardware/device_scripts/sgp40_general_call_reset_hazard.py::sgp40_general_call_reset_hazard": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_bus_concurrency.py::test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_transactions"
+  ]
+ },
+ "tests_hardware/device_scripts/sgp40_same_device_concurrent_sessions.py::sgp40_same_device_concurrent_sessions": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_bus_concurrency.py::test_sgp40_concurrent_sessions_each_get_a_tick"
+  ]
+ },
+ "tests_hardware/device_scripts/sgp40_sample_cadence.py::sgp40_sample_cadence": {
+  "ds_facts": [
+   "justified",
+   "stated: 'the figures are the deliverable (no pass threshold, SPECIFICATION.md M.3)' (test_sensor_accuracy.py:159), every figure in the result_note; leftover_errno: the os.mkdir() of the same path follows (sgp40_sample_cadence.py:56) and raises on any leftover, so the run dies before the outcome facts its test asserts"
+  ]
+ },
+ "tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py::sgp40_voc_algorithm_quality": {
+  "ds_facts": [
+   "justified",
+   "blackout_s echoes the script's blackout constant; the post-blackout samples are asserted"
+  ]
+ },
+ "tests_hardware/device_scripts/system_command_config_reset.py::system_command_config_reset": {
+  "ds_facts": [
+   "justified",
+   "state echoes the host's STATE, an unknown one ending in the failure _reset_facts refuses (test_system_commands.py:96); mempause belongs to a state no test runs; leftover_errno: the os.mkdir() of the same path follows (system_command_config_reset.py:46) and raises on any leftover, so the run dies before the outcome facts its test asserts"
+  ]
+ },
+ "tests_hardware/device_scripts/system_command_fram_erase.py::system_command_fram_erase": {
+  "ds_facts": [
+   "fixed",
+   "_attributed_reset now asserts the mempause answer Valid in the mempause state (test_system_commands.py:78): a refused pause reset unpaused and passed. state echoes STATE (an unknown one ends in failure); seeded_system is SYSTEM's seeded history beside the asserted seeded set, as CR3 classed it; leftover_errno: the os.mkdir() of the same path follows (system_command_fram_erase.py:102) and raises on any leftover, so the run dies before the outcome facts its test asserts. Bitten on synthetic output (vacuous output passes HEAD's test and fails the new one, healthy passes both: S/u35/laneC/crr2a2/bites.out); twin: S/u35/laneC/crr2a2/twin_paused.log"
+  ]
+ },
+ "tests_hardware/device_scripts/system_command_hang.py::system_command_hang": {
+  "ds_facts": [
+   "justified",
+   "command echoes COMMAND (an unknown one ends in failure); hung_store names the hung store beside the asserted HANG line (test_system_commands.py:230); leftover_errno: the os.mkdir() of the same path follows (system_command_hang.py:53) and raises on any leftover, so the run dies before the outcome facts its test asserts"
+  ]
+ },
+ "tests_hardware/device_scripts/system_command_reboot.py::system_command_reboot": {
+  "ds_facts": [
+   "fixed",
+   "_attributed_reset now asserts the mempause answer Valid in the mempause state (test_system_commands.py:78); the extractor first counted mempause read through the STATE=\"mempause\" argument. command/state echo the host's arguments (an unknown one ends in failure); leftover_errno: the os.mkdir() of the same path follows (system_command_reboot.py:98) and raises on any leftover, so the run dies before the outcome facts its test asserts. Bitten on synthetic output (vacuous output passes HEAD's test and fails the new one, healthy passes both: S/u35/laneC/crr2a2/bites.out); twin: S/u35/laneC/crr2a2/twin_paused.log"
+  ]
+ },
+ "tests_hardware/device_scripts/system_debug_level_set_standard.py::system_debug_level_set_standard": {
+  "ds_facts": [
+   "justified",
+   "before and written raise when wrong (conftest.py:414); valid and validity are implied: a failed setup or refused write leaves written False with before off the standard"
+  ]
+ },
+ "tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py::system_service_restarts_a_real_dead_task": {
+  "ds_facts": [
+   "biting",
+   "round_<n> is read by prefix and asserted (test_reset_reasons.py:114); the restart mode's facts are asserted in test_task_supervisor.py"
+  ]
+ },
+ "tests_hardware/device_scripts/timer_alarm_pool_exhaustion.py::timer_alarm_pool_exhaustion": {
+  "ds_facts": [
+   "justified",
+   "constructed is in the result_note and the message (test_bus_electrical_timing.py:43) beside the asserted raised and errno"
+  ]
+ },
+ "tests_hardware/device_scripts/uart_comm_hazards.py::uart_comm_hazards": {
+  "ds_facts": [
+   "justified",
+   "part echoes the PART default; setup is asserted through _setup_ok (test_uart_crossover.py:210)"
+  ]
+ },
+ "tests_hardware/device_scripts/uart_crossover_exchange.py::uart_crossover_exchange": {
+  "ds_facts": [
+   "justified",
+   "setup is asserted through _setup_ok; train_bytes/max_train_bytes echo constants in the message (test_uart_crossover.py:105); gc_threshold names the stage"
+  ]
+ },
+ "tests_hardware/device_scripts/uart_crossover_recovery.py::uart_crossover_recovery": {
+  "ds_facts": [
+   "biting",
+   "setup is asserted through _setup_ok (test_uart_crossover.py:210), whose default key the extractor read as a bare string"
+  ]
+ },
+ "tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py::uart_driver_read_never_blocks_the_loop": {
+  "ds_facts": [
+   "justified",
+   "the gap figures are stated 'reported, not asserted (F.5.8)' (uart_driver_read_never_blocks_the_loop.py:72); txcopy_us is the writer's copy time; wire_us is in the span message (test_uart_crossover.py:142)"
+  ]
+ },
+ "tests_hardware/device_scripts/uart_idle_poll_rate.py::uart_idle_poll_rate": {
+  "ds_facts": [
+   "justified",
+   "setup is asserted through _setup_ok; sample_ms echoes the sample window in the message (test_uart_crossover.py:160)"
+  ]
+ },
+ "tests_hardware/device_scripts/uart_link_echo_under_serving_load.py::uart_link_echo_under_serving_load": {
+  "ds_facts": [
+   "justified",
+   "echo_failures is implied by the asserted intact == total, total counting every round (test_uart_link_under_api_load.py:94); size echoes the payload size"
+  ]
+ },
+ "tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py::uart_link_under_concurrent_system_load": {
+  "ds_facts": [
+   "justified",
+   "setup is asserted through _setup_ok; timeout_ms and echo_mismatch are the detail in the messages of the asserted round-trip bound and echo_intact == set_total (test_uart_crossover.py:199)"
+  ]
+ },
+ "tests_hardware/device_scripts/unretrieved_task_exception_handler.py::unretrieved_task_exception_handler": {
+  "ds_facts": [
+   "biting",
+   "every fact it emits is read by key in the test that runs it: test_unretrieved_task_exception_handler.py::test_the_unretrieved_exception_report_is_allocation_free_and_retains_nothing_on_real_hardware"
+  ]
+ },
+ "tests_hardware/device_scripts/watchdog_starvation_reset.py::watchdog_starvation_reset": {
+  "ds_facts": [
+   "justified",
+   "armed_ms echoes the watchdog timeout in the elapsed message (test_watchdog_starvation.py:51)"
+  ]
+ },
+ "tests_hardware/device_scripts/wifi_country_code_reaction.py::wifi_country_code_reaction": {
+  "ds_facts": [
+   "justified",
+   "stated 'recorded, never judged' (test_bus_electrical_timing.py:64); country_before is in the result_note"
+  ]
+ },
+ "tests_hardware/device_scripts/wifi_radio_reinit_recovery.py::wifi_radio_reinit_recovery": {
+  "ds_facts": [
+   "justified",
+   "recover_returned is in the result_note (test_wifi_radio_reinit.py:30) beside the asserted reconnected and elapsed bound"
   ]
  }
 }

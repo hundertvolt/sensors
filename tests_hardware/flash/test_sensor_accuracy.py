@@ -206,6 +206,7 @@ def test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibrati
     if not request.config.getoption("--allow-neopixel-sweep"):
         pytest.skip("needs the NeoPixel-aimed-at-the-ISL29125 rig - pass --allow-neopixel-sweep once it is set up (tests_hardware/README.md's rig section)")
     facts = parse_facts(board.run_isolated(DEVICE_SCRIPTS_DIR / "isl29125_mechanism_envelope.py", timeout_s=_ENVELOPE_SCRIPT_TIMEOUT_S))
+    assert "leftover_errno" not in facts and "scratch_remove_errno" not in facts, f"the scratch config file could not be removed, before the run or after it: {facts}"
     assert facts["died"] == [], f"a task died: {facts['died']}"
     bounds = _dict(facts["bounds"])
     problems = _envelope_problems(facts)
