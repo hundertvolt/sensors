@@ -96,6 +96,7 @@ _RUNG_OFFSETS = 6  # as many offsets as each loop has reads, the recovery case's
 _CANCEL_TURNS = 40  # scheduler turns into the SGP40's setup and measurement, which end well before
 _HOLD_SCD30_CYCLES = 3  # whole SCD30 cycles of real bus load the driven 60 s retry is held open for
 _POLL_S = 0.1  # how often the ladder runs and the command waits look again
+_POLL_MS = int(_POLL_S * 1000)  # the same look on a driven clock
 _ERASE_UNIT: int = src_int("src/asy_fram_manager.py", "_ERASE_UNIT")
 _STA_RETRY_S: int = src_int("src/asy_wifi_service.py", "_STA_RETRY_AFTER_LOSS_S")
 _STA_ESTABLISHED: int = src_int("src/asy_wifi_service.py", "_PHASE_STA_ESTABLISHED")
@@ -175,6 +176,24 @@ def _chip(module: "ModuleType") -> "FRAMChip":
     chip = module.fram.fram._spidev.spi._spi.device
     assert chip is not None
     return cast("FRAMChip", chip)
+
+
+async def _driven(clock: DrivenTime, coro: "Coroutine[object, object, T]") -> "T":
+    # `coro` as a task, the driven clock elapsed a poll at a time until it ends: a step whose own sleeps run on it.
+    task = asyncio.get_event_loop().create_task(coro)
+    waited = 0
+    while not task.done():
+        assert waited < _COMMAND_WAIT_S * 1000, "a driven step never ended"
+        await clock.elapse(_POLL_MS)
+        waited += _POLL_MS
+    return await task
+
+
+def _driven_modules(device: str) -> "list[object]":
+    # The device's generated module loaded, then every src service and driver holding asyncio, and the twin's machine
+    # and network: one clock for all of them, the boot's waits and the pause's deadline among their reads.
+    load_device(device)
+    return [m for name, m in sorted(sys.modules.items()) if (name.startswith("asy_") or name in ("machine", "network")) and getattr(m, "asyncio", None) is asyncio]
 
 
 async def _feed_watchdog_periodically(watchdog: "WDT") -> None:
@@ -635,27 +654,28 @@ def test_a_timed_storage_pause_ends_by_itself_on_the_next_uptime_pass() -> None:
     # A pause through SYSTEM's own entry drops a logger write, and the first uptime pass past its deadline ends it: the
     # next write lands, nothing was deferred. `mempause` through the generated dispatch answers and pauses the same way.
     async def scenario(device: str) -> None:
-        module, _watchdog = await _boot(device)
-        sysfunct, manager, chip = module.sysfunct, module.fram, _chip(module)
-        assert await module._system_cmd_callback("mempause") is True
-        assert manager.get_pause() is True, "mempause left the storage running"
-        assert sysfunct.pause_permanent_storage(0) is True and manager.get_pause() is False
-        status = sysfunct.start_asy_status()
-        sysfunct.start_uptime_timer()
-        try:
-            assert sysfunct.pause_permanent_storage(2) is True and manager.get_pause() is True
-            before = chip.write_count
-            await sysfunct.pr.err_s("dropped while paused", errno=code("E", "TEST_SEED_A"))
-            assert chip.write_count == before, "a logger write reached the chip during the pause"
-            waited = 0.0
-            while manager.get_pause():
-                assert waited < _COMMAND_WAIT_S, "the timed pause never ended by itself"
-                await asyncio.sleep(_POLL_S)
-                waited += _POLL_S
-            await sysfunct.pr.err_s("lands after the pause", errno=code("E", "TEST_SEED_B"))
-            assert chip.write_count > before, "the write after the pause did not land"
-        finally:
-            await cancel(status)
+        with DrivenTime(*_driven_modules(device), sleeps=True) as clock:  # the pause's deadline and the uptime passes too
+            module, _watchdog = await _driven(clock, _boot(device))
+            sysfunct, manager, chip = module.sysfunct, module.fram, _chip(module)
+            assert await module._system_cmd_callback("mempause") is True
+            assert manager.get_pause() is True, "mempause left the storage running"
+            assert sysfunct.pause_permanent_storage(0) is True and manager.get_pause() is False
+            status = sysfunct.start_asy_status()
+            sysfunct.start_uptime_timer()
+            try:
+                assert sysfunct.pause_permanent_storage(2) is True and manager.get_pause() is True
+                before = chip.write_count
+                await _driven(clock, sysfunct.pr.err_s("dropped while paused", errno=code("E", "TEST_SEED_A")))
+                assert chip.write_count == before, "a logger write reached the chip during the pause"
+                waited = 0.0
+                while manager.get_pause():
+                    assert waited < _COMMAND_WAIT_S, "the timed pause never ended by itself"
+                    await clock.elapse(_POLL_MS)
+                    waited += _POLL_S
+                await _driven(clock, sysfunct.pr.err_s("lands after the pause", errno=code("E", "TEST_SEED_B")))
+                assert chip.write_count > before, "the write after the pause did not land"
+            finally:
+                await cancel(status)
 
     _on_each(_FRAM_DEVICES, scenario, _STATE_RUN_BOUND_S)
 
