@@ -3,7 +3,7 @@
 // twin holds while it runs, and the verdict read from a stopped twin's output.
 
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -139,11 +139,23 @@ export function requireInterpreter() {
 
 /**
  * A fresh config directory for one command's twins: its own, under the OS temp directory, never the manual run's
- * digital_twin/config/, which no command touches.
+ * digital_twin/config/, which no command touches. With its trailing separator, as the runner's --config-dir takes it.
  * @returns {string}
  */
 export function makeConfigDir() {
-    return mkdtempSync(CONFIG_DIR_PREFIX);
+    return mkdtempSync(CONFIG_DIR_PREFIX) + path.sep;
+}
+
+/**
+ * Each entry beside config directory `dir` whose path extends the directory's own: a file the twin named by appending to
+ * a directory given without its trailing separator (src/asy_config_manager.py config_filename()) lands there.
+ * @param {string} dir
+ * @returns {string[]}
+ */
+export function besideConfigDir(dir) {
+    const own = path.resolve(dir);
+    const parent = path.dirname(own);
+    return readdirSync(parent).map((name) => path.join(parent, name)).filter((entry) => entry !== own && entry.startsWith(own));
 }
 
 /**

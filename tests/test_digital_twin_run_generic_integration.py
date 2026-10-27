@@ -129,6 +129,14 @@ def test_parse_args_takes_the_config_dir_the_online_ntp_switch_and_in_memory_sta
     assert _parse("--mem-backup-state-path", "m.json").state.mem_backup == "m.json"
 
 
+def test_parse_args_refuses_a_config_dir_without_its_trailing_separator() -> None:
+    # The product names each config file by appending to the directory as given (config_filename()), so a directory
+    # without its "/" would have every file written beside it instead of inside it.
+    for value in ("tests/_tmp/x", ""):
+        said = _refused(_parse, "--config-dir", value)
+        assert "--config-dir" in said and repr(value) in said and "'/'" in said, said
+
+
 def test_the_cut_system_entry_is_held_after_its_first_blocks_busy_mark_and_only_its_bound_ends_it() -> None:
     said: list[str] = []
     marks: list[int] = []

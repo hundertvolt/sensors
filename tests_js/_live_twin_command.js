@@ -3,13 +3,13 @@
 // API for navigating to an external origin - vitest-dev/vitest#7875). See SPECIFICATION.md Part H.7.
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { connect } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { drainChildOutput } from "./_memory_markers.js";
 import { readIntConst } from "./_source_constants.js";
-import { HOST, READY_TIMEOUT_MS, SHUTDOWN_TIMEOUT_MS, holdTwinPorts, makeConfigDir, removeConfigDir, requireInterpreter, spawnTwin, stopTwin, twinVerdict, waitUntilServing } from "./_twin_process.js";
+import { HOST, READY_TIMEOUT_MS, SHUTDOWN_TIMEOUT_MS, besideConfigDir, holdTwinPorts, makeConfigDir, removeConfigDir, requireInterpreter, spawnTwin, stopTwin, twinVerdict, waitUntilServing } from "./_twin_process.js";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // Clear of every fixed port and band tests/, tests_scripts/, scripts/ and digital_twin/ bind (the
@@ -246,7 +246,7 @@ export function configuredMaxConnections(device, devicesDir = path.join(REPO_ROO
  * @param {{context: import("playwright").BrowserContext}} ctx
  * @param {string} device a devices/<device>.toml stem, booted from its own generated module and site
  * @param {number} testTimeoutMs the calling test's own timeout (checkClock())
- * @returns {Promise<{titleHasSensorStation: boolean, deviceName: string, firstStatus: string | null, resubmitStatus: string | null}>}
+ * @returns {Promise<{titleHasSensorStation: boolean, deviceName: string, firstStatus: string | null, resubmitStatus: string | null, config: {inside: string[], beside: string[], left: string[]}}>}
  */
 export async function runLiveBackendSmoke({ context }, device, testTimeoutMs) {
     const clock = checkClock(testTimeoutMs);
@@ -308,6 +308,8 @@ export async function runLiveBackendSmoke({ context }, device, testTimeoutMs) {
     let checked;
     /** @type {unknown} */
     let failure = null;
+    /** @type {{inside: string[], beside: string[], left: string[]}} */
+    const config = { inside: [], beside: [], left: [] };
     try {
         checked = await clock.within(check());
     } catch (err) {
@@ -319,13 +321,17 @@ export async function runLiveBackendSmoke({ context }, device, testTimeoutMs) {
         }
         const [unclosed] = await Promise.all([closeContext(contexts, pages), stopTwin(proc)]);
         failure ??= unclosed;
+        // Where the stopped twin's files are, then what its removal left: the host keeps nothing a command wrote.
+        config.inside = existsSync(configDir) ? readdirSync(configDir).sort() : [];
+        config.beside = besideConfigDir(configDir);
         removeConfigDir(configDir);
+        config.left = [...(existsSync(configDir) ? [configDir] : []), ...besideConfigDir(configDir)];
     }
     twinVerdict(`live-backend smoke check for ${device}`, [output], failure, await output.closed(SHUTDOWN_TIMEOUT_MS));
     if (checked === undefined) {
         throw new Error(`live-backend smoke check for ${device} ended with no result`);
     }
-    return checked;
+    return { ...checked, config };
 }
 
 /**

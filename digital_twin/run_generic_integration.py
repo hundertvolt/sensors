@@ -269,7 +269,7 @@ _USAGE = f"""Usage: micropython digital_twin/run_generic_integration.py --module
   --wiring-plan PATH       its wiring-plan JSON (required)
   --host HOST, --port N    where the webserver listens (default: localhost, 8080)
   --device LABEL           the device name the log lines carry (default: the module name)
-  --config-dir PATH        the product's config directory (default: {_CONFIG_DIR_DEFAULT})
+  --config-dir PATH/       the product's config directory, ending in "/" (default: {_CONFIG_DIR_DEFAULT})
   --debug-level N          build every logger at level N, until the stored DebugLevel applies (default: off, as on the device)
   --fram-state-path PATH   persist the FRAM image (default: {_FRAM_STATE_DEFAULT}; "" in memory)
   --scd30-state-path PATH  persist the SCD30's NVM (default: {_SCD30_STATE_DEFAULT}; "" in memory)
@@ -1241,6 +1241,9 @@ def parse_args(argv: "list[str]") -> RunConfig:
     wiring_plan_path = text.get("--wiring-plan")
     if wiring_plan_path is None:
         raise ValueError("--wiring-plan is required (a JSON file in buildgen.twin_wiring.compute_twin_wiring()'s own shape)")
+    if not text["--config-dir"].endswith("/"):
+        # config_filename() appends each file's name to the directory as given: without its "/" they land beside it.
+        raise ValueError(f"--config-dir {text['--config-dir']!r} must end with '/' (src/asy_config_manager.py config_filename() appends config_<name>.cfg to it as given)")
 
     return RunConfig(
         module,
