@@ -90,8 +90,10 @@ class _Wake:
             _core._task_queue.push(self.task)
 
     def remove(self, _task: object) -> None:
-        # The task leaves without its wake (a cancel, a close or a thrown exception): the clock lists the wake no more.
+        # The task leaves without its wake (a cancel, a close, a thrown exception or a wake-up off this queue): the clock
+        # lists the wake no more, and a step its task still takes here ends the sleep, as a run-queue sleep woken early.
         self.task = None
+        self.fired = True
         self.clock._delist(self)
 
     def throw(self, exc: BaseException, *_args: object) -> None:
