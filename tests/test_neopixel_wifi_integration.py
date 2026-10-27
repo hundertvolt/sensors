@@ -16,6 +16,7 @@ from _sensortask_scenarios import build
 from _shared_rest_roundtrip import drain_json
 from _strict_json import strict_loads
 from _tmp_scratch import TmpScratch
+from _twin_devices import devices_with, distinct_wirings
 from microdot import Microdot, Request, Response
 
 from asy_neopixel_driver import NeopixelDriver
@@ -106,25 +107,19 @@ class _FlashSleeps:
         asyncio.sleep, asyncio.sleep_ms = self._real
 
 
-def _devices_with_a_neopixel() -> "list[str]":
-    # Every device whose generated wiring plan declares a neopixel instance, each wiring its own; none fails.
-    require_fresh()
-    found = []
-    for name in sorted(os.listdir("build/generated_src")):
-        if name.endswith("_wiring_plan.json"):
-            with open("build/generated_src/" + name) as f:
-                plan = json.load(f)
-            if "neopixel" in plan["instances"]:
-                found.append(str(plan["device"]))
-    assert found, "no generated device declares a neopixel instance"
-    return found
-
-
 def _blocked_dir() -> str:
     # A config path whose WIFI file is a directory: the store's setup() fails, as with no readable Wi-Fi configuration.
     path = _tmp_cfg_dir()
     os.mkdir(path + "config_WIFI.cfg")
     return path
+
+
+def _devices_with_a_neopixel() -> "list[str]":
+    # One device per distinct whole wiring among those wiring a neopixel, as the test reads each one's whole timer
+    # collection; none wiring one fails in devices_with().
+    require_fresh()
+    wired = devices_with("neopixel")
+    return [device for device in distinct_wirings() if device in wired]
 
 
 def _frames(pixel: NeopixelDriver, start: int) -> "list[tuple[int, ...]]":
