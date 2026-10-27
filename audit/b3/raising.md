@@ -4,7 +4,7 @@ Requirement: per never-raise module an `ast` walk lists every call outside a `tr
 
 ## Walk summary
 
-Walked over `src/` as of `b1bf1f3` by `audit/b3/raising_walk.py` (agent, 2026-10-22). Re-run it on the integration head: lanes P
+Walked over `src/` as of `c1b55e87` by `audit/b3/raising_walk.py` (agent, 2026-10-22). Re-run it on the integration head: lanes P
 and Y edit four of these modules in U35. A row left "open" needs its per-site proof from the pinned source in the B3 campaign.
 
 Sites per module (call or raise) by the `try` enclosing them: inside one catching `Exception` (broad), inside one
@@ -13,435 +13,524 @@ catching named classes only (narrow), or none. Broad sites are handled by constr
 | module | calls broad | calls narrow | calls none | raises |
 |---|---|---|---|---|
 | asy_base_classes.py | 16 | 4 | 164 | 1 |
-| asy_config_manager.py | 7 | 30 | 132 | 0 |
-| asy_print_log.py | 2 | 15 | 108 | 0 |
-| asy_system_service.py | 53 | 9 | 198 | 0 |
-| asy_fram_manager.py | 45 | 2 | 244 | 0 |
+| asy_config_manager.py | 6 | 29 | 134 | 0 |
+| asy_print_log.py | 2 | 15 | 113 | 0 |
+| asy_system_service.py | 53 | 9 | 202 | 0 |
+| asy_fram_manager.py | 49 | 2 | 248 | 0 |
 | asy_fram_driver.py | 1 | 3 | 165 | 4 |
 | math_helpers.py | 0 | 10 | 35 | 0 |
 
-Rows outside a broad `try`, by verdict: inherently safe 12, open 414, transitive 487, unreachable 206.
+Rows outside a broad `try`, by verdict: handled 161, inherently safe 8, open 268, transitive 379, unreachable 317.
 
 ## Raises
 
 | module:line | function | call or raise | can raise (pinned source) | verdict | proof or action |
 |---|---|---|---|---|---|
-| asy_base_classes.py:364 | _checked_write_results | `raise TypeError('_set_mgr_cfg returned a non-dict result')` | the raise itself | handled | both callers sit in a try catching Exception: asy_base_classes.py:507 (except :508) and :689 (except :690); the raise is that try's logged failure, as its comment says |
-| asy_fram_driver.py:158 | FRAM_SPI.__aenter__ | `raise` | the raise itself | inherently safe | cleanup then re-raise: a BaseException (a cancel) while waiting for the bus lock releases the session lock first; a cancellation must propagate |
-| asy_fram_driver.py:203 | FRAM_SPI._check_device_id | `raise ValueError(f"FRAM max_size {self._max_size:#x} has no known product ID to verify against -` | the raise itself | exempt (setup) | one-time identification error, outside M.PROC.025's scope; reached from FRAM_SPI.setup(), whose one caller asy_fram_manager.py:795 sits in a try catching Exception (except :796) |
-| asy_fram_driver.py:447 | FRAM_SPI.setup | `raise OSError('SPI bus not initialized')` | the raise itself | exempt (setup) | one-time setup error, outside M.PROC.025's scope; the one caller asy_fram_manager.py:795 sits in a try catching Exception (except :796) |
-| asy_fram_driver.py:461 | FRAM_SPI.setup | `raise OSError('FRAM SPI device not found')` | the raise itself | exempt (setup) | one-time setup error, outside M.PROC.025's scope; the one caller asy_fram_manager.py:795 sits in a try catching Exception (except :796) |
+| asy_base_classes.py:370 | _checked_write_results | `raise TypeError('_set_mgr_cfg returned a non-dict result')` | the raise itself | handled | both callers sit in a try catching Exception: asy_base_classes.py:514 (except :515) and :696 (except :697); the raise is that try's logged failure, as its comment says |
+| asy_fram_driver.py:162 | FRAM_SPI.__aenter__ | `raise` | the raise itself | inherently safe | cleanup then re-raise: a BaseException (a cancel) while waiting for the bus lock releases the session lock first; a cancellation must propagate |
+| asy_fram_driver.py:207 | FRAM_SPI._check_device_id | `raise ValueError(f"FRAM max_size {self._max_size:#x} has no known product ID to verify against -` | the raise itself | exempt (setup) | one-time identification error, outside M.PROC.025's scope; reached from FRAM_SPI.setup(), whose one caller asy_fram_manager.py:795 sits in a try catching Exception (except :796) |
+| asy_fram_driver.py:455 | FRAM_SPI.setup | `raise OSError('SPI bus not initialized')` | the raise itself | exempt (setup) | one-time setup error, outside M.PROC.025's scope; the one caller asy_fram_manager.py:795 sits in a try catching Exception (except :796) |
+| asy_fram_driver.py:469 | FRAM_SPI.setup | `raise OSError('FRAM SPI device not found')` | the raise itself | exempt (setup) | one-time setup error, outside M.PROC.025's scope; the one caller asy_fram_manager.py:795 sits in a try catching Exception (except :796) |
 
 ## Calls outside a broad try (grouped by module and callee)
 
 | module:line | function | call or raise | can raise (pinned source) | verdict | proof or action |
 |---|---|---|---|---|---|
-| asy_base_classes.py:32 | <module> | `TypeVar` at :32 | not classified | open | - |
-| asy_base_classes.py:67 | <module> | `namedtuple` at :67 | not classified | open | - |
-| asy_base_classes.py:70 | <module> | `const` at :70, :72, :74, :75, :78, :79, :80, :81, :82, :83, :84, :85 (+13) | nothing at run time | unreachable | folded at compile time (py/compile.c, MICROPY_COMP_CONST) |
-| asy_base_classes.py:109 | Lockable.__init__ +1 | `asyncio.Lock` at :109, :416, :419 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_base_classes.py:112 | Lockable.__aenter__ | `self.session_lock.acquire` at :112 | not classified | open | - |
-| asy_base_classes.py:124 | Lockable.__aexit__ | `self.session_lock.release` at :124; narrow except RuntimeError | not classified | open | - |
-| asy_base_classes.py:126 | Lockable.__aexit__ +4 | `report_if_fatal` at :126, :451, :466, :497, :509, :537, :563, :675, :691 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:134 | DeviceSession.__init__ +2 | `super` at :134, :134, :794, :794, :837, :837 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_base_classes.py:153 | RegionBuffer.__init__ +1 | `bytearray` at :153, :175; narrow except MemoryError/OverflowError | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_base_classes.py:156 | RegionBuffer.__init__ +1 | `console` at :156, :383 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:165 | RegionBuffer.get_data_buf +2 | `memoryview` at :165, :189, :213 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_base_classes.py:175 | PieceBuffer.__init__ +4 | `min` at :175, :218, :232, :238, :355 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_base_classes.py:175 | PieceBuffer.__init__ +2 | `range` at :175, :303, :306, :317 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_base_classes.py:182 | PieceBuffer.copy_into +2 | `len` at :182, :186, :188, :203, :211, :216, :218, :218 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_base_classes.py:184 | PieceBuffer.copy_into +1 | `divmod` at :184, :214 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_base_classes.py:196 | PieceBuffer.pieces | `iter` at :196 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_base_classes.py:204 | PieceBuffer.trim | `self._pieces.pop` at :204 | not classified | open | - |
-| asy_base_classes.py:232 | LockedCounter.__init__ +2 | `max` at :232, :238, :355 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_base_classes.py:233 | LockedCounter.__init__ +1 | `self._clamp` at :233, :244 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:311 | HourlyWindowCounter.add +1 | `self._advance` at :311, :321 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:338 | TickSeconds.__init__ +2 | `time.ticks_ms` at :338, :341, :357 | TypeError only for a non-int argument | inherently safe | small-int arguments (extmod/modtime.c:150-196) |
-| asy_base_classes.py:342 | TickSeconds.read | `time.ticks_diff` at :342 | TypeError only for a non-int argument | inherently safe | small-int arguments (extmod/modtime.c:150-196) |
-| asy_base_classes.py:363 | _checked_write_results | `isinstance` at :363 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_base_classes.py:364 | _checked_write_results | `TypeError` at :364 | not classified | open | - |
-| asy_base_classes.py:381 | arm_tick_timer | `timer.init` at :381; narrow except MemoryError/OSError | not classified | open | - |
-| asy_base_classes.py:381 | arm_tick_timer | `flag.set` at :381; narrow except MemoryError/OSError | not classified | open | - |
-| asy_base_classes.py:387 | arm_tick_timer | `pr.err` at :387 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:411 | SensorReader.__init__ | `instance_name` at :411 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:412 | SensorReader.__init__ | `make_logger` at :412 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:442 | SensorReader._get_dict_cfg | `schema_names` at :442 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:443 | SensorReader._get_dict_cfg +1 | `dict.fromkeys` at :443, :486, :517 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_base_classes.py:452 | SensorReader._get_dict_cfg +5 | `self.pr.err_s` at :452, :467, :498, :510, :538, :564, :584, :586, :676, :692, :720 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:484 | SensorReader._set_dict_cfg | `self._writes_closed` at :484 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:487 | SensorReader._set_dict_cfg | `schema_dict` at :487 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:491 | SensorReader._set_dict_cfg | `fields.items` at :491 | not classified | open | - |
-| asy_base_classes.py:492 | SensorReader._set_dict_cfg +1 | `check_cfg_get_default` at :492, :664 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:523 | SensorReader._set_dict_cfg | `results.setdefault` at :523 | not classified | open | - |
-| asy_base_classes.py:524 | SensorReader._set_dict_cfg | `data.items` at :524 | not classified | open | - |
-| asy_base_classes.py:525 | SensorReader._set_dict_cfg | `results.get` at :525 | not classified | open | - |
-| asy_base_classes.py:527 | SensorReader._set_dict_cfg | `self._push_callbacks.get` at :527 | not classified | open | - |
-| asy_base_classes.py:528 | SensorReader._set_dict_cfg +1 | `fields.get` at :528, :661 | not classified | open | - |
-| asy_base_classes.py:533 | SensorReader._set_dict_cfg +1 | `type_or_range_error` at :533, :682 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:542 | SensorReader._set_dict_cfg | `self._recover_failed_push` at :542 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:544 | SensorReader._set_dict_cfg | `self._commit_mgr_cfg` at :544 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:567 | SensorReader._climb_ladder +2 | `self.pr.wrn_s` at :567, :606, :639, :642 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:569 | SensorReader._climb_ladder +1 | `self._recover_bus` at :569, :571, :616 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:580 | SensorReader._error_check | `any` at :580 | not classified | open | - |
-| asy_base_classes.py:588 | SensorReader._error_check | `self._climb_ladder` at :588 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:592 | SensorReader._error_check +2 | `self.pr.err` at :592, :696, :710 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:604 | SensorReader._init_done | `bus.take_boot_clear_status` at :604 | not classified | open | - |
-| asy_base_classes.py:624 | SensorReader._rearm_timer +1 | `self._timer_fault` at :624, :730 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:626 | SensorReader._rearm_timer | `self.start_timer` at :626 | not classified | open | - |
-| asy_base_classes.py:638 | SensorReader._recover_bus | `bus.clear` at :638 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:641 | SensorReader._recover_bus | `bus.recover` at :641 | not classified | open | - |
-| asy_base_classes.py:670 | SensorReader._recover_failed_push | `self._get_callbacks.get` at :670 | not classified | open | - |
-| asy_base_classes.py:685 | SensorReader._recover_failed_push | `old_values.get` at :685 | not classified | open | - |
-| asy_base_classes.py:694 | SensorReader._recover_failed_push | `res.get` at :694, :696 | not classified | open | - |
-| asy_base_classes.py:703 | SensorReader._republish | `getattr` at :703 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_base_classes.py:704 | SensorReader._republish | `type` at :704, :704 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_base_classes.py:711 | SensorReader._timer_failed | `waiter.set` at :711 | not classified | open | - |
-| asy_base_classes.py:726 | SensorReader._trigger_loop | `self._rearm_timer` at :726 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:729 | SensorReader._trigger_loop | `self._base_trigger_event.wait` at :729 | not classified | open | - |
-| asy_base_classes.py:733 | SensorReader._trigger_loop | `self._trigger_period.get_value` at :733 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:735 | SensorReader._trigger_loop | `self._read_event.set` at :735 | not classified | open | - |
-| asy_base_classes.py:747 | SensorReader.get_error_counter | `self.pr.get_log` at :747 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:766 | SensorReader.reset_error_counter | `self.pr.reset` at :766 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:770 | SensorReader.setup | `self.pr.setup` at :770 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:776 | utc_now | `time.mktime` at :776 | not classified | open | - |
-| asy_base_classes.py:776 | utc_now | `time.gmtime` at :776 | not classified | open | - |
-| asy_base_classes.py:799 | SensorReaderConfig.__init__ | `LogConfig` at :799 | not classified | open | - |
-| asy_base_classes.py:800 | SensorReaderConfig.__init__ | `ConfigManager` at :800 | not classified | open | - |
-| asy_base_classes.py:800 | SensorReaderConfig.__init__ | `config_filename` at :800 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:804 | SensorReaderConfig._get_mgr_cfg +1 | `self.pr.evt` at :804, :812 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:807 | SensorReaderConfig._get_mgr_cfg | `self.cfgmgr.get_dict` at :807 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:813 | SensorReaderConfig._set_mgr_cfg | `self.cfgmgr.write_config` at :813 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:816 | SensorReaderConfig._commit_mgr_cfg | `self.cfgmgr.commit` at :816 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:820 | SensorReaderConfig._writes_closed | `self.cfgmgr.writes_closed` at :820 | what the callee raises | transitive | the callee's own rows here |
-| asy_base_classes.py:838 | SensorReaderConfig.setup | `self.cfgmgr.setup` at :838 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:27 | <module> | `TypeVar` at :27 | not classified | open | - |
-| asy_config_manager.py:55 | <module> | `const` at :55, :56, :57, :58, :59, :60, :61, :62, :63, :64, :65, :66 (+2) | nothing at run time | unreachable | folded at compile time (py/compile.c, MICROPY_COMP_CONST) |
-| asy_config_manager.py:72 | _as_bool +11 | `type` at :72, :76, :82, :84, :96, :98, :112, :112, :113, :118, :162, :162 (+11); narrow except MemoryError | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_config_manager.py:88 | _coerce_float +1 | `float` at :88, :103 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_config_manager.py:100 | _coerce_int | `int` at :100; narrow except OverflowError/ValueError | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_config_manager.py:113 | _special_bypass | `any` at :113 | not classified | open | - |
-| asy_config_manager.py:129 | _stored_float | `json.loads` at :129 | OSError/MemoryError/ValueError/TypeError (extmod/modjson.c) | open | - |
-| asy_config_manager.py:129 | _stored_float +1 | `json.dumps` at :129, :584; narrow except MemoryError/OSError | OSError/MemoryError/ValueError/TypeError (extmod/modjson.c) | open | - |
-| asy_config_manager.py:142 | check_cfg_get_default +1 | `isinstance` at :142, :519, :531; narrow except MemoryError/OSError/ValueError | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_config_manager.py:145 | check_cfg_get_default +2 | `type_or_range_error` at :145, :211, :561 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:154 | checked_float | `_coerce_float` at :154 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:159 | checked_float +2 | `_special_bypass` at :159, :173, :302 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:168 | checked_int | `_coerce_int` at :168 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:184 | checked_numeric | `checked_int` at :184 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:186 | checked_numeric | `checked_float` at :186 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:203 | compare_before_write +2 | `schema_dict` at :203, :541, :613; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:206 | compare_before_write | `data.items` at :206 | not classified | open | - |
-| asy_config_manager.py:207 | compare_before_write | `fields.get` at :207 | not classified | open | - |
-| asy_config_manager.py:222 | compare_before_write | `resolution.get` at :222 | not classified | open | - |
-| asy_config_manager.py:224 | compare_before_write | `res` at :224, :224 | not classified | open | - |
-| asy_config_manager.py:259 | make_dict | `getattr` at :259 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_config_manager.py:263 | name_cfg +2 | `schema_names` at :263, :348, :368; narrow except KeyError | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:264 | name_cfg +2 | `len` at :264, :305, :542 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_config_manager.py:295 | type_or_range_error | `checked_numeric` at :295 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:318 | ConfigManager.__init__ | `make_logger` at :318 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:319 | ConfigManager.__init__ | `asyncio.Lock` at :319 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_config_manager.py:339 | ConfigManager.__init__ | `asyncio.Event` at :339 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_config_manager.py:340 | ConfigManager.__init__ +3 | `self._commit_ready.set` at :340, :469, :493, :657 | not classified | open | - |
-| asy_config_manager.py:345 | ConfigManager._get_typed_values | `self._get_values` at :345 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:350 | ConfigManager._get_typed_values | `enumerate` at :350 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_config_manager.py:351 | ConfigManager._get_typed_values | `coerce` at :351 | not classified | open | - |
-| asy_config_manager.py:353 | ConfigManager._get_typed_values +2 | `self._read_run_starts` at :353, :362, :370, :436, :444 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:354 | ConfigManager._get_typed_values +5 | `self.pr.err_s` at :354, :363, :371, :419, :437, :445, :528, :543, :551, :590, :604, :619 (+5); narrow except MemoryError/OSError | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:356 | ConfigManager._get_typed_values | `typed.append` at :356 | not classified | open | - |
-| asy_config_manager.py:365 | ConfigManager._get_values +1 | `self.pr.all` at :365, :439 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:367 | ConfigManager._get_values +2 | `self._current` at :367, :441, :617, :645; narrow except KeyError/MemoryError | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:377 | ConfigManager._closed_for_reset +2 | `self.pr.evt` at :377, :485, :607, :637, :639, :660 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:417 | ConfigManager._flush_staged | `report_if_fatal` at :417 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:429 | ConfigManager.get_bool_values +3 | `self._get_typed_values` at :429, :454, :457, :460 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:451 | ConfigManager.get_error_counter | `self.pr.get_log` at :451 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:474 | ConfigManager.delete_file | `self.close_writes` at :474 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:477 | ConfigManager.delete_file | `range` at :477 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_config_manager.py:479 | ConfigManager.delete_file | `os.remove` at :479; narrow except OSError | OSError (extmod/vfs*.c) | open | - |
-| asy_config_manager.py:487 | ConfigManager.delete_file | `self.pr.err` at :487 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:501 | ConfigManager.reset_error_counter | `self.pr.reset` at :501 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:507 | ConfigManager.setup | `self.pr.setup` at :507 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:514 | ConfigManager.setup | `os.stat` at :514; narrow except MemoryError/OSError | OSError (extmod/vfs*.c) | open | - |
-| asy_config_manager.py:516 | ConfigManager.setup | `open` at :516, :585; narrow except MemoryError/OSError | OSError (extmod/vfs*.c) | open | - |
-| asy_config_manager.py:518 | ConfigManager.setup | `json.load` at :518; narrow except MemoryError/OSError/ValueError | OSError/MemoryError/ValueError/TypeError (extmod/modjson.c) | open | - |
-| asy_config_manager.py:522 | ConfigManager.setup | `self.pr.wrn_s` at :522, :525, :539, :566, :576; narrow except MemoryError/OSError/ValueError | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:535 | ConfigManager.setup | `self.pr.one` at :535, :580, :582, :587; narrow except MemoryError/OSError | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:548 | ConfigManager.setup | `defaults.items` at :548 | not classified | open | - |
-| asy_config_manager.py:549 | ConfigManager.setup +1 | `check_cfg_get_default` at :549, :615; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:560 | ConfigManager.setup | `data.pop` at :560 | not classified | open | - |
-| asy_config_manager.py:586 | ConfigManager.setup | `f.write` at :586; narrow except MemoryError/OSError | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:601 | ConfigManager.write_config | `self._closed_for_reset` at :601, :610 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:615 | ConfigManager.write_config | `tuple` at :615; narrow except MemoryError | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_config_manager.py:615 | ConfigManager.write_config | `fields.items` at :615, :616; narrow except MemoryError | not classified | open | - |
-| asy_config_manager.py:617 | ConfigManager.write_config | `compare_before_write` at :617; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:627 | ConfigManager.write_config | `dict_results.items` at :627 | not classified | open | - |
-| asy_config_manager.py:645 | ConfigManager.write_config | `dict` at :645; narrow except MemoryError | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_config_manager.py:646 | ConfigManager.write_config | `write.items` at :646; narrow except MemoryError | not classified | open | - |
-| asy_config_manager.py:647 | ConfigManager.write_config | `_stored_float` at :647; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:648 | ConfigManager.write_config | `asyncio.create_task` at :648; narrow except MemoryError | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_config_manager.py:648 | ConfigManager.write_config | `self._flush_staged` at :648; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:655 | ConfigManager.write_config | `self._commit_ready.clear` at :655 | what the callee raises | transitive | the callee's own rows here |
-| asy_print_log.py:55 | <module> | `const` at :55, :56, :57, :58, :59, :60, :63, :64, :65, :66, :67, :68 (+3) | nothing at run time | unreachable | folded at compile time (py/compile.c, MICROPY_COMP_CONST) |
-| asy_print_log.py:84 | PrintLog.__init__ | `self.set_level` at :84 | what the callee raises | transitive | the callee's own rows here |
-| asy_print_log.py:89 | PrintLog.set_level | `type` at :89 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_print_log.py:92 | PrintLog.set_level | `self.err` at :92 | what the callee raises | transitive | the callee's own rows here |
-| asy_print_log.py:97 | PrintLog.all +8 | `print` at :97, :101, :105, :109, :128, :171, :248, :263, :437, :439 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_print_log.py:133 | PrintLogHistory.__init__ +1 | `super` at :133, :133, :271, :271 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_print_log.py:137 | PrintLogHistory.__init__ +3 | `min` at :137, :160, :188, :191 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_print_log.py:137 | PrintLogHistory.__init__ | `max` at :137 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_print_log.py:139 | PrintLogHistory.__init__ | `deque` at :139, :142; narrow except MemoryError | not classified | open | - |
-| asy_print_log.py:143 | PrintLogHistory.__init__ +3 | `console` at :143, :283, :315, :342 | what the callee raises | transitive | the callee's own rows here |
-| asy_print_log.py:156 | PrintLogHistory._clear +1 | `self._since_kept` at :156, :294 | what the callee raises | transitive | the callee's own rows here |
-| asy_print_log.py:157 | PrintLogHistory._clear +1 | `range` at :157, :295 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_print_log.py:157 | PrintLogHistory._clear +5 | `len` at :157, :176, :179, :191, :274, :275, :294, :295, :398 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_print_log.py:159 | PrintLogHistory._clear +1 | `self._since_counted` at :159, :293 | what the callee raises | transitive | the callee's own rows here |
-| asy_print_log.py:167 | PrintLogHistory._count +5 | `self._diag` at :167, :201, :206, :219, :285, :353, :362, :368, :387, :410 | what the callee raises | transitive | the callee's own rows here |
-| asy_print_log.py:177 | PrintLogHistory._keep | `self.history.append` at :177 | not classified | open | - |
-| asy_print_log.py:196 | PrintLogHistory._store_err +1 | `self._count` at :196, :222 | what the callee raises | transitive | the callee's own rows here |
-| asy_print_log.py:203 | PrintLogHistory._store_err +1 | `self._keep` at :203, :223 | what the callee raises | transitive | the callee's own rows here |
-| asy_print_log.py:208 | PrintLogHistory._store_err +1 | `self._write_through` at :208, :408 | what the callee raises | transitive | the callee's own rows here |
-| asy_print_log.py:216 | PrintLogHistory._write_through +2 | `self._write` at :216, :360, :404 | what the callee raises | transitive | the callee's own rows here |
-| asy_print_log.py:235 | PrintLogHistory.get_log | `err_num.append` at :235, :238, :241 | not classified | open | - |
-| asy_print_log.py:236 | PrintLogHistory.get_log | `err_type.append` at :236, :239, :242 | not classified | open | - |
-| asy_print_log.py:246 | PrintLogHistory.err_s +1 | `self._store_err` at :246, :261 | what the callee raises | transitive | the callee's own rows here |
-| asy_print_log.py:251 | PrintLogHistory.reset +1 | `self._clear` at :251, :364 | what the callee raises | transitive | the callee's own rows here |
-| asy_print_log.py:268 | PrintLogHistoryStore | `struct.calcsize` at :268 | ValueError/TypeError on a bad format or short buffer (py/modstruct.c) | open | format and buffer size proof |
-| asy_print_log.py:279 | PrintLogHistoryStore.__init__ | `fram.get_chunk` at :279; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
-| asy_print_log.py:279 | PrintLogHistoryStore.__init__ | `CRC8` at :279; narrow except MemoryError | not classified | open | - |
-| asy_print_log.py:286 | PrintLogHistoryStore.__init__ | `asyncio.Lock` at :286 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_print_log.py:293 | PrintLogHistoryStore._pack_reset +1 | `struct.pack_into` at :293, :336, :337; narrow except MemoryError | ValueError/TypeError on a bad format or short buffer (py/modstruct.c) | open | format and buffer size proof |
-| asy_print_log.py:303 | PrintLogHistoryStore._read +1 | `self.fram.get_buffer` at :303, :331; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
-| asy_print_log.py:304 | PrintLogHistoryStore._read +1 | `buf.get_data_buf` at :304, :332; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
-| asy_print_log.py:307 | PrintLogHistoryStore._read | `self.fram.read_into` at :307; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
-| asy_print_log.py:312 | PrintLogHistoryStore._read | `struct.unpack_from` at :312, :313; narrow except MemoryError | ValueError/TypeError on a bad format or short buffer (py/modstruct.c) | open | format and buffer size proof |
-| asy_print_log.py:339 | PrintLogHistoryStore._write | `self._pack_reset` at :339; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
-| asy_print_log.py:340 | PrintLogHistoryStore._write | `bool` at :340; narrow except MemoryError | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_print_log.py:340 | PrintLogHistoryStore._write | `self.fram.write_into` at :340; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
-| asy_print_log.py:352 | PrintLogHistoryStore.reset | `self._paused` at :352, :361 | not classified | open | - |
-| asy_print_log.py:381 | PrintLogHistoryStore.setup | `self.err_s` at :381, :388, :411 | what the callee raises | transitive | the callee's own rows here |
-| asy_print_log.py:383 | PrintLogHistoryStore.setup | `self._read` at :383 | what the callee raises | transitive | the callee's own rows here |
-| asy_print_log.py:390 | PrintLogHistoryStore.setup +1 | `isinstance` at :390, :462 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_print_log.py:394 | PrintLogHistoryStore.setup | `self.history.extend` at :394, :399, :400 | not classified | open | - |
-| asy_print_log.py:398 | PrintLogHistoryStore.setup | `list` at :398 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_print_log.py:427 | <module> | `namedtuple` at :427 | not classified | open | - |
-| asy_print_log.py:429 | <module> | `LogConfig` at :429 | not classified | open | - |
-| asy_print_log.py:450 | make_logger | `PrintLogHistory` at :450 | not classified | open | - |
-| asy_print_log.py:451 | make_logger | `pr.one` at :451, :454 | what the callee raises | transitive | the callee's own rows here |
-| asy_print_log.py:453 | make_logger | `PrintLogHistoryStore` at :453 | not classified | open | - |
-| asy_system_service.py:45 | <module> | `const` at :45, :46, :47, :48, :49, :50, :51, :52, :53, :54, :55, :58 (+35) | nothing at run time | unreachable | folded at compile time (py/compile.c, MICROPY_COMP_CONST) |
-| asy_system_service.py:132 | _write_region +1 | `mem_backup` at :132, :146, :147 | not classified | open | - |
-| asy_system_service.py:148 | begin_boot | `reset_cause` at :148 | not classified | open | - |
-| asy_system_service.py:158 | begin_boot | `range` at :158 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_system_service.py:158 | begin_boot +2 | `len` at :158, :750, :759, :769, :780 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_system_service.py:160 | begin_boot +2 | `_write_region` at :160, :166, :669 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:181 | SystemService.__init__ | `make_logger` at :181 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:187 | SystemService.__init__ | `TickSeconds` at :187 | not classified | open | - |
-| asy_system_service.py:188 | SystemService.__init__ | `asyncio.ThreadSafeFlag` at :188, :194, :220 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_system_service.py:189 | SystemService.__init__ | `Timer` at :189, :190, :193 | not classified | open | - |
-| asy_system_service.py:198 | SystemService.__init__ | `LockedValue` at :198 | not classified | open | - |
-| asy_system_service.py:211 | SystemService.__init__ | `ConfigManager` at :211 | not classified | open | - |
-| asy_system_service.py:211 | SystemService.__init__ | `config_filename` at :211 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:211 | SystemService.__init__ | `instance_name` at :211 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:222 | SystemService.__init__ | `asyncio.Lock` at :222 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_system_service.py:226 | SystemService.__init__ | `asyncio.Event` at :226, :227 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_system_service.py:248 | SystemService._set_dict_cfg | `self.cfgmgr.write_config` at :248 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:250 | SystemService._set_dict_cfg | `dict.fromkeys` at :250 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_system_service.py:251 | SystemService._set_dict_cfg | `results.get` at :251 | not classified | open | - |
-| asy_system_service.py:251 | SystemService._set_dict_cfg | `name_cfg` at :251 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:252 | SystemService._set_dict_cfg +1 | `self.cfgmgr.get_int_values` at :252, :739 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:254 | SystemService._set_dict_cfg +1 | `self._apply_level` at :254, :741 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:265 | SystemService._apply_level +8 | `report_if_fatal` at :265, :289, :308, :320, :407, :414, :477, :484, :596 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:266 | SystemService._apply_level +10 | `self.pr.err_s` at :266, :290, :306, :309, :311, :321, :408, :415, :478, :485, :495, :598 (+1) | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:279 | SystemService._flush_config_stores +1 | `store.close_writes` at :279, :394 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:294 | SystemService._flush_config_stores | `step_done` at :294 | not classified | open | - |
-| asy_system_service.py:302 | SystemService._log_dead_task +2 | `self._uptime.read` at :302, :502, :662 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:325 | SystemService._ntp_boot_signature | `utc_now` at :325 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:330 | SystemService._own_feed +1 | `self._watchdog.feed` at :330, :679 | not classified | open | - |
-| asy_system_service.py:335 | SystemService._reboot +4 | `self.pr.evt` at :335, :340, :343, :378, :395, :417, :509, :690, :693 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:338 | SystemService._reboot +1 | `write_reset_record` at :338, :354, :390 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:339 | SystemService._reboot | `self._flush_config_stores` at :339 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:342 | SystemService._reboot +2 | `self._storage_pause` at :342, :508, :691, :694 | not classified | open | - |
-| asy_system_service.py:345 | SystemService._reboot +2 | `asyncio.create_task` at :345, :381, :786; narrow except MemoryError/OSError | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_system_service.py:345 | SystemService._reboot | `self._reset_when_due` at :345; narrow except MemoryError/OSError | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:347 | SystemService._reboot | `self._own_feed` at :347; narrow except MemoryError/OSError | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:348 | SystemService._reboot | `self._reset_timer.init` at :348; narrow except MemoryError/OSError | not classified | open | - |
-| asy_system_service.py:348 | SystemService._reboot | `self._reset_due.set` at :348; narrow except MemoryError/OSError | not classified | open | - |
-| asy_system_service.py:353 | SystemService._reboot | `self._reset_task.cancel` at :353 | not classified | open | - |
-| asy_system_service.py:358 | SystemService._reboot +1 | `self.pr.err` at :358, :384 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:372 | SystemService._request_shutdown | `self._storage.erase_ready` at :372 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:381 | SystemService._request_shutdown | `self._shutdown_sequence` at :381; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:395 | SystemService._request_shutdown | `_purpose_name` at :395 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:497 | SystemService._status_loop +2 | `asyncio.sleep_ms` at :497, :759, :777 | not classified | open | - |
-| asy_system_service.py:499 | SystemService._status_loop +1 | `arm_tick_timer` at :499, :612 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:501 | SystemService._status_loop | `self._uptime_event.wait` at :501 | not classified | open | - |
-| asy_system_service.py:503 | SystemService._status_loop | `self.pr.all` at :503 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:504 | SystemService._status_loop +1 | `time.ticks_diff` at :504, :771 | TypeError only for a non-int argument | inherently safe | small-int arguments (extmod/modtime.c:150-196) |
-| asy_system_service.py:504 | SystemService._status_loop +2 | `time.ticks_ms` at :504, :696, :768, :771 | TypeError only for a non-int argument | inherently safe | small-int arguments (extmod/modtime.c:150-196) |
-| asy_system_service.py:512 | SystemService._status_loop | `self._ntp_boot_signature` at :512 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:514 | SystemService._status_loop | `self._boot_signature.set_value` at :514, :520 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:515 | SystemService._status_loop +1 | `self.pr.one` at :515, :521, :781 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:520 | SystemService._status_loop | `random.getrandbits` at :520 | not classified | open | - |
-| asy_system_service.py:607 | SystemService.start_asy_status +1 | `asyncio.get_event_loop` at :607, :754 | not classified | open | - |
-| asy_system_service.py:608 | SystemService.start_asy_status | `evtloop.create_task` at :608 | not classified | open | - |
-| asy_system_service.py:608 | SystemService.start_asy_status | `self._status_loop` at :608 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:614 | SystemService.start_uptime_timer | `self._uptime_event.set` at :614 | not classified | open | - |
-| asy_system_service.py:619 | SystemService.get_boot_signature | `self._boot_signature.get_value` at :619 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:634 | SystemService.get_dict_cfg | `self.cfgmgr.get_dict` at :634 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:634 | SystemService.get_dict_cfg | `schema_names` at :634 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:638 | SystemService.get_error_counter | `self.pr.get_log` at :638 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:672 | SystemService.erase_fram +3 | `self._request_shutdown` at :672, :700, :703, :713 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:687 | SystemService.pause_permanent_storage | `min` at :687 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_system_service.py:687 | SystemService.pause_permanent_storage | `max` at :687 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_system_service.py:696 | SystemService.pause_permanent_storage +1 | `time.ticks_add` at :696, :771 | TypeError only for a non-int argument | inherently safe | small-int arguments (extmod/modtime.c:150-196) |
-| asy_system_service.py:710 | SystemService.reset_error_counter | `self.pr.reset` at :710 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:718 | SystemService.run_setups +1 | `gc.collect` at :718, :722, :751, :760 | not classified | open | - |
-| asy_system_service.py:720 | SystemService.run_setups | `setup` at :720 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:721 | SystemService.run_setups | `self.feed_watchdog` at :721 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:728 | SystemService.setup | `self.pr.setup` at :728 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:730 | SystemService.setup | `self._level_setters_provider` at :730 | not classified | open | - |
-| asy_system_service.py:732 | SystemService.setup | `self._config_stores_provider` at :732 | not classified | open | - |
-| asy_system_service.py:733 | SystemService.setup | `self.cfgmgr.setup` at :733 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:737 | SystemService.setup | `self.pr.wrn_s` at :737 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:755 | SystemService.start_tasks | `loop.get_exception_handler` at :755 | not classified | open | - |
-| asy_system_service.py:756 | SystemService.start_tasks | `loop.set_exception_handler` at :756 | not classified | open | - |
-| asy_system_service.py:757 | SystemService.start_tasks +1 | `enumerate` at :757, :766, :770 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_system_service.py:758 | SystemService.start_tasks | `self._start_task` at :758 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:767 | SystemService.start_timers | `self._run_timer_starter` at :767, :780 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:774 | SystemService.start_timers | `self._sequencer_timer.init` at :774; narrow except MemoryError/OSError | not classified | open | - |
-| asy_system_service.py:774 | SystemService.start_timers | `self._sequencer_flag.set` at :774; narrow except MemoryError/OSError | not classified | open | - |
-| asy_system_service.py:779 | SystemService.start_timers | `self._sequencer_flag.wait` at :779 | not classified | open | - |
-| asy_system_service.py:786 | SystemService.supervise_tasks | `self._supervise` at :786 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:788 | SystemService.supervise_tasks | `self._never.wait` at :788 | not classified | open | - |
-| asy_system_service.py:790 | SystemService.supervise_tasks | `self._supervisor_task.cancel` at :790 | not classified | open | - |
-| asy_fram_manager.py:28 | <module> | `const` at :28, :29, :30, :31, :32, :33, :34, :35, :36, :37, :40, :41 (+18) | nothing at run time | unreachable | folded at compile time (py/compile.c, MICROPY_COMP_CONST) |
-| asy_fram_manager.py:69 | _owner_seed | `min` at :69 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_fram_manager.py:69 | _owner_seed +2 | `crc.length` at :69, :667, :718 | not classified | open | - |
-| asy_fram_manager.py:73 | _owner_seed | `owner.encode` at :73 | not classified | open | - |
-| asy_fram_manager.py:95 | _FRAMBaseChunk.__init__ +5 | `self.crc.length` at :95, :184, :205, :360, :456, :524 | not classified | open | - |
-| asy_fram_manager.py:97 | _FRAMBaseChunk.__init__ | `asyncio.Lock` at :97 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_fram_manager.py:101 | _FRAMBaseChunk.__init__ +3 | `bytearray` at :101, :103, :467, :537, :762; narrow except MemoryError/OverflowError | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_fram_manager.py:107 | _FRAMBaseChunk.__init__ +1 | `console` at :107, :764 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:109 | _FRAMBaseChunk.__init__ +2 | `memoryview` at :109, :173, :504 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_fram_manager.py:124 | _FRAMBaseChunk._set_check_sb | `fram.get_values_sync` at :124 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:126 | _FRAMBaseChunk._set_check_sb | `fram.report_get_values` at :126 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:127 | _FRAMBaseChunk._set_check_sb +15 | `self.pr.err_s` at :127, :133, :140, :159, :167, :192, :206, :228, :243, :250, :318, :361 (+16) | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:136 | _FRAMBaseChunk._set_check_sb +1 | `fram.set_values_sync` at :136, :769 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:139 | _FRAMBaseChunk._set_check_sb | `fram.report_set_values` at :139 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:158 | _FRAMBaseChunk._clear_chunk +5 | `report_if_fatal` at :158, :317, :403, :562, :597, :797 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:175 | _FRAMBaseChunk._compare_with +1 | `self._read_chunk` at :175, :331 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:185 | _FRAMBaseChunk._handle_status_bytes | `self._set_check_sb` at :185, :188 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:199 | _FRAMBaseChunk._read +5 | `self.fram.lost.is_set` at :199, :354, :417, :433, :644, :779 | not classified | open | - |
-| asy_fram_manager.py:202 | _FRAMBaseChunk._read +2 | `self._mempause` at :202, :357, :420 | not classified | open | - |
-| asy_fram_manager.py:203 | _FRAMBaseChunk._read +2 | `self.pr.wrn_s` at :203, :213, :215, :221, :223, :239, :241, :358, :421 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:205 | _FRAMBaseChunk._read +4 | `len` at :205, :206, :360, :361, :378, :423, :482, :482, :483, :483, :485, :580 (+4) | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_fram_manager.py:208 | _FRAMBaseChunk._read | `self._read_into` at :208, :216 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:211 | _FRAMBaseChunk._read +7 | `self.pr.evt` at :211, :219, :237, :377, :383, :412, :427, :555, :557, :569, :604, :609 (+2) | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:225 | _FRAMBaseChunk._read +1 | `self.pr.all` at :225, :230, :232, :245, :252, :363, :368 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:227 | _FRAMBaseChunk._read +1 | `self._write_chunk` at :227, :242, :364, :369 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:233 | _FRAMBaseChunk._read +1 | `self._compare_with` at :233, :379 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:320 | _FRAMBaseChunk._read_chunk | `self._read_progress` at :320 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:349 | _FRAMBaseChunk._read_progress +3 | `range` at :349, :378, :423, :767 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_fram_manager.py:424 | _FRAMBaseChunk.clear | `self._clear_chunk` at :424 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:438 | _FRAMBaseChunk.invalidate | `self._handle_status_bytes` at :438 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:451 | FRAMChunkBuffer.__init__ +2 | `super` at :451, :451, :499, :499, :519, :519 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_fram_manager.py:456 | FRAMChunk.get_buffer | `FRAMChunkBuffer` at :456 | not classified | open | - |
-| asy_fram_manager.py:459 | FRAMChunk.read +3 | `self.get_buffer` at :459, :477, :528, :575 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:460 | FRAMChunk.read +1 | `self.read_into` at :460, :529 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:462 | FRAMChunk.read +3 | `buf.get_data_buf` at :462, :478, :532, :576 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:470 | FRAMChunk.read_into +3 | `buf.get_buf` at :470, :490, :540, :615 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:474 | FRAMChunk.read_into +1 | `self._read` at :474, :544 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:487 | FRAMChunk.write +1 | `self.write_into` at :487, :585 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:494 | FRAMChunk.write_into +1 | `self._write` at :494, :620 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:519 | FRAMTimestampedChunk.__init__ +2 | `struct.calcsize` at :519, :524, :524, :718 | ValueError/TypeError on a bad format or short buffer (py/modstruct.c) | open | format and buffer size proof |
-| asy_fram_manager.py:523 | FRAMTimestampedChunk.get_buffer | `FRAMChunkTimestampedBuffer` at :523 | not classified | open | - |
-| asy_fram_manager.py:548 | FRAMTimestampedChunk.read_into +1 | `buf.get_ts_buf` at :548, :610 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:553 | FRAMTimestampedChunk.read_into | `int` at :553 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_fram_manager.py:553 | FRAMTimestampedChunk.read_into | `struct.unpack_from` at :553 | ValueError/TypeError on a bad format or short buffer (py/modstruct.c) | open | format and buffer size proof |
-| asy_fram_manager.py:565 | FRAMTimestampedChunk.read_into +1 | `utc_now` at :565, :600 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:614 | FRAMTimestampedChunk.write_into | `struct.pack_into` at :614 | ValueError/TypeError on a bad format or short buffer (py/modstruct.c) | open | format and buffer size proof |
-| asy_fram_manager.py:628 | FRAMManager.__init__ | `PrintLogHistory` at :628 | not classified | open | - |
-| asy_fram_manager.py:636 | FRAMManager.__init__ | `FRAM_SPI` at :636 | not classified | open | - |
-| asy_fram_manager.py:642 | FRAMManager._watch_chip_loop +3 | `self.pr.err` at :642, :664, :677, :715, :728, :752, :759, :771 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:645 | FRAMManager._watch_chip_loop | `self.setup` at :645 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:647 | FRAMManager._watch_chip_loop +2 | `self.pr.one` at :647, :669, :682, :720, :736 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:648 | FRAMManager._watch_chip_loop | `self.fram.lost.wait` at :648 | not classified | open | - |
-| asy_fram_manager.py:657 | FRAMManager.start_asy_watch_chip | `asyncio.get_event_loop` at :657 | not classified | open | - |
-| asy_fram_manager.py:658 | FRAMManager.start_asy_watch_chip | `evtloop.create_task` at :658 | not classified | open | - |
-| asy_fram_manager.py:658 | FRAMManager.start_asy_watch_chip | `self._watch_chip_loop` at :658 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:666 | FRAMManager.get_chunk +1 | `CRCPass` at :666, :717 | not classified | open | - |
-| asy_fram_manager.py:679 | FRAMManager.get_chunk | `FRAMChunk` at :679 | not classified | open | - |
-| asy_fram_manager.py:679 | FRAMManager.get_chunk +1 | `_owner_seed` at :679, :732 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:680 | FRAMManager.get_chunk +1 | `self._chunks.append` at :680, :734 | not classified | open | - |
-| asy_fram_manager.py:690 | FRAMManager.get_error_counter | `self.pr.get_log` at :690 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:731 | FRAMManager.get_timestamped_chunk | `FRAMTimestampedChunk` at :731 | not classified | open | - |
-| asy_fram_manager.py:751 | FRAMManager.erase_chip | `self.erase_ready` at :751 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:756 | FRAMManager.erase_chip | `chunk.invalidate` at :756 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:757 | FRAMManager.erase_chip +1 | `step_done` at :757, :773, :787 | not classified | open | - |
-| asy_fram_manager.py:766 | FRAMManager.erase_chip | `self.fram.get_size` at :766 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:770 | FRAMManager.erase_chip | `self.fram.report_set_values` at :770 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:774 | FRAMManager.erase_chip | `asyncio.sleep` at :774 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_fram_manager.py:779 | FRAMManager.erase_ready | `self.fram.get_write_protected` at :779 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:784 | FRAMManager.quiesce | `self.set_pause` at :784 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:786 | FRAMManager.quiesce | `chunk.wait_idle` at :786 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:790 | FRAMManager.reset_error_counter | `self.pr.reset` at :790 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:793 | FRAMManager.setup | `self.pr.setup` at :793 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:34 | <module> | `const` at :34, :35, :45, :46, :47, :52, :53, :54, :55, :59, :60, :61 (+33) | nothing at run time | unreachable | folded at compile time (py/compile.c, MICROPY_COMP_CONST) |
-| asy_fram_driver.py:128 | FRAM_SPI.__init__ +2 | `super` at :128, :128, :153, :153, :171, :171 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_fram_driver.py:130 | FRAM_SPI.__init__ | `SPIDevice` at :130 | not classified | open | - |
-| asy_fram_driver.py:135 | FRAM_SPI.__init__ | `Pin` at :135 | not classified | open | - |
-| asy_fram_driver.py:138 | FRAM_SPI.__init__ | `bytearray` at :138, :139, :140, :140, :141 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_fram_driver.py:147 | FRAM_SPI.__init__ | `asyncio.Event` at :147 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_fram_driver.py:157 | FRAM_SPI.__aenter__ +1 | `self.session_lock.release` at :157, :499 | not classified | open | - |
-| asy_fram_driver.py:168 | FRAM_SPI.__aexit__ | `self._bus_lock.release` at :168; narrow except RuntimeError | not classified | open | - |
-| asy_fram_driver.py:170 | FRAM_SPI.__aexit__ | `report_if_fatal` at :170 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:176 | FRAM_SPI._is_write_protected +2 | `bool` at :176, :303, :458 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_fram_driver.py:176 | FRAM_SPI._is_write_protected +1 | `self._wp_pin.value` at :176, :185, :193, :197 | not classified | open | - |
-| asy_fram_driver.py:181 | FRAM_SPI._set_write_protected +1 | `self._enable_write` at :181, :310 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:188 | FRAM_SPI._set_write_protected +2 | `self._send_command` at :188, :228, :231, :238, :241 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:189 | FRAM_SPI._set_write_protected +2 | `self._read_status` at :189, :303, :457 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:190 | FRAM_SPI._set_write_protected +1 | `self._disable_write` at :190, :314 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:201 | FRAM_SPI._check_device_id | `_KNOWN_PRODUCT_IDS.get` at :201 | not classified | open | - |
-| asy_fram_driver.py:203 | FRAM_SPI._check_device_id | `ValueError` at :203 | not classified | open | - |
-| asy_fram_driver.py:204 | FRAM_SPI._check_device_id +2 | `self._send_and_read` at :204, :245, :248 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:219 | FRAM_SPI._check_write_anomaly +2 | `self._check_device_id` at :219, :454, :494 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:229 | FRAM_SPI._disable_write +1 | `self._wel_is_set` at :229, :232, :239, :242 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:245 | FRAM_SPI._read_address +1 | `self._setup_addr_buffer` at :245, :313 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:254 | FRAM_SPI._report_chip_lost +6 | `self.pr.err_s` at :254, :343, :370, :379, :387, :398, :402, :404, :406, :418, :421, :424 (+5) | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:255 | FRAM_SPI._report_chip_lost | `self.lost.set` at :255 | not classified | open | - |
-| asy_fram_driver.py:259 | FRAM_SPI._send_and_read +2 | `spidev.session_begin` at :259, :268, :282 | not classified | open | - |
-| asy_fram_driver.py:261 | FRAM_SPI._send_and_read +2 | `spidev.write_sync` at :261, :270, :271, :284 | not classified | open | - |
-| asy_fram_driver.py:262 | FRAM_SPI._send_and_read | `spidev.readinto_sync` at :262 | not classified | open | - |
-| asy_fram_driver.py:264 | FRAM_SPI._send_and_read +2 | `spidev.session_end` at :264, :273, :286 | not classified | open | - |
-| asy_fram_driver.py:292 | FRAM_SPI._setup_addr_buffer +2 | `len` at :292, :334, :362 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_fram_driver.py:306 | FRAM_SPI._write +1 | `self._is_write_protected` at :306, :345 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:313 | FRAM_SPI._write | `self._send_and_write` at :313 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:320 | FRAM_SPI.get_values | `self.get_values_sync` at :320 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:321 | FRAM_SPI.get_values +4 | `asyncio.sleep` at :321, :349, :374, :459, :495 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_fram_driver.py:322 | FRAM_SPI.get_values | `self.report_get_values` at :322 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:330 | FRAM_SPI.get_values_sync +1 | `self.session_lock.locked` at :330, :357 | not classified | open | - |
-| asy_fram_driver.py:336 | FRAM_SPI.get_values_sync | `self._read_address` at :336 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:348 | FRAM_SPI.set_values | `self.set_values_sync` at :348 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:350 | FRAM_SPI.set_values | `self.report_set_values` at :350 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:364 | FRAM_SPI.set_values_sync +1 | `self._check_write_anomaly` at :364, :373 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:364 | FRAM_SPI.set_values_sync | `self._write` at :364 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:373 | FRAM_SPI.set_write_protected | `self._set_write_protected` at :373 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:376 | FRAM_SPI.set_write_protected +2 | `self._report_chip_lost` at :376, :415, :501 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:382 | FRAM_SPI.set_write_protected +2 | `self.pr.wrn_s` at :382, :390, :432, :435, :440, :463 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:385 | FRAM_SPI.set_write_protected +1 | `self.pr.evt` at :385, :391, :438 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:445 | FRAM_SPI.setup | `self._spidev.setup` at :445 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:447 | FRAM_SPI.setup | `OSError` at :447, :461 | not classified | open | - |
-| asy_fram_driver.py:466 | FRAM_SPI.setup | `hex` at :466 | not classified | open | - |
-| asy_fram_driver.py:470 | FRAM_SPI.setup | `self._wp_pin.init` at :470 | not classified | open | - |
-| asy_fram_driver.py:473 | FRAM_SPI.setup | `self.lost.clear` at :473 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:474 | FRAM_SPI.setup | `self.pr.one` at :474 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_driver.py:485 | FRAM_SPI.verify_present | `asyncio.wait_for_ms` at :485; narrow except TimeoutError | not classified | open | - |
-| asy_fram_driver.py:485 | FRAM_SPI.verify_present | `self.session_lock.acquire` at :485; narrow except TimeoutError | not classified | open | - |
-| math_helpers.py:13 | <module> | `const` at :13, :14, :15, :16, :17, :18, :19, :20, :21, :22, :23, :24 (+18) | nothing at run time | unreachable | folded at compile time (py/compile.c, MICROPY_COMP_CONST) |
-| math_helpers.py:67 | abs_humidity +1 | `math.pow` at :67, :166; narrow except ArithmeticError/ValueError | not classified | open | - |
-| math_helpers.py:81 | cct_mccamy | `abs` at :81 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| math_helpers.py:117 | dew_point | `math.log` at :117; narrow except ArithmeticError/ValueError | not classified | open | - |
-| math_helpers.py:128 | ema_step | `math.isfinite` at :128, :132 | not classified | open | - |
-| math_helpers.py:146 | pressure_at_height | `math.exp` at :146; narrow except ArithmeticError/ValueError | not classified | open | - |
-| math_helpers.py:182 | rgb_to_hsb | `max` at :182 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| math_helpers.py:183 | rgb_to_hsb | `min` at :183 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| math_helpers.py:221 | wet_bulb_temperature | `math.atan` at :221, :222, :223, :224; narrow except ArithmeticError/ValueError | not classified | open | - |
-| math_helpers.py:221 | wet_bulb_temperature | `math.sqrt` at :221, :224; narrow except ArithmeticError/ValueError | not classified | open | - |
+| asy_base_classes.py:38 | <module> | `TypeVar` at :38 | nothing at run time: the call sits in the `if TYPE_CHECKING:` block (:27-70) | unreachable | TYPE_CHECKING is False on MicroPython: typing has no runtime presence, so the import at :23 raises ImportError and :25 binds False; the block never runs (mypy alone reads it) |
+| asy_base_classes.py:73 | <module> | `namedtuple` at :73 | TypeError for fields that are neither a str nor a sequence of str (new_namedtuple_type, py/objnamedtuple.c:171-181); MemoryError for the new type (:146, m_new_obj_var0), a fixed size | handled | the fields are the literal tuple of two str, so the TypeError cannot occur; the one fixed allocation runs at import, the armed watchdog's alone (conventions) |
+| asy_base_classes.py:76 | <module> | `const` at :76, :78, :80, :81, :84, :85, :86, :87, :88, :89, :90, :91 (+13) | nothing at run time: the parser folds `X = const(v)` (py/parse.c:832-866); a non-constant value is a SyntaxError at compile time (:842) | unreachable | no call is left at run time: each const() is replaced by its value while parsing (py/parse.c:864); the underscore names are dropped from the module (:855-858), and COUNTER_CAP (:76) and UNAVAILABLE (:78) keep a plain store of the folded value (:862-866), a str being a constant too (mp_parse_node_is_const, :376); the frozen build parses them in mpy-cross, so a bad value fails the build, never a boot |
+| asy_base_classes.py:115 | Lockable.__init__ | `asyncio.Lock` at :115 | MemoryError for the Lock and its TaskQueue (extmod/asyncio/lock.py:9-16), a fixed size | handled | construction only: Lockable's subclasses (DeviceSession :136, I2CDevice asy_i2c_driver.py:448, SPIDevice asy_spi_driver.py:108, UART asy_uart_driver.py:88, FRAM_SPI asy_fram_driver.py:121) are bus and session objects built in their owners' constructors inside build_system(), so the boot entry's except BaseException holds it (conventions) |
+| asy_base_classes.py:118 | Lockable.__aenter__ | `self.session_lock.acquire` at :118 | CancelledError re-raised from the wait (extmod/asyncio/lock.py:39-46); MemoryError for the generator the call allocates (acquire is a generator function, :33); the TaskQueue push is C and allocates nothing | handled | the cancellation propagates by design and the generator is a small fixed allocation, landing at the caller's task top or REST handler (conventions) |
+| asy_base_classes.py:130 | Lockable.__aexit__ | `self.session_lock.release` at :130; narrow except RuntimeError | RuntimeError('Lock not acquired') (extmod/asyncio/lock.py:22-23); nothing else: a fixed-arity call whose frame falls back to the C stack (py/objfun.c:268-287), and the TaskQueue peek/pop/push are C (:24-30) | handled | caught by the except RuntimeError at :131, which records a C-stack overflow through report_if_fatal() and returns False |
+| asy_base_classes.py:132 | Lockable.__aexit__ | `report_if_fatal` at :132 | nothing: report_if_fatal() (asy_print_log.py:482-487) is an isinstance test, a tuple index and a global store | unreachable | a one-argument call of a fixed-arity function (py/objfun.c:268-287); it allocates nothing, as its comment requires |
+| asy_base_classes.py:140 | DeviceSession.__init__ | `super` at :140, :140 | what Lockable.__init__ raises: the Lock's fixed allocation (row :115); `super().__init__()` compiles to LOAD_SUPER_METHOD, whose super object lives on the C stack (py/objtype.c:1425-1428) | handled | construction only (asy_bmp3xx_driver.py:465, asy_isl29125_driver.py:1187, asy_scd30_driver.py:715, asy_sgp40_driver.py:674, each in a driver's __init__ inside build_system()): the boot entry's except BaseException (conventions) |
+| asy_base_classes.py:159 | RegionBuffer.__init__ | `bytearray` at :159; narrow except MemoryError/OverflowError | MemoryError (array_new); OverflowError for a size past a machine word (mp_obj_get_int, py/objarray.c:190-192) | handled | both caught by the except (MemoryError, OverflowError) at :160, which prints the text through console() and leaves the buffer None; a negative size is refused at :152 before, and size is the `int` parameter |
+| asy_base_classes.py:162 | RegionBuffer.__init__ | `console` at :162 | nothing (console()'s rows, asy_print_log.py:461, :463) | unreachable | a three-argument call of a fixed-arity function (asy_print_log.py:456, py/objfun.c:268-287) whose print rows cannot raise |
+| asy_base_classes.py:171 | RegionBuffer.get_data_buf | `memoryview` at :171 | MemoryError for the view and its slice (py/objarray.c:216-233, :456-470); TypeError for an object with no buffer; NotImplementedError for a slice step | handled | self._buf is a bytearray (None returns at :169-170) and the slice has no step, so neither error can occur; the bounds were checked at :152 (0 <= data_start <= data_end <= size); the two views are a small fixed allocation at the FRAM chunk operation's task top or REST handler (conventions) |
+| asy_base_classes.py:181 | PieceBuffer.__init__ | `bytearray` at :181 | MemoryError for each piece of at most piece_bytes (array_new); OverflowError cannot: size is bounded by the callers' caps, small ints | handled | the module header's one documented raise (:7-8) and SPECIFICATION.md G.2's decision ('a MemoryError there is not caught'): every caller (asy_uart_comm.py:278, :313, :1111; asy_uart_driver.py:660) admits size by its cap first (max_transfer_bytes, J.8; max_bytes) and catches nothing, so the raise ends the UART task, which _log_dead_task() persists and the supervisor restarts (conventions); no allocation exceeds piece_bytes, the design I.4(a) asks for |
+| asy_base_classes.py:181 | PieceBuffer.__init__ | `min` at :181 | TypeError when the arguments do not compare (mp_builtin_min_max, py/modbuiltins.c:250-290) | unreachable | two ints (piece_bytes and size - start); it returns one of them |
+| asy_base_classes.py:181 | PieceBuffer.__init__ | `range` at :181 | ValueError('zero step') (py/objrange.c:103-106); MemoryError for the range object, which a comprehension's iterable is (the counted-loop form is compile_for_stmt's alone, py/compile.c:1512-1563) | handled | every caller passes piece_bytes >= 1 (asy_uart_driver.py:658; asy_uart_comm.py:974, checked at construction :236), so the ValueError cannot occur; the range object is one fixed allocation that lands where the pieces' does (row :181's bytearray) |
+| asy_base_classes.py:188 | PieceBuffer.copy_into | `len` at :188, :192, :194 | nothing for a bytearray, memoryview or list (each type's LEN slot) | unreachable | dest is the `bytearray | memoryview` parameter, self._pieces a list of bytearrays; len() allocates nothing |
+| asy_base_classes.py:190 | PieceBuffer.copy_into | `divmod` at :190 | ZeroDivisionError for a zero divisor; MemoryError for the result pair (the small-int DIVMOD arm builds a 2-tuple) | handled | _piece_bytes >= 1 in every constructed buffer (range()'s zero-step check at :181 runs first), so no ZeroDivisionError; the pair is a small fixed allocation at the UART task's top (conventions) |
+| asy_base_classes.py:195 | PieceBuffer.copy_into | `memoryview` at :195 | MemoryError for the view and its slice (py/objarray.c:216-233, :456-470); a slice store's length or compat error (:470-500) | handled | the piece is a bytearray and each store writes n bytes into an n-byte slice (pos + n <= size - start <= len(dest), checked at :188), so the store errors cannot occur; the views are a small fixed allocation at the UART task's top (conventions) |
+| asy_base_classes.py:202 | PieceBuffer.pieces | `iter` at :202 | MemoryError for the list iterator (mp_builtin_iter, py/modbuiltins.c:243, allocates one with no stack buffer, py/objlist.c:224, :514) | handled | a small fixed allocation at the caller's task top (conventions) |
+| asy_base_classes.py:209 | PieceBuffer.trim | `len` at :209 | nothing for a list (its LEN slot) | unreachable | self._pieces is always a list (:181) |
+| asy_base_classes.py:210 | PieceBuffer.trim | `self._pieces.pop` at :210 | IndexError('pop from empty list') (py/objlist.c:265); the shrink at :274 is an m_renew to a smaller size | unreachable | the loop pops only while len(self._pieces) > keep >= 0, so the list is never empty; a shrinking realloc frees the tail blocks in place and never fails (gc_realloc's shrink branch, py/gc.c:1227-1228) |
+| asy_base_classes.py:217 | PieceBuffer.write_at | `len` at :217, :222, :224, :224 | nothing for bytes, a bytearray or a memoryview (each type's LEN slot) | unreachable | src is the `bytes | bytearray | memoryview` parameter, view a memoryview and piece a bytearray |
+| asy_base_classes.py:219 | PieceBuffer.write_at | `memoryview` at :219 | MemoryError for the view (py/objarray.c:216-233); TypeError for an object with no buffer | handled | src has the buffer protocol by its signature, so no TypeError; the view is a small fixed allocation at the caller's task top (conventions); each store writes n bytes into an n-byte slice |
+| asy_base_classes.py:220 | PieceBuffer.write_at | `divmod` at :220 | ZeroDivisionError for a zero divisor; MemoryError for the result pair | handled | as copy_into's at :190: _piece_bytes >= 1, and the pair is a small fixed allocation (conventions) |
+| asy_base_classes.py:224 | PieceBuffer.write_at | `min` at :224 | TypeError when the arguments do not compare (py/modbuiltins.c:250-290) | unreachable | two ints; it returns one of them |
+| asy_base_classes.py:238 | LockedCounter.__init__ | `min` at :238 | TypeError when the arguments do not compare (py/modbuiltins.c:250-290) | unreachable | max(max_val, 0) and COUNTER_CAP are ints (max_val the `int` parameter); it returns one of them |
+| asy_base_classes.py:238 | LockedCounter.__init__ | `max` at :238 | TypeError when the arguments do not compare (py/modbuiltins.c:250-290) | unreachable | max_val is the `int` parameter and 0 an int |
+| asy_base_classes.py:239 | LockedCounter.__init__ | `self._clamp` at :239 | nothing: _clamp() (:241-244) is a None test and int min/max | unreachable | a one-argument call of a fixed-arity method (py/objfun.c:268-287); its min/max rows cannot raise |
+| asy_base_classes.py:244 | LockedCounter._clamp | `min` at :244 | TypeError when the arguments do not compare (py/modbuiltins.c:250-290) | unreachable | value is the `int | None` after its None test at :242, and _max_val an int (:238) |
+| asy_base_classes.py:244 | LockedCounter._clamp | `max` at :244 | TypeError when the arguments do not compare (py/modbuiltins.c:250-290) | unreachable | as min at :244: two ints |
+| asy_base_classes.py:250 | LockedCounter.set_value | `self._clamp` at :250 | nothing (_clamp()'s rows) | unreachable | as __init__'s at :239 |
+| asy_base_classes.py:309 | HourlyWindowCounter._advance | `range` at :309, :312 | nothing here: `for i in range(...)` compiles to a counted loop with no range object (py/compile.c:1512-1563, compile_for_stmt_optimised_range :1430) | unreachable | the bounds are ints (now_s // _HOUR_S and self._hour); each store indexes the 24-bin list at i or h % 24 |
+| asy_base_classes.py:317 | HourlyWindowCounter.add | `self._advance` at :317 | nothing: _advance()'s rows (:309, :312) and int arithmetic | unreachable | a one-argument call of a fixed-arity method; its range rows cannot raise and every index is taken modulo 24 |
+| asy_base_classes.py:323 | HourlyWindowCounter.reset | `range` at :323 | nothing: a counted loop with no range object (py/compile.c:1512-1563) | unreachable | a constant bound (24) |
+| asy_base_classes.py:327 | HourlyWindowCounter.total | `self._advance` at :327 | nothing (_advance()'s rows) | unreachable | as add()'s at :317 |
+| asy_base_classes.py:344 | TickSeconds.__init__ | `time.ticks_ms` at :344 | nothing: it returns the masked tick count as a small int (extmod/modtime.c:151-152) | unreachable | no argument and no allocation |
+| asy_base_classes.py:347 | TickSeconds.read | `time.ticks_ms` at :347 | nothing (extmod/modtime.c:151-152) | unreachable | as __init__'s at :344 |
+| asy_base_classes.py:348 | TickSeconds.read | `time.ticks_diff` at :348 | nothing: it reads both arguments as small ints and returns one (extmod/modtime.c:166-174) | unreachable | both arguments are ticks_ms() values (:344, :347, :363) |
+| asy_base_classes.py:361 | TickSeconds.restart | `min` at :361 | TypeError when the arguments do not compare (py/modbuiltins.c:250-290) | unreachable | max(value_s, 0) and COUNTER_CAP are ints (value_s the `int` parameter) |
+| asy_base_classes.py:361 | TickSeconds.restart | `max` at :361 | TypeError when the arguments do not compare (py/modbuiltins.c:250-290) | unreachable | value_s is the `int` parameter and 0 an int |
+| asy_base_classes.py:363 | TickSeconds.restart | `time.ticks_ms` at :363 | nothing (extmod/modtime.c:151-152) | unreachable | as __init__'s at :344 |
+| asy_base_classes.py:369 | _checked_write_results | `isinstance` at :369 | TypeError for a classinfo that is no class (py/objtype.c:1486, reached from mp_builtin_isinstance :1507) | unreachable | classinfo is the builtin dict type; it allocates nothing |
+| asy_base_classes.py:370 | _checked_write_results | `TypeError` at :370 | nothing: mp_obj_exception_make_new takes its object and its args tuple through _maybe allocations and falls back to the emergency object and the empty tuple (py/objexcept.c:207-245) | unreachable | one literal str argument; the raise that follows is the raise row's (handled at :515 and :697) |
+| asy_base_classes.py:387 | arm_tick_timer | `timer.init` at :387; narrow except MemoryError/OSError | OSError(ENOMEM) when the alarm pool refuses the alarm (ports/rp2/machine_timer.c:107-109); MemoryError for the lambda's closure; TypeError or ValueError from the argument parse (machine_timer_init_helper, :74) | handled | the MemoryError by the except at :388 (console() line, returns False), the OSError by the except at :391 (logged unless quiet, returns False); the parse errors cannot occur: the arguments are the literal 1000, the timer's own PERIODIC and a callable |
+| asy_base_classes.py:387 | arm_tick_timer | `flag.set` at :387; narrow except MemoryError/OSError | nothing: ThreadSafeFlag.set() stores 1 into the `state` attribute its __init__ created (extmod/asyncio/event.py:46-55), replacing a slot | unreachable | the walk places the lambda's body inside the try, but it runs later as the Timer callback, outside it; there the zero-argument method call keeps its frame on the C stack (py/objfun.c:268-287) and the store allocates nothing, so the callback cannot raise |
+| asy_base_classes.py:389 | arm_tick_timer | `console` at :389 | nothing (console()'s rows, asy_print_log.py:461, :463) | unreachable | a three-argument call of a fixed-arity function (asy_print_log.py:456, py/objfun.c:268-287) |
+| asy_base_classes.py:393 | arm_tick_timer | `pr.err` at :393 | MemoryError from err()'s *args tuple (asy_print_log.py:115) and its at-level print (conventions) | handled | small fixed allocations: the callers arm from a timer starter (asy_ntp_client.py:516, asy_wifi_service.py:925, asy_system_service.py:631, under _run_timer_starter()'s except at :432) or from their own supervised loop (asy_ntp_client.py:361, asy_wifi_service.py:414, asy_system_service.py:518, under _log_dead_task()) (conventions) |
+| asy_base_classes.py:418 | SensorReader.__init__ | `instance_name` at :418 | MemoryError for the joined name (asy_config_manager.py:241-247: the name itself when name_ext is empty, else one concatenation) | handled | construction only (every reader is built inside build_system()): the boot entry's except BaseException (conventions) |
+| asy_base_classes.py:419 | SensorReader.__init__ | `make_logger` at :419 | what make_logger() raises (asy_print_log.py:470): the logger's construction-time allocations (its own rows) | handled | construction only: the boot entry's except BaseException (conventions) |
+| asy_base_classes.py:423 | SensorReader.__init__ | `asyncio.Lock` at :423, :426 | MemoryError for each Lock and its TaskQueue (extmod/asyncio/lock.py:9-16), a fixed size | handled | construction only: the boot entry's except BaseException (conventions) |
+| asy_base_classes.py:449 | SensorReader._get_dict_cfg | `schema_names` at :449 | MemoryError for the list of field names (asy_config_manager.py:276-277); IndexError or TypeError for a field that is not a sequence | handled | each field is a 6-tuple (FieldSchema, mypy-checked; the schemas pinned by tests_scripts/test_config_schemas.py), so only the allocation is left, sized by the module's constant schema and fixed per build (SPECIFICATION.md I.3, 'bounded by the schema'); the GET reaches here from the webserver's config routes (_get_sensors :644-648, _get_settings_flat :650-659), so Microdot's dispatch catch holds it (conventions) |
+| asy_base_classes.py:450 | SensorReader._get_dict_cfg | `dict.fromkeys` at :450 | MemoryError for the heap iterator and the dict sized from the name list (dict_fromkeys, py/objdict.c:279-296); TypeError for an unhashable key | handled | the keys are the schema's str names, so no TypeError; the allocation is fixed per build as at :449, in the GET's REST handler (conventions) |
+| asy_base_classes.py:458 | SensorReader._get_dict_cfg | `report_if_fatal` at :458, :473 | nothing (asy_print_log.py:482-487) | unreachable | as Lockable.__aexit__'s at :132 |
+| asy_base_classes.py:459 | SensorReader._get_dict_cfg | `self.pr.err_s` at :459, :474 | MemoryError from err_s()'s *args tuple and generator (asy_print_log.py:261) | handled | small fixed allocations in the GET's REST handler (conventions) |
+| asy_base_classes.py:491 | SensorReader._set_dict_cfg | `self._writes_closed` at :491 | nothing: the base returns False (:745-747); SensorReaderConfig's returns cfgmgr.writes_closed(), a bool attribute (asy_config_manager.py:671-673) | unreachable | a zero-argument call of a fixed-arity method (py/objfun.c:268-287); no override allocates |
+| asy_base_classes.py:493 | SensorReader._set_dict_cfg | `dict.fromkeys` at :493, :524 | MemoryError for the heap iterator and a dict sized by data's key count (py/objdict.c:279-296); TypeError for an unhashable key | handled | data is a parsed JSON object, so its keys are str; its key count is bounded by the request body cap (web.max_content_length, 2048 B, asy_webserver_service.py:152), the same order as the parsed body already held; there is no true alternative flow (the answer is a word per requested key, I.4(a)), so a failed allocation ends the PUT in Microdot's dispatch catch (conventions); the PUT reaches here from _put_sensors (asy_webserver_service.py:846) and handle_set_cmd() (asy_api_response.py:64) |
+| asy_base_classes.py:494 | SensorReader._set_dict_cfg | `schema_dict` at :494 | MemoryError for the dict built from the schema (asy_config_manager.py:272-273); IndexError or TypeError for a malformed field | handled | every field is a 6-tuple (as :449), and the dict is fixed per build by the constant schema (SPECIFICATION.md I.3, 'schema_dict() built once per PUT'), in the PUT's REST handler (conventions) |
+| asy_base_classes.py:498 | SensorReader._set_dict_cfg | `fields.items` at :498 | MemoryError for the view, the comprehension's heap iterator and a 2-tuple per item (py/objdict.c:457-470, :550-555) | handled | fixed per item over the constant schema, and persisted_keys holds at most its field count; the PUT's REST handler (conventions) |
+| asy_base_classes.py:499 | SensorReader._set_dict_cfg | `check_cfg_get_default` at :499 | what check_cfg_get_default() raises (asy_config_manager.py:136-153): the field's 6-tuple unpack and type_or_range_error()'s checks, with a small result tuple | handled | the unpack cannot fail on a FieldSchema (as :449) and type_or_range_error() tests exact types before any arithmetic (row :540); the result tuple is a small fixed allocation in the PUT's REST handler (conventions) |
+| asy_base_classes.py:504 | SensorReader._set_dict_cfg | `report_if_fatal` at :504, :516, :544 | nothing (asy_print_log.py:482-487) | unreachable | as Lockable.__aexit__'s at :132 |
+| asy_base_classes.py:505 | SensorReader._set_dict_cfg | `self.pr.err_s` at :505, :517, :545 | MemoryError from err_s()'s *args tuple and generator (asy_print_log.py:261) | handled | small fixed allocations in the PUT's REST handler (conventions); the finally at :550 still commits the staged write |
+| asy_base_classes.py:530 | SensorReader._set_dict_cfg | `results.setdefault` at :530 | MemoryError when a missing key grows the map (dict_setdefault, py/objdict.c:349-351); TypeError for an unhashable key | handled | results is a dict (checked at :514; the {} at :518 returned at :524 before this loop) and the keys are str; growth is at most data's key count, bounded by the body cap as at :493, in the PUT's REST handler (conventions) |
+| asy_base_classes.py:531 | SensorReader._set_dict_cfg | `data.items` at :531 | MemoryError for the view and a 2-tuple per item (py/objdict.c:469, :550-555); the for loop's iterator sits in a stack buffer (:486) | handled | fixed per item, in the PUT's REST handler (conventions) |
+| asy_base_classes.py:532 | SensorReader._set_dict_cfg | `results.get` at :532 | nothing: dict.get() answers None for a missing key (dict_get_helper, py/objdict.c:309-338; its KeyError is the pop form's only) | unreachable | results is a dict and key a str; the method call through LOAD_METHOD allocates nothing |
+| asy_base_classes.py:534 | SensorReader._set_dict_cfg | `self._push_callbacks.get` at :534 | nothing (py/objdict.c:309-338) | unreachable | _push_callbacks is the dict built at :429 and key a str |
+| asy_base_classes.py:535 | SensorReader._set_dict_cfg | `fields.get` at :535 | nothing (py/objdict.c:309-338) | unreachable | fields is schema_dict()'s dict (:494) and key a str |
+| asy_base_classes.py:540 | SensorReader._set_dict_cfg | `type_or_range_error` at :540 | what type_or_range_error() raises (asy_config_manager.py:291-312): exact-type tests and comparisons, int(float) inside its own except (OverflowError, ValueError) (:101-104), a boxed float (:91) and its result tuple | handled | no value reaches arithmetic before its exact-type test, so only the small fixed allocations are left, in the PUT's REST handler (conventions); the value is one write_config() accepted as Valid |
+| asy_base_classes.py:549 | SensorReader._set_dict_cfg | `self._recover_failed_push` at :549 | what _recover_failed_push() raises: its rows (:668-703) | handled | each of its rows is handled or unreachable; the generator is a small fixed allocation in the PUT's REST handler (conventions) |
+| asy_base_classes.py:551 | SensorReader._set_dict_cfg | `self._commit_mgr_cfg` at :551 | nothing: the base returns (:580-582); SensorReaderConfig's calls cfgmgr.commit() (row :823) | unreachable | a zero-argument call of a fixed-arity method, and commit() sets an asyncio.Event, which allocates nothing (row :823) |
+| asy_base_classes.py:570 | SensorReader._climb_ladder | `report_if_fatal` at :570 | nothing (asy_print_log.py:482-487) | unreachable | as Lockable.__aexit__'s at :132 |
+| asy_base_classes.py:571 | SensorReader._climb_ladder | `self.pr.err_s` at :571 | MemoryError from err_s()'s *args tuple and generator, and what its rows leave (asy_print_log.py:261) | handled | small fixed allocations in the reader task that calls _error_check() (asy_bmp3xx_driver.py:303, asy_isl29125_driver.py:750, asy_scd30_driver.py:475, asy_sgp40_driver.py:386, asy_wifi_service.py:430): _log_dead_task() (conventions) |
+| asy_base_classes.py:574 | SensorReader._climb_ladder | `self.pr.wrn_s` at :574 | MemoryError from wrn_s()'s *args tuple and generator (asy_print_log.py:275) | handled | as err_s at :571: the reader task's top (conventions) |
+| asy_base_classes.py:576 | SensorReader._climb_ladder | `self._recover_bus` at :576, :578 | what _recover_bus() raises: its rows (:645, :646, :648, :649) | handled | each of its rows is handled at the reader task's top; the generator is a small fixed allocation (conventions) |
+| asy_base_classes.py:587 | SensorReader._error_check | `any` at :587 | MemoryError for the generator expression's generator; any() itself iterates through a stack buffer (py/modbuiltins.c:109-118) | handled | `res is None` raises nothing and results is the reader's tuple; the generator is a small fixed allocation at the reader task's top (conventions) |
+| asy_base_classes.py:591 | SensorReader._error_check | `self.pr.err_s` at :591, :593 | MemoryError from err_s()'s *args tuple and generator (asy_print_log.py:261) | handled | as _climb_ladder's at :571: the reader task's top (conventions) |
+| asy_base_classes.py:595 | SensorReader._error_check | `self._climb_ladder` at :595 | what _climb_ladder() raises: its rows (:570-578); _recover_device() sits in its except Exception at :569 | handled | each of its rows is handled at the reader task's top (conventions) |
+| asy_base_classes.py:599 | SensorReader._error_check | `self.pr.err` at :599 | MemoryError from err()'s *args tuple and its at-level print (asy_print_log.py:115) | handled | small fixed allocations at the reader task's top (conventions) |
+| asy_base_classes.py:611 | SensorReader._init_done | `bus.take_boot_clear_status` at :611 | nothing: it reads and clears an int attribute (asy_i2c_driver.py:404-408) | unreachable | a zero-argument call of a fixed-arity method; bus is the I2C the driver bound (None returns at :609-610) |
+| asy_base_classes.py:613 | SensorReader._init_done | `self.pr.wrn_s` at :613 | MemoryError from wrn_s()'s *args tuple and generator (asy_print_log.py:275) | handled | _init_done() runs from a driver's _init_*(), in its setup() or at its reader task's restart: the boot entry or _log_dead_task() (conventions) |
+| asy_base_classes.py:623 | SensorReader._init_failed | `self._recover_bus` at :623 | what _recover_bus() raises: its rows | handled | as _init_done's wrn_s at :613: setup() or the reader task's top (conventions) |
+| asy_base_classes.py:631 | SensorReader._rearm_timer | `self._timer_fault` at :631 | what _timer_fault() raises: its err_s row (:727) | handled | _rearm_timer() runs at its task's start (asy_scd30_driver.py:448, asy_sgp40_driver.py:327, _trigger_loop() :733): the task's top (conventions) |
+| asy_base_classes.py:633 | SensorReader._rearm_timer | `self.start_timer` at :633 | what the driver's starter raises: each catches (MemoryError, OSError) around its timer.init() and hands it to _timer_failed() (asy_bmp3xx_driver.py:369-378, asy_isl29125_driver.py:987-996, asy_scd30_driver.py:552-561, asy_sgp40_driver.py:622-631); SCD30's and ISL29125's pin irq() after that try can raise only MemoryError, the IRQ object being allocated once, at its pin's first registration (ports/rp2/machine_pin.c:423-433), and the closure per call fixed | handled | the closure is a small fixed allocation at the task's top (conventions); the arm failures are the starters' own excepts |
+| asy_base_classes.py:645 | SensorReader._recover_bus | `bus.clear` at :645 | what I2C.clear() raises (asy_i2c_driver.py:333-337): the bus lock's acquire (CancelledError, its generator), _clear_locked()'s pulses and pin hand-back (:161-168), small fixed allocations | handled | _recover_bus() runs from the ladder in the reader task or from _init_failed() in setup(): the task's top or the boot entry (conventions) |
+| asy_base_classes.py:646 | SensorReader._recover_bus | `self.pr.wrn_s` at :646, :649 | MemoryError from wrn_s()'s *args tuple and generator (asy_print_log.py:275) | handled | as bus.clear at :645 (conventions) |
+| asy_base_classes.py:648 | SensorReader._recover_bus | `bus.recover` at :648 | what I2C.recover() raises (asy_i2c_driver.py:386-396): as clear(), plus init()'s star-call array; init()'s OSError and ValueError are caught at :393 | handled | small fixed allocations at the task's top or the boot entry, as bus.clear at :645 (conventions) |
+| asy_base_classes.py:668 | SensorReader._recover_failed_push | `fields.get` at :668 | nothing (py/objdict.c:309-338) | unreachable | fields is the caller's schema_dict() dict and key a str |
+| asy_base_classes.py:671 | SensorReader._recover_failed_push | `check_cfg_get_default` at :671 | what check_cfg_get_default() raises: as at :499 | handled | as _set_dict_cfg's at :499: its one caller is _set_dict_cfg() (:549), in the PUT's REST handler (conventions) |
+| asy_base_classes.py:677 | SensorReader._recover_failed_push | `self._get_callbacks.get` at :677 | nothing (py/objdict.c:309-338) | unreachable | _get_callbacks is the dict built at :432 and key a str |
+| asy_base_classes.py:682 | SensorReader._recover_failed_push | `report_if_fatal` at :682, :698 | nothing (asy_print_log.py:482-487) | unreachable | as Lockable.__aexit__'s at :132 |
+| asy_base_classes.py:683 | SensorReader._recover_failed_push | `self.pr.err_s` at :683, :699 | MemoryError from err_s()'s *args tuple and generator (asy_print_log.py:261) | handled | small fixed allocations in the PUT's REST handler (conventions) |
+| asy_base_classes.py:689 | SensorReader._recover_failed_push | `type_or_range_error` at :689 | what type_or_range_error() raises: as at :540 | handled | recovered is a getter's raw read, any value: type_or_range_error() tests exact types before any arithmetic (asy_config_manager.py:82-104, :291-312) and catches int()'s own OverflowError and ValueError (:102), so only its small fixed allocations are left, in the PUT's REST handler (conventions) |
+| asy_base_classes.py:692 | SensorReader._recover_failed_push | `old_values.get` at :692 | AttributeError if old_values were not a dict; nothing for a dict (py/objdict.c:309-338) | unreachable | old_values is _get_mgr_cfg()'s result, typed `dict | None` and checked by mypy (D.2): the base returns {} (:483-484), SensorReaderConfig's ConfigManager.get_dict()'s dict or None (:810-814), SCD30's a dict or None (asy_scd30_driver.py:244-259), and None becomes {} at :507-508 |
+| asy_base_classes.py:701 | SensorReader._recover_failed_push | `res.get` at :701, :703 | nothing (py/objdict.c:309-338) | unreachable | res is the dict _checked_write_results() returned at :696 and key a str |
+| asy_base_classes.py:703 | SensorReader._recover_failed_push | `self.pr.err` at :703 | MemoryError from err()'s *args tuple and its at-level print (asy_print_log.py:115) | handled | small fixed allocations in the PUT's REST handler (conventions) |
+| asy_base_classes.py:710 | SensorReader._republish | `getattr` at :710 | AttributeError for a name the sample lacks (mp_builtin_getattr, py/modbuiltins.c:564-569) | unreachable | the one caller (asy_scd30_driver.py:388) passes _FIELDS, the same eight names in order as its SCD30 namedtuple (:160-161), and `changes[n]` is read only under its `in` test; a field load allocates nothing |
+| asy_base_classes.py:711 | SensorReader._republish | `type` at :711, :711 | type(old) with one argument: nothing (py/objtype.c:1032-1033); the call of the class: TypeError for a positional count other than its fields' (py/objnamedtuple.c:95-106) and MemoryError for the star-call's array (py/runtime.c:790-812), the generator expression's generator and the new tuple | handled | names covers all eight fields (row :710), so the TypeError cannot occur; the allocations are small and fixed by the sample's field count, at SCD30's reader task top or the config PUT's handler (conventions) |
+| asy_base_classes.py:717 | SensorReader._timer_failed | `self.pr.err` at :717 | MemoryError from err()'s *args tuple and its at-level print (asy_print_log.py:115) | handled | called from a starter's except, under _run_timer_starter()'s except (asy_system_service.py:432) or _rearm_timer()'s task (conventions) |
+| asy_base_classes.py:718 | SensorReader._timer_failed | `waiter.set` at :718 | nothing: ThreadSafeFlag.set() replaces its `state` slot (extmod/asyncio/event.py:54-55) | unreachable | a zero-argument method call whose frame stays on the C stack (py/objfun.c:268-287); waiter is the reader's ThreadSafeFlag |
+| asy_base_classes.py:727 | SensorReader._timer_fault | `self.pr.err_s` at :727 | MemoryError from err_s()'s *args tuple and generator (asy_print_log.py:261) | handled | _timer_fault() runs in the reader task (_rearm_timer(), _trigger_loop(), the drivers' read loops): its top (conventions) |
+| asy_base_classes.py:733 | SensorReader._trigger_loop | `self._rearm_timer` at :733 | what _rearm_timer() raises: its rows (:631, :633) | handled | _trigger_loop() is a supervised task (asy_bmp3xx_driver.py:353, :367; asy_isl29125_driver.py:985): _log_dead_task() (conventions) |
+| asy_base_classes.py:736 | SensorReader._trigger_loop | `self._base_trigger_event.wait` at :736 | MemoryError for the wait's generator and the IOQueue entry, map slot and poll registration (extmod/asyncio/event.py:60-63, core.py:75-88); AssertionError (core.py:83-84) only for a second reader of the same flag; CancelledError (conventions) | handled | an asyncio primitive F.2 never wraps: small fixed allocations at this task's top (conventions); this loop is the flag's one waiter (one task per reader), so the assertion cannot fail |
+| asy_base_classes.py:737 | SensorReader._trigger_loop | `self._timer_fault` at :737 | what _timer_fault() raises: its err_s row (:727) | handled | this task's top (conventions) |
+| asy_base_classes.py:740 | SensorReader._trigger_loop | `self._trigger_period.get_value` at :740 | MemoryError for the async call's generator; LockedValue.get_value() returns its value (:287-288) | handled | a small fixed allocation at this task's top (conventions); the period is the int set at construction (asy_bmp3xx_driver.py:185, asy_isl29125_driver.py:260) |
+| asy_base_classes.py:742 | SensorReader._trigger_loop | `self._read_event.set` at :742 | nothing: ThreadSafeFlag.set() replaces its `state` slot (extmod/asyncio/event.py:54-55) | unreachable | as _timer_failed's waiter.set at :718 |
+| asy_base_classes.py:754 | SensorReader.get_error_counter | `self.pr.get_log` at :754 | what get_log() raises (asy_print_log.py:241): its lists grow with the configured history_length | handled | its one caller, _write_errcount_entry() (asy_webserver_service.py:720), awaits it inside the except Exception at :1005, which writes this source's entry as unavailable (I.4(b)) |
+| asy_base_classes.py:773 | SensorReader.reset_error_counter | `self.pr.reset` at :773 | what reset() raises (asy_print_log.py:265, :362): its rows | handled | its one caller gathers it with return_exceptions=True (asy_webserver_service.py:871), so a raise comes back as an outcome, recorded and answered Failed (:876-880) |
+| asy_base_classes.py:777 | SensorReader.setup | `self.pr.setup` at :777 | what setup() raises (asy_print_log.py:271, :398): its rows | handled | setup() runs in the one-time boot batch (run_setups(), asy_system_service.py:734-740): the boot entry's except BaseException (conventions) |
+| asy_base_classes.py:783 | utc_now | `time.mktime` at :783 | TypeError for a tuple whose length is not 8 or 9 (extmod/modtime.c:83-90); MemoryError for the result, boxed past 2**30 (timeutils_obj_from_timestamp, shared/timeutils/timeutils.h:86-92; rp2 counts from 1970, ports/rp2/mpconfigport.h:147, so every current time exceeds the small-int range) | handled | the argument is gmtime()'s 8-tuple (extmod/modtime.c:75), so the TypeError cannot occur; the boxed int is a small fixed allocation at the caller's task top or REST handler (conventions) |
+| asy_base_classes.py:783 | utc_now | `time.gmtime` at :783 | MemoryError for its 8-tuple (gmtime is localtime's entry, extmod/modtime.c:203, :55-75) | handled | no argument, so the RTC is read as it stands; the tuple is a small fixed allocation (conventions) |
+| asy_base_classes.py:801 | SensorReaderConfig.__init__ | `super` at :801, :801 | what SensorReader.__init__ raises: its rows (:418-426); `super().__init__()` loads through LOAD_SUPER_METHOD, its super object on the C stack (py/objtype.c:1425-1428) | handled | construction only: the boot entry's except BaseException (conventions) |
+| asy_base_classes.py:806 | SensorReaderConfig.__init__ | `LogConfig` at :806 | TypeError for a positional count other than its three fields (py/objnamedtuple.c:95-106); MemoryError for the tuple | handled | three positional arguments for LogConfig's three fields (asy_print_log.py:451), so no TypeError; the tuple is built at construction only: the boot entry's except BaseException (conventions) |
+| asy_base_classes.py:807 | SensorReaderConfig.__init__ | `ConfigManager` at :807 | what ConfigManager.__init__ raises (asy_config_manager.py:316-344): its construction-time allocations (its own rows) | handled | construction only: the boot entry's except BaseException (conventions) |
+| asy_base_classes.py:807 | SensorReaderConfig.__init__ | `config_filename` at :807 | MemoryError for the concatenated name (asy_config_manager.py:235-238) | handled | str operands (cfg_path and the resolved name); construction only: the boot entry's except BaseException (conventions) |
+| asy_base_classes.py:811 | SensorReaderConfig._get_mgr_cfg | `self.pr.evt` at :811 | MemoryError from evt()'s *args tuple and its at-level print (asy_print_log.py:118) | handled | _get_mgr_cfg() is awaited only inside the trys whose except Exception sits at :457 (_get_dict_cfg()) and :503 (_set_dict_cfg()), directly or through SCD30's override (asy_scd30_driver.py:255); either logs it and answers the GET's marker or drops the snapshot |
+| asy_base_classes.py:814 | SensorReaderConfig._get_mgr_cfg | `self.cfgmgr.get_dict` at :814 | what ConfigManager.get_dict() raises (asy_config_manager.py:439): its rows | handled | as evt at :811: caught by the except Exception at :457 or :503 |
+| asy_base_classes.py:819 | SensorReaderConfig._set_mgr_cfg | `self.pr.evt` at :819 | MemoryError from evt()'s *args tuple and its at-level print (asy_print_log.py:118) | handled | _set_mgr_cfg() is awaited only inside the trys whose except Exception sits at :515 (_set_dict_cfg()) and :697 (_recover_failed_push()), directly or through the overrides' super() calls (asy_ntp_client.py:240, asy_wifi_service.py:301, asy_scd30_driver.py:321) |
+| asy_base_classes.py:820 | SensorReaderConfig._set_mgr_cfg | `self.cfgmgr.write_config` at :820 | what ConfigManager.write_config() raises (asy_config_manager.py:605): its rows | handled | as evt at :819: caught by the except Exception at :515 or :697 |
+| asy_base_classes.py:823 | SensorReaderConfig._commit_mgr_cfg | `self.cfgmgr.commit` at :823 | nothing: commit() sets the store's asyncio.Event (asy_config_manager.py:342, :475-477), whose set() moves waiters between C TaskQueues and replaces its `state` slot (extmod/asyncio/event.py:16-22) | unreachable | zero-argument calls of fixed-arity methods, their frames on the C stack (py/objfun.c:268-287); nothing allocates |
+| asy_base_classes.py:827 | SensorReaderConfig._writes_closed | `self.cfgmgr.writes_closed` at :827 | nothing: it returns the store's bool attribute (asy_config_manager.py:671-673) | unreachable | a zero-argument call of a fixed-arity method |
+| asy_base_classes.py:844 | SensorReaderConfig.setup | `super` at :844, :844 | what SensorReader.setup() raises: its row (:777); `super().setup()` loads through LOAD_SUPER_METHOD (py/objtype.c:1425-1428) | handled | the one-time boot batch (run_setups(), asy_system_service.py:734-740): the boot entry's except BaseException (conventions) |
+| asy_base_classes.py:845 | SensorReaderConfig.setup | `self.cfgmgr.setup` at :845 | what ConfigManager.setup() raises (asy_config_manager.py:514): its rows | handled | as super().setup() at :844: the boot entry's except BaseException (conventions) |
+| asy_config_manager.py:30 | <module> | `TypeVar` at :30 | not classified | open | - |
+| asy_config_manager.py:58 | <module> | `const` at :58, :59, :60, :61, :62, :63, :64, :65, :66, :67, :68, :69 (+2) | nothing at run time | unreachable | folded at compile time (py/compile.c, MICROPY_COMP_CONST) |
+| asy_config_manager.py:75 | _as_bool +11 | `type` at :75, :79, :85, :87, :99, :101, :115, :115, :116, :121, :165, :165 (+11); narrow except MemoryError | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_config_manager.py:91 | _coerce_float +1 | `float` at :91, :106 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_config_manager.py:103 | _coerce_int | `int` at :103; narrow except OverflowError/ValueError | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_config_manager.py:116 | _special_bypass | `any` at :116 | not classified | open | - |
+| asy_config_manager.py:132 | _stored_float | `json.loads` at :132 | OSError/MemoryError/ValueError/TypeError (extmod/modjson.c) | open | - |
+| asy_config_manager.py:132 | _stored_float +1 | `json.dumps` at :132, :592; narrow except MemoryError/OSError | OSError/MemoryError/ValueError/TypeError (extmod/modjson.c) | open | - |
+| asy_config_manager.py:145 | check_cfg_get_default +1 | `isinstance` at :145, :527, :539; narrow except MemoryError/OSError/ValueError | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_config_manager.py:148 | check_cfg_get_default +2 | `type_or_range_error` at :148, :214, :569 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:157 | checked_float | `_coerce_float` at :157 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:162 | checked_float +2 | `_special_bypass` at :162, :176, :305 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:171 | checked_int | `_coerce_int` at :171 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:187 | checked_numeric | `checked_int` at :187 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:189 | checked_numeric | `checked_float` at :189 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:206 | compare_before_write +2 | `schema_dict` at :206, :549, :621; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:209 | compare_before_write | `data.items` at :209 | not classified | open | - |
+| asy_config_manager.py:210 | compare_before_write | `fields.get` at :210 | not classified | open | - |
+| asy_config_manager.py:225 | compare_before_write | `resolution.get` at :225 | not classified | open | - |
+| asy_config_manager.py:227 | compare_before_write | `res` at :227, :227 | not classified | open | - |
+| asy_config_manager.py:262 | make_dict | `getattr` at :262 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_config_manager.py:266 | name_cfg +2 | `schema_names` at :266, :351, :371; narrow except KeyError | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:267 | name_cfg +2 | `len` at :267, :308, :550 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_config_manager.py:298 | type_or_range_error | `checked_numeric` at :298 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:321 | ConfigManager.__init__ | `make_logger` at :321 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:322 | ConfigManager.__init__ | `asyncio.Lock` at :322 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
+| asy_config_manager.py:342 | ConfigManager.__init__ | `asyncio.Event` at :342 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
+| asy_config_manager.py:343 | ConfigManager.__init__ +3 | `self._commit_ready.set` at :343, :477, :501, :665 | not classified | open | - |
+| asy_config_manager.py:348 | ConfigManager._get_typed_values | `self._get_values` at :348 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:353 | ConfigManager._get_typed_values | `enumerate` at :353 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_config_manager.py:354 | ConfigManager._get_typed_values | `coerce` at :354 | not classified | open | - |
+| asy_config_manager.py:356 | ConfigManager._get_typed_values +2 | `self._read_run_starts` at :356, :365, :373, :444, :452 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:357 | ConfigManager._get_typed_values +5 | `self.pr.err_s` at :357, :366, :374, :420, :445, :453, :536, :551, :559, :598, :612, :627 (+5); narrow except MemoryError/OSError | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:359 | ConfigManager._get_typed_values | `typed.append` at :359 | not classified | open | - |
+| asy_config_manager.py:368 | ConfigManager._get_values +1 | `self.pr.all` at :368, :447 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:370 | ConfigManager._get_values +2 | `self._current` at :370, :449, :625, :653; narrow except KeyError/MemoryError | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:380 | ConfigManager._closed_for_reset +2 | `self.pr.evt` at :380, :493, :615, :645, :647, :668 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:418 | ConfigManager._flush_staged | `report_if_fatal` at :418 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:432 | ConfigManager._write_file +1 | `open` at :432, :524; narrow except MemoryError/OSError | OSError (extmod/vfs*.c) | open | - |
+| asy_config_manager.py:433 | ConfigManager._write_file | `f.write` at :433 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:437 | ConfigManager.get_bool_values +3 | `self._get_typed_values` at :437, :462, :465, :468 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:459 | ConfigManager.get_error_counter | `self.pr.get_log` at :459 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:482 | ConfigManager.delete_file | `self.close_writes` at :482 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:485 | ConfigManager.delete_file | `range` at :485 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_config_manager.py:487 | ConfigManager.delete_file | `os.remove` at :487; narrow except OSError | OSError (extmod/vfs*.c) | open | - |
+| asy_config_manager.py:495 | ConfigManager.delete_file | `self.pr.err` at :495 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:509 | ConfigManager.reset_error_counter | `self.pr.reset` at :509 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:515 | ConfigManager.setup | `self.pr.setup` at :515 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:522 | ConfigManager.setup | `os.stat` at :522; narrow except MemoryError/OSError | OSError (extmod/vfs*.c) | open | - |
+| asy_config_manager.py:526 | ConfigManager.setup | `json.load` at :526; narrow except MemoryError/OSError/ValueError | OSError/MemoryError/ValueError/TypeError (extmod/modjson.c) | open | - |
+| asy_config_manager.py:530 | ConfigManager.setup | `self.pr.wrn_s` at :530, :533, :547, :574, :584; narrow except MemoryError/OSError/ValueError | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:543 | ConfigManager.setup | `self.pr.one` at :543, :588, :590, :595; narrow except MemoryError/OSError | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:556 | ConfigManager.setup | `defaults.items` at :556 | not classified | open | - |
+| asy_config_manager.py:557 | ConfigManager.setup +1 | `check_cfg_get_default` at :557, :623; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:568 | ConfigManager.setup | `data.pop` at :568 | not classified | open | - |
+| asy_config_manager.py:594 | ConfigManager.setup | `self._write_file` at :594; narrow except MemoryError/OSError | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:609 | ConfigManager.write_config | `self._closed_for_reset` at :609, :618 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:623 | ConfigManager.write_config | `tuple` at :623; narrow except MemoryError | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
+| asy_config_manager.py:623 | ConfigManager.write_config | `fields.items` at :623, :624; narrow except MemoryError | not classified | open | - |
+| asy_config_manager.py:625 | ConfigManager.write_config | `compare_before_write` at :625; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:635 | ConfigManager.write_config | `dict_results.items` at :635 | not classified | open | - |
+| asy_config_manager.py:653 | ConfigManager.write_config | `dict` at :653; narrow except MemoryError | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
+| asy_config_manager.py:654 | ConfigManager.write_config | `write.items` at :654; narrow except MemoryError | not classified | open | - |
+| asy_config_manager.py:655 | ConfigManager.write_config | `_stored_float` at :655; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:656 | ConfigManager.write_config | `asyncio.create_task` at :656; narrow except MemoryError | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
+| asy_config_manager.py:656 | ConfigManager.write_config | `self._flush_staged` at :656; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:663 | ConfigManager.write_config | `self._commit_ready.clear` at :663 | what the callee raises | transitive | the callee's own rows here |
+| asy_print_log.py:59 | <module> | `const` at :59, :60, :61, :62, :63, :64, :67, :68, :69, :70, :71, :72 (+4) | nothing at run time: the parser folds `_X = const(v)` (py/parse.c:832-866); a non-constant value is a SyntaxError at compile time (:842) | unreachable | no call is left at run time: each const() is replaced by its value while parsing (py/parse.c:864, MICROPY_COMP_CONST) and the underscore names are dropped from the module (:855-858); the frozen build parses them in mpy-cross, so a bad value fails the build, never a boot |
+| asy_print_log.py:89 | PrintLog.__init__ | `self.set_level` at :89 | what set_level() raises: MemoryError from self.err()'s *args tuple (conventions) | handled | set_level()'s rows: type() cannot raise (:106), self.err() (:109) allocates only its small fixed tuple; __init__ runs at construction (make_logger() and every direct constructor run inside build_system()), so the boot entry's except BaseException holds it (conventions) |
+| asy_print_log.py:96 | PrintLog._line | `print` at :96 | MemoryError from the star-call's argument array (py/runtime.c:790-812); TypeError for a non-str sep or end (py/modbuiltins.c:412-413) | handled | reached only at or above the logger's level; the array is small and fixed per call site (the caller's argument count): I.4(a), the caller's task top or the supervisor (conventions); sep and end are the `str` parameters every caller leaves at their defaults or passes as literals, so the TypeError cannot occur |
+| asy_print_log.py:99 | PrintLog._line | `isinstance` at :99 | TypeError for a classinfo that is no class (py/objtype.c:1486, reached from mp_builtin_isinstance :1507) | unreachable | classinfo is the builtin MemoryError type; isinstance() allocates nothing |
+| asy_print_log.py:100 | PrintLog._line | `console` at :100 | what console() raises: nothing (its rows :461, :463) | unreachable | a two-argument call of a fixed-arity function: its frame falls back to the C stack (py/objfun.c:268-287), and console()'s print rows cannot raise |
+| asy_print_log.py:106 | PrintLog.set_level | `type` at :106 | nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033) | unreachable | one argument; no allocation |
+| asy_print_log.py:109 | PrintLog.set_level | `self.err` at :109 | MemoryError from err()'s *args tuple, and what _line() raises (conventions) | handled | small fixed allocations only (the tuple, and _line()'s print at the logger's level): I.4(a); at construction the boot entry's except BaseException, on a run-time level change the calling task's supervisor (conventions) |
+| asy_print_log.py:113 | PrintLog.all | `self._line` at :113 | what _line() raises: its at-level print's MemoryError | handled | a four-argument call of a fixed-arity method allocates nothing itself; _line()'s rows leave only the small fixed print array: I.4(a) (conventions) |
+| asy_print_log.py:116 | PrintLog.err | `self._line` at :116 | what _line() raises: its at-level print's MemoryError | handled | as PrintLog.all at :113 |
+| asy_print_log.py:119 | PrintLog.evt | `self._line` at :119 | what _line() raises: its at-level print's MemoryError | handled | as PrintLog.all at :113 |
+| asy_print_log.py:122 | PrintLog.one | `self._line` at :122 | what _line() raises: its at-level print's MemoryError | handled | as PrintLog.all at :113 |
+| asy_print_log.py:140 | PrintLog.wrn | `self._line` at :140 | what _line() raises: its at-level print's MemoryError | handled | as PrintLog.all at :113 |
+| asy_print_log.py:145 | PrintLogHistory.__init__ | `super` at :145, :145 | super() itself nothing: `super().__init__(...)` compiles to a super method call with no super object (py/compile.c:2349-2353); the call runs PrintLog.__init__ | handled | PrintLog.__init__'s row (:89) is construction-time: the boot entry's except BaseException (conventions) |
+| asy_print_log.py:149 | PrintLogHistory.__init__ | `min` at :149 | TypeError when the arguments do not compare (py/modbuiltins.c:277-289) | unreachable | history_length is the `int` parameter and the bounds are int constants; it returns one of its arguments |
+| asy_print_log.py:149 | PrintLogHistory.__init__ | `max` at :149 | TypeError when the arguments do not compare (py/modbuiltins.c:277-289) | unreachable | as min at :149 |
+| asy_print_log.py:151 | PrintLogHistory.__init__ | `deque` at :151, :154; narrow except MemoryError | MemoryError (the `[0] * n` list, the object and its ring, py/objdeque.c:58-61); ValueError for maxlen < 0 (:54-55); TypeError for a non-int maxlen (:53) | handled | :151's MemoryError is caught at :152 (a 0-length ring, its console line); maxlen is the int clamped to 0..0xFFFF at :149, so neither the ValueError nor the TypeError can occur; :154 runs in that handler and allocates a fixed object with a 1-slot ring at construction: the boot entry's except BaseException (conventions) |
+| asy_print_log.py:155 | PrintLogHistory.__init__ | `console` at :155 | nothing (console()'s rows :461, :463) | unreachable | a three-argument call of a fixed-arity function (py/objfun.c:268-287) |
+| asy_print_log.py:169 | PrintLogHistory._clear | `self._since_kept` at :169 | nothing: _since_kept() (:205-207) is int masking, min() and len() | unreachable | _kept and kept stay in 0.._WRAP_MAX (0x3FFFFFFF, :72), so their difference stays a small int and allocates nothing; min() and len() rows below cannot raise |
+| asy_print_log.py:170 | PrintLogHistory._clear | `range` at :170 | nothing here: `for i in range(n)` compiles to a counted loop with no range object (py/compile.c:1430, compile_for_stmt_optimised_range) | unreachable | n is an int (len() less an int) |
+| asy_print_log.py:170 | PrintLogHistory._clear | `len` at :170 | nothing for a deque (deque_unary_op's LEN arm, py/objdeque.c:80-85) | unreachable | self.history is always a deque (:151 or :154) |
+| asy_print_log.py:172 | PrintLogHistory._clear | `self._since_counted` at :172 | nothing: _since_counted() (:202-203) is int masking and min() | unreachable | _counted and counted stay in 0.._WRAP_MAX, so the difference is a small int |
+| asy_print_log.py:173 | PrintLogHistory._clear | `min` at :173 | TypeError when the arguments do not compare (py/modbuiltins.c:277-289) | unreachable | two ints; it returns one of them |
+| asy_print_log.py:180 | PrintLogHistory._count | `self._diag` at :180 | MemoryError from _diag()'s *args tuple and its print (conventions) | handled | small fixed allocations, reached only at the 0xFFFF count: I.4(a), the calling task's supervisor or at boot the boot entry (conventions) |
+| asy_print_log.py:184 | PrintLogHistory._diag | `print` at :184 | MemoryError from the star-call's argument array (py/runtime.c:790-812) | handled | reached only at a level above 0; the array is small and fixed per call site: I.4(a) (conventions) |
+| asy_print_log.py:190 | PrintLogHistory._keep | `len` at :190, :194 | nothing for a deque (py/objdeque.c:80-85) | unreachable | self.history is always a deque |
+| asy_print_log.py:191 | PrintLogHistory._keep | `self.history.append` at :191 | IndexError only for a deque made with the overflow flag (py/objdeque.c:106-108) | unreachable | both constructions (:151, :154) pass two arguments, so the flag is clear and append overwrites the oldest item in place (py/objdeque.c:99-117), allocating nothing; a maxlen-0 ring (alloc 1) takes the append and stays empty |
+| asy_print_log.py:203 | PrintLogHistory._since_counted | `min` at :203 | TypeError when the arguments do not compare (py/modbuiltins.c:277-289) | unreachable | two ints |
+| asy_print_log.py:207 | PrintLogHistory._since_kept | `min` at :207 | TypeError when the arguments do not compare (py/modbuiltins.c:277-289) | unreachable | two ints |
+| asy_print_log.py:207 | PrintLogHistory._since_kept | `len` at :207 | nothing for a deque (py/objdeque.c:80-85) | unreachable | self.history is always a deque |
+| asy_print_log.py:212 | PrintLogHistory._store_err | `self._count` at :212 | what _count() raises: its _diag() at the 0xFFFF count | handled | _count()'s row :180: small fixed, I.4(a) (conventions) |
+| asy_print_log.py:217 | PrintLogHistory._store_err | `self._diag` at :217, :222 | MemoryError from _diag()'s *args tuple and its print | handled | small fixed: I.4(a) (conventions) |
+| asy_print_log.py:219 | PrintLogHistory._store_err | `self._keep` at :219 | nothing: _keep()'s rows (:190, :191, :194) and int arithmetic | unreachable | _keep()'s len and append rows cannot raise; _kept wraps at _WRAP_MAX, a small int |
+| asy_print_log.py:224 | PrintLogHistory._store_err | `self._write_through` at :224 | MemoryError from the call's generator, and what _write_through() raises | handled | the generator is small and fixed (conventions); _write_through()'s rows: _write() (the Store's catches every chunk step's MemoryError at :355), _diag/_count/_keep as above: I.4(a) |
+| asy_print_log.py:232 | PrintLogHistory._write_through | `self._write` at :232 | MemoryError from the call's generator; PrintLogHistory._write returns True, PrintLogHistoryStore._write catches its chunk steps' MemoryError at :355 | handled | only the small fixed generator and the Store's lock wait remain: I.4(a) (conventions) |
+| asy_print_log.py:235 | PrintLogHistory._write_through | `self._diag` at :235 | MemoryError from _diag()'s *args tuple and its print | handled | small fixed: I.4(a) (conventions) |
+| asy_print_log.py:238 | PrintLogHistory._write_through | `self._count` at :238 | what _count() raises: its _diag() at the 0xFFFF count | handled | as _store_err's at :212 |
+| asy_print_log.py:239 | PrintLogHistory._write_through | `self._keep` at :239 | nothing (_keep()'s rows) | unreachable | as _store_err's at :219 |
+| asy_print_log.py:251 | PrintLogHistory.get_log | `err_num.append` at :251, :254, :257 | MemoryError growing the list (mp_obj_list_append's m_renew, py/objlist.c:232) | handled | the list grows to len(history), the configured history_length (at most 0xFFFF, :149), on the run-time /status path; get_log() is called only from each module's get_error_counter(), and those only from WebserverService._write_errcount_entry(), whose except Exception at asy_webserver_service.py:1005 writes that module's entry as unavailable (I.4(b)), the layer holding the alternative flow |
+| asy_print_log.py:252 | PrintLogHistory.get_log | `err_type.append` at :252, :255, :258 | MemoryError growing the list (py/objlist.c:232) | handled | as err_num.append at :251: asy_webserver_service.py:1005 |
+| asy_print_log.py:262 | PrintLogHistory.err_s | `self._store_err` at :262 | MemoryError from the call's generator, and what _store_err() raises | handled | _store_err()'s rows leave only small fixed allocations (the generator, _diag's tuple and print, _write_through's generator): I.4(a) (conventions) |
+| asy_print_log.py:263 | PrintLogHistory.err_s | `self._line` at :263 | what _line() raises: its at-level print's MemoryError | handled | as PrintLog.all at :113 |
+| asy_print_log.py:266 | PrintLogHistory.reset | `self._clear` at :266 | nothing: _clear()'s rows (:169-173) | unreachable | every _clear() row cannot raise and the deque item assignment allocates nothing (its comment, :168) |
+| asy_print_log.py:276 | PrintLogHistory.wrn_s | `self._store_err` at :276 | MemoryError from the call's generator, and what _store_err() raises | handled | as err_s at :262 |
+| asy_print_log.py:277 | PrintLogHistory.wrn_s | `self._line` at :277 | what _line() raises: its at-level print's MemoryError | handled | as PrintLog.all at :113 |
+| asy_print_log.py:282 | PrintLogHistoryStore | `struct.calcsize` at :282 | ValueError for a bad format (py/modstruct.c:115, its format scan) | unreachable | the format is the literal "<H" (:281), a valid one, so calcsize returns 2; it runs once, in the class body at import |
+| asy_print_log.py:285 | PrintLogHistoryStore.__init__ | `super` at :285, :285 | super() itself nothing (py/compile.c:2349-2353); the call runs PrintLogHistory.__init__ | handled | PrintLogHistory.__init__'s rows (:145-155) are construction-time: the boot entry's except BaseException (conventions) |
+| asy_print_log.py:288 | PrintLogHistoryStore.__init__ | `len` at :288, :289 | nothing for a deque (py/objdeque.c:80-85) | unreachable | self.history is always a deque |
+| asy_print_log.py:293 | PrintLogHistoryStore.__init__ | `fram.get_chunk` at :293; narrow except MemoryError | MemoryError, and what FRAMManager.get_chunk() raises (asy_fram_manager.py:681, its own rows) | handled | the MemoryError is caught at :294 (no chunk, _heap_failed, its console line); every other raise is get_chunk()'s own row in asy_fram_manager.py; construction runs inside build_system(), under the boot entry's except BaseException (conventions) |
+| asy_print_log.py:293 | PrintLogHistoryStore.__init__ | `CRC8` at :293; narrow except MemoryError | MemoryError for its object: CRCBase.__init__ (asy_crc_checks.py:21-32) is int arithmetic and attribute stores | handled | caught at :294 with the get_chunk() call on the same line |
+| asy_print_log.py:297 | PrintLogHistoryStore.__init__ | `console` at :297 | nothing (console()'s rows) | unreachable | a three-argument call of a fixed-arity function (py/objfun.c:268-287) |
+| asy_print_log.py:299 | PrintLogHistoryStore.__init__ | `self._diag` at :299 | MemoryError from _diag()'s *args tuple and its print | handled | construction-time, small fixed: the boot entry's except BaseException (conventions) |
+| asy_print_log.py:300 | PrintLogHistoryStore.__init__ | `asyncio.Lock` at :300 | MemoryError for the object and its wait queue (extmod/asyncio/lock.py:9-16) | handled | small fixed, once at construction: the boot entry's except BaseException (conventions) |
+| asy_print_log.py:307 | PrintLogHistoryStore._pack_reset | `struct.pack_into` at :307 | ValueError "buffer too small" (py/modstruct.c:242, :252); TypeError for a non-int value | unreachable | dbuf is the chunk's data view, exactly the requested size (FRAMChunkBuffer gives RegionBuffer data_length = size, asy_fram_manager.py:471-472; asy_base_classes.py:168-171), which is _HDR_SIZE + len(history) (:289), so 2 bytes fit at offset 0; the value is _since_counted()'s int, and struct never range-checks a value (Part F) |
+| asy_print_log.py:307 | PrintLogHistoryStore._pack_reset | `self._since_counted` at :307 | nothing (:202-203) | unreachable | as _clear's at :172 |
+| asy_print_log.py:308 | PrintLogHistoryStore._pack_reset | `len` at :308, :309 | nothing for a deque (py/objdeque.c:80-85) | unreachable | self.history is always a deque |
+| asy_print_log.py:308 | PrintLogHistoryStore._pack_reset | `self._since_kept` at :308 | nothing (:205-207) | unreachable | as _clear's at :169 |
+| asy_print_log.py:309 | PrintLogHistoryStore._pack_reset | `range` at :309 | nothing: a counted loop with no range object (py/compile.c:1430) | unreachable | an int bound |
+| asy_print_log.py:317 | PrintLogHistoryStore._read | `self.fram.get_buffer` at :317; narrow except MemoryError | MemoryError, and what FRAMChunk.get_buffer() raises (asy_fram_manager.py:476, its own rows) | handled | the MemoryError is caught at :328 (None: unreadable); any other raise is that callee's own row |
+| asy_print_log.py:318 | PrintLogHistoryStore._read | `buf.get_data_buf` at :318; narrow except MemoryError | MemoryError for the memoryview and its slice (asy_base_classes.py:168-171, its own rows) | handled | caught at :328; a failed buffer allocation answers None, refused at :319 |
+| asy_print_log.py:321 | PrintLogHistoryStore._read | `self.fram.read_into` at :321; narrow except MemoryError | MemoryError, and what FRAMChunk.read_into() raises (asy_fram_manager.py, its own rows) | handled | the MemoryError is caught at :328; the module header states a chunk operation raises only by allocation, which its own rows carry |
+| asy_print_log.py:326 | PrintLogHistoryStore._read | `struct.unpack_from` at :326, :327; narrow except MemoryError | MemoryError for the result tuple (1 and len(history) items); ValueError "buffer too small" (py/modstruct.c:146, :155) | handled | the MemoryError, which grows with the configured history length, is caught at :328 (None: unreadable); the ValueError cannot occur: dbuf holds _HDR_SIZE + len(history) bytes (see _pack_reset's struct.pack_into) and the formats read 2 bytes at 0 and len(history) at _HDR_SIZE |
+| asy_print_log.py:329 | PrintLogHistoryStore._read | `console` at :329 | nothing (console()'s rows) | unreachable | a three-argument call of a fixed-arity function (py/objfun.c:268-287) |
+| asy_print_log.py:345 | PrintLogHistoryStore._write | `self.fram.get_buffer` at :345; narrow except MemoryError | MemoryError, and what FRAMChunk.get_buffer() raises (its own rows) | handled | caught at :355 (False: the write fails) |
+| asy_print_log.py:346 | PrintLogHistoryStore._write | `buf.get_data_buf` at :346; narrow except MemoryError | MemoryError for the memoryview and its slice (asy_base_classes.py:168-171) | handled | caught at :355; a failed buffer allocation answers None, refused at :347 |
+| asy_print_log.py:350 | PrintLogHistoryStore._write | `struct.pack_into` at :350, :351; narrow except MemoryError | MemoryError for :351's star-call array (3 + len(history) arguments, py/runtime.c:790-812); ValueError "buffer too small" (py/modstruct.c:242, :252) | handled | the MemoryError, which grows with the configured history length, is caught at :355 (False: the write fails); the ValueError cannot occur: :350 packs 2 bytes at 0 and :351 len(history) bytes at _HDR_SIZE into the _HDR_SIZE + len(history) view, with exactly len(history) values for its len(history) codes, and struct never range-checks a value (Part F) |
+| asy_print_log.py:353 | PrintLogHistoryStore._write | `self._pack_reset` at :353; narrow except MemoryError | nothing: _pack_reset()'s rows (:307-310) | unreachable | every _pack_reset() row cannot raise; the memoryview item stores sit inside the view (_HDR_SIZE + i < size) |
+| asy_print_log.py:354 | PrintLogHistoryStore._write | `bool` at :354; narrow except MemoryError | what a user __bool__ raises (mp_obj_is_true) | unreachable | the argument is write_into()'s `bool` result, whose truth test raises nothing |
+| asy_print_log.py:354 | PrintLogHistoryStore._write | `self.fram.write_into` at :354; narrow except MemoryError | MemoryError, and what FRAMChunk.write_into() raises (asy_fram_manager.py, its own rows) | handled | the MemoryError is caught at :355 (False: the write fails); the module header states a chunk operation raises only by allocation, which its own rows carry |
+| asy_print_log.py:356 | PrintLogHistoryStore._write | `console` at :356 | nothing (console()'s rows) | unreachable | a three-argument call of a fixed-arity function (py/objfun.c:268-287) |
+| asy_print_log.py:366 | PrintLogHistoryStore.reset | `self._paused` at :366, :381 | nothing: FRAMManager.get_pause() returns its flag (asy_fram_manager.py:722-723) | unreachable | a call of the bound method stored once at :291; no allocation |
+| asy_print_log.py:367 | PrintLogHistoryStore.reset | `self._diag` at :367, :372, :382, :392 | MemoryError from _diag()'s *args tuple and its print | handled | small fixed: I.4(a) (conventions) |
+| asy_print_log.py:380 | PrintLogHistoryStore.reset | `self._write` at :380 | MemoryError from the call's generator; _write()'s chunk steps are caught at :355 | handled | small fixed: I.4(a), the reset's finally (:385-388) still frees its bit (conventions) |
+| asy_print_log.py:384 | PrintLogHistoryStore.reset | `self._clear` at :384 | nothing (_clear()'s rows) | unreachable | as PrintLogHistory.reset's at :266 |
+| asy_print_log.py:405 | PrintLogHistoryStore.setup | `self.err_s` at :405, :412, :435 | what err_s() raises: small fixed allocations | handled | setup() runs in run_setups() at boot: the boot entry's except BaseException; a later call returns at :399-400 once initialized, and otherwise runs in its caller's supervised task (conventions) |
+| asy_print_log.py:407 | PrintLogHistoryStore.setup | `self._read` at :407 | MemoryError from the call's generator; _read() catches its own steps' MemoryError at :328 | handled | small fixed: as err_s at :405 |
+| asy_print_log.py:411 | PrintLogHistoryStore.setup | `self._diag` at :411, :434 | MemoryError from _diag()'s *args tuple and its print | handled | small fixed: as err_s at :405 |
+| asy_print_log.py:414 | PrintLogHistoryStore.setup | `isinstance` at :414 | TypeError for a classinfo that is no class (py/objtype.c:1486) | unreachable | classinfo is the builtin tuple type |
+| asy_print_log.py:418 | PrintLogHistoryStore.setup | `self.history.extend` at :418, :423, :424 | what iterating its argument raises (mp_obj_deque_extend, py/objdeque.c:152-160), each item through append | unreachable | the arguments are unpack_from()'s tuple and a list, iterated through the stack iter_buf (:154), and append cannot raise (row :191) |
+| asy_print_log.py:422 | PrintLogHistoryStore.setup | `list` at :422 | MemoryError for a list of len(history) items | handled | it grows with the configured history length, but only in setup(), once at boot inside run_setups(): the boot entry's except BaseException holds it (conventions) |
+| asy_print_log.py:422 | PrintLogHistoryStore.setup | `len` at :422 | nothing for a deque (py/objdeque.c:80-85) | unreachable | self.history is always a deque |
+| asy_print_log.py:428 | PrintLogHistoryStore.setup | `self._write` at :428 | MemoryError from the call's generator; _write()'s chunk steps are caught at :355 | handled | small fixed: as err_s at :405 |
+| asy_print_log.py:432 | PrintLogHistoryStore.setup | `self._write_through` at :432 | what _write_through() raises: small fixed allocations | handled | as err_s at :405 |
+| asy_print_log.py:451 | <module> | `namedtuple` at :451 | MemoryError for the new type (py/objnamedtuple.c:154); its TypeErrors concern instance construction (:101-135) | handled | once at import with literal valid field names: an import-time allocation, the armed watchdog's (conventions) |
+| asy_print_log.py:453 | <module> | `LogConfig` at :453 | TypeError for a wrong argument count (py/objnamedtuple.c:101-105); MemoryError for the instance | handled | three arguments for the three fields, so no TypeError; once at import, small fixed: the armed watchdog's (conventions) |
+| asy_print_log.py:461 | console | `print` at :461, :463 | nothing: fixed arity, no star and no keyword, so mp_builtin_print (py/modbuiltins.c:387) takes its arguments in place and allocates nothing (SPECIFICATION.md F.1's account) | unreachable | every caller passes a str name and a str or exception object, whose print slots raise nothing |
+| asy_print_log.py:474 | make_logger | `PrintLogHistory` at :474 | what PrintLogHistory.__init__ raises (rows :145-155) | handled | make_logger() is called only from constructors (asy_base_classes.py:419 and six services' __init__), all inside build_system(): the boot entry's except BaseException (conventions) |
+| asy_print_log.py:475 | make_logger | `pr.one` at :475, :478 | MemoryError from one()'s *args tuple | handled | construction-time, small fixed: as PrintLogHistory at :474 |
+| asy_print_log.py:477 | make_logger | `PrintLogHistoryStore` at :477 | what PrintLogHistoryStore.__init__ raises (rows :285-300) | handled | as PrintLogHistory at :474 |
+| asy_print_log.py:486 | report_if_fatal | `isinstance` at :486 | TypeError for a classinfo that is no class (py/objtype.c:1486) | unreachable | classinfo is the builtin RuntimeError type; it allocates nothing, as the function's comment requires |
+| asy_system_service.py:51 | <module> | `const` at :51, :52, :53, :54, :55, :56, :57, :58, :59, :60, :61, :64 (+36) | nothing at run time | unreachable | folded at compile time (py/compile.c, MICROPY_COMP_CONST) |
+| asy_system_service.py:139 | _write_region +2 | `mem_backup` at :139, :153, :154, :176, :177 | not classified | open | - |
+| asy_system_service.py:161 | begin_boot | `reset_cause` at :161 | not classified | open | - |
+| asy_system_service.py:167 | begin_boot | `range` at :167 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_system_service.py:167 | begin_boot +2 | `len` at :167, :769, :778, :788, :799 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_system_service.py:169 | begin_boot +2 | `_write_region` at :169, :185, :688 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:180 | record_loop_end +2 | `write_reset_record` at :180, :357, :373, :409 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:200 | SystemService.__init__ | `make_logger` at :200 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:206 | SystemService.__init__ | `TickSeconds` at :206 | not classified | open | - |
+| asy_system_service.py:207 | SystemService.__init__ | `asyncio.ThreadSafeFlag` at :207, :213, :239 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
+| asy_system_service.py:208 | SystemService.__init__ | `Timer` at :208, :209, :212 | not classified | open | - |
+| asy_system_service.py:217 | SystemService.__init__ | `LockedValue` at :217 | not classified | open | - |
+| asy_system_service.py:230 | SystemService.__init__ | `ConfigManager` at :230 | not classified | open | - |
+| asy_system_service.py:230 | SystemService.__init__ | `config_filename` at :230 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:230 | SystemService.__init__ | `instance_name` at :230 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:241 | SystemService.__init__ | `asyncio.Lock` at :241 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
+| asy_system_service.py:245 | SystemService.__init__ | `asyncio.Event` at :245, :246 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
+| asy_system_service.py:267 | SystemService._set_dict_cfg | `self.cfgmgr.write_config` at :267 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:269 | SystemService._set_dict_cfg | `dict.fromkeys` at :269 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
+| asy_system_service.py:270 | SystemService._set_dict_cfg | `results.get` at :270 | not classified | open | - |
+| asy_system_service.py:270 | SystemService._set_dict_cfg | `name_cfg` at :270 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:271 | SystemService._set_dict_cfg +1 | `self.cfgmgr.get_int_values` at :271, :758 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:273 | SystemService._set_dict_cfg +1 | `self._apply_level` at :273, :760 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:284 | SystemService._apply_level +8 | `report_if_fatal` at :284, :308, :327, :339, :426, :433, :496, :503, :615 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:285 | SystemService._apply_level +10 | `self.pr.err_s` at :285, :309, :325, :328, :330, :340, :427, :434, :497, :504, :514, :617 (+1) | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:298 | SystemService._flush_config_stores +1 | `store.close_writes` at :298, :413 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:313 | SystemService._flush_config_stores | `step_done` at :313 | not classified | open | - |
+| asy_system_service.py:321 | SystemService._log_dead_task +2 | `self._uptime.read` at :321, :521, :681 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:344 | SystemService._ntp_boot_signature | `utc_now` at :344 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:349 | SystemService._own_feed +1 | `self._watchdog.feed` at :349, :698 | not classified | open | - |
+| asy_system_service.py:354 | SystemService._reboot +4 | `self.pr.evt` at :354, :359, :362, :397, :414, :436, :528, :709, :712 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:358 | SystemService._reboot | `self._flush_config_stores` at :358 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:361 | SystemService._reboot +2 | `self._storage_pause` at :361, :527, :710, :713 | not classified | open | - |
+| asy_system_service.py:364 | SystemService._reboot +2 | `asyncio.create_task` at :364, :400, :805; narrow except MemoryError/OSError | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
+| asy_system_service.py:364 | SystemService._reboot | `self._reset_when_due` at :364; narrow except MemoryError/OSError | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:366 | SystemService._reboot | `self._own_feed` at :366; narrow except MemoryError/OSError | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:367 | SystemService._reboot | `self._reset_timer.init` at :367; narrow except MemoryError/OSError | not classified | open | - |
+| asy_system_service.py:367 | SystemService._reboot | `self._reset_due.set` at :367; narrow except MemoryError/OSError | not classified | open | - |
+| asy_system_service.py:372 | SystemService._reboot | `self._reset_task.cancel` at :372 | not classified | open | - |
+| asy_system_service.py:377 | SystemService._reboot +1 | `self.pr.err` at :377, :403 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:391 | SystemService._request_shutdown | `self._storage.erase_ready` at :391 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:400 | SystemService._request_shutdown | `self._shutdown_sequence` at :400; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:414 | SystemService._request_shutdown | `_purpose_name` at :414 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:516 | SystemService._status_loop +2 | `asyncio.sleep_ms` at :516, :778, :796 | not classified | open | - |
+| asy_system_service.py:518 | SystemService._status_loop +1 | `arm_tick_timer` at :518, :631 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:520 | SystemService._status_loop | `self._uptime_event.wait` at :520 | not classified | open | - |
+| asy_system_service.py:522 | SystemService._status_loop | `self.pr.all` at :522 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:523 | SystemService._status_loop +1 | `time.ticks_diff` at :523, :790 | TypeError only for a non-int argument | inherently safe | small-int arguments (extmod/modtime.c:150-196) |
+| asy_system_service.py:523 | SystemService._status_loop +2 | `time.ticks_ms` at :523, :715, :787, :790 | TypeError only for a non-int argument | inherently safe | small-int arguments (extmod/modtime.c:150-196) |
+| asy_system_service.py:531 | SystemService._status_loop | `self._ntp_boot_signature` at :531 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:533 | SystemService._status_loop | `self._boot_signature.set_value` at :533, :539 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:534 | SystemService._status_loop +1 | `self.pr.one` at :534, :540, :800 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:539 | SystemService._status_loop | `random.getrandbits` at :539 | not classified | open | - |
+| asy_system_service.py:626 | SystemService.start_asy_status +1 | `asyncio.get_event_loop` at :626, :773 | not classified | open | - |
+| asy_system_service.py:627 | SystemService.start_asy_status | `evtloop.create_task` at :627 | not classified | open | - |
+| asy_system_service.py:627 | SystemService.start_asy_status | `self._status_loop` at :627 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:633 | SystemService.start_uptime_timer | `self._uptime_event.set` at :633 | not classified | open | - |
+| asy_system_service.py:638 | SystemService.get_boot_signature | `self._boot_signature.get_value` at :638 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:653 | SystemService.get_dict_cfg | `self.cfgmgr.get_dict` at :653 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:653 | SystemService.get_dict_cfg | `schema_names` at :653 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:657 | SystemService.get_error_counter | `self.pr.get_log` at :657 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:691 | SystemService.erase_fram +3 | `self._request_shutdown` at :691, :719, :722, :732 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:706 | SystemService.pause_permanent_storage | `min` at :706 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_system_service.py:706 | SystemService.pause_permanent_storage | `max` at :706 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_system_service.py:715 | SystemService.pause_permanent_storage +1 | `time.ticks_add` at :715, :790 | TypeError only for a non-int argument | inherently safe | small-int arguments (extmod/modtime.c:150-196) |
+| asy_system_service.py:729 | SystemService.reset_error_counter | `self.pr.reset` at :729 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:737 | SystemService.run_setups +1 | `gc.collect` at :737, :741, :770, :779 | not classified | open | - |
+| asy_system_service.py:739 | SystemService.run_setups | `setup` at :739 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:740 | SystemService.run_setups | `self.feed_watchdog` at :740 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:747 | SystemService.setup | `self.pr.setup` at :747 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:749 | SystemService.setup | `self._level_setters_provider` at :749 | not classified | open | - |
+| asy_system_service.py:751 | SystemService.setup | `self._config_stores_provider` at :751 | not classified | open | - |
+| asy_system_service.py:752 | SystemService.setup | `self.cfgmgr.setup` at :752 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:756 | SystemService.setup | `self.pr.wrn_s` at :756 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:774 | SystemService.start_tasks | `loop.get_exception_handler` at :774 | not classified | open | - |
+| asy_system_service.py:775 | SystemService.start_tasks | `loop.set_exception_handler` at :775 | not classified | open | - |
+| asy_system_service.py:776 | SystemService.start_tasks +1 | `enumerate` at :776, :785, :789 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_system_service.py:777 | SystemService.start_tasks | `self._start_task` at :777 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:786 | SystemService.start_timers | `self._run_timer_starter` at :786, :799 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:793 | SystemService.start_timers | `self._sequencer_timer.init` at :793; narrow except MemoryError/OSError | not classified | open | - |
+| asy_system_service.py:793 | SystemService.start_timers | `self._sequencer_flag.set` at :793; narrow except MemoryError/OSError | not classified | open | - |
+| asy_system_service.py:798 | SystemService.start_timers | `self._sequencer_flag.wait` at :798 | not classified | open | - |
+| asy_system_service.py:805 | SystemService.supervise_tasks | `self._supervise` at :805 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:807 | SystemService.supervise_tasks | `self._never.wait` at :807 | not classified | open | - |
+| asy_system_service.py:809 | SystemService.supervise_tasks | `self._supervisor_task.cancel` at :809 | not classified | open | - |
+| asy_fram_manager.py:30 | <module> | `const` at :30, :31, :32, :33, :34, :35, :36, :37, :38, :39, :42, :43 (+18) | nothing at run time | unreachable | folded at compile time (py/compile.c, MICROPY_COMP_CONST) |
+| asy_fram_manager.py:71 | _owner_seed | `min` at :71 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_fram_manager.py:71 | _owner_seed +2 | `crc.length` at :71, :688, :739 | not classified | open | - |
+| asy_fram_manager.py:75 | _owner_seed | `owner.encode` at :75 | not classified | open | - |
+| asy_fram_manager.py:97 | _FRAMBaseChunk.__init__ +5 | `self.crc.length` at :97, :195, :216, :372, :477, :545 | not classified | open | - |
+| asy_fram_manager.py:99 | _FRAMBaseChunk.__init__ | `asyncio.Lock` at :99 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
+| asy_fram_manager.py:103 | _FRAMBaseChunk.__init__ +3 | `bytearray` at :103, :104, :107, :488, :558, :783; narrow except MemoryError/OverflowError | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
+| asy_fram_manager.py:111 | _FRAMBaseChunk.__init__ +1 | `console` at :111, :785 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:113 | _FRAMBaseChunk.__init__ +2 | `memoryview` at :113, :184, :525 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
+| asy_fram_manager.py:128 | _FRAMBaseChunk._set_check_sb | `fram.get_values_sync` at :128 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:130 | _FRAMBaseChunk._set_check_sb | `fram.report_get_values` at :130 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:131 | _FRAMBaseChunk._set_check_sb +15 | `self.pr.err_s` at :131, :137, :144, :170, :178, :203, :217, :240, :255, :262, :330, :373 (+16) | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:140 | _FRAMBaseChunk._set_check_sb +1 | `fram.set_values_sync` at :140, :790 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:143 | _FRAMBaseChunk._set_check_sb | `fram.report_set_values` at :143 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:152 | _FRAMBaseChunk._blank_verdict | `self.fram.verify_present` at :152 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:152 | _FRAMBaseChunk._blank_verdict +6 | `self.fram.lost.is_set` at :152, :210, :366, :438, :454, :665, :801 | not classified | open | - |
+| asy_fram_manager.py:169 | _FRAMBaseChunk._clear_chunk +5 | `report_if_fatal` at :169, :329, :424, :583, :618, :819 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:186 | _FRAMBaseChunk._compare_with +1 | `self._read_chunk` at :186, :343 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:196 | _FRAMBaseChunk._handle_status_bytes | `self._set_check_sb` at :196, :199 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:213 | _FRAMBaseChunk._read +2 | `self._mempause` at :213, :369, :441 | not classified | open | - |
+| asy_fram_manager.py:214 | _FRAMBaseChunk._read +2 | `self.pr.wrn_s` at :214, :224, :226, :232, :234, :251, :253, :370, :442 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:216 | _FRAMBaseChunk._read +4 | `len` at :216, :217, :372, :373, :388, :444, :503, :503, :504, :504, :506, :601 (+4) | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_fram_manager.py:219 | _FRAMBaseChunk._read | `self._read_into` at :219, :227 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:222 | _FRAMBaseChunk._read +7 | `self.pr.evt` at :222, :230, :249, :387, :393, :433, :448, :576, :578, :590, :625, :630 (+2) | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:236 | _FRAMBaseChunk._read | `self._blank_verdict` at :236 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:237 | _FRAMBaseChunk._read +1 | `self.pr.all` at :237, :242, :244, :257, :264, :375 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:239 | _FRAMBaseChunk._read +1 | `self._write_chunk` at :239, :254, :376, :380 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:245 | _FRAMBaseChunk._read +1 | `self._compare_with` at :245, :389 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:332 | _FRAMBaseChunk._read_chunk | `self._read_progress` at :332 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:361 | _FRAMBaseChunk._read_progress +3 | `range` at :361, :388, :444, :788 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_fram_manager.py:445 | _FRAMBaseChunk.clear | `self._clear_chunk` at :445 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:459 | _FRAMBaseChunk.invalidate | `self._handle_status_bytes` at :459 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:472 | FRAMChunkBuffer.__init__ +2 | `super` at :472, :472, :520, :520, :540, :540 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_fram_manager.py:477 | FRAMChunk.get_buffer | `FRAMChunkBuffer` at :477 | not classified | open | - |
+| asy_fram_manager.py:480 | FRAMChunk.read +3 | `self.get_buffer` at :480, :498, :549, :596 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:481 | FRAMChunk.read +1 | `self.read_into` at :481, :550 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:483 | FRAMChunk.read +3 | `buf.get_data_buf` at :483, :499, :553, :597 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:491 | FRAMChunk.read_into +3 | `buf.get_buf` at :491, :511, :561, :636 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:495 | FRAMChunk.read_into +1 | `self._read` at :495, :565 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:508 | FRAMChunk.write +1 | `self.write_into` at :508, :606 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:515 | FRAMChunk.write_into +1 | `self._write` at :515, :641 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:540 | FRAMTimestampedChunk.__init__ +2 | `struct.calcsize` at :540, :545, :545, :739 | ValueError/TypeError on a bad format or short buffer (py/modstruct.c) | open | format and buffer size proof |
+| asy_fram_manager.py:544 | FRAMTimestampedChunk.get_buffer | `FRAMChunkTimestampedBuffer` at :544 | not classified | open | - |
+| asy_fram_manager.py:569 | FRAMTimestampedChunk.read_into +1 | `buf.get_ts_buf` at :569, :631 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:574 | FRAMTimestampedChunk.read_into | `int` at :574 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_fram_manager.py:574 | FRAMTimestampedChunk.read_into | `struct.unpack_from` at :574 | ValueError/TypeError on a bad format or short buffer (py/modstruct.c) | open | format and buffer size proof |
+| asy_fram_manager.py:586 | FRAMTimestampedChunk.read_into +1 | `utc_now` at :586, :621 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:635 | FRAMTimestampedChunk.write_into | `struct.pack_into` at :635 | ValueError/TypeError on a bad format or short buffer (py/modstruct.c) | open | format and buffer size proof |
+| asy_fram_manager.py:649 | FRAMManager.__init__ | `PrintLogHistory` at :649 | not classified | open | - |
+| asy_fram_manager.py:657 | FRAMManager.__init__ | `FRAM_SPI` at :657 | not classified | open | - |
+| asy_fram_manager.py:663 | FRAMManager._watch_chip_loop +3 | `self.pr.err` at :663, :685, :698, :736, :749, :773, :780, :792 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:666 | FRAMManager._watch_chip_loop | `self.setup` at :666 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:668 | FRAMManager._watch_chip_loop +2 | `self.pr.one` at :668, :690, :703, :741, :757 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:669 | FRAMManager._watch_chip_loop | `self.fram.lost.wait` at :669 | not classified | open | - |
+| asy_fram_manager.py:678 | FRAMManager.start_asy_watch_chip | `asyncio.get_event_loop` at :678 | not classified | open | - |
+| asy_fram_manager.py:679 | FRAMManager.start_asy_watch_chip | `evtloop.create_task` at :679 | not classified | open | - |
+| asy_fram_manager.py:679 | FRAMManager.start_asy_watch_chip | `self._watch_chip_loop` at :679 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:687 | FRAMManager.get_chunk +1 | `CRCPass` at :687, :738 | not classified | open | - |
+| asy_fram_manager.py:700 | FRAMManager.get_chunk | `FRAMChunk` at :700 | not classified | open | - |
+| asy_fram_manager.py:700 | FRAMManager.get_chunk +1 | `_owner_seed` at :700, :753 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:701 | FRAMManager.get_chunk +1 | `self._chunks.append` at :701, :755 | not classified | open | - |
+| asy_fram_manager.py:711 | FRAMManager.get_error_counter | `self.pr.get_log` at :711 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:752 | FRAMManager.get_timestamped_chunk | `FRAMTimestampedChunk` at :752 | not classified | open | - |
+| asy_fram_manager.py:772 | FRAMManager.erase_chip | `self.erase_ready` at :772 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:777 | FRAMManager.erase_chip | `chunk.invalidate` at :777 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:778 | FRAMManager.erase_chip +1 | `step_done` at :778, :794, :809 | not classified | open | - |
+| asy_fram_manager.py:787 | FRAMManager.erase_chip | `self.fram.get_size` at :787 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:791 | FRAMManager.erase_chip | `self.fram.report_set_values` at :791 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:795 | FRAMManager.erase_chip | `asyncio.sleep` at :795 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
+| asy_fram_manager.py:801 | FRAMManager.erase_ready | `self.fram.is_ready` at :801 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:801 | FRAMManager.erase_ready | `self.fram.get_write_protected` at :801 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:806 | FRAMManager.quiesce | `self.set_pause` at :806 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:808 | FRAMManager.quiesce | `chunk.wait_idle` at :808 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:812 | FRAMManager.reset_error_counter | `self.pr.reset` at :812 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:815 | FRAMManager.setup | `self.pr.setup` at :815 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:38 | <module> | `const` at :38, :39, :49, :50, :51, :56, :57, :58, :59, :63, :64, :65 (+33) | nothing at run time | unreachable | folded at compile time (py/compile.c, MICROPY_COMP_CONST) |
+| asy_fram_driver.py:132 | FRAM_SPI.__init__ +2 | `super` at :132, :132, :157, :157, :175, :175 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_fram_driver.py:134 | FRAM_SPI.__init__ | `SPIDevice` at :134 | not classified | open | - |
+| asy_fram_driver.py:139 | FRAM_SPI.__init__ | `Pin` at :139 | not classified | open | - |
+| asy_fram_driver.py:142 | FRAM_SPI.__init__ | `bytearray` at :142, :143, :144, :144, :145 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
+| asy_fram_driver.py:151 | FRAM_SPI.__init__ | `asyncio.Event` at :151 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
+| asy_fram_driver.py:161 | FRAM_SPI.__aenter__ +1 | `self.session_lock.release` at :161, :507 | not classified | open | - |
+| asy_fram_driver.py:172 | FRAM_SPI.__aexit__ | `self._bus_lock.release` at :172; narrow except RuntimeError | not classified | open | - |
+| asy_fram_driver.py:174 | FRAM_SPI.__aexit__ | `report_if_fatal` at :174 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:180 | FRAM_SPI._is_write_protected +2 | `bool` at :180, :307, :466 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_fram_driver.py:180 | FRAM_SPI._is_write_protected +1 | `self._wp_pin.value` at :180, :189, :197, :201 | not classified | open | - |
+| asy_fram_driver.py:185 | FRAM_SPI._set_write_protected +1 | `self._enable_write` at :185, :314 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:192 | FRAM_SPI._set_write_protected +2 | `self._send_command` at :192, :232, :235, :242, :245 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:193 | FRAM_SPI._set_write_protected +2 | `self._read_status` at :193, :307, :465 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:194 | FRAM_SPI._set_write_protected +1 | `self._disable_write` at :194, :318 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:205 | FRAM_SPI._check_device_id | `_KNOWN_PRODUCT_IDS.get` at :205 | not classified | open | - |
+| asy_fram_driver.py:207 | FRAM_SPI._check_device_id | `ValueError` at :207 | not classified | open | - |
+| asy_fram_driver.py:208 | FRAM_SPI._check_device_id +2 | `self._send_and_read` at :208, :249, :252 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:223 | FRAM_SPI._check_write_anomaly +2 | `self._check_device_id` at :223, :462, :502 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:233 | FRAM_SPI._disable_write +1 | `self._wel_is_set` at :233, :236, :243, :246 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:249 | FRAM_SPI._read_address +1 | `self._setup_addr_buffer` at :249, :317 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:258 | FRAM_SPI._report_chip_lost +6 | `self.pr.err_s` at :258, :347, :378, :387, :395, :406, :410, :412, :414, :426, :429, :432 (+5) | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:259 | FRAM_SPI._report_chip_lost | `self.lost.set` at :259 | not classified | open | - |
+| asy_fram_driver.py:263 | FRAM_SPI._send_and_read +2 | `spidev.session_begin` at :263, :272, :286 | not classified | open | - |
+| asy_fram_driver.py:265 | FRAM_SPI._send_and_read +2 | `spidev.write_sync` at :265, :274, :275, :288 | not classified | open | - |
+| asy_fram_driver.py:266 | FRAM_SPI._send_and_read | `spidev.readinto_sync` at :266 | not classified | open | - |
+| asy_fram_driver.py:268 | FRAM_SPI._send_and_read +2 | `spidev.session_end` at :268, :277, :290 | not classified | open | - |
+| asy_fram_driver.py:296 | FRAM_SPI._setup_addr_buffer +2 | `len` at :296, :338, :370 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_fram_driver.py:310 | FRAM_SPI._write +1 | `self._is_write_protected` at :310, :349 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:317 | FRAM_SPI._write | `self._send_and_write` at :317 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:324 | FRAM_SPI.get_values | `self.get_values_sync` at :324 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:325 | FRAM_SPI.get_values +4 | `asyncio.sleep` at :325, :357, :382, :467, :503 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
+| asy_fram_driver.py:326 | FRAM_SPI.get_values | `self.report_get_values` at :326 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:334 | FRAM_SPI.get_values_sync +1 | `self.session_lock.locked` at :334, :365 | not classified | open | - |
+| asy_fram_driver.py:340 | FRAM_SPI.get_values_sync | `self._read_address` at :340 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:356 | FRAM_SPI.set_values | `self.set_values_sync` at :356 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:358 | FRAM_SPI.set_values | `self.report_set_values` at :358 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:372 | FRAM_SPI.set_values_sync +1 | `self._check_write_anomaly` at :372, :381 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:372 | FRAM_SPI.set_values_sync | `self._write` at :372 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:381 | FRAM_SPI.set_write_protected | `self._set_write_protected` at :381 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:384 | FRAM_SPI.set_write_protected +2 | `self._report_chip_lost` at :384, :423, :509 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:390 | FRAM_SPI.set_write_protected +2 | `self.pr.wrn_s` at :390, :398, :440, :443, :448, :471 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:393 | FRAM_SPI.set_write_protected +1 | `self.pr.evt` at :393, :399, :446 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:453 | FRAM_SPI.setup | `self._spidev.setup` at :453 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:455 | FRAM_SPI.setup | `OSError` at :455, :469 | not classified | open | - |
+| asy_fram_driver.py:474 | FRAM_SPI.setup | `hex` at :474 | not classified | open | - |
+| asy_fram_driver.py:478 | FRAM_SPI.setup | `self._wp_pin.init` at :478 | not classified | open | - |
+| asy_fram_driver.py:481 | FRAM_SPI.setup | `self.lost.clear` at :481 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:482 | FRAM_SPI.setup | `self.pr.one` at :482 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_driver.py:493 | FRAM_SPI.verify_present | `asyncio.wait_for_ms` at :493; narrow except TimeoutError | not classified | open | - |
+| asy_fram_driver.py:493 | FRAM_SPI.verify_present | `self.session_lock.acquire` at :493; narrow except TimeoutError | not classified | open | - |
+| math_helpers.py:16 | <module> | `const` at :16, :17, :18, :19, :20, :21, :22, :23, :24, :25, :26, :27 (+18) | nothing at run time: the parser folds `_X = const(v)` (py/parse.c:832-866); a non-constant value is a SyntaxError at compile time (:842) | unreachable | no call is left at run time: each const() is replaced by its value while parsing (py/parse.c:864, MICROPY_COMP_CONST) and the underscore names are dropped from the module (:855-858); the frozen build parses them in mpy-cross, so a bad value fails the build, never a boot |
+| math_helpers.py:70 | abs_humidity | `math.pow` at :70; narrow except ArithmeticError/ValueError | ValueError when finite arguments give a non-finite result (math_generic_2, py/modmath.c:53-60, math_error :40-42); TypeError for a non-number (py/obj.c:414) | handled | the ValueError (and an OverflowError, an ArithmeticError) is caught by math_helpers.py:71's except (ArithmeticError, ValueError), which returns None: the never-raise residual E.5.1 keeps on rp2's single-precision float; TypeError cannot occur: both arguments are float arithmetic on `temperature`, a `float | None` the gate at :61 has compared |
+| math_helpers.py:84 | cct_mccamy | `abs` at :84 | TypeError for an operand with no abs (mp_unary_op, py/modbuiltins.c:91-93) | unreachable | `denominator` is `0.1858 - chroma_y`, a float: chroma_y is the `float | None` the gate at :81 compared, None excluded at :79; abs() of a float is a float |
+| math_helpers.py:120 | dew_point | `math.log` at :120; narrow except ArithmeticError/ValueError | ValueError for an argument <= 0 or a non-finite result (mp_math_log, py/modmath.c:261-272); TypeError for a non-number (py/obj.c:414) | handled | caught by math_helpers.py:123's except (ArithmeticError, ValueError), which returns None; the gate at :111 bounds humidity to 0.1-100, so the argument is 0.001-1 and the catch stays as the residual guard E.5.1 keeps; TypeError cannot occur (humidity is the compared `float | None`) |
+| math_helpers.py:131 | ema_step | `math.isfinite` at :131, :135 | TypeError for a non-number (MATH_FUN_1_TO_BOOL calls mp_obj_get_float, py/modmath.c:69-71, py/obj.c:414); it returns a bool, so it allocates nothing | unreachable | :131's argument is `sample` after its `is None` test on the same line and :135's is `previous` after its own: both the `float | None` of the signature, so mp_obj_get_float always converts |
+| math_helpers.py:149 | pressure_at_height | `math.exp` at :149; narrow except ArithmeticError/ValueError | ValueError when a finite argument gives an infinite result (math_generic_1, py/modmath.c:44-51, math_error :40-42); TypeError for a non-number (py/obj.c:414) | handled | caught by math_helpers.py:150's except (ArithmeticError, ValueError), which returns None (the residual E.5.1 keeps); TypeError cannot occur: the argument is float arithmetic on dh and tmean, compared by the gate at :145 |
+| math_helpers.py:169 | rel_humidity | `math.pow` at :169; narrow except ArithmeticError/ValueError | ValueError when finite arguments give a non-finite result (py/modmath.c:53-60); TypeError for a non-number (py/obj.c:414) | handled | caught by math_helpers.py:170's except (ArithmeticError, ValueError), which returns None (the residual E.5.1 keeps); TypeError cannot occur: the arguments are float arithmetic on `temperature`, compared by the gate at :160 |
+| math_helpers.py:185 | rgb_to_hsb | `max` at :185 | TypeError when two arguments do not compare (mp_builtin_min_max's many-args arm, py/modbuiltins.c:274-285); with three positional arguments the empty-sequence ValueError (:266) is the one-argument arm's only | unreachable | the three arguments are the `float | None` triple the gate at :183 compared (None excluded at :181), and float compares with float; it returns one of its arguments, so it allocates nothing |
+| math_helpers.py:186 | rgb_to_hsb | `min` at :186 | TypeError when two arguments do not compare (py/modbuiltins.c:274-285) | unreachable | as max at :185: the same compared float triple; it returns one of its arguments |
+| math_helpers.py:224 | wet_bulb_temperature | `math.atan` at :224, :225, :226, :227; narrow except ArithmeticError/ValueError | ValueError only for a non-finite result from a finite argument (py/modmath.c:44-51), which atan never gives; TypeError for a non-number (py/obj.c:414) | handled | all four calls sit in the try whose except (ArithmeticError, ValueError) at math_helpers.py:230 returns None; atan of a finite float is finite and every argument is float arithmetic on the compared temperature and humidity (gate :218) |
+| math_helpers.py:224 | wet_bulb_temperature | `math.sqrt` at :224, :227; narrow except ArithmeticError/ValueError | ValueError for a negative argument (a NaN result from a finite argument, py/modmath.c:44-51); TypeError for a non-number (py/obj.c:414) | handled | both calls sit in the try whose except (ArithmeticError, ValueError) at math_helpers.py:230 returns None; the gate at :218 bounds humidity to 5-99, so both arguments (humidity + 8.313659 and humidity) are positive |

@@ -1,0 +1,17 @@
+{
+ "raises": {
+  "FRAM_SPI.__aenter__": {
+   "verdict": "inherently safe",
+   "proof": "cleanup then re-raise: a BaseException (a cancel) while waiting for the bus lock releases the session lock first; a cancellation must propagate"
+  },
+  "FRAM_SPI._check_device_id": {
+   "verdict": "exempt (setup)",
+   "proof": "one-time identification error, outside M.PROC.025's scope; reached from FRAM_SPI.setup(), whose one caller asy_fram_manager.py:795 sits in a try catching Exception (except :796)"
+  },
+  "FRAM_SPI.setup": {
+   "verdict": "exempt (setup)",
+   "proof": "one-time setup error, outside M.PROC.025's scope; the one caller asy_fram_manager.py:795 sits in a try catching Exception (except :796)"
+  }
+ },
+ "calls": {}
+}

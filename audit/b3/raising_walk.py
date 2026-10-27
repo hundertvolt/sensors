@@ -1,9 +1,13 @@
 # M.PROC.025: walks every call and raise in the seven never-raise modules and writes raising.md's rows below its header.
-# Usage: python3 -I audit/b3/raising_walk.py <tree> audit/b3/raising.md (re-run on the integration head). Audit only.
-import ast, collections, subprocess, sys
+# Usage: python3 -I audit/b3/raising_walk.py <tree> audit/b3/raising.md [--check] (re-run on the integration head). Audit only.
+# Hand verdicts: raising_verdicts/<module>.json, one file per module (raises by function, calls by "function::callee").
+import ast, collections, json, subprocess, sys
 from pathlib import Path
 MODULES = ["asy_base_classes.py", "asy_config_manager.py", "asy_print_log.py", "asy_system_service.py", "asy_fram_manager.py", "asy_fram_driver.py", "math_helpers.py"]
 BROAD = {"Exception", "BaseException", "*"}
+VERDICTS = Path(__file__).resolve().parent / "raising_verdicts"
+E51_START = "## Unreachable raises (rendered by `audit/b3/raising_walk.py` from `audit/b3/raising_verdicts/`)"
+E51_END = "## Uncovered lines"
 
 def handler_names(h):
     if h.type is None: return {"*"}
@@ -45,12 +49,15 @@ class Walk(ast.NodeVisitor):
         self.generic_visit(n)
 
 
-RAISES = {  # function -> (verdict, proof), read at f3fff0e (agent, 2026-10-22)
-    "_checked_write_results": ("handled", "both callers sit in a try catching Exception: asy_base_classes.py:507 (except :508) and :689 (except :690); the raise is that try's logged failure, as its comment says"),
-    "FRAM_SPI.__aenter__": ("inherently safe", "cleanup then re-raise: a BaseException (a cancel) while waiting for the bus lock releases the session lock first; a cancellation must propagate"),
-    "FRAM_SPI._check_device_id": ("exempt (setup)", "one-time identification error, outside M.PROC.025's scope; reached from FRAM_SPI.setup(), whose one caller asy_fram_manager.py:795 sits in a try catching Exception (except :796)"),
-    "FRAM_SPI.setup": ("exempt (setup)", "one-time setup error, outside M.PROC.025's scope; the one caller asy_fram_manager.py:795 sits in a try catching Exception (except :796)"),
-}
+def load_verdicts():  # module -> {"raises": {function: entry}, "calls": {"function::callee": entry}}; a missing file is empty
+    out = {}
+    for m in MODULES:
+        path = VERDICTS / (m[:-3] + ".json")
+        data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        out[m] = {"raises": data.get("raises", {}), "calls": data.get("calls", {})}
+    return out
+
+
 RULES = [  # (callee test, can raise, verdict): first match wins; "open" rows need the campaign's per-site proof
     (lambda c: c == "const", "nothing at run time", "unreachable: folded at compile time (py/compile.c, MICROPY_COMP_CONST)"),
     (lambda c: c.startswith("time.ticks_"), "TypeError only for a non-int argument", "inherently safe: small-int arguments (extmod/modtime.c:150-196)"),
@@ -61,8 +68,27 @@ RULES = [  # (callee test, can raise, verdict): first match wins; "open" rows ne
     (lambda c: c in ("len", "isinstance", "type", "min", "max", "range", "enumerate", "bool", "int", "float", "abs", "round", "super", "print", "hasattr", "getattr", "zip", "sorted", "repr", "divmod", "iter", "next", "id", "callable", "issubclass"), "TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c)", "open: operand-type proof"),
 ]
 
+
+def e51_section(unreachable):  # the e51.md block for every hand "unreachable" verdict, placed just above its sweep table
+    out = [E51_START, "", "One row per raise or call group a `raising_verdicts/` file gives \"unreachable\" (A.U35.36): the class it could raise",
+           "cannot occur there, by the proof given; the last column names the `except` around it, if any (a branch E.5.1 then registers).", "",
+           "| site | function | call or raise | can raise (pinned source) | why it cannot | enclosing narrow except |", "|---|---|---|---|---|---|"]
+    out += unreachable
+    return "\n".join(out + ["", E51_END, ""])
+
+
+def splice_e51(text, section):  # replaces (or inserts) the block inside e51.md's header, which e51_sweep.py's render keeps
+    header, sep, rest = text.partition("\n| file:line range")
+    if E51_START in header:
+        before, _, after = header.partition(E51_START)
+        header = before + after.partition(E51_END + "\n")[2]
+    return header.rstrip("\n") + "\n\n" + section.rstrip("\n") + "\n" + sep + rest
+
+
 def main():
     tree, out = Path(sys.argv[1]), Path(sys.argv[2])
+    check = "--check" in sys.argv[3:]
+    verdicts = load_verdicts()
     defined = set()
     for m in MODULES:
         tree_ast = ast.parse((tree / "src" / m).read_text(encoding="utf-8"))
@@ -73,18 +99,30 @@ def main():
         if r["kind"] != "call" or r["broad"]:
             continue
         callee = r["text"].split("(")[0]
-        groups.setdefault((r["mod"], callee), []).append(r)
-    lines, counts = [], collections.Counter()
-    for (mod, callee), rs in groups.items():
+        own = f"{r['fn']}::{callee}" in verdicts[r["mod"]]["calls"]  # a hand verdict splits its function's calls out
+        groups.setdefault((r["mod"], callee, r["fn"] if own else None), []).append(r)
+    used = {(mod, f"{fn}::{callee}") for mod, callee, fn in groups if fn is not None}
+    used |= {(r["mod"], r["fn"]) for r in rows if r["kind"] == "raise"}
+    stale = [f"{m} {k}" for m in MODULES for part in ("raises", "calls") for k in verdicts[m][part] if (m, k) not in used]
+    lines, counts, unreachable = [], collections.Counter(), []
+    for (mod, callee, fn), rs in groups.items():
         last = callee.split(".")[-1]
-        rule = next(((what, verdict) for test, what, verdict in RULES if test(callee)), None)
-        if rule is None and last in defined:
-            rule = ("what the callee raises", "transitive: the callee's own rows here")
-        what, verdict = rule or ("not classified", "open")
-        narrow = sorted({n for r in rs for names, _ in r["caught"] for n in names})
         sites = ", ".join(f":{r['line']}" for r in rs[:12]) + (f" (+{len(rs) - 12})" if len(rs) > 12 else "")
-        counts[verdict.split(":")[0]] += len(rs)
-        lines.append(f"| {mod}{sites.split(',')[0]} | {rs[0]['fn']}{' +' + str(len({r['fn'] for r in rs}) - 1) if len({r['fn'] for r in rs}) > 1 else ''} | `{callee}` at {sites}{'; narrow except ' + '/'.join(narrow) if narrow else ''} | {what} | {verdict.split(':')[0]} | {verdict.partition(': ')[2] or '-'} |")
+        narrow = sorted({n for r in rs for names, _ in r["caught"] for n in names})
+        if fn is not None:
+            entry = verdicts[mod]["calls"][f"{fn}::{callee}"]
+            what, word, proof = entry["can_raise"], entry["verdict"], entry["proof"]
+            if word == "unreachable":
+                guards = sorted({f"{'/'.join(names)} (:{', :'.join(map(str, hl))})" for r in rs for names, hl in r["caught"]})
+                unreachable.append(f"| `src/{mod}{sites.split(',')[0]}` | {fn} | `{callee}` at {sites} | {what} | {proof} | {'; '.join(guards) or 'none'} |")
+        else:
+            rule = next(((what, verdict) for test, what, verdict in RULES if test(callee)), None)
+            if rule is None and last in defined:
+                rule = ("what the callee raises", "transitive: the callee's own rows here")
+            what, verdict = rule or ("not classified", "open")
+            word, proof = verdict.split(":")[0], verdict.partition(": ")[2] or "-"
+        counts[word] += len(rs)
+        lines.append(f"| {mod}{sites.split(',')[0]} | {rs[0]['fn']}{' +' + str(len({r['fn'] for r in rs}) - 1) if len({r['fn'] for r in rs}) > 1 else ''} | `{callee}` at {sites}{'; narrow except ' + '/'.join(narrow) if narrow else ''} | {what} | {word} | {proof} |")
     by_line = {(r["mod"], r["line"]): r for r in rows}
     raises = [r for r in rows if r["kind"] == "raise"]
     text = out.read_text(encoding="utf-8").split("\n## Walk summary")[0].split("\n| module:line")[0].rstrip() + "\n"  # the header alone: re-runs stay idempotent
@@ -99,14 +137,31 @@ def main():
     body += ["", "Rows outside a broad `try`, by verdict: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())) + ".", "",
              "## Raises", "", "| module:line | function | call or raise | can raise (pinned source) | verdict | proof or action |", "|---|---|---|---|---|---|"]
     for r in raises:
-        verdict, proof = RAISES.get(r["fn"], ("open", "-"))
+        entry = verdicts[r["mod"]]["raises"].get(r["fn"], {"verdict": "open", "proof": "-"})
         shown = "raise" if r["text"].startswith("raise ") else "raise " + r["text"]
-        body.append(f"| {r['mod']}:{r['line']} | {r['fn']} | `{shown}` | the raise itself | {verdict} | {proof} |")
+        body.append(f"| {r['mod']}:{r['line']} | {r['fn']} | `{shown}` | the raise itself | {entry['verdict']} | {entry['proof']} |")
+        if entry["verdict"] == "unreachable":
+            unreachable.append(f"| `src/{r['mod']}:{r['line']}` | {r['fn']} | `{shown}` | the raise itself | {entry['proof']} | - |")
     body += ["", "## Calls outside a broad try (grouped by module and callee)", "", "| module:line | function | call or raise | can raise (pinned source) | verdict | proof or action |", "|---|---|---|---|---|---|"]
     body += lines
-    out.write_text("\n".join(body) + "\n", encoding="utf-8")
+    rendered = "\n".join(body) + "\n"
+    e51 = out.with_name("e51.md")
+    e51_old = e51.read_text(encoding="utf-8") if e51.exists() else None
+    e51_new = splice_e51(e51_old, e51_section(unreachable)) if e51_old is not None and (unreachable or E51_START in e51_old) else e51_old
+    if unreachable and e51_old is None:
+        stale.append(f"no {e51} to hold the {len(unreachable)} unreachable rows")
+    if stale:
+        print("stale or unplaceable verdicts (nothing written):\n  " + "\n  ".join(stale))
+        sys.exit(1)
+    if check:
+        problems = [f"{p} is not the current render" for p, old, new in ((out, out.read_text(encoding="utf-8"), rendered), (e51, e51_old, e51_new)) if old != new]
+        print("\n".join(problems) or "check: raising.md and e51.md's block are the current render")
+        sys.exit(1 if problems else 0)
+    out.write_text(rendered, encoding="utf-8")
+    if e51_new != e51_old:
+        e51.write_text(e51_new, encoding="utf-8")
     print(len(rows), "sites;", len(lines), "groups;", dict(counts))
-    for key in (("asy_base_classes.py", 507), ("asy_base_classes.py", 689), ("asy_fram_manager.py", 795)):
+    for key in (("asy_base_classes.py", 514), ("asy_base_classes.py", 696), ("asy_fram_manager.py", 817)):
         r = by_line.get(key)
         print(key, r and (r["broad"], r["caught"]))
 
