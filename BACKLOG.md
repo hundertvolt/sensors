@@ -1110,6 +1110,14 @@ gates, traps).
   **2026-10-26, `pyproject.toml`'s ruff per-file-ignores, lint only, no build impact**: the generated boot
   entries' block adds F811 for the loop-end handler's pre-bound name (the template binds it before the loop so the
   handler's rebinding grows no dict); a chroot's `scripts/lint.sh` leg runs it with nothing new to install.
+  **2026-10-27, `scripts/test.sh`'s checkout-write guard and a failed coverage render's data, shell only,
+  no build impact**: the run lists the checkout's untracked, ignored and modified paths (`git status`)
+  after its builds and again once both tiers have ended, and fails naming each new path outside the
+  tiers' own outputs (`tests/_tmp/`, `__pycache__/`, `.pytest_cache/`); a listing that fails is no
+  verdict, so the copied tree must be a git checkout with its own `.git` directory - the recipe's
+  `cp -r` of a checkout is one, a copied worktree (whose `.git` file points outside the chroot) is not
+  (agent, 2026-10-27). A failed `--coverage` render's input now moves into the run's evidence archive,
+  named under `Notes:`. `git` is already in the recipe's package list; nothing new to install.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot

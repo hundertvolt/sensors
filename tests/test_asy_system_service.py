@@ -93,22 +93,32 @@ def _make_ntp_stub(
     return _ntp, calls
 
 
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper.
+_scratch = TmpScratch("sysservice")
+
+
+def _tmp_cfg_dir() -> str:
+    return _scratch.dir()
+
+
 def _make_service(  # keywords mirror SystemService.__init__()'s own
     ntp: "Callable[[], Coroutine[object, object, bool]] | None" = None,
     *,
     watchdog: "WDT | None" = None,
     storage: "FRAMManager | None" = None,
     log: "LogConfig" = DEFAULT_LOG,
-    cfg_path: str = "",
+    cfg_path: "str | None" = None,
     level_setters: "Callable[[], list[Callable[[int], bool]]] | None" = None,
     config_stores: "Callable[[], list[cm.ConfigManager]] | None" = None,
     reset_reason: int = 0,
 ) -> SystemService:
+    # A service of its own directory unless a test names one: the product's "" is the process's working directory,
+    # the checkout root here, where setup() would leave config_SYSTEM.cfg for every later run to read back.
     if ntp is None:
         ntp, _calls = _make_ntp_stub(synced=False)
     return SystemService(
         ntp, watchdog=watchdog, storage=storage, level_setters=level_setters, config_stores=config_stores,
-        reset_reason=reset_reason, cfg_path=cfg_path, log=log,
+        reset_reason=reset_reason, cfg_path=_tmp_cfg_dir() if cfg_path is None else cfg_path, log=log,
     )
 
 
@@ -986,14 +996,6 @@ def test_a_fault_in_the_reset_task_is_logged_and_the_watchdog_still_resets() -> 
     svc.feed_watchdog()
     assert wdt.feed_count == fed
     assert machine.mem_backup(0)[1] == _const("_RR_TASK_BUDGET")
-
-
-# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper.
-_scratch = TmpScratch("sysservice")
-
-
-def _tmp_cfg_dir() -> str:
-    return _scratch.dir()
 
 
 _VAL_COUNT: "cm.ConfigSchema" = (("Count", "int", 5, 0, 10, None),)
