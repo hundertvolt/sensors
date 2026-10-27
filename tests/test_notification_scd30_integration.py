@@ -3,7 +3,7 @@ test_asy_scd30_driver.py's own integration-level tests) feeding a real asy_notif
 driving a real asy_neopixel_driver.py.NeopixelDriver.
 
 Exercises how a genuine hardware fault on one driver (SCD30) does NOT propagate into a sibling driver's (NOTIFY's) own
-error accounting, matching SPECIFICATION.md Part C.7's "each driver owns its own error log" separation of concerns.
+error accounting: each module logs through its own `self.pr` (SPECIFICATION.md Part C.7).
 """
 # Each NotificationSignal below holds a direct (source, field) reference to the same scd_reader instance
 # (SPECIFICATION.md Part C.14.2), mirroring the generated device modules' real registration shape.

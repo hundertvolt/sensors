@@ -2217,10 +2217,11 @@ def test_the_window_started_line_follows_a_successful_arm_only() -> None:
 
 def test_hotspot_client_absent_starts_the_led_flash_task() -> None:
     client = _make_client()
+    assert client._ledflash is None
 
     async def scenario() -> None:
         await client._hotspot_client_absent()
-        assert client._ledflash is not None
+        assert client._ledflash is not None and not client._ledflash.done()
         await cancel(client._ledflash)
 
     run(scenario())
@@ -5201,6 +5202,50 @@ def test_wlan_connect_never_gives_up_over_a_stored_radio_value() -> None:
     assert attempts[0] > 3 * client._max_module_error  # far past the old give-up streak
     kept = _used_slots(run(client.get_error_counter()))
     assert code("E", "GIVE_UP") not in kept and code("E", "WLAN_GIVE_UP") not in kept
+
+
+def test_an_ntp_attempt_at_the_hotspot_window_end_never_finds_the_ap_a_network() -> None:
+    # The window's end leaves the hotspot phase before the AP goes down: an NTP attempt holding wifi_mode_lock at a yield
+    # between the two would resolve over the AP. A probe takes the lock at every yield, as _sync_loop() does.
+    client = _make_client_with_json(_VALID_JSON, hotspot_time_min=1)
+    run(client.pr.setup())
+    _joins(client)  # the STA links on its next connect(), so the probe's check passes once on the STA
+    with FastAsyncSleep():
+        run(client._start_hotspot())
+    client._conn_phase = _PHASE_HOTSPOT
+    assert _wlan(client).if_id == network.AP_IF and _wlan(client).active()
+    client._on_hotspot_window_end()
+    yield_once = asyncio.sleep_ms  # the real one: the probe yields one round whatever the block swaps in
+    seen = {"ap": 0, "sta": 0}
+    passed_on_the_ap: list[int] = []
+
+    async def probe() -> None:
+        while True:
+            async with client.wifi_mode_lock:
+                radio = _wlan(client)
+                passed = client.network_available_locked()
+                if radio.if_id == network.AP_IF and radio.active():
+                    seen["ap"] += 1
+                    if passed:
+                        passed_on_the_ap.append(client._conn_phase)
+                elif passed:
+                    seen["sta"] += 1
+            await yield_once(0)
+
+    async def scenario() -> None:
+        task = asyncio.create_task(probe())
+        await yield_once(0)
+        await client._handle_reconnect_trigger()  # the window end: the phase change, the mode switch
+        await client._run_sta_mode()  # the STA attempt, which links
+        for _ in range(2):
+            await yield_once(0)
+        await cancel(task)
+
+    with FastAsyncSleep():
+        run(scenario())
+    assert passed_on_the_ap == [], "the network check passed with the AP still selected"
+    assert seen["ap"] > 0 and seen["sta"] > 0, seen  # the probe ran on both sides of the switch
+    assert client._conn_phase == _PHASE_STA_ESTABLISHED
 
 
 if __name__ == "__main__":

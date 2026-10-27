@@ -458,6 +458,44 @@ def _slots(client: NTPClient) -> "tuple[int, list[int]]":
     return int(entry["ErrCount"]), [nums[i] for i in range(len(nums)) if types[i] != "N"]
 
 
+def _synced_due_at(phase_ms: int, latency_ms: int, cycles: int) -> "list[int]":
+    # A synced hourly client, each resync succeeding: its check timer fires on its own phase, `phase_ms` off the loop's
+    # start, and each await of a tick's handling takes `latency_ms`. Only the ticks around each boundary arrive (the
+    # cadence reads elapsed time, so the rest change nothing): the measured seconds of each fire that triggered a resync.
+    with _SteppedClock() as clock:
+        client = _hourly_client()
+        issynced = client.ntp_issynced
+
+        async def slow_issynced() -> bool:
+            clock.advance(latency_ms)
+            return await issynced()
+
+        client.ntp_issynced = slow_issynced  # type: ignore[method-assign]
+
+        async def scenario() -> "list[int]":
+            await client._handle_ntp_sync_success(_TM)
+            task = asyncio.create_task(client._refresh_loop())
+            await asyncio.sleep(0)  # the loop starts its cadence at 0 ms
+            period = 3600 // _CHECK_INTERVAL_S
+            due_at: list[int] = []
+            for cycle in range(1, cycles + 1):
+                for n in range(cycle * period - 2, cycle * period + 3):
+                    fire_ms = phase_ms + n * _CHECK_INTERVAL_S * 1000
+                    clock.advance(fire_ms - clock.now)  # the timer's phase, whatever the last tick's handling took
+                    await tick(client._ntp_timer_trigger_event)
+                    if client._ntp_sync_trigger_event.state:
+                        client._ntp_sync_trigger_event.clear()
+                        due_at.append(fire_ms // 1000)
+                        await client._handle_ntp_sync_success(_TM)
+            await cancel(task)
+            return due_at
+
+        try:
+            return run(scenario())
+        finally:
+            asy_base_classes.set_utc_valid(valid=False)
+
+
 def _timing(
     dns_timeout_ms: int = _DNS_TIMEOUT_MS,
     dns_tries: int = _DNS_TRIES,
@@ -1791,18 +1829,30 @@ class _SteppedClock(DrivenTime):
 
 
 def test_ntp_time_hours_counter_missing_config_falls_back_to_12h_default_without_raising() -> None:
-    client = _make_invalid_cfg_client()
+    # Synced, with no config to read: the tick at 12 h of measured time is due, the one 10 s before it is not.
+    with _SteppedClock() as clock:
+        client = _make_invalid_cfg_client()
 
-    async def scenario() -> None:
-        task = asyncio.create_task(client._refresh_loop())
-        await tick(client._ntp_timer_trigger_event, 1)
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+        async def fired() -> bool:
+            try:
+                await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
+            except asyncio.TimeoutError:
+                return False
+            return True
 
-    run(scenario())  # must not raise despite the missing config
+        async def scenario() -> "tuple[bool, bool]":
+            await client._set_synced(value=True)
+            task = asyncio.create_task(client._refresh_loop())
+            await asyncio.sleep(0)  # the loop starts its cadence before the first tick's time passes
+            await tick(client._ntp_timer_trigger_event, 1, clock, (12 * 3600 - _CHECK_INTERVAL_S) * 1000)
+            early = await fired()
+            await tick(client._ntp_timer_trigger_event, 1, clock, _CHECK_INTERVAL_S * 1000)
+            due = await fired()
+            await cancel(task)
+            return early, due
+
+        assert run(scenario()) == (False, True)
+    assert _slots(client) == (2, [code("E", "CFG_READ")])  # each tick's missing-config entry, one slot for the repeat
 
 
 def test_ntp_time_hours_counter_triggers_sync_immediately_when_not_yet_synced() -> None:
@@ -1878,27 +1928,29 @@ def test_ntp_time_hours_counter_does_not_retrigger_while_synced_and_under_interv
 
 
 def test_ntp_time_hours_counter_retriggers_once_interval_elapses() -> None:
-    # NTPInterval=1 -> 3600s / _NTP_CHECK_INTERV(10s) = 360 ticks to reach the interval.
+    # NTPInterval=1 -> 3600s of measured time, 360 check ticks of _NTP_CHECK_INTERV (10s), to reach the interval.
     json_text = '{"NTPHost": "pool.ntp.org", "NTPOffset": 0, "NTPInterval": 1, "GMTOffset": 3600, "DSTOffset": 3600}'
-    client = _make_client_with_json(json_text)
+    with _SteppedClock() as clock:
+        client = _make_client_with_json(json_text)
 
-    async def scenario() -> bool:
-        await client._set_synced(value=True)
-        task = asyncio.create_task(client._refresh_loop())
-        await tick(client._ntp_timer_trigger_event, 360)
-        try:
-            await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
-            fired = True
-        except asyncio.TimeoutError:
-            fired = False
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-        return fired
+        async def scenario() -> bool:
+            await client._set_synced(value=True)
+            task = asyncio.create_task(client._refresh_loop())
+            await asyncio.sleep(0)  # the loop starts its cadence before the first tick's time passes
+            await tick(client._ntp_timer_trigger_event, 360, clock, _CHECK_INTERVAL_S * 1000)
+            try:
+                await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
+                fired = True
+            except asyncio.TimeoutError:
+                fired = False
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            return fired
 
-    assert run(scenario())
+        assert run(scenario())
 
 
 _TM = (2026, 1, 1, 0, 0, 0, 0, 0)  # a parsed reply's time, for the success path
@@ -2000,6 +2052,7 @@ def test_the_due_counter_never_exceeds_one_interval() -> None:
             await asyncio.sleep(0)
             await client._handle_ntp_sync_success(_TM)
             task = asyncio.create_task(client._refresh_loop())
+            await asyncio.sleep(0)  # the loop starts its cadence before the first tick's time passes
             changes = await _drive_refresh(client, clock, 3 * period, record)
             await cancel(task)
             await cancel(sync_task)
@@ -3320,6 +3373,90 @@ def test_a_failed_resync_never_resets_the_staleness_count() -> None:
 def test_a_responder_back_mid_backoff_syncs_at_the_next_attempt() -> None:
     seen = _against_responder(_responder_client(), NtpResponder(_PORTS.next()), ["silent", "silent", "serve"])
     assert [s[:3] for s in seen] == [s[:3] for s in _FAILED_TWICE] + [(True, 0, _RETRY_S)]
+
+
+
+def test_a_dropped_check_tick_does_not_delay_the_due_resync() -> None:
+    # The resync cadence reads elapsed time, as the stale rule does: with one check tick dropped (a soft-Timer
+    # callback can be, SPECIFICATION.md F.1), the resync is still due at one NTPInterval of measured time.
+    with _SteppedClock() as clock:
+        client = _hourly_client()
+
+        async def scenario() -> "int | None":
+            await client._handle_ntp_sync_success(_TM)
+            task = asyncio.create_task(client._refresh_loop())
+            await asyncio.sleep(0)  # the loop starts its cadence before the first tick's time passes
+            due_at = None
+            for n in range(1, 3600 // _CHECK_INTERVAL_S + 2):
+                clock.advance(_CHECK_INTERVAL_S * 1000)
+                if n == 100:
+                    continue  # this tick's callback is dropped: its time passes, no tick arrives
+                await tick(client._ntp_timer_trigger_event)
+                if client._ntp_sync_trigger_event.state:
+                    due_at = n * _CHECK_INTERVAL_S
+                    break
+            await cancel(task)
+            return due_at
+
+        try:
+            due_at = run(scenario())
+        finally:
+            asy_base_classes.set_utc_valid(valid=False)
+    assert due_at == 3600, due_at
+
+
+def test_the_boundary_tick_triggers_the_resync_though_the_cadence_restarted_after_a_fire() -> None:
+    # The due tick restarts the cadence after its own awaits, a few ms past its fire, and later fires keep the timer's
+    # phase: each boundary tick reads just under one NTPInterval and still triggers, cycle after cycle.
+    due_at = _synced_due_at(0, 2, 3)
+    assert due_at == [3600, 7200, 10800], due_at
+
+
+def test_the_resync_goes_to_the_check_tick_nearest_its_boundary() -> None:
+    # A cadence started off the timer's phase (a restarted loop): the tick 4 s before the boundary triggers, and the
+    # one 6 s before it does not.
+    early = _synced_due_at(-4000, 0, 2)
+    assert early == [3596, 7196], early
+    late = _synced_due_at(4000, 0, 1)
+    assert late == [3604], late
+
+
+def _unsynced_due_at(step_ms: int, dropped: int) -> "int | None":
+    # A never-synced client on a 40 s backoff step, one check tick per `step_ms` of measured time with tick `dropped`'s
+    # callback lost (a soft-Timer callback can be, SPECIFICATION.md F.1): the measured seconds its retry triggered at.
+    with _SteppedClock() as clock:
+        client = _make_client()
+        client._retry_wait_s = 40
+
+        async def scenario() -> "int | None":
+            task = asyncio.create_task(client._refresh_loop())
+            await asyncio.sleep(0)  # the loop starts before the first tick's time passes
+            due_at = None
+            for n in range(1, 7):
+                clock.advance(step_ms)
+                if n == dropped:
+                    continue  # its time passes, no tick arrives
+                await tick(client._ntp_timer_trigger_event)
+                if client._ntp_sync_trigger_event.state:
+                    due_at = n * _CHECK_INTERVAL_S
+                    break
+            await cancel(task)
+            return due_at
+
+        return run(scenario())
+
+
+def test_a_dropped_check_tick_does_not_delay_the_unsynced_retry() -> None:
+    # The tick after a dropped one counts both intervals, so the retry still triggers at 40 s of measured time.
+    due_at = _unsynced_due_at(_CHECK_INTERVAL_S * 1000, dropped=2)
+    assert due_at == 40, due_at
+
+
+def test_a_dropped_tick_between_early_wakes_still_counts() -> None:
+    # Each wake lands a little before a whole interval since the last (a loop's own latency varies): the gap rounds to
+    # the nearest interval, so the 19.998 s across the dropped tick still counts two.
+    due_at = _unsynced_due_at(_CHECK_INTERVAL_S * 1000 - 1, dropped=2)
+    assert due_at == 40, due_at
 
 
 if __name__ == "__main__":

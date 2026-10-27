@@ -28,6 +28,7 @@ from _recording_print import record_prints
 from _src_const import py_value, src_const, src_int
 from _src_schema import src_schema
 from _tmp_scratch import TmpScratch
+from _untraced import untraced
 from _write_counters import WriteCountingOpen
 from machine import Timer
 from microdot import Microdot, Request, Response
@@ -92,22 +93,32 @@ def _make_ntp_stub(
     return _ntp, calls
 
 
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper.
+_scratch = TmpScratch("sysservice")
+
+
+def _tmp_cfg_dir() -> str:
+    return _scratch.dir()
+
+
 def _make_service(  # keywords mirror SystemService.__init__()'s own
     ntp: "Callable[[], Coroutine[object, object, bool]] | None" = None,
     *,
     watchdog: "WDT | None" = None,
     storage: "FRAMManager | None" = None,
     log: "LogConfig" = DEFAULT_LOG,
-    cfg_path: str = "",
+    cfg_path: "str | None" = None,
     level_setters: "Callable[[], list[Callable[[int], bool]]] | None" = None,
     config_stores: "Callable[[], list[cm.ConfigManager]] | None" = None,
     reset_reason: int = 0,
 ) -> SystemService:
+    # A service of its own directory unless a test names one: the product's "" is the process's working directory,
+    # the checkout root here, where setup() would leave config_SYSTEM.cfg for every later run to read back.
     if ntp is None:
         ntp, _calls = _make_ntp_stub(synced=False)
     return SystemService(
         ntp, watchdog=watchdog, storage=storage, level_setters=level_setters, config_stores=config_stores,
-        reset_reason=reset_reason, cfg_path=cfg_path, log=log,
+        reset_reason=reset_reason, cfg_path=_tmp_cfg_dir() if cfg_path is None else cfg_path, log=log,
     )
 
 
@@ -987,14 +998,6 @@ def test_a_fault_in_the_reset_task_is_logged_and_the_watchdog_still_resets() -> 
     assert machine.mem_backup(0)[1] == _const("_RR_TASK_BUDGET")
 
 
-# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper.
-_scratch = TmpScratch("sysservice")
-
-
-def _tmp_cfg_dir() -> str:
-    return _scratch.dir()
-
-
 _VAL_COUNT: "cm.ConfigSchema" = (("Count", "int", 5, 0, 10, None),)
 
 
@@ -1518,7 +1521,7 @@ def _yielding(rig: _Rig) -> list[int]:
         return start(purpose)
 
     async def yielding_ready() -> bool:
-        await asyncio.sleep(0)  # the chip-loss window: get_write_protected()'s err_s() suspends
+        await asyncio.sleep(0)  # a preflight that suspends: the gate never relies on erase_ready() running through
         return await ready()
 
     rig.svc._shutdown_sequence = counted  # type: ignore[method-assign]
@@ -1556,6 +1559,38 @@ def test_a_refused_preflight_answers_the_same_word_waiting_on_it_with_its_own_ou
         answers = await asyncio.gather(rig.svc.erase_fram(), rig.svc.erase_fram())
         assert list(answers) == [False, False], answers
         assert (sequences, rig.svc._shutdown, rig.svc._shutdown_task) == ([], 0, None)
+        await rig.stop(sup)
+
+    with FastAsyncSleep():
+        run(scenario())
+
+
+def test_a_raising_preflight_leaves_the_gate_as_a_refusal_does() -> None:
+    # The raise reaches the caller's catch; the gate then decides the next command afresh and a mempause is not refused.
+    rig = _Rig(tasks=0)
+    assert rig.manager is not None
+    manager, preflights = rig.manager, []
+
+    async def raising_ready() -> bool:
+        raise MemoryError("injected: no room for the preflight")
+
+    async def refusing_ready() -> bool:
+        preflights.append(1)
+        return False
+
+    async def scenario() -> None:
+        sup = await rig.start()
+        manager.erase_ready = raising_ready  # type: ignore[method-assign]
+        raised = ""
+        try:
+            await rig.svc.erase_fram()
+        except MemoryError as e:
+            raised = str(e)
+        assert raised.startswith("injected") and (rig.svc._shutdown, rig.svc._shutdown_task) == (0, None), raised
+        assert rig.svc.pause_permanent_storage(0) is True
+        manager.erase_ready = refusing_ready  # type: ignore[method-assign]
+        assert await rig.svc.erase_fram() is False and preflights == [1]
+        assert not (rig.svc._feed_owned or rig.svc._reset_decided)
         await rig.stop(sup)
 
     with FastAsyncSleep():
@@ -2091,6 +2126,18 @@ def test_an_escalation_armed_during_the_erase_preflight_refuses_the_command() ->
     assert machine.mem_backup(0)[1] == _const("_RR_TASK_BUDGET")
 
 
+def test_the_task_budget_steps_once_past_its_max_and_stops() -> None:
+    # Checked before the step: the charge that first passes _TASK_FAIL_MAX lands, every later one leaves it there.
+    top_max, step = _const("_TASK_FAIL_MAX"), _const("_TASK_FAIL_INCREMENT")
+    svc = _make_service()
+    budgets = [0]
+    for _ in range(top_max // step + 4):
+        budgets.append(svc._charge_task_budget(budgets[-1]))
+    top = (top_max // step + 1) * step
+    assert budgets[: top_max // step + 2] == [n * step for n in range(top_max // step + 2)]
+    assert budgets[-3:] == [top, top, top] and top_max < top <= top_max + step
+
+
 def test_a_command_accepted_while_the_escalation_logs_keeps_its_own_reset() -> None:
     for purpose in ("_RR_REBOOT", "_RR_FRAM_ERASED"):
         rig = _Rig(tasks=0)
@@ -2112,7 +2159,11 @@ def test_a_command_accepted_while_the_escalation_logs_keeps_its_own_reset() -> N
 
         async def scenario(purpose: str = purpose, rig: _Rig = rig, release: asyncio.Event = release, reached: asyncio.Event = reached) -> None:
             sup = await rig.start()
-            await reached.wait()
+            for _ in range(_RUN_BOUND_S * 100):
+                if reached.is_set():
+                    break
+                await _real_time(10)
+            assert reached.is_set(), "the supervisor never logged its budget reboot"
             fed = rig.wdt.feed_count
             assert await _word(rig.svc, purpose)() is True
             release.set()
@@ -2126,6 +2177,7 @@ def test_a_command_accepted_while_the_escalation_logs_keeps_its_own_reset() -> N
         assert rig.svc._force_watchdog_starve is True  # set by the arm alone (Part C.9), not by the escalation's starve
         if purpose == "_RR_FRAM_ERASED":
             assert _all_zero(rig.chip.memory)
+
 
 
 def test_a_commands_acceptance_decides_the_reset_before_the_sequence_runs() -> None:
@@ -2488,6 +2540,49 @@ def test_rr_interrupted_is_21_and_decodes_like_every_other_record() -> None:
     assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
 
 
+def _ended_in_phase(phase: int) -> None:
+    # A boot marked up to `phase`, then the boot entry's call for a loop that an exception other than Ctrl-C ended.
+    machine.power_on()
+    begin_boot()
+    asy_system_service._write_region(1, _const("_BP_MAGIC"), phase)
+    asy_system_service.record_loop_end()
+
+
+def test_a_loop_ended_after_boot_records_22_and_the_next_boot_decodes_it() -> None:
+    assert _const("_RR_LOOP_ENDED") == 22
+    _ended_in_phase(BOOT_DONE)
+    _watchdog_reset()
+    assert begin_boot() == 22
+    assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
+
+
+def test_a_loop_ended_during_boot_writes_nothing_so_the_next_boot_reads_its_phase() -> None:
+    for phase in range(BOOT_CONSTRUCTION, BOOT_DONE):
+        _ended_in_phase(phase)
+        assert list(machine.mem_backup(0)) == [0, 0, 0, 0], phase
+        _watchdog_reset()
+        assert begin_boot() == _const("_RR_BOOT_FAILURE") + phase, phase
+
+
+def test_a_record_already_written_is_kept_and_a_torn_one_is_replaced() -> None:
+    # A command's or an escalation's record names the reset already underway; a torn record names nothing.
+    for recorded in (_const("_RR_REBOOT"), _const("_RR_STACK_EXHAUSTED"), asy_system_service.RR_INTERRUPTED):
+        machine.power_on()
+        begin_boot()
+        write_reset_record(recorded)
+        asy_system_service._write_region(1, _const("_BP_MAGIC"), BOOT_DONE)
+        asy_system_service.record_loop_end()
+        _watchdog_reset()
+        assert begin_boot() == recorded, recorded
+    machine.power_on()
+    begin_boot()
+    machine.mem_backup(0)[0] = _const("_RR_MAGIC")  # the magic alone: its check word does not match
+    asy_system_service._write_region(1, _const("_BP_MAGIC"), BOOT_DONE)
+    asy_system_service.record_loop_end()
+    _watchdog_reset()
+    assert begin_boot() == 22
+
+
 def test_the_debug_level_range_is_the_loggers_level_range() -> None:
     # _apply_level() drops set_level()'s answer: safe only while the schema's bounds are the loggers' own.
     field = src_schema(_SRC, "_VAL_DEBUG_LEVEL")[0]
@@ -2563,6 +2658,94 @@ def test_the_first_pass_past_the_deadline_unpauses_and_logs_one_line() -> None:
 
         run(scenario())
     assert _auto_unpause_lines(recorder) == 1
+
+
+def _raising_unpause(svc: SystemService) -> list[bool]:
+    # The service's pause callback, raising at its first unpause only; the list records that raise.
+    set_pause = svc._storage_pause
+    raised: list[bool] = []
+
+    def pause(*, value: bool) -> None:
+        if not value and not raised:
+            raised.append(value)
+            raise MemoryError("injected: no room at the unpause")
+        assert set_pause is not None
+        set_pause(value=value)
+
+    svc._storage_pause = pause
+    return raised
+
+
+async def _ended(task: "asyncio.Task[None]") -> str:
+    # Awaits a status task the scenario lets die, so its injected raise is retrieved here rather than reported.
+    try:
+        await task
+    except MemoryError as e:
+        return str(e)
+    return "returned"
+
+
+def test_an_auto_unpause_that_raises_keeps_its_deadline_for_the_restarted_loop() -> None:
+    # The raise ends the status task; the deadline survives it, so the supervisor's restart still ends the pause.
+    with _driven() as clock:
+        svc, manager = _paused_service()
+        raised = _raising_unpause(svc)
+
+        async def scenario() -> None:
+            first = asyncio.create_task(svc._status_loop())
+            outcome = asyncio.create_task(_ended(first))
+            assert svc.pause_permanent_storage(60) is True
+            await _pump(svc._uptime_event, 60, clock)
+            assert (await outcome).startswith("injected") and raised and manager.get_pause() is True
+            second = asyncio.create_task(svc._status_loop())  # the supervisor's restart
+            await _pump(svc._uptime_event, 1, clock)
+            assert (manager.get_pause(), _pending(svc)) == (False, False)
+            await cancel(second)
+
+        run(scenario())
+
+
+def test_an_immediate_unpause_that_raises_keeps_the_pending_deadline() -> None:
+    svc, manager = _paused_service()
+    assert svc.pause_permanent_storage(60) is True
+    raised = _raising_unpause(svc)
+    message = ""
+    try:
+        svc.pause_permanent_storage(0)
+    except MemoryError as e:
+        message = str(e)
+    assert message.startswith("injected") and raised and manager.get_pause() is True and _pending(svc), message
+
+
+def test_a_raising_signature_line_never_lets_the_restarted_loop_draw_a_second_signature() -> None:
+    # The random fallback at 120 s; the flag is set with the value, so the restarted loop keeps the signature.
+    with _driven() as clock:
+        svc = _make_service()
+        one = svc.pr.one
+        raised: list[object] = []
+
+        def raising_one(*args: object, sep: str = " ", end: str = "\n") -> None:
+            if not raised and "boot signature" in str(args[0]):
+                raised.append(args[0])
+                raise MemoryError("injected: no room for the signature line")
+            one(*args, sep=sep, end=end)
+
+        svc.pr.one = raising_one  # type: ignore[method-assign]
+
+        async def scenario() -> "tuple[int | float | None, int | float | None]":
+            first = asyncio.create_task(svc._status_loop())
+            outcome = asyncio.create_task(_ended(first))
+            await _pump(svc._uptime_event, 120, clock)
+            assert (await outcome).startswith("injected") and raised
+            before = await svc.get_boot_signature()
+            second = asyncio.create_task(svc._status_loop())  # the supervisor's restart
+            await _pump(svc._uptime_event, 2, clock)
+            after = await svc.get_boot_signature()
+            await cancel(second)
+            return before, after
+
+        before, after = run(scenario())
+    assert before is not None and before == after, (before, after)
 
 
 def test_a_second_pause_replaces_the_first_deadline() -> None:
@@ -2735,11 +2918,14 @@ def test_start_task_returns_the_real_task_on_success() -> None:
         async def _coro() -> None:
             pass
 
+        created: list[asyncio.Task[None]] = []
+
         def starter() -> "asyncio.Task[None]":
-            return asyncio.create_task(_coro())
+            created.append(asyncio.create_task(_coro()))
+            return created[0]
 
         task = await svc._start_task(starter, 0)
-        assert task is not None
+        assert task is created[0]
         await task
 
     run(scenario())
@@ -3590,7 +3776,8 @@ def test_a_stack_overflow_caught_by_a_level_setter_reboots_through_the_superviso
     def bottomless(value: int) -> bool:
         return bottomless(value + 1)
 
-    svc = _make_service(level_setters=lambda: [bottomless])
+    # Untraced: a limit reached inside the coverage tracer would end tracing for the whole file.
+    svc = _make_service(level_setters=lambda: [lambda value: untraced(lambda: bottomless(value))])
 
     async def scenario() -> None:
         await svc.setup()
@@ -3797,12 +3984,80 @@ def test_an_escalation_whose_entry_cannot_even_be_built_on_a_full_heap_still_reb
     assert budget == [True, _const("_RR_TASK_BUDGET"), True, True, 1], budget
 
 
-def test_power_on_reads_1_even_with_a_stale_valid_record() -> None:
+def test_a_console_soft_reset_after_a_power_on_boot_reads_the_recorded_code() -> None:
+    # A Ctrl-D inside the watchdog window re-runs main.py with no hard reset: the cause stays the power-on's, the regions
+    # keep the entry's 21 or 22, and the boot reads that code and clears it.
+    def interrupted() -> None:
+        write_reset_record(asy_system_service.RR_INTERRUPTED)
+
+    for record in (interrupted, asy_system_service.record_loop_end):
+        machine.power_on()
+        begin_boot()
+        _make_service().boot_phase(BOOT_DONE)
+        record()
+        expected = machine.mem_backup(0)[1]
+        assert machine.reset_cause() == machine.PWRON_RESET
+        assert begin_boot() == expected and expected in (21, _const("_RR_LOOP_ENDED")), expected
+        assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
+
+
+def test_a_power_cycle_after_a_record_reads_1() -> None:
+    machine.power_on()
+    begin_boot()
+    write_reset_record(asy_system_service.RR_INTERRUPTED)
+    machine.power_on()  # power-off clears both regions (SPECIFICATION.md F.5.4)
+    assert begin_boot() == _const("_RR_POWER_ON")
+
+
+def test_a_torn_record_under_a_power_on_cause_reads_1() -> None:
     machine.power_on()
     write_reset_record(_const("_RR_REBOOT"))
-    machine.reset_cause_value = machine.PWRON_RESET
+    machine.mem_backup(0)[2] ^= 1
+    assert machine.reset_cause() == machine.PWRON_RESET
     assert begin_boot() == _const("_RR_POWER_ON")
     assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
+
+
+def test_a_console_soft_reset_after_a_boot_phase_failure_reads_10_plus_the_phase() -> None:
+    # A loop ended during boot records nothing; a Ctrl-D after a power-on boot keeps the cause and the phase marker.
+    for p in range(BOOT_CONSTRUCTION, BOOT_NTP + 1):
+        machine.power_on()
+        begin_boot()
+        svc = _make_service()
+        for q in range(BOOT_CONSTRUCTION, p + 1):
+            svc.boot_phase(q)
+        asy_system_service.record_loop_end()
+        assert list(machine.mem_backup(0)) == [0, 0, 0, 0], p
+        assert machine.reset_cause() == machine.PWRON_RESET
+        assert begin_boot() == _const("_RR_BOOT_FAILURE") + p, p
+
+
+def test_a_boot_done_marker_under_a_power_on_cause_reads_1() -> None:
+    machine.power_on()
+    begin_boot()
+    _make_service().boot_phase(BOOT_DONE)
+    assert machine.reset_cause() == machine.PWRON_RESET
+    assert begin_boot() == _const("_RR_POWER_ON")
+
+
+def test_a_power_cycle_during_boot_reads_1() -> None:
+    machine.power_on()
+    begin_boot()
+    _make_service().boot_phase(BOOT_NTP)
+    machine.power_on()  # power-off clears both regions (SPECIFICATION.md F.5.4)
+    assert begin_boot() == _const("_RR_POWER_ON")
+
+
+def test_a_torn_record_beside_an_in_boot_phase_reads_10_plus_the_phase_under_either_cause() -> None:
+    # The phase marker is read before the power-on cause and the torn record (owner, 2026-10-26).
+    for cause in (machine.PWRON_RESET, machine.WDT_RESET):
+        machine.power_on()
+        begin_boot()  # marks phase 1
+        write_reset_record(_const("_RR_REBOOT"))
+        machine.mem_backup(0)[2] ^= 1
+        machine.reset_cause_value = cause
+        assert begin_boot() == _const("_RR_BOOT_FAILURE") + BOOT_CONSTRUCTION, cause
+        assert list(machine.mem_backup(0)) == [0, 0, 0, 0], cause
 
 
 def test_no_record_after_a_complete_boot_reads_watchdog() -> None:

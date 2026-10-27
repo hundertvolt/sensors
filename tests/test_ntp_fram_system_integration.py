@@ -82,21 +82,22 @@ _FAKE_SERVER_POLL_MS = 10
 _FAKE_SERVER_POLL_TRIES = 1000
 
 
-def _wlan(conn: WifiService) -> "_FakeWLAN":
-    return conn._wlan  # type: ignore[return-value]  # the fake, which mypy sees as the board stub's WLAN
+async def _connect_wlan(conn: WifiService, dns_server: str = "192.0.2.53") -> None:
+    # The fake radio connected with a DHCP lease, then one 1 Hz snapshot step under wifi_mode_lock: every
+    # getter reads the snapshot, so the DHCP server reaches NTP only through it.
+    wlan = _wlan(conn)
+    wlan._connected = True
+    wlan._status = network.STAT_GOT_IP
+    wlan._ifconfig = ("10.0.0.5", "255.255.255.0", "10.0.0.1", dns_server)
+    async with conn.get_wifi_mode_lock():
+        await conn._update_wifi_snapshot(connected=True)
 
 
-# ---------------------------------------------------------------------------
-# Fixtures: the conn/ntp construction of test_ntp_wifi_dns_integration.py, the shared FRAM builder.
-# ---------------------------------------------------------------------------
-
-# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
-# module's own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
-_scratch = TmpScratch("ntpfram")
-
-
-def _tmp_cfg_dir() -> str:
-    return _scratch.dir()
+def _make_bmp_reader(cfg_path: str, max_module_error: int = 1) -> BMP3XX_Reader:
+    i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
+    reader = BMP3XX_Reader(i2c, address=_BMP_ADDR, max_module_error=max_module_error, cfg_path=cfg_path)
+    run(reader.setup())  # the boot batch's setup(), before any task starts
+    return reader
 
 
 def _make_conn() -> WifiService:
@@ -124,36 +125,63 @@ def _make_ntp(
     return ntp
 
 
-async def _connect_wlan(conn: WifiService, dns_server: str = "192.0.2.53") -> None:
-    # The fake radio connected with a DHCP lease, then one 1 Hz snapshot step under wifi_mode_lock: every
-    # getter reads the snapshot, so the DHCP server reaches NTP only through it.
-    wlan = _wlan(conn)
-    wlan._connected = True
-    wlan._status = network.STAT_GOT_IP
-    wlan._ifconfig = ("10.0.0.5", "255.255.255.0", "10.0.0.1", dns_server)
-    async with conn.get_wifi_mode_lock():
-        await conn._update_wifi_snapshot(connected=True)
-
-
-def connect_wlan(conn: WifiService) -> None:
-    run(_connect_wlan(conn))
-
-
-# ---------------------------------------------------------------------------
-# Real UDP NTP round trip: the shared tests/_ntp_frames.py FakeNtpServer, port 123 pointed at it by
-# tests/_udp_port_redirect.py.
-# ---------------------------------------------------------------------------
-
-# This file's own band of tests/_port_bands.py: files run concurrently, and a UDP collision is a silent timeout.
-_PORTS = PortAllocator("test_ntp_fram_system_integration")
+def _make_ntp_server() -> FakeNtpServer:
+    return FakeNtpServer(_make_port(), poll_ms=_FAKE_SERVER_POLL_MS, poll_tries=_FAKE_SERVER_POLL_TRIES)
 
 
 def _make_port() -> int:
     return _PORTS.next()
 
 
-def _make_ntp_server() -> FakeNtpServer:
-    return FakeNtpServer(_make_port(), poll_ms=_FAKE_SERVER_POLL_MS, poll_tries=_FAKE_SERVER_POLL_TRIES)
+def _make_scd30_reader(cfg_path: str, max_module_error: int = 1) -> SCD30_Reader:
+    i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
+    reader = SCD30_Reader(i2c, irq_pin=5, trigger_s=3, max_module_error=max_module_error, cfg_path=cfg_path)
+    run(reader.setup())  # the boot batch's setup(), before any task starts
+    return reader
+
+
+def _make_sgp40_reader(cfg_path: str, max_module_error: int = 1) -> SGP40_Reader:
+    i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
+    # A real SCD30_Reader behind the temperature/humidity value references (SPECIFICATION.md Parts C.14 and L.6.3) -
+    # set up but never read, so its get_data() returns its unmeasured-sentinel namedtuple with every field None.
+    scd_reader = _make_scd30_reader(cfg_path)
+    reader = SGP40_Reader(
+        i2c,
+        ValueRef(scd_reader, "Temp"),
+        ValueRef(scd_reader, "Hum"),
+        max_module_error=max_module_error,
+        cfg_path=cfg_path,
+    )
+    run(reader.setup())  # the boot batch's setup(), before any task starts
+    return reader
+
+
+async def _never_synced() -> bool:
+    return False
+
+
+async def _one_supervisor_pass(svc: SystemService, starts: "list[asyncio.Task[None]]") -> int:
+    # The supervisor's first pass restarts the dead task at once; its next pass is 2 s away, so the count is read
+    # before that one can restart the task a second time, with the same bounded real-time poll as the start.
+    svc_task = asyncio.create_task(svc.supervise_tasks())
+    for _ in range(_START_POLL_TRIES):
+        if len(starts) > 1:
+            break
+        await asyncio.sleep(_START_POLL_S)
+    await cancel(svc_task)
+    return len(starts)
+
+
+def _tmp_cfg_dir() -> str:
+    return _scratch.dir()
+
+
+def _wlan(conn: WifiService) -> "_FakeWLAN":
+    return conn._wlan  # type: ignore[return-value]  # the fake, which mypy sees as the board stub's WLAN
+
+
+def connect_wlan(conn: WifiService) -> None:
+    run(_connect_wlan(conn))
 
 
 async def sync_real_ntp_chain(conn: WifiService, ntp: NTPClient) -> None:
@@ -177,6 +205,15 @@ async def sync_real_ntp_chain(conn: WifiService, ntp: NTPClient) -> None:
     finally:
         server.close()
     assert await ntp.ntp_issynced() is True  # sanity: the helper itself actually synced
+
+
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
+# module's own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
+_scratch = TmpScratch("ntpfram")
+
+
+# This file's own band of tests/_port_bands.py: files run concurrently, and a UDP collision is a silent timeout.
+_PORTS = PortAllocator("test_ntp_fram_system_integration")
 
 
 # ---------------------------------------------------------------------------
@@ -469,29 +506,6 @@ def test_fram_timestamped_chunk_torn_write_self_heals_with_a_real_ntp_derived_ti
 _BMP_ADDR = 0x77
 
 
-async def _one_supervisor_pass(svc: SystemService, starts: "list[asyncio.Task[None]]") -> int:
-    # The supervisor's first pass restarts the dead task at once; its next pass is 2 s away, so the count is read
-    # before that one can restart the task a second time, with the same bounded real-time poll as the start.
-    svc_task = asyncio.create_task(svc.supervise_tasks())
-    for _ in range(_START_POLL_TRIES):
-        if len(starts) > 1:
-            break
-        await asyncio.sleep(_START_POLL_S)
-    await cancel(svc_task)
-    return len(starts)
-
-
-def _make_bmp_reader(cfg_path: str, max_module_error: int = 1) -> BMP3XX_Reader:
-    i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
-    reader = BMP3XX_Reader(i2c, address=_BMP_ADDR, max_module_error=max_module_error, cfg_path=cfg_path)
-    run(reader.cfgmgr.setup())
-    return reader
-
-
-async def _never_synced() -> bool:
-    return False
-
-
 def test_system_service_restarts_a_real_sensor_reader_task_that_genuinely_gives_up() -> None:
     reader = _make_bmp_reader(_tmp_cfg_dir(), max_module_error=1)  # gives up on the 2nd consecutive real failure
     fake_i2c: FakeI2C = reader._bmp._i2c_bmp3xx.i2c_device.i2c._i2c  # type: ignore[assignment]
@@ -527,28 +541,6 @@ def test_system_service_restarts_a_real_sensor_reader_task_that_genuinely_gives_
 
 _SCD30_ADDR: int = src_int("src/asy_scd30_driver.py", "_SCD30_ADDR")
 _SGP40_ADDR: int = src_int("src/asy_sgp40_driver.py", "_SGP40_ADDR")
-
-
-def _make_scd30_reader(cfg_path: str, max_module_error: int = 1) -> SCD30_Reader:
-    i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
-    return SCD30_Reader(i2c, irq_pin=5, max_module_error=max_module_error, cfg_path=cfg_path)
-
-
-def _make_sgp40_reader(cfg_path: str, max_module_error: int = 1) -> SGP40_Reader:
-    i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
-    # A real SCD30_Reader behind the temperature/humidity value references (SPECIFICATION.md Parts C.14 and L.6.3) -
-    # never read() or setup(), so its get_data() just returns its unmeasured-sentinel namedtuple with every
-    # field None, matching what the old _no_comp_data() returned directly.
-    scd_reader = _make_scd30_reader(cfg_path)
-    reader = SGP40_Reader(
-        i2c,
-        ValueRef(scd_reader, "Temp"),
-        ValueRef(scd_reader, "Hum"),
-        max_module_error=max_module_error,
-        cfg_path=cfg_path,
-    )
-    run(reader.cfgmgr.setup())
-    return reader
 
 
 def test_system_service_restarts_a_real_scd30_reader_task_that_genuinely_gives_up() -> None:

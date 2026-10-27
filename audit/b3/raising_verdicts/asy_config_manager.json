@@ -1,0 +1,476 @@
+{
+ "conventions": "Read on audit/u35-braise2 against v1.29.0 (agent, 2026-10-27). As asy_print_log.json's conventions entry, not repeated per row: a C-stack overflow (MP_STACK_CHECK) is I.4(d.1)'s design defect, recorded by report_if_fatal() where it is caught, never a per-site raise; and a call allocating one fixed-size object per call site (a *args tuple, py/bc.c:163; an async def's coroutine, py/objgenerator.c:53-62; a dict view, py/objdict.c:550-551; an enumerate object, py/objenumerate.c:42; a boxed float; a generator expression; a list or dict of a schema's fixed field count, the schema being a const tuple tests_scripts/test_config_schemas.py checks) raises MemoryError only on an exhausted heap, which F.2 sends to I.4(a): a function doomed without memory does not catch. Where such a raise goes, by caller: setup() and construction run at boot only (from run_setups(), asy_system_service.py:738-746, which catches nothing, and from build_system()), so the generated entry's except BaseException holds them (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867); write_config() and get_dict() run from a module's _set_dict_cfg() or get_dict_cfg() on a REST route (asy_base_classes.py:803, :809; asy_system_service.py:267, :657), where Microdot's except Exception (ext/microdot.py:1533) and the webserver's errorhandler (asy_webserver_service.py:791) hold them; the typed getters run in a module's supervised task, whose end asy_system_service.py:326's except Exception in _log_dead_task() persists before the supervisor restarts it (I.4(c)); delete_file() runs only in the shutdown sequence, under its except Exception (asy_system_service.py:498). Parameters are their mypy-checked annotations (D.2).",
+ "raises": {},
+ "calls": {
+  "<module>::TypeVar": {
+   "can_raise": "TypeError for a bad constraint set (typing.TypeVar)",
+   "verdict": "unreachable",
+   "proof": "inside `if TYPE_CHECKING:` (:23); TYPE_CHECKING is False at run time: v1.29.0 builds no typing module (no MP_QSTR_typing in py/ or extmod/) and rp2 freezes none, so the import at :19 raises ImportError, caught at :20-21; the block is mypy's alone"
+  },
+  "<module>::const": {
+   "can_raise": "nothing at run time: the parser folds `_X = const(v)` (py/parse.c:832-866); a non-constant value is a SyntaxError at compile time (:842)",
+   "verdict": "unreachable",
+   "proof": "no call is left at run time: each const() is replaced by its value while parsing (py/parse.c:864, MICROPY_COMP_CONST) and the underscore names are dropped from the module (:855-858); the frozen build parses them in mpy-cross, so a bad value fails the build, never a boot"
+  },
+  "ConfigManager.__init__::asyncio.Event": {
+   "can_raise": "MemoryError for the Event and its TaskQueue (extmod/asyncio/event.py:9-11)",
+   "verdict": "handled",
+   "proof": "small fixed, once at construction: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
+  },
+  "ConfigManager.__init__::asyncio.Lock": {
+   "can_raise": "MemoryError for the Lock and its TaskQueue (extmod/asyncio/lock.py:9-16)",
+   "verdict": "handled",
+   "proof": "small fixed, once at construction: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
+  },
+  "ConfigManager.__init__::self._commit_ready.set": {
+   "can_raise": "nothing: Event.set() moves each waiter to the run queue and stores state (extmod/asyncio/event.py:16-22); TaskQueue pop and push allocate nothing (extmod/modasyncio.c)",
+   "verdict": "unreachable",
+   "proof": "a just-built Event has no waiter; the store replaces an existing member, so no instance map grows"
+  },
+  "ConfigManager._get_typed_values::coerce": {
+   "can_raise": "what the getter's coercer raises: _as_bool()/_as_str() nothing, _coerce_float() its boxed float (:91), _coerce_int() its int and float (:103, :106)",
+   "verdict": "handled",
+   "proof": "the four getters (:437, :462, :465, :468) pass only these: small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions)"
+  },
+  "ConfigManager._get_typed_values::enumerate": {
+   "can_raise": "MemoryError for the enumerate object (py/objenumerate.c:42-50)",
+   "verdict": "handled",
+   "proof": "values is a list, so no TypeError; small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions)"
+  },
+  "ConfigManager._get_typed_values::schema_names": {
+   "can_raise": "MemoryError for the names list (:277)",
+   "verdict": "handled",
+   "proof": "small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions)"
+  },
+  "ConfigManager._get_typed_values::self._get_values": {
+   "can_raise": "MemoryError for the coroutine, and what _get_values() raises: its list of the schema's values (:371)",
+   "verdict": "handled",
+   "proof": "each getter passes its module's const schema: small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions)"
+  },
+  "ConfigManager._get_typed_values::self._read_run_starts": {
+   "can_raise": "nothing: two attribute operations and a bool (:422-427)",
+   "verdict": "unreachable",
+   "proof": ""
+  },
+  "ConfigManager._get_typed_values::typed.append": {
+   "can_raise": "MemoryError growing the list (mp_obj_list_append's m_renew, py/objlist.c:232)",
+   "verdict": "handled",
+   "proof": "at most len(keys) items, the getter's const schema: small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions)"
+  },
+  "ConfigManager._get_values::schema_names": {
+   "can_raise": "MemoryError for the names list and the comprehension's list",
+   "verdict": "handled",
+   "proof": "its try catches KeyError only (:372); small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions)"
+  },
+  "ConfigManager._get_values::self._current": {
+   "can_raise": "nothing: _current() returns one of two attributes (:383-387)",
+   "verdict": "unreachable",
+   "proof": ""
+  },
+  "ConfigManager._get_values::self._read_run_starts": {
+   "can_raise": "nothing: two attribute operations and a bool (:422-427)",
+   "verdict": "unreachable",
+   "proof": ""
+  },
+  "ConfigManager._write_file::f.write": {
+   "can_raise": "OSError from the stream write (ENOSPC, EIO); f is a file object, not one of the walked modules' write()",
+   "verdict": "handled",
+   "proof": "as open at :432: setup()'s except :596 and _flush_staged()'s except :405"
+  },
+  "ConfigManager._write_file::open": {
+   "can_raise": "OSError from the filesystem (mp_vfs_open, extmod/vfs.c:322; littlefs ENOSPC, EIO, EISDIR); MemoryError for the file object and its path (lookup_path, extmod/vfs.c:100-108)",
+   "verdict": "handled",
+   "proof": "both callers hold it: setup() :594 in its try catching (MemoryError, OSError) (except :596) and _flush_staged() :403 in its try catching (MemoryError, OSError, ValueError) (except :405); the with-exit's close, where littlefs commits (lfs2.c:3473), raises into the same catches"
+  },
+  "ConfigManager.commit::self._commit_ready.set": {
+   "can_raise": "nothing: Event.set() moves each waiter to the run queue and stores state (extmod/asyncio/event.py:16-22); TaskQueue pop and push allocate nothing (extmod/modasyncio.c)",
+   "verdict": "unreachable",
+   "proof": "the store replaces an existing member, so no instance map grows"
+  },
+  "ConfigManager.delete_file::os.remove": {
+   "can_raise": "OSError from the filesystem (mp_vfs_remove, extmod/vfs.c:480); MemoryError for the path string (lookup_path, extmod/vfs.c:100-108)",
+   "verdict": "handled",
+   "proof": "the OSError is caught at :488 (ENOENT answers True, any other retries once, then False); the MemoryError is small fixed and the one caller, _shutdown_sequence() (asy_system_service.py:480), sits in its try catching Exception (except :498), which logs it and leaves the unfed watchdog to reset"
+  },
+  "ConfigManager.delete_file::range": {
+   "can_raise": "nothing: `for i in range(n)` compiles to a counted loop with no range object (py/compile.c:1430, :1519-1563)",
+   "verdict": "unreachable",
+   "proof": "the literal bound 2"
+  },
+  "ConfigManager.delete_file::self.close_writes": {
+   "can_raise": "nothing: one attribute store (:470-473)",
+   "verdict": "unreachable",
+   "proof": ""
+  },
+  "ConfigManager.flush_pending::self._commit_ready.set": {
+   "can_raise": "nothing: Event.set() moves each waiter to the run queue and stores state (extmod/asyncio/event.py:16-22); TaskQueue pop and push allocate nothing (extmod/modasyncio.c)",
+   "verdict": "unreachable",
+   "proof": "the store replaces an existing member, so no instance map grows"
+  },
+  "ConfigManager.get_bool_values::self._get_typed_values": {
+   "can_raise": "MemoryError for the coroutine, and what _get_typed_values() raises (its rows above)",
+   "verdict": "handled",
+   "proof": "small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions)"
+  },
+  "ConfigManager.get_dict::self._current": {
+   "can_raise": "nothing: _current() returns one of two attributes (:383-387)",
+   "verdict": "unreachable",
+   "proof": ""
+  },
+  "ConfigManager.get_dict::self._read_run_starts": {
+   "can_raise": "nothing: two attribute operations and a bool (:422-427)",
+   "verdict": "unreachable",
+   "proof": ""
+  },
+  "ConfigManager.get_float_values::self._get_typed_values": {
+   "can_raise": "MemoryError for the coroutine, and what _get_typed_values() raises (its rows above)",
+   "verdict": "handled",
+   "proof": "small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions)"
+  },
+  "ConfigManager.get_int_values::self._get_typed_values": {
+   "can_raise": "MemoryError for the coroutine, and what _get_typed_values() raises (its rows above)",
+   "verdict": "handled",
+   "proof": "small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions)"
+  },
+  "ConfigManager.get_str_values::self._get_typed_values": {
+   "can_raise": "MemoryError for the coroutine, and what _get_typed_values() raises (its rows above)",
+   "verdict": "handled",
+   "proof": "small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions)"
+  },
+  "ConfigManager.setup::check_cfg_get_default": {
+   "can_raise": "what check_cfg_get_default() raises (its rows above)",
+   "verdict": "handled",
+   "proof": "construction or a setup() at boot: the generated entry's except BaseException (conventions)"
+  },
+  "ConfigManager.setup::data.pop": {
+   "can_raise": "KeyError only without a default (dict_get_helper with MP_MAP_LOOKUP_REMOVE_IF_FOUND, py/objdict.c:309-346)",
+   "verdict": "unreachable",
+   "proof": "data is a dict here (:527; the None branch at :564 excludes the rest) and the default None is given; a removal allocates nothing"
+  },
+  "ConfigManager.setup::defaults.items": {
+   "can_raise": "MemoryError for the dict view (py/objdict.c:550-551)",
+   "verdict": "handled",
+   "proof": "construction or a setup() at boot: the generated entry's except BaseException (conventions)"
+  },
+  "ConfigManager.setup::isinstance": {
+   "can_raise": "TypeError for a classinfo that is no class (py/objtype.c:1486)",
+   "verdict": "unreachable",
+   "proof": "classinfo is the builtin dict (:527) or OSError (:539); isinstance() allocates nothing"
+  },
+  "ConfigManager.setup::json.dumps": {
+   "can_raise": "MemoryError for the text (extmod/modjson.c:101)",
+   "verdict": "handled",
+   "proof": "inside the try catching (MemoryError, OSError) (except :596): runs unpersisted"
+  },
+  "ConfigManager.setup::json.load": {
+   "can_raise": "ValueError for malformed JSON (extmod/modjson.c:357); OSError from the stream read; MemoryError for the parsed value (extmod/modjson.c:148)",
+   "verdict": "handled",
+   "proof": "the ValueError is caught at :531 (repaired), the OSError and MemoryError at :538 (unreadable)"
+  },
+  "ConfigManager.setup::len": {
+   "can_raise": "nothing for a dict",
+   "verdict": "unreachable",
+   "proof": "defaults is schema_dict()'s dict"
+  },
+  "ConfigManager.setup::open": {
+   "can_raise": "OSError from the filesystem; MemoryError for the file object (extmod/vfs.c:322)",
+   "verdict": "handled",
+   "proof": "caught at :538 as os.stat at :522"
+  },
+  "ConfigManager.setup::os.stat": {
+   "can_raise": "OSError (ENOENT, EIO) from the filesystem; MemoryError for the stat tuple",
+   "verdict": "handled",
+   "proof": "inside the try catching (MemoryError, OSError) (except :538): ENOENT writes the defaults once, anything else reads as unreadable"
+  },
+  "ConfigManager.setup::schema_dict": {
+   "can_raise": "MemoryError for the dict of the schema's fields (:273)",
+   "verdict": "handled",
+   "proof": "construction or a setup() at boot: the generated entry's except BaseException (conventions)"
+  },
+  "ConfigManager.setup::self._write_file": {
+   "can_raise": "what _write_file() raises: OSError and MemoryError (its rows)",
+   "verdict": "handled",
+   "proof": "caught at :596 as json.dumps at :592"
+  },
+  "ConfigManager.setup::type": {
+   "can_raise": "nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033)",
+   "verdict": "unreachable",
+   "proof": "one argument; no allocation"
+  },
+  "ConfigManager.setup::type_or_range_error": {
+   "can_raise": "what type_or_range_error() raises: small fixed allocations for any stored JSON value",
+   "verdict": "handled",
+   "proof": "its exact-type tests take any JSON value: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
+  },
+  "ConfigManager.write_config::_stored_float": {
+   "can_raise": "what _stored_float() raises: MemoryError (its rows above)",
+   "verdict": "handled",
+   "proof": "value is a validated finite float (:655's type test); caught at :657"
+  },
+  "ConfigManager.write_config::asyncio.create_task": {
+   "can_raise": "MemoryError for the Task (extmod/modasyncio.c:176-178); TypeError only for a non-coroutine (extmod/asyncio/core.py:143-145)",
+   "verdict": "handled",
+   "proof": "the argument is the _flush_staged() coroutine; caught at :657 as dict at :653"
+  },
+  "ConfigManager.write_config::check_cfg_get_default": {
+   "can_raise": "what check_cfg_get_default() raises (its rows above)",
+   "verdict": "handled",
+   "proof": "caught at :626 as schema_dict at :621"
+  },
+  "ConfigManager.write_config::compare_before_write": {
+   "can_raise": "what compare_before_write() raises: its dicts, which grow with the request's keys, and its rows above",
+   "verdict": "handled",
+   "proof": "caught at :626 (its comment: the compare exhausting the heap); the request body is capped by Request.max_content_length (asy_webserver_service.py:596)"
+  },
+  "ConfigManager.write_config::dict": {
+   "can_raise": "MemoryError for the copy of the schema-sized snapshot",
+   "verdict": "handled",
+   "proof": "inside the try catching MemoryError (except :657): nothing staged, the answer (False, {})"
+  },
+  "ConfigManager.write_config::dict_results.items": {
+   "can_raise": "MemoryError for the dict view (py/objdict.c:550-551)",
+   "verdict": "handled",
+   "proof": "outside both trys, small fixed: nothing is staged yet and the async with releases the lock; a REST route's call: Microdot's except Exception (ext/microdot.py:1533) and the webserver's errorhandler (asy_webserver_service.py:791) (conventions)"
+  },
+  "ConfigManager.write_config::fields.items": {
+   "can_raise": "MemoryError for the dict view (py/objdict.c:550-551)",
+   "verdict": "handled",
+   "proof": "caught at :626 as schema_dict at :621"
+  },
+  "ConfigManager.write_config::schema_dict": {
+   "can_raise": "MemoryError for the dict of the schema's fields (:273)",
+   "verdict": "handled",
+   "proof": "inside the try catching MemoryError (except :626): nothing staged, the answer (False, {})"
+  },
+  "ConfigManager.write_config::self._closed_for_reset": {
+   "can_raise": "what _closed_for_reset() raises: its pr.evt()'s small fixed allocation (asy_print_log.py's rows)",
+   "verdict": "handled",
+   "proof": "small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions); a REST route's call: Microdot's except Exception (ext/microdot.py:1533) and the webserver's errorhandler (asy_webserver_service.py:791) (conventions)"
+  },
+  "ConfigManager.write_config::self._commit_ready.clear": {
+   "can_raise": "nothing: Event.clear() stores one existing member (extmod/asyncio/event.py:24-25)",
+   "verdict": "unreachable",
+   "proof": ""
+  },
+  "ConfigManager.write_config::self._commit_ready.set": {
+   "can_raise": "nothing: Event.set() moves each waiter to the run queue and stores state (extmod/asyncio/event.py:16-22); TaskQueue pop and push allocate nothing (extmod/modasyncio.c)",
+   "verdict": "unreachable",
+   "proof": "the store replaces an existing member, so no instance map grows"
+  },
+  "ConfigManager.write_config::self._current": {
+   "can_raise": "nothing: _current() returns one of two attributes (:383-387)",
+   "verdict": "unreachable",
+   "proof": ""
+  },
+  "ConfigManager.write_config::self._flush_staged": {
+   "can_raise": "MemoryError for its coroutine (py/objgenerator.c:53-62); its body runs in its own task, whose except Exception (:417) holds it",
+   "verdict": "handled",
+   "proof": "caught at :657 as dict at :653"
+  },
+  "ConfigManager.write_config::tuple": {
+   "can_raise": "MemoryError for the tuple and its generator expression",
+   "verdict": "handled",
+   "proof": "caught at :626 as schema_dict at :621"
+  },
+  "ConfigManager.write_config::type": {
+   "can_raise": "nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033)",
+   "verdict": "unreachable",
+   "proof": "one argument; no allocation"
+  },
+  "ConfigManager.write_config::write.items": {
+   "can_raise": "MemoryError for the dict view (py/objdict.c:550-551)",
+   "verdict": "handled",
+   "proof": "caught at :657 as dict at :653"
+  },
+  "_as_bool::type": {
+   "can_raise": "nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033)",
+   "verdict": "unreachable",
+   "proof": "one argument; no allocation"
+  },
+  "_as_str::type": {
+   "can_raise": "nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033)",
+   "verdict": "unreachable",
+   "proof": "one argument; no allocation"
+  },
+  "_coerce_float::float": {
+   "can_raise": "MemoryError boxing the float (mp_obj_new_float); for an int argument nothing else (a huge int converts to inf, no raise)",
+   "verdict": "handled",
+   "proof": "check_val is exactly an int here (:87); small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions)"
+  },
+  "_coerce_float::type": {
+   "can_raise": "nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033)",
+   "verdict": "unreachable",
+   "proof": "one argument; no allocation"
+  },
+  "_coerce_int::float": {
+   "can_raise": "MemoryError boxing the float; as_int is an int, so nothing else",
+   "verdict": "handled",
+   "proof": "small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions)"
+  },
+  "_coerce_int::int": {
+   "can_raise": "ValueError for NaN and OverflowError for +-inf (py/objint.c, mp_obj_new_int_from_float); MemoryError for a result of 2**30 or more (a big int)",
+   "verdict": "handled",
+   "proof": "the ValueError and OverflowError are caught at :104 (None); the big int is small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions)"
+  },
+  "_coerce_int::type": {
+   "can_raise": "nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033)",
+   "verdict": "unreachable",
+   "proof": "one argument; no allocation"
+  },
+  "_special_bypass::any": {
+   "can_raise": "any() itself nothing (its iter_buf is on the C stack, py/modbuiltins.c:109-119); the generator expression it consumes is a heap object",
+   "verdict": "handled",
+   "proof": "val_special is a tuple or list here (:115), so the iteration cannot raise TypeError; the generator is small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions)"
+  },
+  "_special_bypass::type": {
+   "can_raise": "nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033)",
+   "verdict": "unreachable",
+   "proof": "one argument; no allocation"
+  },
+  "_stored_float::json.dumps": {
+   "can_raise": "MemoryError for its text (extmod/modjson.c:101); a float prints with no other raise",
+   "verdict": "handled",
+   "proof": "both callers hold it in a try catching MemoryError: write_config() :625 through compare_before_write()'s resolution (except :626) and :655 (except :657)"
+  },
+  "_stored_float::json.loads": {
+   "can_raise": "ValueError for text that is no JSON value (extmod/modjson.c:357); MemoryError for the float",
+   "verdict": "handled",
+   "proof": "the text is json.dumps() of a float a validator accepted, finite since every float field's bounds are finite (tests_scripts/test_config_schemas.py), so it parses back and the ValueError cannot occur; the MemoryError is caught at :626 or :657, as json.dumps at :132"
+  },
+  "check_cfg_get_default::isinstance": {
+   "can_raise": "TypeError for a classinfo that is no class or tuple of classes (py/objtype.c:1486)",
+   "verdict": "unreachable",
+   "proof": "classinfo is the tuple (tuple, list); isinstance() allocates nothing (that tuple is a small fixed allocation, conventions)"
+  },
+  "check_cfg_get_default::type_or_range_error": {
+   "can_raise": "what type_or_range_error() raises: its rows' small fixed allocations (a boxed float, a whole float's int)",
+   "verdict": "handled",
+   "proof": "type_or_range_error()'s rows (:296-312) test exact types before any operation, so only those allocations remain; check_cfg_get_default() runs in setup() :557 (boot) and in write_config() :623 (inside the try catching MemoryError, except :626)"
+  },
+  "checked_float::_coerce_float": {
+   "can_raise": "what _coerce_float() raises: the boxed float of an int (:91)",
+   "verdict": "handled",
+   "proof": "small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions)"
+  },
+  "checked_float::_special_bypass": {
+   "can_raise": "what _special_bypass() raises: its generator expression (:116)",
+   "verdict": "handled",
+   "proof": "small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions)"
+  },
+  "checked_float::type": {
+   "can_raise": "nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033)",
+   "verdict": "unreachable",
+   "proof": "one argument; no allocation"
+  },
+  "checked_int::_coerce_int": {
+   "can_raise": "what _coerce_int() raises: the big int and boxed float of a whole float (:103, :106)",
+   "verdict": "handled",
+   "proof": "small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions)"
+  },
+  "checked_int::_special_bypass": {
+   "can_raise": "what _special_bypass() raises: its generator expression (:116)",
+   "verdict": "handled",
+   "proof": "small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions)"
+  },
+  "checked_int::type": {
+   "can_raise": "nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033)",
+   "verdict": "unreachable",
+   "proof": "one argument; no allocation"
+  },
+  "checked_numeric::checked_float": {
+   "can_raise": "what checked_float() raises (its rows above)",
+   "verdict": "handled",
+   "proof": "small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions)"
+  },
+  "checked_numeric::checked_int": {
+   "can_raise": "what checked_int() raises (its rows above)",
+   "verdict": "handled",
+   "proof": "small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions)"
+  },
+  "compare_before_write::data.items": {
+   "can_raise": "MemoryError for the dict view (py/objdict.c:550-551, :562)",
+   "verdict": "handled",
+   "proof": "data is a dict here (:204); caught at :626 as schema_dict at :206"
+  },
+  "compare_before_write::fields.get": {
+   "can_raise": "TypeError for an unhashable key (dict_get_helper, py/objdict.c:309-340)",
+   "verdict": "unreachable",
+   "proof": "key is a key of the dict data, so hashable; get() returns the value or None and allocates nothing"
+  },
+  "compare_before_write::res": {
+   "can_raise": "what the resolution callable raises: write_config() passes only _stored_float (:624), whose rows leave MemoryError",
+   "verdict": "handled",
+   "proof": "both arguments are validated floats of a float field (the value :214 accepted, the stored one validated by setup() :569 or staged through _stored_float() :655); caught at :626"
+  },
+  "compare_before_write::resolution.get": {
+   "can_raise": "TypeError for an unhashable key (py/objdict.c:309-340)",
+   "verdict": "unreachable",
+   "proof": "resolution is a dict here (None tested on the same line) and key a str key of data"
+  },
+  "compare_before_write::schema_dict": {
+   "can_raise": "MemoryError for the dict of the schema's fields (schema_dict() :273)",
+   "verdict": "handled",
+   "proof": "sized by the const schema; the one caller, write_config() :625, holds it in its try catching MemoryError (except :626)"
+  },
+  "compare_before_write::type": {
+   "can_raise": "nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033)",
+   "verdict": "unreachable",
+   "proof": "one argument; no allocation"
+  },
+  "compare_before_write::type_or_range_error": {
+   "can_raise": "what type_or_range_error() raises: its small fixed allocations",
+   "verdict": "handled",
+   "proof": "caught at :626 as schema_dict at :206; value is any JSON value, which its exact-type tests take without a raise"
+  },
+  "make_dict::getattr": {
+   "can_raise": "AttributeError for a name nt lacks (mp_load_attr, py/runtime.c:1240-1295)",
+   "verdict": "unreachable",
+   "proof": "every caller passes the `_FIELDS` literal its namedtuple was built from (asy_bmp3xx_driver.py:396, asy_notification_service.py:367, asy_ntp_client.py:533, asy_scd30_driver.py:599, asy_sgp40_driver.py:648, asy_wifi_service.py:945), so each name is a field"
+  },
+  "make_dict::type": {
+   "can_raise": "nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033)",
+   "verdict": "unreachable",
+   "proof": "one argument; `.__name__` of a type is its qstr name, so nothing allocates"
+  },
+  "name_cfg::len": {
+   "can_raise": "nothing for a list",
+   "verdict": "unreachable",
+   "proof": "names is schema_names()' list"
+  },
+  "name_cfg::schema_names": {
+   "can_raise": "MemoryError for the names list (schema_names() :277)",
+   "verdict": "handled",
+   "proof": "the list has the schema's field count, one for every caller (the drivers' push tables at construction, asy_system_service.py:270 on a REST PUT): small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions)"
+  },
+  "type_or_range_error::_special_bypass": {
+   "can_raise": "what _special_bypass() raises: its generator expression (:116)",
+   "verdict": "handled",
+   "proof": "small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions)"
+  },
+  "type_or_range_error::checked_numeric": {
+   "can_raise": "what checked_numeric() raises (its rows above)",
+   "verdict": "handled",
+   "proof": "small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions)"
+  },
+  "type_or_range_error::len": {
+   "can_raise": "TypeError for an object with no len (mp_obj_len)",
+   "verdict": "unreachable",
+   "proof": "check_val is exactly a str here (:302); len() of a str allocates nothing"
+  },
+  "type_or_range_error::type": {
+   "can_raise": "nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033)",
+   "verdict": "unreachable",
+   "proof": "one argument; no allocation"
+  },
+  "ConfigManager.get_error_counter::self.pr.get_log": {
+   "can_raise": "what PrintLogHistory.get_log() raises (asy_print_log.py's rows): MemoryError growing its two lists to the configured history_length, and a small fixed allocation",
+   "verdict": "handled",
+   "proof": "get_error_counter() runs only inside WebserverService._write_errcount_entry() (handed over at asy_webserver_service.py:720, awaited at :1004), whose except Exception at :1005 logs the failure and writes this module's entry as unavailable"
+  },
+  "ConfigManager.reset_error_counter::self.pr.reset": {
+   "can_raise": "what PrintLogHistory.reset() or PrintLogHistoryStore.reset() raises (asy_print_log.py's rows): small fixed allocations",
+   "verdict": "handled",
+   "proof": "reset_error_counter() is called only by the ResetErrors fan-out, asyncio.gather(..., return_exceptions=True) at asy_webserver_service.py:871, which returns the raise as this store's outcome (extmod/asyncio/funcs.py:131-133); :876-880 log it and answer the key Failed"
+  }
+ }
+}

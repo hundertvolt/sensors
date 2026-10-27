@@ -18,7 +18,7 @@ class _ResultNote(Protocol):
     def __call__(self, text: str, *, recovery: bool = False) -> None: ...
 
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("bus_hazard_concurrency", "bmp3xx", "fram")
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("bus_hazard_concurrency", "bmp3xx", "fram", "setup_resets")
 
 # @tunable l3.bus_concurrency_long_script_timeout_s = 120.0
 _LONG_SCRIPT_TIMEOUT_S = 120.0
@@ -41,6 +41,13 @@ _REC_SDA_STUCK = module_int_const(SRC_DIR, "asy_i2c_driver.py", "_REC_SDA_STUCK"
 _ERR_FRAM_CHIP_LOST = module_int_const(SRC_DIR, "asy_fram_driver.py", "_ERR_FRAM_CHIP_LOST")
 _RR_REBOOT = module_int_const(SRC_DIR, "asy_system_service.py", "_RR_REBOOT")
 _RR_FRAM_ERASED = module_int_const(SRC_DIR, "asy_system_service.py", "_RR_FRAM_ERASED")
+# Each chip driver's soft reset as its setup writes it: (to the chip's own address, else the general call), the bytes.
+_SETUP_RESETS = {
+    "scd30": (True, "d304"),  # soft reset 0xD304, SCD30 Interface Description 1.4.10
+    "bmp3xx": (True, "7eb6"),  # CMD register 0x7E, softreset 0xB6, BMP3xx DS001 4.3.22
+    "isl29125": (True, "0046"),  # 0x46 written to register 0x00 resets every register, ISL29125 FN8424 p9
+    "sgp40": (False, "06"),  # the general call reset to address 0x00, SGP40 datasheet Table 17
+}
 _TEST_BAND = frozenset(code("E", name) for name in ("TEST_SEED_A", "TEST_SEED_B", "TEST_SEED_C"))  # the command scripts' writes
 # The command scripts' scratch config directory: their reset ends them before their own cleanup.
 _REMOVE_COMMAND_SCRATCH = "import os\nif 'hwtest-scratch' in os.listdir():\n    for n in os.listdir('hwtest-scratch/'):\n        os.remove('hwtest-scratch/' + n)\n    os.rmdir('hwtest-scratch/')\nprint('SCRATCH_REMOVED')\n"
@@ -123,10 +130,12 @@ def test_cross_device_concurrent_sessions_genuinely_interleave(board: Board, scd
     assert _count(facts, "scd_reads") > 0, "the SCD30 completed no read - its loop never progressed"
     assert _count(facts, "interleaved_total") >= _count(facts, "sgp_cycles"), f"only {facts['interleaved_total']} SCD30 reads inside {facts['sgp_cycles']} SGP40 windows - the bus lock is held too broadly"
     assert facts["reset_sibling_errors"] == 0, f"{facts['reset_sibling_errors']} sibling read failure(s) around the SCD30 soft reset"
+    assert _count(facts, "reset_sibling_reads") > 0, "no sibling read completed around the SCD30 soft reset - the rung raced nothing"
     resumed = facts["scd30_resumed"]
     assert isinstance(resumed, int), f"the SCD30 reported no measurement after its soft reset: {facts}"
     assert resumed <= _count(facts, "scd30_resume_bound_ms"), f"the SCD30 measured again {resumed} ms after its reset, bound {facts['scd30_resume_bound_ms']} ms"
     assert facts["heater_off_sibling_errors"] == 0, f"{facts['heater_off_sibling_errors']} sibling read failure(s) around the SGP40 heater-off"
+    assert _count(facts, "heater_off_sibling_reads") > 0, "no sibling read completed around the SGP40 heater-off - the rung raced nothing"
     assert facts["sgp_after_heater_off"] is not None, "the SGP40 gave no reading after its heater-off"
     _no_errors(facts, "SCD30 x SGP40 interleave")
 
@@ -148,6 +157,7 @@ def test_bmp3xx_same_device_read_write_concurrency(board: Board) -> None:
     facts = _run(board, "bmp3xx_same_device_rw_concurrency.py", _SCRIPT_TIMEOUT_S, bounds=True)
     assert facts["reads"] == facts["reads_planned"], f"reader: {facts['reads']} of {facts['reads_planned']}"
     assert facts["writes_ok"] == facts["writes_planned"], f"writer: {facts['writes_ok']} of {facts['writes_planned']}"
+    assert _count(facts, "reset_window_reads") > 0, "no read round ran inside the reset rung's window - the rung raced nothing"
     assert facts["post_reset_valid"] is True, "no valid reading after the reset rung"
     assert facts["osr_after"] == facts["osr_configured"], f"OSR after the reset rung x{facts['osr_after']}, configured x{facts['osr_configured']}"
     _no_errors(facts, "BMP3xx read-vs-write and reset rung")
@@ -193,6 +203,7 @@ def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads(board: 
     assert facts["write_count"] == facts["write_cycles_planned"], f"ISL29125 completed {facts['write_count']} of {facts['write_cycles_planned']} writes"
     assert _count(facts, "scd_reads") > 0, "the SCD30 completed no read"
     assert _count(facts, "sgp_reads") > 0, "the SGP40 completed no read"
+    assert _count(facts, "overlapped_reads") > 0, "no sibling read overlapped an ISL29125 write window - the writes raced nothing"
     _no_errors(facts, "ISL29125 write among sibling reads")
 
 
@@ -265,6 +276,26 @@ def test_a_held_sda_line_is_cleared_and_every_device_answers(board: Board, resul
 
 
 # Bench counterpart: none, E.6.6 row `flash-only-bus-checks`
+def test_every_chip_setup_resets_it_once_after_a_read_identified_it(board: Board, result_note: _ResultNote) -> None:
+    # Each I2C chip's driver setup() with its transfers recorded: one soft reset, after the chip's first read, then a
+    # valid read. Volatile writes only, so no wear.
+    setups = _table(_run(board, "setup_resets_each_chip_once.py", _SHORT_SCRIPT_TIMEOUT_S, bounds=True), "setups")
+    assert setups, "the script set up no I2C chip"
+    result_note(f"set up {sorted(setups)}")
+    for label, setup in sorted(setups.items()):
+        assert isinstance(setup, dict) and setup["driver"] in _SETUP_RESETS, f"{label}: no reset known for {setup}"
+        own, reset = _SETUP_RESETS[str(setup["driver"])]
+        address, log = setup["address"], setup["log"]
+        assert isinstance(address, int) and isinstance(log, list), f"{label}: {setup}"
+        target = address if own else 0x00
+        resets = [i for i, (op, to, data) in enumerate(log) if op == "w" and to == target and data == reset]
+        assert len(resets) == 1, f"{label}: {len(resets)} reset write(s) {reset} to {target:#04x} in its setup, expected one: {log}"
+        reads = [i for i, (op, to, _data) in enumerate(log) if op == "r" and to == address]
+        assert reads and reads[0] < resets[0], f"{label}: reset before any read identified it (reads at {reads[:3]}, reset at {resets[0]})"
+        assert setup["answer"] is None, f"{label}: the read after its setup failed: {setup['answer']}"
+
+
+# Bench counterpart: none, E.6.6 row `flash-only-bus-checks`
 def test_bmp3xx_alone_survives_a_general_call(board: Board, result_note: _ResultNote) -> None:
     # A lone BMP3xx through general-call resets: volatile registers only, restored by a soft reset at the end.
     facts = _run(board, "bmp3xx_alone_survives_a_general_call.py", _SHORT_SCRIPT_TIMEOUT_S, bounds=True)
@@ -282,6 +313,7 @@ def test_fram_same_device_read_write_concurrency(board: Board) -> None:
     # FRAM has no write wear (10^13 operations per byte); the reads are of production bytes, after the evidence save.
     facts = _run(board, "fram_same_device_rw_concurrency.py", _SCRIPT_TIMEOUT_S)
     assert facts["initialized"] is True, "the FRAM did not set up"
+    assert facts["baseline_read"] is True, "the baseline read failed, so the reads were compared against no real bytes"
     assert facts["reads_ok"] == facts["reads_planned"], f"{facts['reads_ok']} of {facts['reads_planned']} reads matched the baseline"
     assert facts["write_ok"] is True and facts["write_readback_ok"] is True, f"the scratch write did not land intact: {facts}"
     _no_errors(facts, "FRAM read-vs-write")
@@ -301,7 +333,7 @@ def test_fram_cs_pin_hijack_fault_injection_and_recovery(board: Board) -> None:
     assert write["recovered"] and read["recovered"], f"the driver did not recover: {write}, {read}"
     assert wren["readback_ok"] is True, f"the write after a dropped WREN did not land (the driver's one WREN retry): {wren}"
     assert lost["initialized_after"] is False, f"CS held inactive across two writes: the chip was never declared lost: {lost}"
-    assert _ERR_FRAM_CHIP_LOST in lost["errnos"], f"no chip-lost entry (errno {_ERR_FRAM_CHIP_LOST}) in the driver's log: {lost['errnos']}"
+    assert lost["errnos"].count(_ERR_FRAM_CHIP_LOST) == 1, f"not exactly one chip-lost entry (errno {_ERR_FRAM_CHIP_LOST}) in the driver's log: {lost['errnos']}"
     assert lost["setup_after_release"] is True and lost["recovered"] is True, f"CS released, setup() did not bring the chip back: {lost}"
     assert facts["system_task_exceptions"] == [], f"a task ended with an exception under the fault: {facts['system_task_exceptions']}"
 

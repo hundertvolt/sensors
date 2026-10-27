@@ -10,7 +10,7 @@ import heap_map
 import http_client
 import pytest
 from error_log_helpers import assert_no_new_task_raised, read_live_system_log
-from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, SRC_DIR, boot_lines, configured_max_connections, crash_lines, device_toml, get_routes, parse_facts, wait_until
+from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, SRC_DIR, boot_lines, configured_max_connections, crash_lines, device_toml, get_routes, parse_facts, wait_for_boot, wait_until
 from heap_bounds import WORST_CASE_ALLOCATION
 from soak_durations import SOAK_DURATION_SECONDS
 
@@ -31,6 +31,8 @@ _HEADROOM_SCRIPT_TIMEOUT_S = 120.0
 _PROBE_MAP_TOLERANCE_BLOCKS = 2
 # @tunable l3.memory_stress_presence_timeout_s = 30.0
 _PRESENCE_TIMEOUT_S = 30.0
+# @tunable l3.memory_stress_boot_timeout_s = 30.0
+_BOOT_TIMEOUT_S = 30.0  # the boot line after the soak's first hard reset
 # Past the boot's one-time setup lines, so a DebugLevel at or above 3 cannot print them into the window as a reboot.
 # @tunable l3.memory_stress_boot_settle_s = 30.0
 _BOOT_SETTLE_S = 30.0
@@ -168,13 +170,14 @@ def test_loop_lag_under_combined_load_stays_under_the_uart_reply_budget(board: "
         stop.set()
         load.join(2 * _LOOP_LAG_SCRIPT_TIMEOUT_S)
     bound_us = smallest_hard_consumer(load_device(device_toml()), SRC_DIR).ms * 1000  # the build rule's and the twin scenario's one source
-    lag_max, lag_p99 = facts.get("lag_max_us"), facts.get("lag_p99_us")
+    lag_max, lag_p99, samples = facts.get("lag_max_us"), facts.get("lag_p99_us"), facts.get("samples")
     result_note(f"loop lag under combined load: max {lag_max} us, p99 {lag_p99} us over {facts.get('samples')} samples (bound {bound_us} us); answers per route {served}")
     assert not load.is_alive() and not failures, f"the HTTP load did not end cleanly: {failures}"
     assert served and all(served.values()), f"GET routes never served under the load: {sorted(route for route, count in served.items() if not count)} of {len(served)} routes"
     assert facts.get("main_running") is True, f"the shipped main() ended inside the window: {facts}"
     writes = facts.get("fram_writes")
     assert facts.get("fram_write_failures") == 0 and isinstance(writes, int) and writes > 0, f"the FRAM load did not run cleanly: {facts}"
+    assert isinstance(samples, int) and samples > 0, f"the lag probe recorded no sample, so the {bound_us} us bound was checked against nothing: {facts}"
     assert isinstance(lag_max, int) and lag_max <= bound_us, f"the loop lagged {lag_max} us, past the {bound_us} us smallest hard consumer: {facts}"
 
 
@@ -197,6 +200,10 @@ def test_single_core_timing_headroom_holds_under_normal_full_task_load(board: "B
     duration_s = SOAK_DURATION_SECONDS[duration]
     # SYSTEM's task-end log is read before and after the window, each read interrupting the firmware, so each is
     # followed by a hard reset: at DebugLevel 0 a task that died raising prints nothing (SPECIFICATION.md I.4(e)).
+    # The first read waits for a fresh boot's line, so it never lands mid-boot after the session's own reset.
+    board.hard_reset()
+    wait_until(board.is_device_present, timeout_s=_PRESENCE_TIMEOUT_S, description="board present again after hard_reset()")
+    wait_for_boot(board, _BOOT_TIMEOUT_S)
     before = read_live_system_log(board)
     board.hard_reset()
     wait_until(board.is_device_present, timeout_s=_PRESENCE_TIMEOUT_S, description="board present again after hard_reset()")

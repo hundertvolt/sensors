@@ -15,7 +15,7 @@ _SHARED_NAMES = {"machine", "network", "neopixel", "rp2"}  # twin fakes standing
 _FLAG_TABLE = (
     "--test-hold-closing-slot", "--test-stall-loop-ms", "--test-conn-status-interval-ms", "--test-fault-status-interval-ms",
     "--test-shutdown-hang", "--test-flash-stall-max", "--test-uart-over-cap", "--test-hold-system-entry", "--test-kbd-traceback",
-    "--test-loop-lag-ms", "--test-drop-timer-fire", "--test-watchdog-fault",
+    "--test-loop-lag-ms", "--test-drop-timer-fire", "--test-watchdog-fault", "--test-defer-faults", "--test-pin-send-buffer",
 )
 
 

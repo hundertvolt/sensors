@@ -209,7 +209,7 @@ def _cfg_values(values: "Mapping[str, Mapping[str, JsonValue]]") -> "Mapping[str
     # Every module's get_dict_cfg() returns make_dict()'s {name: {field: value}}; this takes the one inner dict.
     for inner in values.values():
         return inner
-    return {}
+    return {}  # Unreachable for every module here (each answers make_dict()'s {name: {...}}) - kept so every path returns for the type checker
 
 
 class _PieceWriter:
@@ -655,7 +655,7 @@ class WebserverService:
             for field in group.fields:
                 if field in values:
                     result[field] = values[field]
-                elif "error" in values:  # the module's unavailable marker (Part C.6), sent in place of each field
+                elif len(values) == 1 and values.get("error") == UNAVAILABLE:  # the unavailable marker's whole shape (Part C.6), sent for each field
                     result[field] = values
         return result
 
@@ -946,7 +946,7 @@ class WebserverService:
                 except Exception as e:  # a fault the request raised (SPECIFICATION.md A.5)
                     report_if_fatal(e)
                     await self._trace_before_close(self.pr.err_s("Unexpected error serving connection:", e, errno=_ERR_UNEXPECTED))
-                else:  # no arm persisted this connection's one entry, so a drop trace may (C.7)
+                else:  # no arm traced this connection's one entry, so a drop trace may (C.7)
                     if head_refused[0]:
                         await self._note_drop(_WRN_HTTP_BAD_HEAD, "Request head refused")
                     elif peer_gone[0]:

@@ -363,14 +363,6 @@ class TickSeconds:
         self._last = time.ticks_ms()
 
 
-def _checked_write_results(results: "WriteValidity") -> "WriteValidity":
-    # Lives out here so the raise isn't inside _set_dict_cfg's own try block: an overriding
-    # _set_mgr_cfg could return a malformed shape, which has to surface as that try's logged failure.
-    if not isinstance(results, dict):
-        raise TypeError("_set_mgr_cfg returned a non-dict result")
-    return results
-
-
 _utc_valid = False  # one writer (the NTP client's sync success), no await between read and use
 
 
@@ -411,11 +403,12 @@ class SensorReader:
         max_module_error: int = 5,
         name_ext: str = "",
         log: LogConfig = DEFAULT_LOG,
+        logger: "PrintLogHistory | None" = None,
     ) -> None:
-        # name_ext="" (every module today) reproduces `name` unchanged - see instance_name()'s own
-        # comment and SPECIFICATION.md Part C.14. Resolved once here, so self.pr.name and self.name agree.
+        # name_ext="" (every module today) reproduces `name` unchanged - see instance_name()'s own comment and SPECIFICATION.md
+        # Part C.14. Resolved once here: self.pr.name agrees with it unless logger= shares a sibling's logger.
         resolved_name = instance_name(name, name_ext)
-        self.pr = make_logger(log, resolved_name)
+        self.pr = logger if logger is not None else make_logger(log, resolved_name)  # reach-through: reuse a directly-bound sibling object's own logger
         self.name = resolved_name  # matches self.pr.name - the _ModuleLike registration shape
         # asy_webserver_service.py's registration lists key on (sensors=/error_sources=/settings=).
         self._datastruct = init_data
@@ -506,11 +499,9 @@ class SensorReader:
             if old_values is None:
                 old_values = {}
 
-            try:  # _set_mgr_cfg is an overridable extension point - the call itself could misbehave on a
-                # subclass override (mirrors _get_dict_cfg's own _get_mgr_cfg handling); the isinstance
-                # check below extends that defense to a malformed return shape, not just a raise.
+            try:  # _set_mgr_cfg is an overridable extension point - the call itself could raise on a subclass
+                # override (mirrors _get_dict_cfg's own _get_mgr_cfg handling); its return shape is mypy's (D.2).
                 persisted, results = await self._set_mgr_cfg(data, cfg_vals)
-                results = _checked_write_results(results)
             except Exception as e:
                 report_if_fatal(e)
                 await self.pr.err_s("Error writing config dict:", e, errno=_ERR_CFG_SET_RAISED)
@@ -692,7 +683,6 @@ class SensorReader:
 
         try:
             persisted, res = await self._set_mgr_cfg({key: recovered}, cfg_vals)
-            res = _checked_write_results(res)
         except Exception as e:
             report_if_fatal(e)
             await self.pr.err_s("Error correcting", key, "after failed push:", e, errno=_ERR_RECOVERY_WRITE_RAISED)

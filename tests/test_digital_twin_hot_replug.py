@@ -9,10 +9,12 @@ sys.path.insert(0, "digital_twin")  # see tests/test_digital_twin_sgp40.py's own
 sys.path.insert(0, "digital_twin/unixport")  # the UDP shim's directory (digital_twin/README.md "_unix_port_udp_addr_shim.py")
 
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
+from unix_port_idle_poll import skip_idle_flag_polls
 from unix_port_poll_prewarm import prewarm_poll_set
 
 prewarm_poll_set()  # before any poll object is registered (digital_twin/README.md "Known gaps")
 patch_asy_udp_socket_for_unix_port()  # before any UDPSocket is constructed (digital_twin/README.md "_unix_port_udp_addr_shim.py")
+skip_idle_flag_polls()  # no 1 ms poll wait per step while a flag waits, as on rp2 (digital_twin/README.md "unix_port_idle_poll.py")
 
 import asyncio  # noqa: E402 - imported after the prewarm and the UDP shim
 
@@ -28,7 +30,7 @@ from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_leve
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _task_names import task_names_of  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
-from _twin_devices import device_with, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
+from _twin_devices import distinct_wirings, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
 
 try:
     from typing import TYPE_CHECKING, cast
@@ -108,8 +110,47 @@ def _driven_modules() -> "list[object]":
     return [m for name, m in sorted(sys.modules.items()) if (name.startswith("asy_") or name in ("machine", "network")) and getattr(m, "asyncio", None) is asyncio]
 
 
+def _power_cycled_bmp3xx_on(device: str) -> None:
+    # The test above on one device.
+    plan = wiring_plan(device)
+    ((bus_name, attachment),) = [(bus, a) for bus, attachments in sorted(plan["buses"].items()) for a in attachments if a["driver"] == "bmp3xx"][:1]
+
+    async def scenario(module: "ModuleType", clock: "DrivenTime") -> None:
+        watchdog = await _driven(clock, f"{device}'s boot never finished", _boot(module, device))
+        reader = module.bmp3xx
+        bus = machine.peripheral(bus_name)
+        assert isinstance(bus, machine.I2C)
+        chip = bus.devices[attachment["address"]]
+
+        async def body() -> None:
+            sysfunct = module.sysfunct
+            await _until(clock, f"{device}'s BMP3XX never read", lambda: reader._datastruct.Pres is not None)
+            osr, config = chip._osr, chip._config
+            tasks = list(sysfunct._tasks)
+            chip.power_cycle()
+            before = reader._datastruct
+            await _until(clock, f"{device}'s BMP3XX never read after the power cycle", lambda: reader._datastruct is not before and reader._datastruct.Pres is not None)
+            log = (await reader.get_error_counter())["BMP3XX"]
+            resets = [log["ErrNum"][i] for i in range(len(log["ErrNum"])) if log["ErrType"][i] == "W"]
+            assert resets == [code("W", "BMP_CHIP_RESET")], f"{device}: the power cycle left {log}"
+            assert (chip._osr, chip._config) == (osr, config), f"{device}: OSR/CONFIG {chip._osr:#x}/{chip._config:#x} after the reset, not {osr:#x}/{config:#x}"
+            assert list(sysfunct._tasks) == tasks, "a task ended over the power cycle"
+            assert watchdog.would_have_triggered_count == 0
+
+        await _supervised(clock, module, reader, body)
+
+    run_timed(_run_on_clock(device, scenario), timeout_s=_RUN_BOUND_S)
+
+
 def _replug(driver: str) -> None:
-    device = device_with(driver)
+    for device in distinct_wirings(driver):
+        machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
+        network.reset_test_state()
+        _replug_on(device, driver)
+
+
+def _replug_on(device: str, driver: str) -> None:
+    # One device's replug of the driver's chip.
     plan = wiring_plan(device)
     ((bus_name, attachment),) = [(bus, a) for bus, attachments in sorted(plan["buses"].items()) for a in attachments if a["driver"] == driver][:1]
     key = driver + ("_" + attachment["name_ext"] if attachment["name_ext"] else "")
@@ -197,35 +238,10 @@ def test_every_bus_attached_driver_recovers_from_a_replug_without_a_reboot() -> 
 def test_a_power_cycled_bmp3xx_is_reconfigured_without_a_ladder_step() -> None:
     # A supply blip resets OSR/CONFIG behind the driver's back: the next cycle notices, persists one W BMP_CHIP_RESET
     # and writes its stored settings back; the task never ends (SPECIFICATION.md C.7's chip-reset row).
-    device = device_with("bmp3xx")
-    plan = wiring_plan(device)
-    ((bus_name, attachment),) = [(bus, a) for bus, attachments in sorted(plan["buses"].items()) for a in attachments if a["driver"] == "bmp3xx"][:1]
-
-    async def scenario(module: "ModuleType", clock: "DrivenTime") -> None:
-        watchdog = await _driven(clock, f"{device}'s boot never finished", _boot(module, device))
-        reader = module.bmp3xx
-        bus = machine.peripheral(bus_name)
-        assert isinstance(bus, machine.I2C)
-        chip = bus.devices[attachment["address"]]
-
-        async def body() -> None:
-            sysfunct = module.sysfunct
-            await _until(clock, f"{device}'s BMP3XX never read", lambda: reader._datastruct.Pres is not None)
-            osr, config = chip._osr, chip._config
-            tasks = list(sysfunct._tasks)
-            chip.power_cycle()
-            before = reader._datastruct
-            await _until(clock, f"{device}'s BMP3XX never read after the power cycle", lambda: reader._datastruct is not before and reader._datastruct.Pres is not None)
-            log = (await reader.get_error_counter())["BMP3XX"]
-            resets = [log["ErrNum"][i] for i in range(len(log["ErrNum"])) if log["ErrType"][i] == "W"]
-            assert resets == [code("W", "BMP_CHIP_RESET")], f"{device}: the power cycle left {log}"
-            assert (chip._osr, chip._config) == (osr, config), f"{device}: OSR/CONFIG {chip._osr:#x}/{chip._config:#x} after the reset, not {osr:#x}/{config:#x}"
-            assert list(sysfunct._tasks) == tasks, "a task ended over the power cycle"
-            assert watchdog.would_have_triggered_count == 0
-
-        await _supervised(clock, module, reader, body)
-
-    run_timed(_run_on_clock(device, scenario), timeout_s=_RUN_BOUND_S)
+    for device in distinct_wirings("bmp3xx"):
+        machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
+        network.reset_test_state()
+        _power_cycled_bmp3xx_on(device)
 
 
 if __name__ == "__main__":

@@ -130,7 +130,7 @@ _VAL_FRC_WINDOW = const((("FRCWindow", "int", 60, 20, 3600, None),))
 # @web AmbPres section=sensors submitGroup=self label="Ambient Pressure (starts continuous measurement)" unit="hPa" special:0="Compensation off / use Altitude" alwaysExecuted=true
 # @web Altitude section=sensors submitGroup=self label="Altitude above sea level" unit="m" description="Only used while Ambient Pressure is 0; a pressure value overrides it." ignoredWhenSet=AmbPres
 # Interface Description 1.4.6 and its FRC section (p14), Low Power Mode note (6 min / 5 intervals), Field Calibration note (the configured interval).
-# @web ForceCalRef section=sensors submitGroup=self label="Forced Calibration Reference" unit="ppm" description="A calibration run, carried out on every Apply. Only valid after continuous measurement at the configured interval for 6 minutes or 5 intervals, whichever is longer, in stable air of known CO2 (400-2000 ppm). FRC Readiness shows when that holds." alwaysExecuted=true
+# @web ForceCalRef section=sensors submitGroup=self label="Forced Calibration Reference" unit="ppm" description="A calibration run, carried out whenever a value is entered and applied. Only valid after continuous measurement at the configured interval for 6 minutes or 5 intervals, whichever is longer, in stable air of known CO2 (400-2000 ppm). FRC Readiness shows when that holds." alwaysExecuted=true
 # @web SelfCal section=sensors submitGroup=self label="Automatic Self-Calibration" description="Needs 7 days of uninterrupted power with at least 1 hour of fresh air every day; a power loss in the first 7 days restarts the search."
 # @web FRCNoise section=sensors submitGroup=self label="FRC Noise Floor" unit="ppm"
 # @web FRCRate section=sensors submitGroup=self label="FRC Change-Rate Limit" unit="ppm/min"
@@ -276,7 +276,7 @@ class SCD30_Reader(SensorReaderConfig):
         # TempOffset compares in chip ticks; the primitive applies the rounding only to a value the schema validated as a float.
         resolution = {"TempOffset": _temp_offset_ticks}
         outcome = compare_before_write(rest, cfg_vals, current, always=("AmbPres", "ForceCalRef"), resolution=resolution)  # type: ignore[arg-type]  # _temp_offset_ticks takes TempOffset's validated float, not any CfgValue
-        if outcome is None:
+        if outcome is None:  # Unreachable: rest is a dict, and compare_before_write() answers None only for a non-dict - kept to narrow the Optional for the type checker
             return False, {}
         write, results = outcome
         for key, result in results.items():

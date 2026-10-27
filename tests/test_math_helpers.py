@@ -55,11 +55,12 @@ def test_wet_bulb_humidity_above_range() -> None:
 
 
 def test_wet_bulb_boundary_values_accepted() -> None:
-    # The cold-dry corner line's two end points and the far edge (Stull 2011, Fig. 3).
-    assert mh.wet_bulb_temperature(-20.0, 75.0) is not None
-    assert mh.wet_bulb_temperature(10.0, 5.0) is not None
-    assert mh.wet_bulb_temperature(50.0, 5.0) is not None
-    assert mh.wet_bulb_temperature(50.0, 99.0) is not None
+    # The cold-dry corner line's two end points and the far edge (Stull 2011, Fig. 3), each against Stull 2011's eq. 1
+    # evaluated by hand: T atan(0.151977 (RH + 8.313659)^0.5) + atan(T + RH) - atan(RH - 1.676331)
+    # + 0.00391838 RH^1.5 atan(0.023101 RH) - 4.686035.
+    for temperature, humidity, expected in ((-20.0, 75.0, -20.949), (10.0, 5.0, 0.608), (50.0, 5.0, 20.909), (50.0, 99.0, 50.035)):
+        value = mh.wet_bulb_temperature(temperature, humidity)
+        assert value is not None and abs(value - expected) < 0.001, (temperature, humidity, value)
 
 
 def test_wet_bulb_no_exception_on_extreme_inputs() -> None:

@@ -134,9 +134,12 @@ describe.each(DEVICE_IDS)("%s's site", (device) => {
 
     it("sets the Wi-Fi identity, the Wi-Fi LED and the NTP server", () => {
         const networking = sectionOf(defs, "networking");
-        for (const fieldKey of ["SSID", "PW", "LEDWifiOn", "NTPHost"]) {
-            expect(writableGroupWith(networking, fieldKey), fieldKey).toBeDefined();
-        }
+        // Each field's submitted group and its own kind: a field a submitted group shows read-only is not settable.
+        const placed = Object.fromEntries(["SSID", "PW", "LEDWifiOn", "NTPHost"].map((fieldKey) => {
+            const group = writableGroupWith(networking, fieldKey);
+            return [fieldKey, [group?.key, group?.fields.find((field) => field.key === fieldKey)?.kind]];
+        }));
+        expect(placed).toEqual({ SSID: ["identity", "string"], PW: ["identity", "string"], LEDWifiOn: ["wifiLed", "toggle"], NTPHost: ["ntp", "string"] });
     });
 
     it("sets the system settings and sends reboot, bootloader and backup-pause commands", () => {

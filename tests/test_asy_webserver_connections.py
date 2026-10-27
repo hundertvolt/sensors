@@ -73,7 +73,26 @@ _next_port = _PORT_BASE
 
 
 # Every run() is bounded in real time, so a defect under test fails fast instead of stalling the suite.
+# @tunable l1.asy_webserver_connections_run_limit_s = 30.0
 _RUN_LIMIT_S = 30.0
+# @tunable l1.asy_webserver_connections_per_call_s = 1.0
+_PER_CALL_S = 1.0  # _make_service()'s per-call timeout for a case that sets none
+# @tunable l1.asy_webserver_connections_outer_cap_s = 2.0
+_OUTER_CAP_S = 2.0
+# @tunable l1.asy_webserver_connections_stuck_per_call_s = 0.5
+_STUCK_PER_CALL_S = 0.5  # what each unsendable response's spinning write waits out
+# @tunable l1.asy_webserver_connections_eof_bound_s = 2.0
+_EOF_BOUND_S = 2.0
+# @tunable l1.asy_webserver_connections_response_bound_s = 5.0
+_RESPONSE_BOUND_S = 5.0
+# @tunable l1.asy_webserver_connections_reach_ms = 50
+_REACH_MS = 50  # a started serve task reaches its listen, or its spinning send
+# @tunable l1.asy_webserver_connections_until_poll_ms = 5
+_UNTIL_POLL_MS = 5
+# @tunable l1.asy_webserver_connections_until_polls = 400
+_UNTIL_POLLS = 400
+# @tunable l1.asy_webserver_connections_feeder_tick_ms = 10
+_FEEDER_TICK_MS = 10
 
 
 # ---------------------------------------------------------------------------
@@ -354,7 +373,7 @@ class _Feeder:
     async def run(self) -> None:
         last = time.ticks_ms()
         while self.running:
-            await asy_webserver_service.asyncio.sleep_ms(10)  # on a DrivenTime block's clock inside one; the gap stays real
+            await asy_webserver_service.asyncio.sleep_ms(_FEEDER_TICK_MS)  # on a DrivenTime block's clock inside one; the gap stays real
             now = time.ticks_ms()
             self.worst_ms = max(self.worst_ms, time.ticks_diff(now, last))
             last = now
@@ -499,8 +518,8 @@ async def _log(service: WebserverService) -> "tuple[int, list[tuple[int, str]]]"
 def _make_service(
     *,
     max_connections: int = _MAX_CONNECTIONS,
-    per_call_timeout_s: float = 1.0,
-    outer_cap_s: float = 2.0,
+    per_call_timeout_s: float = _PER_CALL_S,
+    outer_cap_s: float = _OUTER_CAP_S,
     debug: int | None = None,
     uptime: "_Uptime | None" = None,
     sensors: "Sequence[_ModuleLike]" = (),
@@ -540,7 +559,7 @@ async def _refused_or_eof(port: int) -> bool:
     try:
         writer.write(_GET_STATUS)
         await writer.drain()
-        return await asyncio.wait_for(reader.read(-1), 2.0) == b""
+        return await asyncio.wait_for(reader.read(-1), _EOF_BOUND_S) == b""
     except OSError as e:
         if e.errno not in _REFUSED_OR_RESET:
             raise
@@ -594,10 +613,10 @@ def _trickle(data: bytes, delay_s: float) -> "list[tuple[float, bytes]]":
 
 
 async def _until(predicate: "Callable[[], Awaitable[bool]]") -> bool:
-    for _ in range(400):
+    for _ in range(_UNTIL_POLLS):
         if await predicate():
             return True
-        await asyncio.sleep_ms(5)
+        await asyncio.sleep_ms(_UNTIL_POLL_MS)
     return False
 
 
@@ -994,7 +1013,7 @@ def test_cancelling_the_serve_task_closes_the_listening_port() -> None:
     async def scenario() -> "tuple[bool, bool, bytes, bool, bool, bool, bool]":
         await service.setup()
         task = service.start_asy_serve()
-        await asyncio.sleep_ms(50)  # the start's own bind and listen
+        await asyncio.sleep_ms(_REACH_MS)  # the start's own bind and listen
         listening = not _can_listen(port)
         reader, writer = await asyncio.open_connection("127.0.0.1", port)
         try:
@@ -1006,7 +1025,7 @@ def test_cancelling_the_serve_task_closes_the_listening_port() -> None:
                 pass
             writer.write(_GET_STATUS)
             await writer.drain()
-            response = await asyncio.wait_for(reader.read(-1), 5.0)
+            response = await asyncio.wait_for(reader.read(-1), _RESPONSE_BOUND_S)
         finally:
             writer.close()
         refused = await _refused_or_eof(port)
@@ -1155,14 +1174,15 @@ def test_a_handler_exception_prints_nothing_at_level_zero_and_one_gated_line_abo
     assert [line[1] for line in lines] == ["Microdot caught:", "Unhandled exception in route handler:"], lines
     assert all(str(line[2]) == "probe" for line in lines), lines
     status, count, lines = exhausted
-    assert (status, count, [line[:2] for line in lines]) == (500, 3, [("WEBSERVER", "Microdot caught:")]), exhausted
-    assert str(lines[0][2]) == "injected for the handler"
+    # At level 0 a MemoryError keeps both on the console, each with its text: Microdot's print and the catch-all's line.
+    assert (status, count, [line[:2] for line in lines]) == (500, 3, [("WEBSERVER", "Microdot caught:"), ("WEBSERVER", sensor.exc)]), exhausted
+    assert [str(line[-1]) for line in lines] == ["injected for the handler"] * 2, lines
 
 
 def test_sends_the_stack_cannot_queue_end_at_the_per_call_timeout() -> None:
     # lwIP's queue can fail a send with room left (POLLOUT at tcp_sndbuf() > 0): each stuck write spins one round per
     # attempt until the per-call timeout, other tasks served each round (SPECIFICATION.md A.5).
-    service = _make_service(per_call_timeout_s=0.5, outer_cap_s=2.0)
+    service = _make_service(per_call_timeout_s=_STUCK_PER_CALL_S, outer_cap_s=_OUTER_CAP_S)
     stuck = [_EagainWriter(10**9) for _ in range(_MAX_CONNECTIONS - 1)]
     feeder = _Feeder()
 
@@ -1192,7 +1212,7 @@ def test_sends_the_stack_cannot_queue_end_at_the_per_call_timeout() -> None:
 
 
 def test_a_send_refused_a_thousand_times_then_accepted_completes() -> None:
-    service = _make_service(per_call_timeout_s=0.5, outer_cap_s=2.0)
+    service = _make_service(per_call_timeout_s=_STUCK_PER_CALL_S, outer_cap_s=_OUTER_CAP_S)
     writer = _EagainWriter(1000)
 
     async def scenario() -> "tuple[tuple[int, list[tuple[int, str]]], int]":
@@ -1209,13 +1229,13 @@ def test_a_send_refused_a_thousand_times_then_accepted_completes() -> None:
 
 
 def test_slots_held_by_unsendable_responses_come_back() -> None:
-    service = _make_service(per_call_timeout_s=0.5, outer_cap_s=2.0)
+    service = _make_service(per_call_timeout_s=_STUCK_PER_CALL_S, outer_cap_s=_OUTER_CAP_S)
     stuck = [_EagainWriter(10**9) for _ in range(_MAX_CONNECTIONS)]
 
     async def scenario() -> "tuple[_Writer, _Writer, tuple[int, list[tuple[int, str]]], int]":
         await service.setup()
         tasks = [asyncio.create_task(service._serve(_Reader([(0, _GET_STATUS)]), w)) for w in stuck]
-        await asyncio.sleep_ms(50)
+        await asyncio.sleep_ms(_REACH_MS)
         refused = _Writer()
         await service._serve(_Reader([(0, _GET_STATUS)]), refused)  # every slot held by a spinning send
         for task in tasks:

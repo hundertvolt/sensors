@@ -21,10 +21,11 @@ if TYPE_CHECKING:
     from harness import Board
     from http_client import JSONObject
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_12_reset_reasons",)
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_12_reset_reasons", "loop_end")
 
 _SRC = "asy_system_service.py"
-_RR = {name: module_int_const(SRC_DIR, _SRC, f"_RR_{name}") for name in ("UNKNOWN", "WATCHDOG", "BOOTLOADER", "TASK_BUDGET", "STACK_EXHAUSTED", "STARVE_ARM_FAILED", "COMMAND_INCOMPLETE", "BOOT_FAILURE")}
+_RR = {name: module_int_const(SRC_DIR, _SRC, f"_RR_{name}") for name in ("UNKNOWN", "WATCHDOG", "BOOTLOADER", "TASK_BUDGET", "STACK_EXHAUSTED", "STARVE_ARM_FAILED", "COMMAND_INCOMPLETE", "BOOT_FAILURE", "LOOP_ENDED")}
+_BOOT_DONE = module_int_const(SRC_DIR, _SRC, "BOOT_DONE")
 _RR_INTERRUPTED = module_int_const(SRC_DIR, _SRC, "RR_INTERRUPTED")
 _TASK_CHECK_TIME, _RESET_DELAY = module_int_const(SRC_DIR, _SRC, "_TASK_CHECK_TIME"), module_int_const(SRC_DIR, _SRC, "_RESET_DELAY")
 _TIMER_BIT, _FORCED_BIT = 0x1, 0x2  # ResetBits' watchdog half: REASON bits 0-1, TIMER and FORCE (src/asy_system_service.py)
@@ -59,6 +60,12 @@ def _evidence(board: "Board", bench: "BenchBridge", dut_ip: str, name: str) -> N
     save_errcount(dut_ip, name)
     save_fram_raw(board, name)
     restore_board_to_serving(board, bench, dut_ip)
+
+
+def _round_holds_the_budget_entry(facts: "dict[str, object]") -> bool:
+    # A round the script printed after the escalation's entry write: SYSTEM's RAM log there, the one place it lands.
+    rounds = [value.get("system") for key, value in facts.items() if key.startswith("round_") and isinstance(value, dict)]
+    return any(isinstance(log, dict) and ("E", code("E", "TASK_BUDGET_REBOOT")) in zip(log.get("ErrType", []), log.get("ErrNum", []), strict=False) for log in rounds)
 
 
 def _system_status(dut_ip: str) -> "JSONObject":
@@ -104,6 +111,8 @@ def test_a_bootloader_reboot_is_attributed(board: "Board", bench: "BenchBridge",
 @pytest.mark.parametrize("mode", ["escalate", "hold_console"])
 def test_the_supervisor_escalation_reboot_is_attributed(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]", mode: str) -> None:
     # hold_console: the host holds the port open, reading nothing, while the task keeps dying - still the budget's reboot.
+    # The script's log is RAM-only, so escalate reads its entry off the rounds; hold_console prints none, and the
+    # entry is pinned by tests/test_asy_system_service.py::test_the_supervisor_escalates_past_the_failure_budget.
     try:
         _evidence(board, bench, dut_ip, f"reset-reason-escalation-{mode}")
         if mode == "hold_console":
@@ -112,10 +121,9 @@ def test_the_supervisor_escalation_reboot_is_attributed(board: "Board", bench: "
             facts = parse_facts(board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "system_service_restarts_a_real_dead_task.py", timeout_s=_SCRIPT_TIMEOUT_S, mode=mode), allow_missing_done=True)
             assert facts.get("mode") == mode and any(key.startswith("round_") for key in facts), f"the escalation reported no round before the reset: {facts}"
             assert "starter_calls" not in facts, f"the watch ended without the budget's reboot: {facts}"
+            assert _round_holds_the_budget_entry(facts), f"no round before the reset holds SYSTEM's TASK_BUDGET_REBOOT entry: {facts}"
         bits = _attributed(dut_ip, _RR["TASK_BUDGET"], result_note, f"supervisor escalation ({mode})")
         assert bits & _FORCED_BIT, f"the budget's machine.reset() left the forced bit clear (a 2 would be the watchdog): {bits}"
-        logged = get_errcount(dut_ip)["SYSTEM"]["history"]
-        assert any(entry.get("type") == "E" and entry.get("num") == code("E", "TASK_BUDGET_REBOOT") for entry in logged), f"SYSTEM holds no escalation entry: {logged}"
     finally:
         restore_board_to_serving(board, bench, dut_ip)
 
@@ -142,12 +150,17 @@ def test_an_invalid_record_reads_as_unknown(board: "Board", bench: "BenchBridge"
         restore_board_to_serving(board, bench, dut_ip)
 
 
+@pytest.mark.provokes_log(
+    "the planted EIO cuts the erase, over a scratch-config boot that logs CONFIG_LOST beside SYSTEM's FRAM history",
+    ("SYSTEM", "W", "CONFIG_LOST"),
+)
 def test_an_incomplete_command_is_attributed(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]") -> None:
     try:
         before = get_errcount(dut_ip)
         _evidence(board, bench, dut_ip, "reset-reason-command-incomplete")
         facts = parse_facts(board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "reset_code_command_incomplete.py", timeout_s=_SCRIPT_TIMEOUT_S), allow_missing_done=True)
         assert facts.get("answer") == "Valid" and isinstance(facts.get("raised_at"), int), f"the erase never reached its failing unit: {facts}"
+        assert "no_reset_after_ms" not in facts, f"the board outlived the cut erase: {facts}"
         _attributed(dut_ip, _RR["COMMAND_INCOMPLETE"], result_note, "erase cut by an EIO")
         save_fram_raw(board, "reset-reason-command-incomplete-after")
         after = get_errcount(dut_ip)
@@ -160,6 +173,10 @@ def test_an_incomplete_command_is_attributed(board: "Board", bench: "BenchBridge
 
 
 @pytest.mark.parametrize("phase", _BOOT_PHASES)
+@pytest.mark.provokes_log(
+    "phases 3-5 hang after the setups of a boot over an empty scratch config, which logs CONFIG_LOST beside SYSTEM's FRAM history",
+    ("SYSTEM", "W", "CONFIG_LOST"),
+)
 def test_a_hang_in_boot_phase_p_is_attributed(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]", phase: int) -> None:
     try:
         _evidence(board, bench, dut_ip, f"reset-reason-boot-phase-{phase}")
@@ -172,12 +189,19 @@ def test_a_hang_in_boot_phase_p_is_attributed(board: "Board", bench: "BenchBridg
         restore_board_to_serving(board, bench, dut_ip)
 
 
+@pytest.mark.provokes_log(
+    "the recursing reader's TASK_RAISED and the supervisor's STACK_EXHAUSTED in SYSTEM",
+    ("SYSTEM", "E", "TASK_RAISED"),
+    ("SYSTEM", "E", "STACK_EXHAUSTED"),
+    ("SYSTEM", "W", "CONFIG_LOST"),
+)
 def test_a_c_stack_exhaustion_is_attributed(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]") -> None:
     # The reader dies of the stack check's RuntimeError; the handler that catches it records the overflow, and the
     # supervisor's next pass reboots with the stack code instead of restarting the chain (SPECIFICATION.md F.1).
     try:
         _evidence(board, bench, dut_ip, "reset-reason-stack-exhausted")
         facts = parse_facts(board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "reset_code_stack_exhausted.py", timeout_s=_SCRIPT_TIMEOUT_S), allow_missing_done=True)
+        assert "no_reset_after_ms" not in facts, f"the board outlived the stack exhaustion: {facts}"
         reset = facts.get("reset")
         assert isinstance(reset, dict) and reset.get("code") == _RR["STACK_EXHAUSTED"] and reset.get("deaths"), f"the exhaustion did not end in the stack code's reboot: {facts}"
         bits = _attributed(dut_ip, _RR["STACK_EXHAUSTED"], result_note, f"stack exhaustion in {facts.get('reader')} (depths {reset.get('deaths')})")
@@ -196,5 +220,21 @@ def test_a_console_interrupt_is_attributed(board: "Board", bench: "BenchBridge",
         wait_until(lambda: not board.is_device_present(), timeout_s=_WDT_TIMEOUT_MS / 1000 + _LOSS_MARGIN_S, description="the watchdog reset after a console interrupt")
         bits = _attributed(dut_ip, _RR_INTERRUPTED, result_note, "console interrupt")
         assert bits & _TIMER_BIT and not bits & _FORCED_BIT, f"the interrupt's watchdog reset must set the timer bit, never the forced one: {bits}"
+    finally:
+        restore_board_to_serving(board, bench, dut_ip)
+
+
+@pytest.mark.parametrize("kind", ["exception", "base"])
+def test_a_loop_ended_by_an_exception_after_boot_is_attributed(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]", kind: str) -> None:
+    # mpremote's Ctrl-C records 21, which the script's boot clears; its loop then ends by an OSError or a SystemExit at the
+    # first wait after BOOT_DONE: the entry records 22 and returns, and the watchdog resets. Normal boot, no flash write.
+    try:
+        _evidence(board, bench, dut_ip, f"reset-reason-loop-end-{kind}")
+        facts = parse_facts(board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "reset_code_loop_end.py", timeout_s=_SCRIPT_TIMEOUT_S, KIND=kind, BOOT_DONE=str(_BOOT_DONE)), allow_missing_done=True)
+        record = facts.get("record")
+        assert facts.get("raised_in_phase") == _BOOT_DONE and isinstance(record, list) and record[1:2] == [_RR["LOOP_ENDED"]], f"{kind}: the loop did not end after BOOT_DONE with its record written: {facts}"
+        wait_until(lambda: not board.is_device_present(), timeout_s=_WDT_TIMEOUT_MS / 1000 + _LOSS_MARGIN_S, description="the watchdog reset after the loop ended")
+        bits = _attributed(dut_ip, _RR["LOOP_ENDED"], result_note, f"loop ended by {kind}")
+        assert bits & _TIMER_BIT and not bits & _FORCED_BIT, f"{kind}: the loop end's watchdog reset must set the timer bit, never the forced one: {bits}"
     finally:
         restore_board_to_serving(board, bench, dut_ip)

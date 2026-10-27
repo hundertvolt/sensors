@@ -1,6 +1,6 @@
 """Shared walk for the whole-repo checks (citations, decision vocabulary, import placement): the tracked
 files, the prose each holds (Markdown text; comments and docstrings in code and config), and the
-allow-list reader/writer behind each check's --regenerate mode."""
+allow-list reader/writer behind each check's --regenerate mode; and the pinned ruff the lint checks run."""
 
 import ast
 import fnmatch
@@ -16,6 +16,8 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
+
+import tomllib
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 _GIT = shutil.which("git") or "git"
@@ -34,6 +36,10 @@ _NO_PROSE_SUFFIXES = frozenset({".json", ".nvmrc"})
 _NO_PROSE_NAMES = ("LICENSE*",)
 _TRAILING_HASH = re.compile(r"\s#(?:\s|$)")
 _RULE_LINE = re.compile(r"^\s*[-=~*#]{4,}\s*$")
+# What a "/" in script follows when it opens a regex literal rather than dividing: a character an expression may come
+# after ("}" too, a block ending a statement), or a word an expression follows; never a value's end ("x", ")", "]").
+_REGEX_AFTER_CHARS = frozenset("(,=:[!&|?{};+-*%<>~^")
+_REGEX_AFTER_WORDS = frozenset({"return", "typeof", "instanceof", "in", "of", "new", "delete", "void", "throw", "case", "do", "else", "yield", "await"})
 # The nodes that can hold a statement: a docstring's holder is reached through these alone.
 _STATEMENT_NODES = (ast.stmt, ast.excepthandler, ast.match_case)
 
@@ -158,12 +164,35 @@ def _raise(error: OSError) -> None:
     raise error
 
 
+def _regex_end(text: str, start: int) -> int:
+    # Just past the regex literal opening at text[start], or -1 when its line ends first (so it was not one).
+    i, in_class = start + 1, False
+    while i < len(text) and text[i] != "\n":
+        ch = text[i]
+        if ch == "\\":
+            if text.startswith("\n", i + 1):
+                return -1
+            i += 1
+        elif ch == "[":
+            in_class = True
+        elif ch == "]":
+            in_class = False
+        elif ch == "/" and not in_class:
+            return i + 1
+        i += 1
+    return -1
+
+
 def _slash_blocks(path: str, text: str) -> list[Block]:
-    # // and /* */ comments, string literals skipped (a regex literal is not, and needs none here).
+    # // and /* */ comments, string and regex literals skipped; `last` is the nearest code character, which tells a
+    # regex literal from a division. `subs` holds each open template substitution's unclosed "{" count: its code reads
+    # as at top level, and the "}" that takes the count below zero resumes the template's text.
     own: list[tuple[int, str]] = []
     single: list[tuple[int, str]] = []
     blocks: list[Block] = []
-    i, row, quote, line_start = 0, 1, "", 0
+    subs: list[int] = []
+    script = not path.endswith(".css")
+    i, row, quote, line_start, last = 0, 1, "", 0, -1
     while i < len(text):
         ch = text[i]
         if ch == "\n":
@@ -172,10 +201,13 @@ def _slash_blocks(path: str, text: str) -> list[Block]:
             if ch == "\\":
                 i += 1
             elif ch == quote:
-                quote = ""
-        elif ch in "'\"`" and not path.endswith(".css"):
+                quote, last = "", i
+            elif ch == "$" and quote == "`" and text.startswith("{", i + 1):
+                subs.append(0)
+                i, quote, last = i + 1, "", i + 1
+        elif ch in "'\"`" and script:
             quote = ch
-        elif text.startswith("//", i) and not path.endswith(".css"):
+        elif text.startswith("//", i) and script:
             end = text.find("\n", i)
             end = len(text) if end < 0 else end
             (own if not text[line_start:i].strip() else single).append((row, text[i + 2 : end]))
@@ -191,9 +223,32 @@ def _slash_blocks(path: str, text: str) -> list[Block]:
             row += body.count("\n")
             i = end + 2
             continue
+        elif ch == "/" and script and _starts_regex(text, last) and (end := _regex_end(text, i)) > 0:
+            i, last = end, end - 1
+            continue
+        elif not ch.isspace():
+            if subs and ch in "{}":
+                subs[-1] += 1 if ch == "{" else -1
+                if subs[-1] < 0:
+                    subs.pop()
+                    quote = "`"
+            last = i
         i += 1
     return blocks + _grouped(path, own, single)
 
+
+def _starts_regex(text: str, last: int) -> bool:
+    # Whether a "/" whose nearest code character before it is text[last] (-1: none) opens a regex literal.
+    if last < 0:
+        return True
+    if text[last] in "+-" and text[last - 1 : last] == text[last]:
+        return False  # n++ / 2: the operand has ended
+    if text[last] in _REGEX_AFTER_CHARS:
+        return True
+    start = last
+    while start >= 0 and (text[start].isalnum() or text[start] in "_$"):
+        start -= 1
+    return text[start + 1 : last + 1] in _REGEX_AFTER_WORDS
 
 def _suffix(path: str) -> str:
     name = Path(path).name
@@ -230,6 +285,19 @@ def git_lines(*args: str) -> list[str]:
 
 def git_succeeds(*args: str) -> bool:
     return subprocess.run([_GIT, *args], cwd=REPO_ROOT, capture_output=True, check=False).returncode == 0
+
+
+def pinned_ruff() -> str:
+    # The venv's own ruff first, then PATH's; either must be the pinned one, since another version selects other rules.
+    sibling = Path(sys.executable).with_name("ruff")
+    found = str(sibling) if sibling.is_file() else shutil.which("ruff")
+    assert found, "ruff is not installed - run `uv sync` (it is a pinned dev dependency)"
+    with (REPO_ROOT / "pyproject.toml").open("rb") as f:
+        groups = tomllib.load(f)["dependency-groups"].values()
+    pins = [d for group in groups for d in group if isinstance(d, str) and d.startswith("ruff==")]
+    version = subprocess.run([found, "--version"], capture_output=True, text=True, check=True).stdout.split()[-1]
+    assert pins == [f"ruff=={version}"], f"{found} is ruff {version}, pyproject.toml pins {pins} - run the pinned ruff"
+    return found
 
 
 def prose_blocks(path: str, text: str) -> list[Block]:

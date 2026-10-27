@@ -1391,7 +1391,7 @@ def test_write_protected_readback_mismatch_logs_a_persisted_error() -> None:
         return await fram.set_write_protected(value=True)
 
     assert run(scenario()) is False
-    assert code("E", "FRAM_WP_MISMATCH") in fram.pr.history
+    assert (fram.pr._err_count, _count(fram, code("E", "FRAM_WP_MISMATCH"))) == (1, 1)
 
 
 def test_verify_present_before_setup_logs_a_persisted_error() -> None:
@@ -1401,7 +1401,7 @@ def test_verify_present_before_setup_logs_a_persisted_error() -> None:
         return await fram.verify_present()
 
     assert run(scenario()) is False
-    assert code("E", "NOT_INIT") in fram.pr.history
+    assert (fram.pr._err_count, _count(fram, code("E", "NOT_INIT"))) == (1, 1)
 
 
 def test_write_wel_did_not_set_logs_a_persisted_warning() -> None:
@@ -1414,7 +1414,7 @@ def test_write_wel_did_not_set_logs_a_persisted_warning() -> None:
             return await fram.set_values(b"bad!", 0x00)
 
     assert run(scenario()) is False
-    assert 0x80 + code("W", "FRAM_WEL_NOT_SET") in fram.pr.history  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
+    assert (fram.pr._err_count, _count(fram, 0x80 + code("W", "FRAM_WEL_NOT_SET"))) == (1, 1)  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
 
 
 def test_set_write_protected_wel_did_not_set_logs_a_persisted_warning() -> None:
@@ -1426,7 +1426,7 @@ def test_set_write_protected_wel_did_not_set_logs_a_persisted_warning() -> None:
         return await fram.set_write_protected(value=True)
 
     assert run(scenario()) is False
-    assert 0x80 + code("W", "FRAM_WEL_NOT_SET") in fram.pr.history  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
+    assert (fram.pr._err_count, _count(fram, 0x80 + code("W", "FRAM_WEL_NOT_SET"))) == (1, 1)  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
 
 
 def test_wrdi_stuck_after_retry_logs_a_persisted_warning() -> None:
@@ -1441,7 +1441,7 @@ def test_wrdi_stuck_after_retry_logs_a_persisted_warning() -> None:
 
     ok = run(scenario())
     assert ok is True  # the payload write itself still succeeded, only WEL housekeeping is stuck
-    assert 0x80 + code("W", "FRAM_WEL_STUCK") in fram.pr.history  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
+    assert (fram.pr._err_count, _count(fram, 0x80 + code("W", "FRAM_WEL_STUCK"))) == (1, 1)  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
 
 
 def test_write_protected_and_access_not_locked_are_now_persisted() -> None:

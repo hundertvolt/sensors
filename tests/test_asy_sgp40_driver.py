@@ -3529,6 +3529,21 @@ def test_init_sgp_runs_on_the_defaults_when_its_config_file_cannot_be_written() 
     assert run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.name]["ErrNum"][-1] == code("E", "CFG_FILE_WRITE")
 
 
+def test_a_due_backup_whose_state_does_not_pack_logs_the_algorithm_state_error() -> None:
+    # The measurement reports the VOC state not packed (pack_into() answering False) on a backup cycle: the reading
+    # stands, nothing is serialized and E SGP_ALGO_STATE is logged.
+    reader = _make_reader()
+
+    async def unpacked(**_kwargs: object) -> "tuple[int, int, bool, bool]":
+        return 100, 30000, False, False
+
+    reader._sgp.measure_index_and_raw = unpacked  # type: ignore[assignment, method-assign]
+    _data, compensated, serialized = run(reader._read_sgp(None, serialize=True, deserialize=False))
+    log = run(reader.get_error_counter())
+    assert (compensated, serialized) == (True, False)
+    assert _last_err(log, "ErrNum") == code("E", "SGP_ALGO_STATE")
+
+
 if __name__ == "__main__":
     import microtest
 

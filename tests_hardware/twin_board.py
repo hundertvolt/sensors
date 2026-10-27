@@ -102,6 +102,11 @@ class TwinBoard:
         script.write_text(expr + "\n", encoding="utf-8")
         return self._run(script, timeout_s, expect_reset=False)
 
+    def exec_live(self, expr: str, timeout_s: "float | None" = None) -> str:
+        # Refused, never run as exec(): each twin run is a fresh process, so no running firmware outlives one to be read.
+        del expr, timeout_s
+        raise HardwareNotAvailableError("the twin keeps no live interpreter across runs: a read of the running firmware needs silicon")
+
     def hard_reset(self) -> None:
         # Nothing runs between twin runs: every run starts a fresh process, as a reset would leave the board.
         return

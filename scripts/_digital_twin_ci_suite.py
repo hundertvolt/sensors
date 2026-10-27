@@ -205,18 +205,18 @@ _SOAK_WARMUP_CYCLES = 100
 # instances settles longer after boot, and a trend taken mid-settle would read as a leak (digital_twin/README.md).
 # @tunable l2.soak_plateau_cycles = 20
 _SOAK_PLATEAU_CYCLES = 20
-# @tunable l2.soak_cycles = 20
-_SOAK_CYCLES = 20
-# gc.mem_free() lives in the twin's heap with no REST route, so --mem-sample-interval-ms prints a MEM_SAMPLE
-# line per interval and this suite scrapes them from the captured log; 25ms yields plenty of samples for a
-# quarter split, and one gc.collect()+print() per interval costs nothing measurable.
-# @tunable l2.mem_sample_interval_ms = 25
-_MEM_SAMPLE_INTERVAL_MS = 25
-# The tolerance is grounded in each run's own observed noise rather than a historical
-# constant scaled by a law that does not hold here - consecutive 25ms gc.mem_free() samples are
-# heavily autocorrelated. digital_twin/README.md has the measurement and what it replaced.
-# @tunable l2.mem_trend_tolerance_sd_multiplier = 3.0
-_MEM_TREND_TOLERANCE_SD_MULTIPLIER = 3.0
+# The three values below are calibrated against a planted per-request leak, which they turn red at both GC stages while
+# the unplanted tree stays green (agent, 2026-10-26); digital_twin/README.md "Run 11's calibrated numbers" has it.
+# @tunable l2.soak_cycles = 80
+_SOAK_CYCLES = 80
+# /status's MemFree is one poll's reading, not a stream, so --mem-sample-interval-ms prints a MEM_SAMPLE line per
+# interval and this suite scrapes them from the captured log; the sampler's gc.collect() is kept.
+# @tunable l2.mem_sample_interval_ms = 100
+_MEM_SAMPLE_INTERVAL_MS = 100
+# The tolerance is grounded in each run's own observed noise rather than a historical constant scaled by a law that does
+# not hold here - consecutive gc.mem_free() samples are heavily autocorrelated (README has the measurement).
+# @tunable l2.mem_trend_tolerance_sd_multiplier = 4.0
+_MEM_TREND_TOLERANCE_SD_MULTIPLIER = 4.0
 
 # Wait budgets and poll steps, one per purpose. Each wait polls for its condition and returns early;
 # the fixed sleeps wait for an absence, which no probe can observe.
@@ -787,14 +787,6 @@ def _reset_code(name: str) -> int:
     return _src_int("asy_system_service.py", name)
 
 
-def _restore_is_all_or_nothing(written: JSONObject, restored: JSONObject) -> bool:
-    # Whole: the written ring and at least its count came back, newer slots only after it (this boot's
-    # own). Nothing: no "E" slot survived, only what this boot logged itself. Else partial or garbled.
-    slots, kept = _non_empty_slots(restored), _non_empty_slots(written)
-    whole = slots[: len(kept)] == kept and all(kind != "E" for kind, _ in slots[len(kept) :]) and _counter(restored) >= max(_counter(written), 0)
-    return whole or all(kind != "E" for kind, _ in slots)
-
-
 def _route_leaves_host(host: str, port: int) -> bool:
     # A UDP connect() sends nothing: it is the route lookup the twin's own UDPSocket makes on this same host, and
     # it fails (ENETUNREACH) where no route leaves - a network namespace holding only lo, for one.
@@ -1147,6 +1139,8 @@ def _run_1_baseline(ctx: RunContext) -> None:
         _check_quiet_boot("Run 1", spawned_at, ctx.runs_dir / "run1_errcount.json")
         times = (_status_field("system", "UTCTime"), _status_field("system", "LocalTime"))
         _check(condition=times == (None, None), msg=f"Run 1: UTCTime and LocalTime are null before the first NTP sync ({times!r})")
+        stale = _status_field("system", "TimeStale")
+        _check(condition=stale is None, msg=f"Run 1: TimeStale is null before the first NTP sync ({stale!r})")
 
         status = _put_reset_errors_timed("Run 1")
         _check(condition=status == _HTTP_OK, msg="Run 1: PUT /status ResetErrors accepted")
@@ -1335,9 +1329,9 @@ def _run_5_recovery_after_bounded_fault(ctx: RunContext) -> JSONObject:
 
 
 def _run_5b_error_log_restore_is_all_or_nothing(ctx: RunContext, written: JSONObject) -> None:
-    # ---- Run 5b: reboot straight onto Run 5's state, fault-free. Run 5 shut down abruptly, which can catch a chunk
-    # write in flight and lose the ring (owner, 2026-09-26, accepted: "an abrupt reset mid-write may lose a module's
-    # whole FRAM history, all-or-nothing, never partial or garbled"), so the restored history is [] or Run 5's exactly. ----
+    # ---- Run 5b: reboot onto Run 5's state, fault-free. Run 5 stops two read cycles after the logger's last entry,
+    # whose chunk write err_s() awaits, so no stop cuts it: the restore is Run 5's exact ring. A write cut at every SPI
+    # transaction restores all or nothing (owner, 2026-09-26): tests/test_digital_twin_fram_crash_points.py. ----
     if not written:
         return  # Run 5 recorded its skip, or failed before it read an entry
     log5b = ctx.logs_dir / "run5b_error_log_restore_is_all_or_nothing.log"
@@ -1350,8 +1344,7 @@ def _run_5b_error_log_restore_is_all_or_nothing(ctx: RunContext, written: JSONOb
             entry = entry or _errcount_required(name)
             restored, kept = _error_codes(entry), _error_codes(written)
             whole = restored == kept and _counter(entry) >= max(_counter(written), 0)
-            nothing = restored == [] or all(kind != "E" for kind, _ in restored)
-            _check(condition=whole or nothing, msg=f"Run 5b: {name}'s FRAM-backed history came back all-or-nothing after an abrupt restart - Run 5's exact ring and count or none of it (wrote {written!r}, restored {entry!r})")
+            _check(condition=whole, msg=f"Run 5b: {name}'s FRAM-backed history came back whole after Run 5's stop - its exact ring, its count kept; a cut write is tests/test_digital_twin_fram_crash_points.py's (wrote {written!r}, restored {entry!r})")
     except Exception as exc:
         _fail(f"Run 5b (error-log restore is all-or-nothing): {exc!r}")
     finally:
@@ -1497,6 +1490,8 @@ def _run_8_wifi_persistence_and_configure_ntp(ctx: RunContext) -> None:
         _check(condition=synced, msg=f"Run 8: NTP synced against the twin's local responder within {_NTP_FIRST_SYNC_WAIT_S:.0f}s of the station link")
         times = (_status_field("system", "UTCTime"), _status_field("system", "LocalTime"))
         _check(condition=all(isinstance(t, dict) and len(t) == _TIME_FIELDS for t in times), msg=f"Run 8: UTCTime and LocalTime are both present after the first NTP sync, each the 8-field time ({times!r})")
+        stale = _status_field("system", "TimeStale")
+        _check(condition=stale is False, msg=f"Run 8: TimeStale reads false while the first NTP sync holds ({stale!r})")
         # RFC 5737 TEST-NET-1: no server answers it, a reproducible "unreachable" host rather than incidental
         # sandbox network policy; whether a route carries the request out decides Run 9's code (_route_leaves_host()).
         status, body = _http("PUT", "/networking", {"NTPHost": _NTP_UNREACHABLE_HOST})

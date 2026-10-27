@@ -18,7 +18,6 @@ from asy_uart_comm import DEFAULT_LIMITS, ROLE_INITIATOR, ROLE_RESPONDER, Respon
 
 # @include _shared/facts.py
 # @include _shared/watchdog.py
-
 # @include _shared/settle.py
 # @include _shared/isl_error_log.py
 

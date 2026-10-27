@@ -1819,6 +1819,57 @@ def test_a_session_holding_the_bus_delays_clear_and_a_session_started_during_it_
     assert order == ["holder in", "holder out", "clear done", "late in"], order
 
 
+def _scl_held_once(held: "Callable[[], bool]") -> "Callable[[int, object], int]":
+    # SCL released until `held()` turns true, then held low for good: a slave stretching past the bus timeout.
+    def level(_pin: int, _log: object) -> int:
+        return 0 if held() else 1
+
+    return level
+
+
+def _after_pulse(n: int) -> "Callable[[], bool]":
+    return lambda: list(Pin.value_log(_SCL)).count(1) >= n
+
+
+def _at_the_stop() -> bool:
+    return len(Pin.value_log(_SDA)) > 0  # the STOP is the only step that drives SDA
+
+
+def test_a_clear_whose_scl_is_held_after_a_pulse_reports_it_and_sends_no_stop() -> None:
+    # SCL let go for the lead-in, held after the third pulse's release: the boot clear and the runtime clear each stop
+    # there with SDA_LOW | SCL_HELD, SDA never driven.
+    boot = _build(sda=0, scl=_scl_held_once(_after_pulse(3)), timeout=_HELD_SCL_TIMEOUT_US)
+    assert boot.take_boot_clear_status() == _REC_SDA_LOW | _REC_SCL_HELD
+    assert list(Pin.value_log(_SCL)) == [0, 1] * 3
+    assert list(Pin.value_log(_SDA)) == []
+    i2c = _build(timeout=_HELD_SCL_TIMEOUT_US)
+    Pin.set_external_level(_SDA, 0)
+    Pin.set_external_level(_SCL, _scl_held_once(_after_pulse(3)))
+    status, made = _clear(i2c)
+    assert status == _REC_SDA_LOW | _REC_SCL_HELD
+    assert list(Pin.value_log(_SCL)) == [0, 1] * 3
+    assert list(Pin.value_log(_SDA)) == []
+    assert made[-2:] == _HANDED_BACK
+
+
+def test_a_clear_whose_scl_is_held_at_the_stop_lets_sda_go_and_reports_it() -> None:
+    # Nine pulses with SDA held, then SCL held at the STOP: SDA, driven low for it, is let go again, and SCL_HELD
+    # joins the status, in the boot clear and the runtime clear alike.
+    held = _REC_SDA_LOW | _REC_SDA_STUCK | _REC_SCL_HELD
+    boot = _build(sda=0, scl=_scl_held_once(_at_the_stop), timeout=_HELD_SCL_TIMEOUT_US)
+    assert boot.take_boot_clear_status() == held
+    assert list(Pin.value_log(_SCL)) == _pulses_then_stop(9)
+    assert list(Pin.value_log(_SDA)) == [0, 1]
+    i2c = _build(timeout=_HELD_SCL_TIMEOUT_US)
+    Pin.set_external_level(_SDA, 0)
+    Pin.set_external_level(_SCL, _scl_held_once(_at_the_stop))
+    status, made = _clear(i2c)
+    assert status == held
+    assert list(Pin.value_log(_SCL)) == _pulses_then_stop(9)
+    assert list(Pin.value_log(_SDA)) == [0, 1]
+    assert made[-2:] == _HANDED_BACK
+
+
 if __name__ == "__main__":
     import microtest
 

@@ -75,11 +75,10 @@ def _item(harness: ModuleType, name: str, *, shared: bool = True, moves: "tuple[
     return harness.Scenario(name, lambda _ctx: None, "A goal.", "fixture", (), False, False, shared, moves)
 
 
-def _lag_run(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], windows: "list[int]", after: "tuple[int | tuple[int, int], ...]" = (2000, 900, 900)) -> "tuple[list[str], str, str]":
+def _lag_run(harness: ModuleType, device: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], windows: "list[int]", after: "tuple[int | tuple[int, int], ...]" = (2000, 900, 900)) -> "tuple[list[str], str, str]":
     # The loop-lag scenario on a stub twin on a fake clock: its load prints one LOOP_LAG line per figure of `windows`, the
     # first closing the window open when it began, after a line printed before it; then `after`'s lines print a report
     # window apart, the first 1 s after the stop. Returns the failures, the printed line and the evidence.
-    device = DEVICE_NAMES[0]
     links = sorted(harness._link_roles(device))
     log_path = tmp_path / "twin.log"
     report_s = module_int_const(harness.REPO_ROOT / "digital_twin", "run_generic_integration.py", "_LOOP_LAG_REPORT_MS") / 1000
@@ -283,41 +282,45 @@ def test_the_loop_lag_load_spans_the_storm_at_the_longest_read_trigger_and_one_w
     assert max(spans) == harness._LOOP_LAG_LOAD_S, spans
 
 
-def test_the_lag_under_load_is_over_the_windows_begun_after_its_start_and_the_boot_window_is_reported_apart(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+@pytest.mark.parametrize("device", DEVICE_NAMES)  # each device's own bound and link roles
+def test_the_lag_under_load_is_over_the_windows_begun_after_its_start_and_the_boot_window_is_reported_apart(harness: ModuleType, device: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     # The first LOOP_LAG line after the load's start closes the window open then, which holds the end of boot: its
     # figure is reported beside the load's, never as it, and a line printed before the load counts in neither.
-    failures, printed, evidence = _lag_run(harness, tmp_path, monkeypatch, capsys, [240000, 3000, 2500, 2800])
+    failures, printed, evidence = _lag_run(harness, device, tmp_path, monkeypatch, capsys, [240000, 3000, 2500, 2800])
     assert failures == [], failures
     assert "max 3000 us over 4 windows" in printed and "max 240000 us" in printed and "400000" not in printed, printed
     assert evidence.splitlines()[0].split()[1:5] == ["load_max_us=3000", "boot_window_max_us=240000", "straddler_max_us=2000", "settled_max_us=900"], evidence
 
 
+@pytest.mark.parametrize("device", DEVICE_NAMES)
 @pytest.mark.parametrize(("over", "expected"), [(0, "in the window open when the load began"), (2, "under load"), (4, "under load")], ids=["the boot window", "a load window", "the window straddling the stop"])
-def test_every_window_the_load_spans_is_held_to_the_bound_the_boot_one_included(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], over: int, expected: str) -> None:
+def test_every_window_the_load_spans_is_held_to_the_bound_the_boot_one_included(harness: ModuleType, device: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], over: int, expected: str) -> None:
     # The window open when the readers stop closes on the next LOOP_LAG line: it holds load, so it is bound as a load window.
-    bound_us = smallest_hard_consumer(load_device(device_toml(DEVICE_NAMES[0])), harness.SRC_DIR).ms * 1000
+    bound_us = smallest_hard_consumer(load_device(device_toml(device)), harness.SRC_DIR).ms * 1000
     figures = [240000, 3000, 2500, 2800, 2000]
     figures[over] = bound_us + 1
-    failures, _printed, _evidence = _lag_run(harness, tmp_path, monkeypatch, capsys, figures[:4], (figures[4], 900, 900))
+    failures, _printed, _evidence = _lag_run(harness, device, tmp_path, monkeypatch, capsys, figures[:4], (figures[4], 900, 900))
     assert any(f"lagged {bound_us + 1} us {expected}" in f for f in failures), failures
 
 
+@pytest.mark.parametrize("device", DEVICE_NAMES)
 @pytest.mark.parametrize(("after", "settles"), [((60000, -1, 60000), True), ((2000, 0, 900), False)], ids=["the window after the straddling one", "one LED frame of lag"])
-def test_the_settle_window_begins_after_the_stop_and_drops_no_led_frame(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], *, after: "tuple[int, int, int]", settles: bool) -> None:
+def test_the_settle_window_begins_after_the_stop_and_drops_no_led_frame(harness: ModuleType, device: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], *, after: "tuple[int, int, int]", settles: bool) -> None:
     # The line after the straddling one closes a window begun after the stop: it settles under one LED frame (the
     # neopixel driver's frame period), and neither the straddling window nor a later one stands in for it.
     frame_us = 1000 // module_int_const(harness.SRC_DIR, "asy_neopixel_driver.py", "_NEOPIXEL_FREQ_HZ") * 1000
-    failures, _printed, _evidence = _lag_run(harness, tmp_path, monkeypatch, capsys, [240000, 3000, 2500, 2800], (after[0], frame_us + after[1], after[2]))
+    failures, _printed, _evidence = _lag_run(harness, device, tmp_path, monkeypatch, capsys, [240000, 3000, 2500, 2800], (after[0], frame_us + after[1], after[2]))
     assert (failures == []) if settles else any("did not settle" in f for f in failures), failures
 
 
+@pytest.mark.parametrize("device", DEVICE_NAMES)
 @pytest.mark.parametrize(("settle", "expected"), [((70000, 900), None), ((None, 900), "in the window after the load"), ((60000, 50000), "did not settle")], ids=["one host stall", "past one DNS query", "a slowed loop"])
-def test_the_settle_window_is_held_at_its_p99_and_its_maximum_to_the_bound(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], settle: "tuple[int | None, int]", expected: "str | None") -> None:
+def test_the_settle_window_is_held_at_its_p99_and_its_maximum_to_the_bound(harness: ModuleType, device: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], settle: "tuple[int | None, int]", expected: "str | None") -> None:
     # One late wake past a frame is the host's and passes; one past a DNS query (and so past every hard bound), or a
     # loop slowed at its p99, fails.
     rest_max_us = module_int_const(harness.REPO_ROOT / "buildgen", "codegen.py", "_DNS_TIMEOUT_MS") * 1000
     figure = (rest_max_us + 1 if settle[0] is None else settle[0], settle[1])
-    failures, _printed, _evidence = _lag_run(harness, tmp_path, monkeypatch, capsys, [240000, 3000, 2500, 2800], (2000, figure, 900))
+    failures, _printed, _evidence = _lag_run(harness, device, tmp_path, monkeypatch, capsys, [240000, 3000, 2500, 2800], (2000, figure, 900))
     assert (failures == []) if expected is None else any(expected in f for f in failures), failures
 
 
@@ -377,6 +380,18 @@ def test_the_run_record_names_each_scenarios_outcome(harness: ModuleType, tmp_pa
     assert outcomes["ok"][0] == "passed"
     assert outcomes["broken"][0] == "failed" and "planted" in outcomes["broken"][1]
     assert outcomes["needs_isl"] == ("skipped", "device wires no isl29125")
+
+
+def test_a_scenario_whose_premise_this_host_cannot_give_skips_with_its_reason(harness: ModuleType, tmp_path: Path) -> None:
+    def no_premise(_ctx: object) -> None:
+        """Skips."""
+        raise harness.UnmetPremiseError("file modes do not bind here")
+
+    item = harness.Scenario("no_premise", no_premise, "Skips.", "fixture")
+    ctx = harness.Context(DEVICE_NAMES[0], "micropython", -1, tmp_path, (), iter(()), "host")
+    assert harness._run_one(item, ctx) == harness.Outcome("no_premise", "skipped", "file modes do not bind here")
+    ctx.failures.append("twin 1: the SIGINT shutdown ended killed")  # a boot's own failure still fails it
+    assert harness._run_one(item, ctx).outcome == "failed"
 
 
 @pytest.mark.usefixtures("own_lock_root")
@@ -501,6 +516,23 @@ def test_the_routes_come_from_the_service_table(harness: ModuleType) -> None:
     routes = harness._get_routes()
     assert {"/measurements", "/sensors", "/status", "/system", "/networking", "/notification"} <= set(routes), routes
     assert "/" not in routes
+
+
+def test_the_reset_takes_the_largest_body_and_skips_when_none_outgrows_both_buffers(harness: ModuleType) -> None:
+    sizes = {"/status": 900, "/js/app.js": 28782, "/index.html": 16797}
+    assert harness._largest_past(sizes, 6912) == "/js/app.js"
+    with pytest.raises(harness.UnmetPremiseError, match=re.escape("no GET body exceeds the 28782 B the two pinned buffers hold (largest: /js/app.js, 28782 B)")):
+        harness._largest_past(sizes, 28782)
+
+
+def test_the_site_paths_are_the_staged_modules_files_as_a_client_requests_them(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / "fixture-device").mkdir()
+    (tmp_path / "fixture-device" / "frozen_html.py").write_text("# /index.html.gz size=10\n_f0 = const(b'# /x.gz size=1')\n# /js/app.js.gz size=20\n", encoding="utf-8")
+    monkeypatch.setattr(harness, "SITES_DIR", tmp_path)
+    assert harness._site_paths("fixture-device") == ["/index.html", "/js/app.js"]
+    (tmp_path / "fixture-device" / "frozen_html.py").write_text("_f0 = const(b'')\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="lists no file"):  # a changed module format, never a site with nothing to send
+        harness._site_paths("fixture-device")
 
 
 @pytest.fixture(scope="module")

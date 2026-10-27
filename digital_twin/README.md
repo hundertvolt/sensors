@@ -84,8 +84,9 @@ the UDP shim or the NTP responder (see "Running the twin's own tests" below).
   RDID), its size and RDID reply from `machine.py`'s one table (`_FRAM_RDID_BY_MAX_SIZE`, pinned to
   the driver's), its memory in 4 KB pages, plus explicit `save_state()`/on-construction load JSON
   persistence (owner, 2026-08-12; see "FRAM persistence" below). Twin-only knobs: `drop_next_wren`,
-  `rdid_once`, `silent` (a chip that answers zeros and ignores every write), and the `write_count`/
-  `writes_at` bookkeeping a test reads.
+  `stick_next_wrdi` (a WRDI that leaves WEL set), `corrupt_next_write` (a payload stored with one bit
+  flipped), `rdid_once`, `silent` (a chip that answers zeros and ignores every write), and the
+  `write_count`/`writes_at` bookkeeping a test reads.
 - `_twin_common.py` — the shared helpers every fake imports: the bounded bookkeeping log, the
   saturating counter cap, the buffer fill every fake read uses, the value-walk bounds (`Walk`) and the
   runners' config groups.
@@ -98,6 +99,20 @@ the UDP shim or the NTP responder (see "Running the twin's own tests" below).
   installs it into the product modules; the clock-jump tests drive it.
 - `_flash_stall.py` — a config flush holds the whole loop for the flash's erase and program time, as
   rp2 programs its flash with interrupts off; the runner installs it under `asy_config_manager`.
+- `unix_port_idle_poll.py` — `skip_idle_flag_polls()` removes a wait the Unix port adds and rp2 lacks.
+  With a non-fd stream registered (a `ThreadSafeFlag` a task waits on), `extmod/modselect.c:353-370`
+  (v1.29.0) calls `poll()` with `MICROPY_PY_SELECT_IOCTL_CALL_PERIOD_MS` (1 ms) even for a zero
+  timeout, while rp2 builds without `MICROPY_PY_SELECT_POSIX_OPTIMISATIONS` and polls once and
+  returns (:400-412). asyncio polls with a zero timeout before every task step, so each step cost the
+  twin about 1 ms while a flag waited: 1.4 s of each 2 s re-plug ladder in
+  `tests/test_digital_twin_hot_replug.py`, whose FRAM log writes yield once per CRC byte (measured;
+  agent, 2026-10-27). Only a zero-timeout round in which every registered stream is a clear
+  `ThreadSafeFlag` is skipped, the one round whose poll can report nothing; every other round takes
+  the real poll; `tests/test_digital_twin_unix_port_idle_poll.py` pins which rounds those are.
+  Called at module level after the prewarm and the UDP shim by the hot-replug and NTP files, each
+  shown on its own rounds at both GC stages to skip only rounds whose real poll wakes nothing and
+  leaves the stream map unchanged; the bus-hazard file measured no gain. It goes
+  when a pin re-check finds that branch bounding its wait by the timeout.
 - `unix_port_poll_prewarm.py` — a workaround for the Unix port's `extmod/modselect.c` poll-set
   growth, which corrupts a poll object registered over a non-fd stream (compiled out on rp2; the
   defect and its removal trigger: SPECIFICATION.md F.7, row 12). A known limitation, not reported
@@ -227,6 +242,7 @@ acceptance carrying its reason and its actor's tag, or `assumption` with its BAC
 | Chips | whether a CONFIG1 write restarts an in-flight ISL29125 conversion | restarted, never tuned to | FN8424 Table 7 says only "ADC start at I2C write 0x01" | — | assumption: BACKLOG "Whether a CONFIG1 write restarts an in-flight ISL29125 conversion" |
 | Chips | the FRAM frames a transaction by CS | by `write()` pairing; opcode, address and data in one `write()` refused | `asy_fram_driver.py` sends them in separate calls under one CS | L2 | accepted (agent, 2026-10-14): a driver merging them would lose the data, so the fake raises |
 | Chips | the FRAM's address wraps at its end | the same | MB85RS datasheets | L2 | fixed: `D fram::a_write_across_the_last_address_wraps_to_address_zero` |
+| Chips | the MB85RS2MTA (`dev`) keeps WEL set after a WRITE or WRSR (continual programming); the MB85RS64V clears it | WEL cleared at every WRITE and WRSR, the MB85RS64V's behaviour, on every chip size | DS501-00032-3v0-E p.6, DS501-00015-4v0-E p.6 | L2 | accepted (agent, 2026-10-27): the driver's WRDI epilogue clears WEL on both parts, and `stick_next_wrdi` plants the WEL a lost WRDI leaves on the MB85RS2MTA |
 | Chips | a chip's value ranges | inside its datasheet's ranges; each walk step says "not datasheet-derived" | each fake's constants | L2 | fixed: `D scd30::default_ranges_stay_inside_the_datasheets_own_documented_ranges`, `D sgp40::measure_raw_default_range_stays_inside_the_sgp40_datasheets_own_tick_range` |
 | Chips | a chip re-plugged mid-run powers up | `I2C.unplug()`/`plug()` and each chip's `power_cycle()` | — | L2 only (L4 manual step owed, F.2) | fixed: `D hot_replug::every_bus_attached_driver_recovers_from_a_replug_without_a_reboot`, `D machine::an_unplugged_chip_answers_nothing_until_plugged_back_powered_up` |
 | Runtime | a soft `Timer` callback runs from rp2's scheduler queue, dropped when its 8 entries are full; a hard callback runs in the IRQ | an asyncio task on a wall-clock schedule: no pre-emption, no queue, no drop of its own (the row below), no exact period while the loop is blocked | `ports/rp2/mpconfigport.h:131`, `shared/runtime/mpirq.c:105` | L3, L4 | accepted (agent, 2026-10-14) while every product Timer callback stays trivial; `scheduler_saturation_drop.py` (L3, `flash/test_bus_electrical_timing.py`) is a silicon-only exception in the twin record, since a synchronous script gives the twin's Timer tasks no turn |
@@ -235,7 +251,7 @@ acceptance carrying its reason and its actor's tag, or `assumption` with its BAC
 | Runtime | the finaliser disarms an unreferenced armed Timer | not modelled: the twin's task keeps the Timer referenced | `machine_timer.c:115-116, 161-163` | L1, L3 | accepted (agent, 2026-10-14): L1 fake-clock tests and L3 `timer_alarm_pool_exhaustion.py` |
 | Runtime | a Pin IRQ runs from the interrupt | synchronously in the caller | — | L3 | accepted (agent, 2026-10-14) |
 | Runtime | `machine.reset()`/`bootloader()` end the program | `SimulatedRebootError`, a `BaseException`, ends the loop; the runner exits 3 or 4 | — | L2 | fixed: `D machine::a_reset_and_a_power_loss_are_no_exceptions_a_product_can_swallow`, `D machine::a_timer_calling_reset_ends_the_loop_past_an_except_exception_sibling` |
-| Runtime | `mem_backup()` regions survive a reset and clear at power-on; `reset_cause()` | the same, carried to the next launch through a state file | `machine_mem_backup.c:36-40` | L2 | fixed: `D machine::the_twin_meets_the_shared_mem_backup_contract` (`tests/_mem_backup_contract.py`), `D machine::a_flushed_mem_backup_reaches_the_next_launch_once` |
+| Runtime | `mem_backup()` regions survive a reset and clear at power-on; `reset_cause()`; a console soft reset keeps both regions and the last hard reset's cause | the same, carried to the next launch through a state file; a soft reset is a launch that keeps both | `machine_mem_backup.c:36-40` | L2 | fixed: `D machine::the_twin_meets_the_shared_mem_backup_contract` (`tests/_mem_backup_contract.py`), `D machine::a_flushed_mem_backup_reaches_the_next_launch_once`, `D loop_end::a_console_soft_reset_after_ctrl_c_reads_21` |
 | Runtime | whether `reset_usb_boot()` keeps the scratch registers, and the cause read after BOOTSEL | kept; a watchdog reset | the bootrom is not in the pinned source | — | assumption: BACKLOG "`mem_backup()` and `reset_cause()` after a BOOTSEL round trip" |
 | Runtime | the WDT resets the chip | records a would-have-reset and never resets; the runner prints `WATCHDOG_WOULD_TRIGGER` | — | L2 | accepted (owner, 2026-08-12); a reset code reached only through a real watchdog reset is L1's and the bench's |
 | Runtime | the RTC takes no constructor argument, an 8-tuple, recomputes the weekday, its setter returns `None`; a set moves `time.time()` | the same with the runner's wall clock installed; uninstalled it holds a fixed tuple | `machine_rtc.c:52, 64-97`, `ports/rp2/modtime.c:31-43` | L2 | fixed: `D machine::an_installed_clock_makes_an_rtc_set_move_the_wall_clock`, `D machine::an_uninstalled_rtc_keeps_its_tuple_by_rp2s_rules` |
@@ -258,10 +274,11 @@ acceptance carrying its reason and its actor's tag, or `assumption` with its BAC
 | Network | a UDP send reaches any address | the UDP shim refuses any destination outside loopback, 0.0.0.0 and TEST-NET-1 through the product's own failure path and counts it | — | L2 | fixed: `D ntp::a_public_destination_is_refused_counted_and_fails_on_the_products_own_path` |
 | Network | an NTP server on the unit's network | the local responder on the loopback | RFC 5905 | L2 | fixed: `D ntp::a_booted_device_syncs_at_its_first_sync_with_a_clean_log` |
 | Persistence | every SCD30 and FRAM a device wires keeps its own state | only the last-wired SCD30 and FRAM instance persist (one module-global handle each) | — | L2 | accepted (agent, 2026-09-13) while only the two synthetic fixtures wire several; the change wiring a second real instance adds per-instance persistence: `D generic_wiring::flush_scd30_persists_only_the_last_constructed_chip` |
-| Fault surface | a bus fails in many shapes | one generic op-keyed `FaultInjector` queue, not a per-condition simulator; the unit tier's WEL knobs are not reproduced | — | L1 | accepted (agent, 2026-10-14): the FRAM driver's WEL defences are `tests/test_asy_fram_driver.py`'s |
+| Fault surface | a bus fails in many shapes | one generic op-keyed `FaultInjector` queue, not a per-condition simulator, plus the FRAM chip's latch and data knobs (`drop_next_wren`, `stick_next_wrdi`, `corrupt_next_write`) | — | L2 | accepted (agent, 2026-10-14) for the queue; the FRAM write defences fixed (agent, 2026-10-27): `D fram::a_latch_one_wrdi_leaves_set_clears_on_the_retry_and_a_stuck_one_warns_once_per_event_with_the_payload_landed`, `D fram::a_verified_write_the_chip_stored_wrong_fails_once_rewrites_nothing_and_the_next_write_heals` |
 | Fault surface | the port raises only certain faults | faults it cannot produce are refused | — | L2 | fixed: `D fram::write_fault_injection_is_refused`, `D launch::parse_fault_spec_has_no_fram_write_fault` |
 | Fault surface | no rp2 bus call raises a stack overflow | `--fault DEVICE:OP:stack` queues one, a twin-only knob proving the reboot path | `py/runtime.c:1786` | L2 only | fixed: `D launch::a_stack_fault_raises_one_stack_exhaustion_on_the_chips_next_read` |
 | Fault surface | the FRAM chip's writes | `write_count`/`writes_at`, a test surface, not chip behaviour | — | L2 | a test surface: `D fram::payload_writes_are_counted_by_address` |
+| Runtime | the watchdog counts down in hardware, whatever the program does | the countdown is a task on the runner's loop, so it dies with that loop: a runner-cancelled `main()` keeps the loop and the countdown alive | `ports/rp2/machine_wdt.c` | L2 | accepted (agent, 2026-10-26): `--test-watchdog-fault main-exit` cancels only `main()`, the scenario harness's `watchdog_fault_main_exit` |
 
 The twin's `machine` fake meets the same contract as the unit tier's (`tests/_machine_contract.py`,
 `D machine::the_twin_meets_the_shared_machine_contract_but_for_its_pending_checks`), and every rp2
@@ -328,9 +345,10 @@ NTP config pointing at the local responder it starts, so the device syncs withou
 bare, no-flags run just launches the real object graph and serves forever, the same as a real rp2040
 boot would. There is no `--soak` flag: the automated HTTP+memory-trend soak check is host-side
 (SPECIFICATION.md's "Driver/DUT process separation" Part): the twin only exposes the one
-piece of itself a host-side driver genuinely cannot get any other way, `gc.mem_free()`, via the
-opt-in `--mem-sample-interval-ms N` flag (prints `MEM_SAMPLE <time.time()> <gc.mem_free()>` lines
-to its own stdout on that cadence; unset by default, no sampling). `--stop-file PATH` makes
+piece of itself a host-side driver cannot get as a stream, `gc.mem_free()` (`/status`'s `MemFree`
+is one poll's reading), via the opt-in `--mem-sample-interval-ms N` flag (prints
+`MEM_SAMPLE <time.ticks_ms()> <gc.mem_free()>` lines to its own stdout on that cadence; unset by
+default, no sampling). `--stop-file PATH` makes
 `--duration` an upper bound: the run ends as soon as `PATH` exists, on the same clean path a finished
 duration takes (`tests_scripts/test_digital_twin_generated_boot.py` writes it once its smoke loop is
 done, rather than idling out the bound) (agent, 2026-10-08). See "Runner flags" below for every flag,
@@ -436,7 +454,7 @@ off the booted module by name, joins their underlying `machine.UART` fakes with
 | `--wiring-plan PATH` | required | its wiring-plan JSON |
 | `--device LABEL` | the module name | the device name the log lines carry |
 | `--host HOST`, `--port N` | `localhost`, `8080` (owner, 2026-08-13) | where the webserver listens |
-| `--config-dir PATH` | `digital_twin/config/` | the product's config directory |
+| `--config-dir PATH/` | `digital_twin/config/` | the product's config directory; refused without its trailing `/`, since each config file's name is that path plus `config_<name>.cfg` (`config_filename()` in `src/asy_config_manager.py`) |
 | `--debug-level N` | off, as on the device | every logger built at level N, until the stored `DebugLevel` applies; a level `PrintLog.set_level()` refuses is refused |
 | `--fram-state-path`, `--scd30-state-path`, `--mem-backup-state-path PATH` | `digital_twin/fram_state.json`, `scd30_state.json`, `mem_backup_state.json` | where that state persists; `""` keeps it in memory |
 | `--online-ntp` | off | off: the local NTP responder runs and the config pointing at it is written; on: neither, the stored config is used |
@@ -461,19 +479,31 @@ host-side harness reads:
 | `--test-shutdown-hang STEP` | `HANG <step>`; for S1 also `HUNG S1` | the controlled shutdown's step S1, S2, S3, S4, S5reset, S5erase or S6 never completes, so only the watchdog ends it; `HUNG S1` comes when the rebound dead-task report is first entered |
 | `--test-flash-stall-max` | — | every flash stall at its datasheet maximum |
 | `--test-uart-over-cap` | `UART_OVER_CAP <key> sent\|refused` | per initiating `uart_link`, right after its next transfer, one stream of the link's cap plus one byte, which the protocol refuses before its first frame and logs |
-| `--test-hold-system-entry ERRNO` | `ENTRY_HELD`, `ENTRY_RELEASED` | SystemService's logger holds its entry with that errno (the supervisor's escalation entry) until an `ENTRY_RELEASE` line arrives on stdin; the service's bounded wait on that entry starts at the release, so the hold never counts against its bound |
+| `--test-hold-system-entry ERRNO[:cut]` | `ENTRY_HELD`, `ENTRY_RELEASED` | SystemService's logger holds its entry with that errno (the supervisor's escalation entry) until an `ENTRY_RELEASE` line arrives on stdin; the service's bounded wait on that entry starts at the release, so the hold never counts against its bound. With `:cut` the entry's real write starts and is held inside its first FRAM block, after that block's busy mark, never released: the bound counts the hold and its cancel cuts the block, as a write that never finishes would (no `ENTRY_RELEASED`) |
 | `--test-loop-lag-ms N` | `LOOP_LAG max_us=<n> p99_us=<n> samples=<n> <link key>=<transfers> ...` | a task sleeping N ms at a time records each wake's overshoot; one line per 5 s window, that window's figures alone (SPECIFICATION.md Part F.3's `lag.loop`), ending with each wired `uart_link`'s transfers so far, one `<link key>=<transfers>` per link |
 | `--test-drop-timer-fire reset\|sequencer` | `DROP_ARMED <site>`, `FIRE_DROPPED <site> callbacks=<n>` | the twin's soft-callback drop is set before that one-shot's arm and cleared once its fire was dropped, as rp2's full scheduler queue loses it (SPECIFICATION.md Part F.1) |
 | `--test-kbd-traceback` | `KBD_CAPTURED <bool>`, `KBD_TRACEBACK` | the interpreter's one `KeyboardInterrupt` object, caught at start through a SIGINT to itself; a `KBD_TRACEBACK` line on stdin prints where the newest interrupt was raised |
+| `--test-watchdog-fault supervisor-raise\|main-exit\|block` | `WDT_AT_FAULT <feed_count>` | after the supervisor's first feed, one fault that ends the feeding: the dead-task report raises as a task ends, the product's `main()` is cancelled, or the whole loop blocks past the watchdog timeout |
+| `--test-defer-faults` | `FAULTS_ARMED` | every `--fault` is held back until a `FAULT_ARM` line arrives on stdin, then queued at once, so the boot meets none of them and a fault matching a read the boot shares reaches only what runs after it; a later `FAULT_ARM` queues nothing more |
+| `--test-pin-send-buffer` | `SNDBUF_PINNED bytes=<n> accepted_bytes=<n>` | each socket the server accepts has its send buffer set to the kernel's floor (socket(7): a request is doubled, then clamped) before it is served, as rp2's lwIP one is small and fixed (`TCP_SND_BUF` 6,400 B); both sizes are read back through libc's `getsockopt()`. Unpinned, a loopback socket starts with megabytes, so a whole page fits the kernel at once and a client's reset meets a finished write; pinned, a body larger than both ends' buffers is still being written when the client resets, on any host |
+
+`main-exit` keeps the runner's loop alive, since the twin's WDT countdown dies with its loop.
 
 The runner prints `WATCHDOG_WOULD_TRIGGER count=<n>` whenever its WDT would have reset silicon, and
 one shutdown line naming `would_have_triggered_count`, `feed_count`, `largest_feed_gap_ms`,
 `wdt_timeout_ms`, the kept scratch registers, `public_destinations_refused`, `flash_stall_longest_ms`,
-`gc_block_bytes` and, per UART link, its transfers, failures and overruns (laps and receive errors
+`gc_block_bytes`, the FRAM chip's payload writes (`fram_writes`, `fram_writes_by` per FRAM-backed
+logger, `fram_silent_writes`, `fram_silent_wrens`, and `fram_writes_unattributed` once the address
+table is full) and, per UART link, its transfers, failures and overruns (laps and receive errors
 counted together). The line comes after a `gc.collect()` and `micropython.mem_info()`'s GC summary,
 whose last line ends `max free sz: <blocks>`; `scripts/_twin_process.py`'s `ShutdownLine` refuses a
 line without that summary above it and reads the largest free block from it. Exit codes: 0 a clean
 end, 1 an error, 3 a simulated reset, 4 a bootloader entry, 5 a simulated power loss.
+
+Each boot-phase mark the product writes (`asy_system_service.boot_phase()`, SPECIFICATION.md Part
+A.7) also prints as one `[<device>] boot phase: <BOOT_NAME>` line, so a run's log shows its boot
+order. The printer is installed once per process; in a process that boots more than once (a test
+file calling `main()` again) each line names the device of the latest boot.
 
 ### FRAM persistence
 
@@ -509,6 +539,22 @@ allocation of the whole image is needed (MicroPython's GC never relocates live b
 (16385 bytes for a 0x2000-byte FRAM), which failed with a real `MemoryError` after a few seconds of
 the real task supervisor fragmenting the heap, with ~1.5MB of *total* `gc.mem_free()` still
 available. Chunked reads/writes only ever need one small chunk contiguous at a time.
+
+**A save writes the image only up to the chip's last nonzero byte** (the header's `"used"`; a file
+without it holds the whole chip, and one naming more than the chip holds loads blank): the blank
+tail a factory-fresh chip reads as zeros is never written to the host, CLAUDE.md's host-wear rule.
+A twin process saves once, at its shutdown, and a `dev` pass of the twin CI launches 94 in its suite
+parts alone: each save of the 256 KB chip wrote 524,328 bytes of hex before, up to 49.3 MB over
+those 94, and the 63 images one pass left behind now hold 45-2,328 bytes (agent, 2026-10-26).
+
+**`writes_at` is sized for its 2048-key cap when the chip is built** (`dict.fromkeys()` over 2048
+items, then one `del`: `py/objdict.c:288-296`, `py/map.c:281-290`), so counting a new address never
+rehashes. A rehash needs one contiguous table, 19,568 bytes from 919 to 1223 slots on the Unix port
+(`py/map.c:68-73, 131-148`), and inside the product's erase on a fragmented -1 heap that allocation
+failed: the shutdown's catch-all ended the sequence (`asy_system_service.py`), nothing fed the
+watchdog, and the twin, whose watchdog only records, hung until the suite killed it, so the next
+boot read a power-on. Run 13's erasefram cell went red in 1 of 8 replays before and 0 of 40 after
+(agent, 2026-10-26).
 
 **The memory itself is held in 4KB pages (`_PagedMemory`), never one bytearray for the whole chip.**
 Same cause, at chip construction: dev's 256KB MB85RS2MTA as one `bytearray` needs a 256KB contiguous
@@ -667,14 +713,17 @@ link runs in both CRC modes. The
 fault matrix in runs 3/4/5c/10 is derived from that device's own real wiring plan and instances,
 never a hardcoded driver list, and every fault it leaves out is printed with its reason (`_LEFT_OUT`):
 
-1. **Baseline boot** — walk every `GET` route of the device's API reference and `/`; with no
-   station link the clock has never synced, so
-   `UTCTime` and `LocalTime` read null. Then `PUT` a setting on each of
-   `/system` (`DebugLevel=5`), `/notification` (`WarnCO2=1800`), `/sensors`
-   (`SCD30.MeasInterval=4`), `/networking` (`Hostname`), and `/status` (`ResetErrors`) — every route
-   that accepts `PUT`. Shut down cleanly (`SIGINT`, matching the documented Ctrl-C path — a plain
-   `SIGTERM`/`terminate()` would skip `run_generic_integration.py`'s own FRAM/SCD30 flush) and confirm
-   the state files actually landed on disk.
+1. **Baseline boot, then the reformat relaunch** — walk every `GET` route of the device's API
+   reference and `/`, then read, keep (`runs/run1_errcount.json`) and check the logs — no error or
+   warning entry from any module — then clear them (`ResetErrors`); with no station link the clock
+   has never synced, so `UTCTime`, `LocalTime` and `TimeStale` read null. Shut down cleanly through
+   the stop file (`main()`'s clean path, which flushes the FRAM/SCD30 state as the `SIGINT` handler
+   does; `SIGINT` is the fallback, never `SIGTERM`) and confirm the state files landed on disk. Then
+   relaunch on an emptied config directory beside the kept FRAM state, as a reformatted filesystem
+   leaves a unit: `SYSTEM` logs exactly one W `CONFIG_LOST` (kept in `runs/`), and a setting is
+   `PUT` on each of `/system` (`DebugLevel=5`), `/notification` (`WarnCO2=1800`), `/sensors`
+   (`SCD30.MeasInterval=4`), `/networking` (`Hostname`) and `/status` (`ResetErrors`) — every
+   route that accepts `PUT`.
 2. **Real reboot, settings persistence** — a fresh subprocess against the *same* persisted state
    (the whole point is testing what survives). Confirms every setting
    from run 1 is still there after a genuine process restart, and that the now-persisted
@@ -773,13 +822,13 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
 11. **Clean soak run — host-driven, not a twin-side `--soak` flag.** A fresh clean-boot twin
     subprocess is armed with `--mem-sample-interval-ms` only; the *host* (this script's own
     `_run_11_soak()`, plain CPython) drives warm-up cycles until no cycle has set a new `MEM_SAMPLE`
-    floor for 20 cycles (`l2.soak_plateau_cycles`; at most 100, `l2.soak_warmup_cycles`), then 20
+    floor for 20 cycles (`l2.soak_plateau_cycles`; at most 100, `l2.soak_warmup_cycles`), then 80
     measured cycles, each walking every `GET` route of the device's API reference and `/` directly
-    over HTTP (see "Run 11's two calibrated numbers" below), checks zero HTTP failures and
-    `would_have_triggered_count == 0`, then parses
-    the twin's own captured `MEM_SAMPLE <time.time()> <gc.mem_free()>` log lines (`gc.mem_free()`
-    has no REST route and no other way out of the process — SPECIFICATION.md's "Driver/DUT process
-    separation" Part) and computes the early-quarter-vs-late-quarter memory-trend check
+    over HTTP (see "Run 11's calibrated numbers" below), checks zero HTTP failures and
+    `would_have_triggered_count == 0`, then parses the twin's own captured
+    `MEM_SAMPLE <time.ticks_ms()> <gc.mem_free()>` log lines lying between the cycles' first and
+    last byte offsets in the log (`/status`'s `MemFree` is one poll's reading, not a stream —
+    SPECIFICATION.md's "Driver/DUT process separation" Part) and computes the early-quarter-vs-late-quarter memory-trend check
     (`_mem_trend()`, unit-tested directly in
     `tests_scripts/test_digital_twin_ci_suite_soak.py` — no live subprocess needed for that half).
     One boot, one verdict (owner, 2026-09-26: 'A retry or a longer timeout never counts as a race
@@ -866,15 +915,16 @@ if any check fails, failing the CI job.
 Almost every request-driving and response-observing job moved host-side (SPECIFICATION.md's
 "Driver/DUT process separation"). Two things could not, and both are deliberate:
 
-- **`--mem-sample-interval-ms`** — `gc.mem_free()` exists only inside this process's own heap and
-  deliberately has no REST route. It samples on a fixed wall-clock timer rather than once per
-  host-driven cycle, because the host has no way to signal "a cycle finished" without adding the
-  very channel this design avoids, and a denser stream is at least as sensitive to a real trend.
-  Each line is timestamped off the same wall clock the host reads, so the host selects the samples
-  inside its own window — the same way it scrapes the watchdog counter from stdout, never by
-  calling back in. Its `gc.collect()` is measurement instrumentation, Part I.4(e)'s one twin
-  exception (owner, 2026-09-26), kept while a sparser sampling interval gives Run 11 the same
-  verdict, not a pressure workaround: on a fixed timer, reaching no webserver or driver, it
+- **`--mem-sample-interval-ms`** — `gc.mem_free()` is also published as `/status`'s `MemFree`, but
+  one poll's reading is not a stream: this flag samples it inside the process on a fixed timer
+  rather than once per host-driven cycle, because the host has no way to signal "a cycle finished"
+  without adding the very channel this design avoids. Each line carries `time.ticks_ms()` for
+  diagnostics only; the host selects the samples inside its window by their position in the log,
+  never by either process's clock — the same way it scrapes the watchdog counter from stdout, never
+  by calling back in. Its `gc.collect()` is measurement instrumentation, Part I.4(e)'s one twin
+  exception (owner, 2026-09-26), kept at the calibrated 100 ms, a quarter of the 25 ms it replaced,
+  where Run 11 still tells the planted leak below from the unplanted tree (agent, 2026-10-26), not
+  a pressure workaround: on a fixed timer, reaching no webserver or driver, it
   cannot mask a real `MemoryError`. Verified by removing it (2026-09-14) — the trend check got
   *worse*, swinging min=99808/max=1347104 on a healthy run, a false positive from incidental
   reactive-GC timing.
@@ -887,9 +937,9 @@ Almost every request-driving and response-observing job moved host-side (SPECIFI
   Clearing it changes nothing over-the-wire: nothing in the request path or `asy_uart_comm.py` ever
   reads it back.
 
-### Run 11's two calibrated numbers
+### Run 11's calibrated numbers
 
-**`_SOAK_WARMUP_CYCLES = 100`, not wozi's original 40.** `dev`'s two extra `uart_link` instances
+**`_SOAK_WARMUP_CYCLES = 100`: a device with more instances settles longer after boot.** `dev`'s two extra `uart_link` instances
 mean more one-time post-boot settling — module-level caches and config-derived structures
 populated once, the same asymptotically-decaying-then-flat shape wozi's boot shows on a smaller
 scale, not an unbounded leak. Confirmed 2026-09-14: `gc.mem_free()` plateaus for both devices given
@@ -920,6 +970,16 @@ difference the trend itself measures — so a genuine leak's decline cannot infl
 meant to catch it — and sets the tolerance as a generous multiple of that. Self-calibrating per
 device, run and quarter size, with no constant to re-derive, and it covers the observed worst case
 (5889 bytes) with room left.
+
+**80 measured cycles, a `MEM_SAMPLE` every 100 ms, a tolerance of 4.0 times the quarter noise**
+(agent, 2026-10-26), calibrated on `dev` against a planted leak, a 40-byte `bytearray` kept per
+request. The plant turned Run 11 red in all 4 boots, two per GC stage (a decline of 55.5-58.9 KB
+against tolerances of 33.2-41.5 KB), and the unplanted tree stayed green at both stages (7.1 KB
+against 23.9 KB at -1, 7.8 KB against 22.9 KB at 32768). The former 20 cycles at 3.0, sampled every
+25 ms, passed the same plant in all 6 boots (8.9-14.9 KB against 15.3-22.3 KB): 20 cycles of a slow
+leak stay inside one run's own noise. The owner accepted the longer run (owner, 2026-10-23, asked
+whether Run 11's calibrated leak check, about 75-90 s more per run, stays: "Question 1: This is
+okay, go ahead."). One attempt decides, with no retry.
 
 ### Two suite-table subtleties worth reading before changing one
 
@@ -1182,4 +1242,5 @@ each bare `machine`/`network`/`neopixel` resolves to one file per run (SPECIFICA
 
 The one Unix-port defect the twin still works around, the poll-set growth `unix_port_poll_prewarm.py`
 prevents, is stated in SPECIFICATION.md F.7 (row 12) with its removal trigger; every other modelling
-gap is a row of the fidelity table above.
+gap is a row of the fidelity table above. `unix_port_idle_poll.py` removes a cost rather than a defect:
+its entry above names its removal trigger.

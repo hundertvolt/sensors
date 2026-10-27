@@ -263,7 +263,7 @@ def test_every_traced_file_gets_its_line_table_up_front(repo_root: Path, settrac
     assert source.count("sys.exit(_run())") == 1, "the runner's entry line moved - update this probe"
     lister = tmp_path / "list_tables.py"
     lister.write_text(source.replace("sys.exit(_run())", "print(json.dumps(sorted(_line_tables())))"), encoding="utf-8")
-    completed = subprocess.run([str(settrace_bin), str(lister)], cwd=repo_root, env={"MICROPYPATH": ".frozen"}, capture_output=True, text=True, timeout=_RUN_TIMEOUT_S, check=False)
+    completed = subprocess.run([str(settrace_bin), str(lister)], cwd=repo_root, env={"MICROPYPATH": ".frozen:tests"}, capture_output=True, text=True, timeout=_RUN_TIMEOUT_S, check=False)  # tests/: the runner's _untraced
     assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"
     expected = sorted(p.relative_to(repo_root).as_posix() for prefix in ("src", "digital_twin", "build/generated_src") for p in (repo_root / prefix).rglob("*.py"))
     assert json.loads(completed.stdout) == expected
@@ -309,3 +309,60 @@ def test_a_generated_device_modules_lines_are_traced(repo_root: Path, settrace_b
     completed = _run(repo_root, settrace_bin, probe, out)
     assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"
     assert f"build/generated_src/{module}.py" in json.loads(out.read_text(encoding="utf-8"))
+
+
+# The C-stack tests' shape: a recursion reaches the interpreter's limit inside the trace callback, and every line after
+# it runs untraced (py/profile.c:168-173 leaves the callback's is-executing flag set, py/vm.c:161-185 then skips).
+_DEATH_PROBE = """import sys
+
+ns = {}
+exec(compile("def before():\\n    return 1\\n", "src/<before>", "exec"), ns)
+ns["before"]()
+
+
+def deep(n):
+    return deep(n + 1)
+
+
+def exhaust():
+    try:
+        deep(0)
+    except RuntimeError:
+        pass
+
+
+CALL
+exec(compile("after = 2\\n", "src/<after>", "exec"), {})
+ENDING
+"""
+
+
+@pytest.mark.parametrize("ending", ["sys.exit(0)", "sys.exit(1)", "raise ValueError('after the end of tracing')", ""])
+def test_a_raise_inside_the_trace_callback_leaves_a_note_naming_the_last_traced_line(repo_root: Path, settrace_bin: Path, tmp_path: Path, ending: str) -> None:
+    # Nothing else says so: the file's own result stands, and the lines are still dumped, on every ending.
+    out = tmp_path / "raw.json"
+    completed = _run(repo_root, settrace_bin, _probe(tmp_path, _DEATH_PROBE.replace("CALL", "exhaust()").replace("ENDING", ending)), out)
+    assert completed.returncode == (0 if ending == "sys.exit(0)" else 1), f"{completed.stdout}\n{completed.stderr}"
+    assert json.loads(out.read_text(encoding="utf-8")) == {"src/<before>": [1, 2]}, "src/<after> traced, or the runner's own probe reached the dump"
+    note = "runner: tracing ended after src/<before>:2 - every traced line the file ran after it is missing from its coverage"
+    assert (tmp_path / "raw.json.incomplete").read_text(encoding="utf-8") == note + "\n"
+    assert note in completed.stdout
+
+
+def test_a_file_whose_tracer_lives_to_the_end_leaves_no_note(repo_root: Path, settrace_bin: Path, tmp_path: Path) -> None:
+    out = tmp_path / "raw.json"
+    probe = _probe(tmp_path, "import math_helpers\nmath_helpers.dew_point(20.0, 50.0)\nimport sys\nsys.exit(0)\n")
+    completed = _run(repo_root, settrace_bin, probe, out)
+    assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"
+    assert not (tmp_path / "raw.json.incomplete").exists(), (tmp_path / "raw.json.incomplete").read_text(encoding="utf-8")
+    assert sorted(json.loads(out.read_text(encoding="utf-8"))) == ["src/math_helpers.py"], "the runner's own probe reached the dump"
+    assert "tracing ended" not in completed.stdout
+
+
+def test_a_call_run_through_untraced_keeps_the_rest_of_the_file_traced(repo_root: Path, settrace_bin: Path, tmp_path: Path) -> None:
+    out = tmp_path / "raw.json"
+    body = "from _untraced import untraced\n" + _DEATH_PROBE.replace("CALL", "untraced(exhaust)").replace("ENDING", "sys.exit(0)")
+    completed = _run(repo_root, settrace_bin, _probe(tmp_path, body), out)
+    assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"
+    assert json.loads(out.read_text(encoding="utf-8")) == {"src/<before>": [1, 2], "src/<after>": [1]}
+    assert not (tmp_path / "raw.json.incomplete").exists()

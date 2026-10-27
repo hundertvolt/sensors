@@ -160,7 +160,7 @@ def test_every_device_is_covered_by_the_micropython_tiers_per_device_files(repo_
     expected = set(DEVICE_NAMES)
     problems = []
     assert "grep -qx 'PER_DEVICE = True'" in (repo_root / "scripts" / "test.sh").read_text(encoding="utf-8"), "scripts/test.sh no longer expands a PER_DEVICE file per device"
-    for family in ("test_sensortask", "test_digital_twin_construction", "test_digital_twin_sensortask_integration", "test_digital_twin_timer_pool"):
+    for family in ("test_sensortask", "test_digital_twin_construction", "test_digital_twin_sensortask_integration", "test_digital_twin_timer_pool", "test_digital_twin_held_i2c_line", "test_digital_twin_setup_resets"):
         entry = repo_root / "tests" / f"{family}.py"
         present = {p.stem[len(family) + 1 :] for p in (repo_root / "tests").glob(f"{family}_*.py")}
         if entry.exists() and "PER_DEVICE = True" in entry.read_text(encoding="utf-8").splitlines():

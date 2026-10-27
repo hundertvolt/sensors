@@ -23,8 +23,8 @@ COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_13_system_commands",)
 _SCRATCH = "hwtest-scratch/"  # every command script's scratch config directory
 # One exec after a scratch build that ended in a reset: the directory's files, then the directory (absent: nothing).
 _REMOVE_SCRATCH = "import os\nif 'hwtest-scratch' in os.listdir():\n    for n in os.listdir('hwtest-scratch/'):\n        os.remove('hwtest-scratch/' + n)\n    os.rmdir('hwtest-scratch/')\n"
-# The running firmware's attribution and every logger, read once its boot is done (an exec parks main.py; the test's
-# closing hard reset restarts it). The scratch listing rides along.
+# The running firmware's attribution and every logger, read through exec_live() once its boot is done (its Ctrl-C ends
+# main.py; the armed watchdog or the test's closing hard reset, whichever comes first, restarts it). The scratch listing rides along.
 _READ_AFTER_BOOT = (
     "import asyncio, json, os, sys\n"
     "m = [v for k, v in sys.modules.items() if k.startswith('sensortask_') and getattr(v, 'sysfunct', None) is not None]\n"
@@ -63,7 +63,7 @@ def _after_boot(board: "Board", request: pytest.FixtureRequest, result_note: "Ca
         return None
     wait_until(board.is_device_present, timeout_s=_PRESENT_TIMEOUT_S, description="board back on USB after the command's reset")
     wait_for_boot(board, _BOOT_TIMEOUT_S)
-    output = board.exec(_READ_AFTER_BOOT)
+    output = board.exec_live(_READ_AFTER_BOOT)
     line = next((ln for ln in output.splitlines() if ln.startswith("AFTER ")), None)
     assert line is not None, f"the board printed no AFTER line:\n{output}"
     after = json.loads(line[len("AFTER ") :])
@@ -75,6 +75,7 @@ def _after_boot(board: "Board", request: pytest.FixtureRequest, result_note: "Ca
 def _attributed_reset(board: "Board", request: pytest.FixtureRequest, result_note: "Callable[[str], None]", run: "tuple[str, dict[str, object]]", script: str, expected: int) -> None:
     # A state run's reset armed with the command's own code, no feed gap reaching the watchdog, the boot reading it.
     facts = _reset_facts(*run, script, "state run")
+    assert facts.get("state") != "mempause" or facts.get("mempause") == "Valid", f"{script}: the storage pause was refused, so the run reset unpaused: {facts}"
     reset = facts.get("reset")
     assert isinstance(reset, dict) and reset.get("code") == expected, f"{script}: the reset armed {reset}, not code {expected}: {facts}"
     assert isinstance(reset.get("max_gap_ms"), int) and reset["max_gap_ms"] < _WDT_TIMEOUT_MS, f"{script}: a feed gap reached the watchdog: {reset}"

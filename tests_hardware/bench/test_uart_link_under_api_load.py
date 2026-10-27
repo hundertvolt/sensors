@@ -69,6 +69,11 @@ def test_real_transfers_complete_while_the_api_is_hammered(board: "Board", dut_i
     check_transfers_under_load(dut_ip)
 
 
+@pytest.mark.provokes_log(
+    "a deliberate burst at the ceiling right after its own PUT: a refusal, HTTP_REFUSED, is an accepted outcome (_burst_get)",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
 def test_an_api_overload_does_not_corrupt_the_link_or_the_reverse(board: "Board", dut_ip: str, request: pytest.FixtureRequest) -> None:
     check_overload_does_not_corrupt(dut_ip, request.node.name)
 
@@ -90,13 +95,34 @@ def test_a_multi_chunk_set_echoes_intact_under_serving_load(board: "Board", benc
     facts = parse_facts(output)
     assert facts.get("initiator_found") is True, f"the script found no initiating uart_link instance - {_TOML_HINT}: {facts}"
     assert facts.get("load_seen") is True, f"the host's load never reached the script's webserver, so nothing ran under load: {facts}"
-    assert facts.get("intact") == facts.get("total"), f"echoes came back damaged or missing under load: {facts}"
+    total = facts.get("total")
+    assert isinstance(total, int) and total > 0 and facts.get("intact") == total, f"echoes came back damaged or missing under load: {facts}"
     before, after = facts.get("before"), facts.get("after")
     assert isinstance(before, dict) and isinstance(after, dict) and after.get("Failures") == before.get("Failures"), f"the exerciser's own transfers failed during the echoes: {before!r} -> {after!r}"
     assert len(load.answered) >= _ECHO_MIN_ANSWERED, f"only {len(load.answered)} reads answered during the echoes, below {_ECHO_MIN_ANSWERED}: {load.failures[:5]}"
     assert not load.findings, f"torn reads during the echoes: {load.findings[:10]}"
 
 
+@pytest.mark.provokes_log(
+    "the hazard run's illegal first chunks are refused by the responder, which logs its UART frame codes, and its legal"
+    " ones are ACKed, then declined: their command id 0x07 is no command the exerciser serves",
+    ("UART_init", "E", "UART_FRAME_INVALID"),
+    ("UART_init", "E", "UART_WRONG_KIND"),
+    ("UART_init", "E", "UART_NO_ACK"),
+    ("UART_init", "E", "UART_PEER_INITIATED"),
+    ("UART_init", "E", "TIMEOUT"),
+    ("UART_init", "E", "UART_REENTRANT"),
+    ("UART_init", "E", "UART_SIZE_MISMATCH"),
+    ("UART_init", "E", "UART_TRANSFER_CAP"),
+    ("UART_resp", "E", "UART_FRAME_INVALID"),
+    ("UART_resp", "E", "UART_WRONG_KIND"),
+    ("UART_resp", "E", "UART_NO_ACK"),
+    ("UART_resp", "E", "UART_PEER_INITIATED"),
+    ("UART_resp", "E", "TIMEOUT"),
+    ("UART_resp", "E", "UART_REENTRANT"),
+    ("UART_resp", "E", "UART_TRANSFER_CAP"),
+    ("UART_resp", "W", "UART_CMD_DECLINED"),
+)
 def test_a_hazard_run_under_the_readers_load_reports_every_verdict(board: "Board", dut_ip: str, request: pytest.FixtureRequest) -> None:
     check_hazard_run_under_load(dut_ip, request.node.name)
 

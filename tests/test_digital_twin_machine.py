@@ -1,4 +1,4 @@
-"""Deterministic unit tests for digital_twin/machine.py's bus-level Pin/I2C/SPI/Timer/WDT/RTC fakes - exercises real-wozi-wiring dispatch and bus-level fault behavior; per-chip protocol correctness lives in the per-chip test files instead.
+"""Deterministic unit tests for digital_twin/machine.py's bus-level Pin/I2C/SPI/Timer/WDT/RTC fakes - exercises generated-plan dispatch and bus-level fault behavior; per-chip protocol correctness lives in the per-chip test files instead.
 test_timer_fires_for_real_on_a_short_period is the one genuine (bounded, generous-timeout) wall-clock exception."""
 
 import asyncio
@@ -16,6 +16,8 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import TypeVar
+
+    from _twin_devices import TwinWiringPlan
 
     A = TypeVar("A")
 
@@ -36,6 +38,7 @@ from _machine_contract import ALL_CHECKS, FAULT_CHECKS
 from _ticks30 import Ticks30Time
 from _tmp_scratch import TmpScratch
 from _twin_common import COUNTER_CAP, LOG_MAXLEN, BoundedLog, StatePaths, fill_buffer, saturating_add
+from _twin_devices import generated_devices, wiring_plan
 from _twin_random import FixedRandom
 from machine import (
     I2C,
@@ -100,12 +103,34 @@ _RSR_OE = 0x08  # UARTRSR's overrun bit (RP2040 datasheet Table 427)
 _scratch = TmpScratch("dtmachine")
 # The shared contract's checks this twin still fails, each with the twin change that closes it; the list only shrinks.
 _TWIN_PENDING: "tuple[tuple[str, str], ...]" = ()
+# The hardware a test needs, per bus: an I2C bus as {address: driver}, an SPI bus as (driver, max_size) or None; it runs
+# on the first generated device wiring exactly that (_board()), picked by its wiring as SPECIFICATION.md E.2.1 says.
+_BOARD: "dict[str, object]" = {"i2c0": {0x61: "scd30"}, "i2c1": {0x59: "sgp40", 0x77: "bmp3xx"}, "spi0": ("fram", 0x2000), "spi1": None}
+_ISL29125_BOARD: "dict[str, object]" = {"i2c1": {0x44: "isl29125", 0x59: "sgp40", 0x61: "scd30"}}
 
 microtest.after_each(machine.reset_test_state)
 
 
+def _attached(plan: "TwinWiringPlan", bus: str) -> object:
+    # One bus of a plan in _BOARD's form.
+    if bus.startswith("i2c"):
+        return {chip["address"]: chip["driver"] for chip in plan["buses"].get(bus, [])}
+    fram = plan["spi"].get(bus)
+    return None if fram is None else (fram["driver"], fram["max_size"])
+
+
+def _board(wiring: "dict[str, object]") -> str:
+    # The first generated device whose plan wires exactly `wiring` on every bus it names.
+    searched = generated_devices()
+    for device in searched:
+        plan = wiring_plan(device)
+        if all(_attached(plan, bus) == want for bus, want in wiring.items()):
+            return device
+    raise AssertionError(f"no generated device wires {wiring!r} - searched {searched!r}")
+
+
 def _contract_failure(check: "Callable[[A], None]", backend: "A") -> "str | None":
-    # One check inside one harness run on a fresh wozi board: a WDT or chip timer it starts is cancelled with the run.
+    # One check inside one harness run on a fresh _BOARD: a WDT or chip timer it starts is cancelled with the run.
     async def body() -> "str | None":
         try:
             check(backend)
@@ -223,6 +248,11 @@ def _value_error(call: "Callable[[], object]") -> str:
     except ValueError as e:
         return str(e)
     raise AssertionError("expected ValueError")
+
+
+def _wire(wiring: "dict[str, object]" = _BOARD) -> None:
+    # One explicit board per test: the generated plan of the device _board() picks for the hardware the test needs.
+    machine.configure_wiring(wiring_plan(_board(wiring)))
 
 
 def test_pin_takes_rp2s_ids_and_names_as_one_object() -> None:
@@ -370,10 +400,9 @@ def test_i2c_readfrom_mem_and_writeto_mem_dispatch_to_the_wired_bmp3xx_device() 
 
 
 @_inside_one_run
-def test_dev_wiring_puts_the_isl29125_on_i2c1_beside_scd30_and_sgp40() -> None:
-    # dev is the only variant that carries this sensor (requirement 18) - wozi's own branch, the
-    # default asserted above, must stay two devices.
-    _wire("dev")
+def test_an_isl29125_board_wires_it_on_i2c1_beside_scd30_and_sgp40() -> None:
+    # The twin wires what the plan attaches: three chips on this board's i2c1, two on _BOARD's (asserted above).
+    _wire(_ISL29125_BOARD)
     i2c = I2C(1, scl=Pin(15), sda=Pin(14), freq=50000)
     assert sorted(i2c.scan()) == [0x44, 0x59, 0x61]
     assert i2c.readfrom_mem(0x44, 0x00, 1) == bytes([0x7D])  # device ID, p9 Table 2
@@ -382,19 +411,20 @@ def test_dev_wiring_puts_the_isl29125_on_i2c1_beside_scd30_and_sgp40() -> None:
 
 
 @_inside_one_run
-def test_dev_wiring_hands_the_isl29125_the_same_pin_object_the_driver_constructs() -> None:
+def test_an_isl29125_board_hands_the_chip_the_same_pin_object_the_driver_constructs() -> None:
     # machine.py's Pin is a per-id registry singleton, and that identity is what lets the chip
-    # fake's simulate_edge() reach a handler the driver registered on its own Pin(6). A later "fix"
+    # fake's simulate_edge() reach a handler the driver registered on its own irq Pin. A later "fix"
     # returning fresh objects would break the whole interrupt path with nothing else failing.
-    _wire("dev")
+    _wire(_ISL29125_BOARD)
+    (irq_pin,) = [a["irq_pin"] for a in wiring_plan(_board(_ISL29125_BOARD))["buses"]["i2c1"] if a["driver"] == "isl29125"]
     i2c = I2C(1, scl=Pin(15), sda=Pin(14), freq=50000)
     chip = i2c.devices[0x44]
-    driver_side = Pin(6, mode=Pin.IN, pull=Pin.PULL_UP)
+    driver_side = Pin(irq_pin, mode=Pin.IN, pull=Pin.PULL_UP)
     assert chip._int_pin is driver_side
 
 
 @_inside_one_run
-def test_wozi_wiring_carries_no_isl29125() -> None:
+def test_a_board_without_the_isl29125_wires_none() -> None:
     _wire()
     assert 0x44 not in I2C(1, scl=Pin(19), sda=Pin(18), freq=50000).devices
     assert 0x44 not in I2C(0, scl=Pin(9), sda=Pin(8), freq=50000).devices
@@ -502,7 +532,7 @@ def test_spi_write_readinto_dispatches_to_the_wired_device() -> None:
 
 
 def test_spi_id1_wires_no_device_and_reads_back_zeroed_bytes() -> None:
-    # Only spi0 carries the wozi wiring's own FRAM chip (machine.py's own docstring) - an id nothing
+    # Only spi0 carries the board's own FRAM chip (machine.py's own docstring) - an id nothing
     # wires (see _wire_spi_device()) still behaves like a real, present-but-unconnected bus rather
     # than raising: write() is logged and silently dropped, readinto() zero-fills the buffer.
     _wire()
@@ -621,12 +651,6 @@ def test_i2c_zero_length_write_to_a_register_chip_is_the_probe() -> None:
     i2c.devices[0x77].fault.inject_fault("writeto", OSError, errno.EIO, "probe NAK")
     i2c.devices[0x77].fault.inject_fault("writeto", OSError, errno.ETIMEDOUT, "probe stretched")
     assert (_errno_of(lambda: i2c.writeto(0x77, b"")), _errno_of(lambda: i2c.writeto(0x77, b""))) == (errno.ENODEV, errno.ETIMEDOUT)
-
-
-def _wire(device: str = "wozi") -> None:
-    # One explicit board per test: the device's generated plan, derived from devices/<device>.toml.
-    with open(f"build/generated_src/sensortask_{device}_wiring_plan.json") as f:
-        machine.configure_wiring(json.load(f))
 
 
 def test_i2c_an_empty_write_to_an_absent_address_reads_enodev_a_data_write_eio() -> None:
@@ -1200,8 +1224,7 @@ def test_reset_peripherals_forgets_every_bus() -> None:
 
 
 def test_every_configure_hook_refuses_once_a_bus_exists() -> None:
-    with open("build/generated_src/sensortask_wozi_wiring_plan.json") as f:
-        plan = json.load(f)
+    plan = wiring_plan(_board(_BOARD))
     hooks: tuple[tuple[str, Callable[[], object]], ...] = (
         ("configure_wiring", lambda: machine.configure_wiring(plan)),
         ("configure_random_source", lambda: machine.configure_random_source(None)),
@@ -1225,7 +1248,7 @@ def test_configure_wiring_never_replaces_the_board_it_wired() -> None:
     _wire()
     first = I2C(1, scl=Pin(19), sda=Pin(18))
     try:
-        _wire("dev")
+        _wire(_ISL29125_BOARD)  # a board whose i2c1 carries no 0x77, so a replaced board would show
     except RuntimeError:
         pass
     assert I2C(1, scl=Pin(19), sda=Pin(18)) is first and 0x77 in first.devices
@@ -1583,8 +1606,7 @@ def test_an_unplugged_chip_answers_nothing_until_plugged_back_powered_up() -> No
 
 
 def test_the_fram_table_names_both_chips_and_refuses_an_unknown_size() -> None:
-    with open("build/generated_src/sensortask_wozi_wiring_plan.json") as f:
-        plan = json.load(f)
+    plan = wiring_plan(_board(_BOARD))
     plan["spi"]["spi0"]["max_size"] = 0x8000
     machine.configure_wiring(plan)
     try:

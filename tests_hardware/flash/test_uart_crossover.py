@@ -231,6 +231,7 @@ def test_no_frame_is_lost_while_interrupts_are_off(board: Board, crc_mode: str, 
         else:
             assert isinstance(window["overrun_detected"], int) and window["overrun_detected"] >= 1, f"no overrun reported past the ring's {bound} us bound: {window}"
             assert window["after_intact"] == window["after_sent"], f"frames after the overrun's resync were not intact: {window}"
+    _setup_ok(facts, "rxdmae_setup")
     rxdmae = _dict(facts["rxdmae_window"])
     assert rxdmae["oe_set"] is True and rxdmae["first_failed"] is True and rxdmae["next_ok"] is True, f"the RXDMAE-off overrun did not fail one transaction and recover: {rxdmae}"
 
@@ -263,6 +264,7 @@ def test_a_real_config_write_during_traffic_loses_no_frame(board: Board, crc_mod
     # One owned flash write: a scratch config flush, the flash driver's own interrupts-off window, during the stream.
     facts = _run_or_fail(board, "uart_dma_ring_interrupts_off.py", _LONG_SCRIPT_TIMEOUT_S, crc_mode=crc_mode, state="config_write")
     _setup_ok(facts)
+    assert "scratch_remove_errno" not in facts, f"the scratch config file could not be removed: {facts}"
     written = _dict(facts["config_write"])
     result_note(f"config flush {written['flush_us']} us")
     assert written["streamed"] is True and written["frames_intact"] == written["frames_sent"] and written["uartrsr_oe"] is False, f"a frame was lost across a real flash write: {written}"
@@ -274,6 +276,7 @@ def test_link_transactions_during_config_writes_are_recorded(board: Board, crc_m
     # Five owned flash writes, one per transaction: a crossing fails visibly, never corrupts; the figures fill F.3.
     facts = _run_or_fail(board, "uart_dma_ring_interrupts_off.py", _LONG_SCRIPT_TIMEOUT_S, crc_mode=crc_mode, state="config_write_link")
     _setup_ok(facts)
+    assert "scratch_remove_errno" not in facts, f"the scratch config file could not be removed: {facts}"
     link = _dict(facts["config_write_link"])
     result_note(f"transactions failed {link['transactions_failed']}, flushes {link['flush_us']} us")
     assert _int(link["transactions_ok"]) + _int(link["transactions_failed"]) == _RING_LINK_TRANSACTIONS, link

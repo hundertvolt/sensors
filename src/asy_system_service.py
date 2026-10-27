@@ -95,6 +95,7 @@ _RR_COMMAND_INCOMPLETE = const(9)
 _RR_BOOT_FAILURE = const(10)  # + the boot phase that never completed
 _RR_STACK_EXHAUSTED = const(20)  # outside the 10 + phase band of boot failures
 RR_INTERRUPTED = const(21)  # Ctrl-C on the console ended the run and the watchdog reset followed; the boot entry imports it
+_RR_LOOP_ENDED = const(22)  # any other exception ended the event loop after boot, the watchdog reset followed
 # The chip's own reset flags, which reset_cause() collapses (ports/rp2/modmachine.c:74-89): WATCHDOG REASON bits 0-1
 # (TIMER, FORCE) and CHIP_RESET bits 8, 16, 20 (HAD_POR, HAD_RUN, HAD_PSM_RESTART; pico-sdk watchdog.h, vreg_and_chip_reset.h).
 _WATCHDOG_REASON = const(0x40058008)
@@ -151,20 +152,32 @@ def begin_boot() -> int:
     _reset_bits = (mem32[_WATCHDOG_REASON] & _REASON_BITS) | (mem32[_CHIP_RESET] & _CHIP_RESET_BITS)
     record = mem_backup(0)
     phase = mem_backup(1)
-    if reset_cause() == PWRON_RESET:
-        code = _RR_POWER_ON
-    elif record[0] == _RR_MAGIC and record[2] == record[1] ^ _RR_CHECK:
-        code = record[1]
-    elif record[0] != 0:
-        code = _RR_UNKNOWN
+    # A valid record, then an in-boot phase: power-off and the RUN pin clear both regions (SPECIFICATION.md F.5.4), so
+    # either under a power-on cause is a console soft reset, keeping the last hard reset's cause (owner, 2026-10-26).
+    if record[0] == _RR_MAGIC and record[2] == record[1] ^ _RR_CHECK:
+        code: int = record[1]
     elif phase[0] == _BP_MAGIC and phase[2] == phase[1] ^ _RR_CHECK and BOOT_CONSTRUCTION <= phase[1] < BOOT_DONE:
         code = _RR_BOOT_FAILURE + phase[1]
+    elif reset_cause() == PWRON_RESET:
+        code = _RR_POWER_ON
+    elif record[0] != 0:
+        code = _RR_UNKNOWN
     else:
         code = _RR_WATCHDOG
     for i in range(len(record)):
         record[i] = 0
     _write_region(1, _BP_MAGIC, BOOT_CONSTRUCTION)
     return code
+
+
+def record_loop_end() -> None:
+    # The boot entry's call when an exception other than Ctrl-C ended the loop: after BOOT_DONE it writes 22 unless a
+    # valid record names the reset already underway, which is kept (agent, 2026-10-26); during boot it writes nothing.
+    record = mem_backup(0)
+    phase = mem_backup(1)
+    done = phase[0] == _BP_MAGIC and phase[1] == BOOT_DONE and phase[2] == BOOT_DONE ^ _RR_CHECK
+    if done and not (record[0] == _RR_MAGIC and record[2] == record[1] ^ _RR_CHECK):
+        write_reset_record(_RR_LOOP_ENDED)
 
 
 def write_reset_record(code: int) -> None:
@@ -371,12 +384,16 @@ class SystemService:
                 return self._shutdown == purpose
             self._shutdown = purpose
             refusal = ""
-            if self._reset_armed:
-                refusal = "a reset is already armed"
-            elif purpose == _RR_CONFIG_RESET and not self._config_stores:
-                refusal = "no config store"
-            elif purpose == _RR_FRAM_ERASED and (self._storage is None or not await self._storage.erase_ready()):
-                refusal = "FRAM missing, not set up or write-protected"
+            try:
+                if self._reset_armed:
+                    refusal = "a reset is already armed"
+                elif purpose == _RR_CONFIG_RESET and not self._config_stores:
+                    refusal = "no config store"
+                elif purpose == _RR_FRAM_ERASED and (self._storage is None or not await self._storage.erase_ready()):
+                    refusal = "FRAM missing, not set up or write-protected"
+            except BaseException:  # a raising preflight leaves the gate as a refusal does; the caller's catch logs it
+                self._shutdown = 0
+                raise
             if self._reset_armed:  # re-checked: the preflight can yield, and an escalation may have armed meanwhile
                 refusal = "a reset is already armed"
             if refusal:
@@ -508,24 +525,24 @@ class SystemService:
             uptime = self._uptime.read()
             self.pr.all("System uptime:", uptime)
             if self._unpause_at is not None and time.ticks_diff(time.ticks_ms(), self._unpause_at) >= 0:
-                self._unpause_at = None
                 # A reset or a shutdown has paused storage for good; a late auto-unpause must not reopen it.
                 if not (self._reset_armed or self._feed_owned) and self._storage_pause is not None:
                     self._storage_pause(value=False)
                     self.pr.evt("Storage auto-unpaused.")
+                self._unpause_at = None  # spent once the unpause ran: a raise above leaves it to the restarted loop
             if self._start_time_set:
                 continue
             utc = await self._ntp_boot_signature()
             if utc is not None:
                 await self._boot_signature.set_value(utc)
+                self._start_time_set = True  # with the value: a raise in its line never lets a restart draw another
                 self.pr.one("System boot signature set by NTP.")
-                self._start_time_set = True
             elif uptime >= _NTP_WAIT_TIME:
                 # get_rand_32()-seeded (pico-sdk pico_rand, real ring-oscillator entropy) - unique
                 # per boot, not a fixed/repeatable seed.
                 await self._boot_signature.set_value(random.getrandbits(32))
-                self.pr.one("System boot signature set by random number.")
                 self._start_time_set = True
+                self.pr.one("System boot signature set by random number.")
 
     async def _supervise(self) -> None:
         # The supervisor loop, its own task (supervise_tasks() owns it): restarts every ended task, charging the restart
@@ -692,9 +709,9 @@ class SystemService:
         if self._storage_pause is not None:
             duration = min(max(duration, 0), _MAX_STORAGE_PAUSE)
             if duration == 0:
-                self._unpause_at = None
                 self.pr.evt("Storage immediately unpaused.")
                 self._storage_pause(value=False)
+                self._unpause_at = None  # cleared once the unpause ran: a raise above leaves a pending pause to end
             else:
                 self.pr.evt("Storage paused for", duration, "seconds.")
                 self._storage_pause(value=True)

@@ -151,7 +151,7 @@ class DFRobot_vocalgorithmParams:
     def unpack_from(self, buf: bytes | bytearray | memoryview, offset: int = 0) -> bool:
         try:
             values = struct.unpack_from("<32q", buf, offset)
-        except (OverflowError, TypeError, ValueError):  # as pack_into(); a MemoryError propagates, its text logged by the caller
+        except (OverflowError, ValueError):  # a short buffer or an offset past it; a MemoryError propagates, its text logged by the caller
             return False
         # Restored values must be int32 like the C state; uptimes above the small-int limit (an older build's backup) are clamped.
         for value in values:

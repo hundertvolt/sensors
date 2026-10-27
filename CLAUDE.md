@@ -50,9 +50,11 @@ information):
   Part B.14) — each `verify_*()` there already fails loudly on its own if its anchor text drifted,
   but re-reading the real mechanism behind each anchor (not just whether the literal string still
   matches) is still part of this practice, the same as everything else it covers. For the
-  `modlwip_eagain` override it also asks whether the new pin carries a real upstream fix for
-  micropython issue 19704 (PRs 19705/19708) — if so the override is removed, not re-anchored (owner,
-  2026-09-30).
+  `modlwip_eagain` override it also asks, patch by patch, whether the new pin carries a real upstream
+  fix: micropython issue 19704 (PRs 19705/19708) for the EAGAIN patch, a listener close that skips
+  lwIP's forbidden callbacks and a `listen()` that stores its backlog size only after allocating the
+  queue for the two listener patches (SPECIFICATION.md B.14.4). A fixed patch is removed, not
+  re-anchored, and the override goes with its last patch (owner, 2026-09-30; owner, 2026-10-26).
 - **Every external dependency is refreshed as one step, not only MicroPython** (owner, 2026-09-30:
   "Check all external dependencies for updates - both modules, repos and tooling, just
   everything."): the vendored `ext/` code (only as an unmodified upstream tag or commit), the stub
@@ -551,7 +553,9 @@ information):
   tag lines are data, not commentary, and are exempt**: `# @web`, `# @web-group`, `# @wiring`,
   `# @value-wiring`, `# @limits` and `# @requires` are buildgen's input, one line per field by
   construction (SPECIFICATION.md Part L.6.4), and `# @tunable` (`// @tunable` in JS) is the
-  tunable register's (Part N) — the prose introducing them is not exempt. **JSDoc
+  tunable register's (Part N), and `# @include` is the device-script renderer's
+  (`tests_hardware/harness.py`; owner, 2026-10-26: "These lines are not comments, they count as productive code.")
+  — the prose introducing them is not exempt. **JSDoc
   `@typedef`/`@param`/`@returns` annotations are the same case** — `npm run typecheck` really
   checks them with `tsc`, so `js/definitions.js`'s ~51-line `@typedef` run is a type declaration,
   not a comment; the prose above it is not exempt. **PEP 723 inline script metadata is the same

@@ -91,7 +91,7 @@ def _dispatch_only_fields(repo_root: Path) -> frozenset[str]:
 
 
 def _always_executed_fields(repo_root: Path) -> frozenset[str]:
-    # The fields the chip takes on every PUT (`alwaysExecuted`): each one writes the chip's own store.
+    # The fields the chip takes whenever a PUT carries them (`alwaysExecuted`): each one writes the chip's own store.
     return _flagged_fields(repo_root, "alwaysExecuted")
 
 

@@ -15,6 +15,7 @@ from _fast_sleep import check_sleep_ms
 from _fram_builders import make_fram_manager
 from _recording_print import record_prints
 from _src_const import src_int
+from _stack_overflow import stack_overflow
 from _ticks30 import TICKS_PERIOD, Ticks30Time
 from _uart_comm_harness import (
     ERROR_LEVEL,
@@ -35,11 +36,12 @@ from _uart_comm_harness import (
 from machine import LinkPoller, UARTLink
 from rp2 import DMA
 
+import asy_print_log
 import asy_uart_comm
 from asy_base_classes import COUNTER_CAP, PieceBuffer, RegionBuffer
 from asy_crc_checks import CRC16
 from asy_framing_codecs import FramingCOBS
-from asy_print_log import LogConfig, PrintLogHistoryStore, make_logger
+from asy_print_log import LogConfig, PrintLogHistoryStore, fatal_reported, make_logger
 from asy_uart_comm import (
     DEFAULT_LIMITS,
     ROLE_INITIATOR,
@@ -130,6 +132,11 @@ _ASYNC_CALLBACK_YIELD_MS = 1
 _BSEC_RUN_BOUND_S = 60
 # @tunable l1.asy_uart_comm_prompt_hold_ms = 5
 _PROMPT_HOLD_MS = 5
+# @tunable l1.asy_uart_comm_recorder_poll_ms = 1
+_RECORDER_POLL_MS = 1  # the test's own real look at the sleep recorder's delays
+# @tunable l1.asy_uart_comm_gate_look_ms = 5
+_GATE_LOOK_MS = 5  # a real sleep in which the write gate takes its looks, its clock held
+# @tunable l1.asy_uart_comm_past_cancel_ack_hold_ms = 1300
 _PAST_CANCEL_ACK_HOLD_MS = 1300
 # @tunable l1.asy_uart_comm_cap_refusals = 50
 _REFUSALS = 50
@@ -143,13 +150,17 @@ _FLUSH_RECOVERY_TRIES = 5
 _HOLD_OFF_LOOK_MS = 30
 
 
-def persisted(comm: UARTComm) -> "list[str]":
-    # ErrNum holds errnos and wrnnos in one ring and they share the number space, so ErrType is
-    # what tells them apart; "N" is an unused slot. Indexed rather than zip()ed - MicroPython's
-    # zip() has no strict= parameter to satisfy B905.
+def logged(comm: UARTComm) -> "tuple[int, list[str]]":
+    # (ErrCount, the ring's used slots): one entry per event, a repeat counts with no new slot. ErrNum holds errnos and
+    # wrnnos in one number space, so ErrType tells them apart; "N" is an unused slot. Indexed: MicroPython's zip() has
+    # no strict= for B905.
     entry = run(comm.get_error_counter(), RUN_LIMIT_S)[comm.name]
     nums, kinds = entry["ErrNum"], entry["ErrType"]
-    return [f"{kinds[i]}{nums[i]}" for i in range(len(nums)) if kinds[i] != "N"]
+    return int(entry["ErrCount"]), [f"{kinds[i]}{nums[i]}" for i in range(len(nums)) if kinds[i] != "N"]
+
+
+def persisted(comm: UARTComm) -> "list[str]":
+    return logged(comm)[1]
 
 
 def _crc16_pair_dropping(*, from_initiator: bool, frame: int) -> Pair:
@@ -560,11 +571,11 @@ def test_reset_errors_keeps_the_valid_frame_count() -> None:
     assert worked.initiator._valid_frames == 1
     assert worked.initiator._blind_resyncs == 0
     _noisy_resyncs(worked)
-    assert _e("UART_LINK_UNINTELLIGIBLE") not in persisted(worked.initiator), persisted(worked.initiator)
+    assert logged(worked.initiator) == (0, []), logged(worked.initiator)
 
     fresh = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()), RUN_LIMIT_S)
     _noisy_resyncs(fresh)
-    assert _e("UART_LINK_UNINTELLIGIBLE") in persisted(fresh.initiator), persisted(fresh.initiator)
+    assert logged(fresh.initiator) == (1, [_e("UART_LINK_UNINTELLIGIBLE")]), logged(fresh.initiator)
 
 
 def test_a_repeated_identical_fault_spends_one_slot_and_counts_every_time() -> None:
@@ -613,7 +624,7 @@ def test_the_blind_resync_streak_saturates() -> None:
 
     run(blind_resync(), _RUN_BOUND_S)
     assert comm._blind_resyncs == _DIAG_RESYNC_STREAK
-    assert _e("UART_LINK_UNINTELLIGIBLE") in persisted(comm), persisted(comm)
+    assert logged(comm) == (1, [_e("UART_LINK_UNINTELLIGIBLE")]), logged(comm)
 
 
 @_on_poll_rounds
@@ -631,9 +642,9 @@ def test_bytes_a_failed_frame_read_dropped_count_toward_the_link_diagnostic() ->
                 await pair.initiator._resync(device)
 
     run(resyncs(0), _RUN_BOUND_S)
-    assert _e("UART_LINK_UNINTELLIGIBLE") not in persisted(pair.initiator), persisted(pair.initiator)
+    assert logged(pair.initiator) == (0, []), logged(pair.initiator)
     run(resyncs(_FRAME - 1), _RUN_BOUND_S)  # each a frame cut short and dropped inside the read
-    assert _e("UART_LINK_UNINTELLIGIBLE") in persisted(pair.initiator), persisted(pair.initiator)
+    assert logged(pair.initiator) == (1, [_e("UART_LINK_UNINTELLIGIBLE")]), logged(pair.initiator)
 
 
 def test_the_discard_count_is_read_across_its_wrap() -> None:
@@ -905,7 +916,7 @@ def test_the_backoff_stays_a_valid_tick_delay_at_the_timeout_ceiling() -> None:
     async def scenario() -> None:
         task = comm.start_asy_listen()
         while len(recorder.delays) < 8:
-            await asyncio.sleep_ms(1)
+            await asyncio.sleep_ms(_RECORDER_POLL_MS)
         task.cancel()
 
     comm.uart_listen = no_command  # type: ignore[assignment, method-assign]
@@ -1252,10 +1263,10 @@ def test_the_hold_off_deadline_survives_the_ticks_rollover() -> None:
         window = comm._resync_window_ms()
         assert clock.now + window > TICKS_PERIOD
         gate = asyncio.create_task(comm._await_write_gate())
-        await asyncio.sleep_ms(5)  # the gate's first look, still before the wrap
+        await asyncio.sleep_ms(_GATE_LOOK_MS)  # the gate's first look, still before the wrap
         held_before_the_wrap = not gate.done()
         clock.advance(window - 1)
-        await asyncio.sleep_ms(5)  # several of the gate's rounds, each sleeping the 1 ms left
+        await asyncio.sleep_ms(_GATE_LOOK_MS)  # several of the gate's rounds, each sleeping the 1 ms left
         held_past_it = not gate.done()
         clock.advance(2)
         await asyncio.wait_for(gate, _PAST_DEADLINE_BOUND_S)
@@ -2244,28 +2255,10 @@ def test_a_negative_expected_size_is_refused_not_read_as_dont_care() -> None:
     assert copied_out(run(pair.with_listener(pair.initiator.uart_get(1)), _RUN_BOUND_S)) == b"hello"
 
 
-def test_a_non_buffer_payload_returns_a_sentinel_instead_of_raising() -> None:
-    # len(5) and "abc"[0:n] both raise TypeError; the responder's own get_callback payload was
-    # already type-checked, the initiator's was not.
-    pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()), RUN_LIMIT_S)
-    assert run(pair.initiator.uart_set(1, 5), RUN_LIMIT_S) is False  # type: ignore[arg-type]
-    assert run(pair.initiator.uart_set(1, "abc"), RUN_LIMIT_S) is False  # type: ignore[arg-type]
-
-
-def test_an_immutable_destination_is_refused_before_the_train_starts() -> None:
-    # bytes has no slice assignment, so this failed mid-train with a TypeError after the peer had
-    # already been acknowledged - the worst possible moment to discover it.
-    pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()), RUN_LIMIT_S)
-    assert run(pair.initiator.uart_get_into(1, b"\x00\x00"), RUN_LIMIT_S) is None  # type: ignore[arg-type]
-    assert pair.wire_from_initiator() == b""
-
-
 def test_a_refused_argument_is_logged_with_its_own_errno() -> None:
     pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()), RUN_LIMIT_S)
     assert run(pair.initiator.uart_set(0x101, b"x"), RUN_LIMIT_S) is False
-    log = run(pair.initiator.get_error_counter(), RUN_LIMIT_S)["UART_A"]
-    assert "E" in log["ErrType"], log
-    assert code("E", "BAD_ARG") in log["ErrNum"], log
+    assert logged(pair.initiator) == (1, [_e("BAD_ARG")]), logged(pair.initiator)
 
 
 # ---- caller-supplied arguments, second pass -------------------------------------------------------
@@ -2851,7 +2844,7 @@ def test_an_answer_the_train_could_never_carry_is_refused_at_its_header() -> Non
     # data chunk is acknowledged, not after the whole transfer has run to completion.
     pair = run(build_pair(get_callback=echo_get(b"ab"), set_callback=accept_set()), RUN_LIMIT_S)
     assert run(pair.with_listener(pair.initiator.uart_get(1, exp_size=PAYLOAD_SIZE + 1)), _RUN_BOUND_S) is None
-    assert _e("UART_SIZE_MISMATCH") in persisted(pair.initiator), persisted(pair.initiator)
+    assert logged(pair.initiator) == (1, [_e("UART_SIZE_MISMATCH")]), logged(pair.initiator)
     # "Early" is the whole claim, and the wire is what proves it: the GET request went out and
     # nothing else did. Refused later, the initiator would have acknowledged the answer header
     # first and only then discovered the train it had just committed to could not satisfy it.
@@ -2952,7 +2945,7 @@ def test_a_write_failing_at_each_point_of_a_get_reports_and_resyncs() -> None:
     # Every writefrom() in the module is checked, and one GET passes through six: the request, its ACK, the
     # answer's header frame, the initiator's ACK for that, a mid-train ACK and the final one. All six report
     # UART_WRITE_FAILED and resync - a silent no-op write is what desynchronises the two sides.
-    def get_with_a_failed_write(side: str, successes: int, answer: bytes) -> "tuple[PieceBuffer | None, list[str], bool]":
+    def get_with_a_failed_write(side: str, successes: int, answer: bytes) -> "tuple[PieceBuffer | None, tuple[int, list[str]], bool]":
         pair = Pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(answer), set_callback=accept_set())
         assert run(pair.setup(), RUN_LIMIT_S) is True
         initiating = side == "initiator"
@@ -2960,7 +2953,7 @@ def test_a_write_failing_at_each_point_of_a_get_reports_and_resyncs() -> None:
         # A write cut at any point can leave the responder's round unfinished; that is the case under test.
         got = run(pair.with_listener(pair.initiator.uart_get(1), listener_may_stall=True), _LISTENER_RUN_BOUND_S)
         failing = pair.initiator if initiating else pair.responder
-        return got, persisted(failing), failing._holdoff_active
+        return got, logged(failing), failing._holdoff_active
 
     long_answer = bytes(PAYLOAD_SIZE + 1)  # three chunks, so there is a mid-train ACK to lose
     cases = (
@@ -2974,7 +2967,7 @@ def test_a_write_failing_at_each_point_of_a_get_reports_and_resyncs() -> None:
     for side, successes, answer, what in cases:
         got, log, resynced = get_with_a_failed_write(side, successes, answer)
         assert got is None, what
-        assert _e("UART_WRITE_FAILED") in log, (what, log)
+        assert log == (1, [_e("UART_WRITE_FAILED")]), (what, log)  # the failing side's one entry
         assert resynced is True, what  # every fault also resyncs, without exception
 
 
@@ -3405,6 +3398,80 @@ def test_a_drain_that_cannot_run_clears_the_previous_drains_verdict() -> None:
     assert comm._rx.get_buf() is None  # the early return really is the path taken
     assert run(comm._drain(comm._uart), RUN_LIMIT_S) == 0  # type: ignore[arg-type]
     assert comm._drain_bound_hit is False
+
+
+
+def test_an_ack_arriving_at_a_listener_is_logged_as_the_wrong_kind() -> None:
+    # A listener expects a GET or a SET; any other legal command is a frame of the wrong kind, not a malformed one.
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()), RUN_LIMIT_S)
+    bus = pair.responder._uart
+    assert bus is not None
+
+    async def scenario() -> ListenResult:
+        ack = build_frame(cmd=_CMD_ACK, size=0, chunks=1, cur=1)
+        encoded = await bus.framing.encode_into(ack, len(ack))
+        assert encoded is not None
+        pair.fake_b.feed_rx(bytes(encoded))
+        return await pair.responder.uart_listen()
+
+    assert run(scenario(), RUN_LIMIT_S).cmd_id is None
+    assert persisted(pair.responder) == [_e("UART_WRONG_KIND")], persisted(pair.responder)
+
+
+def test_a_raising_uart_listen_is_logged_and_the_loop_backs_off_and_keeps_listening() -> None:
+    # uart_listen() breaking its never-raise contract: logged as E UNEXPECTED, the loop backs off and listens once more; a
+    # C-stack overflow is also recorded for the supervisor, a routine error not.
+    for error, fatal in ((OSError(5), False), (stack_overflow(), True)):
+        comm = _make_comm(role=ROLE_RESPONDER, get_callback=echo_get(b""), set_callback=accept_set())
+        assert run(comm.setup(), RUN_LIMIT_S) is True
+        calls = [0]
+
+        async def raising(error: BaseException = error, calls: "list[int]" = calls) -> ListenResult:
+            calls[0] += 1
+            raise error
+
+        comm.uart_listen = raising  # type: ignore[assignment, method-assign]
+        recorder = _SleepRecorder(0)
+
+        async def scenario(comm: UARTComm = comm, recorder: _SleepRecorder = recorder) -> bool:
+            task = comm.start_asy_listen()
+            while len(recorder.delays) < 2:
+                await asyncio.sleep_ms(_RECORDER_POLL_MS)
+            alive = not task.done()
+            task.cancel()
+            return alive
+
+        try:
+            assert run(scenario(), _STEP_BOUND_S) is True, error
+        finally:
+            recorder.restore()
+        assert calls[0] >= 2, (error, calls)
+        assert recorder.delays[:2] == [comm._backoff_initial_ms, comm._backoff_initial_ms * 2], recorder.delays
+        assert run(comm.get_error_counter(), RUN_LIMIT_S)[comm.name]["ErrNum"][-1] == code("E", "UNEXPECTED"), error
+        assert fatal_reported() is fatal, error
+        asy_print_log._fatal = False  # microtest fails a test that leaves it set
+
+
+class _RefusingPieceBuffer(PieceBuffer):
+    # Rebound as the module's PieceBuffer: a receive destination whose write_at() refuses every piece.
+    def write_at(self, offset: int, data: "bytes | bytearray | memoryview") -> bool:
+        return False
+
+
+@_on_poll_rounds
+def test_a_received_piece_its_destination_refuses_fails_the_transfer_as_a_size_mismatch() -> None:
+    # The copy guard faults the train and the GET fails; the responder, its train cut after the first piece, waits
+    # out an acknowledgement that never comes.
+    payload = bytes(range(2 * PAYLOAD_SIZE))
+    pair = run(build_pair(limits=transfer_limits(chunk_bytes=4), get_callback=echo_get(payload), set_callback=accept_set()), RUN_LIMIT_S)
+    asy_uart_comm.PieceBuffer = _RefusingPieceBuffer  # type: ignore[misc]
+    try:
+        got = run(pair.with_listener(pair.initiator.uart_get(1), listener_may_stall=True), _RUN_BOUND_S)
+    finally:
+        _real_pieces()
+    assert got is None
+    errnums = run(pair.initiator.get_error_counter(), RUN_LIMIT_S)[pair.initiator.name]["ErrNum"]
+    assert code("E", "UART_SIZE_MISMATCH") in errnums, errnums
 
 
 if __name__ == "__main__":

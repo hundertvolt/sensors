@@ -185,8 +185,9 @@ async def _warnings(pr: PrintLogHistory) -> "tuple[int, list[int]]":  # (ErrCoun
 
 
 def test_ipv4_to_int_accepts_every_valid_dotted_quad() -> None:
-    for host in ("0.0.0.0", "255.255.255.255", "192.168.1.1", "8.8.8.8", "127.0.0.1", "1.2.3.4"):
-        assert ipv4_to_int(host) is not None
+    # Each value by hand (RFC 791 section 3.2): a.b.c.d is a * 2**24 + b * 2**16 + c * 2**8 + d.
+    for host, value in (("0.0.0.0", 0), ("255.255.255.255", 4294967295), ("192.168.1.1", 3232235777), ("8.8.8.8", 134744072), ("127.0.0.1", 2130706433), ("1.2.3.4", 16909060)):
+        assert ipv4_to_int(host) == value, host
 
 
 def test_ipv4_to_int_rejects_hostnames_and_malformed_input() -> None:
@@ -650,14 +651,12 @@ def test_resolve_ipv4_overlong_dns_label_returns_none_not_an_exception() -> None
         assert redirect.constructed == 0, host
 
 
-def test_resolve_ipv4_a_malformed_tries_answers_not_sent_not_an_exception() -> None:
-    # tries is caller input like the name: range() refuses a non-int (TypeError) and an int past a machine word
-    # (OverflowError), and resolve_ipv4() answers either before any socket.
-    for bad_tries in (None, "3", [1], 1.5, 2**70):
-        with redirect_udp_port(asy_dns_client, _DNS_PORT, _make_port()) as redirect:
-            result = run(resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=50, tries=bad_tries, pr=_make_pr()))  # type: ignore[arg-type]  # the malformed value under test
-        assert result == (None, DNS_NOT_SENT), bad_tries
-        assert redirect.constructed == 0, bad_tries
+def test_resolve_ipv4_a_tries_past_a_machine_word_answers_not_sent_not_an_exception() -> None:
+    # range() refuses an int past a machine word with OverflowError, and resolve_ipv4() answers it before any socket.
+    with redirect_udp_port(asy_dns_client, _DNS_PORT, _make_port()) as redirect:
+        result = run(resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=50, tries=2**70, pr=_make_pr()))
+    assert result == (None, DNS_NOT_SENT)
+    assert redirect.constructed == 0
 
 
 def test_resolve_ipv4_parse_response_raising_bounds_error_returns_none() -> None:

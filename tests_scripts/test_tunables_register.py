@@ -4,6 +4,7 @@ fail, as do the watchdog, supervisor and page-load relations between the registe
 
 import os
 import re
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -30,7 +31,7 @@ _SIGIL_WORD_RE = re.compile(r"@([A-Za-z][\w-]*)")
 _BEGIN, _END = "<!-- tunables:begin -->", "<!-- tunables:end -->"
 _COLUMNS = ("id", "value", "sites", "dependants", "basis", "margin", "re-check trigger")
 _EMPTY_CELLS = frozenset({"", "-", "\u2014", "\u2013"})  # empty, or a hyphen, em or en dash
-_SITE_RE = re.compile(r"^(?P<path>[\w.][\w./-]*?)(?::[\d, -]+)?\s+[\u2014\u2013]\s+(?P<literal>\S+)")
+_SITE_RE = re.compile(r"^(?P<path>[\w.][\w./-]*?)(?::[\d, -]+)?\s+[\u2014\u2013]\s+(?P<literal>\S+?)[,;)]*(?:\s+\((?P<count>[2-9]|[1-9]\d+) tags\))?$")
 
 # rp2's WDT refuses a longer timeout: ports/rp2/machine_wdt.c:32-38 (v1.29.0), a platform fact.
 _RP2_WDT_MAX_MS = 8388
@@ -55,6 +56,14 @@ class Row:
     line: int
 
 
+def _is_comment_line(path: Path, line: str) -> bool:
+    return line.strip().startswith("#" if path.suffix in _HASH_SUFFIXES | {".py"} else "//")
+
+
+def _cells(line: str) -> "list[str]":
+    return [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", line.strip().strip("|"))]
+
+
 def _comments(path: Path, lines: "list[str]") -> "list[tuple[int, str, bool]]":
     # Every comment as (line, text without its marker, whether the comment has its line to itself).
     if path.suffix == ".py":
@@ -76,10 +85,6 @@ def _comments(path: Path, lines: "list[str]") -> "list[tuple[int, str, bool]]":
         if at != -1:
             found.append((number, raw[at + len(marker) :].strip(), False))
     return found
-
-
-def _is_comment_line(path: Path, line: str) -> bool:
-    return line.strip().startswith("#" if path.suffix in _HASH_SUFFIXES | {".py"} else "//")
 
 
 def _near_miss(word: str) -> bool:
@@ -110,6 +115,88 @@ def _scan_file(root: Path, path: Path, tags: "list[Tag]", problems: "list[str]")
         tags.append(Tag(rel, number, match["id"], literal))
 
 
+def _sites(cell: str) -> "tuple[Counter[tuple[str, str]], list[str]]":
+    # Each (file, literal) once, with the tag count it states: 1 unless written "(n tags)".
+    sites: Counter[tuple[str, str]] = Counter()
+    bad: list[str] = []
+    for part in re.split(r";|<br\s*/?>", cell.replace("`", "")):
+        if not part.strip():
+            continue
+        match = _SITE_RE.match(part.strip())
+        if match is None or (match["path"], match["literal"]) in sites:
+            bad.append(part.strip())
+            continue
+        sites[match["path"], match["literal"]] = int(match["count"] or 1)
+    return sites, bad
+
+
+def _tag(tunable_id: str, literal: str) -> str:
+    return f"# @{_NAME} {tunable_id} = {literal}\n"
+
+
+def _tree(tmp_path: Path, source: str, rows: "list[str]") -> Path:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "mod.py").write_text(source, encoding="utf-8")
+    (tmp_path / "SPECIFICATION.md").write_text(f"# Part N\n\n{_BEGIN}\n## N.3\n\n{_HEAD}\n" + "\n".join(rows) + f"\n{_END}\n", encoding="utf-8")
+    return tmp_path
+
+
+def _values(tags: "list[Tag]", tunable_id: str) -> "list[float]":
+    literals = sorted({t.literal for t in tags if t.id == tunable_id})
+    assert literals, f"{tunable_id} is tagged nowhere, so its relation cannot be checked"
+    try:
+        return [float(v) for v in literals]
+    except ValueError as e:
+        raise AssertionError(f"{tunable_id}'s literals {literals} are not numbers") from e
+
+
+def check_register(tags: "list[Tag]", rows: "list[Row]") -> "list[str]":
+    # Tags and rows agree both ways, and every row carries what N.1 requires of it.
+    problems: list[str] = []
+    by_id: dict[str, Row] = {}
+    for row in rows:
+        if row.id in by_id:
+            problems.append(f"SPECIFICATION.md:{row.line}: {row.id} has a second row (first at line {by_id[row.id].line})")
+        by_id.setdefault(row.id, row)
+    tagged: dict[str, Counter[tuple[str, str]]] = {}
+    for tag in tags:
+        tagged.setdefault(tag.id, Counter())[tag.path, tag.literal] += 1
+        if tag.id not in by_id:
+            problems.append(f"{tag.path}:{tag.line}: {tag.id} is tagged but has no SPECIFICATION.md Part N row")
+    for row in by_id.values():
+        where = f"SPECIFICATION.md:{row.line}: {row.id}"
+        problems += [f"{where} has an empty {c.capitalize()}" for c in ("basis", "margin", "re-check trigger") if row.cells.get(c, "x") in _EMPTY_CELLS]
+        basis = row.cells.get("basis", "")
+        if basis.lower().startswith("estimated") and "measurement owed" not in basis.lower():
+            problems.append(f'{where}: an estimated Basis names the measurement owed ("measurement owed: <how, level>")')
+        if row.kind == "rule":
+            if row.id in tagged:
+                problems.append(f"{where} is a rule row, yet tagged at {sorted(tagged[row.id])} - a rule has no single code site")
+            if not any("checked by" in k or "checked by" in v.lower() for k, v in row.cells.items() if v not in _EMPTY_CELLS):
+                problems.append(f'{where} is a rule row naming no checking test or review ("Checked by ...")')
+            continue
+        missing = [c for c in _COLUMNS if c not in row.cells]
+        if missing:
+            problems.append(f"{where}: its table lacks the column(s) {missing}")
+            continue
+        listed, bad = _sites(row.cells["sites"])
+        problems += [f"{where}: Sites entry {b!r} is not '<file> — <literal>' (with ' (n tags)' for n >= 2), or repeats one" for b in bad]
+        found = tagged.get(row.id, Counter())
+        if not found:
+            problems.append(f"{where} is a tuned row, but no file carries its @{_NAME} tag")
+        elif set(listed) != set(found):
+            problems.append(f"{where}: Sites list {sorted(listed)}, the tags say {sorted(found)}")
+        else:
+            problems += [f"{where}: Sites states {listed[s]} tag(s) of `{s[1]}` in {s[0]}, the file carries {found[s]}" for s in sorted(found) if listed[s] != found[s]]
+    return problems
+
+
+def check_tree(root: Path) -> "list[str]":
+    tags, problems = collect_tags(root)
+    rows, register_problems = parse_register((root / "SPECIFICATION.md").read_text(encoding="utf-8"))
+    return problems + register_problems + check_register(tags, rows)
+
+
 def collect_tags(root: Path) -> "tuple[list[Tag], list[str]]":
     # Every tag under the scanned scopes, plus every malformed, misplaced or literal-less one.
     files = [root / name for name in _SCAN_FILES if (root / name).is_file()]
@@ -125,10 +212,6 @@ def collect_tags(root: Path) -> "tuple[list[Tag], list[str]]":
     for path in files:
         _scan_file(root, path, tags, problems)
     return tags, problems
-
-
-def _cells(line: str) -> "list[str]":
-    return [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", line.strip().strip("|"))]
 
 
 def parse_register(spec_text: str) -> "tuple[list[Row], list[str]]":
@@ -167,79 +250,11 @@ def parse_register(spec_text: str) -> "tuple[list[Row], list[str]]":
     return rows, problems
 
 
-def _sites(cell: str) -> "tuple[set[tuple[str, str]], list[str]]":
-    sites: set[tuple[str, str]] = set()
-    bad: list[str] = []
-    for part in re.split(r";|<br\s*/?>", cell.replace("`", "")):
-        if not part.strip():
-            continue
-        match = _SITE_RE.match(part.strip())
-        if match is None:
-            bad.append(part.strip())
-            continue
-        sites.add((match["path"], match["literal"].rstrip(",;)")))
-    return sites, bad
-
-
-def check_register(tags: "list[Tag]", rows: "list[Row]") -> "list[str]":
-    # Tags and rows agree both ways, and every row carries what N.1 requires of it.
-    problems: list[str] = []
-    by_id: dict[str, Row] = {}
-    for row in rows:
-        if row.id in by_id:
-            problems.append(f"SPECIFICATION.md:{row.line}: {row.id} has a second row (first at line {by_id[row.id].line})")
-        by_id.setdefault(row.id, row)
-    tagged: dict[str, set[tuple[str, str]]] = {}
-    for tag in tags:
-        tagged.setdefault(tag.id, set()).add((tag.path, tag.literal))
-        if tag.id not in by_id:
-            problems.append(f"{tag.path}:{tag.line}: {tag.id} is tagged but has no SPECIFICATION.md Part N row")
-    for row in by_id.values():
-        where = f"SPECIFICATION.md:{row.line}: {row.id}"
-        problems += [f"{where} has an empty {c.capitalize()}" for c in ("basis", "margin", "re-check trigger") if row.cells.get(c, "x") in _EMPTY_CELLS]
-        basis = row.cells.get("basis", "")
-        if basis.lower().startswith("estimated") and "measurement owed" not in basis.lower():
-            problems.append(f'{where}: an estimated Basis names the measurement owed ("measurement owed: <how, level>")')
-        if row.kind == "rule":
-            if row.id in tagged:
-                problems.append(f"{where} is a rule row, yet tagged at {sorted(tagged[row.id])} - a rule has no single code site")
-            if not any("checked by" in k or "checked by" in v.lower() for k, v in row.cells.items() if v not in _EMPTY_CELLS):
-                problems.append(f'{where} is a rule row naming no checking test or review ("Checked by ...")')
-            continue
-        missing = [c for c in _COLUMNS if c not in row.cells]
-        if missing:
-            problems.append(f"{where}: its table lacks the column(s) {missing}")
-            continue
-        listed, bad = _sites(row.cells["sites"])
-        problems += [f"{where}: Sites entry {b!r} is not '<file> — <literal>'" for b in bad]
-        found = tagged.get(row.id, set())
-        if not found:
-            problems.append(f"{where} is a tuned row, but no file carries its @{_NAME} tag")
-        elif listed != found:
-            problems.append(f"{where}: Sites list {sorted(listed)}, the tags say {sorted(found)}")
-    return problems
-
-
-def check_tree(root: Path) -> "list[str]":
-    tags, problems = collect_tags(root)
-    rows, register_problems = parse_register((root / "SPECIFICATION.md").read_text(encoding="utf-8"))
-    return problems + register_problems + check_register(tags, rows)
-
-
 @pytest.fixture(scope="module")
 def real_tags(repo_root: Path) -> "list[Tag]":
     tags, problems = collect_tags(repo_root)
     assert not problems, "\n".join(problems)
     return tags
-
-
-def _values(tags: "list[Tag]", tunable_id: str) -> "list[float]":
-    literals = sorted({t.literal for t in tags if t.id == tunable_id})
-    assert literals, f"{tunable_id} is tagged nowhere, so its relation cannot be checked"
-    try:
-        return [float(v) for v in literals]
-    except ValueError as e:
-        raise AssertionError(f"{tunable_id}'s literals {literals} are not numbers") from e
 
 
 def test_every_tag_is_well_formed_and_sits_above_its_literal(repo_root: Path) -> None:
@@ -276,23 +291,8 @@ def test_one_page_load_fits_the_largest_shipped_connection_ceiling(repo_root: Pa
         assert per_load <= ceiling, f"one page load opens {per_load:g} connections, above the largest shipped max_connections ({ceiling})"
 
 
-# ---------------------------------------------------------------------------
-# The check on a tmp tree: each planted defect is reported, and the clean tree reports nothing.
-# ---------------------------------------------------------------------------
-
 _ROW = "| `{id}` | {value} | `{sites}` | none | owner decision (owner, 2026-09-26) | 2x | any change |"
 _HEAD = "| ID | Value | Sites (file — literal) | Dependants | Basis | Margin | Re-check trigger |\n|---|---|---|---|---|---|---|"
-
-
-def _tree(tmp_path: Path, source: str, rows: "list[str]") -> Path:
-    (tmp_path / "src").mkdir()
-    (tmp_path / "src" / "mod.py").write_text(source, encoding="utf-8")
-    (tmp_path / "SPECIFICATION.md").write_text(f"# Part N\n\n{_BEGIN}\n## N.3\n\n{_HEAD}\n" + "\n".join(rows) + f"\n{_END}\n", encoding="utf-8")
-    return tmp_path
-
-
-def _tag(tunable_id: str, literal: str) -> str:
-    return f"# @{_NAME} {tunable_id} = {literal}\n"
 
 
 def test_a_clean_tree_reports_nothing(tmp_path: Path) -> None:
@@ -308,6 +308,31 @@ def test_a_row_without_a_tag_is_reported(tmp_path: Path) -> None:
 def test_a_tag_without_a_row_is_reported(tmp_path: Path) -> None:
     root = _tree(tmp_path, _tag("x.wait_s", "5.0") + "WAIT_S = 5.0\n", [])
     assert any("has no SPECIFICATION.md Part N row" in p for p in check_tree(root)), check_tree(root)
+
+
+def test_a_file_carrying_two_tags_of_one_id_states_the_count(tmp_path: Path) -> None:
+    source = 2 * (_tag("x.wait_s", "5.0") + "WAIT_S = 5.0\n")
+    root = _tree(tmp_path, source, [_ROW.format(id="x.wait_s", value="5.0 s", sites="src/mod.py — 5.0 (2 tags)")])
+    assert check_tree(root) == []
+
+
+def test_a_deleted_second_tag_is_reported_with_both_counts(tmp_path: Path) -> None:
+    root = _tree(tmp_path, _tag("x.wait_s", "5.0") + "WAIT_S = 5.0\n", [_ROW.format(id="x.wait_s", value="5.0 s", sites="src/mod.py — 5.0 (2 tags)")])
+    problems = check_tree(root)
+    assert any("x.wait_s" in p and "src/mod.py" in p and "states 2" in p and "carries 1" in p for p in problems), problems
+
+
+def test_a_second_tag_the_sites_cell_does_not_count_is_reported(tmp_path: Path) -> None:
+    source = 2 * (_tag("x.wait_s", "5.0") + "WAIT_S = 5.0\n")
+    problems = check_tree(_tree(tmp_path, source, [_ROW.format(id="x.wait_s", value="5.0 s", sites="src/mod.py — 5.0")]))
+    assert any("x.wait_s" in p and "src/mod.py" in p and "states 1" in p and "carries 2" in p for p in problems), problems
+
+
+def test_a_count_below_two_or_a_file_listed_twice_is_reported(tmp_path: Path) -> None:
+    for case, sites in enumerate(("src/mod.py — 5.0 (1 tags)", "src/mod.py — 5.0; src/mod.py — 5.0")):
+        (tmp_path / str(case)).mkdir()
+        root = _tree(tmp_path / str(case), _tag("x.wait_s", "5.0") + "WAIT_S = 5.0\n", [_ROW.format(id="x.wait_s", value="5.0 s", sites=sites)])
+        assert any("Sites entry" in p for p in check_tree(root)), (sites, check_tree(root))
 
 
 def test_a_row_listing_another_literal_is_reported(tmp_path: Path) -> None:

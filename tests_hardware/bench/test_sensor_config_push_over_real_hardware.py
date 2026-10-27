@@ -2,6 +2,7 @@
 hardware, the real-hardware counterpart to tests/test_setter_microdot_integration.py's mock. A
 "Valid" result plus a follow-up GET confirms the live-push callback took effect and stuck."""
 
+import ast
 import time
 from typing import TYPE_CHECKING
 
@@ -9,8 +10,8 @@ import _load
 import evidence
 import http_client
 import pytest
-from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
-from harness import schema_default
+from error_log_helpers import assert_module_error_log_empty, assert_module_logged_one_code, code, errcount_entry, get_errcount, reset_all_error_logs
+from harness import SRC_DIR, schema_default
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -46,6 +47,7 @@ _OVERRIDE_POLL_TRIES = 10
 _BMP3XX_SRC = "asy_bmp3xx_driver.py"
 _ISL29125_SRC = "asy_isl29125_driver.py"
 _SCD30_SRC = "asy_scd30_driver.py"
+_SGP40_SRC = "asy_sgp40_driver.py"
 # A shift the compensation must show, kept inside _VAL_ALTITUDE's range either way round.
 # @tunable l4.sensor_config_push_altitude_step_m = 1000
 _ALTITUDE_STEP_M = 1000
@@ -53,6 +55,15 @@ _ALTITUDE_STEP_M = 1000
 _SETTLE_INTERVALS = 3
 # @tunable l4.sensor_config_push_altitude_observe_intervals = 5
 _OBSERVE_INTERVALS = 5
+# A Calibrate run ends converged, or at the first read cycle past its window logging ISL_CAL_TIMEOUT: the wait for its
+# end allows that cycle this margin, polling the history at this pace once the window has closed.
+# @tunable l4.sensor_config_push_calibration_end_margin_s = 10.0
+_CAL_END_MARGIN_S = 10.0
+# @tunable l4.sensor_config_push_calibration_poll_s = 2.0
+_CAL_POLL_S = 2.0
+# A ResetVOC runs at the SGP40's next read cycle, after the PUT's answer: the test waits one cycle and this margin.
+# @tunable l4.sensor_config_push_reset_voc_settle_margin_s = 2.0
+_RESET_VOC_SETTLE_MARGIN_S = 2.0
 
 
 @pytest.mark.persistence_write
@@ -154,6 +165,9 @@ def test_sgp40_reset_voc_command_push_over_real_rest(board: "Board", dut_ip: str
     assert put_res.status_code == 200, f"PUT /sensors ResetVOC failed: {put_res.status_code} {put_res.body!r}"
     result = _load.as_object(_load.as_object(put_res.json().get("result"), "result").get("SGP40"), "result.SGP40")
     assert result.get("ResetVOC") == "Valid", f"real reset_voc() push was rejected: {result!r}"
+    # _read_sgp() takes the request at the next cycle's start and clears the FRAM backup there: waited out, so a failed
+    # clear's SGP_BACKUP_CLEAR lands in this test's window and the check below, never in the next test's.
+    time.sleep(_sgp40_period_s() + _RESET_VOC_SETTLE_MARGIN_S)
 
     # The sensor must still be alive and producing real readings afterward - a reset that wedged
     # the real algorithm/hardware would otherwise only surface as a silent later gap.
@@ -162,15 +176,22 @@ def test_sgp40_reset_voc_command_push_over_real_rest(board: "Board", dut_ip: str
     assert_module_error_log_empty(dut_ip, "SGP40")
 
 
-def test_isl29125_calibrate_command_push_over_real_rest(board: "Board", dut_ip: str, request: pytest.FixtureRequest) -> None:
+@pytest.mark.provokes_log(
+    "a Calibrate run the bench's unarranged light never lets converge closes its window with a warning",
+    ("ISL29125", "W", "ISL_CAL_TIMEOUT"),
+)
+def test_isl29125_calibrate_command_push_over_real_rest(board: "Board", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # The one ISL29125 field the test above excludes, for the reason that earns it its own:
     # Calibrate is command-only, so no readback can show it took effect. What can be pinned is
     # the pair of invariants a run must respect, reachable only from the real REST stack.
     reset_all_error_logs(dut_ip, request.node.name)
-    applied = _isl29125(dut_ip, "/sensors").get("GainRatio")
+    config = _isl29125(dut_ip, "/sensors")
+    applied, interval = config.get("GainRatio"), config.get("SampleInterval")
     assert applied is not None, "GainRatio is a schema field with a default - it can never be absent"
+    assert isinstance(interval, int) and not isinstance(interval, bool), f"GET /sensors ISL29125 lacks an int SampleInterval: {config!r}"
 
     put_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"Calibrate": True}}, timeout_s=_PROBE_TIMEOUT_S)
+    started = time.monotonic()  # taken after the answer, so the board's window has opened by then
     assert put_res.status_code == 200, f"PUT /sensors Calibrate failed: {put_res.status_code} {put_res.body!r}"
     result = _load.as_object(_load.as_object(put_res.json().get("result"), "result").get("ISL29125"), "result.ISL29125")
     assert result.get("Calibrate") == "Valid", f"real start_calibration() push was rejected: {result!r}"
@@ -187,9 +208,15 @@ def test_isl29125_calibrate_command_push_over_real_rest(board: "Board", dut_ip: 
     meas = _isl29125(dut_ip, "/measurements")
     assert "GainMeas" in meas, f"GET /measurements lost GainMeas: {meas!r}"
 
-    # An empty log, not an allowlist: a run that finds no usable scene reports that by leaving
-    # GainMeas null, never by warning.
-    assert_module_error_log_empty(dut_ip, "ISL29125")
+    # The run ends inside this test, so its warning never lands in the next test's log window; a run that finds no
+    # usable scene leaves GainMeas null and, at its window's close, ISL_CAL_TIMEOUT - the one entry it may leave.
+    ended = _calibration_end(dut_ip, started, interval)
+    assert ended is not None, f"no ISL_CAL_TIMEOUT and no GainMeas {_CAL_END_MARGIN_S} s past the window and one {interval} s read cycle: the run never ended"
+    result_note(f"the Calibrate run {ended} {time.monotonic() - started:.0f} s after its PUT")
+    if ended == "timed out":
+        assert_module_logged_one_code(dut_ip, "ISL29125", "W", code("W", "ISL_CAL_TIMEOUT"), events=1)
+    else:
+        assert_module_error_log_empty(dut_ip, "ISL29125")
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +258,21 @@ def test_scd30_altitude_takes_effect_while_ambient_pressure_is_zero(dut_ip: str,
     assert_module_error_log_empty(dut_ip, "CFGMGR_SCD30")
 
 
+def _calibration_end(dut_ip: str, started: float, interval_s: int) -> "str | None":
+    # From the window's close: "timed out" once ISL_CAL_TIMEOUT is in the history; past one read cycle and the margin,
+    # "converged" if GainMeas holds a candidate, else None. A candidate alone ends no wait: every stable pair republishes.
+    closes = started + _load.src_number(_ISL29125_SRC, "_CAL_WINDOW_MS") / 1000
+    deadline, timeout = closes + interval_s + _CAL_END_MARGIN_S, code("W", "ISL_CAL_TIMEOUT")
+    time.sleep(max(0.0, closes - time.monotonic()))
+    while True:
+        history = errcount_entry(get_errcount(dut_ip), "ISL29125")["history"]
+        if any(h.get("type") == "W" and h.get("num") == timeout for h in history):
+            return "timed out"
+        if time.monotonic() >= deadline:
+            return "converged" if _isl29125(dut_ip, "/measurements").get("GainMeas") is not None else None
+        time.sleep(_CAL_POLL_S)
+
+
 def _co2_samples(dut_ip: str, intervals: int, interval_s: int) -> "list[JSONObject]":
     # One /measurements SCD30 sample per measurement interval: its CO2, its TS and the host time.
     samples: list[JSONObject] = []
@@ -269,6 +311,15 @@ def _original(dut_ip: str, name: str, src_file: str, values: "dict[str, object]"
         result_note(f"repaired a leftover {name} {sorted(leftover)} from an aborted run to the schema defaults", recovery=True)
         current = _load.as_object(_load.get_object(dut_ip, "/sensors", _PROBE_TIMEOUT_S).get(name), f"GET /sensors {name}")
     return {field: current.get(field) for field in values}
+
+
+def _sgp40_period_s() -> float:
+    # SGP40_Reader.start_timer()'s fixed trigger period, read from src/: a literal there, so no const() name to read.
+    tree = ast.parse((SRC_DIR / _SGP40_SRC).read_text(encoding="utf-8"))
+    timers = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "start_timer"]
+    periods = [k.value.value for t in timers for k in ast.walk(t) if isinstance(k, ast.keyword) and k.arg == "period" and isinstance(k.value, ast.Constant)]
+    assert len(periods) == 1 and isinstance(periods[0], int), f"src/{_SGP40_SRC} start_timer() holds no one int period: {periods!r}"
+    return periods[0] / 1000
 
 
 def _pause_time(dut_ip: str) -> int:

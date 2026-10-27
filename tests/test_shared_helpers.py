@@ -52,6 +52,22 @@ if TYPE_CHECKING:
 _SRC_DIR = "src"
 _scratch = TmpScratch("shared_helpers")
 _NTP_PORT = 28001  # this file's own UDP port, clear of every other file's band (21000-27000, 19100-19700)
+# @tunable l1.shared_helpers_ntp_server_poll_ms = 5
+_NTP_SERVER_POLL_MS = 5
+# @tunable l1.shared_helpers_ntp_server_poll_tries = 200
+_NTP_SERVER_POLL_TRIES = 200
+# @tunable l1.shared_helpers_ntp_reply_poll_ms = 5
+_NTP_REPLY_POLL_MS = 5  # the client's look for a reply, `_NTP_REPLY_POLLS` times: a dropped request waits them all out
+# @tunable l1.shared_helpers_ntp_reply_polls = 20
+_NTP_REPLY_POLLS = 20
+# @tunable l1.shared_helpers_ntp_exchange_bound_s = 10
+_NTP_EXCHANGE_BOUND_S = 10
+# @tunable l1.shared_helpers_ntp_budget_poll_ms = 1
+_NTP_BUDGET_POLL_MS = 1  # with `_NTP_BUDGET_POLL_TRIES`, the budget case's server, waited out
+# @tunable l1.shared_helpers_ntp_budget_poll_tries = 3
+_NTP_BUDGET_POLL_TRIES = 3
+# @tunable l1.shared_helpers_ntp_budget_bound_s = 5
+_NTP_BUDGET_BOUND_S = 5
 
 
 class _Holder:
@@ -540,7 +556,7 @@ def test_make_ntp_reply_is_a_48_byte_synchronized_server_reply_at_the_given_time
 
 
 def test_the_fake_ntp_server_answers_one_request_or_drops_it() -> None:
-    server = FakeNtpServer(_NTP_PORT, poll_ms=5, poll_tries=200)
+    server = FakeNtpServer(_NTP_PORT, poll_ms=_NTP_SERVER_POLL_MS, poll_tries=_NTP_SERVER_POLL_TRIES)
     client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     client.setblocking(False)
     poller = select.poll()
@@ -553,16 +569,16 @@ def test_the_fake_ntp_server_answers_one_request_or_drops_it() -> None:
         await asyncio.sleep(0)
         client.sendto(b"\x23" + bytes(47), target)
         took = await served
-        for _ in range(20):
+        for _ in range(_NTP_REPLY_POLLS):
             # ipoll(0) returns an always-truthy iterator on this port - iterate and check the flags.
             if any(event & select.POLLIN for _obj, event in poller.ipoll(0)):
                 return took, client.recv(64)
-            await asyncio.sleep_ms(5)
+            await asyncio.sleep_ms(_NTP_REPLY_POLL_MS)
         return took, None
 
     try:
-        assert run(exchange(reply), 10) == (True, reply)
-        assert run(exchange(None), 10) == (True, None)  # taken and dropped is still served
+        assert run(exchange(reply), _NTP_EXCHANGE_BOUND_S) == (True, reply)
+        assert run(exchange(None), _NTP_EXCHANGE_BOUND_S) == (True, None)  # taken and dropped is still served
     finally:
         client.close()
         server.close()
@@ -570,9 +586,9 @@ def test_the_fake_ntp_server_answers_one_request_or_drops_it() -> None:
 
 def test_the_fake_ntp_server_answers_false_once_its_poll_budget_runs_out() -> None:
     # No request arrives: serve_once() gives up after poll_tries rounds of poll_ms and says so.
-    server = FakeNtpServer(_NTP_PORT, poll_ms=1, poll_tries=3)
+    server = FakeNtpServer(_NTP_PORT, poll_ms=_NTP_BUDGET_POLL_MS, poll_tries=_NTP_BUDGET_POLL_TRIES)
     try:
-        assert run(server.serve_once(make_ntp_reply(1_790_000_000)), 5) is False
+        assert run(server.serve_once(make_ntp_reply(1_790_000_000)), _NTP_BUDGET_BOUND_S) is False
     finally:
         server.close()
 

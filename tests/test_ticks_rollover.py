@@ -72,6 +72,12 @@ _BMP_ADDR = 0x77
 _BMP_STATUS = 0x03  # the STATUS register; bit 4 is cmd_rdy (bst-bmp388-ds001 sec 4.3.3)
 _BMP_CMD_RDY = 0x10
 _LET_GO_READS = 5000  # a wait still running this many clock reads in is ended by the world, so a lost bound fails, not hangs
+# @tunable l1.ticks_rollover_held_run_ms = 50
+_HELD_RUN_MS = 50  # a real sleep spanning several of the driver's 10 ms polls, the fake clock held
+# @tunable l1.ticks_rollover_finish_poll_ms = 5
+_FINISH_POLL_MS = 5
+# @tunable l1.ticks_rollover_finish_polls = 200
+_FINISH_POLLS = 200
 _SIGNAL_WAIT_MS: int = src_int("src/asy_neopixel_driver.py", "_SIGNAL_WAIT_MS")
 
 _scratch = TmpScratch("ticks_rollover")
@@ -253,13 +259,13 @@ def _neopixel_wait_outcome(start: int, wait_ms: int, *, release_after_ms: "int |
             driver._start_signal_event.clear()
         else:
             fake.now = start + wait_ms - 1
-        await asyncio.sleep_ms(50)  # several of the driver's 10 ms polls
+        await asyncio.sleep_ms(_HELD_RUN_MS)  # several of the driver's 10 ms polls
         pending = not waiter.done()
         fake.now = start + wait_ms
-        for _ in range(200):
+        for _ in range(_FINISH_POLLS):
             if waiter.done():
                 break
-            await asyncio.sleep_ms(5)
+            await asyncio.sleep_ms(_FINISH_POLL_MS)
         finished = waiter.done()
         if not finished:
             waiter.cancel()

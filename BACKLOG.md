@@ -1090,6 +1090,34 @@ gates, traps).
   - CI only: `.github/workflows/ci.yml`'s four Playwright browser caches are keyed on the runner
     identity too (runner image, compiler and C library, computed as the toolchain action's identity
     step computes it); no chroot leg runs it.
+  **2026-10-26, the patched modlwip copy's two listener patches, by the leg that covers each change**:
+  - installer leg: `toolchain/micropython_overrides.py` generates a different `modlwip.c` copy (the
+    EAGAIN patch plus the listener-close guard and `listen()`'s allocation order, SPECIFICATION.md
+    B.14.4) for every rp2 image and for `build-lwip`, each patch checked against its own anchor in the
+    pinned source; nothing new is installed;
+  - `scripts/test.sh` leg: the changed `micropython_overrides.py` hash makes a reused chroot's
+    `scripts/_unix_port.sh ensure` rebuild the three Unix binaries once; the lwIP host tier gains
+    `tests/lwip_host/test_modlwip_listener_close.py`, which aborts on a `build-lwip` built before the
+    change; the backgrounded pytest tier's `tests_scripts/test_micropython_overrides.py` covers the
+    new anchors;
+  - lint and typecheck legs: the two changed files above, host Python only, no new dependency.
+  **2026-10-26, `scripts/test.sh --coverage`'s exit 3 for a tracer that ended early, shell and host
+  Python only, no build impact**: a job whose coverage tracer ended early (SPECIFICATION.md E.5.1)
+  leaves a note beside its dump, listed under `Notes:`, and the run exits 3, its `Result:` line naming
+  what is short; `scripts/_summary_block.sh`/`.py` take a reason for code 3, and `ci.yml`'s exit-3
+  warning names both causes (its text only). A chroot's `scripts/test.sh` leg runs it with nothing new
+  to install.
+  **2026-10-26, `pyproject.toml`'s ruff per-file-ignores, lint only, no build impact**: the generated boot
+  entries' block adds F811 for the loop-end handler's pre-bound name (the template binds it before the loop so the
+  handler's rebinding grows no dict); a chroot's `scripts/lint.sh` leg runs it with nothing new to install.
+  **2026-10-27, `scripts/test.sh`'s checkout-write guard and a failed coverage render's data, shell only,
+  no build impact**: the run lists the checkout's untracked, ignored and modified paths (`git status`)
+  after its builds and again once both tiers have ended, and fails naming each new path outside the
+  tiers' own outputs (`tests/_tmp/`, `__pycache__/`, `.pytest_cache/`); a listing that fails is no
+  verdict, so the copied tree must be a git checkout with its own `.git` directory - the recipe's
+  `cp -r` of a checkout is one, a copied worktree (whose `.git` file points outside the chroot) is not
+  (agent, 2026-10-27). A failed `--coverage` render's input now moves into the run's evidence archive,
+  named under `Notes:`. `git` is already in the recipe's package list; nothing new to install.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot
@@ -1222,6 +1250,18 @@ gates, traps).
   the stall stays. The `modlwip_eagain` build override (SPECIFICATION.md B.14.4) stays until the pin
   carries a real fix; the override's anchor check fails the build when upstream changes the loop
   (owner, 2026-09-30).
+- **modlwip listener close — watched upstream** (owner, 2026-10-26): at v1.29.0 `close()` calls
+  `tcp_err()` and `tcp_recv()` on every TCP pcb and `tcp_poll()` on all but a listening socket's,
+  three calls lwIP forbids on a `LISTEN` pcb. No upstream issue exists (nearest: PR 17333, `recv()`
+  on a listening socket, a different path). The same copy's second patch skips all three on the
+  pcb's own state, and its third allocates `listen()`'s accept queue before storing `alloc`, whose
+  byte a refused `listen()` otherwise leaves in the pbuf pointer `close()` frees (SPECIFICATION.md
+  B.14.4; agent, 2026-10-26). Each is removed, not re-anchored, once the pin fixes its defect; an
+  anchor check failing at a pin move is the watch. Same class, not reached by this
+  firmware and left as upstream's: `POLL_WR` (`extmod/modlwip.c:1639`), `send()`/`write()` (`:760`)
+  and a non-blocking `sendall()` (`:1417`) read `tcp_sndbuf()` past a listener, and
+  `setsockopt(TCP_NODELAY)` writes its flags (`:1528-1535`). asyncio polls a listener for reading
+  only (`extmod/asyncio/stream.py:149`), nothing sends on it, and no `TCP_NODELAY` call is made.
 - **Moving CI (and a dev box) to Ubuntu 26.04 is its own step** (agent, 2026-10-20): CI is pinned to
   `ubuntu-24.04` (SPECIFICATION.md B.10.1) since `ubuntu-latest` became 26.04 and broke runs from
   outside the tree. Found on run `39512651550` and reproduced here with 26.04's own

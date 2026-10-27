@@ -142,20 +142,29 @@ def test_real_device_boot_entry_reserves_the_emergency_exception_buffer_before_t
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_boot_entry_records_an_interrupt_before_the_watchdog_resets(device: str) -> None:
-    # asyncio's loop catches only CancelledError and Exception (extmod/asyncio/core.py:153, 194, v1.29.0),
-    # so a console Ctrl-C leaves asyncio.run(); the tail records it and re-raises, nothing else.
+def test_real_device_boot_entry_records_every_exception_ending_the_loop_before_the_watchdog_resets(device: str) -> None:
+    # asyncio's loop catches only CancelledError and Exception (extmod/asyncio/core.py:154, 194, v1.29.0): Ctrl-C is
+    # recorded and re-raised; any other exception recorded, printed and not re-raised (rp2 soft-resets on SystemExit).
     stmts = _body(_real(device).boot_entry_source)
-    assert _index(stmts, "from asy_system_service import RR_INTERRUPTED, write_reset_record") > _index(stmts, f"from sensortask_{device} import main")
+    record_import = "from asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record"
+    assert _index(stmts, record_import) > _index(stmts, f"from sensortask_{device} import main")
+    assert _index(stmts, "from asy_print_log import console, report_if_fatal") > _index(stmts, f"from sensortask_{device} import main")
     tail = stmts[-1]
     assert isinstance(tail, ast.Try)
+    assert ast.unparse(stmts[-2]) == "ended: BaseException | None = None"  # bound first, so the handler's binding never grows the globals dict
     assert [ast.unparse(s) for s in tail.body] == ["asyncio.run(main(watchdog=watchdog))"]
-    (handler,) = tail.handlers
-    assert handler.type is not None and ast.unparse(handler.type) == "KeyboardInterrupt"
-    assert handler.name is None
-    assert [ast.unparse(s) for s in handler.body] == ["write_reset_record(RR_INTERRUPTED)", "raise"]
+    interrupt, other = tail.handlers
+    assert interrupt.type is not None and ast.unparse(interrupt.type) == "KeyboardInterrupt" and interrupt.name is None
+    assert [ast.unparse(s) for s in interrupt.body] == ["write_reset_record(RR_INTERRUPTED)", "raise"]
+    assert other.type is not None and ast.unparse(other.type) == "BaseException" and other.name == "ended"
+    assert [ast.unparse(s) for s in other.body] == ["report_if_fatal(ended)", "record_loop_end()", "console('SYSTEM', 'event loop ended with an exception:')", "sys.print_exception(ended)"]
     assert not tail.orelse
     assert [ast.unparse(s) for s in tail.finalbody] == ["asyncio.new_event_loop()"]
+    # Every name the tail calls is one the entry binds before it.
+    bound = {alias.asname or alias.name for stmt in stmts if isinstance(stmt, (ast.Import, ast.ImportFrom)) for alias in stmt.names}
+    bound |= {target.id for stmt in stmts if isinstance(stmt, ast.Assign) for target in stmt.targets if isinstance(target, ast.Name)}
+    called = {node.func.id if isinstance(node.func, ast.Name) else ast.unparse(node.func).split(".")[0] for node in ast.walk(tail) if isinstance(node, ast.Call)}
+    assert called <= bound, called - bound
 
 
 def _function(source: str, name: str) -> "ast.FunctionDef | ast.AsyncFunctionDef":
@@ -618,8 +627,8 @@ def _setup_names(source: str) -> "list[str]":
 
 
 def _shared_head(stmts: "list[ast.stmt]") -> "list[str]":
-    # Up to gc.threshold(), without the watchdog lines and the interrupt record's import.
-    own = {"from machine import WDT", f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})", "from asy_system_service import RR_INTERRUPTED, write_reset_record"}
+    # Up to gc.threshold(), without the watchdog lines and the reset records' import.
+    own = {"from machine import WDT", f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})", "from asy_print_log import console, report_if_fatal", "from asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record"}
     texts = [ast.unparse(stmt) for stmt in stmts]
     return [t for t in texts[: texts.index("gc.threshold(32768)") + 1] if t not in own]
 

@@ -341,7 +341,7 @@ def test_write_all_valid_fields_at_once_succeeds() -> None:
         return await service._set_dict_cfg(data, service.get_cfg_schema())
 
     results = run(scenario())
-    assert all(v == "Valid" for v in results.values()), results
+    assert results == dict.fromkeys(data, "Valid"), results
 
 
 def test_each_int_float_field_boundary_values_accepted() -> None:
@@ -1562,6 +1562,49 @@ def test_get_task_starters_and_get_timer_starters_shape() -> None:
         assert callable(s)
     assert service.get_timer_starters() == []
 
+
+
+def _checked_at(service: NotificationService, signal: NotificationSignal, now: "Callable[[], int | None]") -> "bool | None":
+    # One _check_one() with the age check's clock frozen at `now`, whatever the host clock does meanwhile.
+    real = asy_notification_service.utc_now
+    asy_notification_service.utc_now = now
+    try:
+        return run(service._check_one(signal))
+    finally:
+        asy_notification_service.utc_now = real
+
+
+def test_a_sample_exactly_at_the_age_bound_is_still_evaluated() -> None:
+    # The bound is inclusive: a sample exactly _SAMPLE_MAX_AGE_S old is current, one second older is stale.
+    signal, fv = _make_signal("WarnCO2", value=2000)  # above the 1600 default threshold
+    service, _clock, _cb = _make_service((signal,))
+    now = 1_800_000_000
+    fv.TS = now - _SAMPLE_MAX_AGE_S
+    at_bound = _checked_at(service, signal, lambda: now)
+    fv.TS = now - _SAMPLE_MAX_AGE_S - 1
+    past = _checked_at(service, signal, lambda: now)
+    assert (at_bound, past) == (True, None)
+    assert service.pr._err_count == 0
+
+
+def test_an_age_check_that_cannot_allocate_is_not_logged_as_the_producers_failed_read() -> None:
+    # On rp2 utc_now() allocates (gmtime()'s tuple, an epoch above 2**30): its refusal is no failed read of the
+    # producer's value, so no SOURCE entry; it leaves the cycle as utc_now() in _store_notif_data() does.
+    signal, fv = _make_signal("WarnCO2", value=2000)
+    service, _clock, _cb = _make_service((signal,))
+    fv.TS = 1_800_000_000
+
+    def refused() -> int:
+        raise MemoryError("age check refused")
+
+    try:
+        _checked_at(service, signal, refused)
+        left = False
+    except MemoryError:
+        left = True
+    assert code("E", "SOURCE") not in list(service.pr.history)
+    assert service.pr._err_count == 0
+    assert left
 
 if __name__ == "__main__":
     import microtest

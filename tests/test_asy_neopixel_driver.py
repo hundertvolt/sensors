@@ -94,14 +94,14 @@ def _red(colour: "tuple[int, ...]") -> bool:
     return colour[0] > 0 and colour[1] == 0
 
 
-def _request_frames(driver: NeopixelDriver, rgbt: "tuple[object, ...]", ramp_ms: int) -> "tuple[bool, list[tuple[int, ...]]]":
+def _request_frames(driver: NeopixelDriver, rgbt: "tuple[int, int, int, float]", ramp_ms: int) -> "tuple[bool, list[tuple[int, ...]]]":
     # request_signal(*rgbt) with both tasks running: its result, and every frame from the request until ramp_ms later
     # (the ramp, its final black and the overlay task's restore).
     async def scenario(clock: DrivenTime) -> "tuple[bool, list[tuple[int, ...]]]":
         tasks = await _start_all_tasks(driver)
         await clock.elapse(0)  # the tasks' own start frames
         n = len(_pixel(driver).writes)
-        accepted = await driver.request_signal(*rgbt)  # type: ignore[arg-type]
+        accepted = await driver.request_signal(*rgbt)
         await clock.elapse(ramp_ms)
         await cancel_all(tasks, settle_yields=1)
         return accepted, _colours(driver)[n:]
@@ -951,8 +951,7 @@ def test_in_memory_variant_works_without_fram() -> None:
 
 # ---------------------------------------------------------------------------
 # _clamp_byte(): a real NeoPixel stores into a bytearray, so an out-of-range int wraps silently (0x12C stores as
-# 0x2C, py/binary.c) and a float raises TypeError (micropython-lib neopixel.py); every value is clamped where the
-# request enters.
+# 0x2C, py/binary.c); every value is clamped where the request enters.
 # ---------------------------------------------------------------------------
 
 
@@ -962,26 +961,7 @@ def test_clamp_byte_direct() -> None:
     assert _clamp_byte(-1) == 0
     assert _clamp_byte(256) == 255
     assert _clamp_byte(300) == 255
-    assert _clamp_byte(3.9) == 3  # int() truncates, matches every other rgb value in this file
     assert _clamp_byte(value=True) == 1  # a bool counts as 0/1 for a byte value (the clamp's own rule)
-    # int(inf) raises OverflowError, int(nan) ValueError (Part F.1, v1.29.0). Regression test for the gap
-    # _clamp_byte()'s original except (TypeError, ValueError) clause missed entirely.
-    assert _clamp_byte(float("inf")) == 0
-    assert _clamp_byte(float("-inf")) == 0
-    assert _clamp_byte(float("nan")) == 0  # int(nan) raises ValueError - already covered, kept for completeness
-    assert _clamp_byte("12") == 0  # not a number: no byte value
-    assert _clamp_byte(None) == 0
-
-
-def test_request_signal_infinite_rgb_clamped_not_raised() -> None:
-    # Would raise OverflowError out of the pixel write if unclamped.
-    accepted, writes = _request_frames(_make_driver(), (float("inf"), 10, float("-inf"), 0.1), _ramp_ms(0.1))
-    assert accepted is True
-    assert len(writes) == 2 * 5 + 2, writes
-    assert any(w[1] > 0 for w in writes)  # the request played: its green channel ramped
-    assert all(w[0] == 0 for w in writes)  # inf clamped to 0, not the byte ceiling
-    assert all(w[2] == 0 for w in writes)
-    assert writes[-1] == (0, 0, 0)
 
 
 # ---------------------------------------------------------------------------
@@ -1013,7 +993,7 @@ def test_request_signal_out_of_range_rgb_clamped_not_raised() -> None:
         await cancel_all(tasks, settle_yields=1)
 
     with _driven() as clock:
-        run(scenario(clock))  # an unclamped value would wrap (or raise TypeError for a float)
+        run(scenario(clock))  # an unclamped value would wrap
     writes = [w[0] for w in _pixel(driver).writes]
     assert any(w[0] == 255 for w in writes)  # 300 clamped to the byte ceiling
     assert all(w[1] == 0 for w in writes)  # -5 clamped to the floor
@@ -1050,28 +1030,9 @@ def test_overlay_bri_out_of_range_clamped_not_raised() -> None:
         await cancel_all(tasks, settle_yields=1)
 
     with _driven() as clock:
-        run(scenario(clock))  # an unclamped value would wrap (or raise TypeError for a float)
+        run(scenario(clock))  # an unclamped value would wrap
     assert _pixel(driver).writes[-1][0] == (255, 255, 255)
     assert (231, 231, 231) not in _colours(driver)  # 999 wrapped: absent
-
-
-def test_a_non_numeric_signal_value_is_refused_without_a_frame() -> None:
-    cases = ((None, 0, 0, 0.5), ("10", 0, 0, 0.5), (10, 0, 0, "1"))
-    for r, g, b, t in cases:
-        driver = _make_driver()
-
-        async def scenario(clock: DrivenTime, d: NeopixelDriver = driver, r: object = r, g: object = g, b: object = b, t: object = t) -> "tuple[bool, bool]":
-            internal = await d.request_signal(r, g, b, t)  # type: ignore[arg-type]
-            external = d.led_signal(r, g, b, t)  # type: ignore[arg-type]
-            tasks = await _start_all_tasks(d)
-            await clock.elapse(0)  # a valid request's first ramp frame would land at this instant
-            await cancel_all(tasks, settle_yields=1)
-            return internal, external
-
-        with _driven() as clock:
-            assert run(scenario(clock)) == (False, False), (r, g, b, t)
-        assert driver._start_signal_event.is_set() is False
-        assert _colours(driver) and all(c == (0, 0, 0) for c in _colours(driver))  # only the tasks' own start frames
 
 
 # Every cancel_all() here takes one settling yield: a cancelled overlay task's bounded wait ends its runner one hop

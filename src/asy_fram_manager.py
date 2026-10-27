@@ -189,6 +189,16 @@ class _FRAMBaseChunk:
         valid = self._read_valid and valid_bytes == self.size and self._read_iters > 0
         return valid, uninit, self._read_match, self._read_fault
 
+    async def _copy_out(self, data: memoryview) -> bytearray | None:
+        # read()'s copy of the data region is chunk-sized, so it degrades as the buffer it copies from does
+        # (RegionBuffer): the not-read sentinel on an exhausted heap, never a raise.
+        try:
+            return bytearray(data)
+        except MemoryError as e:
+            console(_NAME, "chunk read: no buffer for the data copy:", e)  # ungated: the memory gates read this text (CLAUDE.md)
+            await self.pr.err_s("No buffer for the chunk read", errno=_ERR_ALLOC)
+            return None
+
     async def _handle_status_bytes(
         self, fram: FRAM_SPI, addr: int, val: int, *, check_idle: bool,
     ) -> bool | None:
@@ -485,7 +495,7 @@ class FRAMChunk(_FRAMBaseChunk):
             # Unreachable: read_into() already failed on a missing buffer, and a RegionBuffer's buffer is fixed at
             # construction - kept to narrow the Optional for the type checker.
             return None
-        return bytearray(dbuf)
+        return await self._copy_out(dbuf)
 
     async def read_into(self, buf: RegionBuffer) -> bool | None:
         dbuf = buf.get_buf()
@@ -555,7 +565,8 @@ class FRAMTimestampedChunk(_FRAMBaseChunk):
             # Unreachable: read_into() already failed on a missing buffer, and a RegionBuffer's buffer is fixed at
             # construction - kept to narrow the Optional for the type checker.
             return None, None, None
-        return ts, age, bytearray(dbuf)
+        data = await self._copy_out(dbuf)
+        return (None, None, None) if data is None else (ts, age, data)
 
     async def read_into(self, buf: FRAMChunkTimestampedBuffer) -> tuple[bool | None, int | None, int | None]:
         bbuf = buf.get_buf()
@@ -797,7 +808,8 @@ class FRAMManager:
         return ok
 
     async def erase_ready(self) -> bool:
-        return self.initialized and not self.fram.lost.is_set() and not await self.fram.get_write_protected()
+        # The driver's readiness first: it ends on finding a loss, before `lost` is set (FRAM_SPI.set_values() yields between).
+        return self.initialized and self.fram.is_ready() and not self.fram.lost.is_set() and not await self.fram.get_write_protected()
 
     async def quiesce(self, step_done: "Callable[[], None]") -> None:
         # Pauses the chunk layer, then waits out each chunk's operation in flight, calling step_done() after

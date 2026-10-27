@@ -9,6 +9,7 @@ import json
 import os
 import random
 import select
+import socket
 import struct
 import sys
 import time
@@ -98,6 +99,15 @@ if TYPE_CHECKING:
         @property
         def wire_log(self) -> _Clearable: ...
 
+    class _Sock(Protocol):
+        # A socket from accept() as the Unix port gives it (ports/unix/modsocket.c:192, :384, v1.29.0); the rp2 stub has no fileno().
+        def close(self) -> None: ...
+        def fileno(self) -> int: ...
+        def setsockopt(self, level: int, optname: int, value: int) -> None: ...
+
+    class _Accepted(Protocol):
+        s: _Sock  # the asyncio Stream's own socket (extmod/asyncio/stream.py:9, v1.29.0)
+
     class _Link(Protocol):
         # The two directions of a UART crossover link, each with its bounded wire log.
         @property
@@ -111,7 +121,7 @@ if "digital_twin/unixport" not in sys.path:
 import _flash_stall
 import _unix_port_udp_addr_shim
 import _wall_clock
-import ffi  # type: ignore[import-not-found]  # the Unix port's own module, no stub: --test-kbd-traceback's self-SIGINT
+import ffi  # type: ignore[import-not-found]  # the Unix port's own module, no stub: --test-kbd-traceback's self-SIGINT, the send buffer's read-back
 import machine
 import network
 from _ntp_responder import NtpResponder
@@ -153,6 +163,7 @@ _watchdog: "machine.WDT | None" = None  # the WDT main() builds and passes to th
 # read by _print_shutdown_line()'s two call sites: the generated module keeps no watchdog global.
 _module: "ModuleType | None" = None  # the booted module, whose FRAM-backed loggers the shutdown line attributes writes to
 _shutdown_printed = False
+_boot_phase_device = ""  # the device of the latest in-process main(), which each boot-phase line names
 _uart_counts: "list[tuple[str, _ExercisedLink, _RxCounts]]" = []  # each wired uart_link's counters, for the shutdown line
 
 # The same value and one-time placement the real firmware boot entry uses, so a twin run models
@@ -173,6 +184,9 @@ _GC_BLOCK_BYTES = 4 * struct.calcsize("P")
 _TEST_TRAIN_CMD_ID = 0x02  # the exerciser's ECHO (asy_uart_link_driver.py), the one SET its responder takes
 _SIGINT = 2  # Linux's signal number (signal(7)): MicroPython has no signal module
 _WATCHDOG_FAULT_KINDS = ("supervisor-raise", "main-exit", "block")
+_HOLD_CUT = "cut"  # --test-hold-system-entry's unreleased mode: the held entry's write cut inside its first block
+_SO_SNDBUF = 7  # Linux's (include/uapi/asm-generic/socket.h): the Unix port's socket module exports none (modsocket.c:722-727, v1.29.0)
+_FRAM_STATUS_BUSY = 0x02  # asy_fram_manager.py's _STATUS_BUSY, a const() and so no attribute: a block mid-write
 _WDT_FAULT_BLOCK_MS = _WDT_TIMEOUT_MS + 1000  # past the armed timeout: the starved countdown fires once the loop resumes
 
 
@@ -195,11 +209,13 @@ if TYPE_CHECKING:
         shutdown_hang: str | None
         flash_stall_max: bool
         uart_over_cap: bool
-        hold_system_entry: int | None
+        hold_system_entry: tuple[int, bool] | None  # (errno, cut)
         kbd_traceback: bool
         loop_lag_ms: int | None
         drop_timer_fire: str | None
         watchdog_fault: str | None
+        defer_faults: bool
+        pin_send_buffer: bool
 
     class RunEnvironment(NamedTuple):
         # The product's config directory, whether NTP may go online instead of the local responder, the test flags, and
@@ -213,12 +229,12 @@ else:
     RunLimits = namedtuple("RunLimits", ("duration", "gc_threshold", "mem_sample_interval_ms", "stop_file"))
     TestFlags = namedtuple(
         "TestFlags",
-        ("hold_closing_slot", "stall_loop_ms", "conn_status_interval_ms", "fault_status_interval_ms", "shutdown_hang", "flash_stall_max", "uart_over_cap", "hold_system_entry", "kbd_traceback", "loop_lag_ms", "drop_timer_fire", "watchdog_fault"),
+        ("hold_closing_slot", "stall_loop_ms", "conn_status_interval_ms", "fault_status_interval_ms", "shutdown_hang", "flash_stall_max", "uart_over_cap", "hold_system_entry", "kbd_traceback", "loop_lag_ms", "drop_timer_fire", "watchdog_fault", "defer_faults", "pin_send_buffer"),
     )
     RunEnvironment = namedtuple("RunEnvironment", ("config_dir", "online_ntp", "instrumentation", "debug_level"))
 
 
-_NO_TEST_FLAGS = TestFlags(False, None, None, None, None, False, False, None, False, None, None, None)
+_NO_TEST_FLAGS = TestFlags(False, None, None, None, None, False, False, None, False, None, None, None, False, False)
 _DEFAULT_ENVIRONMENT = RunEnvironment(_CONFIG_DIR_DEFAULT, False, _NO_TEST_FLAGS, None)
 _PERSISTENT_STATE = StatePaths(_FRAM_STATE_DEFAULT, _SCD30_STATE_DEFAULT, _MEM_BACKUP_STATE_DEFAULT)
 
@@ -253,7 +269,7 @@ _USAGE = f"""Usage: micropython digital_twin/run_generic_integration.py --module
   --wiring-plan PATH       its wiring-plan JSON (required)
   --host HOST, --port N    where the webserver listens (default: localhost, 8080)
   --device LABEL           the device name the log lines carry (default: the module name)
-  --config-dir PATH        the product's config directory (default: {_CONFIG_DIR_DEFAULT})
+  --config-dir PATH/       the product's config directory, ending in "/" (default: {_CONFIG_DIR_DEFAULT})
   --debug-level N          build every logger at level N, until the stored DebugLevel applies (default: off, as on the device)
   --fram-state-path PATH   persist the FRAM image (default: {_FRAM_STATE_DEFAULT}; "" in memory)
   --scd30-state-path PATH  persist the SCD30's NVM (default: {_SCD30_STATE_DEFAULT}; "" in memory)
@@ -267,12 +283,16 @@ _USAGE = f"""Usage: micropython digital_twin/run_generic_integration.py --module
   --test-hold-closing-slot, --test-stall-loop-ms N, --test-conn-status-interval-ms N,
   --test-fault-status-interval-ms N, --test-shutdown-hang S1|S2|S3|S4|S5reset|S5erase|S6,
   --test-flash-stall-max (every flush at its datasheet maximum), --test-uart-over-cap (one train past each link's cap),
-  --test-hold-system-entry ERRNO (SYSTEM's entry with that errno waits for ENTRY_RELEASE, its bounded wait starting there),
+  --test-hold-system-entry ERRNO[:cut] (SYSTEM's entry with that errno waits for ENTRY_RELEASE, its bounded wait starting
+        there; with :cut its write is held inside its first block after the busy mark, never released, so the bound cuts it),
   --test-kbd-traceback (KBD_TRACEBACK prints the interrupt object's traceback),
   --test-loop-lag-ms N (a LOOP_LAG line every {_LOOP_LAG_REPORT_MS // 1000} s from a task sleeping N ms at a time, each link's transfers on it),
   --test-drop-timer-fire reset|sequencer (that one-shot's fire lost as rp2's full scheduler queue loses it),
   --test-watchdog-fault supervisor-raise|main-exit|block (after the supervisor's first feed, one fault that ends the
     feeding; WDT_AT_FAULT <feed_count>)
+  --test-defer-faults (every --fault waits for a FAULT_ARM line, then is queued at once; FAULTS_ARMED)
+  --test-pin-send-buffer (the send buffer of each socket the server accepts pinned at the kernel's floor, as rp2's lwIP one is small
+        and fixed; SNDBUF_PINNED bytes=<n> accepted_bytes=<n>)
   -h, --help               print this and exit 0"""
 
 
@@ -372,6 +392,17 @@ def _exit_code(error: "machine.SimulatedRebootError") -> int:
     return _EXIT_SIMULATED_BOOTLOADER if _reset_kind(error) == "bootloader" else _EXIT_SIMULATED_RESET
 
 
+def _fault_arm(faults: "list[FaultSpec]", chips: "dict[str, object]", wlan: "network.WLAN", *, deferred: bool) -> "Callable[[], None]":
+    # The call that queues every --fault on its chip, made here unless deferred (--test-defer-faults arms it at FAULT_ARM).
+    def arm() -> None:
+        for fault in faults:
+            _apply_fault(fault, chips, wlan, source=_SOURCE)
+
+    if not deferred:
+        arm()
+    return arm
+
+
 async def _feed_gap_folder(watchdog: "machine.WDT") -> None:
     while True:
         await asyncio.sleep_ms(_FEED_GAP_FOLD_MS)
@@ -411,9 +442,9 @@ def _link_directions(module_file: str, link: "machine.UARTLink") -> "dict[str, o
 
 
 async def _mem_sampler(interval_ms: int) -> None:
-    # Optional (--mem-sample-interval-ms): gc.mem_free() lives in this heap with no REST route, so these lines feed the CI
-    # suite's Run 11 memory-trend check (_run_11_soak()); its collect is the one twin exception the gc site checker allows
-    # (scripts/_check_gc_collect_sites.py) - README.md has the reasoning and measurement.
+    # Optional (--mem-sample-interval-ms): /status's MemFree is one poll's reading, not a stream, so these lines feed the CI
+    # suite's Run 11 memory-trend check (_run_11_soak()); its collect, kept, is the one twin exception the gc site checker
+    # allows (scripts/_check_gc_collect_sites.py) - README.md has the reasoning and the calibration.
     while True:
         await asyncio.sleep_ms(interval_ms)
         gc.collect()
@@ -422,7 +453,7 @@ async def _mem_sampler(interval_ms: int) -> None:
 
 def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "TestFlags | None":
     # `flags` with one --test-* flag set; None for an argument that is no test flag.
-    hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd, lag, drop, wdt_fault = flags
+    hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd, lag, drop, wdt_fault, defer, pin = flags
     if arg == "--test-hold-closing-slot":
         hold = True
     elif arg == "--test-stall-loop-ms":
@@ -440,7 +471,10 @@ def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "T
     elif arg == "--test-uart-over-cap":
         over_cap = True
     elif arg == "--test-hold-system-entry":
-        entry = _positive_int(arg, "ERRNO", _pop_value(remaining, arg))
+        errno_text, _sep, mode = _pop_value(remaining, arg).partition(":")
+        if mode not in ("", _HOLD_CUT):
+            raise ValueError(f"{arg} mode {mode!r} not recognized - expected ERRNO or ERRNO:{_HOLD_CUT}")
+        entry = (_positive_int(arg, "ERRNO", errno_text), mode == _HOLD_CUT)
     elif arg == "--test-kbd-traceback":
         kbd = True
     elif arg == "--test-loop-lag-ms":
@@ -453,14 +487,20 @@ def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "T
         wdt_fault = _pop_value(remaining, arg)
         if wdt_fault not in _WATCHDOG_FAULT_KINDS:
             raise ValueError(f"--test-watchdog-fault {wdt_fault!r} not recognized - expected one of {_WATCHDOG_FAULT_KINDS}")
+    elif arg == "--test-defer-faults":
+        defer = True
+    elif arg == "--test-pin-send-buffer":
+        pin = True
     else:
         return None
-    return TestFlags(hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd, lag, drop, wdt_fault)
+    return TestFlags(hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd, lag, drop, wdt_fault, defer, pin)
 
 
 def _print_boot_phases(device: str) -> None:
     # Each boot-phase mark (asy_system_service's region-1 write) also printed as one line, so a booted run's log shows its
-    # boot order (SPECIFICATION.md Part A.7); the write is unchanged. Once per process: an in-process main() again keeps it.
+    # boot order (SPECIFICATION.md Part A.7); the write is unchanged. Installed once per process, naming the latest main()'s device.
+    global _boot_phase_device
+    _boot_phase_device = device
     service = sys.modules.get("asy_system_service")
     if service is None or service._write_region.__name__ == "_boot_phase_line":
         return
@@ -470,7 +510,7 @@ def _print_boot_phases(device: str) -> None:
     def _boot_phase_line(region: int, magic: int, value: int) -> None:
         write(region, magic, value)
         if region == 1:
-            print(f"{_LINE_PREFIX} [{device}] boot phase: {names.get(value, value)}")
+            print(f"{_LINE_PREFIX} [{_boot_phase_device}] boot phase: {names.get(value, value)}")
 
     service.__dict__["_write_region"] = _boot_phase_line  # the module global boot_phase() calls
 
@@ -537,6 +577,20 @@ def _shutdown_line(device: str, watchdog: "_Watchdog", gaps: _FeedGaps, links: "
 # Test-only instrumentation (owner, 2026-09-30, paraphrase): the runner, never src/ or the image, may rebind a booted
 # object from outside or print internal state when a named --test-* flag asks;
 # tests_scripts/test_twin_runner_test_flags.py keeps every one off by default and out of the production entry path.
+
+
+def _test_arm_faults(arm: "Callable[[], None]", say: "Callable[[str], None]" = print) -> "Callable[[], None]":
+    # The FAULT_ARM trigger: the --fault injections main() held back are queued at the first one, so a boot meets none of
+    # them; FAULTS_ARMED follows each trigger, and a later one queues nothing more.
+    armed: list[bool] = []
+
+    def trigger() -> None:
+        if not armed:
+            armed.append(True)
+            arm()
+        say("FAULTS_ARMED")
+
+    return trigger
 
 
 async def _test_arm_shutdown_hang(module: "ModuleType", chips: "dict[str, object]", step: str) -> None:
@@ -647,7 +701,7 @@ def _test_hold_closing_slot(module: "ModuleType") -> "Callable[[], None]":
     return release
 
 
-def _test_hold_system_entry(module: "ModuleType", errno_held: int, say: "Callable[[str], None]" = print) -> "Callable[[], None]":
+def _test_hold_system_entry(module: "ModuleType", errno_held: int, say: "Callable[[str], None]" = print, *, cut: bool = False) -> "Callable[[], None]":
     # SystemService's logger writes its entry with errno_held only after ENTRY_RELEASE: ENTRY_HELD marks the call's start,
     # so the host acts inside that write (the supervisor's escalation entry); the returned callback releases it. The
     # service's bounded wait on a held entry starts at the release, so the host's own pace never counts against it.
@@ -655,6 +709,26 @@ def _test_hold_system_entry(module: "ModuleType", errno_held: int, say: "Callabl
     if service is None:
         raise RuntimeError("asy_system_service is not imported, so the held entry's bounded wait cannot start at its release")
     real_err_s = logger.err_s
+    if cut:  # the entry's real write starts and is held after its first block's busy mark: the bound counts the hold
+        chunk = getattr(logger, "fram", None)
+        if chunk is None:
+            raise RuntimeError("SystemService's logger has no FRAM chunk, so no block of its entry can be cut")
+        real_status, armed = chunk._handle_status_bytes, [False]
+
+        async def status_then_hold(fram: object, addr: int, val: int, *, check_idle: bool) -> "bool | None":
+            done: bool | None = await real_status(fram, addr, val, check_idle=check_idle)
+            if armed[0] and val == _FRAM_STATUS_BUSY and done is not None:
+                armed[0] = False
+                say("ENTRY_HELD")
+                await asyncio.Event().wait()  # never set: only the bound's cancel ends this write
+            return done
+
+        def cut_entry(*args: object, **kwargs: object) -> "Coroutine[object, object, None]":
+            armed[0] = armed[0] or kwargs.get("errno") == errno_held
+            return cast("Coroutine[object, object, None]", real_err_s(*args, **kwargs))
+
+        logger.err_s, chunk._handle_status_bytes = cut_entry, status_then_hold
+        return lambda: None  # never released: the cut is the mode
     unstarted: list[Coroutine[object, object, None]] = []  # held entries no bounded wait has started yet
 
     async def hold() -> None:
@@ -752,6 +826,22 @@ def _test_p99_us(bins: "list[int]", samples: int, worst: int) -> int:
     return worst
 
 
+def _test_pin_send_buffer(module: "ModuleType", say: "Callable[[str], None]" = print) -> None:
+    # WebserverService._serve() gets each stream start_server() accepts; rebound while the setup batch still runs, it
+    # pins each socket's send buffer at the kernel's floor first, as rp2's is small and fixed (TCP_SND_BUF 6,400 B,
+    # extmod/lwip-include/lwipopts_common.h:94, v1.29.0), so a large body is mid-write at a client's reset on any host.
+    service = module.webserver
+    real_serve = service._serve
+
+    async def serve(reader: object, writer: "_Accepted") -> None:
+        accepted = _test_send_buffer(writer.s)
+        writer.s.setsockopt(socket.SOL_SOCKET, _SO_SNDBUF, 1)  # Linux doubles a request and clamps it to its floor (socket(7))
+        say(f"SNDBUF_PINNED bytes={_test_send_buffer(writer.s)} accepted_bytes={accepted}")
+        await real_serve(reader, writer)
+
+    service._serve = serve
+
+
 async def _test_raising_report(_task: object, _n: int) -> None:
     raise RuntimeError("the supervisor's dead-task report raised (a test-only watchdog fault)")
 
@@ -768,6 +858,14 @@ def _test_report_then_hang(line: str, say: "Callable[[str], None]" = print) -> "
         await asyncio.Event().wait()
 
     return report
+
+
+def _test_send_buffer(sock: "_Sock") -> int:
+    # SO_SNDBUF as the kernel reads it back, through libc: the Unix port's socket has no getsockopt().
+    value, size = bytearray(4), bytearray(struct.pack("I", 4))
+    if ffi.open("libc.so.6").func("i", "getsockopt", "iiipp")(sock.fileno(), socket.SOL_SOCKET, _SO_SNDBUF, value, size) != 0:
+        raise OSError(f"getsockopt(SO_SNDBUF) failed on fd {sock.fileno()}")
+    return int(struct.unpack("i", value)[0])
 
 
 def _test_shutdown_hang(module: "ModuleType", chips: "dict[str, object]", step: str) -> "list[asyncio.Task[None]]":
@@ -825,7 +923,7 @@ def _test_stall_loop(stall_ms: int) -> "Callable[[], None]":
 
 
 def _test_start(
-    flags: "TestFlags", module: "ModuleType", chips: "dict[str, object]", links: "list[tuple[str, _ExercisedLink, _RxCounts]]", main_task: "asyncio.Task[None]", watchdog: "_Watchdog",
+    flags: "TestFlags", module: "ModuleType", chips: "dict[str, object]", links: "list[tuple[str, _ExercisedLink, _RxCounts]]", main_task: "asyncio.Task[None]", watchdog: "_Watchdog", arm: "Callable[[], None]",
 ) -> "list[asyncio.Task[None]]":
     # Each named flag's instrumentation, and only under its own flag; the runner tasks it started.
     loop, tasks, triggers = asyncio.get_event_loop(), [], {}
@@ -834,10 +932,14 @@ def _test_start(
     if flags.stall_loop_ms:
         triggers["STALL_TRIGGER"] = _test_stall_loop(flags.stall_loop_ms)
     if flags.hold_system_entry:
-        triggers["ENTRY_RELEASE"] = _test_hold_system_entry(module, flags.hold_system_entry)
+        triggers["ENTRY_RELEASE"] = _test_hold_system_entry(module, flags.hold_system_entry[0], cut=flags.hold_system_entry[1])
     if flags.kbd_traceback:
         triggers["KBD_TRACEBACK"] = _test_kbd_traceback()
-    if flags.hold_closing_slot or flags.stall_loop_ms or flags.hold_system_entry or flags.kbd_traceback:
+    if flags.defer_faults:
+        triggers["FAULT_ARM"] = _test_arm_faults(arm)
+    if flags.pin_send_buffer:
+        _test_pin_send_buffer(module)
+    if flags.hold_closing_slot or flags.stall_loop_ms or flags.hold_system_entry or flags.kbd_traceback or flags.defer_faults:
         tasks.append(loop.create_task(_test_stdin_lines(triggers)))
     if flags.conn_status_interval_ms:
         tasks.append(loop.create_task(_test_conn_status(module, flags.conn_status_interval_ms)))
@@ -1049,13 +1151,12 @@ async def main(config: RunConfig) -> None:
             tasks.append(loop.create_task(_wire_log_clearer(link)))
             chips.update(_link_directions(module_file, link))
         wlan = network.WLAN(network.STA_IF)  # the product's own station object: one per interface, as on rp2
-        for fault in injections.faults:
-            _apply_fault(fault, chips, wlan, source=_SOURCE)
+        arm_faults = _fault_arm(injections.faults, chips, wlan, deferred=config.instrumentation.defer_faults)
         for hang in injections.hangs:
             _apply_hang(hang, chips, source=_SOURCE)
         if injections.wifi_outcomes:
             wlan.script_connect_outcomes(injections.wifi_outcomes)
-        tasks.extend(_test_start(config.instrumentation, booted, chips, _uart_counts, main_task, watchdog))
+        tasks.extend(_test_start(config.instrumentation, booted, chips, _uart_counts, main_task, watchdog, arm_faults))
 
         if run.duration is None:
             print(f"Serving forever at http://{config.host}:{config.port}/ - Ctrl+C to stop")
@@ -1140,6 +1241,9 @@ def parse_args(argv: "list[str]") -> RunConfig:
     wiring_plan_path = text.get("--wiring-plan")
     if wiring_plan_path is None:
         raise ValueError("--wiring-plan is required (a JSON file in buildgen.twin_wiring.compute_twin_wiring()'s own shape)")
+    if not text["--config-dir"].endswith("/"):
+        # config_filename() appends each file's name to the directory as given: without its "/" they land beside it.
+        raise ValueError(f"--config-dir {text['--config-dir']!r} must end with '/' (src/asy_config_manager.py config_filename() appends config_<name>.cfg to it as given)")
 
     return RunConfig(
         module,

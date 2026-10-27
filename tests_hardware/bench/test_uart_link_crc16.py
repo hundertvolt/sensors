@@ -36,6 +36,11 @@ _FAILURE_POLL_GAP_S = 3.0
 
 
 @pytest.mark.flash_cycle
+@pytest.mark.provokes_log(
+    "it runs check_overload_does_not_corrupt(), whose deliberate burst at the ceiling can be refused (HTTP_REFUSED)",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
 def test_the_link_suite_runs_on_a_crc16_image(board: "Board", bench: "BenchBridge", dut_ip: str, bench_device_name: str, tmp_path: "Path", request: pytest.FixtureRequest) -> None:
     if not request.config.getoption("--allow-flash-cycle"):
         pytest.skip("flashes a CRC16 image and the round's image back - pass --allow-flash-cycle to deliberately run it")

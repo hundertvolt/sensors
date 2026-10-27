@@ -103,31 +103,6 @@ def test_link_failures_count_only_what_one_link_added(ci_suite: ModuleType) -> N
     assert ci_suite._link_failures(before, after) == 3
 
 
-def test_a_restore_equal_to_the_ring_written_is_whole(ci_suite: ModuleType) -> None:
-    written = _entry((10, "E"), (65, "W"), counter=4)
-    assert ci_suite._restore_is_all_or_nothing(written, _entry((10, "E"), (65, "W"), counter=5))
-
-
-def test_a_whole_ring_followed_by_this_boots_own_warning_is_whole(ci_suite: ModuleType) -> None:
-    # A case CI meets on real devices: the restored ring, then the new boot's no-backup warning after it.
-    written = _entry((10, "E"), counter=3)
-    assert ci_suite._restore_is_all_or_nothing(written, _entry((10, "E"), (65, "W"), counter=4))
-    assert not ci_suite._restore_is_all_or_nothing(written, _entry((10, "E"), (65, "W"), counter=2))
-
-
-def test_a_lost_ring_holding_only_this_boots_warning_is_nothing(ci_suite: ModuleType) -> None:
-    written = _entry((10, "E"), (65, "W"), counter=4)
-    assert ci_suite._restore_is_all_or_nothing(written, _entry((65, "W"), counter=1))
-    assert ci_suite._restore_is_all_or_nothing(written, _entry())
-
-
-def test_a_partial_ring_or_a_lost_count_is_neither(ci_suite: ModuleType) -> None:
-    written = _entry((11, "E"), (10, "E"), (65, "W"), counter=6)
-    assert not ci_suite._restore_is_all_or_nothing(written, _entry((10, "E"), (65, "W"), counter=6))
-    assert not ci_suite._restore_is_all_or_nothing(written, _entry((11, "E"), (10, "E"), (65, "W"), counter=2))
-    assert not ci_suite._restore_is_all_or_nothing(written, _entry((10, "E"), (65, "W"), (11, "E"), counter=7))
-
-
 # ---------------------------------------------------------------------------
 # The per-device fault matrix: every instance the device's TOML wires, by its --fault key.
 # ---------------------------------------------------------------------------
@@ -1042,7 +1017,7 @@ def _run_1_server(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, table: 
         if method == "PUT":
             return 200, {"result": {k: (dict.fromkeys(v, "Valid") if isinstance(v, dict) else "Valid") for k, v in (body or {}).items()}}
         if path == "/status":
-            return 200, {"errcount": table, "system": {"UTCTime": None, "LocalTime": None}}
+            return 200, {"errcount": table, "system": {"UTCTime": None, "LocalTime": None, "TimeStale": None}}
         return 200, {"DebugLevel": ci_suite._TEST_DEBUG_LEVEL}
 
     monkeypatch.setattr(ci_suite, "_http", http)

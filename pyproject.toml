@@ -190,9 +190,9 @@ max-returns = 10
 # at the template.
 "build/generated_src/**" = ["PLW0603", "S104"]
 # The generated boot entries arm the watchdog, put .frozen first and reserve the emergency buffer before their imports,
-# an order the boot depends on; the no-autostart one prints its start line and imports asyncio and main for the REPL
-# that line is typed into.
-"build/generated_src/sensortask_*_main.py" = ["E402"]
+# an order the boot depends on, and bind the loop-end handler's name before the loop, so its rebinding grows no dict
+# (F811); the no-autostart one prints its start line and imports asyncio and main for the REPL that line is typed into.
+"build/generated_src/sensortask_*_main.py" = ["E402", "F811"]
 "build/generated_src/sensortask_*_main_noautostart.py" = ["E402", "F401", "T20"]
 # Test code asserts (S101), reaches into privates under test (SLF001) and asserts literal values (PLR2004; Part E.3); a
 # double accepts the real API's full signature, and mypy checks Protocol and monkeypatch parameter NAMES (ARG). Tests

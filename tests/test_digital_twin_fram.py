@@ -18,6 +18,7 @@ patch_asy_udp_socket_for_unix_port()  # before any UDPSocket is constructed (dig
 
 import _fram_chip  # noqa: E402 - imported after the prewarm and the UDP shim
 import machine  # noqa: E402 - imported after the prewarm and the UDP shim
+import micropython  # noqa: E402 - imported after the prewarm and the UDP shim
 import microtest  # noqa: E402 - imported after the prewarm and the UDP shim
 import network  # noqa: E402 - imported after the prewarm and the UDP shim
 from _async_harness import cancel, run  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -26,10 +27,10 @@ from _error_codes import code  # noqa: E402 - imported after the prewarm and the
 from _fast_sleep import FastAsyncSleep  # noqa: E402 - imported after the prewarm and the UDP shim
 from _fram_chip import _PAGE_SIZE, FRAMChip  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import boot_generated  # noqa: E402 - imported after the prewarm and the UDP shim
-from _src_const import src_const  # noqa: E402 - imported after the prewarm and the UDP shim
+from _src_const import src_const, src_int  # noqa: E402 - imported after the prewarm and the UDP shim
 from _task_names import task_name  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
-from _twin_devices import device_with, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
+from _twin_devices import distinct_wirings, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
 
 import asy_base_classes  # noqa: E402 - imported after the prewarm and the UDP shim
 import asy_fram_driver  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -142,6 +143,45 @@ def _read_mem24(chip: FRAMChip, addr: int, nbytes: int) -> bytes:
     return bytes(buf)
 
 
+def _silent_fram_on(device: str) -> None:
+    # The test above on one device.
+    module = load_device(device)
+    machine.reset_peripherals()
+    network.reset_interfaces()
+    machine.configure_wiring(wiring_plan(device))
+
+    async def scenario() -> None:
+        await boot_generated(module, device, cfg_path=_scratch.dir(), log_errors=True)
+        (spi_name,) = wiring_plan(device)["spi"]
+        bus = machine.peripheral(spi_name)
+        assert isinstance(bus, machine.SPI)
+        chip = bus.device
+        assert isinstance(chip, FRAMChip)
+        fram, sysfunct = module.fram.fram, module.sysfunct
+        with FastAsyncSleep():
+            await sysfunct.start_tasks([module.fram.start_asy_watch_chip], task_names=[task_name(module.fram, module.fram.start_asy_watch_chip)])
+            first = sysfunct._tasks[0]
+            supervisor = asyncio.create_task(sysfunct.supervise_tasks())
+            await _lose(fram, chip)
+            chip.silent = False
+            await _until("the watch task restarted and set the chip up", lambda: sysfunct._tasks[0] not in (None, first) and not fram.lost.is_set())
+            before = chip.write_count
+            await sysfunct.pr.err_s("planted", errno=code("E", "UNEXPECTED"))
+            assert chip.write_count > before, "the logger write after the recovery did not reach the chip"
+            await _lose(fram, chip)
+            await _until("the restart budget armed the reset", lambda: sysfunct._reset_armed)
+            sysfunct._reset_timer.deinit()  # asserted at the armed point: the in-process graph never takes the reset
+            await cancel(supervisor)
+
+    run(scenario())
+
+
+def _slots(manager: FRAMManager) -> "tuple[int, list[tuple[str, int]]]":
+    # (ErrCount, the used ring slots oldest first) of the manager's log.
+    entry = run(manager.get_error_counter())["FRAM"]
+    return entry["ErrCount"], [(kind, n) for kind, n in zip(entry["ErrType"], entry["ErrNum"]) if kind != "N"]
+
+
 def _status_bytes(chip: FRAMChip, chunk: "FRAMChunk | FRAMTimestampedChunk") -> list[int]:
     # Both status bytes of both copies; the layout is [data][crc][status 1][status 2] per copy.
     out = []
@@ -247,6 +287,33 @@ def test_drop_next_wren_drops_that_many_wrens_and_no_more() -> None:
     assert _rdsr(chip) & 0x02
     _write_mem(chip, 0x0010, b"\xaa")
     assert _read_mem(chip, 0x0010, 1) == b"\xaa"
+
+
+def test_stick_next_wrdi_leaves_wel_set_for_that_many_wrdis_and_no_more() -> None:
+    chip = FRAMChip(0x2000, _MB85RS64V_RDID)
+    chip.stick_next_wrdi = 2
+    seen = []
+    for _ in range(3):
+        _wren(chip)
+        chip.write(bytes([_OPCODE_WRDI]))
+        seen.append(bool(_rdsr(chip) & 0x02))
+    assert seen == [True, True, False], f"WEL after each WRDI: {seen}"
+    assert chip.stick_next_wrdi == 0
+
+
+def test_corrupt_next_write_flips_bit_0_of_that_many_payload_writes_and_no_more() -> None:
+    # A one-byte write (a status byte) is no payload: it is stored as sent and leaves the count alone.
+    chip = FRAMChip(0x2000, _MB85RS64V_RDID)
+    chip.corrupt_next_write = 1
+    _wren(chip)
+    _write_mem(chip, 0x0010, b"\xaa")
+    _wren(chip)
+    _write_mem(chip, 0x0020, b"\xaa\xbb")
+    _wren(chip)
+    _write_mem(chip, 0x0030, b"\xaa\xbb")
+    stored = (_read_mem(chip, 0x0010, 1), _read_mem(chip, 0x0020, 2), _read_mem(chip, 0x0030, 2))
+    assert stored == (b"\xaa", b"\xab\xbb", b"\xaa\xbb"), f"stored {stored}"
+    assert chip.corrupt_next_write == 0
 
 
 def test_a_silent_chip_reads_zeros_and_ignores_every_write() -> None:
@@ -878,36 +945,180 @@ def test_a_logger_over_its_written_chunk_on_a_protected_chip_stays_uninitialised
 def test_a_booted_device_whose_fram_goes_silent_restarts_its_task_and_recovers_or_arms_the_reset() -> None:
     # Silent after boot: two refused writes find the loss and the chip watch task ends; the supervisor restarts it, the
     # restart sets the answering chip up again and a logger write lands; kept silent, the restart budget arms the reset.
-    device = device_with("fram")
-    module = load_device(device)
-    machine.reset_peripherals()
-    network.reset_interfaces()
-    machine.configure_wiring(wiring_plan(device))
+    for device in distinct_wirings("fram"):
+        machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
+        network.reset_test_state()
+        _silent_fram_on(device)
 
-    async def scenario() -> None:
-        await boot_generated(module, device, cfg_path=_scratch.dir(), log_errors=True)
-        (spi_name,) = wiring_plan(device)["spi"]
-        bus = machine.peripheral(spi_name)
-        assert isinstance(bus, machine.SPI)
-        chip = bus.device
-        assert isinstance(chip, FRAMChip)
-        fram, sysfunct = module.fram.fram, module.sysfunct
-        with FastAsyncSleep():
-            await sysfunct.start_tasks([module.fram.start_asy_watch_chip], task_names=[task_name(module.fram, module.fram.start_asy_watch_chip)])
-            first = sysfunct._tasks[0]
-            supervisor = asyncio.create_task(sysfunct.supervise_tasks())
-            await _lose(fram, chip)
-            chip.silent = False
-            await _until("the watch task restarted and set the chip up", lambda: sysfunct._tasks[0] not in (None, first) and not fram.lost.is_set())
-            before = chip.write_count
-            await sysfunct.pr.err_s("planted", errno=code("E", "UNEXPECTED"))
-            assert chip.write_count > before, "the logger write after the recovery did not reach the chip"
-            await _lose(fram, chip)
-            await _until("the restart budget armed the reset", lambda: sysfunct._reset_armed)
-            sysfunct._reset_timer.deinit()  # asserted at the armed point: the in-process graph never takes the reset
-            await cancel(supervisor)
 
-    run(scenario())
+def test_a_blank_read_whose_probe_meets_a_held_session_stays_blank_and_declares_no_loss() -> None:
+    # A never-written chunk reads blank, so its read probes the chip; a sibling session takes the FRAM between the
+    # read and the probe and holds it past the probe's bounded wait: one E LOCK_TIMEOUT, blank (False), no loss.
+    manager, _bus, chip = _twin_manager()
+    chunk, _ts_chunk = _chunks(manager)
+    fram = manager.fram
+    real = fram.verify_present
+    hold_ms = src_int("src/asy_fram_driver.py", "_VERIFY_PRESENT_LOCK_TIMEOUT_MS") + 200
+    held: list[asyncio.Task[None]] = []
+
+    async def sibling() -> None:
+        async with fram.session_lock:
+            await asyncio.sleep_ms(hold_ms)
+
+    async def probe_behind_a_sibling() -> bool:
+        held.append(asyncio.get_event_loop().create_task(sibling()))
+        await _until("the sibling never took the session", fram.session_lock.locked)
+        return await real()
+
+    fram.verify_present = probe_behind_a_sibling  # type: ignore[method-assign]  # the sibling starts at the probe
+    before = bytes(chip.memory)
+
+    async def scenario() -> "bool | None":
+        try:
+            return await chunk.read_into(chunk.get_buffer())
+        finally:
+            for task in held:
+                await cancel(task)
+
+    assert run(scenario()) is False, "the blank read did not stay blank"
+    assert len(held) == 1, f"the read probed {len(held)} time(s), expected once"
+    assert not fram.lost.is_set() and fram.initialized, "a busy session was taken for a lost chip"
+    assert _errnums(manager).count(code("E", "LOCK_TIMEOUT")) == 1, f"the timed-out probe logged {_errnums(manager)}"
+    assert bytes(chip.memory) == before, "the blank read wrote the chip"
+
+
+def test_two_valid_but_differing_copies_fail_each_read_with_one_slot_and_the_next_write_heals_them() -> None:
+    # A write torn between the copies: block 1 put back to the previous write, both blocks valid. Each read fails
+    # (no copy is picked, owner rule), the repeats share one E FRAM_COPIES_DIFFER slot, and the next write heals both.
+    manager, _bus, chip = _twin_manager()
+    chunk, _ts_chunk = _chunks(manager)
+    span = len(_PAYLOAD) + 1 + 2  # the payload, its CRC8 byte and the two status bytes
+    addr1 = chunk._block_addr[1]
+    assert run(chunk.write(_PAYLOAD)) is True
+    block1 = _read_mem(chip, addr1, span)
+    assert run(chunk.write(bytes(reversed(_PAYLOAD)))) is True
+    _wren(chip)
+    _write_mem(chip, addr1, block1)
+    reads = [run(chunk.read_into(chunk.get_buffer())) for _ in range(2)]
+    errnums = _errnums(manager)
+    assert run(chunk.write(_PAYLOAD)) is True
+    buf = chunk.get_buffer()
+    healed = run(chunk.read_into(buf))
+    assert reads == [False, False], f"the differing copies read {reads}"
+    assert errnums.count(code("E", "FRAM_COPIES_DIFFER")) == 1, f"two failed reads logged {errnums}"
+    assert healed is True and bytes(buf.get_data_buf() or b"") == _PAYLOAD, "the next write did not heal the copies"
+
+
+def test_a_paused_twin_fram_refuses_every_chunk_operation_with_one_slot_and_resumes_untouched() -> None:
+    # A commanded pause is no fault: write, read and clear are refused without reaching the chip, the refusals share
+    # one W FRAM_PAUSED slot, and once resumed the chunk reads what it held.
+    manager, _bus, chip = _twin_manager()
+    chunk, _ts_chunk = _chunks(manager)
+    assert run(chunk.write(_PAYLOAD)) is True
+    before = bytes(chip.memory)
+    manager.set_pause(value=True)
+    refused = (run(chunk.write(bytes(len(_PAYLOAD)))), run(chunk.read_into(chunk.get_buffer())), run(chunk.clear()))
+    untouched = bytes(chip.memory) == before
+    errnums = _errnums(manager)
+    manager.set_pause(value=False)
+    buf = chunk.get_buffer()
+    resumed = run(chunk.read_into(buf))
+    assert refused == (False, None, False), f"the paused operations answered {refused}"
+    assert untouched, "a paused operation reached the chip"
+    assert errnums.count(code("W", "FRAM_PAUSED")) == 1, f"the refusals logged {errnums}"
+    assert resumed is True and bytes(buf.get_data_buf() or b"") == _PAYLOAD, "the resumed chunk lost its data"
+
+
+def test_a_latch_one_wrdi_leaves_set_clears_on_the_retry_and_a_stuck_one_warns_once_per_event_with_the_payload_landed() -> None:
+    # The driver's WRDI epilogue against the twin chip: a latch the first WRDI leaves set clears on its one retry and logs
+    # nothing; one both leave set is one W FRAM_WEL_STUCK, the payload landing all the same; a latch stuck through a
+    # whole write warns at each operation, the repeats sharing that slot. The chip answers its ID: no loss is declared.
+    manager, _bus, chip = _twin_manager()
+    chunk, _ts_chunk = _chunks(manager)
+    chip.stick_next_wrdi = 1
+    retried = (run(chunk.write(_PAYLOAD)), chip.stick_next_wrdi, _slots(manager))
+    chip.stick_next_wrdi = 2
+    stuck = (run(chunk.write(bytes(reversed(_PAYLOAD)))), _slots(manager))
+    chip.stick_next_wrdi = 64  # more WRDIs than one chunk write sends
+    held = run(chunk.write(_PAYLOAD))
+    chip.stick_next_wrdi = 0
+    count, slots = _slots(manager)
+    buf = chunk.get_buffer()
+    landed = run(chunk.read_into(buf))
+    assert retried == (True, 0, (0, [])), f"one WRDI left set: write, knob left, log = {retried}"
+    assert stuck == (True, (1, [("W", code("W", "FRAM_WEL_STUCK"))])), f"two WRDIs left set: write and log = {stuck}"
+    assert held is True and count > 2 and slots == [("W", code("W", "FRAM_WEL_STUCK"))], f"a stuck write: {held}, {count}, {slots}"
+    assert landed is True and bytes(buf.get_data_buf() or b"") == _PAYLOAD, "a stuck latch lost the payload"
+    assert not manager.fram.lost.is_set(), "a stuck latch on an answering chip declared it lost"
+
+
+def test_a_verified_write_the_chip_stored_wrong_fails_once_rewrites_nothing_and_the_next_write_heals() -> None:
+    # A bit error on SI: the verification pass reads the copy back, its CRC fails (E FRAM_DATA_CRC) and so the write
+    # (one E FRAM_VERIFY), as tests/test_asy_fram_manager.py pins; nothing is rewritten at once (the caller's next
+    # write is the rung), and that next write lands both copies verified, adding no entry.
+    manager, _bus, chip = _twin_manager()
+    chunk = manager.get_chunk(len(_PAYLOAD), crc=CRC8(), verify=1, owner="T1")
+    assert chunk is not None
+    assert run(chunk.write(_PAYLOAD)) is True
+    writes = chip.write_count
+    chip.corrupt_next_write = 1
+    failed = run(chunk.write(bytes(reversed(_PAYLOAD))))
+    spent = chip.write_count - writes
+    log = _slots(manager)
+    healed = run(chunk.write(bytes(reversed(_PAYLOAD))))
+    buf = chunk.get_buffer()
+    read = run(chunk.read_into(buf))
+    assert (failed, spent) == (False, 2), f"the mismatched write answered {failed} after {spent} payload writes"
+    assert log == (2, [("E", code("E", "FRAM_DATA_CRC")), ("E", code("E", "FRAM_VERIFY"))]), f"one mismatch logged {log}"
+    assert healed is True and _slots(manager) == log, "the next write did not verify clean"
+    assert read is True and bytes(buf.get_data_buf() or b"") == bytes(reversed(_PAYLOAD)), "the healed chunk reads wrong"
+
+
+def test_counting_writes_at_new_addresses_allocates_nothing() -> None:
+    # The address table is sized for its cap when the chip is built: a rehash would need one contiguous block inside the
+    # product's erase, where a fragmented -1 heap may have none (README "FRAM persistence").
+    chip = FRAMChip(0x40000, _MB85RS2MTA_RDID)
+    counted = 0
+    micropython.heap_lock()
+    try:
+        for addr in range(_fram_chip._WRITES_AT_MAX_KEYS):
+            chip._count_write(addr)
+            counted += 1
+    except MemoryError:
+        pass  # reported below by count, never by the interpreter's own text
+    finally:
+        micropython.heap_unlock()
+    assert counted == _fram_chip._WRITES_AT_MAX_KEYS, f"counting allocated after {counted} new addresses"
+    assert (len(chip.writes_at), chip.write_count, chip.writes_at_dropped) == (counted, counted, 0)
+
+
+def test_a_save_writes_the_image_only_up_to_its_last_nonzero_byte() -> None:
+    # The blank tail a factory-fresh chip reads as is never written to the host, and a load gives it back as zeros.
+    path = _tmp_path("fram_used_span.json")
+    chip1 = FRAMChip(0x2000, _MB85RS64V_RDID, state_path=path)
+    _wren(chip1)
+    _write_mem(chip1, 0x0100, b"\x01\x02\x00")
+    chip1.save_state()
+    expected = '{"size": 8192, "used": 258, "memory_hex": "' + "00" * 0x100 + '0102"}'
+    assert os.stat(path)[6] == len(expected), os.stat(path)[6]
+    with open(path) as f:
+        assert f.read() == expected
+    chip2 = FRAMChip(0x2000, _MB85RS64V_RDID, state_path=path)
+    assert chip2.memory == chip1.memory
+    blank_path = _tmp_path("fram_blank_span.json")
+    FRAMChip(0x2000, _MB85RS64V_RDID, state_path=blank_path).save_state()
+    with open(blank_path) as f:
+        assert f.read() == '{"size": 8192, "used": 0, "memory_hex": ""}'
+
+
+def test_a_state_file_naming_more_used_bytes_than_the_chip_holds_says_so_and_loads_blank() -> None:
+    path = _tmp_path("fram_used_past_size.json")
+    with open(path, "w") as f:
+        f.write('{"size": 4, "used": 5, "memory_hex": "0102030405"}')
+    with _PrintRecorder() as lines:
+        chip = FRAMChip(4, _MB85RS64V_RDID, state_path=path)  # must not raise
+    assert lines == [("FRAM state", path, "not loaded (size): starting from a factory-fresh chip")], lines
+    assert _read_mem(chip, 0x0000, 4) == bytes(4)
 
 
 if __name__ == "__main__":

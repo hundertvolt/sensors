@@ -60,7 +60,7 @@ class Summary:
     levels: str | None = None
     gc_stage: str | None = None
     extra_counts: list[tuple[str, Counts]] = field(default_factory=list)
-    not_clean_reason: str | None = None
+    not_clean_reason: str | None = None  # also code 3's reason, which alone has a default (scripts/test.sh's summary_result_reason)
     notes: list[tuple[str, str]] = field(default_factory=list)
 
     def add(self, kind: str, name: str, detail: str = "") -> None:
@@ -99,7 +99,7 @@ class Summary:
         if exit_code == 0:
             return "PASS"
         if exit_code == _COVERAGE_NOT_RENDERED_EXIT:
-            return "PASS (coverage report not rendered)"
+            return f"PASS ({self.not_clean_reason or 'coverage report not rendered'})"
         if exit_code == _NOT_CLEAN_EXIT:
             return f"NOT CLEAN ({self.not_clean_reason})" if self.not_clean_reason else "NOT CLEAN"
         return "FAIL"

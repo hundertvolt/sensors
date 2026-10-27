@@ -26,3 +26,10 @@ def code(kind: str, name: str) -> int:
     if not _BY_NAME:
         _BY_NAME.update(_load())
     return _BY_NAME[kind][name]
+
+
+def name(kind: str, num: int) -> "str | None":
+    """The catalog name of code `num` in `kind`; None for a kind or number the catalog holds no live row for."""
+    if not _BY_NAME:
+        _BY_NAME.update(_load())
+    return next((n for n, value in _BY_NAME.get(kind, {}).items() if value == num), None)

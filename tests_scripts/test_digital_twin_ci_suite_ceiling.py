@@ -136,6 +136,7 @@ def test_concurrent_get_returns_status_and_parsed_body_for_every_request(ci_suit
 @pytest.mark.usefixtures("hang_up_server")
 def test_concurrent_get_records_a_refused_request_as_its_error_repr(ci_suite: ModuleType) -> None:
     results = ci_suite._concurrent_get(["/status", "/sensors"], timeout=_GET_TIMEOUT_S)
+    assert len(results) == 2, results
     assert all(isinstance(r, str) for r in results), results
     assert all("RemoteDisconnected" in r for r in results), results
 

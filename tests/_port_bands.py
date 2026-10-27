@@ -22,6 +22,7 @@ BANDS = {
     "_live_twin_command": (19481, 19481, "tcp"),
     "_live_matrix_command": (19482, 19482, "tcp"),
     "_digital_twin_construction_scenarios": (19500, 19599, "tcp"),
+    "test_digital_twin_loop_end": (19600, 19719, "tcp"),
     "_digital_twin_scenarios": (20000, 20999, "tcp"),
     "asy_udp_socket": (21000, 21999, "udp"),
     "test_asy_captive_dns": (22000, 22999, "udp"),
@@ -35,7 +36,7 @@ BANDS = {
     "test_digital_twin_clock_jump": (29600, 29999, "udp"),
 }
 # The owners whose band is split over the generated devices: their per-device files run concurrently.
-PER_DEVICE_OWNERS = ("dtsi", "_digital_twin_construction_scenarios", "_digital_twin_scenarios")
+PER_DEVICE_OWNERS = ("dtsi", "_digital_twin_construction_scenarios", "_digital_twin_scenarios", "test_digital_twin_loop_end")
 
 
 class PortAllocator:

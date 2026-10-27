@@ -18,6 +18,7 @@ declare module "vitest/browser" {
             deviceName: string;
             firstStatus: string | null;
             resubmitStatus: string | null;
+            config: { inside: string[]; beside: string[]; left: string[] };
         }>;
         runLiveBackendConcurrentTabs: (device: string, testTimeoutMs: number) => Promise<{ tabs: number; loadedFirstPass: number; loadedAfterRetry: number; failures: string[] }>;
         runLiveBackendRestartRecovery: (device: string, testTimeoutMs: number) => Promise<{ bannerShown: boolean; recovered: boolean; reloaded: boolean }>;

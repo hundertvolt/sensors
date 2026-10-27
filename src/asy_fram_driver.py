@@ -348,6 +348,10 @@ class FRAM_SPI(Lockable):
             return False
         return self._is_write_protected()
 
+    def is_ready(self) -> bool:
+        # False before setup() and from the moment a loss is found; `lost` is set only once the loss is reported.
+        return self.initialized
+
     async def set_values(self, buf: bytes | bytearray | memoryview, addr_start: int) -> bool:
         status = self.set_values_sync(buf, addr_start)
         await asyncio.sleep(0)  # the per-command yield; CS is deasserted and the bus lock is the caller's

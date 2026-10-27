@@ -45,7 +45,7 @@ summary_note() {
 summary_unit() { _summary_unit_name="$1"; }
 summary_levels() { _summary_levels_text="$1"; _summary_levels_set=1; }
 summary_gc_stage() { _summary_gc_text="$1"; _summary_gc_set=1; }
-summary_result_reason() { _summary_reason="$1"; }
+summary_result_reason() { _summary_reason="$1"; }  # code 3's or 4's reason; 3 alone has a default
 
 _summary_counts_text() {
     printf 'Counts (%s): passed %s · failed %s · skipped %s · deselected %s · retried %s · recovered %s · vacuous %s' "$@"
@@ -136,7 +136,7 @@ summary_print() {
     elif [ "$code" = "0" ]; then
         result="PASS"
     elif [ "$code" = "3" ]; then
-        result="PASS (coverage report not rendered)"
+        result="PASS (${_summary_reason:-coverage report not rendered})"
     elif [ "$code" = "4" ]; then
         result="NOT CLEAN"
         [ -z "$_summary_reason" ] || result="NOT CLEAN ($_summary_reason)"

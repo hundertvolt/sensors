@@ -12,6 +12,7 @@ from _fake_time import UTCValid
 from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep, check_sleep_ms
 from _src_const import src_float, src_int, src_strs
+from _stack_overflow import stack_overflow
 from _ticks30 import TICKS_PERIOD, Ticks30Time
 from _tmp_scratch import TmpScratch
 from machine import I2C as FakeI2C
@@ -176,18 +177,6 @@ def _record_reads(i2c: I2C) -> "list[object]":
 
     fake(i2c).readfrom_into = recording  # type: ignore[method-assign]
     return received
-
-
-def _stack_overflow() -> RuntimeError:
-    # The interpreter's own C-stack exhaustion, from a real one (py/runtime.c:1786, v1.29.0).
-    def dive(depth: int) -> int:
-        return dive(depth + 1)
-
-    try:
-        dive(0)
-    except RuntimeError as e:
-        return e
-    raise AssertionError("no recursion limit reached")
 
 
 def _threshold_bursts(i2c: I2C) -> "list[bytes]":
@@ -368,7 +357,6 @@ def test_decode_rgb_burst_rejects_short_and_none() -> None:
     assert ISL29125_I2C._decode_rgb_burst(b"") is None
     assert ISL29125_I2C._decode_rgb_burst(bytes(5)) is None
     assert ISL29125_I2C._decode_rgb_burst(bytes(7)) is None
-    assert ISL29125_I2C._decode_rgb_burst(42) is None  # type: ignore[arg-type]
 
 
 def test_decode_rgb_burst_accepts_a_bytearray_and_a_memoryview() -> None:
@@ -632,9 +620,6 @@ def test_decode_config_rejects_the_wrong_length_and_none() -> None:
     assert ISL29125_I2C.decode_config(None) is None
     assert ISL29125_I2C.decode_config(bytes(2)) is None
     assert ISL29125_I2C.decode_config(bytes(4)) is None
-    # The TypeError half of the same guard: len() on a non-buffer, which a failed read that
-    # returned something unexpected rather than None would hand it.
-    assert ISL29125_I2C.decode_config(42) is None  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -3235,8 +3220,8 @@ def test_a_stack_overflow_caught_by_either_read_handler_is_reported_for_the_supe
         return reported
 
     assert cycle_raising("read_status", RuntimeError("CRC check failed while reading data"), "ISL_STATUS_READ") is False
-    assert cycle_raising("read_status", _stack_overflow(), "ISL_STATUS_READ") is True
-    assert cycle_raising("read_counts", _stack_overflow(), "READ") is True
+    assert cycle_raising("read_status", stack_overflow(), "ISL_STATUS_READ") is True
+    assert cycle_raising("read_counts", stack_overflow(), "READ") is True
 
 
 def test_the_filter_coefficient_rejects_values_outside_its_band_with_bad_arg() -> None:
@@ -3427,14 +3412,6 @@ def test_every_protocol_read_raises_when_layer_one_answers_none_instead_of_raisi
         except OSError:
             continue
         raise AssertionError(f"{call}() passed layer 1's None straight through instead of raising")
-
-
-def test_the_config_decoder_survives_an_answer_that_is_not_bytes_at_all() -> None:
-    # Same contract seen from the decoder: it is handed whatever layer 1 produced, and len() on a
-    # non-sequence raises TypeError rather than returning a wrong length.
-    assert ISL29125_I2C.decode_config(None) is None
-    assert ISL29125_I2C.decode_config(b"\x01\x02") is None  # right type, wrong length
-    assert ISL29125_I2C.decode_config(5) is None  # type: ignore[arg-type]
 
 
 def test_pinning_a_range_while_autorange_is_off_actually_programs_the_chip() -> None:
@@ -3949,6 +3926,23 @@ def test_a_published_candidate_expires_and_stays_expired_across_a_week() -> None
     assert reader._cal_meas is None
 
 
+def test_a_published_candidate_still_reads_one_tick_before_its_hold_ends_and_is_gone_at_it() -> None:
+    # The hold's exact bound on the driven clock: the candidate _CAL_HOLD_MS - 1 ms after publishing, None at _CAL_HOLD_MS.
+    hold = src_int("src/asy_isl29125_driver.py", "_CAL_HOLD_MS")
+    _i2c, reader = ready_reader("cal_edge")
+    clock = Ticks30Time(7000)
+    asy_isl29125_driver.time = clock  # type: ignore[assignment]
+    try:
+        reader._publish_candidate(25.9)
+        clock.advance(hold - 1)
+        before = reader._measured_ratio()
+        clock.advance(1)
+        at = reader._measured_ratio()
+    finally:
+        asy_isl29125_driver.time = time
+    assert (before, at) == (25.9, None), (before, at)
+
+
 def test_the_measured_candidate_travels_with_every_reading() -> None:
     # GainMeas is a MEASUREMENT, so it rides the same tuple as Lux and RGB rather than sitting in
     # config or in the maintenance group - which is what lets the user read it and copy it across.
@@ -3994,7 +3988,8 @@ def test_a_failed_partner_read_logs_a_read_error_and_puts_the_range_back() -> No
         run(reader._measure_gain_ratio(2000))
     assert reader._measured_ratio() is None
     counter = (run(reader.get_error_counter()))["ISL29125"]
-    assert counter["ErrCount"] >= 1
+    # Both legs of the sandwich fail (the third always runs, to put the range back): one READ slot, its count raised once.
+    assert counter["ErrCount"] == 2 and [kind for kind in counter["ErrType"] if kind != "N"] == ["E"], counter
     err_num = counter["ErrNum"]
     assert isinstance(err_num, list)
     assert err_num[-1] == code("E", "READ"), f"the calibration leg's own failure must log READ, got {err_num}"
@@ -4227,6 +4222,65 @@ def test_init_runs_on_the_defaults_when_its_config_file_cannot_be_written() -> N
 
     assert err_count(run(scenario())) == 0
     assert run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.name]["ErrNum"][-1] == code("E", "CFG_FILE_WRITE")
+
+
+def test_an_interrupt_select_write_that_raises_is_logged_and_leaves_the_hold_state() -> None:
+    # Both arms, a routine error and a C-stack overflow: logged as CHIP_SET, the hold flag unchanged, and only the
+    # overflow recorded for the supervisor.
+    for error, fatal in ((OSError(errno_mod.EIO), False), (stack_overflow(), True)):
+        for armed in (True, False):
+            _i2c, reader = ready_reader("int_select_raises")
+            held = reader._int_held
+
+            async def raising(error: BaseException = error, **_kwargs: object) -> None:
+                raise error
+
+            reader._isl.configure = raising  # type: ignore[method-assign]
+            run(reader._set_int_armed(armed=armed))
+            assert reader._int_held is held, (error, armed)
+            assert errors(run(reader.get_error_counter()))[-1] == code("E", "CHIP_SET"), (error, armed)
+            assert fatal_reported() is fatal, (error, armed)
+            asy_print_log._fatal = False  # microtest fails a test that leaves it set
+
+
+def test_a_re_arm_write_that_raises_is_logged_and_writes_no_thresholds() -> None:
+    for error, fatal in ((OSError(errno_mod.EIO), False), (stack_overflow(), True)):
+        _i2c, reader = ready_reader("rearm_raises")
+        thresholds: list[int] = []
+
+        async def raising(error: BaseException = error, **_kwargs: object) -> None:
+            raise error
+
+        async def write_thresholds(thresholds: "list[int]" = thresholds) -> bool:
+            thresholds.append(1)
+            return True
+
+        reader._isl.configure = raising  # type: ignore[method-assign]
+        reader._write_thresholds = write_thresholds  # type: ignore[assignment, method-assign]
+        run(reader._rearm_interrupt())
+        assert thresholds == [], error
+        assert errors(run(reader.get_error_counter()))[-1] == code("E", "CHIP_SET"), error
+        assert fatal_reported() is fatal, error
+        asy_print_log._fatal = False
+
+
+def test_a_reset_write_the_bus_refuses_while_up_raises_with_no_config_read() -> None:
+    # The bus answers False for the reset write alone and stays up: reset() raises at once and never reads CONFIG1-3
+    # (on a down bus that read would raise the same error, so only an up bus tells the two apart).
+    i2c, isl = ready_protocol()
+
+    def refused(*_args: object) -> bool:
+        return False
+
+    i2c.set_register_struct = refused  # type: ignore[assignment, method-assign]
+    fake(i2c).log.clear()
+    try:
+        run(isl.reset())
+        message = ""
+    except OSError as e:
+        message = str(e)
+    assert message == "I2C bus not initialized"
+    assert register_reads(i2c) == []
 
 
 if __name__ == "__main__":

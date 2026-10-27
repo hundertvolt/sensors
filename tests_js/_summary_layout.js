@@ -97,7 +97,7 @@ function resultText(summary, exitCode) {
     if (failsOnItems(summary)) {
         return "FAIL";
     }
-    const byCode = new Map([[0, "PASS"], [3, "PASS (coverage report not rendered)"], [4, summary.notCleanReason ? `NOT CLEAN (${summary.notCleanReason})` : "NOT CLEAN"]]);
+    const byCode = new Map([[0, "PASS"], [3, summary.notCleanReason ? `PASS (${summary.notCleanReason})` : "PASS (coverage report not rendered)"], [4, summary.notCleanReason ? `NOT CLEAN (${summary.notCleanReason})` : "NOT CLEAN"]]);
     return byCode.get(exitCode) ?? "FAIL";
 }
 

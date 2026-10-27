@@ -15,6 +15,7 @@ from _async_harness import cancel, run
 from _cancel_sweep import assert_unlocked, cancel_at_each_await
 from _error_codes import code
 from _fake_time import DrivenTime
+from _fast_sleep import FastAsyncSleep
 from _generated_tree import devices
 from _src_const import src_bytes, src_int
 from _uart_comm_harness import POLL_WAIT_MS, RUN_LIMIT_S, TIMEOUT_MS, PollRoundClock, awaited_with_listener, copied_out, transfer_limits
@@ -32,6 +33,7 @@ import asy_uart_link_driver
 import asy_webserver_service
 from asy_base_classes import COUNTER_CAP, RegionBuffer
 from asy_config_manager import FAILED, INVALID, VALID
+from asy_crc_checks import CRC16
 from asy_print_log import LogConfig, PrintLogHistory, PrintLogHistoryStore, make_logger
 from asy_uart_comm import CMD_SET, ROLE_INITIATOR, ROLE_RESPONDER
 from asy_uart_driver import UART
@@ -229,6 +231,8 @@ def _check_a_crossing_whose_uid_aliases_the_peers_ack_fails_as_peer_initiated(cr
     errnos = _recorded_errnos(pair.initiator._comm)
     assert run(pair.setup(), RUN_LIMIT_S), "Pair.setup() failed"
     link = pair.initiator
+    bus = link._uart
+    assert bus is not None
     link._comm._uid = _UID_MAX  # the uid before 0: the SET's first frame goes out as uid 0
     got: list[object] = []
 
@@ -236,7 +240,7 @@ def _check_a_crossing_whose_uid_aliases_the_peers_ack_fails_as_peer_initiated(cr
         listen = pair.responder._comm.start_asy_listen()
 
         async def crossing() -> None:
-            got.append(await link._cross_both_ends(bytearray(link._frame)))
+            got.append(await link._cross_both_ends(bytearray(link._frame + bus.crc.length())))
 
         task = asyncio.create_task(crossing())
         await clock.run_until(task.done, _HAZARD_RUN_VIRTUAL_MS)
@@ -358,7 +362,7 @@ def _check_a_raw_write_that_fails_in_the_sweep_reads_as_no_verdict(crc: "CrcMake
         listen = pair.responder._comm.start_asy_listen()
 
         async def sweep() -> None:
-            got.append(await link._sweep_fields(bytearray(link._frame), bytearray(link._frame + bus.crc.length())))
+            got.append(await link._sweep_fields(bytearray(link._frame + bus.crc.length()), bytearray(link._frame + bus.crc.length())))
 
         task = asyncio.create_task(sweep())
         await clock.run_until(task.done, _HAZARD_RUN_VIRTUAL_MS)
@@ -630,6 +634,27 @@ def _expected_sweep(fields: "tuple[tuple[str, int, tuple[int, ...]], ...]") -> "
     return [[name, [_LEGAL[name](value) for value in values], True] for name, _offset, values in fields]
 
 
+def test_each_recovery_try_first_waits_one_window() -> None:
+    # The peer's backoff, timeout and resync pass before every try: each uart_set() follows one more window-long sleep,
+    # and an unanswered link gives up after its last try.
+    link = UARTLinkDriver(UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS), ROLE_INITIATOR)
+    fast = FastAsyncSleep()
+    owner: list[object] = []
+    seen: list[int] = []
+
+    async def unanswered(set_id: int, payload: object = None) -> bool:
+        owner.append(asyncio.current_task())
+        seen.append(len(fast.ms_of(owner[0])))
+        return False
+
+    link._comm.uart_set = unanswered  # type: ignore[method-assign]
+    with fast:
+        attempts, recovered = run(link._recover(), RUN_LIMIT_S)
+    assert (attempts, recovered) == (_HAZARD_RECOVERY_ATTEMPTS, False), (attempts, recovered)
+    assert seen == list(range(1, _HAZARD_RECOVERY_ATTEMPTS + 1)), f"window sleeps before each try: {seen}"
+    assert fast.ms_of(owner[0]) == [link._window_ms] * _HAZARD_RECOVERY_ATTEMPTS, fast.ms_of(owner[0])
+
+
 def test_a_hazard_run_is_requested_only_on_a_ready_initiator_and_one_at_a_time() -> None:
     async def go() -> None:
         pair = Pair()
@@ -879,6 +904,53 @@ register_both_crc_modes(
         "echo_round_trip_across_a_real_responder_via_set_and_get_callbacks",
     ),
 )
+
+
+
+def test_a_hazard_run_sends_every_raw_frame_without_a_copy() -> None:
+    # Each raw frame goes out of one buffer with room for its CRC (writefrom()), never through write()'s CRC copy,
+    # which costs one allocation per frame; the run's verdicts, and so its bytes on the wire, are the CRC16 check's.
+    added: list[int] = []
+    real_add = CRC16.add
+
+    async def counted(self: "CRCBase", bytearr: bytearray, init: "int | None" = None) -> "bytearray | None":
+        added.append(len(bytearr))
+        return await real_add(self, bytearr, init)
+
+    CRC16.add = counted  # type: ignore[method-assign]  # the class, so every bus's CRC counts
+    try:
+        _check_a_hazard_run_reports_every_verdict_then_returns_to_the_echo(CRC16)
+    finally:
+        CRC16.add = real_add  # type: ignore[method-assign]
+    assert added == [], f"{len(added)} raw frames copied for their CRC"
+
+
+def test_an_echo_get_before_any_echo_set_answers_valid_and_empty() -> None:
+    DMA.reset_registry()
+    driver = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
+    responder = UARTLinkDriver(driver, ROLE_RESPONDER)
+    assert responder._get_callback(src_int("src/asy_uart_link_driver.py", "_CMD_ECHO")) == (True, b"")
+
+
+def test_a_double_initiation_cancelled_at_its_first_await_leaves_no_transaction_behind() -> None:
+    # The cancel is forwarded to the first initiation, so the second, scheduled but not awaited yet, is what the finally
+    # cancels: left alone it would run a whole transaction against the silent responder.
+    pair = Pair()
+    assert run(pair.setup(), RUN_LIMIT_S) is True
+    comm = pair.initiator._comm
+
+    async def scenario() -> bool:
+        outer = asyncio.create_task(pair.initiator._two_initiations())
+        await asyncio.sleep_ms(0)  # the outer task runs to `await first`; neither initiation has run yet
+        outer.cancel()
+        try:
+            await outer
+        except asyncio.CancelledError:
+            pass
+        await asyncio.sleep_ms(POLL_WAIT_MS)  # a leftover initiation is now inside its transaction
+        return comm._busy
+
+    assert run(scenario(), RUN_LIMIT_S) is False
 
 
 if __name__ == "__main__":

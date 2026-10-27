@@ -2,6 +2,8 @@
 through (SPECIFICATION.md Part G.2). Covers the pass-through default's byte-identity guarantee, COBS
 round-trips including every shape the protocol can emit, and each malformed-input rejection."""
 
+import asyncio
+
 from _async_harness import run
 from _recording_print import record_prints
 
@@ -86,6 +88,38 @@ def test_cobs_round_trips_every_protocol_frame_shape() -> None:
         assert COBS_DELIMITER not in frame[:-1], f"encoded output must contain no 0x00: {payload!r}"
         assert frame[-1] == COBS_DELIMITER
         assert decoded(codec, frame[:-1]) == payload, f"round trip failed for {payload!r}"
+
+
+def test_cobs_decode_lets_another_task_run_after_every_code_block() -> None:
+    # The decode loop yields once per code block, so a long frame never holds the loop: a competing task gets at least
+    # one turn per block (one zero-delimited run each here).
+    codec = FramingCOBS(262)
+    payload = b"\x01\x00\x02\x03\x00\x00\x04\x05\x06\x00\x07"
+    frame = bytearray(encoded(codec, payload)[:-1])  # the read loop strips the delimiter
+    blocks = payload.count(b"\x00") + 1
+    passes = [0]
+
+    async def competitor() -> None:
+        while True:
+            passes[0] += 1
+            await asyncio.sleep(0)
+
+    async def scenario() -> "tuple[int | None, int]":
+        other = asyncio.create_task(competitor())
+        await asyncio.sleep(0)
+        before = passes[0]
+        size = await codec.decode_from(frame, len(frame))
+        during = passes[0] - before
+        other.cancel()
+        try:
+            await other
+        except asyncio.CancelledError:
+            pass
+        return size, during
+
+    size, during = run(scenario(), _RUN_BOUND_S)
+    assert size is not None and bytes(frame[:size]) == payload
+    assert during >= blocks, f"{during} turns for another task across {blocks} code blocks"
 
 
 def test_cobs_overhead_matches_the_documented_bound() -> None:

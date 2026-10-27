@@ -103,7 +103,6 @@ buildgen/requires_tag.py	"#+" so a "## @requires ..." section-style comment is a
 buildgen/tag_comments.py	"label=" or "special:0=" - deliberately not anchored to a specific key name, sin
 buildgen/tag_comments.py	Deliberately not the
 buildgen/web_tag.py	"#+" so a "## @web ..." section-style comment is accepted, matching every other
-digital_twin/README.md	- **`--mem-sample-interval-ms`** — `gc.mem_free()` exists only inside this proce
 digital_twin/README.md	Once the interpreter unfreezes, `asy_system_service.py`'s periodic `feed()` (its
 digital_twin/README.md	The value sits just **above** the server's own `outer_cap_s`, deliberately: belo
 digital_twin/README.md	Two things could not, and both are deliberate:
@@ -167,7 +166,6 @@ tests/machine.py	test-only: caps bytes accepted per write() call - see write()
 tests/test_asy_api_response.py	Both hooks supplied at once, with the synchronous one raising: post_fct() fires
 tests/test_asy_base_classes.py	Deliberately sync, unlike _get_mgr_cfg/_get_dict_cfg: the schema is static, fixe
 tests/test_asy_base_classes.py	Deliberately the inverse of what this test asserted under the old shared-instanc
-tests/test_asy_base_classes.py	type: ignore[return-value] # deliberately malformed, simulating a misbehaving ov
 tests/test_asy_bmp3xx_driver.py	type: ignore[method-assign] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_captive_dns.py	Many consecutive failures must never grow the pause past the configured ceiling
 tests/test_asy_config_manager.py	-0.0 == 0.0 in IEEE-754 float comparison, and int(-0.0) is the plain int 0 (no n

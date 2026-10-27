@@ -179,7 +179,7 @@ class UART(Lockable):
         # channel's first completion already finds it; an error flag left from before is not this stream's, so it
         # is cleared once the data channel has taken over the FIFO.
         data, reload, ring = self._rx_dma, self._rx_reload, self._ring
-        if data is None or reload is None or ring is None:
+        if data is None or reload is None or ring is None:  # Unreachable: both callers run with the ring and both channels set, which setup_rx_ring() sets and clears together - kept to narrow the Optional for the type checker
             return
         data.active(False)
         reload.active(False)
@@ -286,7 +286,7 @@ class UART(Lockable):
         # Copies n buffered bytes into dest[start:] by index - no slice, no allocation - and consumes them (dest
         # None: consumed only). Checked again after the copy: a lap during it overwrote bytes already copied.
         ring, data = self._ring, self._rx_dma
-        if ring is None or data is None:
+        if ring is None or data is None:  # Unreachable: every caller follows a positive _buffered(), which needs the ring and its channel - kept to narrow the Optional for the type checker
             return -1
         mask = len(ring) - 1
         pos = self._rx_pos
@@ -353,7 +353,7 @@ class UART(Lockable):
     def _rx_line_len(self, level: int) -> int:
         # The buffered bytes up to and including the first LF, else all of them.
         ring = self._ring
-        if ring is None:
+        if ring is None:  # Unreachable: called after a positive _buffered(), as _rx_copy() is - kept to narrow the Optional for the type checker
             return 0
         mask = len(ring) - 1
         pos = self._rx_pos
@@ -365,7 +365,7 @@ class UART(Lockable):
     def _rx_peek(self, i: int) -> int:
         # The i-th buffered byte, unconsumed; -1 without a ring.
         ring = self._ring
-        if ring is None:
+        if ring is None:  # Unreachable: called after a positive _buffered(), as _rx_copy() is - kept to narrow the Optional for the type checker
             return -1
         return ring[(self._rx_pos + i) & (len(ring) - 1)]
 
@@ -722,8 +722,7 @@ class UART(Lockable):
                 if (timeout_ms > 0) and (time.ticks_diff(time.ticks_ms(), t0) > timeout_ms):
                     return False
                 await asyncio.sleep_ms(wait_ms)
-            except (MemoryError, OSError, OverflowError, TypeError) as e:
-                # TypeError: a malformed mask/timeout_ms; callers' excepts wrap only the UART call.
+            except (MemoryError, OSError, OverflowError) as e:
                 # OverflowError: a wait beyond the ticks range - asyncio.sleep_ms() raises it for a delta >= 2**29 ms.
                 if isinstance(e, MemoryError):
                     console(_NAME, "readiness poll failed:", e)
@@ -806,7 +805,7 @@ class UART(Lockable):
         if size == 0:
             return True
         crcsize = await self.crc.add_into(buf, size)
-        if crcsize is None:
+        if crcsize is None:  # Unreachable with CRCBase.add_into(): the size guard above leaves it no None case - kept to narrow the Optional for the type checker
             return False
         encoded = await self.framing.encode_into(buf, crcsize)
         if encoded is None:

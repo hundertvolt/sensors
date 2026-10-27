@@ -33,7 +33,7 @@ from _src_const import src_int  # noqa: E402 - imported after the prewarm and th
 from _task_names import task_names_of  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_common import COUNTER_CAP, LOG_MAXLEN  # noqa: E402 - imported after the prewarm and the UDP shim
-from _twin_devices import device_with, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
+from _twin_devices import distinct_wirings, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
 from neopixel import NeoPixel  # noqa: E402 - imported after the prewarm and the UDP shim
 from network import (  # noqa: E402 - imported after the prewarm and the UDP shim
     AP_IF,
@@ -99,6 +99,57 @@ def _raised(call: "object") -> "BaseException | None":
     except Exception as e:  # the raised object is what each case asserts
         return e
     return None
+
+
+def _restart_ends_dark(device: str) -> None:
+    module = load_device(device)
+    machine.reset_peripherals()
+    network.reset_interfaces()
+    machine.configure_wiring(wiring_plan(device))
+    refresh_ms = src_int("src/asy_neopixel_driver.py", "_OVERLAY_REFRESH_MS")
+    grey = (src_int("src/asy_neopixel_driver.py", "_LED_OVERL_BRI"),) * 3
+    ended = [code("E", name) for name in ("TASK_RAISED", "TASK_CANCELLED", "TASK_RETURNED")]
+    handler = asyncio.get_event_loop().get_exception_handler()
+
+    async def scenario() -> None:
+        await boot_generated(module, device, cfg_path=_scratch.dir(), log_errors=True)
+        sysfunct, driver = module.sysfunct, module.neopixel
+        frames = driver._pixel.writes
+        supervisors: list[asyncio.Task[None]] = []
+        with DrivenTime(asy_neopixel_driver, sleeps=True) as clock, _SupervisorPasses() as passes:
+            try:
+                await sysfunct.start_tasks(driver.get_task_starters(), task_names=task_names_of(driver))
+                overlay, signal = sysfunct._tasks
+                supervisors.append(asyncio.create_task(sysfunct.supervise_tasks()))
+                await passes.parked.wait()
+                driver.on()
+                await clock.run_until(lambda: frames[-1] == [grey], 0)
+                assert await driver.request_signal(255, 0, 0, 0.5)
+                await clock.run_until(lambda: frames[-1][0][0] > 0 and frames[-1][0][1] == 0, 0)  # the ramp's first red frame
+                driver._pixel.raise_on_write = OSError(errno.EIO, "injected pixel write fault")
+                clock.advance(driver._frame_ms)  # the ramp's next frame falls due; the overlay's wait is a refresh away
+                assert await _yields_until(signal.done, 20), "the write fault did not end the signal task"
+                driver._pixel.raise_on_write = None  # before the overlay answers the ended task's flag
+                await clock.run_until(lambda: frames[-1] == [grey], 0)
+                n = len(frames)
+                await passes.one_pass()
+                await clock.run_until(lambda: len(frames) > n, 0)  # the restart's first frame; the overlay's answer settles too
+                after = [frame[0] for frame in list(frames)[n:]]
+                assert [c for c in after if c[0] > 0 and c[1] == 0] == [], f"the restarted task resumed the old ramp: {after}"
+                assert after == [(0, 0, 0), grey], f"the restart did not leave the pixel dark with the overlay restored: {after}"
+                assert clock.wakes() == [clock.now + refresh_ms], f"a wait of the old ramp outlived the restart: {clock.wakes()}"
+                restarted = sysfunct._tasks[1]
+                assert restarted not in (None, signal) and not restarted.done() and not overlay.done()
+                stored = await sysfunct.pr._read()
+                assert isinstance(stored, tuple), stored
+                assert [entry for entry in stored[1] if entry in ended] == [ended[0]], f"SYSTEM persisted {stored}"
+            finally:
+                if sysfunct._supervisor_task is not None:
+                    supervisors.append(sysfunct._supervisor_task)
+                await cancel_all(supervisors + [t for t in sysfunct._tasks if t is not None and not t.done()], settle_yields=1)
+                asyncio.get_event_loop().set_exception_handler(handler)  # start_tasks() installs SYSTEM's where none is set
+
+    run(scenario())
 
 
 def _value_error(call: "object") -> str:
@@ -624,58 +675,11 @@ async def _yields_until(predicate: "Callable[[], bool]", max_yields: int) -> boo
 
 
 def test_a_restarted_signal_task_ends_dark_with_the_overlay_restored() -> None:
-    # The first generated device wiring a NeoPixel, booted: a write fault mid-ramp ends its signal task and the real
+    # One device per distinct NeoPixel and FRAM wiring, booted: a write fault mid-ramp ends its signal task and the real
     # supervisor restarts it. The restart writes black, the overlay answers, no wait of the old ramp is left, and SYSTEM
     # persists one task-end entry. The driver's clock is driven, and the test releases each supervisor pass.
-    device = device_with("neopixel")
-    module = load_device(device)
-    machine.reset_peripherals()
-    network.reset_interfaces()
-    machine.configure_wiring(wiring_plan(device))
-    refresh_ms = src_int("src/asy_neopixel_driver.py", "_OVERLAY_REFRESH_MS")
-    grey = (src_int("src/asy_neopixel_driver.py", "_LED_OVERL_BRI"),) * 3
-    ended = [code("E", name) for name in ("TASK_RAISED", "TASK_CANCELLED", "TASK_RETURNED")]
-    handler = asyncio.get_event_loop().get_exception_handler()
-
-    async def scenario() -> None:
-        await boot_generated(module, device, cfg_path=_scratch.dir(), log_errors=True)
-        sysfunct, driver = module.sysfunct, module.neopixel
-        frames = driver._pixel.writes
-        supervisors: list[asyncio.Task[None]] = []
-        with DrivenTime(asy_neopixel_driver, sleeps=True) as clock, _SupervisorPasses() as passes:
-            try:
-                await sysfunct.start_tasks(driver.get_task_starters(), task_names=task_names_of(driver))
-                overlay, signal = sysfunct._tasks
-                supervisors.append(asyncio.create_task(sysfunct.supervise_tasks()))
-                await passes.parked.wait()
-                driver.on()
-                await clock.run_until(lambda: frames[-1] == [grey], 0)
-                assert await driver.request_signal(255, 0, 0, 0.5)
-                await clock.run_until(lambda: frames[-1][0][0] > 0 and frames[-1][0][1] == 0, 0)  # the ramp's first red frame
-                driver._pixel.raise_on_write = OSError(errno.EIO, "injected pixel write fault")
-                clock.advance(driver._frame_ms)  # the ramp's next frame falls due; the overlay's wait is a refresh away
-                assert await _yields_until(signal.done, 20), "the write fault did not end the signal task"
-                driver._pixel.raise_on_write = None  # before the overlay answers the ended task's flag
-                await clock.run_until(lambda: frames[-1] == [grey], 0)
-                n = len(frames)
-                await passes.one_pass()
-                await clock.run_until(lambda: len(frames) > n, 0)  # the restart's first frame; the overlay's answer settles too
-                after = [frame[0] for frame in list(frames)[n:]]
-                assert [c for c in after if c[0] > 0 and c[1] == 0] == [], f"the restarted task resumed the old ramp: {after}"
-                assert after == [(0, 0, 0), grey], f"the restart did not leave the pixel dark with the overlay restored: {after}"
-                assert clock.wakes() == [clock.now + refresh_ms], f"a wait of the old ramp outlived the restart: {clock.wakes()}"
-                restarted = sysfunct._tasks[1]
-                assert restarted not in (None, signal) and not restarted.done() and not overlay.done()
-                stored = await sysfunct.pr._read()
-                assert isinstance(stored, tuple), stored
-                assert [entry for entry in stored[1] if entry in ended] == [ended[0]], f"SYSTEM persisted {stored}"
-            finally:
-                if sysfunct._supervisor_task is not None:
-                    supervisors.append(sysfunct._supervisor_task)
-                await cancel_all(supervisors + [t for t in sysfunct._tasks if t is not None and not t.done()], settle_yields=1)
-                asyncio.get_event_loop().set_exception_handler(handler)  # start_tasks() installs SYSTEM's where none is set
-
-    run(scenario())
+    for device in distinct_wirings("neopixel", "fram"):
+        _restart_ends_dark(device)
 
 
 def test_neopixel_writes_stays_bounded_across_many_writes() -> None:

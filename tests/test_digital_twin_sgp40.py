@@ -1,6 +1,7 @@
-"""Tests for digital_twin/_sgp40_chip.py's replies, resets and faults, plus two cases driving the real
-asy_sgp40_driver.py over the twin bus (CRC recovery; VOCState through the blackout)."""
+"""Tests for digital_twin/_sgp40_chip.py's replies, resets and faults, plus cases driving the real
+asy_sgp40_driver.py over the twin bus (CRC recovery; VOCState through the blackout; a cycle without compensation)."""
 
+import asyncio
 import errno
 import sys
 
@@ -8,7 +9,7 @@ sys.path.insert(0, "digital_twin")  # digital_twin/ is not on scripts/test.sh's 
 
 import machine
 import microtest
-from _async_harness import run
+from _async_harness import cancel, run
 from _crc8 import crc8, word
 from _fast_sleep import FastAsyncSleep
 from _sgp40_chip import SGP40Chip
@@ -285,6 +286,76 @@ def test_the_real_reader_publishes_vocstate_0_through_the_blackout_then_1() -> N
     first_learning = states.index(1)
     assert states[:first_learning] == [0] * first_learning
     assert states[first_learning:] == [1] * (len(states) - first_learning)
+
+
+class _BlankableSource:
+    # A compensation producer the test can blank: a value of None is a producer with no sample (a failing SCD30).
+    def __init__(self, value: "float | None") -> None:
+        self.value = value
+
+    async def get_data(self) -> "_BlankableSource":
+        return self
+
+
+def test_a_cycle_without_compensation_sends_no_measurement_and_steps_no_streak_or_entry() -> None:
+    # The real reader's read loop on the twin bus: with its temperature producer blanked, each triggered cycle sends
+    # no measure command (0x260F), steps no streak and logs nothing, and the loop runs on; restored, it measures again.
+    i2c, bus_name = _sgp40_bus()
+    temperature = _BlankableSource(25.0)
+    reader = SGP40_Reader(i2c, ValueRef(temperature, "value"), ValueRef(_DefaultHumiditySource(), "value"), cfg_path=_scratch.dir())
+    cycles = [0]
+    real = reader._read_sgp
+
+    async def counted(buf: object, *, serialize: bool, deserialize: bool) -> object:
+        result = await real(buf, serialize=serialize, deserialize=deserialize)  # type: ignore[arg-type]
+        cycles[0] += 1
+        return result
+
+    reader._read_sgp = counted  # type: ignore[assignment, method-assign]
+
+    def measures() -> int:
+        bus = machine.peripheral(bus_name)
+        assert isinstance(bus, machine.I2C)
+        count = 0
+        for entry in bus.log:
+            data = entry[2] if entry[0] == "writeto" and entry[1] == _SGP40_ADDRESS else None
+            if isinstance(data, bytes) and data[:2] == b"\x26\x0f":
+                count += 1
+        return count
+
+    async def triggered(n: int) -> None:
+        for _ in range(n):
+            before = cycles[0]
+            reader._read_event.set()
+            for _turn in range(2000):  # scheduler turns: the sleeps are fast
+                if cycles[0] > before:
+                    break
+                await asyncio.sleep_ms(1)
+            assert cycles[0] > before, "a triggered cycle never ran"
+            for _turn in range(20):  # the cycle's streak check and store
+                await asyncio.sleep_ms(1)
+
+    async def scenario() -> "tuple[int, int, int, int, bool, int]":
+        loop = asyncio.get_event_loop().create_task(reader._read_loop())
+        try:
+            await triggered(3)
+            measured, errors = measures(), (await reader.get_error_counter())["SGP40"]["ErrCount"]
+            temperature.value = None
+            await triggered(5)
+            skipped, streak = measures() - measured, reader._err_cnt_internal
+            logged = (await reader.get_error_counter())["SGP40"]["ErrCount"] - errors
+            ended = loop.done()
+            temperature.value = 25.0
+            await triggered(1)
+            return measured, skipped, streak, logged, ended, measures() - measured
+        finally:
+            await cancel(loop)
+
+    with FastAsyncSleep():
+        measured, skipped, streak, logged, ended, again = run(scenario())
+    assert measured == 3, f"three compensated cycles sent {measured} measure command(s)"
+    assert (skipped, streak, logged, ended) == (0, 0, 0, False), f"uncompensated cycles: {skipped} measure(s), streak {streak}, {logged} entr(ies), loop ended={ended}"
+    assert again == 1, f"the restored cycle sent {again} measure command(s)"
 
 
 if __name__ == "__main__":

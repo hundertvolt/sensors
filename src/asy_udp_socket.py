@@ -37,9 +37,7 @@ _POLL_IDLE_MS = const(100)  # a wait with no deadline: the captive DNS listen
 
 class UDPSocket:
     def __init__(self, addr: tuple[str, int], mode: 'Literal["client", "server"]' = "client") -> None:
-        # Fail fast, at construction - see module docstring's __init__ exception.
-        if mode not in ("client", "server"):
-            raise ValueError(f"mode must be 'client' or 'server', got {mode!r}")
+        # Fail fast, at construction - see module docstring's __init__ exception. mode is mypy's Literal (D.2).
         if not (isinstance(addr, tuple) and len(addr) == _ADDR_TUPLE_LEN and isinstance(addr[0], str) and isinstance(addr[1], int)):
             raise TypeError(f"addr must be a (host: str, port: int) tuple, got {addr!r}")
 
@@ -122,7 +120,7 @@ class UDPSocket:
     async def ready(self, mask: int, timeout_ms: int = -1) -> bool:
         # Polls ipoll(0), sleeping _POLL_WAIT_MS in an exchange (a deadline is set) and _POLL_IDLE_MS while listening with none
         # (SPECIFICATION.md F.5.9's shape). A real POLLERR/POLLHUP is always reported; returning True lets the caller's socket
-        # call surface it. A malformed mask or timeout_ms returns False: callers' excepts wrap only their own socket call.
+        # call surface it.
         await self._connect()
         if not self.connected or self.poller is None:
             return False
@@ -132,7 +130,7 @@ class UDPSocket:
             return await asyncio.wait_for_ms(self._poll(mask, _POLL_WAIT_MS), timeout_ms)
         except asyncio.TimeoutError:
             return False
-        except (MemoryError, OSError, TypeError) as e:
+        except (MemoryError, OSError) as e:
             if isinstance(e, MemoryError):
                 console("UDPSocket", e)  # the class has no logger; the memory gates read this text (CLAUDE.md)
             return False
@@ -144,7 +142,7 @@ class UDPSocket:
                 # stub types the address as socket's full _Address union; this AF_INET socket (_connect()) only returns a 2-tuple.
                 # Remove the ignore once the stub narrows it (warn_unused_ignores then flags it).
                 return self._sock.recvfrom(buf)  # type: ignore[return-value]
-            except (MemoryError, OSError, TypeError) as e:  # TypeError: a malformed buf (e.g. a str)
+            except (MemoryError, OSError) as e:
                 if isinstance(e, MemoryError):
                     console("UDPSocket", e)  # the class has no logger; the memory gates read this text (CLAUDE.md)
         return None, None
@@ -158,7 +156,7 @@ class UDPSocket:
         if await self.ready(select.POLLOUT, timeout_ms=timeout_ms) and self._sock is not None:
             try:
                 return self._sock.sendto(msg, addr)
-            except (MemoryError, OSError, TypeError) as e:  # TypeError: a malformed addr/msg, not just this instance's own _addr
+            except (MemoryError, OSError, TypeError) as e:  # TypeError: an address form the port refuses (docs/library/socket.rst)
                 if isinstance(e, MemoryError):
                     console("UDPSocket", e)  # the class has no logger; the memory gates read this text (CLAUDE.md)
         return None
@@ -167,7 +165,7 @@ class UDPSocket:
         if await self.ready(select.POLLOUT, timeout_ms=timeout_ms) and self._sock is not None:
             try:
                 return self._sock.write(msg)
-            except (MemoryError, OSError, TypeError) as e:  # TypeError: a malformed msg, matching sendto()'s reasoning
+            except (MemoryError, OSError) as e:
                 if isinstance(e, MemoryError):
                     console("UDPSocket", e)  # the class has no logger; the memory gates read this text (CLAUDE.md)
         return None

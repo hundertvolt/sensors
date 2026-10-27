@@ -36,7 +36,10 @@ _TIMEOUT_MS = 100
 _RUN_LIMIT_S = 30
 # @tunable l2.uart_comm_hazard_recovery_attempts = 2
 _RECOVERY_ATTEMPTS = 2
+# @tunable l2.uart_comm_hazard_settle_ms = 5
 _SETTLE_MS = 5  # the responder's last read after the initiator's call returned (tests/test_uart_comm_hazard.py's)
+# @tunable l2.uart_comm_hazard_wire_poll_ms = 1
+_WIRE_POLL_MS = 1  # a real look at the initiator's wire log
 
 
 def _uart_const(name: str) -> int:
@@ -83,7 +86,7 @@ def _check_both_ends_transmitting(crc: "CrcMaker") -> None:
         stray = await _get_frame(crc)
         transfer = asyncio.create_task(pair.initiator.uart_set(1, b"x"))
         while len(pair.wire_from_initiator()) < _frame_len(crc):  # its frame is out: it now awaits the ACK
-            await asyncio.sleep_ms(1)
+            await asyncio.sleep_ms(_WIRE_POLL_MS)
         pair.fake_b.write(stray)
         first = await transfer
         await pair.responder.clear()
@@ -147,7 +150,7 @@ def _clear_racing(crc: "CrcMaker", point: str) -> None:
         transfer = asyncio.create_task(pair.initiator.uart_set(1, _TRAIN))
         if point == "mid_train":
             while len(pair.wire_from_initiator()) < 2 * _frame_len(crc):  # the second data chunk is on the wire
-                await asyncio.sleep_ms(1)
+                await asyncio.sleep_ms(_WIRE_POLL_MS)
             await pair.responder.clear()
         sent = await transfer
         if point == "after_the_last_ack":

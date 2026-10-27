@@ -1024,6 +1024,10 @@ def test_tickseconds_ignores_a_zero_or_negative_delta() -> None:
         _restore_time()
 
 
+# @tunable l1.asy_base_classes_fired_bound_ms = 100
+_FIRED_BOUND_MS = 100  # a hang bound on a flag the triggered timer sets at once
+
+
 def test_arm_tick_timer_arms_a_periodic_one_second_timer() -> None:
     timer = machine.Timer()
     flag = asyncio.ThreadSafeFlag()
@@ -1033,7 +1037,7 @@ def test_arm_tick_timer_arms_a_periodic_one_second_timer() -> None:
 
     async def fired() -> bool:
         timer.trigger()
-        await asyncio.wait_for_ms(flag.wait(), 100)
+        await asyncio.wait_for_ms(flag.wait(), _FIRED_BOUND_MS)
         return True
 
     assert run(fired()) is True
@@ -1438,6 +1442,62 @@ def test_two_readers_failing_on_one_bus_clear_it_once_and_rebuild_it_once() -> N
     assert a.pr._err_count + b.pr._err_count == 8 + 2 * 1 + 2  # 8 streak steps, 2 participant warnings, 2 bus warnings
 
 
+class _EntryRecordingBus(I2C):
+    # The real bus, recording each entry into its two rungs: a reader parked on the bus lock has entered.
+    def __init__(self) -> None:
+        super().__init__(1, scl_pin=19, sda_pin=18, frequency=50000)
+        self.entries: list[str] = []
+
+    async def clear(self) -> int:
+        self.entries.append("clear")
+        return await I2C.clear(self)
+
+    async def recover(self) -> int:
+        self.entries.append("recover")
+        return await I2C.recover(self)
+
+
+async def _until(done: "Callable[[], bool]", what: str) -> None:
+    # A bounded wait for a state the test forced, never a count of passes standing in for it.
+    for _ in range(1000):
+        if done():
+            return
+        await asyncio.sleep(0)
+    raise AssertionError(what)
+
+
+def test_a_bus_rung_parked_behind_a_sibling_session_is_spent_for_every_reader_on_the_bus() -> None:
+    # A sibling session holds the bus lock, so the first reader's rung parks on it; the second reader fails meanwhile
+    # and must find that rung taken: each bus rung runs once and logs one BUS_RECOVERY however the two interleave.
+    bus = _EntryRecordingBus()
+    a = _LadderReader(outcome=None)
+    b = _LadderReader(outcome=None)
+    a._recovery_bus = b._recovery_bus = bus
+    fail = Meas(None, 50)
+
+    async def body() -> int:
+        for _ in range(2):  # both readers through the retry and the participant rung
+            await a._error_check(fail)
+            await b._error_check(fail)
+        mark = bus.recoveries
+        for _rung in ("clear", "controller"):
+            await bus.bus_lock.acquire()  # the sibling session
+            seen = len(bus.entries)
+            first = asyncio.create_task(a._error_check(fail))
+            await _until(lambda: first.done() or len(bus.entries) > seen, "the first reader neither entered a rung nor ended")  # noqa: B023 - read before the next pass rebinds it
+            seen = len(bus.entries)
+            second = asyncio.create_task(b._error_check(fail))
+            await _until(lambda: second.done() or len(bus.entries) > seen, "the second reader neither entered a rung nor ended")  # noqa: B023 - as above
+            bus.bus_lock.release()
+            await first
+            await second
+        return bus.recoveries - mark
+
+    steps = run(body())
+    assert (bus.entries, steps) == (["clear", "recover"], 2), f"a rung parked on the lock was run again by the second reader: {bus.entries}, {steps} recoveries"
+    assert _entries(a, "W", "BUS_RECOVERY") + _entries(b, "W", "BUS_RECOVERY") == 2
+
+
 def test_a_hook_returning_none_logs_nothing() -> None:
     reader = _LadderReader(outcome=None)
     _fail(reader)
@@ -1548,6 +1608,33 @@ def test_a_failure_the_loop_persisted_is_not_persisted_again_by_the_restarts_re_
     assert _timer_count(reader) == 1
     assert run(_run_briefly(reader)) is False  # the restart re-arms without a second entry
     assert (_timer_count(reader), len(reader._trigger_timer.arms)) == (1, 1)
+
+
+def test_two_wakes_finding_one_failed_arm_persist_it_once_however_they_interleave() -> None:
+    # The trigger loop and a driver's read loop (SCD30, SGP40) both wake on one failed arm: the first parks in its log
+    # write, the second must find the failure taken. One TIMER entry, and both still end their task.
+    reader = _DividingReader(1)
+    with RaiseOnArm(OSError), record_prints():
+        reader.start_timer()
+    gate, parked, real = asyncio.Event(), [], reader.pr.err_s
+
+    async def held(*args: object, errno: int) -> None:  # a log write held open until both wakes ran
+        parked.append(errno)
+        await gate.wait()
+        await real(*args, errno=errno)
+
+    setattr(reader.pr, "err_s", held)  # noqa: B010 - an instance attribute shadowing the logger's method
+
+    async def body() -> "tuple[bool, bool]":
+        first = asyncio.create_task(reader._timer_fault())
+        await _until(lambda: bool(parked), "the first wake never reached its log write")
+        second = asyncio.create_task(reader._timer_fault())
+        await _until(lambda: second.done() or len(parked) > 1, "the second wake neither ended nor wrote")
+        gate.set()
+        return await first, await second
+
+    assert run(body()) == (True, True)
+    assert (_timer_count(reader), len(parked)) == (1, 1), f"a failed arm two wakes found was persisted {len(parked)} times"
 
 
 def test_a_failed_re_arm_persists_the_stored_failure_then_its_own_and_ends_the_loop() -> None:
@@ -2958,7 +3045,7 @@ def test_set_dict_cfg_old_value_snapshot_read_exception_falls_back_to_default() 
         reader._push_callbacks["SampleInterval"] = push_fail
         results = run(reader._set_dict_cfg({"SampleInterval": 42}, _TEST_SCHEMA_SI))
         assert results == {"SampleInterval": "Failed"}
-        assert reader.pr._err_count >= 1  # the snapshot-read failure was logged, not silently swallowed
+        assert (reader.pr._err_count, _entries(reader, "E", "CFG_SNAPSHOT_RAISED")) == (1, 1)  # the snapshot-read failure, logged once
         # _get_dict_cfg would hit the same raising override, so verify directly against the real
         # ConfigManager instead of through the reader's own (overridden) getter path.
         assert run(reader.cfgmgr.get_dict(["SampleInterval"])) == {"SampleInterval": 2}
@@ -2970,12 +3057,24 @@ def test_recover_failed_push_unknown_key_is_a_defensive_noop() -> None:
     # Unreachable via _set_dict_cfg's normal flow, where a key only reaches _recover_failed_push after being
     # validated present in cfg_vals, but exercised directly like this file's other "shouldn't happen"
     # branches - proving the defensive early return holds, not just that it is never hit in practice.
+    class WriteCountingReader(SensorReaderConfig):
+        _write_calls = 0  # rebound per instance by the first `+= 1`, as FlakyOnSecondWriteReader's below
+
+        async def _set_mgr_cfg(
+            self, data: "JsonMapping", cfg_vals: "cm.ConfigSchema",
+        ) -> "tuple[bool, cm.WriteValidity]":
+            self._write_calls += 1
+            return await super()._set_mgr_cfg(data, cfg_vals)
+
     path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_recoverunknown.cfg")
     try:
-        reader = SensorReaderConfig(Meas(20.0, 50), "recoverunknown", _TEST_SCHEMA_SI, max_module_error=3, cfg_path=path_prefix)
+        reader = WriteCountingReader(Meas(20.0, 50), "recoverunknown", _TEST_SCHEMA_SI, max_module_error=3, cfg_path=path_prefix)
         run(reader.cfgmgr.setup())
-        run(reader._recover_failed_push("NoSuchField", {}, _TEST_SCHEMA_SI, fields=schema_dict(_TEST_SCHEMA_SI)))  # must not raise
+        run(reader._recover_failed_push("NoSuchField", {"NoSuchField": 7}, _TEST_SCHEMA_SI, fields=schema_dict(_TEST_SCHEMA_SI)))
+        # No correction write, no entry in either log, the stored config as it was.
+        assert (reader._write_calls, reader.pr._err_count, reader.cfgmgr.pr._err_count) == (0, 0, 0)
+        assert run(reader.cfgmgr.get_dict(["SampleInterval"])) == {"SampleInterval": 2}
     finally:
         _remove(path_prefix + "config_recoverunknown.cfg")
 
@@ -3010,7 +3109,7 @@ def test_set_dict_cfg_recover_failed_push_correction_write_exception_is_caught()
         reader._push_callbacks["SampleInterval"] = push_fail
         results = run(reader._set_dict_cfg({"SampleInterval": 42}, _TEST_SCHEMA_SI))
         assert results == {"SampleInterval": "Failed"}
-        assert reader.pr._err_count >= 1
+        assert (reader.pr._err_count, _entries(reader, "E", "RECOVERY_WRITE_RAISED")) == (1, 1)  # the correction write's failure, logged once
     finally:
         _remove(path_prefix + "config_pushfailcorrectionraise.cfg")
 
@@ -3206,30 +3305,8 @@ def test_set_dict_cfg_set_mgr_cfg_override_raising_marks_every_field_failed() ->
         _remove(path_prefix + "config_raisingmgr.cfg")
 
 
-def test_set_dict_cfg_set_mgr_cfg_override_malformed_result_marks_every_field_failed() -> None:
-    # Same defensive posture as the raising-override test above, for the other way a misbehaving override
-    # can fail: returning successfully but with a "results" that is not the WriteValidity dict the rest of
-    # _set_dict_cfg assumes - results.get(key) would otherwise raise AttributeError, uncaught.
-    class MalformedSetMgrCfgReader(SensorReaderConfig):
-        async def _set_mgr_cfg(
-            self, _data: "JsonMapping", _cfg_vals: "cm.ConfigSchema",
-        ) -> "tuple[bool, cm.WriteValidity]":
-            return True, "not a dict"  # type: ignore[return-value]  # deliberately malformed, simulating a misbehaving override
-
-    path_prefix = _SHARED_CFG_DIR
-    _remove(path_prefix + "config_malformedmgr.cfg")
-    try:
-        reader = MalformedSetMgrCfgReader(Meas(20.0, 50), "malformedmgr", _TEST_SCHEMA_SI, max_module_error=3, cfg_path=path_prefix)
-        run(reader.cfgmgr.setup())
-        results = run(reader._set_dict_cfg({"SampleInterval": 42}, _TEST_SCHEMA_SI))
-        assert results == {"SampleInterval": "Failed"}
-        assert reader.pr._err_count == 1
-    finally:
-        _remove(path_prefix + "config_malformedmgr.cfg")
-
-
 def test_set_dict_cfg_set_mgr_cfg_override_missing_key_marks_it_failed() -> None:
-    # A third malformed-override shape, after raising and returning a non-dict: the override reports
+    # A second misbehaving-override shape, after the raising one: the override reports
     # persisted=True with a real dict that is simply missing a key the caller asked about. The real
     # ConfigManager-backed _set_mgr_cfg never does this, but a subclass override could.
     #
@@ -3347,6 +3424,78 @@ def test_a_put_queued_behind_the_put_lock_when_the_store_closes_is_refused() -> 
         assert reader.chip_writes == []
     finally:
         _remove(_SHARED_CFG_DIR + "config_queuedput.cfg")
+
+
+def test_a_reader_given_a_logger_writes_through_it_and_keeps_its_own_name() -> None:
+    # logger= shares a built sibling's logger in place of making one (a library feature, no device wires it today);
+    # the reader's own name still comes from name and name_ext, and without logger= it makes its own as before.
+    shared = PrintLogHistory(name="SIBLING")
+    reader = SensorReader(Meas(1, 2), "TEST", name_ext="b", logger=shared)
+    assert reader.pr is shared
+    assert reader.name == "TEST_b"
+    own = SensorReader(Meas(1, 2), "TEST")
+    assert own.pr is not shared and own.pr.name == own.name == "TEST"
+
+
+class _RaisingStoreReader(SensorReader):
+    # A RAM store whose pre-write read, write or recovery write raises on demand: no file, so no host disk write.
+    def __init__(self, raise_at: str) -> None:
+        super().__init__(Meas(20.0, 50), "RAISE", max_module_error=3)
+        self.raise_at = raise_at
+        self.writes = 0
+        self.stored: dict[str, int | float | str | bool | None] = {"SampleInterval": 5}
+
+    async def _get_mgr_cfg(self, cfg: "list[str]") -> "dict[str, int | float | str | bool | None] | None":
+        if self.raise_at == "snapshot":
+            raise RuntimeError("store read refused")
+        return {key: self.stored.get(key) for key in cfg}
+
+    async def _set_mgr_cfg(self, data: "JsonMapping", _cfg_vals: "cm.ConfigSchema") -> "tuple[bool, cm.WriteValidity]":
+        self.writes += 1
+        if (self.raise_at, self.writes) in (("write", 1), ("recovery_write", 2)):
+            raise RuntimeError("store write refused")
+        self.stored.update(data)  # type: ignore[arg-type]
+        return True, dict.fromkeys(data, "Valid")
+
+
+def _logged_by_a_put(raise_at: str, *, push: str = "ok", getter: bool = False) -> "list[int]":
+    # The E codes one PUT of SampleInterval leaves; push "ok", "fails" (False) or "raises", and a raising getter.
+    reader = _RaisingStoreReader(raise_at)
+
+    async def pushed(_value: "int | float | str | bool | None") -> bool:
+        if push == "raises":
+            raise RuntimeError("push refused")
+        return push == "ok"
+
+    async def read_back() -> "int | float | str | bool | None":
+        raise RuntimeError("read-back refused")
+
+    reader._push_callbacks["SampleInterval"] = pushed
+    if getter:
+        reader._get_callbacks["SampleInterval"] = read_back
+    run(reader._set_dict_cfg({"SampleInterval": 42}, _TEST_SCHEMA_SI))
+    log = run(reader.pr.get_log())[reader.pr.name]
+    return [log["ErrNum"][i] for i in range(len(log["ErrNum"])) if log["ErrType"][i] == "E"]
+
+
+def test_a_raising_pre_write_read_is_logged_as_cfg_snapshot_raised() -> None:
+    assert _logged_by_a_put("snapshot") == [code("E", "CFG_SNAPSHOT_RAISED")]
+
+
+def test_a_raising_store_write_is_logged_as_cfg_set_raised() -> None:
+    assert _logged_by_a_put("write") == [code("E", "CFG_SET_RAISED")]
+
+
+def test_a_raising_push_is_logged_as_push_raised() -> None:
+    assert _logged_by_a_put("", push="raises") == [code("E", "PUSH_RAISED")]
+
+
+def test_a_raising_recovery_read_back_is_logged_as_recovery_read_raised() -> None:
+    assert _logged_by_a_put("", push="fails", getter=True) == [code("E", "RECOVERY_READ_RAISED")]
+
+
+def test_a_raising_recovery_write_is_logged_as_recovery_write_raised() -> None:
+    assert _logged_by_a_put("recovery_write", push="fails") == [code("E", "RECOVERY_WRITE_RAISED")]
 
 
 if __name__ == "__main__":

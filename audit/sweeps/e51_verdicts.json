@@ -1,0 +1,224 @@
+{
+ "src/asy_bmp3xx_driver.py::BMP3XX_I2C.reset::`err is None or event is None` true::raise OSError(\"I2C bus not initialized\")": {
+  "action": "tests/test_asy_bmp3xx_driver.py::test_reset_raises_oserror_when_the_bus_goes_down_between_its_two_sessions (agent, 2026-10-27)",
+  "class": "a",
+  "proof": "reached when the bus goes down between reset()'s two sessions: the second session's register reads answer None",
+  "verdict": "covered: direct test"
+ },
+ "src/asy_config_manager.py::ConfigManager.reset_error_counter::`not await self.pr.reset()` true::return False": {
+  "action": "tests/test_asy_config_manager.py::test_reset_error_counter_answers_false_when_the_history_clear_fails (agent, 2026-10-27)",
+  "class": "a",
+  "proof": "reached when the log history clear fails: `self.pr.reset()` answers False (its FRAM chunk clear refused)",
+  "verdict": "covered: direct test"
+ },
+ "src/asy_config_manager.py::ConfigManager.setup::`default_val is None` true::await self.pr.err_s(self._config_file, \"- Default Key\", key, \"Error or None, config is not valid!\", errno=_ERR_CFG_BAD_DEFAULT)": {
+  "action": "tests/test_asy_config_manager.py::test_a_schema_field_with_no_default_leaves_the_manager_invalid_and_writes_no_file (agent, 2026-10-27)",
+  "class": "b",
+  "proof": "reached when a schema field has no default or only a special-alone value: check_cfg_get_default() answers None",
+  "verdict": "covered; kept: guard of an overridable extension point (each module's schema supplies its defaults)"
+ },
+ "src/asy_config_manager.py::ConfigManager.write_config::`except MemoryError` catches::except MemoryError as e:  # the compare exhausting the heap - no file I/O happens in this method": {
+  "action": "tests/test_asy_config_manager.py::test_a_compare_that_exhausts_the_heap_fails_the_write_with_no_file_io (agent, 2026-10-27)",
+  "class": "b",
+  "proof": "reached only when compare_before_write() raises MemoryError",
+  "verdict": "covered; kept: guard of a documented runtime failure (the compare exhausting the heap)"
+ },
+ "src/asy_crc_checks.py::CRCBase.add_into::`init is None` true::return None": {
+  "action": "tests/test_asy_crc_checks.py::test_add_into_refuses_an_init_outside_the_crc_width_and_leaves_the_buffer_untouched (agent, 2026-10-27)",
+  "class": "a",
+  "proof": "reached when add_into() is given an init outside 0..all-bits-set (`_validate_init()` answers None)",
+  "verdict": "covered: direct test"
+ },
+ "src/asy_fram_manager.py::FRAMChunk.read::`dbuf is None` true::return None": {
+  "action": "none (comment in place; E.5.1's FRAM-manager line)",
+  "class": "c",
+  "proof": "read_into() already failed on a missing buffer and a RegionBuffer's buffer is fixed at construction",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_fram_manager.py::FRAMTimestampedChunk.read::`dbuf is None` true::return None, None, None": {
+  "action": "none (comment in place; E.5.1's FRAM-manager line)",
+  "class": "c",
+  "proof": "as :497",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_fram_manager.py::FRAMTimestampedChunk.read_into::`tbuf is None` true::return None, None, None": {
+  "action": "none (comment in place; E.5.1's FRAM-manager line)",
+  "class": "c",
+  "proof": "as :497",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_fram_manager.py::FRAMTimestampedChunk.write_into::`bbuf is None` true::return False, False, None": {
+  "action": "none (comment in place; E.5.1's FRAM-manager line)",
+  "class": "c",
+  "proof": "as :497 (get_ts_buf() above found the buffer)",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_i2c_driver.py::_clear_bus::`not _scl_released_sync(scl, timeout_us)` true::return status | _REC_SCL_HELD": {
+  "action": "tests/test_asy_i2c_driver.py::test_a_clear_whose_scl_is_held_after_a_pulse_reports_it_and_sends_no_stop (agent, 2026-10-27)",
+  "class": "b",
+  "proof": "reached when SCL is not released within timeout_us after a pulse (a stretching or stuck device)",
+  "verdict": "covered; kept: guard of a documented runtime failure (SCL held low during the clearing pulses)"
+ },
+ "src/asy_i2c_driver.py::_clear_bus::`not _scl_released_sync(scl, timeout_us)` true::sda.value(1)  # with SCL low this is no bus condition, only the line let go": {
+  "action": "tests/test_asy_i2c_driver.py::test_a_clear_whose_scl_is_held_at_the_stop_lets_sda_go_and_reports_it (agent, 2026-10-27)",
+  "class": "b",
+  "proof": "reached when the pulses passed but SCL is held at the STOP",
+  "verdict": "covered; kept: guard of a documented runtime failure (SCL held low at the STOP)"
+ },
+ "src/asy_i2c_driver.py::_clear_bus_awaiting::`not await _scl_released(scl, timeout_us)` true::return status | _REC_SCL_HELD": {
+  "action": "tests/test_asy_i2c_driver.py::test_a_clear_whose_scl_is_held_after_a_pulse_reports_it_and_sends_no_stop (agent, 2026-10-27)",
+  "class": "b",
+  "proof": "as :52",
+  "verdict": "covered; kept: guard of a documented runtime failure (as :52, the awaiting form)"
+ },
+ "src/asy_i2c_driver.py::_clear_bus_awaiting::`not await _scl_released(scl, timeout_us)` true::sda.value(1)": {
+  "action": "tests/test_asy_i2c_driver.py::test_a_clear_whose_scl_is_held_at_the_stop_lets_sda_go_and_reports_it (agent, 2026-10-27)",
+  "class": "b",
+  "proof": "as :63-64",
+  "verdict": "covered; kept: guard of a documented runtime failure (as :63-64, the awaiting form)"
+ },
+ "src/asy_isl29125_driver.py::ISL29125_I2C.read_counts::`counts is None` true::raise OSError(\"unexpected RGB data burst read result\")": {
+  "action": "none (comment in place)",
+  "class": "c",
+  "proof": "a fixed 6-byte burst buffer always decodes",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_scd30_driver.py::SCD30_I2C._read_dev_register::`not await i2c.readinto(self._buffer, end=3)` true::raise OSError(\"I2C bus not initialized\")  # before the CRC check: a stale buffer would pass it": {
+  "action": "tests/test_asy_scd30_driver.py::test_a_register_read_the_session_refuses_raises_before_the_crc_check (agent, 2026-10-27)",
+  "class": "b",
+  "proof": "unreachable in the product: the write and readinto() share one session under bus_lock (asy_i2c_driver.py:453) and the only product path that clears the bus, init() under recover(), takes the same lock (CE3's proof, re-read on this base)",
+  "verdict": "covered; kept: guard of the session-shared read (lead; F1's reading), a documented runtime failure"
+ },
+ "src/asy_scd30_driver.py::SCD30_I2C._send_dev_command::`not await i2c.write(self._buffer, end=end_byte)` true::raise OSError(\"I2C bus not initialized\")": {
+  "action": "tests/test_asy_scd30_driver.py::test_a_command_write_the_bus_refuses_raises_oserror; tests/test_asy_scd30_driver.py::test_contmeas_false_with_the_bus_down_after_the_snapshot_comes_back_failed (agent, 2026-10-27)",
+  "class": "a",
+  "proof": "reached when a command write is refused: a stop command on a down bus",
+  "verdict": "covered: direct test"
+ },
+ "src/asy_scd30_driver.py::SCD30_Reader._set_mgr_cfg::`await self.stop_continuous_measurement(value=False)` false::results[\"ContMeas\"] = FAILED": {
+  "action": "tests/test_asy_scd30_driver.py::test_contmeas_false_with_the_bus_down_after_the_snapshot_comes_back_failed (agent, 2026-10-27)",
+  "class": "a",
+  "proof": "reached when ContMeas False is set and the stop command fails (stop_continuous_measurement() answers False: a down bus)",
+  "verdict": "covered: direct test"
+ },
+ "src/asy_scd30_driver.py::SCD30_Reader._set_mgr_cfg::`outcome is None` true::return False, {}": {
+  "action": "none (comment in place)",
+  "class": "c",
+  "proof": "rest is a dict and compare_before_write() answers None only for a non-dict",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_sgp40_driver.py::SGP40_Reader._read_sgp::`serialized` false::await self.pr.err_s(\"Error serializing!\", errno=_ERR_SGP_ALGO_STATE)": {
+  "action": "tests/test_asy_sgp40_driver.py::test_a_due_backup_whose_state_does_not_pack_logs_the_algorithm_state_error (agent, 2026-10-27)",
+  "class": "b",
+  "proof": "reached when a backup is due and params.pack_into() answers False (its OverflowError/TypeError/ValueError)",
+  "verdict": "covered; kept: guard of a documented runtime failure (the VOC state not packing)"
+ },
+ "src/asy_system_service.py::SystemService._shutdown_sequence::`task is None or not task.done()` true::return  # not proven stopped: nothing feeds from here, the watchdog resets the unit": {
+  "action": "E.5.1 line (the not-proven-stopped fallback: nothing feeds, the watchdog resets)",
+  "class": "b",
+  "proof": "no input reaches it: a cancel of the awaited supervisor is forwarded to it (extmod/asyncio/task.py:164-166, extmod/modasyncio.c:208-211), so after `await task` the task is done; `task is None` needs the park flag with no supervisor, but only the supervisor sets it and is assigned first; nothing cancels _shutdown_task (CFr2 item 1)",
+  "verdict": "kept: safety guard, registered untestable in E.5.1 (lead)"
+ },
+ "src/asy_uart_comm.py::UARTComm._listen_unlocked::`rx is None` true::return _LISTEN_FAILED": {
+  "action": "none (comment in place; E.5.1's UART-comm line)",
+  "class": "c",
+  "proof": "_read_frame() already failed on a missing RX buffer",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_uart_comm.py::UARTComm._min_rx_ring::`bus is None` true::return 0": {
+  "action": "comment in place owed (src, the next block): 'Unreachable: ... - kept to narrow the Optional for the type checker'",
+  "class": "c",
+  "proof": "_min_rx_ring() is called only from _validate_receive(self._uart), after setup's `self._uart is None` refusal (:927)",
+  "verdict": "kept: type narrowing; its comment is owed"
+ },
+ "src/asy_uart_comm.py::UARTComm._take_discarded::`bus is None` true::return 0": {
+  "action": "comment in place owed (src, the next block)",
+  "class": "c",
+  "proof": "_take_discarded() runs only inside _resync() during a transaction, and no transaction runs without the bus setup refused at :927",
+  "verdict": "kept: type narrowing; its comment is owed"
+ },
+ "src/asy_uart_comm.py::UARTComm._write_frame_with_ack::`buf is None` true::await self._err(_ERR_ALLOC, \"no TX buffer\")": {
+  "action": "none (comment in place; E.5.1's UART-comm line)",
+  "class": "c",
+  "proof": "_prepare_tx() returned False if the TX buffer were missing",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_uart_comm.py::UARTComm.uart_get::`own is None` true::return PieceBuffer(0, self._chunk_bytes)": {
+  "action": "none (comment in place; E.5.1's UART-comm line)",
+  "class": "c",
+  "proof": "_run_get() returns a buffer whenever neither dest nor push was given",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_uart_driver.py::UART._arm_rx::`data is None or reload is None or ring is None` true::return": {
+  "action": "none (comment in place)",
+  "class": "c",
+  "proof": "both callers run with the ring and both channels set",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_uart_driver.py::UART._rx_copy::`ring is None or data is None` true::return -1": {
+  "action": "none (comment in place)",
+  "class": "c",
+  "proof": "every caller follows a positive _buffered(), which needs the ring and its channel",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_uart_driver.py::UART._rx_line_len::`ring is None` true::return 0": {
+  "action": "none (comment in place)",
+  "class": "c",
+  "proof": "called after a positive _buffered()",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_uart_driver.py::UART._rx_peek::`ring is None` true::return -1": {
+  "action": "none (comment in place)",
+  "class": "c",
+  "proof": "called after a positive _buffered()",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_uart_driver.py::UART.writefrom::`crcsize is None` true::return False": {
+  "action": "none (comment in place)",
+  "class": "c",
+  "proof": "with CRCBase.add_into() the size guard above leaves no None case",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_uart_link_driver.py::UARTLinkDriver._get_callback::`stored is None` true::return True, b\"\"": {
+  "action": "tests/test_asy_uart_link_driver.py::test_an_echo_get_before_any_echo_set_answers_valid_and_empty (agent, 2026-10-27)",
+  "class": "a",
+  "proof": "reached when the peer GETs the echo command before any echo SET",
+  "verdict": "covered: direct test"
+ },
+ "src/asy_uart_link_driver.py::UARTLinkDriver._read_raw::`bus is None` true::return None": {
+  "action": "none (comment in place)",
+  "class": "c",
+  "proof": "_read_raw() is called only from _run_hazards(), which returns first without a bus",
+  "verdict": "kept: type narrowing, stated in place (\"_run_hazards() runs nothing without one\")"
+ },
+ "src/asy_uart_link_driver.py::UARTLinkDriver._run_hazards::`bus is None` true::return": {
+  "action": "comment in place owed (src, the next block)",
+  "class": "c",
+  "proof": "_run_hazards() runs only from _exercise_loop() while initialized, and setup() refuses a None bus (asy_uart_comm.py:927)",
+  "verdict": "kept: type narrowing; its comment is owed"
+ },
+ "src/asy_uart_link_driver.py::UARTLinkDriver._two_initiations::the `finally` body runs::for task in (first, second):": {
+  "action": "tests/test_asy_uart_link_driver.py::test_a_double_initiation_cancelled_at_its_first_await_leaves_no_transaction_behind (agent, 2026-10-27)",
+  "class": "a",
+  "proof": "reached when the double initiation is cancelled while the first initiation awaits (a supervisor restart mid-run)",
+  "verdict": "covered: direct test"
+ },
+ "src/asy_uart_link_driver.py::UARTLinkDriver._write_raw::`bus is None` true::return False": {
+  "action": "none (comment in place)",
+  "class": "c",
+  "proof": "as :166",
+  "verdict": "kept: type narrowing, stated in place (\"as _read_raw()\")"
+ },
+ "src/asy_webserver_service.py::WebserverService._run_system_cmd::`self._system_cmd is None` true::return INVALID": {
+  "action": "tests/test_asy_webserver_service.py::test_a_webserver_built_without_a_system_command_handler_answers_invalid (agent, 2026-10-27)",
+  "class": "d",
+  "proof": "reached when WebserverRoutes carries no system_cmd and a PUT names a SystemCmd",
+  "verdict": "covered; kept: a real feature (F1): a webserver built without a system-command handler answers Invalid"
+ },
+ "src/asy_webserver_service.py::_cfg_values::`for inner in values.values():` falls through::return {}  # Unreachable for every module here (each answers make_dict()'s {name: {...}}) - kept so every path returns for the type checker": {
+  "action": "none (comment in place)",
+  "class": "c",
+  "proof": "every module answers make_dict()'s {name: {...}}",
+  "verdict": "kept: type narrowing, stated in place"
+ }
+}

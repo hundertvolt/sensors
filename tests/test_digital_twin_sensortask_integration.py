@@ -1,6 +1,6 @@
 """In-process twin tier for the device named by TEST_DEVICE: its generated graph booted on the twin buses with no HTTP
-(requests are driven host-side by scripts/_digital_twin_scenarios.py). Driver-specific scenarios run only on the device
-tests/_twin_devices.py picks for them (SPECIFICATION.md E.2.1)."""
+(requests are driven host-side by scripts/_digital_twin_scenarios.py). A driver-specific scenario runs once per distinct
+wiring of its drivers, devices wiring them identically sharing one run (SPECIFICATION.md E.2.1)."""
 
 import asyncio
 import gc
@@ -37,6 +37,7 @@ import unix_port_unretrieved_report  # noqa: E402 - imported after the prewarm a
 from _async_harness import cancel, release_finished, run  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
+from _fake_time import DrivenTime  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _fast_sleep import check_sleep_ms  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
@@ -44,8 +45,9 @@ from _port_bands import PortAllocator  # noqa: E402 - imported after the prewarm
 from _src_const import src_const, src_int  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _twin_common import Walk  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
-from _twin_devices import device_with, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
+from _twin_devices import distinct_wirings, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _twin_readiness import wait_for_value  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
+from _udp_step_fault import FailNextUdpSetup  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 
 import asy_base_classes  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 import asy_captive_dns  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
@@ -126,7 +128,10 @@ _MEASURE_RAW = b"\x26\x0f"  # the SGP40's measure command (datasheet Table 9), a
 _RUNG_AT = src_int("src/asy_base_classes.py", "_RECOVER_DEVICE_AT")  # consecutive failed iterations to the device rung
 _WIFI_STEP_MS = src_int("src/asy_wifi_service.py", "_STA_CONNECT_POLL_MS")  # the connect poll's step: _SteppedAsyncio's cap
 _NO_IP_STEP_MS = 100  # ten polls outlast the twin's 0.7 s join (digital_twin/network.py), so each attempt ends joined without an IP
+_STREAK_JOIN_S = 0.05  # the hotspot streak's twin join, whose length no hotspot check reads: ten 10 ms polls outlast it
+_STREAK_STEP_MS = 10
 _WAIT_TIMEOUT_MS = int(_WAIT_TIMEOUT_S * 1000)
+_IDLE_WINDOW_MS = int(_IDLE_WINDOW_S * 1000)
 _STATUS_DEATHS = 10
 _DECAY_PASSES = 110  # clean supervisor passes between two deaths: each decays the restart budget by one, a death adds 100
 _PASS_YIELD_BOUND = 20000  # loop yields allowed for one wait below; a pass costs a few with the supervisor's fast sleep
@@ -228,12 +233,12 @@ def _clear_twin_logs(watchdog: "machine.WDT") -> None:
 class _CountingPoller:
     # A socket's real poller with each ipoll() round inside a ready(POLLIN) counted: one per listener wake-up, a reply's
     # ready(POLLOUT) rounds left out. Installed on the socket instance; uninstall() restores both and the sleeps' view.
-    def __init__(self, udps: "UDPSocket") -> None:
+    def __init__(self, udps: "UDPSocket", clock: DrivenTime) -> None:
         self._udps, self._real, self._real_ready = udps, udps.poller, udps.ready
         self._listening = True  # installed on an idle listener, parked in its ready(POLLIN)
         self.listener: object = None  # the task that next calls ready(POLLIN): the listener's own
         self.rounds = 0
-        self.sleeps = _ListenerSleeps(self)
+        self.sleeps = _ListenerSleeps(self, clock)
         udps.poller = self  # type: ignore[assignment]  # the same poller, its rounds counted
         udps.ready = self._ready  # type: ignore[method-assign]  # the instance's own, deleted by uninstall()
 
@@ -259,9 +264,11 @@ class _CountingPoller:
 
 class _ListenerSleeps:
     # asyncio as the listener's two modules see it, the listener task's sleeps of one idle poll or more counted: a
-    # listener sleeping before each read finds data on every ready() round, so its rounds alone miss it.
-    def __init__(self, counter: _CountingPoller) -> None:
-        self._counter, self.count = counter, 0
+    # listener sleeping before each read finds data on every ready() round, so its rounds alone miss it. The sleeps
+    # park on the driven clock; uninstall() puts back the view each module had.
+    def __init__(self, counter: _CountingPoller, clock: DrivenTime) -> None:
+        self._counter, self._clock, self.count = counter, clock, 0
+        self._held = (asy_udp_socket.asyncio, asy_captive_dns.asyncio)  # type: ignore[attr-defined]
         asy_udp_socket.asyncio = asy_captive_dns.asyncio = self  # type: ignore[assignment, attr-defined]
 
     def __getattr__(self, name: str) -> object:
@@ -273,10 +280,10 @@ class _ListenerSleeps:
     async def sleep_ms(self, ms: int) -> None:
         if ms >= _POLL_IDLE_MS and asyncio.current_task() is self._counter.listener:  # type: ignore[operator]  # src_const() answers object
             self.count += 1
-        await asyncio.sleep_ms(ms)
+        await self._clock._sleep_ms(ms)
 
     def uninstall(self) -> None:
-        asy_udp_socket.asyncio = asy_captive_dns.asyncio = asyncio  # type: ignore[attr-defined]
+        asy_udp_socket.asyncio, asy_captive_dns.asyncio = self._held  # type: ignore[attr-defined]
 
 
 async def _co2_above(limit: int) -> bool:
@@ -284,7 +291,7 @@ async def _co2_above(limit: int) -> bool:
     return co2 is not None and co2 > limit
 
 
-async def _dns_burst(counter: _CountingPoller) -> "tuple[int, int, int]":
+async def _dns_burst(counter: _CountingPoller, clock: DrivenTime) -> "tuple[int, int, int]":
     # _BURST queries from one host socket with no yield between them, so all are queued when the listener next wakes;
     # returns the distinct replies read, and the listener's wake-ups and idle sleeps until the last one came.
     peer = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -302,19 +309,34 @@ async def _dns_burst(counter: _CountingPoller) -> "tuple[int, int, int]":
                 replied.add(peer.recv(512)[1])
             if len(replied) == _BURST:
                 break
-            await asyncio.sleep_ms(1)
+            await clock.elapse(1)
         return len(replied), counter.rounds - before, counter.sleeps.count - slept
     finally:
         poller.unregister(peer)
         peer.close()
 
 
+async def _driven(clock: DrivenTime, what: str, coro: "Coroutine[object, object, T]") -> "T":
+    # `coro` as a task, the driven clock elapsed wake by wake until it ends (tests/test_digital_twin_hot_replug.py's own).
+    task = asyncio.get_event_loop().create_task(coro)
+    try:
+        await clock.run_until(task.done, _WAIT_TIMEOUT_MS)
+    except AssertionError as e:
+        raise AssertionError(f"{what} - {e}") from None
+    return await task
+
+
+def _driven_modules() -> "list[object]":
+    # Every src module holding asyncio and the twin's machine and network: one clock for each sleep and tick read.
+    return [m for name, m in sorted(sys.modules.items()) if (name.startswith("asy_") or name in ("machine", "network")) and getattr(m, "asyncio", None) is asyncio]
+
+
 def _driver_specific(*drivers: str) -> None:
-    # A driver-specific scenario runs on the one device the plans pick for its drivers; every module's L1 suite covers
-    # each device that wires it.
-    chosen = device_with(*drivers)
-    if device != chosen:
-        raise microtest.Skip(f"runs on {chosen}, the first device wiring {list(drivers)}")
+    # A driver-specific scenario runs once per distinct wiring of its drivers, on the first device of each; devices wiring
+    # them identically share that run, and none wiring them fails in devices_with() rather than skipping everywhere.
+    chosen = distinct_wirings(*drivers)
+    if device not in chosen:
+        raise microtest.Skip(f"runs on {chosen}, one device per distinct wiring of {list(drivers)}")
 
 
 async def _fed_cycle(sgp: "SGP40_Reader") -> None:
@@ -335,7 +357,7 @@ def _fill_wire_logs() -> None:
 
 def _first_device_only() -> None:
     # A scenario of seconds of wall clock through a mechanism every device shares runs once, on the first generated
-    # device, as the driver-specific ones run on the device picked for them (SPECIFICATION.md E.2.1).
+    # device, as the driver-specific ones run once per distinct wiring of their drivers (SPECIFICATION.md E.2.1).
     first = generated_devices()[0]
     if device != first:
         raise microtest.Skip(f"runs on {first}, the first generated device: every device runs the same mechanism")
@@ -359,23 +381,26 @@ async def _heap_floor(watchdog: "machine.WDT") -> int:
     return floor
 
 
-async def _hotspot_boot() -> "tuple[WifiService, NeopixelDriver, list[asyncio.Task[None]]]":
-    # SSID written, every connect scripted to fail: the boot streak fails for real until the hotspot opens. Returns the
-    # WiFi service, its LED's pixel driver and the tasks started (the overlay, the connect loop).
-    await _boot()
+async def _hotspot_boot(clock: DrivenTime) -> "tuple[WifiService, NeopixelDriver, list[asyncio.Task[None]]]":
+    # SSID written, every connect scripted to fail: the boot streak fails for real until the hotspot opens, on the driven
+    # clock. Returns the WiFi service, its LED's pixel driver and the tasks started (the overlay, the connect loop).
+    await _driven(clock, "the boot", _boot())
     conn, pixel = module.conn, module.neopixel
     persisted, _results = await conn.cfgmgr.write_config({"SSID": "TestNet"})
     assert persisted
     conn._wlan.script_connect_outcomes([network.STAT_NO_AP_FOUND] * 8)  # more than the streak to the hotspot needs
-    asy_wifi_service.asyncio = _SteppedAsyncio()  # type: ignore[assignment, attr-defined]  # the streak's waits stepped
+    held = asy_wifi_service.asyncio  # type: ignore[attr-defined]
+    asy_wifi_service.asyncio = _SteppedAsyncio(_STREAK_STEP_MS, clock=clock)  # type: ignore[assignment, attr-defined]  # the streak's waits stepped
+    join_s, network._CONNECT_DELAY_S = network._CONNECT_DELAY_S, _STREAK_JOIN_S
     try:
         tasks = [pixel.start_asy_overlay(), conn.start_asy_connect()]
-        started = await _wait_until(lambda: conn._dns_server_task is not None, timeout_s=_HOTSPOT_WAIT_TIMEOUT_S)
+        started = await _wait_until(lambda: conn._dns_server_task is not None, timeout_s=_HOTSPOT_WAIT_TIMEOUT_S, interval_s=_BIND_POLL_S, clock=clock)
         assert started, "real hotspot activation never started the real DNSServer task"
-        bound = await _wait_until(lambda: conn._dns_server._udps.connected, timeout_s=_WAIT_TIMEOUT_S, interval_s=_BIND_POLL_S)
+        bound = await _wait_until(lambda: conn._dns_server._udps.connected, timeout_s=_WAIT_TIMEOUT_S, interval_s=_BIND_POLL_S, clock=clock)
         assert bound, "the real DNSServer never bound its port 53 socket"
     finally:
-        asy_wifi_service.asyncio = asyncio  # type: ignore[attr-defined]
+        asy_wifi_service.asyncio = held  # type: ignore[attr-defined]
+        network._CONNECT_DELAY_S = join_s
     return conn, pixel, tasks
 
 
@@ -388,6 +413,13 @@ async def _measured_above(chip: "SCD30Chip", limit: int) -> bool:
         return await _co2_above(limit)
 
     return await _wait_until_async(fired, _WINDOW_WAIT_S, interval_s=_BIND_POLL_S)
+
+
+async def _on_driven_clock(scenario: "Callable[[DrivenTime], Coroutine[object, object, None]]") -> None:
+    # The scenario on one driven clock over every module holding asyncio (the boot's waits, the WiFi service's, the
+    # twin's join and timers), so its seconds of waits take no real time; each module's own view is back on every path.
+    with DrivenTime(*_driven_modules(), sleeps=True) as clock:
+        await scenario(clock)
 
 
 async def _one_backup(sgp: "SGP40_Reader", then: "Callable[[], Coroutine[object, object, None]] | None" = None) -> None:
@@ -520,9 +552,10 @@ class _StatusFault:
 
 class _SteppedAsyncio:
     # A module's view of asyncio, each sleep or sleep_ms at most one step (the WiFi connect poll's by default), one of
-    # real_from_ms or longer kept real: the stepped waits are not under test, what they gate is.
-    def __init__(self, step_ms: int = _WIFI_STEP_MS, real_from_ms: "int | None" = None) -> None:
-        self._step_ms, self._real_from_ms = step_ms, real_from_ms
+    # real_from_ms or longer kept whole: the stepped waits are not under test, what they gate is. With a clock, each
+    # sleep parks on it (tests/_fake_time.py), as the 60 s retry does in the bus-hazard file.
+    def __init__(self, step_ms: int = _WIFI_STEP_MS, real_from_ms: "int | None" = None, clock: "DrivenTime | None" = None) -> None:
+        self._step_ms, self._real_from_ms, self._clock = step_ms, real_from_ms, clock
 
     def __getattr__(self, name: str) -> object:
         return getattr(asyncio, name)
@@ -533,7 +566,8 @@ class _SteppedAsyncio:
     async def sleep_ms(self, ms: int) -> None:
         check_sleep_ms(ms)
         real = self._real_from_ms is not None and ms >= self._real_from_ms
-        await asyncio.sleep_ms(ms if real else min(ms, self._step_ms))
+        step = ms if real else min(ms, self._step_ms)
+        await (asyncio.sleep_ms(step) if self._clock is None else self._clock._sleep_ms(step))
 
 
 def _step_sensor_waits(*, on: bool) -> None:
@@ -744,11 +778,12 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
 
 def test_a_dhcp_server_that_never_answers_leaves_a_persisted_trace() -> None:
     # Every join reaches the access point and never gets an address: each attempt ends with no verdict, persisted as one
-    # W slot (the newest-entry rule, SPECIFICATION.md C.7.1), and the streak's end opens the hotspot with its own W.
-    _first_device_only()
+    # W slot (the newest-entry rule, SPECIFICATION.md C.7.1), and the streak's end opens the hotspot with its own W. The
+    # slots are read from RAM, but each one is written to WIFI's FRAM chunk: one run per distinct FRAM wiring (measured).
+    _driver_specific("fram")
 
-    async def scenario() -> None:
-        await _boot()
+    async def scenario(clock: DrivenTime) -> None:
+        await _driven(clock, "the boot", _boot())
         conn: WifiService = module.conn
         persisted, _results = await conn.cfgmgr.write_config({"SSID": "TestNet"})
         assert persisted
@@ -764,12 +799,13 @@ def test_a_dhcp_server_that_never_answers_leaves_a_persisted_trace() -> None:
             return value
 
         station.status = counted_status  # type: ignore[method-assign]  # the instance's own, deleted in finally
-        asy_wifi_service.asyncio = _SteppedAsyncio(_NO_IP_STEP_MS)  # type: ignore[assignment, attr-defined]  # the poll's step is not under test
+        held = asy_wifi_service.asyncio  # type: ignore[attr-defined]
+        asy_wifi_service.asyncio = _SteppedAsyncio(_NO_IP_STEP_MS, clock=clock)  # type: ignore[assignment, attr-defined]  # the poll's step is not under test
         task = conn.start_asy_connect()
         try:
-            assert await _wait_until(lambda: conn._conn_phase == _HOTSPOT_PHASE, timeout_s=_HOTSPOT_WAIT_TIMEOUT_S), "the no-verdict streak never opened the hotspot"
+            assert await _wait_until(lambda: conn._conn_phase == _HOTSPOT_PHASE, timeout_s=_HOTSPOT_WAIT_TIMEOUT_S, clock=clock), "the no-verdict streak never opened the hotspot"
         finally:
-            asy_wifi_service.asyncio = asyncio  # type: ignore[attr-defined]
+            asy_wifi_service.asyncio = held  # type: ignore[attr-defined]
             await _stop_hotspot(conn, [task])
             del station.status
         assert no_ip[0] >= streak, f"only {no_ip[0]} polls read joined without an IP over {streak} attempts"
@@ -778,7 +814,7 @@ def test_a_dhcp_server_that_never_answers_leaves_a_persisted_trace() -> None:
         counts = (slots.count(code("W", "WLAN_NO_VERDICT")), slots.count(code("W", "WLAN_TO_HOTSPOT")))
         assert counts == (1, 1), f"the streak persisted {counts} no-verdict and to-hotspot slots, not one each: {entry}"
 
-    run(scenario())
+    run(_on_driven_clock(scenario))
 
 
 def test_a_failed_config_snapshot_is_the_unavailable_marker() -> None:
@@ -805,6 +841,7 @@ def test_a_failed_config_snapshot_is_the_unavailable_marker() -> None:
 def test_a_factory_state_unit_returns_to_the_hotspot_after_every_window() -> None:
     # No SSID: the boot opens the hotspot, and each window's end (its timer's callback, called as the twin Timer calls it)
     # leads straight back to it: with nothing to attempt there is no failure streak, so the silent mode is never reached.
+    # After its boot it touches no wired part, no FRAM write and no LED frame among them (measured), so one device runs it.
     _first_device_only()
 
     async def scenario() -> None:
@@ -874,16 +911,18 @@ def test_a_failing_wlan_status_keeps_the_link_and_warns_once_per_unreadable_tick
 
 def test_two_failed_joins_re_select_the_radio_once_and_the_link_comes_back() -> None:
     # A linked station loses its link and each next join raises EIO, a failed hardware call, up to the rung's threshold:
-    # the radio is re-selected once (one deinit, one new STA interface, one W), then the link comes back.
-    _first_device_only()
+    # the radio is re-selected once (one deinit, one new STA interface, one W), then the link comes back. Its W and E
+    # slots are written to WIFI's FRAM chunk: one run per distinct FRAM wiring (measured).
+    _driver_specific("fram")
 
-    async def scenario() -> None:
-        await _boot()
+    async def scenario(clock: DrivenTime) -> None:
+        await _driven(clock, "the boot", _boot())
         conn: WifiService = module.conn
         persisted, _results = await conn.cfgmgr.write_config({"SSID": "TestNet"})
         assert persisted
         conn.start_uptime_timer()
-        asy_wifi_service.asyncio = _SteppedAsyncio()  # type: ignore[assignment, attr-defined]
+        held = asy_wifi_service.asyncio  # type: ignore[attr-defined]
+        asy_wifi_service.asyncio = _SteppedAsyncio(clock=clock)  # type: ignore[assignment, attr-defined]
         tasks = [conn.start_asy_connect(), conn.start_asy_uptime()]
         station = conn._wlan  # the STA singleton, which a re-selection constructs again (one per interface, as on rp2)
         deinits = [0]
@@ -895,11 +934,11 @@ def test_two_failed_joins_re_select_the_radio_once_and_the_link_comes_back() -> 
 
         station.deinit = counted_deinit  # type: ignore[method-assign]  # the instance's own, deleted in finally
         try:
-            assert await _wait_until(lambda: conn._wifi_connected, timeout_s=_HOTSPOT_WAIT_TIMEOUT_S), "the station never linked before the fault"
+            assert await _wait_until(lambda: conn._wifi_connected, timeout_s=_HOTSPOT_WAIT_TIMEOUT_S, clock=clock), "the station never linked before the fault"
             built = network.constructions[network.STA_IF]
             station.raise_on["connect"] = (OSError, (5,), _RUNG_AT)  # EIO
             station.disconnect()  # the link lost: LINK_DOWN, as the bus-hazard file's single flap leaves it
-            back = await _wait_until(lambda: conn._wifi_connected and conn._wlan.isconnected(), timeout_s=_radio_rung_bound_s(conn))
+            back = await _wait_until(lambda: conn._wifi_connected and conn._wlan.isconnected(), timeout_s=_radio_rung_bound_s(conn), clock=clock)
             assert network.constructions[network.STA_IF] == built + 1, f"{_RUNG_AT} failed joins re-selected the radio {network.constructions[network.STA_IF] - built} times, not once"
             assert deinits[0] == 1, f"the re-selection powered the radio down {deinits[0]} times, not once"
             assert back, "the link never came back after the radio was re-selected"
@@ -912,19 +951,19 @@ def test_two_failed_joins_re_select_the_radio_once_and_the_link_comes_back() -> 
             if conn._dns_server_task is not None:
                 await cancel(conn._dns_server_task)
             del station.deinit
-            asy_wifi_service.asyncio = asyncio  # type: ignore[attr-defined]
+            asy_wifi_service.asyncio = held  # type: ignore[attr-defined]
 
-    run(scenario())
+    run(_on_driven_clock(scenario))
 
 
 def test_hotspot_fallback_drives_the_status_led_and_binds_the_dns_server() -> None:
     # The in-process half of the hotspot scenario: real failure cycles open the hotspot, the WiFi-status LED wired by
     # build_system() writes real frames, the captive DNS binds; its answer and the captive redirect are the host
-    # harness's. Driver-specific (the status LED is a NeoPixel); tests/test_asy_wifi_service.py covers every device.
-    _driver_specific("neopixel")
+    # harness's. Per distinct wiring of the status LED and of the FRAM the hotspot's W slots are written to (measured).
+    _driver_specific("neopixel", "fram")
 
-    async def scenario() -> None:
-        conn, pixel, tasks = await _hotspot_boot()
+    async def scenario(clock: DrivenTime) -> None:
+        conn, pixel, tasks = await _hotspot_boot(clock)
         try:
             assert conn._led is pixel
             assert len(pixel._pixel.writes) > 0, "the real status LED never actually wrote a frame"
@@ -932,27 +971,28 @@ def test_hotspot_fallback_drives_the_status_led_and_binds_the_dns_server() -> No
         finally:
             await _stop_hotspot(conn, tasks)
 
-    run(scenario())
+    run(_on_driven_clock(scenario))
 
 
 def test_the_captive_dns_listener_idles_at_its_idle_rate() -> None:
-    # With no DNS traffic for a window, the listener wakes once per udp.poll_idle_ms (its ready(POLLIN) rounds, counted on
-    # the instance), the twin half of that rate's measured basis; then a burst is answered back to back (lwIP's drop past
-    # its queue shows on the bench only). Same boot as the hotspot test above, so the same device.
-    _driver_specific("neopixel")
+    # With no DNS traffic for a window, the listener wakes once per udp.poll_idle_ms (its ready(POLLIN) rounds), the twin
+    # half of that rate's basis, then answers a burst back to back (lwIP's drop past its queue shows on the bench). Its
+    # hotspot boot drives the LED and writes WIFI's FRAM chunk (measured): one run per wiring of both (agent, 2026-10-27).
+    _driver_specific("neopixel", "fram")
 
-    async def scenario() -> None:
-        conn, _pixel, tasks = await _hotspot_boot()
-        counter = _CountingPoller(conn._dns_server._udps)
+    async def scenario(clock: DrivenTime) -> None:
+        conn, _pixel, tasks = await _hotspot_boot(clock)
+        counter = _CountingPoller(conn._dns_server._udps, clock)
         try:
-            start = time.ticks_ms()
-            await asyncio.sleep(_IDLE_WINDOW_S)
-            elapsed_ms = time.ticks_diff(time.ticks_ms(), start)
+            start = clock.ticks_ms()
+            await clock.elapse(_IDLE_WINDOW_MS)
+            elapsed_ms = time.ticks_diff(clock.ticks_ms(), start)
             woke = counter.rounds
-            answered, burst_rounds, burst_sleeps = await _dns_burst(counter)
+            answered, burst_rounds, burst_sleeps = await _dns_burst(counter, clock)
         finally:
             counter.uninstall()
             await _stop_hotspot(conn, tasks)
+        assert elapsed_ms >= _IDLE_WINDOW_MS, f"the idle window lasted {elapsed_ms} ms of the listener's clock, not {_IDLE_WINDOW_MS}"
         expected = elapsed_ms // _POLL_IDLE_MS  # type: ignore[operator]  # src_const() answers object
         print(f"MEASURE udp.idle_wakeups_per_s={woke * 1000 / elapsed_ms:.2f}")
         print(f"MEASURE dnssrv.burst_answered={answered}/{_BURST}")
@@ -961,7 +1001,31 @@ def test_the_captive_dns_listener_idles_at_its_idle_rate() -> None:
         assert burst_rounds <= _BURST + 1, f"the burst took {burst_rounds} listener wake-ups, not back to back (at most {_BURST + 1})"
         assert burst_sleeps <= 1, f"the listener slept {burst_sleeps} idle polls during the burst, not back to back (at most 1)"
 
-    run(scenario())
+    run(_on_driven_clock(scenario))
+
+
+def test_the_captive_dns_socket_whose_bind_fails_logs_once_then_rebuilds_binds_and_answers() -> None:
+    # The listener's first bind refused: one E INIT, that socket torn down, and after the backoff the same UDPSocket builds
+    # a fresh socket, binds it and answers a burst (asy_udp_socket.py's teardown and lazy rebuild). Wired as above.
+    _driver_specific("neopixel", "fram")
+
+    async def scenario(clock: DrivenTime) -> None:
+        with FailNextUdpSetup("address", mode="server") as fault:
+            conn, _pixel, tasks = await _hotspot_boot(clock)
+        counter = _CountingPoller(conn._dns_server._udps, clock)
+        try:
+            answered, _rounds, _sleeps = await _dns_burst(counter, clock)
+            entry = (await conn._dns_server.get_error_counter())["DNSSRV"]
+        finally:
+            counter.uninstall()
+            await _stop_hotspot(conn, tasks)
+        slots = [(kind, n) for kind, n in zip(entry["ErrType"], entry["ErrNum"]) if kind != "N"]
+        assert fault.fired == 1, f"the fault failed {fault.fired} binds"
+        assert fault.closed()[:1] == [True] and len(fault.made) == 2, f"sockets made, closed or not: {fault.closed()}"
+        assert (entry["ErrCount"], slots) == (1, [("E", code("E", "INIT"))]), f"the refused bind logged {entry['ErrCount']}: {slots}"
+        assert answered == _BURST, f"{answered} of {_BURST} queries answered by the rebuilt socket"
+
+    run(_on_driven_clock(scenario))
 
 
 async def _stop_hotspot(conn: "WifiService", tasks: "list[asyncio.Task[None]]") -> None:
@@ -971,14 +1035,15 @@ async def _stop_hotspot(conn: "WifiService", tasks: "list[asyncio.Task[None]]") 
         await cancel(conn._dns_server_task)
 
 
-async def _wait_until(predicate: "Callable[[], bool]", timeout_s: float, interval_s: float = _WAIT_POLL_S) -> bool:
+async def _wait_until(predicate: "Callable[[], bool]", timeout_s: float, interval_s: float = _WAIT_POLL_S, clock: "DrivenTime | None" = None) -> bool:
     # Bounded polling for a real multi-second state transition (mode switches, supervisor cycles). Counts poll
-    # iterations, not wall clock: under CPU starvation a wall-clock bound would fail sooner, not later.
+    # iterations, not wall clock: under CPU starvation a wall-clock bound would fail sooner, not later. With a clock,
+    # each poll elapses it instead of sleeping, so what waits on it takes no real time.
     elapsed = 0.0
     while elapsed < timeout_s:
         if predicate():
             return True
-        await asyncio.sleep(interval_s)
+        await (asyncio.sleep(interval_s) if clock is None else clock.elapse(int(interval_s * 1000)))
         elapsed += interval_s
     return predicate()
 

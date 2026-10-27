@@ -60,10 +60,6 @@ def _co2_signal(value: int = 2000) -> NotificationSignal:
     return NotificationSignal("WarnCO2", ValueRef(_FakeSource("WarnCO2", value), "WarnCO2"), (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
 
 
-_FREQ_HZ = 100
-_FRAME_MS = 1000 // _FREQ_HZ  # the pixel's frame period
-
-
 async def _cycle(clock: DrivenTime, notify: NotificationService, flashes: int) -> None:
     # The monitor's first cycle by the service's own rule: 2 x FlashDur after each triggered flash, so 1 ms before that
     # end nothing is stored yet; then the loop parks on its next cycle, FlashInterval after its start.
@@ -97,21 +93,17 @@ async def _local_time() -> FakeTime:
 def _make_pair(
     signals: "tuple[NotificationSignal, ...]", local_time: "Callable[[], Awaitable[_HourMinute | None]]" = _local_time,
 ) -> "tuple[NeopixelDriver, NotificationService]":
-    # freq=100 keeps ramps fast in real wall-clock time (same reasoning as
-    # tests/test_asy_neopixel_driver.py's own _make_driver()).
-    pixel = NeopixelDriver(0)
-    pixel.neopixel_freq = _FREQ_HZ  # the driver's own fixed state, set from outside
-    pixel._frame_ms = _FRAME_MS
+    pixel = NeopixelDriver(0)  # at the shipped frame rate: FlashDur's 0.5 s floor still plays several frames a direction
     notify = NotificationService(pixel.request_signal, local_time, signals, cfg_path=_tmp_cfg_dir())
     run(pixel.setup())  # the boot batch's setup() for both, before any task starts
     run(notify.setup())
     return pixel, notify
 
 
-def _ramp_ms(flash_dur: float) -> int:
+def _ramp_ms(pixel: NeopixelDriver, flash_dur: float) -> int:
     # One signal's length on the driven clock, by the driver's own steps rule (_signal_loop): both directions' frames
     # at the frame period; its final black lands at that instant.
-    return 2 * max(int(flash_dur * 0.5 * _FREQ_HZ), 1) * _FRAME_MS
+    return 2 * max(int(flash_dur * 0.5 * pixel.neopixel_freq), 1) * pixel._frame_ms
 
 
 def _ramp_over(pixel: NeopixelDriver) -> bool:
@@ -182,7 +174,7 @@ def test_led_signal_during_a_notification_ramp_is_refused_at_once() -> None:
         tasks = await _start_all(pixel, notify)
         lit_at = await clock.run_until(lambda: bool(_lit_frames(pixel)), 0)  # the first frame lands with the request
         result = pixel.led_signal(11, 22, 33, 0.1)  # the REST command, sync: refused or not with no await
-        ended_at = await clock.run_until(lambda: _ramp_over(pixel), _ramp_ms(0.5))
+        ended_at = await clock.run_until(lambda: _ramp_over(pixel), _ramp_ms(pixel, 0.5))
         await cancel_all(tasks, settle_yields=1)
         return lit_at, result, ended_at
 
@@ -190,7 +182,7 @@ def test_led_signal_during_a_notification_ramp_is_refused_at_once() -> None:
         lit_at, result, ended_at = run(scenario(clock))
     assert lit_at == 0
     assert result is False  # refused at once, never queued
-    assert ended_at == _ramp_ms(0.5)  # the ramp's own length, with nothing queued behind it
+    assert ended_at == _ramp_ms(pixel, 0.5)  # the ramp's own length, with nothing queued behind it
     assert (11, 22, 33) not in [w[0] for w in pixel._pixel.writes]
     assert run(notify.get_error_counter())["NOTIFY"]["ErrCount"] == 0  # the notification's own request went through
 

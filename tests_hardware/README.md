@@ -246,6 +246,7 @@ sudo nmcli connection delete br0-wifi-ap br0-eth0 br0
 | Operation | Flash write | What it does to the running firmware |
 |---|---|---|
 | `mpremote` `exec`, `run`, `mount`, `ls`, `cat` | none | enters the raw REPL with Ctrl-C, which stops the running `main.py` (`tools/mpremote/mpremote/transport_serial.py`'s `enter_raw_repl()`, v1.29.0); the soft reset that follows keeps the armed watchdog, the GC threshold, `ticks_ms()` and the pin muxing and never re-runs `main.py`, so every raw-REPL session ends in a hard reset (SPECIFICATION.md Part F.1) |
+| `mpremote` `resume exec` (`Board.exec_live()`) | none | the same Ctrl-C, but no soft reset (`resume` clears mpremote's auto soft reset, `tools/mpremote/mpremote/commands.py`'s `do_resume()`, v1.29.0): `main.py`'s `KeyboardInterrupt` clause writes reset record 21 and the REPL keeps every module, so the read meets the running firmware's objects; nothing feeds the armed watchdog after it, which resets the board within one period of the firmware's last feed |
 | `mpremote` `reset` | none | an `exec` of `machine.reset()` (the shortcut table in `tools/mpremote/mpremote/main.py`, v1.29.0): the firmware restarts |
 | `mpremote` `cp`, `rm`, `mkdir`, `rmdir` | the flash filesystem | stops `main.py` like the row above, then writes |
 | a script under `mpremote run` that persists config | the flash filesystem | `_set_dict_cfg()` → `ConfigManager.write_config()` → `flush_pending()` writes the config file like any test's write, counted against `persistence_write` |
@@ -423,6 +424,24 @@ the image record (`--image-record`, default beside the `.uf2`) and compares it w
 `--allow-multi-day-rollover`. A mismatch stops the session naming each deviation and the reflash
 that fixes it; a record from a dirty tree is reported as a local-only image to revert after the
 round. A test that reflashes mid-session runs the same comparison (`check_image()`).
+
+## The bench log check
+
+Every bench test runs inside `bench/conftest.py`'s autouse `no_unprovoked_log_entry`: one `GET /status` before the
+test and one after, clearing and writing nothing. A new E or W entry in any logger between the two fails the test,
+naming the logger, the code, its catalog name and the test - a normal operation logs neither. A test whose entries are
+its purpose carries `@pytest.mark.provokes_log("<why>", (logger, kind, catalog name), ...)` (`markers.py`), naming
+every entry the source can leave on its path, and is read like any other: an entry outside that set fails it, and an
+entry in it need not appear (the test asserts its own). Collection refuses a marker with a reason alone, a malformed
+entry or a name with no live catalog row. A clear made through `reset_all_error_logs()` hides nothing: the `GET
+/status` it already takes before its `PUT` (saved to the evidence first) is kept, so the check reads each segment - the
+test's first read to its first clear's, each clear to the next one's, the last to the after-read, all of a segment
+after a clear new - against the same set, adding no read and no write. A board that cannot answer
+`/status` at a test's bound - unreachable, or still booting - fails that test by name after one read under the
+helpers' own timeout: a test leaves the board serving. The exception is a test marked `ends_unreachable` (the hotspot
+credential stage, the isolated-board heap module): its unanswered end leaves its window open, and the next read that
+answers - the next test's, or one at the session's end - closes it against the union of the sets it spans. The
+hotspot module reads through the DUT's gateway while the bench radio is its client.
 
 ## The NeoPixel sweep rig
 
@@ -605,7 +624,7 @@ The rest, one fact each (occurrences: `HEAP_FRAGMENTATION_MEASUREMENTS.md` archi
   (`scripts/build_firmware.py <device> --no-autostart`), whose REPL keeps reading stdin
   (`shared/tinyusb/mp_usbd_cdc.c`, `ports/rp2/mphalport.c`, v1.29.0).
 - A Ctrl-C into the autostart image ends its whole event loop: the board records reset reason 21
-  and the watchdog resets it within its timeout; a change answered `Valid` whose deferred flush has
+  (any other exception ending the loop after boot records 22) and the watchdog resets it within its timeout, unless a Ctrl-D at the REPL soft-resets it first, whose boot reads the same code (SPECIFICATION.md Part F.5.4); a change answered `Valid` whose deferred flush has
   not run yet is lost.
 - Every flash run ends with one hard reset to a serving board (`flash/conftest.py`'s
   `leave_board_serving`).
@@ -672,10 +691,10 @@ that file's archived record ("archive §7R" below).
   every console-tail memory gate also reads SYSTEM's task-end log around its window and fails on a
   new `TASK_RAISED` or `SUPERVISOR_RAISED` (`error_log_helpers.assert_no_new_task_raised()`): over
   `GET /status` on the bench, over the REPL on the flash tier (`read_live_system_log()`, which
-  interrupts the firmware, so the flash soak hard-resets after each read). A test that clears the
-  logs reads them first. A device script running the firmware's `main()` installs an always-printing
-  report before it, as the PC tiers do; `tests_scripts/test_exception_handler_contract.py` pins all
-  three.
+  interrupts the firmware, so the flash soak hard-resets after each read, and reads the first only once
+  a hard reset's boot line has come). A test that clears the logs reads them first. A device script
+  running the firmware's `main()` installs an always-printing report before it, as the PC tiers do;
+  `tests_scripts/test_exception_handler_contract.py` pins all three.
 - **Peak is not rounds.** Rounds of N parallel requests with pauses are typical load and overstate
   free heap (archive §7R.4). Peak is as many back-to-back clients as the limit plus forced internal work (the
   hammer test's dispatch-only SGP40 reset PUT every 3 s), on the full task graph, over every path a
@@ -823,6 +842,25 @@ file the session fixtures' standard-state check names ("Prerequisites" item 4). 
 never failed on the figure: the host records it for SPECIFICATION.md Part F.3's
 `stall.flash_program` row.
 
+**The listener close on silicon** (`flash/test_modlwip_listener_close.py`,
+`device_scripts/listener_close_leaves_the_pcb_pools.py`, L3, ungated: no write of any kind, no flash
+cycle and no FRAM manager) checks SPECIFICATION.md B.14.4's close and `listen()` patches on the
+flashed image. The host reads the two TCP pcb pools' descriptors, slot arrays and free-list heads
+(`memp_TCP_PCB`, `memp_TCP_PCB_LISTEN`, their `memp_memory_*_base` and `memp_tab_*`) from
+`firmware.elf` in the toolchain's rp2 build directory (`harness.elf_symbols()`, `arm-none-eabi-nm`),
+once that build's `.uf2` equals the one beside the image record (`--image-record`) and it compiled
+the patched modlwip copy. The script, production stopped, reads each descriptor - unless the board
+reports the ELF's array and head it reads no pool byte - and takes both pools in one interrupts-off
+picture; it closes a listener, then a socket whose `listen()` met a locked heap, and takes a second.
+Every slot free in both, except the one each pool hands the script's own sockets, must be
+byte-identical (at least one per pool, or the check would pass on nothing), reported by pool, slot
+and offset, and no free slot may go missing, then or after the round trip (a third picture). A bind
+without `SO_REUSEADDR` must take the port again, and one loopback round trip runs: the twin echoes
+it, while rp2's lwIP has no loopback netif (`LWIP_NETIF_LOOPBACK` 0), so silicon's answer is
+`EHOSTUNREACH`. Memory is only read (`machine.mem32`), never written by address. On an unpatched
+image the listener's stray stores are NULLs, seen only where they land on non-zero bytes; the failed
+listen's `tcp_poll()` stores a function pointer, seen anywhere. `--twin` runs the socket half only.
+
 **The loop lag under combined load** (`device_scripts/loop_lag_under_combined_load.py`) runs the
 bench build's shipped `main()` beside a 10 ms lag probe, an allocation-churn task and FRAM block
 writes in the script's own scratch region (`fram_max_size - 0x200`), while the host's readers
@@ -872,7 +910,7 @@ raw flags each reset kind leaves.
 | code | test that proves it | level | on silicon |
 |---|---|---|---|
 | 0 | `bench/test_reset_reasons.py::test_an_invalid_record_reads_as_unknown` | L4 | not yet run |
-| 1 | `manual/manual_persistence.py`'s power-cycle steps (each reads `ResetReason` after power returns) | manual | not yet run |
+| 1 | `manual/manual_persistence.py`'s power-cycle steps (each reads `ResetReason` after power returns; `test_console_soft_reset_keeps_the_reset_record` holds a valid record across its cut, so its 1 also shows the cut cleared the scratch registers) | manual | not yet run |
 | 2 | `bench/test_reset_reasons.py::test_a_harness_hard_reset_reads_as_watchdog_without_a_record` | L4 | not yet run |
 | 3 | `bench/test_end_to_end_timing.py::test_real_reboot_sequencing_via_rest_completes_cleanly`; `flash/test_system_commands.py::test_a_reboot_with_storage_paused_still_resets_attributed` | L4, L3 | not yet run |
 | 4 | `bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed` (the way back is `sudo picotool reboot`, no load); `flash/test_system_commands.py::test_bootloader_command_shuts_down_then_enters_bootsel` | L4, L3 | not yet run |
@@ -881,9 +919,10 @@ raw flags each reset kind leaves.
 | 7 | `flash/test_system_commands.py::test_config_reset_deletes_every_config_file_and_reboots`; `bench/test_system_commands_over_rest.py::test_config_reset_over_rest_brings_back_the_defaults` | L3, L4 | not yet run |
 | 8 | `flash/test_system_commands.py::test_fram_erase_blanks_the_chip_and_every_logger_restarts_empty`; `bench/test_system_commands_over_rest.py::test_fram_erase_over_rest_blanks_every_error_log` | L3, L4 | not yet run |
 | 9 | `bench/test_reset_reasons.py::test_an_incomplete_command_is_attributed`; `flash/test_system_commands.py::test_a_hung_shutdown_step_ends_in_a_watchdog_reset` | L4, L3 | not yet run |
-| 11-15 | `bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed`, one case per boot phase 1-5 | L4 | not yet run |
+| 11-15 | `bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed`, one case per boot phase 1-5; 11 after a power-on, a Ctrl-D soft reset with phase 1 marked and no record (`reset_code_invalid_record.py`'s STATE `boot_phase` calls `begin_boot()`): `manual/manual_persistence.py::test_console_soft_reset_keeps_the_reset_record` | L4, manual | not yet run |
 | 20 | `bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed` (`reset_code_stack_exhausted.py`: a reader recursing until the stack check raises; the handler that catches it records the overflow and the supervisor's next pass reboots with the stack code) | L4 | not yet run |
-| 21 | `bench/test_reset_reasons.py::test_a_console_interrupt_is_attributed` | L4 | not yet run |
+| 21 | `bench/test_reset_reasons.py::test_a_console_interrupt_is_attributed`; after a power-on, a Ctrl-D soft reset inside the watchdog window: `manual/manual_persistence.py::test_console_soft_reset_keeps_the_reset_record` | L4, manual | not yet run |
+| 22 | `bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed`, an `OSError` and a `SystemExit` from the loop core (`reset_code_loop_end.py`: the frozen entry imported again after `mpremote`'s Ctrl-C, under the board's own config, no flash write) | L4 | not yet run |
 
 ## System commands
 
@@ -925,11 +964,12 @@ needs a driver-level trigger is not reachable at L4 except by hand.
 | participant | the chip's recovery: the BMP3xx soft reset with its OSR re-applied, the SGP40 heater-off, the FRAM's WREN repeated once | L3 | `test_bmp3xx_same_device_read_write_concurrency`, `test_cross_device_concurrent_sessions_genuinely_interleave`, `test_fram_cs_pin_hijack_fault_injection_and_recovery` | a valid read after the rung, the OSR as configured; the dropped WREN recovered |
 | bus clear and controller re-init | a real held SDA (`i2c_held_sda_recovery.py`); `recover()` among every device's reads | L3; L4 not reachable (raw REPL stops `main.py`), by hand with the manual SDA-to-GND step | `test_a_held_sda_line_is_cleared_and_every_device_answers`, `test_bus_topology_autodetect_address_and_reserved_range_sweep`; `manual/manual_bus_electrical.py::test_wedged_i2c_bus_watchdog_backstop` | SDA high and every device answers; no sibling read fails; by hand the bus-recovery entries, then `ResetReason` 5 |
 | boot bus clear | SDA held at construction | L3 | `test_a_held_sda_line_is_cleared_and_every_device_answers` (its boot-clear case) | SDA high, the controller constructs, every device answers |
+| setup reset | each I2C chip's driver `setup()`, every transfer recorded (`setup_resets_each_chip_once.py`) | L3 | `test_every_chip_setup_resets_it_once_after_a_read_identified_it` | one soft reset per chip, after the read that identified it, then a valid read |
 | WiFi radio re-init | `_recover_device()` on a connected link | L4 | `bench/test_wifi_radio_reinit.py` (`wifi_radio_reinit_recovery.py`) | the link back within the connect budget |
 | task restart | a starter that dies at once; a chip unplugged live | L3; manual L4 | `flash/test_task_supervisor.py`; `manual/manual_bus_electrical.py::test_hot_unplug_replug_i2c_recovery`, `::test_fram_unplug_replug_recovery` | the starter called again, SYSTEM's log holding one `TASK_RETURNED` end per restart; by hand the log entries while unplugged and the readings back with no reboot |
 | FRAM chip lost | CS held inactive across two writes; the chip unplugged | L3; manual L4 | `test_fram_cs_pin_hijack_fault_injection_and_recovery`; `::test_fram_unplug_replug_recovery` | the chip-lost entry, then recovery; by hand the seconds from the pull to the first FRAM log entry (`fram-pull-latency.txt`, "none within 120 s" when none) |
 | UART link lost | the crossover jumper pulled mid-transfer | manual L4 | `manual/manual_bus_electrical.py::test_uart_crossover_pull_recovery` | the link's `Failures` rise and every code logged meanwhile (`uart-crossover-pull.txt`, the verbatim errcount beside it), its `Transfers` advancing within 30 s of the replug, no reboot |
-| supervisor reboot | a task dying until the restart budget is spent | L4 | `bench/test_reset_reasons.py::test_the_supervisor_escalation_reboot_is_attributed` | `ResetReason` 5 and SYSTEM's escalation entry |
+| supervisor reboot | a task dying until the restart budget is spent | L4 | `bench/test_reset_reasons.py::test_the_supervisor_escalation_reboot_is_attributed` | `ResetReason` 5 with the forced bit; SYSTEM's escalation entry in the rounds the script printed before the reset (its log is RAM-only, so production's history never holds it) |
 | hardware watchdog | the watchdog starved | L3, L4 | `flash/test_watchdog_starvation.py`; `bench/test_reset_reasons.py` (codes 2 and 6) | the reset, then the code |
 
 ## The hotspot role reversal
@@ -1147,8 +1187,14 @@ a live question:
   **resolved: no.** Confirmed against the pinned MicroPython C source and empirically on real
   hardware: only a genuine `hard_reset()` resumes the live system; `exec()`/`run_isolated()` never
   do, regardless of `soft_reset_after`. See `harness.Board.run_isolated()`'s own docstring for the
-  full finding. Tests that need to observe the *real* boot sequence correctly use `hard_reset()` +
-  `tail_log()` instead, for exactly this reason.
+  full finding. The two read paths differ in what they meet: `exec()`'s raw-REPL Ctrl-D soft reset
+  (`ports/rp2/main.c`'s `soft_reset_exit`, then `mp_deinit()`/`mp_init()`) leaves a fresh
+  interpreter whose `sys.modules` holds no firmware module, so a read of the running firmware's
+  objects goes through `exec_live()` (`mpremote resume exec`), which skips that reset and meets the
+  parked firmware; the armed watchdog then resets the board, cause WDT, record 21
+  (`tests_scripts/test_harness_mpremote_retry.py` pins both, and that every such read uses it).
+  Tests that need to observe the *real* boot sequence correctly use `hard_reset()` + `tail_log()`
+  instead, for exactly this reason.
 - **A device script's heap reading is taken inside `main.py`'s aged heap, so a standalone figure and
   an in-suite one are not comparable.** Same consequence as the bullet above, and it has produced a
   false conclusion once: freshly flashed, the heap probe read 95,104 B and passed; deep in a suite
@@ -1692,8 +1738,10 @@ only same-device write-vs-own-read (`bus_concurrency_same_device_scd30.py`,
 - **`test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads`**
   (`device_scripts/bus_concurrency_isl29125_write_vs_siblings.py`) - ISL29125's own `configure()` is
   the writer (a volatile config register, no NVM-write-budget concern per FN8424 p7), repeated
-  `WRITE_CYCLES=8` times over a real multi-second window with SCD30 and SGP40 both reading
-  concurrently. Part of the routine group, no opt-in needed.
+  ten times (`_WRITE_DELAYS_MS` x `_DELAY_REPEATS`) with SCD30 and SGP40 both reading concurrently.
+  The script records every sibling read's window, and the test credits "not disturbed" only once
+  at least one of those reads overlapped a write's window (`overlapped_reads`). Part of the
+  routine group, no opt-in needed.
 - **`test_scd30_config_write_does_not_disturb_concurrent_sibling_reads`**
   (`device_scripts/bus_concurrency_scd30_write_vs_siblings.py`) - the SCD30-as-writer half of the
   same gap. SCD30's own `set_temperature_offset()` is a real NVM write, so this is deliberately

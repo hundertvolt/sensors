@@ -408,7 +408,7 @@ def _resolved_parallelism(repo_root: Path, tmp_path: Path, env_value: str | None
     return int(out.rsplit("RESOLVED=", 1)[1].strip())
 
 
-def _run_annotation_block(repo_root: Path, tmp_path: Path, failed: int, memory: int, *, pytest_failed: bool) -> list[str]:
+def _run_annotation_block(repo_root: Path, tmp_path: Path, failed: int, memory: int, *, pytest_failed: bool, checkout: str = "") -> list[str]:
     failed_files = [f"tests/test_f{i}.py" for i in range(failed)]
     memory_files = [f"tests/test_m{i}.py" for i in range(memory)]
     for name in failed_files + memory_files:
@@ -418,7 +418,7 @@ def _run_annotation_block(repo_root: Path, tmp_path: Path, failed: int, memory: 
     script = tmp_path / "block.sh"
     script.write_text(
         "#!/usr/bin/env bash\nset -euo pipefail\nGITHUB_ACTIONS=true\n" + _job_tag_body(repo_root) + "\n"
-        f'results_dir="{tmp_path}"\ntests_scripts_result="{"FAIL" if pytest_failed else "PASS"}"\n'
+        f'results_dir="{tmp_path}"\ntests_scripts_result="{"FAIL" if pytest_failed else "PASS"}"\ncheckout_verdict={shlex.quote(checkout)}\n'
         f"failed_files=({' '.join(failed_files)})\nmemory_error_files=({' '.join(memory_files)})\n"
         f"{_annotation_block(repo_root)}\n", encoding="utf-8",
     )
@@ -798,6 +798,17 @@ def test_buildgen_generation_runs_before_the_pytest_job_is_backgrounded(repo_roo
     assert generate_at != -1, f"scripts/test.sh no longer runs {_GENERATE_LINE!r} - update this test with it"
     assert pytest_at != -1, f"scripts/test.sh no longer runs {_PYTEST_LINE!r} - update this test with it"
     assert generate_at < pytest_at, "scripts/test.sh must generate the buildgen device modules BEFORE backgrounding tests_scripts/ - see that block's own devices/*.toml race comment"
+
+
+def test_the_sites_are_built_before_the_pytest_job_is_backgrounded(repo_root: Path) -> None:
+    # The tier's twin boots import frozen_modules/'s frozen_html, which _build_sites writes: started before it ends, they
+    # find it missing on a fresh checkout or stale on a reused one.
+    text = _test_sh_text(repo_root)
+    build_at = text.find("\n_build_sites\n")
+    pytest_at = text.find(_PYTEST_LINE)
+    assert build_at != -1, "scripts/test.sh no longer calls _build_sites on a line of its own - update this test with it"
+    assert pytest_at != -1, f"scripts/test.sh no longer runs {_PYTEST_LINE!r} - update this test with it"
+    assert build_at < pytest_at, "scripts/test.sh must build the sites (_build_sites) BEFORE backgrounding tests_scripts/, which reads them"
 
 
 def test_stale_live_tree_fixtures_are_swept_before_anything_globs_devices(repo_root: Path) -> None:
@@ -1528,6 +1539,106 @@ def test_the_gate_is_wired_into_the_run_and_into_the_verdict(repo_root: Path) ->
     assert "MemoryError seen" in text, "the summary must name the files, so a long log does not have to be re-read"
 
 
+# --- the checkout-write guard: a test leaves nothing in the checkout -----------------------------------
+
+
+def _checkout_guard(repo_root: Path) -> str:
+    # scripts/test.sh's guard as it defines it: the listing, the tiers' own outputs and the new-path filter.
+    text = _test_sh_text(repo_root)
+    parts = [re.search(rf"^{name}\(\) \{{.*?^\}}", text, re.DOTALL | re.MULTILINE) for name in ("_checkout_paths", "_checkout_left")]
+    parts.append(re.search(r"^checkout_outputs=\(.*\)$", text, re.MULTILINE))
+    found = [part.group(0) for part in parts if part is not None]
+    assert len(found) == 3, "scripts/test.sh no longer defines the checkout-write guard (_checkout_paths, checkout_outputs, _checkout_left)"
+    return "\n".join(found)
+
+
+def _second_listing(repo_root: Path) -> str:
+    # The guard's second listing, from its `if` to its closing `fi`.
+    text = _test_sh_text(repo_root)
+    start = text.find('if [ "$checkout_listed" = "1" ] && checkout_after=')
+    assert start != -1, "scripts/test.sh no longer takes the guard's second listing"
+    return text[start : text.index("\nfi\n", start) + 4]
+
+
+def _guard_tree(tmp_path: Path) -> Path:
+    # A checkout with one commit: a tracked file, an ignore list, and an ignored build/ that already holds a file.
+    tree = tmp_path / "tree"
+    (tree / "build").mkdir(parents=True)
+    (tree / ".gitignore").write_text("/config_*.cfg\nbuild/\n__pycache__/\ntests/_tmp/\n.venv/\nnode_modules/\n", encoding="utf-8")
+    (tree / "kept.txt").write_text("a\n", encoding="utf-8")
+    (tree / "build" / "old.txt").write_text("", encoding="utf-8")
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false"]
+    for args in (["init", "-q"], ["add", "-A"], ["commit", "-qm", "init"]):
+        subprocess.run([*git, *args], cwd=tree, check=True, capture_output=True, timeout=_SNIPPET_TIMEOUT_S)
+    return tree
+
+
+def test_the_guard_names_each_new_path_but_the_tiers_own_outputs(repo_root: Path, tmp_path: Path) -> None:
+    # A root config file a test wrote (ignored), a file in an ignored directory, an untracked one and an edited tracked
+    # one are named; the unit tier's scratch, bytecode and pytest's cache are its outputs; the tool environments are out.
+    tree = _guard_tree(tmp_path)
+    plant = (
+        "mkdir -p tests/_tmp/k scripts/__pycache__ __pycache__ .pytest_cache/v .venv/lib node_modules/p notes\n"
+        "touch config_SYSTEM.cfg build/new.txt notes/n.txt tests/_tmp/k/x scripts/__pycache__/m.pyc __pycache__/r.pyc .pytest_cache/v/c .venv/lib/y node_modules/p/z\n"
+        "echo b >>kept.txt\n"
+    )
+    script = tmp_path / "guard.sh"
+    script.write_text(f'#!/usr/bin/env bash\nset -euo pipefail\n{_checkout_guard(repo_root)}\nbefore="$(_checkout_paths)"\n{plant}after="$(_checkout_paths)"\n_checkout_left "$before" "$after"\n', encoding="utf-8")
+    done = subprocess.run(["/bin/bash", str(script)], cwd=tree, capture_output=True, text=True, check=False, timeout=_SNIPPET_TIMEOUT_S)
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.splitlines() == ["build/new.txt", "config_SYSTEM.cfg", "kept.txt", "notes/n.txt"], done.stdout
+
+
+def test_a_checkout_git_cannot_list_is_no_verdict_rather_than_clean(repo_root: Path, tmp_path: Path) -> None:
+    script = tmp_path / "second.sh"
+    results = tmp_path / "results"
+    script.write_text(f'#!/usr/bin/env bash\nset -euo pipefail\n{_checkout_guard(repo_root)}\nresults_dir="{results}"\ncheckout_listed=1\ncheckout_before=""\n{_second_listing(repo_root)}\n', encoding="utf-8")
+    for name in ("plain", "results"):
+        (tmp_path / name).mkdir()
+    env = {**os.environ, "GIT_CEILING_DIRECTORIES": str(tmp_path)}
+    done = subprocess.run(["/bin/bash", str(script)], cwd=tmp_path / "plain", env=env, capture_output=True, text=True, check=False, timeout=_SNIPPET_TIMEOUT_S)
+    assert done.returncode == 0, done.stderr
+    assert sorted(p.name for p in results.iterdir()) == ["checkout.noverdict"], "no listing of new paths without a verdict"
+    assert (results / "checkout.noverdict").read_text(encoding="utf-8") == "no verdict (git status could not list the checkout, its error above)\n"
+
+
+def test_the_checkout_is_listed_before_either_tier_starts_and_again_after_both_end(repo_root: Path) -> None:
+    # After every build step (the tiers' outputs exclude what the builds write) and before the pytest tier's launch; the
+    # second listing after the one `wait` that reaps both tiers, and before the verdict that reads it.
+    code = _without_comments(_test_sh_text(repo_root))
+    first = code.index('if checkout_before="$(_checkout_paths)"; then')
+    second = code.index('checkout_after="$(_checkout_paths)"')
+    assert code.index("\n_build_sites\n") < first < code.index(_PYTEST_LINE), "the first listing must follow the builds and precede the pytest tier"
+    assert code.index("\nwait || true\n") < second < code.index("source scripts/_summary_block.sh"), "the second listing must follow the final wait"
+    assert code.count("_checkout_paths)") == 2, "exactly two listings"
+
+
+def test_a_path_left_in_the_checkout_fails_the_run_naming_it(repo_root: Path, tmp_path: Path) -> None:
+    code, out, root = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok")}, extra={"checkout_left.txt": "config_SYSTEM.cfg\n"})
+    assert code == 1, out
+    block = _block(out)
+    assert "\nFailed:\n  - the checkout: 1 path(s) left behind by the run: config_SYSTEM.cfg\n" in block, block
+    assert block.endswith("Result: FAIL\nExit code: 1\n"), block
+    assert "\n  - config_SYSTEM.cfg\n" in out[: out.index(block)], "every path is listed before the block"
+    (run,) = (root / "build" / "archive" / "test_sh").iterdir()
+    assert (run / "checkout_left.txt").read_text(encoding="utf-8") == "config_SYSTEM.cfg\n"
+
+
+def test_the_block_names_five_paths_and_counts_the_rest_while_the_listing_names_each(repo_root: Path, tmp_path: Path) -> None:
+    paths = [f"p{i}.cfg" for i in range(7)]
+    code, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok")}, extra={"checkout_left.txt": "".join(f"{path}\n" for path in paths)})
+    assert code == 1, out
+    block = _block(out)
+    assert "  - the checkout: 7 path(s) left behind by the run: p0.cfg, p1.cfg, p2.cfg, p3.cfg, p4.cfg, +2 more\n" in block, block
+    assert "".join(f"\n  - {path}" for path in paths) + "\n" in out[: out.index(block)]
+
+
+def test_a_guard_without_a_verdict_fails_the_run_too(repo_root: Path, tmp_path: Path) -> None:
+    code, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok")}, extra={"checkout.noverdict": "no verdict (listing failed)\n"})
+    assert code == 1, out
+    assert "\n  - the checkout: no verdict (listing failed)\n" in _block(out)
+
+
 # --- the failure annotations (the only channel off the runner that is not the raw log) -------------
 
 
@@ -1554,11 +1665,11 @@ def test_a_missing_log_cannot_abort_the_summary_the_annotation_is_part_of(repo_r
 
 def test_every_way_the_suite_goes_red_gets_an_annotation_and_only_under_actions(repo_root: Path) -> None:
     text = _test_sh_text(repo_root)
-    # Three independent ways this script reports red - a failing file, a file that only logged an
-    # allocation failure, the pytest tier - plus the count of whatever the 10-per-step cap withheld.
-    assert text.count("::error title=") == 4, "each of the three red outcomes needs its own annotation, plus the overflow count"
+    # Four independent ways this script reports red - a failing file, a file that only logged an allocation failure,
+    # the pytest tier, a path left in the checkout - plus the count of whatever the 10-per-step cap withheld.
+    assert text.count("::error title=") == 5, "each of the four red outcomes needs its own annotation, plus the overflow count"
     assert text.count('if [ -n "${GITHUB_ACTIONS:-}" ]') == 1, "a local run must not print workflow commands at all"
-    assert _annotation_block(repo_root).count("::error title=") == 4, "every annotation must be emitted from the one GITHUB_ACTIONS-gated block"
+    assert _annotation_block(repo_root).count("::error title=") == 5, "every annotation must be emitted from the one GITHUB_ACTIONS-gated block"
 
 
 def test_an_allocation_failure_marker_survives_into_one_escaped_annotation(repo_root: Path, tmp_path: Path) -> None:
@@ -1582,6 +1693,14 @@ def test_the_annotations_never_pass_github_s_ten_per_step_cap_and_the_pytest_tie
     assert lines[0].startswith("::error title=tests_scripts/ (CPython/pytest)::"), lines
     assert [line.split("::")[1] for line in lines[1:9]] == [f"error title=tests/test_f{i}.py" for i in range(8)], lines
     assert lines[9].startswith("::error title=and 4 more::4 further"), lines
+
+
+def test_the_checkout_s_annotation_follows_the_pytest_tier_s_and_the_cap_still_holds(repo_root: Path, tmp_path: Path) -> None:
+    lines = _run_annotation_block(repo_root, tmp_path, failed=9, memory=3, pytest_failed=True, checkout="1 path(s) left behind by the run: config_SYSTEM.cfg")
+    assert len(lines) == 10, lines
+    assert lines[1] == "::error title=the checkout::1 path(s) left behind by the run: config_SYSTEM.cfg", lines
+    assert [line.split("::")[1] for line in lines[2:9]] == [f"error title=tests/test_f{i}.py" for i in range(7)], lines
+    assert lines[9].startswith("::error title=and 5 more::5 further"), lines
 
 
 def test_a_run_under_the_cap_gets_every_annotation_and_no_overflow_line(repo_root: Path, tmp_path: Path) -> None:
@@ -1778,6 +1897,49 @@ def test_a_test_failure_outranks_a_renderer_failure(repo_root: Path, tmp_path: P
     assert _block(out).endswith("Result: FAIL\nExit code: 1\n")
 
 
+_ENDED = "runner: tracing ended after src/x.py:3 - every traced line the file ran after it is missing from its coverage\n"
+
+
+def _tracer_notes(tmp_path: Path, *tags: str) -> None:
+    # tests/_coverage_runner.py's note beside a job's dump, its tracer ended early (SPECIFICATION.md E.5.1).
+    (tmp_path / "raw").mkdir()
+    for tag in tags:
+        (tmp_path / "raw" / f"{tag}.json.incomplete").write_text(_ENDED, encoding="utf-8")
+
+
+def test_a_tracer_that_ended_early_is_listed_by_job_and_exits_three_never_one(repo_root: Path, tmp_path: Path) -> None:
+    # Its tests passed and only its coverage is short: E.5.3's code 3, the Result line saying which kind of short.
+    _tracer_notes(tmp_path, "test_ok", "test_pd[fixture-device-a]")
+    jobs: dict[str, tuple[str | None, str | None, str | None]] = {"tests/test_ok.py": _passing("test_ok"), "tests/test_pd.py[fixture-device-a]": _passing("test_pd[fixture-device-a]"), "tests/test_fine.py": _passing("test_fine")}
+    code, out, _ = _run_tail(repo_root, tmp_path, jobs, coverage=1)
+    assert code == 3, out
+    block = _block(out)
+    tail = "coverage incomplete: tracing ended after src/x.py:3 - every traced line the file ran after it is missing from its coverage"
+    assert f"\nNotes:\n  - tests/test_ok.py: {tail}\n  - tests/test_pd.py[fixture-device-a]: {tail}\nChecked nothing: none\n" in block, block
+    assert block.endswith("Result: PASS (coverage incomplete in 2 job(s), listed under Notes)\nExit code: 3\n"), block
+
+
+def test_a_tracer_note_and_a_failed_render_are_both_named(repo_root: Path, tmp_path: Path) -> None:
+    _tracer_notes(tmp_path, "test_ok")
+    code, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok")}, coverage=1, render_fails=True)
+    assert code == 3, out
+    assert _block(out).endswith("Result: PASS (coverage report not rendered; coverage incomplete in 1 job(s), listed under Notes)\nExit code: 3\n")
+
+
+def test_a_test_failure_outranks_a_tracer_note(repo_root: Path, tmp_path: Path) -> None:
+    _tracer_notes(tmp_path, "test_ok")
+    code, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok"), "tests/test_x.py": ("FAIL\n", None, None)}, coverage=1)
+    assert code == 1
+    assert _block(out).endswith("Result: FAIL\nExit code: 1\n")
+
+
+def test_a_plain_run_never_reads_a_tracer_note(repo_root: Path, tmp_path: Path) -> None:
+    _tracer_notes(tmp_path, "test_ok")
+    code, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok")})
+    assert code == 0, out
+    assert "coverage incomplete" not in out
+
+
 def test_nothing_follows_the_block_on_stdout(repo_root: Path, tmp_path: Path) -> None:
     _, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok")})
     assert out.endswith("Exit code: 0\n")
@@ -1919,8 +2081,10 @@ def test_every_report_render_tolerates_its_own_failure(repo_root: Path) -> None:
     text = _without_comments(_test_sh_text(repo_root))
     renders = [line for line in text.splitlines() if "_render_coverage.py" in line or "uv run coverage html" in line or "uv run coverage report" in line]
     assert len(renders) == 5, "expected the src/, digital_twin/ and generated-module renders and the host report's two"
+    # Each also records the data it read, so a failed render's input is kept: the dumps, or the host tier's data file.
     for line in renders:
-        assert line.rstrip().endswith("|| coverage_render_failed=1"), f"unguarded renderer call: {line.strip()}"
+        data = "$raw_dir" if "_render_coverage.py" in line else "$results_dir/host.coverage"
+        assert re.search(r'\|\| _unrendered "[^"]+" "' + re.escape(data) + '"$', line.rstrip()), f"unguarded renderer call: {line.strip()}"
 
 
 def test_a_coverage_run_renders_the_four_reports(repo_root: Path, tmp_path: Path) -> None:
@@ -1946,6 +2110,62 @@ def test_a_coverage_run_archives_exactly_the_four_reports_it_renders(repo_root: 
     archived = set(words[words.index("test_sh_coverage") + 1 :])
     expected = {f"htmlcov{tail}" for tail in ("", "_digital_twin", "_generated", "_host")} | {f"coverage_summary{tail}.md" for tail in ("", "_digital_twin", "_generated", "_host")}
     assert archived == expected, f"scripts/test.sh --coverage archives {sorted(archived)}"
+
+
+_KEPT_NOTE = " - the data each read is kept in this run's evidence archive"
+
+
+def _dumps(tmp_path: Path) -> None:
+    # One Unix-port coverage dump where the run's raw_dir is (_run_tail's tmp_path/raw).
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "raw" / "test_ok.json").write_text("{}", encoding="utf-8")
+
+
+def test_a_failed_render_keeps_the_dumps_it_read_in_the_evidence_archive_and_says_where(repo_root: Path, tmp_path: Path) -> None:
+    # Offline, a render's inline dependency cannot resolve: the dumps it read move into the archive later runs prune,
+    # never into a new temporary directory, and the line before the block names where they are.
+    _dumps(tmp_path)
+    code, out, root = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok")}, coverage=1, render_fails="htmlcov_generated", extra={"host.coverage": "host"})
+    assert code == 3, out
+    (run,) = (root / "build" / "archive" / "test_sh").iterdir()
+    assert (run / "coverage_raw" / "test_ok.json").read_text(encoding="utf-8") == "{}"
+    assert not (run / "host.coverage").exists(), "the host reports rendered, so their data is not kept"
+    assert not (tmp_path / "raw").exists(), "the dumps moved, so the EXIT trap has nothing of them left to remove"
+    assert f"== Kept for the coverage report not rendered: {run}/coverage_raw\n" in out, out
+    block = _block(out)
+    assert f"\nNotes:\n  - coverage: not rendered: the generated modules (htmlcov_generated){_KEPT_NOTE}\n" in block, block
+    assert block.endswith("Result: PASS (coverage report not rendered)\nExit code: 3\n"), block
+
+
+def test_a_failed_host_render_keeps_its_data_file_and_not_the_dumps(repo_root: Path, tmp_path: Path) -> None:
+    _dumps(tmp_path)
+    code, out, root = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok")}, coverage=1, render_fails="coverage html", extra={"host.coverage": "host"})
+    assert code == 3, out
+    (run,) = (root / "build" / "archive" / "test_sh").iterdir()
+    assert (run / "host.coverage").read_text(encoding="utf-8") == "host"
+    assert not (run / "coverage_raw").exists()
+    assert (tmp_path / "raw" / "test_ok.json").is_file(), "the dumps rendered, so they stay for the EXIT trap to remove"
+    assert f"  - coverage: not rendered: the host build chain (htmlcov_host){_KEPT_NOTE}\n" in _block(out)
+
+
+def test_a_failed_render_is_still_named_when_a_test_failure_decides_the_result(repo_root: Path, tmp_path: Path) -> None:
+    # Exit 1 outranks 3, so the Result line cannot say it: the Notes do, and the data is kept all the same.
+    _dumps(tmp_path)
+    code, out, root = _run_tail(repo_root, tmp_path, {"tests/test_x.py": ("FAIL\n", None, None)}, coverage=1, render_fails=True, extra={"host.coverage": "host"})
+    assert code == 1, out
+    reports = "src/ (htmlcov), digital_twin/ (htmlcov_digital_twin), the generated modules (htmlcov_generated), the host build chain (htmlcov_host), the host build chain (coverage_summary_host.md)"
+    assert f"  - coverage: not rendered: {reports}{_KEPT_NOTE}\n" in _block(out), _block(out)
+    (run,) = (root / "build" / "archive" / "test_sh").iterdir()
+    assert sorted(p.name for p in run.iterdir()) == ["coverage_raw", "host.coverage", "summary.txt"]
+
+
+def test_a_rendered_coverage_run_keeps_no_coverage_data(repo_root: Path, tmp_path: Path) -> None:
+    _dumps(tmp_path)
+    code, out, root = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok")}, coverage=1, extra={"host.coverage": "host"})
+    assert code == 0, out
+    (run,) = (root / "build" / "archive" / "test_sh").iterdir()
+    assert [p.name for p in run.iterdir()] == ["summary.txt"]
+    assert "Kept for the coverage report" not in out
 
 
 @pytest.mark.parametrize("failing", ["htmlcov_generated", "coverage html", "coverage report"])

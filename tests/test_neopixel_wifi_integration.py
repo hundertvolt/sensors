@@ -16,6 +16,7 @@ from _sensortask_scenarios import build
 from _shared_rest_roundtrip import drain_json
 from _strict_json import strict_loads
 from _tmp_scratch import TmpScratch
+from _twin_devices import devices_with, distinct_wirings
 from microdot import Microdot, Request, Response
 
 from asy_neopixel_driver import NeopixelDriver
@@ -46,6 +47,7 @@ def test_real_neopixel_driver_on_off_toggle_through_wifi_service_ext_led() -> No
     pixel._frame_ms = 10
     run(pixel.setup())  # the boot batch's setup(), before any task starts
     conn = WifiService(WifiConfig("SensorNode", "12345678", 5, 5), ext_led=pixel, cfg_path=_tmp_cfg_dir())
+    run(conn.setup())
 
     def last_is(colour: "tuple[int, int, int]") -> "Callable[[], bool]":
         return lambda: pixel._pixel.writes[-1:] == [[colour]]
@@ -105,16 +107,12 @@ class _FlashSleeps:
         asyncio.sleep, asyncio.sleep_ms = self._real
 
 
-def _a_device_with_a_neopixel() -> str:
-    # The device comes from the generated wiring plans, chosen by its neopixel instance, never by name.
+def _devices_with_a_neopixel() -> "list[str]":
+    # One device per distinct whole wiring among those wiring a neopixel, as the test reads each one's whole timer
+    # collection; none wiring one fails in devices_with().
     require_fresh()
-    for name in sorted(os.listdir("build/generated_src")):
-        if name.endswith("_wiring_plan.json"):
-            with open("build/generated_src/" + name) as f:
-                plan = json.load(f)
-            if "neopixel" in plan["instances"]:
-                return str(plan["device"])
-    raise AssertionError("no generated device declares a neopixel instance")
+    wired = devices_with("neopixel")
+    return [device for device in distinct_wirings() if device in wired]
 
 
 def _blocked_dir() -> str:
@@ -366,12 +364,13 @@ def test_a_neopixel_driver_is_an_error_source_of_the_webserver() -> None:
     assert {"num": 1, "type": "E"} not in history
 
 
-def test_the_drivers_empty_timer_list_reaches_a_generated_device() -> None:
-    module = build(_a_device_with_a_neopixel(), cfg_path=_tmp_cfg_dir())
-    assert isinstance(module.neopixel, NeopixelDriver)
-    assert module.neopixel.get_timer_starters() == []
-    starters = module._collect_timer_starters()  # collects the empty list among the other modules' starters
-    assert all(callable(s) for s in starters)
+def test_the_drivers_empty_timer_list_reaches_every_generated_device_wiring_it() -> None:
+    for device in _devices_with_a_neopixel():
+        module = build(device, cfg_path=_tmp_cfg_dir())
+        assert isinstance(module.neopixel, NeopixelDriver), device
+        assert module.neopixel.get_timer_starters() == [], device
+        starters = module._collect_timer_starters()  # collects the empty list among the other modules' starters
+        assert all(callable(s) for s in starters), device
 
 
 if __name__ == "__main__":

@@ -613,8 +613,8 @@ describe("installMockFetch", () => {
         expect((await resubmit.json()).result.SCD30.ForceCalRef).toBe("Valid");
     });
 
-    it("runs PUT /sensors' AmbPres on every apply: never Unchanged, and GET reads back the value applied", async () => {
-        // An always-executed field: the chip takes it on every PUT, so even the stored value is re-sent.
+    it("runs PUT /sensors' AmbPres whenever an apply carries it: never Unchanged, and GET reads back the value applied", async () => {
+        // An always-executed field: the chip takes it whenever a PUT carries it, so even the stored value is re-sent.
         uninstall = installMockFetch(DEFS, DATA);
         for (const value of [1013, 1013, 950]) {
             // eslint-disable-next-line no-await-in-loop -- each PUT must follow the last one's store

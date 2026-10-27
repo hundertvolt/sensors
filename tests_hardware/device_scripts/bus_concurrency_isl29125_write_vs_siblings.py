@@ -62,7 +62,7 @@ async def _main() -> None:
         raw = await sgp.measure_raw(temperature=25, relative_humidity=50)
         return None if raw is None or 0 <= raw <= 0xFFFF else f"raw={raw} outside the 16-bit range - a torn word"
 
-    scd_rec, sgp_rec, write_rec = Record("scd30"), Record("sgp40"), Record("isl29125_configure", windows=True)
+    scd_rec, sgp_rec, write_rec = Record("scd30", windows=True), Record("sgp40", windows=True), Record("isl29125_configure", windows=True)
     stop = Stop()
 
     async def writer() -> None:
@@ -87,8 +87,15 @@ async def _main() -> None:
     fact("isl_windows", write_rec.windows)
     fact("scd_reads", scd_rec.reads)
     fact("sgp_reads", sgp_rec.reads)
+    fact("overlapped_reads", _overlapped(write_rec, [scd_rec, sgp_rec]))
     report_errors([scd_rec, sgp_rec, write_rec])
     done()
+
+
+def _overlapped(writes: "Record", readers: "list[Record]") -> int:
+    # Sibling reads whose window shares time with a write's: one that ended before a write began, or began after it
+    # ended, raced nothing. Ticks wrap, so every comparison goes through ticks_diff().
+    return sum(1 for r in readers for start, end in r.windows or [] if any(time.ticks_diff(w_end, start) > 0 and time.ticks_diff(end, w_start) > 0 for w_start, w_end in writes.windows or []))
 
 
 asyncio.run(_main())

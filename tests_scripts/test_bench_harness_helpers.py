@@ -7,6 +7,7 @@ import functools
 import inspect
 import json
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -178,6 +179,7 @@ class _Recorder:
 
     def kick_all_stations(self) -> None:
         self.calls.append("kick_all_stations")
+
 
 
 def _bare_resets(tree: ast.Module) -> "list[str]":
@@ -467,6 +469,25 @@ def test_kick_then_reset_kicks_the_stations_before_the_one_reset() -> None:
     fake = _Recorder()
     harness.kick_then_reset(fake, fake)  # type: ignore[arg-type]
     assert fake.calls == ["kick_all_stations", "hard_reset"]
+
+
+def test_the_soak_reads_systems_log_first_only_after_a_hard_reset_and_a_fresh_boot() -> None:
+    # Its calls in source order, no twin: without a bench the session's own reset leaves the board mid-boot, so the
+    # first live read must follow a reset of the soak's own, the board back on USB and the boot line.
+    tree = ast.parse((TESTS_HARDWARE / "flash" / "test_memory_stress.py").read_text(encoding="utf-8"))
+    soak = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "test_single_core_timing_headroom_holds_under_normal_full_task_load")
+    calls = sorted((node for node in ast.walk(soak) if isinstance(node, ast.Call)), key=lambda call: (call.lineno, call.col_offset))
+    order = [_call_name(call) for call in calls if _call_name(call) in {"hard_reset", "wait_until", "wait_for_boot", "read_live_system_log"}]
+    assert order[: order.index("read_live_system_log") + 1] == ["hard_reset", "wait_until", "wait_for_boot", "read_live_system_log"], order
+
+
+def test_elf_symbols_drops_a_name_nm_lists_more_than_once(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # A canned `nm -S` listing, no toolchain run: two local `tab`s and a `helper` listed once unsized could each be the
+    # one a caller means, so neither comes back; the unique sized `base` does, and the unsized `_start` never does.
+    listing = "20000100 00000010 b tab\n20000200 00000020 b tab\n20000300 00000004 d base\n10000400 t helper\n10000500 00000008 t helper\n10000000 T _start\n"
+    monkeypatch.setattr(shutil, "which", lambda *_args, **_kwargs: "/usr/bin/arm-none-eabi-nm")
+    monkeypatch.setattr(subprocess, "run", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, stdout=listing, stderr=""))
+    assert harness.elf_symbols(tmp_path / "firmware.elf") == {"base": (0x20000300, 4)}
 
 
 def test_the_kick_then_reset_cli_kicks_before_the_one_reset_on_the_named_board(monkeypatch: pytest.MonkeyPatch) -> None:

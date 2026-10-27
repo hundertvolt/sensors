@@ -588,14 +588,14 @@ jobs:
       # swallows what did render.
       #
       # This step is NOT advisory (owner, 2026-09-22): build-settrace is the only interpreter no
-      # other job runs. Exit 1 (a test failed) goes red; exit 3 (only the report failed) stays
+      # other job runs. Exit 1 (a test failed) goes red; exit 3 (only the coverage is short) stays
       # advisory (Part E.5.3).
       - name: Run unit tests with coverage (the test result gates, the report does not)
         run: |
           status=0
           scripts/test.sh --coverage || status=$?
           if [ "$status" -eq 3 ]; then
-              echo "::warning::coverage rendering failed, but every test passed (exit 3) - report only"
+              echo "::warning::coverage short (a report did not render or a tracer ended early), but every test passed (exit 3) - see the run's Notes"
               exit 0
           fi
           exit "$status"

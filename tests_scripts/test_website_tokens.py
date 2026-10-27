@@ -18,7 +18,7 @@ _PAIRS = (
     *((text, background, _TEXT) for text in ("text", "text-muted") for background in ("bg", "surface", "surface-alt")),
     ("accent-contrast", "accent", _TEXT),
     *((status, background, _STATUS) for status in ("success", "danger", "warn") for background in (f"{status}-bg", "surface")),
-    ("neutral", "surface", _STATUS),
+    *(("neutral", background, _STATUS) for background in ("neutral-bg", "surface")),
     *(("control-border", background, _COMPONENT) for background in ("surface", "surface-alt")),
 )
 

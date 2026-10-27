@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import _load
 import http_client
 import pytest
-from error_log_helpers import assert_no_task_ended, errcount_entry, get_errcount, reset_all_error_logs, save_errcount
+from error_log_helpers import assert_no_task_ended, code, errcount_entry, get_errcount, reset_all_error_logs, save_errcount
 from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, SRC_DIR, bench_device, boot_lines, configured_max_connections, crash_lines, device_toml, fram_backed_logger_names, get_routes, parse_facts, restore_board_to_serving, wait_for_script_server, wait_until
 from soak_durations import SOAK_DURATION_SECONDS
 
@@ -17,6 +17,7 @@ from buildgen.validate import smallest_hard_consumer
 
 if TYPE_CHECKING:
     from bench_control import BenchBridge
+    from error_log_helpers import ErrcountEntry
     from harness import Board
 
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency", "sensortask_integration", "poll_prewarm", "ci_suite._run_11_soak", "loop_lag")
@@ -33,6 +34,7 @@ _FETCH_TIMEOUT_S = 5.0
 _JOIN_TIMEOUT_S = 10.0
 # @tunable l4.memory_stress_bench_voc_reset_interval_s = 3.0
 _VOC_RESET_INTERVAL_S = 3.0
+_CEILING_ENTRIES = frozenset({("W", code("W", "HTTP_REFUSED")), ("W", code("W", "HTTP_PEER_RESET"))})  # src/asy_webserver_service.py's drop traces
 # Readers' answered requests, the writer's never counted: writer starvation is accepted degradation (owner, 2026-09-28).
 # @tunable l4.memory_stress_bench_min_answered = 100
 _MIN_ANSWERED = 100
@@ -62,6 +64,11 @@ class _Hammer:
         self.lock = threading.Lock()
 
 
+@pytest.mark.provokes_log(
+    "one reader per connection slot plus the VOC writer: the ceiling's reject-when-full",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
 def test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot(board: "Board", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     save_errcount(dut_ip, request.node.name)  # what the board logged before this test is evidence (CLAUDE.md)
     reset_all_error_logs(dut_ip, request.node.name)
@@ -76,6 +83,11 @@ def test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reb
 
 
 @pytest.mark.soak_duration
+@pytest.mark.provokes_log(
+    "one reader per connection slot plus the VOC writer: the ceiling's reject-when-full",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
 def test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved(board: "Board", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # The hammer above over a named soak duration (mid = 600s matches the one real WDT_RESET observed); captures the
     # FRAM-backed errcount in the assertion message before any clear (CLAUDE.md).
@@ -86,11 +98,11 @@ def test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnos
     reset_all_error_logs(dut_ip, request.node.name)
     lines, record = _run_max_speed_hammer_load(board, dut_ip, SOAK_DURATION_SECONDS[duration])
     counts = get_errcount(dut_ip)
-    logged = {name: entry for name in fram_backed_logger_names(bench_device()) if (entry := errcount_entry(counts, name))["counter"] > 0}
+    logged = {name: entry for name in fram_backed_logger_names(bench_device()) if _beyond_the_ceiling(name, entry := errcount_entry(counts, name))}
     try:
         _assert_no_crash_or_reboot(lines, "the extended max-speed hammer load")
         assert_no_task_ended(dut_ip, "extended max-speed hammer load")
-        assert not logged, f"a FRAM-backed module logged a real error during the hammer load - real diagnostic evidence, captured before any cleanup: {logged!r}"
+        assert not logged, f"a FRAM-backed module logged a real error during the hammer load, beyond WEBSERVER's ceiling refusals - real diagnostic evidence, captured before any cleanup: {logged!r}"
         assert record.answered >= _MIN_ANSWERED, f"too few reads answered during the hammer load ({record.answered} ok, {len(record.errors)} rejected/errored) - server may have wedged"
         result_note(f"{record.answered} reads answered, {record.accepted} ResetVOC writes accepted over {SOAK_DURATION_SECONDS[duration]:g}s; MemFree floor {min(record.mem_free, default=-1)} B")
     finally:
@@ -136,6 +148,11 @@ def test_http_soak_stays_live(board: "Board", dut_ip: str, request: pytest.Fixtu
     assert len(request_errors) <= _SOAK_REQUEST_FAILURE_RATE * len(sent), f"too many failed/non-200 requests during the soak ({len(request_errors)} of {len(sent)}): {request_errors[:10]}"
 
 
+@pytest.mark.provokes_log(
+    "the hammer's ceiling of readers saturates admission: a reader beating a slot's release is refused (HTTP_REFUSED)",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
 def test_loop_lag_under_http_load_on_every_route_stays_under_the_smallest_hard_consumer(board: "Board", bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # The loop-lag script's main() on the board's own config, its server on the board's address, under the hammer's
     # readers on every route: the twin scenario's load and evidence, beside the script's lag, main() and FRAM facts.
@@ -156,13 +173,14 @@ def test_loop_lag_under_http_load_on_every_route_stays_under_the_smallest_hard_c
     assert not allocation, "the loop-lag script reported an allocation failure, caught or not:\n" + "\n".join(allocation)
     facts = parse_facts(output)
     bound_us = smallest_hard_consumer(load_device(device_toml()), SRC_DIR).ms * 1000  # the flash test's and the twin scenario's one source
-    lag_max, lag_p99 = facts.get("lag_max_us"), facts.get("lag_p99_us")
+    lag_max, lag_p99, samples = facts.get("lag_max_us"), facts.get("lag_p99_us"), facts.get("samples")
     result_note(f"loop lag under HTTP load: max {lag_max} us, p99 {lag_p99} us over {facts.get('samples')} samples (bound {bound_us} us); {record.answered} reads answered, per route {record.served}")
     unserved = [route for route in _HAMMER_PATHS if not record.served.get(route)]
     assert _HAMMER_PATHS and not unserved, f"GET routes never served under the load: {unserved} of {len(_HAMMER_PATHS)} routes; {record.errors[:5]}"
     assert facts.get("main_running") is True, f"the shipped main() ended inside the window: {facts}"
     writes = facts.get("fram_writes")
     assert facts.get("fram_write_failures") == 0 and isinstance(writes, int) and writes > 0, f"the FRAM load did not run cleanly: {facts}"
+    assert isinstance(samples, int) and samples > 0, f"the lag probe recorded no sample, so the {bound_us} us bound was checked against nothing: {facts}"
     assert isinstance(lag_max, int) and lag_max <= bound_us, f"the loop lagged {lag_max} us, past the {bound_us} us smallest hard consumer: {facts}"
 
 
@@ -173,6 +191,13 @@ def _assert_no_crash_or_reboot(lines: "list[str]", what: str) -> None:
     assert not allocation, f"observed an allocation failure during {what}, caught or not:\n" + "\n".join(allocation)
     assert not crash_lines(lines), f"observed a crash during {what}:\n" + "\n".join(crash_lines(lines))
     assert not boot_lines(lines), f"observed an unexpected reboot during {what} (real memory exhaustion -> WDT reset?):\n" + "\n".join(boot_lines(lines))
+
+
+def _beyond_the_ceiling(name: str, entry: "ErrcountEntry") -> bool:
+    # Any entry but WEBSERVER's ceiling pair, the refusals the hammer's one client past the ceiling provokes.
+    if name != "WEBSERVER":
+        return entry["counter"] > 0
+    return any(h.get("type") != "N" and (h.get("type"), h.get("num")) not in _CEILING_ENTRIES for h in entry["history"])
 
 
 def _lag_load(dut_ip: str, stop: threading.Event, record: _Hammer, stuck: "list[str]") -> None:

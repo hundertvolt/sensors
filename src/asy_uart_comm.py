@@ -416,20 +416,13 @@ class UARTComm:
             return None
         return result
 
-    async def _check_buffer(self, buf: object, *, writable: bool) -> bool:
-        # The responder already type-checks what a callback hands back; the public entry
-        # points trusted their caller instead, so a str or an int reached the frame builder.
-        if buf is None:
-            return True
-        if isinstance(buf, (bytearray, memoryview)):
-            if writable and not _is_writable(buf):
-                await self._err(_ERR_BAD_ARG, "destination buffer is read-only")
-                return False
-            return True
-        if not writable and isinstance(buf, bytes):
-            return True
-        await self._err(_ERR_BAD_ARG, "buffer is a", type(buf).__name__, "not a byte buffer")
-        return False
+    async def _check_buffer(self, buf: "Readable | None", *, writable: bool) -> bool:
+        # Writability only: a read-only memoryview passes every type check and fails at its first
+        # assignment, after the peer is acknowledged. The buffer's type is its caller's signature's (D.2).
+        if writable and isinstance(buf, (bytearray, memoryview)) and not _is_writable(buf):
+            await self._err(_ERR_BAD_ARG, "destination buffer is read-only")
+            return False
+        return True
 
     async def _check_cap(self, size: int) -> bool:
         # Counted past the one CHUNKS byte, so a size over the cap is the cap's refusal at every cap the build allows
@@ -597,7 +590,7 @@ class UARTComm:
         # unacknowledged frame, plus one per re-initiation its timeout, drain and hold-off fit in _FLASH_HOLD_MAX_MS
         # (J.5), rounded up to a power of two (owner, 2026-10-05).
         bus = self._uart
-        if bus is None:
+        if bus is None:  # Unreachable: called only from _validate_receive(self._uart), after _validate_config() refused a missing bus - kept to narrow the Optional for the type checker
             return 0
         wire = bus.framing.max_encoded(_HEADER_LEN + self._payload_size + bus.crc.length())
         floor = max(self._min_rxbuf(), wire * (1 + _FLASH_HOLD_MAX_MS // (4 * self._timeout)))
@@ -898,7 +891,7 @@ class UARTComm:
         # Bytes a failed frame read swallowed since the last resync: without them a peer that only speaks when
         # spoken to never shows the mismatch signature (J.6).
         bus = self._uart
-        if bus is None:
+        if bus is None:  # Unreachable: runs only inside a transaction's resync, and no transaction runs once setup refused a missing bus - kept to narrow the Optional for the type checker
             return 0
         n = self._peek_discarded(bus)
         self._discarded_seen = bus.discarded_bytes

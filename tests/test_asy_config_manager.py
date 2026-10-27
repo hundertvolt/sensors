@@ -23,7 +23,8 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine, Sequence
+    from collections.abc import Callable, Coroutine, Sequence
+    from typing import NoReturn
 
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
@@ -2805,6 +2806,49 @@ def test_self_heals_a_failed_flush_on_the_next_accepted_change() -> None:
         _remove(path)
 
 
+def test_a_change_queued_behind_a_failing_flushs_log_write_heals_it_and_keeps_its_value() -> None:
+    # The failed flush's log write held open as the gate, a second change made meanwhile: it is written once,
+    # the store is persisted again, one error is logged, and the value in effect stays the newer one.
+    mgr, path = _make("c73_flushrace.cfg", cfg_vals=_VAL_INT)
+    try:
+        gate, logging = asyncio.Event(), asyncio.Event()
+        real_err_s = mgr.pr.err_s
+
+        async def gated_err_s(*args: object, errno: int = 0, sep: str = " ", end: str = "\n") -> None:
+            logging.set()
+            await gate.wait()
+            await real_err_s(*args, errno=errno, sep=sep, end=end)
+
+        async def until(what: str, condition: "Callable[[], bool]") -> None:
+            for _ in range(100):  # a bound on scheduler rounds, never a count the scenario relies on
+                if condition():
+                    return
+                await asyncio.sleep(0)
+            raise AssertionError(what + " - not within 100 scheduler rounds")
+
+        async def scenario() -> None:
+            before = mgr.pr._err_count
+            with WriteCountingOpen(cm, fail_writes=True):
+                assert (await mgr.write_config({"Count": 7}))[0] is True
+                await until("the failed flush never reached its log write", logging.is_set)
+            with WriteCountingOpen(cm) as fake:
+                put = asyncio.create_task(mgr.write_config({"Count": 8}))
+                await until("the change neither queued on the lock nor staged", lambda: put.done() or mgr._config_lock.waiting.peek() is not None)  # type: ignore[attr-defined]  # asyncio's Lock queues its waiters there; the stub omits it
+                gate.set()
+                assert (await put)[0] is True
+                await mgr.flush_pending()
+                assert fake.writes == 1, f"the change made during the failed flush was written {fake.writes} times"
+            assert mgr.pr._err_count - before == 1 and not mgr.unpersisted
+            assert await mgr.get_int_values(_VAL_INT) == [8], "the failed snapshot replaced the newer value in effect"
+
+        mgr.pr.err_s = gated_err_s  # type: ignore[method-assign]
+        run(scenario())
+        with open(path) as f:
+            assert json.load(f) == {"Count": 8}
+    finally:
+        _remove(path)
+
+
 class _UnserialisableValue:
     # json.dump() renders an unknown object through its repr(), so a repr() that raises is what an
     # unexpected serialisation failure looks like here (MicroPython writes "<object>" for a plain one).
@@ -3325,6 +3369,57 @@ def test_a_write_error_is_not_retried_and_keeps_the_old_document() -> None:
         assert _newest_code(mgr) == code("E", "CFG_FILE_WRITE")
     finally:
         _remove(path)
+
+
+def test_reset_error_counter_answers_false_when_the_history_clear_fails() -> None:
+    # The clear refused (its FRAM chunk write failing): the run of failed reads stays open, so it is not shown again.
+    mgr, path = _make("resetrefused.cfg")
+    try:
+        async def refused() -> bool:
+            return False
+
+        mgr.pr.reset = refused  # type: ignore[method-assign]
+        mgr._read_failing = True
+        assert run(mgr.reset_error_counter()) is False
+        assert mgr._read_failing is True
+    finally:
+        _remove(path)
+
+
+def test_a_schema_field_with_no_default_leaves_the_manager_invalid_and_writes_no_file() -> None:
+    path = _tmp_path("nodefault.cfg")
+    _remove(path)
+    mgr = cm.ConfigManager(path, _VAL_INT + (("Bad", "int", None, 0, 10, None),), "TEST")
+    try:
+        assert run(mgr.setup()) is False
+        assert mgr.valid is False
+        assert _newest_code(mgr) == code("E", "CFG_BAD_DEFAULT")
+        assert not _exists(path)
+    finally:
+        _remove(path)
+
+
+def test_a_compare_that_exhausts_the_heap_fails_the_write_with_no_file_io() -> None:
+    mgr, path = _make("compareexhausted.cfg")
+    try:
+        stored = _file_bytes(path)
+        real = cm.compare_before_write
+
+        def exhausted(*_args: object, **_kwargs: object) -> "NoReturn":
+            raise MemoryError("simulated allocation failure")  # worded clear of the memory gates' markers
+
+        cm.compare_before_write = exhausted
+        try:
+            assert run(_write_flushed(mgr, {"Count": 7})) == (False, {})
+        finally:
+            cm.compare_before_write = real
+        assert _newest_code(mgr) == code("E", "ALLOC")
+        assert mgr._pending_flush is None
+        assert _file_bytes(path) == stored
+        assert run(mgr.get_dict(["Count"])) == {"Count": 5}
+    finally:
+        _remove(path)
+
 
 if __name__ == "__main__":
     import microtest

@@ -21,6 +21,7 @@ from error_log_helpers import (
     assert_module_error_log_clean,
     assert_module_error_log_contains,
     assert_module_error_log_empty,
+    assert_module_logged_one_code,
     assert_no_module_logged_a_new_error,
     assert_no_task_ended,
     code,
@@ -34,6 +35,7 @@ from harness import (
     SRC_DIR,
     Board,
     HardwareTestFailureError,
+    _wait_for_slots_to_drain,
     bench_device,
     boot_lines,
     configured_max_connections,
@@ -99,6 +101,10 @@ _UDP_CAPTURE_TIMEOUT_S = 55.0
 _RTC_WRITE_WAIT_S = 3.0
 # @tunable l4.network_resilience_ntp_resync_after_reset_timeout_s = 120.0
 _NTP_RESYNC_AFTER_RESET_TIMEOUT_S = 120.0
+# @tunable l4.network_resilience_ntp_retry_chain_margin_s = 10.0
+_NTP_RETRY_CHAIN_MARGIN_S = 10.0
+# @tunable l4.network_resilience_sync_age_slack_s = 2.0
+_SYNC_AGE_SLACK_S = 2.0
 # @tunable l4.network_resilience_no_ap_tail_s = 15.0
 _NO_AP_TAIL_S = 15.0
 # @tunable l4.hotspot_role_reversal_join_hotspot_timeout_s = 45.0
@@ -150,6 +156,17 @@ _WEBSERVER = "asy_webserver_service.py"
 _CEILING_TRACES = (code("W", "HTTP_REFUSED"), code("W", "HTTP_PEER_RESET"))
 
 
+@pytest.mark.provokes_log(
+    "the real outage's WLAN warnings, checked by _assert_wifi_log_has_only_benign_outage_warnings, and an NTP attempt"
+    " already past its network check when the AP drops, or its whole retry chain where the link still reads as up",
+    ("WIFI", "W", "WLAN_NO_AP"),
+    ("WIFI", "W", "WLAN_AUTH_FAILED"),
+    ("NTP", "E", "NTP_DNS_NOT_SENT"),
+    ("NTP", "E", "NTP_DNS"),
+    ("NTP", "E", "NTP_NOT_SENT"),
+    ("NTP", "E", "NTP_NO_REPLY"),
+    ("NTP", "E", "NTP_RETRIES"),
+)
 def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     bench.ap_down()
@@ -164,6 +181,17 @@ def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, be
     assert_no_task_ended(dut_ip, "real WiFi outage")  # on the reset path too: FRAM keeps SYSTEM
 
 
+@pytest.mark.provokes_log(
+    "the repeated real outages' WLAN warnings, checked by _assert_wifi_log_has_only_benign_outage_warnings, and an NTP"
+    " attempt already past its network check when the AP drops, or its whole retry chain where the link still reads as up",
+    ("WIFI", "W", "WLAN_NO_AP"),
+    ("WIFI", "W", "WLAN_AUTH_FAILED"),
+    ("NTP", "E", "NTP_DNS_NOT_SENT"),
+    ("NTP", "E", "NTP_DNS"),
+    ("NTP", "E", "NTP_NOT_SENT"),
+    ("NTP", "E", "NTP_NO_REPLY"),
+    ("NTP", "E", "NTP_RETRIES"),
+)
 def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     try:
@@ -231,6 +259,7 @@ def test_rest_stays_reachable_under_duplicated_and_reordered_packets(board: Boar
     reset_all_error_logs(dut_ip, request.node.name)
 
 
+@pytest.mark.provokes_log("the blocked NTP port's attempts, which the test asserts as NTP_NO_REPLY", ("NTP", "E", "NTP_NO_REPLY"))
 def test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # A synced client attempts nothing for hours and an unchanged NTPHost PUT fires no post function
     # (src/asy_api_response.py): the reset under the block makes the boot's sync fail, and the client's own retry timer,
@@ -255,7 +284,8 @@ def test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage(board: Boa
     wait_until(lambda: _load.ntp_synced(dut_ip), timeout_s=_NTP_RESYNC_TIMEOUT_S + block_s, poll_interval_s=_QUICK_POLL_S, description="NTP resynced by its own retry timer after the block, with no further reset")
     result_note(f"NTP resynced {time.monotonic() - started:.1f}s after the block lifted")
     assert_no_task_ended(dut_ip, "transient NTP outage")
-    reset_all_error_logs(dut_ip, request.node.name)  # the provoked failed attempt legitimately logged
+    assert_module_logged_one_code(dut_ip, "NTP", "E", code("E", "NTP_NO_REPLY"), events=None)  # the attempts the block met
+    reset_all_error_logs(dut_ip, request.node.name)  # after the provoked entry was read exactly
 
 
 # ---------------------------------------------------------------------------
@@ -264,10 +294,11 @@ def test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage(board: Boa
 # ---------------------------------------------------------------------------
 
 # 48 bytes, the NTP packet the client receives into (src/asy_ntp_client.py _NTP_PACKET_LEN), and still no valid NTP
-# header: its first byte's mode is 7 (private), never the server mode 4 the parser accepts.
+# header: its first byte 0xff is leap indicator 3, which _parse_ntp_reply() rejects as unsynchronised before any time.
 _GARBAGE_PAYLOAD = b"\xff" + b"not an NTP or DNS wire-format packet, on purpose"[:47]
 
 
+@pytest.mark.provokes_log("every garbage reply is rejected as unsynchronised (leap indicator 3)", ("NTP", "W", "NTP_UNSYNC_REPLY"))
 def test_ntp_server_sends_garbage_instead_of_a_valid_response(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     lines, answered = _garbage_window(board, bench, dut_ip, 123)
@@ -275,13 +306,13 @@ def test_ntp_server_sends_garbage_instead_of_a_valid_response(board: Board, benc
     assert not crash_lines(lines), f"a garbage NTP response crashed the system instead of being rejected cleanly: {crash_lines(lines)}"
     assert boot_lines(lines), f"the board did not finish booting with a garbage-answering NTP server: {lines[-20:]}"
     _reconnected_after_forced_resync(board, bench, dut_ip, result_note)
-    rejected = (code("E", "NTP_MALFORMED"), code("E", "NTP_IMPLAUSIBLE"))
-    entry = errcount_entry(get_errcount(dut_ip), "NTP")
-    assert any(h.get("type") == "E" and h.get("num") in rejected for h in entry["history"]) or "Invalid NTP time received!" in "\n".join(lines), f"no rejected NTP reply (NTP_MALFORMED/NTP_IMPLAUSIBLE) after {answered} garbage answers: {entry!r}"
+    # The reply's own rejection, never the console's "Invalid NTP time received!": every failed sync prints that line.
+    assert_module_error_log_contains(dut_ip, "NTP", code("W", "NTP_UNSYNC_REPLY"), "W")
     assert_no_task_ended(dut_ip, f"{_ROGUE_TAIL_S:g}s of garbage NTP replies")
     reset_all_error_logs(dut_ip, request.node.name)
 
 
+@pytest.mark.provokes_log("a garbage DNS reply fails the lookup as silence would, which NTP logs as NTP_DNS", ("NTP", "E", "NTP_DNS"))
 def test_dns_server_sends_garbage_instead_of_a_valid_response(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     lines, answered = _garbage_window(board, bench, dut_ip, 53)
@@ -308,6 +339,7 @@ _NTP_SPOOF_INJECTED_UNIX_TIME = 2524608000  # 2050-01-01T00:00:00Z - inside _par
 _SPOOF_YEAR = time.gmtime(_NTP_SPOOF_INJECTED_UNIX_TIME).tm_year
 
 
+@pytest.mark.provokes_log("the real reply is held back and the spoof refused, so the attempt ends without a reply", ("NTP", "E", "NTP_NO_REPLY"))
 def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # A connect()'d client socket takes datagrams from its true peer only: a spoof it took would set the RTC to its
     # Transmit Timestamp (2050-01-01), readable as GET /status's UTCTime.
@@ -346,6 +378,7 @@ _GARBAGE_NTP_HOST = "this-host-will-never-resolve.invalid"
 
 
 @pytest.mark.persistence_write
+@pytest.mark.provokes_log("the .invalid host's lookup answers NXDOMAIN, which the test waits for", ("NTP", "E", "NTP_DNS_NXDOMAIN"))
 def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     original_host = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("NTPHost")
     if original_host == _GARBAGE_NTP_HOST:
@@ -386,6 +419,13 @@ _GARBAGE_SSID = "bench-test-net-does-not-exist"
 
 
 @pytest.mark.persistence_write
+@pytest.mark.provokes_log(
+    "the unreachable SSID's failed streak opens the hotspot; the restore's reconnect can fail once more and go silent",
+    ("WIFI", "W", "WLAN_NO_AP"),
+    ("WIFI", "W", "WLAN_AUTH_FAILED"),
+    ("WIFI", "W", "WLAN_TO_HOTSPOT"),
+    ("WIFI", "W", "WLAN_SILENT"),
+)
 def test_garbage_ssid_via_rest_config_is_handled_gracefully(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     ssid_bound = _load.field_schema(_WIFI, "SSID")[3]
     assert isinstance(ssid_bound, int) and len(_GARBAGE_SSID.encode()) <= ssid_bound, f"{_GARBAGE_SSID!r} exceeds _VAL_SSID's {ssid_bound}-byte bound: it would be refused, not stored"
@@ -424,6 +464,11 @@ def test_garbage_ssid_via_rest_config_is_handled_gracefully(board: Board, bench:
 _MAX_CONNECTIONS = configured_max_connections()  # the build's own ceiling, never a restated literal
 
 
+@pytest.mark.provokes_log(
+    "the connections above the ceiling are refused, each tracing HTTP_REFUSED (_assert_ceiling_traced)",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
 def test_connections_at_and_above_the_real_socket_limit_degrade_cleanly(dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     # The PUT /status just made closes client-side before _serve()'s finally releases its slot (Part I.6): settle first.
@@ -534,6 +579,10 @@ def test_put_the_band_that_used_to_be_accepted_is_now_rejected_over_the_normal_n
     assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
+@pytest.mark.provokes_log(
+    "its over-bound NTPHost is answered Invalid, and a refused value logs BAD_ARG",
+    ("NTP", "E", "BAD_ARG"),
+)
 def test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap(dut_ip: str, request: pytest.FixtureRequest) -> None:
     # Lowering a cap risks refusing something legitimate: the largest body the bench build's own schemas can produce
     # (derived from its definitions, as tests_scripts/test_request_body_cap_headroom.py derives it) is still served.
@@ -557,6 +606,10 @@ _CLOSE_MARGIN_S = 5.0
 _MIN_SOCKET_WAIT_S = 0.001  # a zero timeout would make the socket non-blocking, never a last short wait
 
 
+@pytest.mark.provokes_log(
+    "the body that never arrives logs HTTP_CALL_TIMEOUT, asserted exact",
+    ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
+)
 def test_an_oversized_body_is_refused_before_it_is_read(dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # The cap binds before the body: Content-Length one over the cap and no body byte is answered 413 at once, while at
     # the cap the server waits for a body that never comes and reclaims the connection at its per-call timeout.
@@ -581,7 +634,8 @@ def test_an_oversized_body_is_refused_before_it_is_read(dut_ip: str, request: py
     free_after = _mem_free(dut_ip)
     result_note(f"MemFree {free_before} -> {free_after} B; the at-cap connection closed after {closed_after:.1f}s")
     assert abs(free_before - free_after) < cap, f"MemFree moved by {free_before - free_after} B across a refused body, as much as the cap {cap} B"
-    assert_module_error_log_clean(dut_ip, "WEBSERVER", allowed_warnings=(code("W", "HTTP_CALL_TIMEOUT"), code("W", "HTTP_BAD_HEAD")))
+    # The 413 logs nothing (Microdot answers it before any handler); the at-cap wait is the one read-phase timeout.
+    assert_module_logged_one_code(dut_ip, "WEBSERVER", "W", code("W", "HTTP_CALL_TIMEOUT"), events=1)
     assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
@@ -598,6 +652,11 @@ def test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits(dut_
     assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
+@pytest.mark.provokes_log(
+    "the storm overloads admission: each refusal traces HTTP_REFUSED (_assert_ceiling_traced)",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
 def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # max_connections bodies can be in flight at once, so the simultaneous contiguous demand is that many buffers - the
     # multi-buffer shape that motivated Part I.6, asserted on what the body cap owns.
@@ -633,6 +692,11 @@ def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(du
     result_note(f"{len(answered)} answered, {len(refused)} refused at the connection ceiling, 0 answered wrongly")
 
 
+@pytest.mark.provokes_log(
+    "each refused field logs BAD_ARG: the BMP3XX pair on its config manager, the radio's byte-bound refusals on WIFI",
+    ("CFGMGR_BMP3XX", "E", "BAD_ARG"),
+    ("WIFI", "E", "BAD_ARG"),
+)
 def test_put_nonsense_field_values_are_marked_invalid_not_crashed(board: Board, dut_ip: str, request: pytest.FixtureRequest) -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     # Wrong type, out of range and an unknown sensor key in one REST call: _VAL_PRES_OVERS accepts only _OSR_SETTINGS.
@@ -674,6 +738,7 @@ def test_put_nonsense_field_values_are_marked_invalid_not_crashed(board: Board, 
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.provokes_log("the trickled request is reclaimed by the outer cap, which the test asserts", ("WEBSERVER", "W", "HTTP_REQUEST_CAP"))
 def test_slowloris_style_partial_request_is_reclaimed_by_the_outer_timeout(dut_ip: str, request: pytest.FixtureRequest) -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -701,6 +766,11 @@ def test_slowloris_style_partial_request_is_reclaimed_by_the_outer_timeout(dut_i
         reset_all_error_logs(dut_ip, request.node.name)
 
 
+@pytest.mark.provokes_log(
+    "the client vanishes mid-response: a muted reset or the write's socket error, whichever the race gives",
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+    ("WEBSERVER", "W", "HTTP_SOCKET_ERROR"),
+)
 def test_abrupt_disconnect_mid_response_does_not_hang_the_server(dut_ip: str, request: pytest.FixtureRequest) -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -723,6 +793,11 @@ def test_abrupt_disconnect_mid_response_does_not_hang_the_server(dut_ip: str, re
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.provokes_log(
+    "the ceiling walk ends on its one refusal, HTTP_REFUSED (_assert_ceiling_traced)",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
 def test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures(dut_ip: str, request: pytest.FixtureRequest) -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     discovered = discover_max_connections(dut_ip)
@@ -850,10 +925,20 @@ def test_openhab_case_two_pollers_and_an_open_website_are_all_served(dut_ip: str
 _CONSOLE_LOAD_S = 60.0
 # @tunable l4.console_starvation_slowloris_clients = 6
 _CONSOLE_SLOWLORIS = 6
+# @tunable l4.console_starvation_drain_timeout_s = 30.0
+_CONSOLE_DRAIN_TIMEOUT_S = 30.0
 _LINGER_RESET = struct.pack("ii", 1, 0)  # SO_LINGER on with a zero timeout: the close sends an RST (socket(7))
 
 
 @pytest.mark.persistence_write
+@pytest.mark.provokes_log(
+    "its misbehaving clients (slowloris, a refused head, a truncated body, a reset) log their HTTP warnings",
+    ("WEBSERVER", "W", "HTTP_REQUEST_CAP"),
+    ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
+    ("WEBSERVER", "W", "HTTP_BAD_HEAD"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+)
 def test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog(board: Board, dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     def adversary(kind: str, stop: threading.Event, seen: "list[str]") -> None:
         # One misbehaving client kind, repeated until stopped: slowloris, a refused head, a truncated body, a reset.
@@ -895,8 +980,14 @@ def test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog(b
         stop.set()
         alive = _load.join(threads, _SLOWLORIS_SOCKET_TIMEOUT_S)
         port.close()
-        restore = http_client.fetch(dut_ip, 80, "PUT", "/system", {"DebugLevel": 5}, timeout_s=_PROBE_TIMEOUT_S)
-        assert _load.as_object(restore.json().get("result"), "result").get("DebugLevel") == "Valid", f"restoring DebugLevel 5 was refused: {restore.body!r}"
+        try:
+            # Each adversary's server task writes its warning before its slot frees (src/asy_webserver_service.py _serve()):
+            # a whole ceiling admitted again means every one has written it in this window, and the restore finds a slot.
+            if not alive:  # a client still running holds its slot: the assertion below names it instead
+                _wait_for_slots_to_drain(dut_ip, 80, _MAX_CONNECTIONS, timeout_s=_CONSOLE_DRAIN_TIMEOUT_S)
+        finally:
+            restore = http_client.fetch(dut_ip, 80, "PUT", "/system", {"DebugLevel": 5}, timeout_s=_PROBE_TIMEOUT_S)
+            assert _load.as_object(restore.json().get("result"), "result").get("DebugLevel") == "Valid", f"restoring DebugLevel 5 was refused: {restore.body!r}"
     assert not alive, f"{alive} adversary client(s) never finished"
     system_after = _load.as_object(_load.get_object(dut_ip, "/status", _PROBE_TIMEOUT_S).get("system"), "GET /status system")
     result_note(f"{len(seen)} adversarial connections over {_CONSOLE_LOAD_S:g}s; SysUptime {system_before.get('SysUptime')} -> {system_after.get('SysUptime')}")
@@ -978,8 +1069,10 @@ def _assert_recovered(board: Board, bench: "BenchBridge", dut_ip: str, result_no
     noted = _load.Noted(result_note)
     started = time.monotonic()
     recover_by_reset(board, bench, ready=lambda: _load.serving(dut_ip), first_wait_s=_OUTAGE_RECONNECT_TIMEOUT_S, retry_wait_s=_RECONNECT_TIMEOUT_S, skipped="_assert_wifi_log_has_only_benign_outage_warnings", note=noted, description=description)
+    served_at = time.monotonic()
+    _wait_for_ntp_quiet(dut_ip, served_at, result_note)
     if not noted.recovered:
-        result_note(f"recovered gracefully in {time.monotonic() - started:.1f}s ({since} to the first reachable /status)")
+        result_note(f"recovered gracefully in {served_at - started:.1f}s ({since} to the first reachable /status)")
         _assert_wifi_log_has_only_benign_outage_warnings(dut_ip)
 
 
@@ -1124,9 +1217,35 @@ def _mem_free(dut_ip: str) -> int:
     return free
 
 
+def _ntp_attempt_s() -> float:
+    # One sync attempt's longest run (src/asy_ntp_client.py _run_ntp_sync_attempt()): a send and a reply wait per lookup
+    # try on each server, the DHCP one and up to _DNS_FALLBACK_MAX more (asy_dns_client.py resolve_ipv4()), then the NTP
+    # request's send and reply wait (_fetch_ntp_reply()), each bounded by its timeout in buildgen/codegen.py.
+    servers = 1 + _load.src_number(_NTP, "_DNS_FALLBACK_MAX")
+    lookup_s = servers * _load.buildgen_number("codegen.py", "_DNS_TRIES") * 2 * _load.buildgen_number("codegen.py", "_DNS_TIMEOUT_MS") / 1000
+    return lookup_s + 2 * _fetch_timeout_s()
+
+
+def _ntp_retry_chain_s() -> float:
+    # A synced client's failed attempt arms up to _NTP_SYNC_RETRIES one-shot retries, each _NTP_RETRY_INTERV after the
+    # failure before it (src/asy_ntp_client.py _handle_ntp_sync_failure()); a retry finding no network ends it silently.
+    return _load.src_number(_NTP, "_NTP_SYNC_RETRIES") * (_load.src_number(_NTP, "_NTP_RETRY_INTERV") + _ntp_attempt_s())
+
+
 def _ntp_retry_period_s() -> float:
     # The unsynced client's first retry step: its default interval, rounded up to the check tick it is counted on.
     return max(_load.src_number(_NTP, "_DEFAULT_RETRY_S"), _load.src_number(_NTP, "_NTP_CHECK_INTERV"))
+
+
+def _ntp_view(dut_ip: str) -> "tuple[int, bool, object] | None":
+    # NTP's logged count, NTPSynced and NTPLastSyncAge from one GET /status, None while the board does not answer.
+    try:
+        status = _load.get_object(dut_ip, "/status", _PROBE_TIMEOUT_S)
+        networking = _load.as_object(status.get("networking"), "GET /status networking")
+        counter = errcount_entry(_load.as_object(status.get("errcount"), "GET /status errcount"), "NTP")["counter"]
+    except (OSError, http_client.HTTP_ERROR, ValueError, TypeError, AssertionError):
+        return None
+    return counter, networking.get("NTPSynced") is True, networking.get("NTPLastSyncAge")
 
 
 def _openhab_client(dut_ip: str, paths: "list[str]", interval_s: float, stop: threading.Event, latencies: "dict[str, list[float]]", failures: "list[str]") -> None:
@@ -1240,6 +1359,32 @@ def _utc_year(dut_ip: str) -> "int | None":
     year = _load.as_object(utc, "GET /status system.UTCTime").get("Year")
     assert isinstance(year, int), f"UTCTime carries no Year: {utc!r}"
     return year
+
+
+def _wait_for_ntp_quiet(dut_ip: str, served_at: float, result_note: "_load.Note") -> None:
+    # What NTP still does after an outage logs into this window: the reset path's boot sync, after serving, and the
+    # retries a failure here arms. Synced is required; a logged failure then waits for a newer sync, or for the chain's
+    # longest run since serving: an attempt holds wifi_mode_lock, which the reconnect takes (_sync_loop()).
+    synced_by = served_at + _NTP_RESYNC_AFTER_RESET_TIMEOUT_S
+    chain_by = served_at + _ntp_retry_chain_s() + _NTP_RETRY_CHAIN_MARGIN_S
+    counted, counted_at, view = -1, served_at, None
+    while True:
+        asked = time.monotonic()
+        view = _ntp_view(dut_ip)
+        answered = time.monotonic()
+        if view is not None:
+            counter, synced, age = view
+            if counter != counted:
+                counted, counted_at = counter, answered  # every failure counted so far lies before this answer
+            # LastSyncAge is whole seconds, refreshed on a 1 s tick (asy_base_classes.py arm_tick_timer(), TickSeconds.read()).
+            fresh = isinstance(age, (int, float)) and not isinstance(age, bool) and asked - age - _SYNC_AGE_SLACK_S > counted_at
+            if synced and (counter == 0 or fresh or answered >= chain_by):
+                ended = "nothing logged" if counter == 0 else "a sync newer than its last failure" if fresh else "the retry chain's bound"
+                result_note(f"NTP quiet {answered - served_at:.0f}s after serving: {ended}")
+                return
+        if answered >= synced_by:
+            raise TimeoutError(f"NTP not synced within {_NTP_RESYNC_AFTER_RESET_TIMEOUT_S}s of serving after the outage, so its sync would log into the next test's window: last view (counter, synced, age) {view!r}")
+        time.sleep(_WAIT_POLL_S)
 
 
 def _website_routes(device: str) -> "tuple[str, float]":

@@ -18,12 +18,12 @@ import pytest
 import tomllib
 import website_identity
 from bench_control import ROLE_REVERSAL_CLIENT_CONN, BenchBridge
-from error_log_helpers import assert_module_error_log_clean, assert_module_error_log_empty, assert_no_task_ended, code, errcount_entry, get_errcount, reset_all_error_logs
+from error_log_helpers import ErrcountEntry, assert_module_error_log_empty, assert_module_logged_one_code, assert_no_task_ended, code, errcount_entry, gained_entries, get_errcount, reset_all_error_logs
 from harness import REPO_ROOT, Board, HardwareTestFailureError, device_toml, get_routes, hotspot_password, recover_by_reset, wait_until
 from soak_durations import SOAK_DURATION_SECONDS
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from http_client import JSONObject
 
@@ -316,6 +316,10 @@ def test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link(joined
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.provokes_log(
+    "the refused head's HTTP_BAD_HEAD, asserted exact",
+    ("WEBSERVER", "W", "HTTP_BAD_HEAD"),
+)
 def test_malformed_http_request_over_real_wireless_degrades_cleanly(joined_hotspot: str, request: pytest.FixtureRequest) -> None:
     # A head the server refuses: answered with a 400-class status line or closed, never left hanging; its one traced
     # drop is W HTTP_BAD_HEAD and HTTPDropped counts it.
@@ -330,7 +334,7 @@ def test_malformed_http_request_over_real_wireless_degrades_cleanly(joined_hotsp
             answer = b""
     assert answer == b"" or answer.startswith((b"HTTP/1.0 4", b"HTTP/1.1 4")), f"a malformed request got neither a 400-class status line nor a close: {answer[:80]!r}"
     assert _load.serving(joined_hotspot), "webserver unresponsive after a malformed request over real wireless"
-    assert_module_error_log_clean(joined_hotspot, "WEBSERVER", allowed_warnings=(code("W", "HTTP_BAD_HEAD"),))
+    assert_module_logged_one_code(joined_hotspot, "WEBSERVER", "W", code("W", "HTTP_BAD_HEAD"), events=1)
     dropped = _load.as_object(_load.get_object(joined_hotspot, "/status", _PROBE_TIMEOUT_S).get("networking"), "GET /status networking").get("HTTPDropped")
     assert isinstance(dropped, int) and dropped >= 1, f"the refused head is not counted in HTTPDropped: {dropped!r}"
 
@@ -352,6 +356,10 @@ def test_rapid_associate_disassociate_churn_doesnt_wedge_station_management(benc
 
 
 @pytest.mark.destructive_last
+@pytest.mark.provokes_log(
+    "the password one short of its bound is refused, which logs BAD_ARG on CFGMGR_WIFI",
+    ("CFGMGR_WIFI", "E", "BAD_ARG"),
+)
 def test_invalid_credentials_rejected_without_triggering_reconnect(bench: "BenchBridge", joined_hotspot: str) -> None:
     # post_fct (the /networking group's reconnect hook) fires if any field validates; a PW one short of _VAL_PW's lower
     # bound is rejected, so nothing persists and nothing reconnects.
@@ -364,6 +372,12 @@ def test_invalid_credentials_rejected_without_triggering_reconnect(bench: "Bench
 
 @pytest.mark.destructive_last
 @pytest.mark.persistence_write
+@pytest.mark.provokes_log(
+    "the wrong password's failed streak and the reopened hotspot's WLAN warnings, asserted",
+    ("WIFI", "W", "WLAN_NO_AP"),
+    ("WIFI", "W", "WLAN_AUTH_FAILED"),
+    ("WIFI", "W", "WLAN_TO_HOTSPOT"),
+)
 def test_a_wrong_password_over_the_hotspot_reopens_the_hotspot(bench: "BenchBridge", joined_hotspot: str, hotspot_ssid: str, result_note: "_load.Note") -> None:
     # A credentials change lands in the fresh-boot state (owner, 2026-10-08, paraphrase): its streak fails (a wrong key, the
     # bench AP down while the radio is the DUT's client) and the hotspot opens once more. One owned flash write; the next test restores it.
@@ -386,6 +400,13 @@ def test_a_wrong_password_over_the_hotspot_reopens_the_hotspot(bench: "BenchBrid
 
 @pytest.mark.destructive_last
 @pytest.mark.persistence_write
+@pytest.mark.provokes_log(
+    "credentials stored while the bench AP is down: the DUT's next streak fails and reopens its hotspot",
+    ("WIFI", "W", "WLAN_NO_AP"),
+    ("WIFI", "W", "WLAN_AUTH_FAILED"),
+    ("WIFI", "W", "WLAN_TO_HOTSPOT"),
+)
+@pytest.mark.ends_unreachable
 def test_real_credentials_put_succeeds_and_confirms_accepted_values(bench: "BenchBridge", joined_hotspot: str, hotspot_ssid: str) -> None:
     # bench.ap_password() reads the real PSK (nmcli --show-secrets; BENCH_AP_PASSWORD overrides it): this PUT puts the
     # network back, so the flip back needs no SSID restore of its own (tests_hardware/README.md).
@@ -403,6 +424,14 @@ def test_real_credentials_put_succeeds_and_confirms_accepted_values(bench: "Benc
 @pytest.mark.destructive_last
 @pytest.mark.soak_duration
 @pytest.mark.persistence_write
+@pytest.mark.provokes_log(
+    "the second failed streak's WLAN_SILENT, asserted",
+    ("WIFI", "W", "WLAN_NO_AP"),
+    ("WIFI", "W", "WLAN_AUTH_FAILED"),
+    ("WIFI", "W", "WLAN_TO_HOTSPOT"),
+    ("WIFI", "W", "WLAN_SILENT"),
+)
+@pytest.mark.ends_unreachable
 def test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt(bench: "BenchBridge", joined_hotspot: str, hotspot_ssid: str, dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # The second failed streak goes silent and a later attempt links (owner, 2026-10-08, paraphrase), on the preceding
     # test's stored credentials with the bench AP still down. Writes nothing: persistence_write is the AND-gate on that
@@ -451,6 +480,13 @@ def test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt(bench: 
 
 
 @pytest.mark.destructive_last
+@pytest.mark.provokes_log(
+    "the failed streaks of the stored credentials while the bench AP was down, and the switch back",
+    ("WIFI", "W", "WLAN_NO_AP"),
+    ("WIFI", "W", "WLAN_AUTH_FAILED"),
+    ("WIFI", "W", "WLAN_TO_HOTSPOT"),
+    ("WIFI", "W", "WLAN_SILENT"),
+)
 def test_the_role_flips_back_and_the_board_is_sta_connected_on_the_bridge(board: Board, bench: "BenchBridge", joined_hotspot: str, dut_ip: str, result_note: "_load.Note") -> None:
     # No STA-phase field is added to /networking (owner, 2026-09-26: 'It seems to be unreachable by definition.'): a
     # reachable board on the bridge network is STA-connected by definition, read as GET /status's networking.Mode.
@@ -507,15 +543,13 @@ def _flip_back(board: Board, bench: "BenchBridge", gateway_ip: str, dut_ip: str,
     _RECORD.flipped_back = True
 
 
-def _gained_entries(before: "tuple[int, list[tuple[str, int]]]", after: "tuple[int, list[tuple[str, int]]]") -> "list[tuple[str, int]]":
-    # The entries a module's history gained between two reads. It is a fixed-length window that each new code shifts by
-    # one slot (a repeat of the newest spends none), so the gain is the smallest shift, within the counter's growth, that
-    # lines the two reads up; a read that no shift continues (a reset in between) fails rather than guess.
-    (count_before, old), (count_after, new) = before, after
-    for shift in range(min(count_after - count_before, len(new)) + 1):
-        if new[: len(new) - shift] == old[shift:]:
-            return new[len(new) - shift :]
-    raise HardwareTestFailureError(f"the history does not continue the earlier read: {old!r} -> {new!r} (counter {count_before} -> {count_after})")
+def _gained_entries(before: ErrcountEntry, after: ErrcountEntry) -> "list[tuple[str, int]]":
+    # The entries a module's history gained between two reads (error_log_helpers.gained_entries()); a read that no
+    # shift continues (a reset in between) fails rather than guess.
+    gained = gained_entries(before, after)
+    if gained is None:
+        raise HardwareTestFailureError(f"the history does not continue the earlier read: {before!r} -> {after!r}")
+    return gained
 
 
 def _int(counters: "JSONObject", key: str) -> int:
@@ -595,9 +629,8 @@ def _unstrand(bench: "BenchBridge", hotspot_ssid: str, note: "_load.Note") -> No
         bench.leave_dut_hotspot_and_restore_bridge()
 
 
-def _wifi_log(host: str) -> "tuple[int, list[tuple[str, int]]]":
-    entry = errcount_entry(get_errcount(host), "WIFI")
-    return entry["counter"], [(str(h.get("type")), int(str(h.get("num", 0)))) for h in entry["history"]]
+def _wifi_log(host: str) -> ErrcountEntry:
+    return errcount_entry(get_errcount(host), "WIFI")
 
 
 def _wifi_settings() -> "tuple[int, int]":
@@ -654,3 +687,10 @@ def joined_hotspot(board: Board, bench: "BenchBridge", dut_ip: str, hotspot_ssid
     if not _RECORD.flipped_back:
         _flip_back(board, bench, gateway_ip, dut_ip, note)
     assert_no_task_ended(dut_ip, "the role reversal and its flip back")  # SYSTEM is FRAM-backed: a reset keeps it
+
+
+@pytest.fixture
+def log_check_host(bench: "BenchBridge", dut_ip: str, joined_hotspot: str) -> "Callable[[], str]":
+    # The bench log check per test, over the route this module's tests use at that read: the DUT's gateway while the
+    # bench radio is its client, the bridge address once the radio has left the hotspot.
+    return lambda: joined_hotspot if _on_dut_hotspot(bench) else dut_ip

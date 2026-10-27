@@ -231,6 +231,7 @@ def test_fram_driver_answers_its_sentinels_before_and_after_a_setup_that_finds_n
         "get_values_sync": ((bytearray(4),), lambda r: type(r) is int and r != 0),  # a refusal status, never OK
         "set_values_sync": ((b"ab", 0), lambda r: type(r) is int and r != 0),
         "get_write_protected": ((), _is(False)),
+        "is_ready": ((), _is(False)),
         "verify_present": ((), _is(False)),
     }
     assert _answers(fram, calls) == []

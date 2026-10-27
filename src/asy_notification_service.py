@@ -224,14 +224,14 @@ class NotificationService(SensorReaderConfig):
             data = await source.get_data()
             value = getattr(data, notif.value.field, None)
             ts = getattr(data, "TS", None)
-            now = utc_now()
-            # Older than the bound, a sample is unavailable like a missing one; one without a TS (before the
-            # first sync) counts as current - the same rule as asy_sgp40_driver.py's compensation input.
-            if now is not None and isinstance(ts, int) and now - ts > _SAMPLE_MAX_AGE_S:
-                value = None
         except Exception as e:
             report_if_fatal(e)
             await self.pr.err_s(notif.name, "Value read failed:", e, errno=_ERR_SOURCE)
+            return None
+        now = utc_now()  # outside the try: a raise here (it allocates on rp2) is not the producer's failed read
+        # Older than the bound, a sample is unavailable like a missing one; one without a TS (before the
+        # first sync) counts as current - the same rule as asy_sgp40_driver.py's compensation input.
+        if now is not None and isinstance(ts, int) and now - ts > _SAMPLE_MAX_AGE_S:
             value = None
         if value is None:
             return None

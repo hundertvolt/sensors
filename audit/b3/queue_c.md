@@ -7,7 +7,7 @@ Requirement: every B3 item that needs silicon, with its level, gate, twin-first 
 
 ## Items
 
-From M.PROC.029's list (agent, 2026-10-22); every H row checked present in audit/actions/C.md at `e1ad71f`. Gates are
+From M.PROC.029's list (agent, 2026-10-22); every H row checked present in audit/actions/C.md at `6d9d3c34`. Gates are
 the default-off markers a round must name; a twin-first record is A.U35.49's.
 
 | item | source | level | round (H row) | gate | twin-first record | property proved |

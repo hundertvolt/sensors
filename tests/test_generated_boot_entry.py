@@ -1,6 +1,6 @@
-"""Every generated boot entry is executed at L1 (each generated module and its entry runs in at least one tier): it arms
-the watchdog, sets the shipped GC threshold before main(), records a console interrupt and always leaves a fresh loop;
-the no-autostart entry prints the manual start line and starts nothing. main() and the reset record are stubs."""
+"""Every generated boot entry is executed at L1 (each generated module and its entry runs in at least one tier): it
+arms the watchdog, sets the shipped GC threshold before main(), records a console interrupt and any other exception
+ending the loop, and always leaves a fresh loop; the no-autostart entry prints the start line. main() is a stub."""
 
 import asyncio
 import gc
@@ -12,6 +12,7 @@ from _src_const import py_value
 
 _GENERATED = "build/generated_src/"
 _RR_INTERRUPTED = "stub interrupted"  # the stub's own marker: only identity with what the entry passes matters
+_LOOP_ENDED = "stub loop ended"  # what the stub's record_loop_end() records
 
 
 class _Stub:
@@ -21,12 +22,23 @@ class _Stub:
         self.RR_INTERRUPTED = _RR_INTERRUPTED  # the entry imports it by this name
         self.calls: list[tuple[object, int]] = []
         self.records: list[object] = []
+        self.consoles: list[tuple[str, object, object]] = []
+        self.reported: list[BaseException] = []
         self._raises = raises
 
     async def main(self, *, watchdog: object, **_kw: object) -> None:
         self.calls.append((watchdog, gc.threshold()))
         if self._raises is not None:
             raise self._raises
+
+    def console(self, name: str, what: object, err: object = None) -> None:
+        self.consoles.append((name, what, err))
+
+    def report_if_fatal(self, e: BaseException) -> None:
+        self.reported.append(e)
+
+    def record_loop_end(self) -> None:
+        self.records.append(_LOOP_ENDED)
 
     def write_reset_record(self, purpose: object) -> None:
         self.records.append(purpose)
@@ -51,7 +63,7 @@ def _boot(device: str, entry: str, stub: _Stub) -> "tuple[_MicropythonStub, list
     # Executes one entry from this synchronous scope with the stubs in sys.modules; everything it changes comes back.
     with open(_GENERATED + entry) as f:
         code = compile(f.read(), _GENERATED + entry, "exec")
-    names = ("sensortask_" + device, "asy_system_service", "micropython")
+    names = ("sensortask_" + device, "asy_system_service", "asy_print_log", "micropython")
     saved_modules = {name: sys.modules.get(name) for name in names}
     saved_path, real_new_loop = sys.path[:], asyncio.new_event_loop
     micro, loops, printed = _MicropythonStub(), [], []
@@ -59,7 +71,7 @@ def _boot(device: str, entry: str, stub: _Stub) -> "tuple[_MicropythonStub, list
     def new_event_loop() -> None:
         loops.append(1)  # recorded; the process keeps its real loop
 
-    sys.modules.update({names[0]: stub, names[1]: stub, names[2]: micro})  # type: ignore[dict-item]  # stand-ins for the modules
+    sys.modules.update({names[0]: stub, names[1]: stub, names[2]: stub, names[3]: micro})  # type: ignore[dict-item]  # stand-ins for the modules
     asyncio.new_event_loop = new_event_loop  # type: ignore[assignment]  # the entry's finally, recorded
     raised = None
     try:
@@ -103,14 +115,18 @@ def test_each_entry_arms_the_watchdog_and_sets_the_threshold_before_main() -> No
         assert stub.records == [], device
 
 
-def test_a_raising_main_propagates_and_the_finally_still_runs() -> None:
+def test_any_other_exception_ending_the_loop_is_recorded_printed_and_ends_the_entry() -> None:
+    # Not re-raised: rp2 soft-resets on a SystemExit leaving main.py (shared/runtime/pyexec.c:166-185, v1.29.0).
     require_fresh()
     for device in devices():
-        stub = _Stub(RuntimeError("stub"))
-        _micro, loops, _printed, raised = _boot(device, "sensortask_" + device + "_main.py", stub)
-        assert isinstance(raised, RuntimeError) and raised.args == ("stub",), (device, raised)
-        assert loops == [1], device
-        assert stub.records == [], device  # only an interrupt is recorded
+        for planted in (RuntimeError("stub"), SystemExit(3), GeneratorExit()):
+            stub = _Stub(planted)
+            _micro, loops, printed, raised = _boot(device, "sensortask_" + device + "_main.py", stub)
+            assert raised is None, (device, planted, raised)
+            assert stub.records == [_LOOP_ENDED], (device, planted, stub.records)
+            assert stub.reported == [planted], (device, stub.reported)  # the stack-overflow check first, as every broad handler
+            assert stub.consoles == [("SYSTEM", "event loop ended with an exception:", None)] and printed == [], (device, stub.consoles)
+            assert loops == [1], device
 
 
 def test_a_console_interrupt_is_recorded_before_it_propagates() -> None:
@@ -119,7 +135,7 @@ def test_a_console_interrupt_is_recorded_before_it_propagates() -> None:
         stub = _Stub(KeyboardInterrupt())
         _micro, loops, _printed, raised = _boot(device, "sensortask_" + device + "_main.py", stub)
         assert isinstance(raised, KeyboardInterrupt), (device, raised)
-        assert stub.records == [_RR_INTERRUPTED], device
+        assert stub.records == [_RR_INTERRUPTED], device  # its own code, never the loop-ended one
         assert loops == [1], device
 
 

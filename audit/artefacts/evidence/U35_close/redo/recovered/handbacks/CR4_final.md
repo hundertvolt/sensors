@@ -1,0 +1,33 @@
+U35 lane C, block CR4: hand-back
+
+**Commits** on audit/u35-cr (not pushed; nothing uncommitted): 9888144 (merge of b2f72dd, then rebuild.sh), 3e321b9 (item 1), c948059 (item 3's fix, and review.md's rows).
+
+**Item 1: landed.**
+- `tests_hardware/bench/conftest.py` has an autouse `no_unprovoked_log_entry` fixture. Before and after each bench test it does a GET /status, clears and writes nothing, and fails on a new E or W entry in any module, naming the module, the code (with its catalog name) and the test.
+- `provokes_log("<reason>")` is in markers.py's one table. A marked test is exempt and not read, and the fixture refuses a marker without a reason.
+- `error_log_helpers.py` gains `new_logged_entries()` and `assert_no_unprovoked_entry()`. `new_entries()` now shares their window function (no meaning change).
+- The marker is on 50 tests: CR3's 40 provoked (21 bench, 19 flash), plus 10 bench tests outside the 99 whose fault entries last until the teardown read (network_resilience ×4, reset_reasons ×2, modlwip ×1, hotspot ×3). Each reason comes from the test's own comment or name.
+- Provoked tests that end with a ResetErrors clear stay unmarked; the check then covers only what follows the clear.
+- Unsettled tests get the check, not the marker: CR3's 4 bench ones, plus 5 more (erase and reboot under load, config reset over REST, the two command races).
+- I added a 6-line paragraph to tests_hardware/README.md after :1936. D3 may fold it.
+- **Deviation (agent, 2026-10-23):** the hotspot module is checked per test, not at its bounds. A `log_check_host` override reads through the gateway until the flip back, which is the route its own tests already use. A bounds window would hold 9 marked tests, so it could never fail a full run.
+- **Bites:** tests_scripts/test_bench_log_check.py has 13 tests, all seen failing first: the missing fixture, helper and marker raised AttributeError, and the reason check failed with "no provokes_log marker found". 7 plants in /dev/shm, each caught by its named test: no after-check, W ignored, fallen counter ignored, marker not honoured, hotspot always gateway, a bare marker, reason not enforced. `--collect-only` over the whole tier: rc=0, 198/229 collected (the 31 deselected are the wear gates).
+
+**Item 2: plan only, not landed.**
+- No single helper can work: src/ keeps no logger registry, and the 82 scripts that end in `facts.done()` pass it no logger.
+- Plan: a `logs` fact helper, one call per script naming its loggers (or its sysfunct); `parse_facts()` collects the fact; a flash autouse fixture honours `provokes_log`, which is already on the 19 flash tests; bites on synthetic output and through TwinBoard; then the lead's twin re-record.
+- Cost: about 82 script edits, about 60-80 calls, one block. The plan is in review.md.
+
+**Item 3: silent-failure scan of CE3's 9 files.**
+- One finding: tests/test_asy_bmp3xx_driver.py, the bus-down-during-the-settle test. Class 3, aborted-file mode: `run()` has no bound, so a reset() that never wrote the soft-reset command would hang the file to its timeout. Fixed in place: it now cancels the downer and fails naming the missing soft reset.
+- Plant (soft reset written to the wrong register): the old test hung (rc=124, no summary line); the new one fails at :2607 and the file finishes.
+- The fixed file is 139/139 at both -1 and 32768, with zero memory markers.
+- No finding: config_manager, fram_manager, isl29125, scd30, sgp40, uart_comm, uart_driver, uart_link_driver. Their condition loops are bounded by `run(..., limit)`, and the `_fatal` resets only matter once a file is already red.
+
+**Checks:** ruff clean; host mypy clean (309 files, cold cache); main mypy clean (266 files). Readers plus the 12 doc checks: 71 files, 2707 passed, 4 failed: test_twin_record (expected, 19 hardware test files' hashes changed, needs the lead's re-record); three reds whose input files are byte-identical to b2f72dd: test_decision_vocabulary (the allowlist row for digital_twin/README.md `--mem-sample-interval-ms` matches nothing, the lead's), test_tunables_register (SPECIFICATION.md:12234-12236 rows say 20/25/3.0, and scripts/_digital_twin_ci_suite.py's tags say 80/100/4.0; T4 or D3), test_twin_wiring_contract (tests/test_digital_twin_machine.py:121 `I2CAttachment['max_size']`, N5 or CM2). Skipped test_digital_twin_boot_contiguity and _scenarios (read none of my files). Times: bmp3xx 13.9 s at both stages against the base's 12.48 and 12.74 s (+11% and +9%); the growth is CE3's 5 added tests (134 to 139); my edit adds no test and no wait.
+
+**For D3:** README :1936 onward is my paragraph. SPECIFICATION.md:12234-12236 is stale against the tags. **For the lead:** no allowlist row is orphaned by my change. Once, I ran `git stash list` (only a listing, no stash made).
+**Runs (all in RUNS.md):** readers rc=1 (the 4 reds above), bmp3xx plant old rc=124 and new rc=1, bmp3xx file rc=0 at both stages. /dev/shm/cr4 has been removed.
+nothing of mine is running
+
+[CR branch diff stat against b2f72dd (CR + CR2 + CR3 + CR4): audit/b3/review.md +8553; audit/sweeps/redflags.py +483; audit/sweeps/review_rows.py +181; tests/_generated_tree.py 7; tests/_sensortask_scenarios.py 18; tests/test_asy_bmp3xx_driver.py 11; tests/test_asy_dns_client.py 6; tests/test_asy_isl29125_driver.py 3; tests/test_asy_notification_service.py 2; tests/test_asy_sgp40_driver.py 12; tests/test_asy_system_service.py 7; tests/test_asy_uart_comm.py 10; tests/test_asy_wifi_service.py 10; tests/test_math_helpers.py 10; tests_hardware/README.md +7; tests_hardware/bench/conftest.py 92; bench/test_end_to_end_timing.py +1; test_heap_under_connection_ceiling.py +1; test_hotspot_role_reversal.py +18; test_modlwip_send_stall.py +1; test_network_resilience.py +7; test_reset_reasons.py 20; test_rest_endpoints_over_sta.py +1; test_serving_heap_at_default_gc.py 3; test_system_commands_over_rest.py +1; test_uart_link_under_api_load.py 4; test_wifi_radio_reinit.py +2; tests_hardware/conftest.py 2; error_log_helpers.py 63; flash/test_bus_concurrency.py 22; flash/test_bus_electrical_timing.py 5; flash/test_chip_conformance.py 3; flash/test_fram_storage.py 12; flash/test_heap_layout.py 4; flash/test_reboot_persistence.py 2; flash/test_sensor_accuracy.py 2; flash/test_system_commands.py 6; flash/test_uart_crossover.py 10; flash/test_unretrieved_task_exception_handler.py +2; flash/test_watchdog_starvation.py +2; tests_hardware/markers.py +1; tests_hardware/scd30_prerequisite.py 6; tests_scripts/test_bench_log_check.py +167. The 9 MicroPython test files the CR branch changed passed at both stages after the lead's merge into int.]

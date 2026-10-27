@@ -33,8 +33,9 @@ Environment:
   TEST_PARALLELISM          test files run at once (default: detected from core count and speed)
   GC_THRESHOLD              gc.threshold() for every test file, e.g. 32768 (default: unset, the reactive -1)
 
-Exit codes: 0 every test passed; 1 a test failed or an allocation failure was seen; 2 a usage or
-setting error; 3 (--coverage only) every test passed and only a coverage report failed to render.
+Exit codes: 0 every test passed; 1 a test failed, an allocation failure was seen, or the run left
+a path in the checkout; 2 a usage or setting error; 3 (--coverage only) every test passed and only
+the coverage is short: a report failed to render, or a file's tracer ended early (listed under Notes).
 EOF
 }
 
@@ -411,12 +412,52 @@ for cap_bin in "${cap_bins[@]}"; do
     fi
 done
 
-# tests_scripts/ needs nothing from the frozen-module steps below: it is real CPython touching only
-# pytest's tmp_path fixtures and OS-assigned free ports, never this repo's real build/generated_src/
-# or frozen_modules/ (tests_scripts/conftest.py's docstring).
-#
-# So it is backgrounded HERE, overlapping its own run with essentially the whole rest of this
-# script rather than serializing in front of it (SPECIFICATION.md Part E.1). It counts against
+# _build_sites: every generated sensortask_<device>.py imports frozen_html at module level, so the unit tier needs one
+# site on its path; any derived device serves, so the first is built and no device is named here (Part A.9). The
+# scenario harness boots each device on its own site, build/generated_html/<device>/, so a plain run builds those too.
+_build_sites() {
+    echo "== Building frozen_modules/frozen_html.py (the $site_device website, the first derived device)"
+    scripts/build_website.sh "$site_device"
+    if [ "$coverage" = "0" ]; then
+        echo "== Building every derived device's website into build/generated_html/ (the scenario harness boots each)"
+        scripts/build_device_websites.sh
+    fi
+}
+# Before tests_scripts/ starts: its twin boots import frozen_modules/'s frozen_html (25 tests fail and 1 errors without
+# it, measured 2026-10-27), and the device-websites build globs devices/, where the tier plants its zz_test_ fixtures.
+_build_sites
+
+# The checkout-write guard (a test leaves nothing in the checkout): every untracked, ignored or modified path, listed
+# here, once everything above is built and before either tier starts, and again once both have ended. The tool
+# environments (.venv/, node_modules/) are not repository content and are left out.
+_checkout_paths() {
+    local listing
+    listing="$(git --no-optional-locks status --porcelain=v1 -z --no-renames --ignored --untracked-files=all -- . ':(exclude).venv' ':(exclude)node_modules' | tr '\0' '\n')" || return 1
+    printf '%s\n' "$listing" | cut -c4- | LC_ALL=C sort
+}
+# The tiers' own outputs, the guard's only exemptions: the unit tier's scratch (swept at the next run's start), and the
+# host tier's CPython bytecode caches and pytest's cache directory.
+checkout_outputs=("tests/_tmp/*" "__pycache__/*" "*/__pycache__/*" ".pytest_cache/*")
+# _checkout_left <before> <after>: each path of the second listing missing from the first, one per line, the tiers' own
+# outputs left out.
+_checkout_left() {
+    local path pattern
+    while IFS= read -r path; do
+        for pattern in "${checkout_outputs[@]}"; do
+            # shellcheck disable=SC2053  # the pattern is a glob on purpose
+            [[ "$path" != $pattern ]] || continue 2
+        done
+        [ -z "$path" ] || printf '%s\n' "$path"
+    done < <(LC_ALL=C comm -13 <(printf '%s\n' "$1") <(printf '%s\n' "$2"))
+}
+checkout_listed=0
+checkout_before=""
+if checkout_before="$(_checkout_paths)"; then
+    checkout_listed=1
+fi
+
+# tests_scripts/ is backgrounded HERE, once everything it reads is built, overlapping its own run with the whole
+# MicroPython tier rather than serializing in front of it (SPECIFICATION.md Part E.1). It counts against
 # max_parallel like any other job, not as an extra process on top of that budget.
 #
 # timeout-wrapped for the standing "hanging tests are never allowed" rule: a hung pytest would hold the final `wait`
@@ -426,11 +467,9 @@ done
 # The timeout retry rule (E.3.1): a timed-out run is retried like a timed-out file, up to max_attempts in all, and a
 # pass after a retry is RETRIED-PASS; any other exit fails at once.
 #
-# MUST stay behind the generation step above, which globs devices/*.toml - Part E.1's reserved
+# MUST stay behind the generation and site steps above, which glob devices/*.toml - Part E.1's reserved
 # zz_test_ namespace has the race: the tier writes its live-tree fixtures there for the length of one test.
-#
-# Nothing else in the foreground re-globs devices/ once generation is done but build_device_websites.sh below, which
-# drops the zz_test_ fixtures, the only TOMLs the tier writes; every other step takes the device list read above.
+# Nothing in the foreground re-globs devices/ once the tier runs: every later step takes the device list read above.
 
 echo "== Running tests_scripts/ (CPython-side build-tooling tests)"
 # Created before the pytest job, which writes its run record, status and pid into it. One shared results_dir
@@ -482,21 +521,8 @@ tests_scripts_inner_pidfile="$results_dir/tests_scripts.pid"
 ) &
 tests_scripts_pid=$!
 
-# _build_sites: every generated sensortask_<device>.py imports frozen_html at module level, so the unit tier needs one
-# site on its path; any derived device serves, so the first is built and no device is named here (Part A.9). The
-# scenario harness boots each device on its own site, build/generated_html/<device>/, so a plain run builds those too.
-_build_sites() {
-    echo "== Building frozen_modules/frozen_html.py (the $site_device website, the first derived device)"
-    scripts/build_website.sh "$site_device"
-    if [ "$coverage" = "0" ]; then
-        echo "== Building every derived device's website into build/generated_html/ (the scenario harness boots each)"
-        scripts/build_device_websites.sh
-    fi
-}
-_build_sites
-
-# tests_scripts/ was backgrounded after the generation step above; RUN_SLOW_FIRMWARE_BUILD stays unset for it,
-# keeping the one real ARM firmware compile opt-in for local iteration; ci.yml's firmware-build-verify job sets it.
+# RUN_SLOW_FIRMWARE_BUILD stays unset for the backgrounded tests_scripts/, keeping the one real ARM firmware compile
+# opt-in for local iteration; ci.yml's firmware-build-verify job sets it.
 
 # Per-file timeout with two retries, plus stdbuf line buffering and -X heapsize=16M below. All
 # three are standing backstops rather than fixes for any specific hang, and the heap value is a
@@ -753,6 +779,14 @@ for job in "${job_list[@]}"; do
 done
 wait || true
 tests_scripts_pid=""  # reaped by the `wait` above - cleared so the EXIT trap can't signal a recycled PID
+# The guard's second listing, both tiers ended: its new paths go into the run's record for the verdict, or no verdict
+# when either listing failed.
+if [ "$checkout_listed" = "1" ] && checkout_after="$(_checkout_paths)"; then
+    _checkout_left "$checkout_before" "$checkout_after" >"$results_dir/checkout_left.txt"
+    echo "== Checkout-write guard: $(wc -l <"$results_dir/checkout_left.txt") new path(s) outside the tiers' own outputs"
+else
+    echo "no verdict (git status could not list the checkout, its error above)" >"$results_dir/checkout.noverdict"
+fi
 
 # ---------------------------------------------------------------------------------------------
 # The verdict: every job's status, log and run record read into the SPECIFICATION.md E.10 summary
@@ -1000,6 +1034,25 @@ elif [ "$tests_scripts_result" != "PASS" ]; then
     summary_add retried "tests_scripts/ (pytest)" "${tests_scripts_result#RETRIED-PASS }"
     echo "root-cause item: tests_scripts/ needed attempt ${tests_scripts_result#RETRIED-PASS } - record it as a root-cause item"
 fi
+# The checkout-write guard's verdict: each path the run left behind is listed before the block, which names the first
+# five and counts the rest; a listing that failed is no verdict, never clean.
+checkout_paths_left=()
+checkout_verdict=""
+if [ -s "$results_dir/checkout_left.txt" ]; then
+    mapfile -t checkout_paths_left <"$results_dir/checkout_left.txt"
+    evidence_files+=("$results_dir/checkout_left.txt")
+    shown="$(printf '%s, ' "${checkout_paths_left[@]:0:5}")"
+    shown="${shown%, }"
+    [ "${#checkout_paths_left[@]}" -le 5 ] || shown+=", +$((${#checkout_paths_left[@]} - 5)) more"
+    checkout_verdict="${#checkout_paths_left[@]} path(s) left behind by the run: $shown"
+elif [ -s "$results_dir/checkout.noverdict" ]; then
+    evidence_files+=("$results_dir/checkout.noverdict")
+    checkout_verdict="$(<"$results_dir/checkout.noverdict")"
+fi
+if [ -n "$checkout_verdict" ]; then
+    failed=1
+    summary_add failed "the checkout" "$checkout_verdict"
+fi
 summary_counts_line tests "$tests_passed" "$tests_failed" "$tests_skipped" "$tests_deselected" 0 0 0
 l2_scope="tests/test_digital_twin_*.py and the scenario harness"
 [ "$coverage" = "0" ] || l2_scope="tests/test_digital_twin_*.py only"
@@ -1012,22 +1065,61 @@ else
     summary_gc_stage "-1 (reactive default)"
 fi
 
-# Each `|| coverage_render_failed=1` rather than bare: under `set -e` a renderer failure would
-# abort here with ITS exit code, which the caller cannot tell from a failed test. Coverage is a
-# report and never gates, but the test result under this binary must (exit 3 below).
-coverage_render_failed=0
+# Each `|| _unrendered <report> <data>` rather than bare: under `set -e` a renderer failure would abort here with ITS
+# exit code, which the caller cannot tell from a failed test. Coverage is a report and never gates, but the test
+# result under this binary must (exit 3 below).
+coverage_unrendered=()
+coverage_kept=()
+_unrendered() {
+    coverage_unrendered+=("$1")
+    [[ " ${coverage_kept[*]} " == *" $2 "* ]] || coverage_kept+=("$2")
+}
 if [ "$coverage" = "1" ]; then
     echo "== Rendering coverage report"
-    uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir src --html-dir htmlcov --markdown-file coverage_summary.md || coverage_render_failed=1
+    uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir src --html-dir htmlcov --markdown-file coverage_summary.md || _unrendered "src/ (htmlcov)" "$raw_dir"
     echo "== Rendering digital_twin/ coverage report"
-    uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir digital_twin --html-dir htmlcov_digital_twin --markdown-file coverage_summary_digital_twin.md || coverage_render_failed=1
+    uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir digital_twin --html-dir htmlcov_digital_twin --markdown-file coverage_summary_digital_twin.md || _unrendered "digital_twin/ (htmlcov_digital_twin)" "$raw_dir"
     echo "== Rendering the generated modules' coverage report"
-    uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir build/generated_src --html-dir htmlcov_generated --markdown-file coverage_summary_generated.md || coverage_render_failed=1
+    uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir build/generated_src --html-dir htmlcov_generated --markdown-file coverage_summary_generated.md || _unrendered "the generated modules (htmlcov_generated)" "$raw_dir"
     echo "== Rendering the host build chain's coverage report (buildgen/, scripts/, toolchain/)"
-    uv run coverage html --data-file="$results_dir/host.coverage" -d htmlcov_host || coverage_render_failed=1
-    uv run coverage report --data-file="$results_dir/host.coverage" --format=markdown >coverage_summary_host.md || coverage_render_failed=1
+    uv run coverage html --data-file="$results_dir/host.coverage" -d htmlcov_host || _unrendered "the host build chain (htmlcov_host)" "$results_dir/host.coverage"
+    uv run coverage report --data-file="$results_dir/host.coverage" --format=markdown >coverage_summary_host.md || _unrendered "the host build chain (coverage_summary_host.md)" "$results_dir/host.coverage"
+fi
+# A job whose tracer ended early has tests/_coverage_runner.py's note beside its dump: its tests passed and only its
+# coverage is short (SPECIFICATION.md E.5.1), so each note is listed and the run exits 3, as for a failed render.
+coverage_incomplete=0
+if [ "$coverage" = "1" ]; then
+    for job in "${job_list[@]}"; do
+        note_file="$raw_dir/$(_job_tag "$job").json.incomplete"
+        if [ -f "$note_file" ]; then
+            coverage_incomplete=$((coverage_incomplete + 1))
+            note_text="$(<"$note_file")"
+            summary_note "$job" "coverage incomplete: ${note_text#runner: }"
+        fi
+    done
 fi
 
+# A failed render's data joins this run's evidence (build/archive/test_sh/, which later runs prune), not the EXIT trap's
+# removal, so the report can still be rendered from it; the dumps move into results_dir first, named coverage_raw.
+coverage_render_failed=0
+if [ "${#coverage_unrendered[@]}" -gt 0 ]; then
+    coverage_render_failed=1
+    for i in "${!coverage_kept[@]}"; do
+        if [ "${coverage_kept[i]}" = "$raw_dir" ] && [ -d "$raw_dir" ]; then
+            mv "$raw_dir" "$results_dir/coverage_raw"
+            coverage_kept[i]="$results_dir/coverage_raw"
+            raw_dir=""
+        fi
+    done
+    evidence_files+=("${coverage_kept[@]}")
+    unrendered="$(printf '%s, ' "${coverage_unrendered[@]}")"
+    summary_note "coverage" "not rendered: ${unrendered%, } - the data each read is kept in this run's evidence archive"
+fi
+
+if [ "${#checkout_paths_left[@]}" -gt 0 ]; then
+    echo "Left in the checkout by the run (only the tiers' own outputs are exempt: tests/_tmp/, __pycache__/, .pytest_cache/):"
+    printf '  - %s\n' "${checkout_paths_left[@]}"
+fi
 if [ "${#memory_error_files[@]}" -gt 0 ]; then
     echo "MemoryError seen (caught-and-logged counts too - SPECIFICATION.md Part I.4(e)):"
     for f in "${memory_error_files[@]}"; do
@@ -1039,12 +1131,16 @@ fi
 # the runner without reading the raw log, which GitHub serves from a storage host some environments
 # cannot reach at all - and it puts the failure on the PR page for a human too.
 if [ -n "${GITHUB_ACTIONS:-}" ]; then
-    # GitHub keeps only 10 error annotations per step: the pytest tier's goes first, per-file ones
-    # stop at 8, and a last one counts the rest, so nothing past the cap vanishes without a trace.
+    # GitHub keeps only 10 error annotations per step: the pytest tier's goes first, then the checkout's, per-file
+    # ones stop at 8 (7 after the checkout's), and a last one counts the rest, so nothing past the cap goes untraced.
     if [ "$tests_scripts_result" = "FAIL" ]; then
         echo "::error title=tests_scripts/ (CPython/pytest)::the pytest tier failed - its own output is in this step's log, above the summary"
     fi
     annotations_left=8
+    if [ -n "${checkout_verdict:-}" ]; then
+        echo "::error title=the checkout::$checkout_verdict"
+        annotations_left=7
+    fi
     annotations_withheld=0
     for f in "${failed_files[@]}"; do
         if [ "$annotations_left" -eq 0 ]; then
@@ -1072,13 +1168,17 @@ if [ -n "${GITHUB_ACTIONS:-}" ]; then
 fi
 
 # Three outcomes, three codes, because the caller acts differently on each: 1 = a test failed,
-# 3 = every test passed and only the report could not be rendered, 0 = both fine. CI gates on 1
-# and tolerates 3 (SPECIFICATION.md Part E.5.3); a test failure is never advisory.
+# 3 = every test passed and only the coverage is short (a report not rendered, a tracer ended early), 0 = all fine.
+# CI gates on 1 and tolerates 3 (SPECIFICATION.md Part E.5.3); a test failure is never advisory.
 exit_code=0
+coverage_short=()
+[ "$coverage_render_failed" -eq 0 ] || coverage_short+=("coverage report not rendered")
+[ "$coverage_incomplete" -eq 0 ] || coverage_short+=("coverage incomplete in $coverage_incomplete job(s), listed under Notes")
 if [ "$failed" -ne 0 ]; then
     exit_code=1
-elif [ "$coverage_render_failed" -ne 0 ]; then
+elif [ "${#coverage_short[@]}" -gt 0 ]; then
     exit_code=3
+    summary_result_reason "$(_join_reasons "${coverage_short[@]}")"
 fi
 
 # The deciding logs of every failed, no-verdict, allocation-flagged and retried file, plus the
@@ -1092,6 +1192,9 @@ printf '%s\n' "$summary_text" >"$results_dir/summary.txt"
 if evidence_dir="$(uv run scripts/_archive_evidence.py --runner test_sh "${evidence_files[@]}" "$results_dir/summary.txt")"; then
     evidence_archived=1
     echo "== Evidence archived in $evidence_dir"
+    for item in "${coverage_kept[@]}"; do
+        echo "== Kept for the coverage report not rendered: $evidence_dir/${item##*/}"
+    done
 else
     echo "== the evidence could not be archived - kept in $results_dir" >&2
     results_dir=""

@@ -10,7 +10,8 @@ from _async_harness import run
 from _error_codes import code
 from _fram_builders import make_fram_manager
 from _recording_print import record_prints
-from _src_const import src_const
+from _src_const import src_const, src_int
+from _stack_overflow import stack_overflow
 
 import asy_print_log as print_log_module
 from asy_base_classes import RegionBuffer
@@ -104,6 +105,17 @@ def test_an_out_of_range_level_is_refused_not_clamped() -> None:
     pr = PrintLog(2)
     assert pr.set_level(10) is False
     assert pr.level == 2
+
+
+def test_the_error_sequence_wraps_from_its_top_to_zero() -> None:
+    # The counted-calls sequence a reset compares by masked difference: it reaches _WRAP_MAX, then wraps to 0.
+    top = src_int("src/asy_print_log.py", "_WRAP_MAX")
+    pr = PrintLogHistory(history_length=4)
+    pr._counted = top - 1
+    pr._count()
+    assert pr._counted == top
+    pr._count()
+    assert pr._counted == 0
 
 
 def test_set_level_valid_value_passes_through() -> None:
@@ -1804,38 +1816,26 @@ def test_make_logger_builds_a_store_or_a_ram_history_by_config() -> None:
     assert DEFAULT_LOG == (None, 10, None)
 
 
-def _stack_overflow() -> RuntimeError:
-    # The interpreter's own C-stack exhaustion, from a real one (py/runtime.c:1786, v1.29.0).
-    def dive(depth: int) -> int:
-        return dive(depth + 1)
-
-    try:
-        dive(0)
-    except RuntimeError as e:
-        return e
-    raise AssertionError("no recursion limit reached")
-
-
 def test_the_stack_exhausted_text_is_the_interpreters_own_message() -> None:
-    assert src_const("src/asy_print_log.py", "_STACK_EXHAUSTED") == str(_stack_overflow())
+    assert src_const("src/asy_print_log.py", "_STACK_EXHAUSTED") == str(stack_overflow())
 
 
 def test_report_if_fatal_flags_only_a_stack_overflow() -> None:
     # Every other exception leaves the flag clear, the same text under another class included; the real overflow sets it,
     # last, so no case is checked from a set flag.
-    text = str(_stack_overflow())
+    text = str(stack_overflow())
     others = (RuntimeError("CRC check failed while reading data"), RuntimeError(), ValueError(text), OSError(5, text), MemoryError("injected for the fatal check"))
     for other in others:
         report_if_fatal(other)
         assert fatal_reported() is False, repr(other)
-    report_if_fatal(_stack_overflow())
+    report_if_fatal(stack_overflow())
     assert fatal_reported() is True
     print_log_module._fatal = False  # as at boot: microtest fails a test that leaves it set
 
 
 def test_report_if_fatal_allocates_and_prints_nothing() -> None:
     # It may run with the C stack nearly spent: with the heap locked it neither raises nor prints, and the flag still sets.
-    error = _stack_overflow()
+    error = stack_overflow()
     raised = reported = False
     with record_prints() as recorder:
         micropython.heap_lock()
@@ -1848,6 +1848,111 @@ def test_report_if_fatal_allocates_and_prints_nothing() -> None:
             micropython.heap_unlock()
     assert (raised, reported, recorder.lines) == (False, True, [])
     print_log_module._fatal = False  # as at boot: microtest fails a test that leaves it set
+
+
+# ---------------------------------------------------------------------------
+# A caught MemoryError handed to a gated line below its level: its own text still prints once, through console()
+# ---------------------------------------------------------------------------
+
+_GATES = (("err", 1), ("wrn", 2), ("one", 3), ("evt", 4), ("all", 5))  # each line method and the level it prints from
+
+
+def test_a_gated_line_below_its_level_prints_a_caught_memory_error_once() -> None:
+    # The memory gates read printed text only (CLAUDE.md memory rule): below its level a line prints the first caught
+    # MemoryError among its arguments, its text alone under the logger's name; any other argument stays gated.
+    err = MemoryError("injected below the level")  # worded clear of the memory gates' markers
+    second = MemoryError("a second one in the same call")
+    for method, gate in _GATES:
+        for level in range(gate):
+            pr = PrintLog(level, name="P")
+            with record_prints() as rec:
+                getattr(pr, method)("context:", err, "tail", sep="-", end="!")
+                getattr(pr, method)("two:", err, second)
+                getattr(pr, method)("socket:", OSError(5, "injected"))
+                getattr(pr, method)("value:", ValueError("injected"), 3)
+            assert rec.lines == [("P", err), ("P", err)], (method, level, rec.lines)
+            assert rec.kwargs == [{}, {}], (method, level, rec.kwargs)  # console()'s own separator and line end
+
+
+def test_a_gated_line_at_its_level_prints_its_one_line_with_the_memory_error_in_it() -> None:
+    # From its level up the line itself carries the error's text: printed once as given, with no second console line.
+    err = MemoryError("injected at the level")  # worded clear of the memory gates' markers
+    for method, gate in _GATES:
+        for level in range(gate, 6):
+            pr = PrintLog(level, name="P")
+            with record_prints() as rec:
+                getattr(pr, method)("context:", err, sep="-", end="!")
+            assert rec.lines == [("P", "context:", err)], (method, level, rec.lines)
+            assert rec.kwargs == [{"sep": "-", "end": "!"}], (method, level, rec.kwargs)
+
+
+def _logged_with(error: Exception, level: int) -> "tuple[object, ...]":
+    # One err_s() and one wrn_s() carrying `error` on a FRAM-backed store: the lines printed, the log, the chunk's writes.
+    chunk = _CountingFramChunk(2 + 3)
+    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=3, level=level, name="S")
+    run(store.setup())
+    with record_prints() as rec:
+        run(store.err_s("err_s:", error, errno=3))
+        run(store.wrn_s("wrn_s:", error, wrnno=2))
+    return rec.lines, run(store.get_log()), chunk.writes, chunk.last_payload
+
+
+def test_err_s_and_wrn_s_below_their_level_print_a_caught_memory_error_once_and_keep_the_same_entry() -> None:
+    # The entry, its count and its write-through are the same whichever error the call carries; only the console differs.
+    err = MemoryError("injected for the entry")  # worded clear of the memory gates' markers
+    socket_error = OSError(5, "injected")
+    with_memory = _logged_with(err, 0)
+    with_socket = _logged_with(socket_error, 0)
+    assert with_memory[0] == [("S", err), ("S", err)], with_memory[0]
+    assert with_socket[0] == [], with_socket[0]
+    assert with_memory[1:] == with_socket[1:], (with_memory[1:], with_socket[1:])
+    _lines, memory_log, _writes, _payload = with_memory
+    assert memory_log == {"S": {"ErrCount": 2, "ErrNum": [0, 3, 2], "ErrType": ["N", "E", "W"]}}, memory_log
+    at_one = _logged_with(err, 1)  # err_s at its own level, wrn_s still below its own
+    assert at_one[0] == [("S", "err_s:", err), ("S", err)], at_one[0]
+    assert at_one[1:] == with_memory[1:], at_one[1:]
+
+
+def test_the_below_level_memory_error_line_allocates_nothing() -> None:
+    # It prints from inside MemoryError arms: with the heap locked the shared line neither raises nor allocates, through
+    # the real print() or the heap-free stand-in, which sees console()'s two-argument line; an OSError prints nothing.
+    err = MemoryError("injected for the locked line")  # worded clear of the memory gates' markers
+    pr = PrintLog(0, name="L")
+    memory_args = ("context:", err, "tail")
+    socket_args = ("socket:", OSError(5, "injected"))
+    raised = [False, False, False]
+    micropython.heap_lock()
+    try:
+        pr._line(1, memory_args, " ", "\n")
+    except MemoryError:
+        raised[0] = True
+    finally:
+        micropython.heap_unlock()
+    print_log_module.print = _locked_print  # type: ignore[attr-defined]
+    try:
+        _LOCKED_LINE[0] = _LOCKED_LINE[1] = _LOCKED_LINE[2] = None
+        micropython.heap_lock()
+        try:
+            pr._line(1, memory_args, " ", "\n")
+        except MemoryError:
+            raised[1] = True
+        finally:
+            micropython.heap_unlock()
+        memory_line = tuple(_LOCKED_LINE)
+        _LOCKED_LINE[0] = _LOCKED_LINE[1] = _LOCKED_LINE[2] = None
+        micropython.heap_lock()
+        try:
+            pr._line(1, socket_args, " ", "\n")
+        except MemoryError:
+            raised[2] = True
+        finally:
+            micropython.heap_unlock()
+        socket_line = tuple(_LOCKED_LINE)
+    finally:
+        del print_log_module.print  # type: ignore[attr-defined]
+    assert raised == [False, False, False], ("the below-level line allocated with the heap locked", raised)
+    assert memory_line == ("L", err, _NO_ARG), memory_line
+    assert socket_line == (None, None, None), socket_line
 
 
 if __name__ == "__main__":

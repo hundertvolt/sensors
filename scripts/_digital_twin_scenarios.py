@@ -117,6 +117,16 @@ _UART_LOAD_S = 20.0  # the concurrent-load window
 # @tunable l2.scenario_uart_load_faults = 3
 _UART_LOAD_FAULTS = 3  # SGP40 measure reads failed under the UART load: logged and persisted, below any restart
 _SGP40_MEASURE_RAW = 0x260F  # the command whose following read the fault matches, so setup stays healthy
+# Per sensor driver, the bus op and key of one read its config snapshot (get_config_snapshot()) makes, from src/: once the
+# boot is done, BMP3XX's CONFIG and SCD30's temperature offset are read by nothing else unless a write or recovery runs.
+_SNAPSHOT_READS = {
+    "bmp3xx": ("readfrom_mem", module_int_const(SRC_DIR, "asy_bmp3xx_driver.py", "_REGISTER_CONFIG")),
+    "isl29125": ("readfrom_mem", module_int_const(SRC_DIR, "asy_isl29125_driver.py", "_REGISTER_CONFIG1")),
+    "scd30": ("readfrom_into", module_int_const(SRC_DIR, "asy_scd30_driver.py", "_CMD_SET_TEMPERATURE_OFFSET")),
+}
+_SNAPSHOT_FAULTS = 2  # ISL29125's verify takes at most one per 1 s cycle, so a GET loop always takes the other
+_VERIFY_FAILED = "Config read-back for reconciliation failed"  # asy_isl29125_driver.py's _verify_config(): a fault no GET took
+_UNAVAILABLE = {"error": "unavailable"}  # asy_base_classes.py's UNAVAILABLE marker, sent in place of a module's map
 # @tunable l2.loop_lag_load_s = 20.0
 _LOOP_LAG_LOAD_S = 20.0  # the storm's faults, one per read at the longest read trigger, then one whole LOOP_LAG window (agent, 2026-10-21)
 _LOOP_LAG_REST_MAX_MS = module_int_const(REPO_ROOT / "buildgen", "codegen.py", "_DNS_TIMEOUT_MS")  # one DNS query (`con.dns_query`), the generated module's
@@ -167,6 +177,11 @@ _NTP_UNREACHABLE_WRITE_PERIOD_S = 1.0  # one stored GMTOffset write a second bes
 
 class RefusedError(Exception):
     # A clean refusal at the ceiling: the connection reset or closed before any response byte - nothing else is one.
+    pass
+
+
+class UnmetPremiseError(Exception):
+    # A premise this host cannot give the scenario (file modes that do not bind, say): it skips with that reason.
     pass
 
 
@@ -642,6 +657,37 @@ def _bus_fault_degrades(ctx: Context) -> None:
         _expect(_counter(_errcount(twin.port, "SGP40")) >= 1, "SGP40's error count holds no entry")
 
 
+@scenario("client_gone_mid_response_is_counted", family="webserver_requests", needs_site=True)
+def _client_gone_mid_response(ctx: Context) -> None:
+    """A client resetting its connection while the largest GET body is mid-write adds one to HTTPDropped, logged as a peer reset."""
+    with ctx.boot(*_CONN, "--test-pin-send-buffer") as twin:
+        sizes = {path: _request(twin.port, "GET", path) for path in (*_get_routes(), *_site_paths(ctx.device))}
+        _expect(all(a.status == HTTPStatus.OK for a in sizes.values()), f"a GET answered other than 200: { {p: a.status for p, a in sizes.items()} }")
+        floor = _send_buffer_floor()
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1)  # before the connect, so the window it offers starts there
+            buffered = floor + sock.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF)
+            path = _largest_past({p: len(a.body) for p, a in sizes.items()}, buffered)
+            _expect(twin.drained(), "a size read's slot never came back")
+            before = _group(_status(twin.port), "networking").get("HTTPDropped")
+            _expect(twin.drained(), "the HTTPDropped read's slot never came back")
+            mark = twin.mark()
+            sock.settimeout(_REQUEST_TIMEOUT_S)
+            sock.connect((HOST, twin.port))
+            sock.sendall(f"GET {path} HTTP/1.0\r\n\r\n".encode())
+            status = _status_line(sock)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))  # the close below is a reset
+        _expect(status.startswith(b"HTTP/1.") and b" 200 " in status, f"GET {path} began {status!r}")
+        _expect(twin.drained(), "the reset connection's slot never came back")
+        reset_pinned = _pinned(twin, mark)  # the reset connection's own line, before the reads below add theirs
+        after = _group(_status(twin.port), "networking").get("HTTPDropped")  # served: the reset left the server serving
+        _expect(isinstance(before, int) and after == before + 1, f"HTTPDropped {before!r} -> {after!r} after one reset mid-{path}")  # exact, as the refusal's
+        newest = _newest_entries(_errcount(twin.port, "WEBSERVER"), 1)
+        _expect(newest == [["W", _src_int(_WEBSERVER, "_WRN_HTTP_PEER_RESET")]], f"WEBSERVER's newest entry is {newest}, not the peer reset")
+        pinned = _pinned(twin, 0)
+        _expect(len(reset_pinned) == 1 and all(n == floor < accepted for n, accepted in pinned), f"the server's sockets read send buffers {pinned}, not the kernel's floor {floor} below their size at accept()")
+
+
 @scenario("a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response", family="webserver_concurrency")
 def _closing_connection_holds_its_slot(ctx: Context) -> None:
     """With every close held, a ceiling of clients holding whole responses still counts every slot and refuses one more."""
@@ -768,6 +814,29 @@ def _error_table(port: int) -> "dict[str, JSONObject]":
     return errcount_table(HTTPStatus.OK, _status(port))
 
 
+@scenario("an_escalation_entry_held_past_its_bound_is_cut_and_the_reset_still_follows", family="system_commands", drivers=("fram", "scd30"))
+def _escalation_entry_cut(ctx: Context) -> None:
+    """An escalation entry write held inside its first block past its bound is cancelled there: code 20, the cut block healed and logged."""
+    key, _name = _first_instance(ctx, "scd30")
+    state = ctx.logs_dir / "state_escalation_cut"
+    errno = _src_int(_SYSTEM, "_ERR_STACK_EXHAUSTED")
+    busy, repaired = _src_int("asy_fram_manager.py", "_ERR_FRAM_STATUS_BYTE"), _src_int("asy_fram_manager.py", "_WRN_FRAM_BLOCK_INVALID")
+    with ctx.boot("--fault", f"{key}:readfrom_into:stack", "--test-hold-system-entry", f"{errno}:cut", state_dir=state) as twin:
+        _expect(twin.wait_line("ENTRY_HELD", 0, _src_int(_SYSTEM, "_TASK_CHECK_TIME") + _COMMANDED_RESET_MARGIN_S) is not None, "the escalation's entry write never reached its first block's busy mark")
+        _exits_with(twin, 3, "the escalation whose entry write was held inside its first block")
+        _expect("its entry write did not finish within" in read_log(twin.run.log_path), "the reset came without the bound cancelling the held write")
+    with ctx.boot(state_dir=state) as twin:
+        status = _status(twin.port)
+        reason = _group(status, "system").get("ResetReason")
+        _expect(reason == _src_int(_SYSTEM, "_RR_STACK_EXHAUSTED"), f"the relaunch reads ResetReason {reason!r}")
+        table = errcount_table(HTTPStatus.OK, status)
+        _expect(not _has_entry(table.get("SYSTEM"), "E", errno), f"the cut entry reached the relaunch's SYSTEM history ({table.get('SYSTEM')!r})")
+        _expect(_has_entry(table.get("FRAM"), "E", busy) and _has_entry(table.get("FRAM"), "W", repaired), f"the relaunch logged no busy block and its repair ({table.get('FRAM')!r})")
+    with ctx.boot(state_dir=state) as twin:
+        fram = _errcount(twin.port, "FRAM")
+        _expect(not _has_entry(fram, "E", busy) and not _has_entry(fram, "W", repaired), f"the block the relaunch repaired reads busy again ({fram!r})")
+
+
 @scenario("every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly", family="sensortask_integration")
 def _every_get_endpoint(ctx: Context) -> None:
     """Every GET route answers 200 in its published shape, the settings routes with the device's own defaults."""
@@ -825,6 +894,39 @@ def _expect(condition: object, msg: str) -> None:
     # One assertion of a scenario: the first that fails ends it, named.
     if not condition:
         raise AssertionError(msg)
+
+
+@scenario("failed_config_snapshot_is_sent_as_unavailable", family="sensortask_integration")
+def _failed_config_snapshot(ctx: Context) -> None:
+    """Per driver, a config snapshot read failing after the boot sends the module's unavailable marker, all else intact.
+    Armed at BOOT_DONE (--test-defer-faults), since the boot's config applies read the same registers; ISL29125's
+    per-cycle _verify_config() reads the CONFIG1 burst too, so there a fault is the GET's or the verify's, both counted."""
+    targets = [driver for driver in sorted(_SNAPSHOT_READS) if driver in ctx.drivers]
+    if not targets:
+        raise UnmetPremiseError(f"the device wires none of {sorted(_SNAPSHOT_READS)}")
+    for driver in targets:
+        key, name = _first_instance(ctx, driver)
+        op, register = _SNAPSHOT_READS[driver]
+        token = f"{key}:{op}="
+        with ctx.boot("--fault", f"{key}:{op}:{_SNAPSHOT_FAULTS}:{register:X}", "--test-defer-faults", "--test-fault-status-interval-ms", str(_FAULT_STATUS_INTERVAL_MS)) as twin:
+            _expect(twin.wait_line("boot phase: BOOT_DONE", 0, _SERVING_TIMEOUT_S) is not None, f"{name}: the boot never reached BOOT_DONE")
+            _expect(_pending_faults(twin, token) == 0, f"{name}: a fault was queued before FAULT_ARM")
+            armed = twin.mark()
+            twin.trigger("FAULT_ARM")
+            _expect(twin.wait_line("FAULTS_ARMED", armed, _DRAIN_WAIT_S) is not None, f"{name}: the twin never armed its faults")
+            unavailable, left, deadline = 0, _SNAPSHOT_FAULTS, time.monotonic() + _DRAIN_WAIT_S
+            while left > 0 and time.monotonic() < deadline:
+                body = _object(_request(twin.port, "GET", "/sensors"))
+                others = {k: v for k, v in body.items() if k != name}
+                _expect(all(isinstance(v, dict) and v and "error" not in v for v in others.values()), f"{name}'s fault reached another module: {others!r}")
+                unavailable += body.get(name) == _UNAVAILABLE
+                left = _pending_faults(twin, token)
+            verified = log_from(twin.run.log_path, armed).count(_VERIFY_FAILED)
+            _expect(left == 0, f"{name}: {left} of {_SNAPSHOT_FAULTS} faults still queued after {_DRAIN_WAIT_S} s of GETs")
+            _expect(unavailable >= 1 and unavailable + verified == _SNAPSHOT_FAULTS, f"{name}: {unavailable} GET(s) sent the marker and the verify took {verified} of {_SNAPSHOT_FAULTS} faults")
+            _expect(_has_entry(_errcount(twin.port, name), "E", _src_int(f"asy_{driver}_driver.py", "_ERR_CHIP_GET")), f"{name}'s errcount holds no CHIP_GET entry")
+            block = _object(_request(twin.port, "GET", "/sensors")).get(name)
+            _expect(isinstance(block, dict) and block and "error" not in block, f"{name} once its faults are spent: {block!r}")
 
 
 def _first_instance(ctx: Context, driver: str) -> "tuple[str, str]":
@@ -1069,6 +1171,14 @@ def _lag_load(ctx: Context, twin: Twin, readers: "int | None" = None) -> "dict[s
 def _lag_windows(text: str) -> "list[dict[str, int]]":
     # Each LOOP_LAG line's figures (max_us, p99_us, samples) and each link's `<key>=<transfers>`, oldest first.
     return [{key: int(value) for key, value in (part.split("=", 1) for part in line.split()[1:])} for line in text.splitlines() if line.startswith("LOOP_LAG ")]
+
+
+def _largest_past(sizes: "dict[str, int]", buffered: int) -> str:
+    # The path of the largest body; past what both ends' buffers hold, its write is still going when the client resets.
+    path = max(sizes, key=lambda p: sizes[p])
+    if sizes[path] <= buffered:
+        raise UnmetPremiseError(f"no GET body exceeds the {buffered} B the two pinned buffers hold (largest: {path}, {sizes[path]} B)")
+    return path
 
 
 def _link_roles(device: str) -> "dict[str, str]":
@@ -1361,6 +1471,20 @@ def _pause_time_counts_down(ctx: Context) -> None:
         raise AssertionError(f"PauseTime never reached 0 within {_PAUSE_COUNTDOWN_S}s (last {last!r})")
 
 
+def _pending_faults(twin: Twin, token: str) -> int:
+    # The faults still queued under `token` ("<key>:<op>=") on the next FAULT_PENDING line; a spent queue prints none.
+    line = twin.wait_line("FAULT_PENDING", twin.mark(), _DRAIN_WAIT_S)
+    if line is None:
+        raise AssertionError("the twin printed no FAULT_PENDING line - boot it with --test-fault-status-interval-ms")
+    return next((int(t.split("=", 1)[1]) for t in line.split()[1:] if t.startswith(token)), 0)
+
+
+def _pinned(twin: Twin, since: int) -> "list[tuple[int, int]]":
+    # Each SNDBUF_PINNED line printed after `since`: (the pinned size, its socket's size at accept()).
+    lines = [line.split() for line in log_from(twin.run.log_path, since).splitlines() if line.startswith("SNDBUF_PINNED ")]
+    return [(int(f[1].split("=")[1]), int(f[2].split("=")[1])) for f in lines]
+
+
 @scenario("realistic_mixed_polling_and_a_concurrent_real_config_write", family="webserver_concurrency")
 def _polling_and_config_write(ctx: Context) -> None:
     """OpenHAB polling beside real config writes filling the ceiling: every GET served, every write Valid."""
@@ -1428,6 +1552,32 @@ def _refusal_counted(ctx: Context) -> None:
         after = _group(_status(twin.port), "networking").get("HTTPDropped")
         # Exact: HTTPDropped sums the last 24 hours in hourly bins, and this twin has run far less than 23 hours.
         _expect(isinstance(before, int) and after == before + refused, f"HTTPDropped {before!r} -> {after!r} after {refused} refusal(s)")
+
+
+@scenario("refused_config_write_is_reported_unpersisted", family="sensortask_integration")
+def _refused_config_write(ctx: Context) -> None:
+    """A config write the flash refuses answers Valid, is reported in ConfigUnpersisted and CFGMGR_NTP, and the next landed write clears it."""
+    state = ctx.logs_dir / "state_unpersisted"
+    with ctx.boot(state_dir=state) as twin:
+        path = state_paths(state).config_dir / "config_NTP.cfg"
+        offset = _object(_request(twin.port, "GET", "/networking")).get("NTPOffset")
+        if not isinstance(offset, int) or not path.is_file():
+            raise AssertionError(f"NTPOffset reads {offset!r}; its config file {path} exists: {path.is_file()}")
+        modes = [(p, p.stat().st_mode) for p in (path, path.parent)]
+        try:
+            path.chmod(0o444)
+            path.parent.chmod(0o555)
+            if _writable(path):
+                raise UnmetPremiseError(f"file modes do not bind for this process (a write probe opened the 0444 {path.name}), so the twin's write cannot be refused")
+            _expect(_result(_request(twin.port, "PUT", "/networking", {"NTPOffset": offset + 1}), "NTPOffset") == "Valid", "the refused write's PUT did not answer Valid")
+            _expect(_wait_unpersisted(twin.port, ["NTP"]), "ConfigUnpersisted never named NTP after its refused write")
+            _expect(_has_entry(_errcount(twin.port, "CFGMGR_NTP"), "E", _src_int("asy_config_manager.py", "_ERR_CFG_FILE_WRITE")), "CFGMGR_NTP holds no CFG_FILE_WRITE entry")
+        finally:
+            for p, mode in modes:
+                p.chmod(mode)
+        _expect(_result(_request(twin.port, "PUT", "/networking", {"NTPOffset": offset + 2}), "NTPOffset") == "Valid", "the second PUT did not answer Valid")
+        _expect(_wait_unpersisted(twin.port, []), "ConfigUnpersisted still names a store after a write that landed")
+        _expect(_wait_stored(state, "NTP", "NTPOffset", offset + 2), "the second write never reached the config file")
 
 
 def _refused_reset_errors(port: int, before: "dict[str, JSONObject]", when: str) -> None:
@@ -1577,11 +1727,14 @@ def _route_out(host: str) -> bool:
 def _run_one(item: Scenario, ctx: Context, *, group_ends: bool = True) -> Outcome:
     # One scenario's verdict; on a shared boot its idle check, and the shutdown its failure or the group's end needs.
     started = time.monotonic()
+    skipped = ""
     if item.needs_site and not (SITES_DIR / ctx.device / "frozen_html.py").is_file():
         ctx.failures.append(f"build/generated_html/{ctx.device} is not built - run scripts/build_device_websites.sh")
     else:
         try:
             item.body(ctx)
+        except UnmetPremiseError as exc:
+            skipped = str(exc)
         except _SCENARIO_ERRORS as exc:  # one scenario's verdict, never the run's
             ctx.failures.insert(0, f"{type(exc).__name__}: {exc}")
     if ctx.shared is not None:
@@ -1589,6 +1742,8 @@ def _run_one(item: Scenario, ctx: Context, *, group_ends: bool = True) -> Outcom
     elapsed = time.monotonic() - started
     if ctx.failures:
         return Outcome(item.name, "failed", "; ".join(ctx.failures) + f" ({elapsed:.1f}s)")
+    if skipped:
+        return Outcome(item.name, "skipped", skipped)
     return Outcome(item.name, "passed", f"{elapsed:.1f}s")
 
 
@@ -1645,6 +1800,13 @@ def _save_fram_evidence(ctx: Context, twin: Twin, label: str) -> None:
     fram = state_paths(twin.run.state_dir).fram
     if fram.exists():
         shutil.copy2(fram, evidence / fram.name)
+
+
+def _send_buffer_floor() -> int:
+    # The kernel's SO_SNDBUF floor, read back after a one-byte request (socket(7): doubled, then clamped to it).
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1)
+        return probe.getsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF)
 
 
 @scenario("sensors_put_round_trips_a_real_scd30_field_over_real_http", family="sensortask_integration", drivers=("scd30",))
@@ -1791,6 +1953,15 @@ def _site_never_shadows(ctx: Context) -> None:
         _expect(set(blocks) == ctx.sensors, f"/measurements carries {sorted(blocks)}, the device's sensors are {sorted(ctx.sensors)}")
 
 
+def _site_paths(device: str) -> "list[str]":
+    # The staged site's files as a client requests them, from its frozen module's header lines ("# /js/app.js.gz size=N").
+    module = SITES_DIR / device / "frozen_html.py"
+    paths = [line.split()[1].removesuffix(".gz") for line in module.read_text(encoding="utf-8").splitlines() if line.startswith("# /") and " size=" in line]
+    if not paths:
+        raise RuntimeError(f"{module} lists no file in its header lines - has its format changed?")
+    return paths
+
+
 @scenario("real_website_root_serves_the_actual_production_index_html", family="real_website_integration", needs_site=True, shared=True)
 def _site_root(ctx: Context) -> None:
     """GET / serves the device's real production index.html, gzip-encoded."""
@@ -1853,6 +2024,14 @@ def _status(port: int) -> JSONObject:
     if answer.status != HTTPStatus.OK:
         raise AssertionError(f"GET /status answered {answer.status}")
     return _object(answer)
+
+
+def _status_line(sock: socket.socket, limit: int = 64) -> bytes:
+    # The response's first line, read a byte at a time so nothing past it leaves the client's receive buffer.
+    line = b""
+    while not line.endswith(b"\r\n") and len(line) < limit and (byte := sock.recv(1)):
+        line += byte
+    return line
 
 
 def _status_of(port: int, path: str, timeout_s: float = _REQUEST_TIMEOUT_S) -> "int | str":
@@ -2042,6 +2221,16 @@ def _wait_stored(state: Path, store: str, key: str, value: JSONValue, timeout_s:
         time.sleep(_LINE_POLL_S)
     return False
 
+def _wait_unpersisted(port: int, stores: "list[str]", timeout_s: float = _DRAIN_WAIT_S) -> bool:
+    # Whether GET /status's ConfigUnpersisted reads `stores` by the deadline: the write's deferred flush ran.
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if _group(_status(port), "system").get("ConfigUnpersisted") == stores:
+            return True
+        time.sleep(_LINE_POLL_S)
+    return False
+
+
 def _watchdog_fault(ctx: Context, kind: str) -> None:
     # One --test-watchdog-fault after the supervisor's first feed: the starved watchdog engages with the twin still up.
     # Past a raise or main()'s end nothing feeds again; a blocked loop's own supervisor feeds once it resumes.
@@ -2076,6 +2265,15 @@ def _watchdog_fault_main_exit(ctx: Context) -> None:
 def _watchdog_fault_supervisor_raise(ctx: Context) -> None:
     """A raise escaping the supervisor's dead-task report stops every feed, and the starved watchdog engages."""
     _watchdog_fault(ctx, "supervisor-raise")
+
+
+def _writable(path: Path) -> bool:
+    # A write probe: whether this process may open `path` for writing whatever its mode (root's CAP_DAC_OVERRIDE may).
+    try:
+        with path.open("a", encoding="utf-8"):
+            return True
+    except PermissionError:
+        return False
 
 
 def _write_until_answered(port: int, index: int) -> "tuple[int, JSONValue]":

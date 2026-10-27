@@ -33,7 +33,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from array import array
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
     from typing import SupportsIndex, overload
 
     from _async_harness import CoroutineOf
@@ -588,14 +588,6 @@ def test_ready_survives_a_concurrent_deinit_mid_loop() -> None:
             return await waiter
 
     assert run(scenario(), _RUN_BOUND_S) is False  # must not raise
-
-
-def test_ready_returns_false_on_a_malformed_mask() -> None:
-    # A non-int mask makes `event & mask` inside ready()'s own loop raise TypeError - not caught by
-    # any caller's own except clause (those only wrap the real UART call, not this await) - so
-    # ready() must catch it itself and degrade to False rather than propagating.
-    uart = _make_uart()
-    assert run(uart.ready("not-a-mask"), _RUN_BOUND_S) is False  # type: ignore[arg-type]
 
 
 def test_cancel_read_timeout_returns_false_if_not_locked() -> None:
@@ -2106,9 +2098,9 @@ def test_bytes_lapped_during_the_copy_fail_the_read() -> None:
     assert uart.rx_overruns == before + 1
 
 
-def test_the_allocating_read_yields_rather_than_spinning_on_an_empty_ring() -> None:
-    # Nothing buffered yet: the loop must hand the scheduler a turn instead of calling ready() again
-    # at once, which on real hardware burns the whole latency budget inside one task.
+def test_an_allocating_read_started_before_its_bytes_arrive_returns_them_all() -> None:
+    # A multi-round read: the frame is fed only after the read has started, so it waits across ready()'s rounds
+    # and returns every byte.
     uart = _make_uart(poll_wait_ms=_FAST_POLL_WAIT_MS)
 
     async def scenario() -> "bytearray | None":
@@ -2428,7 +2420,7 @@ def test_a_deinit_during_the_delimited_reads_periodic_yield_ends_the_read() -> N
 
 def test_an_idle_wait_beyond_the_ticks_range_returns_false() -> None:
     # asyncio.sleep_ms() raises OverflowError for a delta of half the ticks period or more; ready()
-    # degrades that to False like a malformed mask. 2**61 is the 64-bit Unix port's half-period.
+    # degrades that to False. 2**61 is the 64-bit Unix port's half-period.
     try:
         time.ticks_add(time.ticks_ms(), 2**61)
         raised = False
@@ -2973,15 +2965,16 @@ def test_a_cancel_at_the_counter_cap_wraps_and_is_acknowledged() -> None:
     uart._cancel_ack = COUNTER_CAP
     release = asyncio.Event()
 
-    async def scenario() -> bool:
+    async def scenario() -> "tuple[bool, int]":
         task = asyncio.create_task(_holder(uart, release, reads=True))
         await asyncio.sleep_ms(_TASK_INSIDE_MS)
         result = await asyncio.wait_for(uart.cancel_read_timeout(), _STEP_BOUND_S)
+        acked = uart._cancel_ack  # at the return: the wrapped request (0) waited for its own acknowledgement
         release.set()
         await asyncio.wait_for(task, _STEP_BOUND_S)
-        return result
+        return result, acked
 
-    assert run(scenario(), _RUN_BOUND_S) is True
+    assert run(scenario(), _RUN_BOUND_S) == (True, 0)
     assert (uart._cancel_req, uart._cancel_ack) == (0, 0), (uart._cancel_req, uart._cancel_ack)
     assert uart.cancel_unacknowledged == 0
 
@@ -3004,6 +2997,217 @@ def test_the_unacknowledged_count_wraps_and_clear_still_reports_a_rise() -> None
     assert uart.cancel_unacknowledged == 0, uart.cancel_unacknowledged
     entry = run(comm.get_error_counter(), _RUN_BOUND_S)[comm.name]
     assert entry["ErrNum"][-1] == code("W", "UART_CANCEL_UNACKED") and entry["ErrType"][-1] == "W", entry
+
+
+# ---------------------------------------------------------------------------
+# Each read path's receive-failure branches: an overrun mid-read, a lap during the copy, a closed channel, no ring
+# ---------------------------------------------------------------------------
+
+_YIELD_WAIT_MS = 7  # a poll_wait_ms no other sleep here takes: a deadline-less ready() waits at poll_idle_ms, yields at 0
+
+
+async def _overrun_when_drained(uart: UART) -> None:
+    # UARTRSR's overrun flag, as the peripheral sets it, once the reader has taken every byte fed so far.
+    while uart._rx_level():
+        await asyncio.sleep_ms(0)
+    plant_rx_errors(uart, _RSR_OE)
+
+
+def _lap_on_copy(uart: UART, call: int) -> None:
+    # The DMA overtakes the read position just before the `call`-th copy: the real channel moves a ring plus one on,
+    # so the copy's own post-check sees the lap; nothing substitutes its answer.
+    real = uart._rx_copy
+    channel, ring = uart._rx_dma, uart._ring
+    assert channel is not None and ring is not None
+    calls = [0]
+
+    def copy(dest: "bytearray | memoryview | None", start: int, n: int) -> int:
+        calls[0] += 1
+        if calls[0] == call:
+            channel._count -= len(ring) + 1
+            channel._offset += len(ring) + 1
+        return real(dest, start, n)
+
+    uart._rx_copy = copy  # type: ignore[method-assign]
+
+
+async def _failed_read(uart: UART, kind: str) -> object:
+    # One read of the given path, its timeouts bounded; "line" is readline_until_complete() in 2-byte pieces.
+    kw: _ReadKw = {"start_timeout_ms": _DATA_TIMEOUT_MS, "timeout_ms": _DATA_TIMEOUT_MS}
+    if kind == "read":
+        return await uart.read(4, timeout_ms=_DATA_TIMEOUT_MS)
+    if kind == "readline":
+        return await uart.readline(timeout_ms=_DATA_TIMEOUT_MS)
+    if kind == "readinto_until_complete":
+        return await uart.readinto_until_complete(bytearray(4), 4, **kw)
+    if kind == "line":
+        return line_bytes(await read_line(uart, chunk_bytes=2))
+    return await uart.read_until_complete(4, **kw)  # "read_until_complete", or "delimited" on a COBS UART
+
+
+async def _failed_then_next(uart: UART, kind: str, feed_later: bytes | None = None) -> "tuple[object, bytes | None]":
+    # The failing read, then four fresh bytes read raw: a phantom or a lost byte shows in them.
+    async with uart:
+        feeder = None if feed_later is None else asyncio.create_task(feed_when_drained(uart, feed_later))
+        got = await _failed_read(uart, kind)
+        if feeder is not None and not feeder.done():
+            feeder.cancel()
+        fake(uart).feed_rx(b"wxyz")
+        return got, await uart.read(4, timeout_ms=_DATA_TIMEOUT_MS)
+
+
+def test_a_receive_overrun_mid_read_fails_each_multi_round_read_and_counts_what_it_had_taken() -> None:
+    # Bytes taken, then UARTRSR's overrun flag: the read fails at its overrun branch, what it had consumed is counted
+    # discarded, the overrun once, and the bytes fed after it read whole.
+    for kind, fed in (("read_until_complete", b"ab"), ("line", b"ab"), ("delimited", b"\x05ab")):
+        uart = cobs_uart() if kind == "delimited" else _make_uart()
+        fake(uart).feed_rx(fed)
+        before, overruns = uart.discarded_bytes, uart.rx_overruns
+
+        async def scenario(uart: UART = uart, kind: str = kind) -> "tuple[object, bytes | None]":
+            async with uart:
+                overrun = asyncio.create_task(_overrun_when_drained(uart))
+                got = await _failed_read(uart, kind)
+                assert overrun.done(), kind
+                fake(uart).feed_rx(b"wxyz")
+                return got, await uart.read(4, timeout_ms=_DATA_TIMEOUT_MS)
+
+        assert run(scenario(), _RUN_BOUND_S) == (None, b"wxyz"), kind
+        assert uart.discarded_bytes == before + len(fed), (kind, uart.discarded_bytes)
+        assert uart.rx_overruns == overruns + 1, kind
+
+
+def test_a_receive_overrun_seen_by_readline_fails_it_and_the_next_read_is_whole() -> None:
+    # Without its overrun branch the line buffer is sized from the -1, an allocation that fails and is caught, and the
+    # read still answers None: the console stays silent only on the branch itself.
+    uart = _make_uart()
+    fake(uart).feed_rx(b"ab\n")
+    plant_rx_errors(uart, _RSR_OE)
+    with record_prints() as rec:
+        assert run(_failed_then_next(uart, "readline"), _RUN_BOUND_S) == (None, b"wxyz")
+    assert rec.lines == []
+    assert uart.rx_overruns == 1
+
+
+def test_a_lap_during_the_copy_fails_every_read_path_and_no_phantom_byte_reaches_the_next_read() -> None:
+    # The lap lands on the given copy; what the read had consumed before it is counted discarded.
+    cases = (
+        ("read", b"abcd", None, 1, 0),
+        ("readline", b"ab\n", None, 1, 0),
+        ("read_until_complete", b"ab", b"cd", 2, 2),
+        ("readinto_until_complete", b"ab", b"cd", 2, 2),
+        ("line", b"abcd\n", None, 2, 2),  # the second 2-byte piece of one round laps: the first piece is counted
+        ("delimited", b"\x05ab", None, 3, 2),  # one byte per copy: the third laps, two consumed
+    )
+    for kind, fed, later, call, discarded in cases:
+        uart = cobs_uart() if kind == "delimited" else _make_uart()
+        fake(uart).feed_rx(fed)
+        _lap_on_copy(uart, call)
+        before, overruns = uart.discarded_bytes, uart.rx_overruns
+        assert run(_failed_then_next(uart, kind, later), _RUN_BOUND_S) == (None, b"wxyz"), kind
+        assert uart.discarded_bytes == before + discarded, (kind, uart.discarded_bytes)
+        assert uart.rx_overruns == overruns + 1, kind
+
+
+def test_an_overrun_on_a_closed_receive_channel_still_fails_as_one_and_nothing_escapes() -> None:
+    # An overrun pending, as a re-init leaves it, and the channel closed under it: dropping its unread bytes raises
+    # ValueError, swallowed, and the read still fails as an overrun.
+    uart = _make_uart()
+    fake(uart).feed_rx(b"abcd")
+    uart._rx_overrun_pending = True
+    channel = uart._rx_dma
+    assert channel is not None
+    channel.close()
+
+    async def scenario() -> "bytes | None":
+        async with uart:
+            return await uart.read(4, timeout_ms=_NO_DATA_TIMEOUT_MS)
+
+    assert run(scenario(), _RUN_BOUND_S) is None
+    assert uart._rx_overrun_pending is False
+
+
+def test_a_channel_closed_during_the_copy_fails_the_copy_and_never_raises() -> None:
+    uart = _make_uart()
+    fake(uart).feed_rx(b"abcd")
+    real, channel = uart._rx_copy, uart._rx_dma
+    assert channel is not None
+
+    def copy(dest: "bytearray | memoryview | None", start: int, n: int) -> int:
+        channel.close()  # rp2.DMA raises ValueError for a closed channel's count
+        return real(dest, start, n)
+
+    uart._rx_copy = copy  # type: ignore[method-assign]
+
+    async def scenario() -> "bytes | None":
+        async with uart:
+            return await uart.read(4, timeout_ms=_NO_DATA_TIMEOUT_MS)
+
+    assert run(scenario(), _RUN_BOUND_S) is None
+
+
+def test_a_uart_with_no_receive_ring_is_never_ready_and_reads_nothing() -> None:
+    DMA.reset_registry()
+    uart = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=1, poll_idle_ms=1)
+    unpaced(uart)
+    uart.poller = _StepPoller([select.POLLOUT])  # type: ignore[assignment]
+    fake(uart).feed_rx(b"abcd")
+
+    async def scenario() -> "tuple[bool, bytes | None]":
+        async with uart:
+            return await uart.ready(select.POLLIN, timeout_ms=_NO_DATA_TIMEOUT_MS), await uart.read(4, timeout_ms=_NO_DATA_TIMEOUT_MS)
+
+    assert run(scenario(), _RUN_BOUND_S) == (False, None)
+
+
+def test_a_line_the_peer_stops_mid_way_times_out_and_counts_its_partial_discarded() -> None:
+    uart = _make_uart()
+    fake(uart).feed_rx(b"par")
+
+    async def scenario() -> "PieceBuffer | None":
+        async with uart:
+            return await uart.readline_until_complete(64, 16, PrintLogHistory(), start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_SILENT_LINE_TIMEOUT_MS)
+
+    assert run(scenario(), _RUN_BOUND_S) is None
+    assert uart.discarded_bytes == 3
+
+
+def test_ready_with_nothing_to_clamp_to_yields_at_poll_wait_ms_and_the_read_completes() -> None:
+    # The case the never-block proof excludes, forced: ready() sees one byte and the clamp none. Each multi-round read
+    # sleeps poll_wait_ms rather than going straight back to ready(), then reads the frame whole.
+    for kind in ("read_until_complete", "readinto_until_complete", "line"):
+        uart = _make_uart(poll_wait_ms=_YIELD_WAIT_MS)
+        fake(uart).feed_rx(b"abc\n")
+        real, script = uart._rx_level, [1, 0]
+
+        def level(real: "Callable[[], int]" = real, script: "list[int]" = script) -> int:
+            return script.pop(0) if script else real()
+
+        uart._rx_level = level  # type: ignore[method-assign]
+        sleeps: list[int] = []
+        real_sleep_ms = asyncio.sleep_ms
+
+        async def recorded(ms: int, sleeps: "list[int]" = sleeps, real_sleep_ms: "Callable[[int], Awaitable[None]]" = real_sleep_ms) -> None:
+            sleeps.append(ms)
+            await real_sleep_ms(ms)
+
+        async def scenario(uart: UART = uart, kind: str = kind) -> "bytes | None":
+            async with uart:
+                if kind == "line":
+                    log = PrintLogHistory()
+                    return line_bytes(await uart.readline_until_complete(64, 16, log, start_timeout_ms=-1, timeout_ms=-1))
+                if kind == "readinto_until_complete":
+                    buf = bytearray(4)
+                    return bytes(buf) if await uart.readinto_until_complete(buf, 4, start_timeout_ms=-1, timeout_ms=-1) == 4 else None
+                got = await uart.read_until_complete(4, start_timeout_ms=-1, timeout_ms=-1)
+                return None if got is None else bytes(got)
+
+        asyncio.sleep_ms = recorded  # type: ignore[assignment]  # process-wide, restored below
+        try:
+            assert run(scenario(), _RUN_BOUND_S) == b"abc\n", kind
+        finally:
+            asyncio.sleep_ms = real_sleep_ms
+        assert _YIELD_WAIT_MS in sleeps, (kind, sleeps)
 
 
 if __name__ == "__main__":

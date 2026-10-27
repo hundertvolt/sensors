@@ -36,6 +36,10 @@ describe.each(DEVICE_IDS)("live digital-twin backend: %s", (device) => {
             expect(result.titleHasSensorStation).toBe(true);
             expect(result.deviceName).toContain(displayNameOf(device));
             expect([result.firstStatus, result.resubmitStatus]).toEqual(["valid", "unchanged"]);
+            // Every file the twin wrote lies inside its config directory, and its removal leaves nothing on the host.
+            expect(result.config.inside).toContain("config_SYSTEM.cfg");
+            expect(result.config.beside).toEqual([]);
+            expect(result.config.left).toEqual([]);
         },
         SMOKE_TIMEOUT_MS,
     );

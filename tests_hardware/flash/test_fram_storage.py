@@ -105,6 +105,7 @@ def test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write(bo
     assert isinstance(seeded, dict) and seeded.get("ErrCount") == 3, f"the seed phase did not seed three entries before racing: {seeded!r}"
     wait_until(board.is_reachable, timeout_s=_REACHABLE_TIMEOUT_S, poll_interval_s=_REACHABLE_POLL_S, description="board reachable again after the reset-raced error-log write")
     facts = _run(board, "fram_error_log_reset_race_verify.py", _SCRIPT_TIMEOUT_S)
+    assert facts.get("setup") is True and facts.get("initialized") is True, f"seam {seam}: the verify's store did not set up from the chip, so an empty history proves nothing: {facts}"
     # The only three outcomes a reset mid-write may leave: losing the whole history is accepted (owner, 2026-09-11; Part
     # C.3.1), a partial or garbled restore never is.
     accepted = {"empty": ([], 0), "seeded": (_kept(seed), 3), "raced": (_kept([*seed, raced]), 4)}

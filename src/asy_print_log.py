@@ -1,10 +1,10 @@
-"""Leveled console logging (PrintLog), the one ungated line of a layer with no logger (console()), a bounded
+"""Leveled console logging (PrintLog), the one ungated console line (console()), a bounded
 error/warning history (PrintLogHistory) with optional FRAM-backed persistence (PrintLogHistoryStore), and the C-stack
 fatal flag the supervisor reads.
 
 A code equal to the history's newest entry is counted and written through but spends no new slot; the console prints
-every call at its level. Never raises: a FRAM chunk operation raises only by allocation, which reads as unreadable or
-fails the write; this layer cannot log into itself, so its caught allocation failures print through console().
+every call at its level and, below it, a caught MemoryError's own text through console(). Never raises: a FRAM chunk
+operation raises only by allocation, which reads as unreadable or fails the write, its text printed through console().
 """
 
 import asyncio
@@ -88,6 +88,18 @@ class PrintLog:
         if level is not None:  # None: not given, off; any other invalid level is refused like set_level()'s
             self.set_level(level)
 
+    def _line(self, level: int, args: tuple[object, ...], sep: str, end: str) -> None:
+        # Every gated line's one print. Below its level the first caught MemoryError among the arguments still prints its
+        # own text through console(), as the memory gates read printed text only (CLAUDE.md memory rule; agent, 2026-10-23).
+        # The arm allocates nothing: a tuple iterates on the VM stack (py/compile.c:1575), and console() has a fixed arity.
+        if self.level >= level:
+            print(self.name, *args, sep=sep, end=end)
+            return
+        for arg in args:
+            if isinstance(arg, MemoryError):
+                console(self.name, arg)
+                return
+
     def set_level(self, level: int | None) -> bool:
         # Exact type, so bool, float and None are refused like an out-of-range int (on MicroPython bool is
         # no int subclass); the shared validator cannot be imported here (asy_config_manager imports this).
@@ -98,20 +110,16 @@ class PrintLog:
         return False
 
     def all(self, *args: object, sep: str = " ", end: str = "\n") -> None:
-        if self.level >= _LOG_ALL:
-            print(self.name, *args, sep=sep, end=end)
+        self._line(_LOG_ALL, args, sep, end)
 
     def err(self, *args: object, sep: str = " ", end: str = "\n") -> None:
-        if self.level >= _LOG_ERR:
-            print(self.name, *args, sep=sep, end=end)
+        self._line(_LOG_ERR, args, sep, end)
 
     def evt(self, *args: object, sep: str = " ", end: str = "\n") -> None:
-        if self.level >= _LOG_EVENT:
-            print(self.name, *args, sep=sep, end=end)
+        self._line(_LOG_EVENT, args, sep, end)
 
     def one(self, *args: object, sep: str = " ", end: str = "\n") -> None:
-        if self.level >= _LOG_ONCE:
-            print(self.name, *args, sep=sep, end=end)
+        self._line(_LOG_ONCE, args, sep, end)
 
     def report_unretrieved(self, _loop: object, context: "_Context") -> None:
         # asyncio's handler(loop, context) for a task that ended raising with nobody awaiting it (SPECIFICATION.md F.1).
@@ -129,8 +137,7 @@ class PrintLog:
             pass
 
     def wrn(self, *args: object, sep: str = " ", end: str = "\n") -> None:
-        if self.level >= _LOG_WARN:
-            print(self.name, *args, sep=sep, end=end)
+        self._line(_LOG_WARN, args, sep, end)
 
 
 class PrintLogHistory(PrintLog):
@@ -253,8 +260,7 @@ class PrintLogHistory(PrintLog):
 
     async def err_s(self, *args: object, errno: int = _NO_ERR, sep: str = " ", end: str = "\n") -> None:
         await self._store_err(_NO_ERR, _MAX_ERR, errno)
-        if self.level >= _LOG_ERR:
-            print(self.name, *args, sep=sep, end=end)
+        self._line(_LOG_ERR, args, sep, end)
 
     async def reset(self) -> bool:  # RAM only: nothing to write, so it clears at once and answers True
         self._clear(self._kept, self._counted)
@@ -268,8 +274,7 @@ class PrintLogHistory(PrintLog):
 
     async def wrn_s(self, *args: object, wrnno: int = _NO_ERR, sep: str = " ", end: str = "\n") -> None:
         await self._store_err(_NO_WRN, _MAX_WRN, wrnno)
-        if self.level >= _LOG_WARN:
-            print(self.name, *args, sep=sep, end=end)
+        self._line(_LOG_WARN, args, sep, end)
 
 
 class PrintLogHistoryStore(PrintLogHistory):
@@ -449,9 +454,9 @@ DEFAULT_LOG = LogConfig(None, _DEFAULT_HISTORY_LENGTH, None)
 
 
 def console(name: str, what: object, err: object = None) -> None:
-    # The console line of a layer with no logger: never level-gated, never kept in a history, so a caught MemoryError's
-    # own text reaches the memory gates (CLAUDE.md memory rule). Fixed arity and no star-call, so it allocates nothing
-    # and cannot raise from the arm it reports in (a frame falls back to the C stack, py/objfun.c:268-287).
+    # The one ungated line, of a layer with no logger or of a logger's line below its level, never kept in a
+    # history, so a caught MemoryError's own text reaches the memory gates (CLAUDE.md memory rule). Fixed arity, no
+    # star-call: it allocates nothing and cannot raise in its arm (a frame falls back to the C stack, py/objfun.c:268-287).
     if err is None:
         print(name, what)
     else:

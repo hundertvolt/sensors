@@ -14,6 +14,7 @@ from _fram_builders import make_fram_manager
 from _recording_print import record_prints
 from _src_const import src_int
 from _src_schema import src_schema
+from _stack_overflow import stack_overflow
 from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen
 from machine import I2C as FakeI2C
@@ -272,18 +273,6 @@ async def _settle(n: int = 5) -> None:
         await asyncio.sleep(0)
 
 
-def _stack_overflow() -> RuntimeError:
-    # The interpreter's own C-stack exhaustion, from a real one (py/runtime.c:1786, v1.29.0).
-    def dive(depth: int) -> int:
-        return dive(depth + 1)
-
-    try:
-        dive(0)
-    except RuntimeError as e:
-        return e
-    raise AssertionError("no recursion limit reached")
-
-
 def _tmp_cfg_path(name: str) -> str:
     return _scratch.dir(name)
 
@@ -352,6 +341,20 @@ def test_setup_accepts_bmp384_since_it_shares_bmp388s_chip_id() -> None:
     # Confirmed directly against datasheets/bmp3xx/bst-bmp384-ds003.pdf's own CHIP_ID register
     # table: BMP384 reports 0x50, the same as BMP388 - not a separate ID the driver needs to know.
     _accepts_and_refuses_the_next_id(0x50)
+
+
+def test_setup_soft_resets_the_chip_once_after_its_id_check() -> None:
+    # The chip's own reset inside setup(): one 0xB6 to CMD (DS001 §4.3.22) after the CHIP_ID read, so each task
+    # restart that re-runs setup() resets the chip once and an unknown chip is never reset.
+    i2c, bmp = ready_bmp()
+    seed_chip_id(i2c, _BMP388_CHIP_ID)
+    seed_calibration(i2c)
+    assert run(bmp.setup()) is True
+    log = fake(i2c).log
+    resets = _writes_to(i2c, _REGISTER_CMD)
+    id_read = [i for i, entry in enumerate(log) if entry[0] == "writeto" and entry[3] is False and entry[2] == bytes([_REGISTER_CHIPID])]
+    assert [log[i][2] for i in resets] == [bytes([_REGISTER_CMD, 0xB6])], f"setup() sent CMD writes {[log[i][2] for i in resets]}"
+    assert id_read and id_read[0] < resets[0], "setup() reset the chip before identifying it"
 
 
 def test_setup_rejects_unknown_chip_id() -> None:
@@ -806,7 +809,7 @@ def test_a_stack_overflow_caught_by_the_read_cycle_is_reported_for_the_superviso
         return fatal_reported()
 
     assert cycle_raising(RuntimeError("CRC check failed while reading data")) is False
-    assert cycle_raising(_stack_overflow()) is True
+    assert cycle_raising(stack_overflow()) is True
     asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
 
 
@@ -1190,7 +1193,7 @@ def test_reader_get_pressure_oversampling_logs_and_returns_none_on_bus_failure()
 
     value, counters = run(scenario())
     assert value is None
-    assert counters["BMP3XX"]["ErrCount"] > 0
+    assert counters["BMP3XX"]["ErrCount"] == 1 and [kind for kind in counters["BMP3XX"]["ErrType"] if kind != "N"] == ["E"], counters  # one failed read, one entry
 
 
 def test_reader_set_pressure_oversampling_logs_and_returns_false_on_bus_failure() -> None:
@@ -1203,7 +1206,7 @@ def test_reader_set_pressure_oversampling_logs_and_returns_false_on_bus_failure(
 
     ok, counters = run(scenario())
     assert ok is False
-    assert counters["BMP3XX"]["ErrCount"] > 0
+    assert counters["BMP3XX"]["ErrCount"] == 1 and [kind for kind in counters["BMP3XX"]["ErrType"] if kind != "N"] == ["E"], counters  # one failed write, one entry
 
 
 # ---------------------------------------------------------------------------
@@ -2576,6 +2579,34 @@ def test_init_bmp_runs_on_the_defaults_when_its_config_file_cannot_be_written() 
     assert run(reader._bmp.get_pressure_oversampling()) == 1  # the schema default reached the chip
     assert run(reader.get_error_counter())["BMP3XX"]["ErrCount"] == 0
     assert run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.name]["ErrNum"][-1] == code("E", "CFG_FILE_WRITE")
+
+
+_RESET_RUN_BOUND_S = 2  # far past one reset's polls and settle: a reset() that never ends fails here, the file goes on
+
+
+def test_reset_raises_oserror_when_the_bus_goes_down_between_its_two_sessions() -> None:
+    # The soft reset written, then the bus down during the settle: the second session's register reads answer None and
+    # reset() raises, under its own run bound.
+    i2c, bmp = ready_bmp()
+    bus = fake(i2c)  # the fake outlives the deinit, which drops the driver's reference to it
+    real_sleep_ms = asyncio.sleep_ms
+    soft_reset = ("writeto", _ADDR, bytes([_REGISTER_CMD, 0xB6]), True)
+
+    async def settle_then_down(ms: int) -> None:
+        await real_sleep_ms(ms)
+        if soft_reset in bus.log:
+            i2c.deinit()
+
+    asyncio.sleep_ms = settle_then_down  # type: ignore[assignment]  # process-wide, restored below
+    try:
+        run(bmp.reset(), _RESET_RUN_BOUND_S)
+        message = ""
+    except OSError as e:  # the run bound's TimeoutError included, its message empty
+        message = str(e)
+    finally:
+        asyncio.sleep_ms = real_sleep_ms
+    assert message == "I2C bus not initialized", message
+    assert soft_reset in bus.log
 
 
 if __name__ == "__main__":

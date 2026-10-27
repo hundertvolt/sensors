@@ -2786,8 +2786,27 @@ def _scenario_collect_starters_never_blocks(device: str) -> None:
     # Collection is pure list-building from already-constructed objects - calling it must not
     # start, await, or block on anything. If it did, this test itself would hang.
     module = build(device)
-    module._collect_task_starters()
-    module._collect_timer_starters()
+    started: list[str] = []
+    real_start_tasks = SystemService.start_tasks
+    real_start_timers = SystemService.start_timers
+
+    def _spy_start_tasks(self: "SystemService", task_starters: "list[TaskStarter]", task_names: "list[str]") -> "Coroutine[object, object, None]":
+        started.append("start_tasks")  # recorded at the call itself, awaited or not
+        return real_start_tasks(self, task_starters, task_names)
+
+    def _spy_start_timers(self: "SystemService", triggers: "list[Callable[[], None]]", timers: "list[Callable[[], None]]") -> "Coroutine[object, object, None]":
+        started.append("start_timers")
+        return real_start_timers(self, triggers, timers)
+
+    SystemService.start_tasks = _spy_start_tasks  # type: ignore[method-assign]
+    SystemService.start_timers = _spy_start_timers  # type: ignore[method-assign]
+    try:
+        tasks = module._collect_task_starters()
+        timers = module._collect_timer_starters()
+    finally:
+        SystemService.start_tasks = real_start_tasks  # type: ignore[method-assign]
+        SystemService.start_timers = real_start_timers  # type: ignore[method-assign]
+    assert started == [] and len(tasks) > 0, (started, len(tasks), len(timers))  # it collected, and started nothing
 
 
 # ---------------------------------------------------------------------------

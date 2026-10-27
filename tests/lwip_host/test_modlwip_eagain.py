@@ -1,6 +1,6 @@
 """The patched modlwip send path on build-lwip, the Unix port over loopback lwIP (SPECIFICATION.md B.14): each
 non-blocking write is bounded at every pool edge, a reading peer gets every byte, capacity returns. One listener
-serves the whole file, never closed: modlwip's close() trips lwIP's LISTEN-state assert, which aborts here."""
+serves the whole file; closing a listener is test_modlwip_listener_close.py's case."""
 
 import errno
 import gc
@@ -90,7 +90,7 @@ def _listen() -> "lwip.socket":
     return listener
 
 
-_LISTENER = _listen()  # never closed - the header says why
+_LISTENER = _listen()  # serves every test in this file
 
 
 def _assert_patched_edge(sock: "lwip.socket", edge: str) -> None:

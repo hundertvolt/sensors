@@ -342,11 +342,10 @@ def _with_struct(exc: BaseException, call: "Callable[[], bool]") -> bool:
 
 
 def test_a_buffer_or_offset_struct_refuses_is_a_false_answer() -> None:
-    # A read-only or absent buffer (TypeError) and an offset past a machine word (OverflowError), as struct raises them.
+    # A read-only buffer (TypeError) and an offset past a machine word (OverflowError), as struct raises them.
     params = VOCAlgorithm().params
-    assert params.pack_into(bytes(VOCAlgorithm.get_params_memsize())) is False  # type: ignore[arg-type]  # read-only on purpose
+    assert params.pack_into(memoryview(bytes(VOCAlgorithm.get_params_memsize()))) is False  # a read-only memoryview
     assert params.pack_into(bytearray(VOCAlgorithm.get_params_memsize()), offset=1 << 70) is False
-    assert params.unpack_from(None) is False  # type: ignore[arg-type]  # no buffer on purpose
     assert params.unpack_from(bytearray(VOCAlgorithm.get_params_memsize()), offset=1 << 70) is False
 
 
@@ -772,6 +771,16 @@ def test_set_tuning_parameters_smoke_test_normal_values() -> None:
     assert algo.params.msraw_std_initial == algo._fix16_from_int(50.0)
     voc_index = algo.vocalgorithm_process(30000)  # must still produce a valid index afterward
     assert isinstance(voc_index, int)
+
+
+def test_both_estimator_uptimes_stop_at_the_uptime_limit() -> None:
+    # Checked before the step: one sampling interval below the limit steps onto it, at the limit both stay.
+    algo = VOCAlgorithm()
+    limit, step, params = algo._f16_uptime_limit, algo._f16_sampling_interval, algo.params
+    params.m_mean_variance_estimator_uptime_gamma = params.m_mean_variance_estimator_uptime_gating = limit - step
+    for _ in range(2):
+        algo._vocalgorithm__mean_variance_estimator___calculate_gamma(0)
+        assert (params.m_mean_variance_estimator_uptime_gamma, params.m_mean_variance_estimator_uptime_gating) == (limit, limit)
 
 
 if __name__ == "__main__":

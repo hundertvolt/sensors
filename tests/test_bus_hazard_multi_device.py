@@ -512,6 +512,32 @@ def test_an_isl29125_reapply_mid_read_leaves_every_sibling_read_valid() -> None:
     _across_offsets(scenario)
 
 
+def test_an_isl29125_interrupt_rearm_mid_read_leaves_every_sibling_read_valid() -> None:
+    # The dead-line rung: five periodic-only range decisions warn once and re-arm the interrupt (CONFIG1-3 and the
+    # thresholds re-written) beside the SCD30 and SGP40 loops on the shared i2c1; every sibling read stays valid.
+    def scenario(offset: int) -> None:
+        i2c, instances = _shared_i2c1()
+        reader = ISL29125_Reader(i2c, 15, cfg_path=_scratch.dir())
+        seed_isl_ready(i2c, _ISL_ADDR)
+        run(reader.setup())
+        fake(i2c).log.clear()
+
+        async def rung() -> None:
+            for _ in range(5):
+                await reader._note_decision_source(threshold_fired=False)
+
+        with FastAsyncSleep():
+            run(_rung_beside_sibling_reads(i2c, instances, ("scd30", "sgp40"), rung, offset))
+        log = run(reader.get_error_counter())["ISL29125"]
+        assert [(log["ErrType"][i], log["ErrNum"][i]) for i in range(len(log["ErrNum"])) if log["ErrType"][i] != "N"] == [("W", code("W", "ISL_PERIODIC_ONLY"))], log
+        writes = [entry[2] for entry in fake(i2c).log if entry[0] == "writeto" and entry[1] == _ISL_ADDR and entry[3]]
+        assert [w for w in writes if w[:1] == b"\x01" and len(w) == 4], f"no whole CONFIG1-3 burst: {writes}"
+        assert any(w[:1] == b"\x04" for w in writes), f"the thresholds were not re-armed: {writes}"
+        assert bytes(fake(i2c).registers[(_ISL_ADDR, 0x01)]) == reader._isl.encode_shadow(), "the chip's CONFIG1-3 differ from the shadow"
+
+    _across_offsets(scenario)
+
+
 # ---------------------------------------------------------------------------
 # 4. Parallel sessions: multiple concurrent CALLERS hitting the SAME device instance, as opposed to
 # different devices sharing a bus above, must never scramble each other's commands or reads: the device

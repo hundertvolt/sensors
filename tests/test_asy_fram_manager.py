@@ -12,13 +12,15 @@ from _fram_builders import make_fram_manager
 from _fram_chip_fake import FakeMB85RS64V
 from _recording_print import record_prints
 from _src_const import src_int
+from _stack_overflow import stack_overflow
 
 import asy_base_classes
 import asy_fram_manager
+import asy_print_log
 import asy_spi_driver
 from asy_crc_checks import CRC8, CRC16, CRC32, CRCPass
 from asy_fram_manager import FRAMChunk, FRAMChunkBuffer, FRAMChunkTimestampedBuffer, FRAMManager
-from asy_print_log import LogConfig, PrintLogHistory, PrintLogHistoryStore
+from asy_print_log import LogConfig, PrintLogHistory, PrintLogHistoryStore, fatal_reported
 from asy_spi_driver import SPI
 
 # Same one-process-per-test-file swap as test_asy_fram_driver.py - see its own comment.
@@ -1668,6 +1670,17 @@ def test_get_chunk_allocation_succeeds_at_exact_remaining_capacity_boundary() ->
     assert manager.get_chunk(1, owner="T2") is None  # nothing left at all
 
 
+def test_get_timestamped_chunk_allocation_succeeds_at_exact_remaining_capacity_boundary() -> None:
+    # The timestamped path's own capacity check: a chunk that exactly fills the chip is allocated, nothing after it.
+    sized, _sized_chip = _make_manager(max_size=4096)
+    run(_setup_manager(sized))
+    assert sized.get_timestamped_chunk(4, _synced, owner="T1") is not None
+    manager, _chip = _make_manager(max_size=sized._allocated_size)
+    run(_setup_manager(manager))
+    assert manager.get_timestamped_chunk(4, _synced, owner="T1") is not None  # an exact fit
+    assert manager.get_chunk(1, owner="T2") is None  # nothing left at all
+
+
 # ---------------------------------------------------------------------------
 # FRAMTimestampedChunk shares _FRAMBaseChunk behavior (inheritance) - pause/clear/verify
 # were only ever exercised through FRAMChunk above; confirm the shared base actually behaves
@@ -2591,6 +2604,27 @@ def test_rx_overrun_on_block_0s_payload_read_is_absorbed_by_the_dual_copy_recove
     assert not [w for w in warnings if w.startswith("Invalid data in block 0")]  # a fault, not corruption
 
 
+def test_one_rx_overrun_logs_the_fault_and_the_fall_through_once_each_and_the_repair_nothing() -> None:
+    # Once per event: one failed payload read adds one E UNEXPECTED (the fault, _read_chunk) and one W
+    # FRAM_BLOCK_INVALID (the fall-through to block 1, "fault" not "invalid"); block 0's rewrite adds nothing.
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
+    chunk = manager.get_chunk(40, crc=CRC8(), owner="T1")  # 41 bytes with CRC - over the 32-byte DMA threshold
+    assert chunk is not None
+    run(chunk.write(bytes(range(40))))
+    before = run(manager.get_error_counter())
+    assert _entries(before) == [], f"the setup and the write logged {_entries(before)}"
+    chip.rx_overrun_remaining = 1
+    warnings = _recorded_warnings(manager)
+    assert run(chunk.read_into(chunk.get_buffer())) is True
+    after = run(manager.get_error_counter())
+    assert chip.rx_overrun_remaining == 0  # the overrun really did fire
+    assert _entries(after) == [(code("E", "UNEXPECTED"), "E"), (code("W", "FRAM_BLOCK_INVALID"), "W")], f"one overrun logged {_entries(after)}"
+    rose = after["FRAM"]["ErrCount"] - before["FRAM"]["ErrCount"]
+    assert rose == 2, f"the count rose by {rose}"
+    assert warnings == ["Read fault in block 0, reading block 1"], f"the read and its repair warned {warnings}"
+
+
 def test_rx_overrun_on_every_payload_read_fails_cleanly_instead_of_killing_the_caller() -> None:
     # Both copies unreadable is the genuinely unrecoverable case - it must still degrade to a
     # None result rather than propagate, since an escaping OSError would take the reader task
@@ -2901,6 +2935,46 @@ def test_every_block_operation_yields_even_when_it_returns_early() -> None:
     assert cleared >= 2
 
 
+def test_a_read_lets_another_task_run_after_every_slice_it_compares() -> None:
+    # A read checks the other block one check buffer at a time and yields after each slice: a competing task runs
+    # between every two slice reads, however many slices the chunk needs.
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
+    chunk = manager.get_chunk(32, crc=CRCPass(), check_length=4, owner="T1")
+    assert chunk is not None
+    assert run(chunk.write(b"0123456789abcdef0123456789abcdef")) is True
+    passes = [0]
+    marks: list[int] = []
+    original_sync = manager.fram.get_values_sync
+
+    def recording(buf: bytearray | memoryview, addr_start: int = 0) -> int:
+        if len(buf) == 4:
+            marks.append(passes[0])
+        return original_sync(buf, addr_start)
+
+    async def competitor() -> None:
+        while True:
+            passes[0] += 1
+            await asyncio.sleep(0)
+
+    async def scenario() -> "bytearray | None":
+        other = asyncio.create_task(competitor())
+        await asyncio.sleep(0)
+        data = await chunk.read()
+        other.cancel()
+        try:
+            await other
+        except asyncio.CancelledError:
+            pass
+        return data
+
+    manager.fram.get_values_sync = recording  # type: ignore[method-assign]
+    assert run(scenario()) is not None
+    assert len(marks) >= 32 // 4, len(marks)
+    stalls = [n for n in range(1, len(marks)) if marks[n] == marks[n - 1]]
+    assert not stalls, f"no other task ran before the slice reads {stalls[:4]}"
+
+
 def test_the_compare_with_scratch_buffer_belongs_to_the_chunk_not_the_call() -> None:
     # Was a bytearray(check_length) plus two memoryviews on every _compare_with() call - and
     # _compare_with() runs on every read and on every verified write. The size is fixed for the
@@ -2945,6 +3019,39 @@ def test_a_failed_check_buffer_allocation_prints_its_own_text_once() -> None:
     with record_prints() as rec:
         assert run(chunk.read()) == bytearray(b"data")
     assert rec.lines == []  # the read's own entry is persisted, not a second console line
+
+
+def test_a_failed_read_copy_returns_the_sentinel_on_both_chunk_classes() -> None:
+    # read()'s copy-out is chunk-sized, so it degrades as the buffer it copies from does: the not-read sentinel, the
+    # failure's own text on the console (the memory gates read it) and one persisted ALLOC entry, never a raise.
+    err = MemoryError("injected for the read copy")  # worded clear of the memory gates' markers
+    real = bytearray
+
+    def failing(*args: object) -> bytearray:
+        if args and isinstance(args[0], memoryview):  # the copy of the data region: no other bytearray() takes a view
+            raise err
+        return real(*args)
+
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
+    plain = manager.get_chunk(4, crc=CRC8(), owner="T1")
+    stamped = manager.get_timestamped_chunk(4, _synced, crc=CRC8(), owner="T2")
+    assert plain is not None and stamped is not None
+    assert run(plain.write(b"data")) is True
+    assert run(stamped.write(b"stmp"))[0] is True
+    asy_fram_manager.bytearray = failing  # type: ignore[attr-defined]
+    try:
+        with record_prints() as rec:
+            assert run(plain.read()) is None
+            assert run(stamped.read()) == (None, None, None)
+    finally:
+        del asy_fram_manager.bytearray  # type: ignore[attr-defined]
+    assert rec.lines == [("FRAM", "chunk read: no buffer for the data copy:", err)] * 2
+    log = run(manager.get_error_counter())
+    assert log["FRAM"]["ErrNum"][-1] == code("E", "ALLOC")
+    assert log["FRAM"]["ErrCount"] == 2
+    assert run(plain.read()) == bytearray(b"data")  # nothing stored was touched: the next read copies again
+    assert run(stamped.read())[2] == bytearray(b"stmp")
 
 
 # ---------------------------------------------------------------------------
@@ -3302,6 +3409,41 @@ def test_erase_chip_zeroes_every_byte_in_ascending_units() -> None:
         assert steps == len(_LOGGERS) + chip_class.SIZE // 256
 
 
+def test_erase_chip_lets_another_task_run_between_every_two_units() -> None:
+    # The zeroing loop yields after each 256-byte unit: a competing task gets a turn between every two unit writes.
+    manager, _chip, _stores = _filled_system(FakeMB85RS64V)
+    passes = [0]
+    marks: list[int] = []
+    original_sync = manager.fram.set_values_sync
+
+    def recording(buf: bytes | bytearray | memoryview, addr_start: int) -> int:
+        if len(buf) == 256:
+            marks.append(passes[0])
+        return original_sync(buf, addr_start)
+
+    async def competitor() -> None:
+        while True:
+            passes[0] += 1
+            await asyncio.sleep(0)
+
+    async def scenario() -> bool:
+        other = asyncio.create_task(competitor())
+        await asyncio.sleep(0)
+        erased = await manager.erase_chip(lambda: None)
+        other.cancel()
+        try:
+            await other
+        except asyncio.CancelledError:
+            pass
+        return erased
+
+    manager.fram.set_values_sync = recording  # type: ignore[method-assign]
+    assert run(scenario()) is True
+    assert len(marks) == FakeMB85RS64V.SIZE // 256, len(marks)
+    stalls = [n for n in range(1, len(marks)) if marks[n] == marks[n - 1]]
+    assert not stalls, f"no other task ran before the unit writes {stalls[:4]}"
+
+
 def test_an_erased_chip_boots_like_a_new_one() -> None:
     manager, chip, _stores = _filled_system(FakeMB85RS64V)
     assert run(manager.erase_chip(lambda: None)) is True
@@ -3472,6 +3614,63 @@ def test_the_watch_task_ends_at_once_for_a_chip_never_set_up() -> None:
         return task.done()
 
     assert run(scenario()) is True
+
+
+def test_an_erase_asked_while_a_found_chip_loss_is_still_being_reported_is_refused() -> None:
+    # The driver's public set_values() yields between finding the loss (`initialized` cleared) and reporting it
+    # (`lost` set): an erase_ready() asked there answers False and logs nothing, so the loss stays one entry.
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
+    chip.silent = 0xFF  # the fixed-zero status bit set: the write's latch fault probes RDID at once
+
+    async def write() -> bool:
+        async with manager.fram as fram:
+            return await fram.set_values(b"data", 0)
+
+    async def scenario() -> "tuple[list[bool], bool]":
+        writer = asyncio.create_task(write())
+        answers = []
+        while not writer.done():
+            await asyncio.sleep(0)
+            if not manager.fram.initialized and not manager.fram.lost.is_set():
+                answers.append(await manager.erase_ready())
+        return answers, await writer
+
+    answers, wrote = run(scenario())
+    assert answers, "the write never stood between finding the loss and reporting it"
+    assert True not in answers, answers
+    assert wrote is False
+    assert manager.fram.lost.is_set()
+    assert _entries(run(manager.get_error_counter())) == [(code("E", "FRAM_CHIP_LOST"), "E")]
+
+
+def _raise_on_chip_write(chunk: "FRAMChunk", error: BaseException) -> None:
+    # The payload's set_values_sync() raising while the status-byte pair still lands: an unexpected raise in the chip write.
+    original_sync = chunk.fram.set_values_sync
+
+    def raising(buf: bytes | bytearray | memoryview, addr_start: int) -> int:
+        if len(buf) > 2:
+            raise error
+        return original_sync(buf, addr_start)
+
+    chunk.fram.set_values_sync = raising  # type: ignore[method-assign]
+
+
+def test_an_unexpected_raise_in_the_chip_write_fails_the_clear_and_the_write_and_is_logged() -> None:
+    # A routine error and a C-stack overflow: the clear and the write each answer False with E UNEXPECTED, and only the
+    # overflow is recorded for the supervisor.
+    for error, fatal in ((OSError(5), False), (stack_overflow(), True)):
+        for step in ("clear", "write"):
+            manager, _chip = _make_manager()
+            run(_setup_manager(manager))
+            chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
+            assert chunk is not None
+            _raise_on_chip_write(chunk, error)
+            ok = run(chunk._clear_chunk(chunk._block_addr[0])) if step == "clear" else run(chunk.write(b"good"))
+            assert ok is False, (error, step)
+            assert code("E", "UNEXPECTED") in [n for n, _t in _entries(run(manager.get_error_counter()))], (error, step)
+            assert fatal_reported() is fatal, (error, step)
+            asy_print_log._fatal = False  # microtest fails a test that leaves it set
 
 
 if __name__ == "__main__":
