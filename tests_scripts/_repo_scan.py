@@ -185,10 +185,12 @@ def _regex_end(text: str, start: int) -> int:
 
 def _slash_blocks(path: str, text: str) -> list[Block]:
     # // and /* */ comments, string and regex literals skipped; `last` is the nearest code character, which tells a
-    # regex literal from a division.
+    # regex literal from a division. `subs` holds each open template substitution's unclosed "{" count: its code reads
+    # as at top level, and the "}" that takes the count below zero resumes the template's text.
     own: list[tuple[int, str]] = []
     single: list[tuple[int, str]] = []
     blocks: list[Block] = []
+    subs: list[int] = []
     script = not path.endswith(".css")
     i, row, quote, line_start, last = 0, 1, "", 0, -1
     while i < len(text):
@@ -200,6 +202,9 @@ def _slash_blocks(path: str, text: str) -> list[Block]:
                 i += 1
             elif ch == quote:
                 quote, last = "", i
+            elif ch == "$" and quote == "`" and text.startswith("{", i + 1):
+                subs.append(0)
+                i, quote, last = i + 1, "", i + 1
         elif ch in "'\"`" and script:
             quote = ch
         elif text.startswith("//", i) and script:
@@ -222,6 +227,11 @@ def _slash_blocks(path: str, text: str) -> list[Block]:
             i, last = end, end - 1
             continue
         elif not ch.isspace():
+            if subs and ch in "{}":
+                subs[-1] += 1 if ch == "{" else -1
+                if subs[-1] < 0:
+                    subs.pop()
+                    quote = "`"
             last = i
         i += 1
     return blocks + _grouped(path, own, single)
