@@ -68,29 +68,71 @@ resume skipped them. Logs: `S/u35/laneT/t4r3/l1/logs/`, records `S/u35/laneT/t4r
 runs `scripts/run_digital_twin_ci.sh <device> --gc-threshold <stage> --part suite` with `PICO_TOOLCHAIN_DIR` on a private
 copy (`S/tc-t4r3`, `cp -a S/tc-int`, whose record names this tree's three `toolchain/` inputs) whose
 `build-standard/micropython` is the build-ticks30 binary (sha256 `7c241764...`; the flavour probe reads it as
-`standard`, so `unix_port_ensure` keeps it), after removing `frozen_modules/` and `build/generated_html/` as CI's checkout
-lacks them. Placement: per device one Run 11 alone (`--only 11`) at -1 with the counter 10**8 ms from its wrap, so
-each `MEM_SAMPLE` tick reads ms since the process's first read; the wrap goes at the middle of Run 11's cycle window
-(the suite's own sample count, from the log's tail) and serves both stages. Proof before the long runs, on
-arzi: Run 11 alone with the wrap placed (168406 ms) exited 0, crossed 1 wrap at 0.491 of
+`standard`, so `unix_port_ensure` keeps it), after removing `frozen_modules/` and `build/generated_html/` before each
+device's invocation, as CI's checkout lacks them. Placement: per device one Run 11 alone (`--only 11`) at -1 with the
+counter 10**8 ms from its wrap, so each `MEM_SAMPLE` tick reads ms since the process's first read; the wrap goes at the
+middle of Run 11's cycle window (the suite's own sample count, from the log's tail) and serves both stages. Proof before
+the long runs, on arzi: Run 11 alone with the wrap placed (168406 ms) exited 0, crossed 1 wrap at 0.491 of
 the window with a 106 ms step across it (1073741763 -> 45: the 2**30 period, read from inside the
 run, against a 100 ms sample interval), the binary's hash was build-ticks30's before and after, the suite launched the
 copy's path, and no "rebuilding the Unix ports" line. The window position counts from the suite's own sample count, so the
 few samples taken during shutdown shift it by at most their share of the window. Every twin process the suite starts
 gets the same `TICKS30_WRAP_IN_MS`, so each run longer than the wrap point crosses it too.
 
-| device | stage | wrap (ms) | Run 11 window (ms after first read, place run) | suite | wrap position in the window | memory markers | ran build-ticks30, unrebuilt | wall |
+| device | stage | wrap (ms) | Run 11 window the wrap was placed in (ms after first read) | suite | wrap position in the window | memory markers | ran build-ticks30, unrebuilt | wall |
 |---|---|---|---|---|---|---|---|---|
-| arzi | -1 | 168406 | 120774-216038 | rc 0, Result: PASS, 289 OK, 0 FAIL | 0.511 (1 wrap, step 101 ms) | none | yes | 558.8 s |
-| arzi | 32768 | 168406 | 120774-216038 | rc 0, Result: PASS, 289 OK, 0 FAIL | 0.809 (1 wrap, step 102 ms) | none | yes | 532.5 s |
+| arzi | -1 | 168406 | 120774-216038 (place run, -1) | rc 0, Result: PASS, 289 OK, 0 FAIL | 0.511 (1 wrap, step 101 ms) | none | yes | 558.8 s |
+| arzi | 32768 | 168406 | 120774-216038 (place run, -1) | rc 0, Result: PASS, 289 OK, 0 FAIL | 0.809 (1 wrap, step 102 ms) | none | yes | 532.5 s |
+| dev | -1 | 133663 | 76526-190800 (place run, -1) | rc 0, Result: PASS x2 (the suite and its CRC16 Run 3), 348 OK, 0 FAIL | 0.415 (1 wrap, step 104 ms) | none | yes | 641.9 s |
+| dev | 32768 | 133663 | 76526-190800 (place run, -1) | rc 0, Result: PASS x2 (the suite and its CRC16 Run 3), 348 OK, 0 FAIL | 0.651 (1 wrap, step 103 ms) | none | yes | 622.6 s |
+| grkizi | -1 | 103894 | 56693-151095 (place run, -1) | rc 0, Result: PASS, 289 OK, 0 FAIL; placement miss, not counted | -0.204 (1 wrap, step 106 ms) | none | yes | 565.6 s |
+| grkizi | -1 | 137411 | 123728-151095 (the span 3 observed -1 windows share) | rc 0, Result: PASS, 289 OK, 0 FAIL; re-placed, round 1 | 0.132 (1 wrap, step 104 ms) | none | yes | 568.3 s |
+| grkizi | 32768 | 103894 | 56693-151095 (place run, -1) | rc 0, Result: PASS, 289 OK, 0 FAIL; placement miss, not counted | -0.116 (1 wrap, step 103 ms) | none | yes | 558.8 s |
+| grkizi | 32768 | 160700 | 115041-206360 (the span 2 observed 32768 windows share) | rc 0, Result: PASS, 289 OK, 0 FAIL; re-placed, round 1 | 0.401 (1 wrap, step 102 ms) | none | yes | 564.4 s |
+| klkizi | -1 | 171657 | 123193-220121 (place run, -1) | rc 0, Result: PASS, 289 OK, 0 FAIL | 0.529 (1 wrap, step 102 ms) | none | yes | 562.7 s |
+| klkizi | 32768 | 171657 | 123193-220121 (place run, -1) | rc 0, Result: PASS, 289 OK, 0 FAIL | 0.496 (1 wrap, step 103 ms) | none | yes | 567.6 s |
+| schlafzi | -1 | 166664 | 119833-213496 (place run, -1) | rc 0, Result: PASS, 289 OK, 0 FAIL | 0.603 (1 wrap, step 102 ms) | none | yes | 548.4 s |
+| schlafzi | 32768 | 166664 | 119833-213496 (place run, -1) | rc 0, Result: PASS, 289 OK, 0 FAIL | 0.446 (1 wrap, step 107 ms) | none | yes | 567.9 s |
+| wozi | -1 | 99799 | 51412-148186 (place run, -1) | rc 0, Result: PASS, 308 OK, 0 FAIL; placement miss, not counted | -0.017 (1 wrap, step 105 ms) | none | yes | 579.3 s |
+| wozi | -1 | 132015 | 115844-148186 (the span 3 observed -1 windows share) | rc 0, Result: PASS, 308 OK, 0 FAIL; re-placed, round 1 | 0.085 (1 wrap, step 107 ms) | none | yes | 595.4 s |
+| wozi | 32768 | 99799 | 51412-148186 (place run, -1) | rc 0, Result: PASS, 308 OK, 0 FAIL; placement miss, not counted | -0.092 (1 wrap, step 104 ms) | none | yes | 599.3 s |
+| wozi | 32768 | 170146 | 130726-209567 (the span 2 observed 32768 windows share) | rc 0, Result: PASS, 308 OK, 0 FAIL; placement miss, not counted | None (0 wrap, step None ms) | none | yes | 532.3 s |
+| wozi | 32768 | 138860 | 130726-146995 (the span 4 observed 32768 windows share) | rc 0, Result: PASS, 308 OK, 0 FAIL; re-placed, round 2 | 0.474 (1 wrap, step 102 ms) | none | yes | 578.9 s |
 
 The first proof run read the suite's own passing marker check (`OK: ... log carries none of ('MemoryError', 'memory
 allocation failed')`) as a hit and stopped the sweep before any long run; the scan now skips only that gate's own OK
 lines (a planted hit and the same gate's FAIL line still count, checked against the logged proof), and the proof ran again.
-With the -1 placement, Run 11's shorter 32768 run (fewer samples) puts the wrap later in its window.
 
-State (partial, at the tool-call valve): arzi done; the other derived devices not run yet. Resume, one device per
-invocation: `S/u35/laneT/t4r3/tools/run.sh twin_<device> "python3 -I audit/sweeps/ticks30_twin.py S/u35/laneT/t4r3/twin S/tc-t4r3 $BIN <device>"`.
+A run whose wrap fell outside Run 11's window is a placement miss: kept in the table, never counted. The cause is Run 11
+itself: its warm-up ends adaptively (`_soak_warm_up`: once no cycle sets a new `MEM_SAMPLE` floor for 20 cycles, at most
+100), and only then do its 80 measured cycles start, so the window's start moves by tens of seconds from one run to the
+next at either stage (grkizi -1: 56.7 s after the first read in its place run, 123.7 s in its suite run); a fixed placement
+from one earlier run cannot be trusted to land. After a miss the stage gets a fresh place run of its own, and the wrap goes
+mid-way through the span every window observed at that stage shares (the place runs' and each suite run's own Run 11,
+read back from its kept soak log), at most three rounds per stage; each device's first 32768 run keeps its -1 place
+run's wrap. The misses and the spans each re-placement used, in order:
+
+- miss: grkizi -1, wrap 103894 ms, at -0.204 of the window
+- miss: grkizi 32768, wrap 103894 ms, at -0.116 of the window
+- miss: wozi -1, wrap 99799 ms, at -0.017 of the window
+- miss: wozi 32768, wrap 99799 ms, at -0.092 of the window
+- miss: wozi 32768, wrap 170146 ms, no wrap inside Run 11, which ended first
+- shared span: grkizi -1, windows 56693-151095, 123728-220350, 119462-214092 share 123728-151095, wrap 137411 ms
+- shared span: grkizi 32768, windows 115041-210512, 111072-206360 share 115041-206360, wrap 160700 ms
+- shared span: wozi -1, windows 51412-148186, 101474-199518, 115844-211757 share 115844-148186, wrap 132015 ms
+- shared span: wozi 32768, windows 109115-209567, 130726-233691 share 130726-209567, wrap 170146 ms
+- shared span: wozi 32768, windows 109115-209567, 130726-233691, 46150-146995, 54917-156338 share 130726-146995, wrap 138860 ms
+
+dev wires a `uart_link` pair, so its suite runs Run 3 again on a CRC16-derived TOML, with its own `Result:` line and its
+logs under `digital_twin_ci_logs/dev/crc16/`: the driver expects both parts' results and keeps and scans that part's logs
+too. dev's -1 record was written before that fix (the check wanted one `Result:` line and stopped the sweep on a green
+run); its CRC16 logs were then kept and scanned by the fixed check, and the record says so (`amended`).
+
+Result: every derived device (6: arzi, dev, grkizi, klkizi, schlafzi, wozi) passed the suite at both GC stages on build-ticks30 with the
+wrap inside Run 11's window, 12 counted runs: every one exit 0 and `Result: PASS` with 0 FAIL, one wrap crossed in
+Run 11 at 0.085-0.809 of its window with a 101-107 ms step across it, zero memory markers in the suite log and every
+kept stage log, the binary build-ticks30's hash before and after, the copy's path launched, and no rebuild line. The load
+gate held 4 of the 30 recorded twin runs (430 s in all). No failure, so (3) had nothing to fix.
 
 Logs and kept stage directories: `S/u35/laneT/t4r3/twin/logs/`, records `S/u35/laneT/t4r3/twin/results.jsonl`.
 
