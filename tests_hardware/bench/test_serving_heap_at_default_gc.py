@@ -55,7 +55,14 @@ _SERVING_SCRIPT_TIMEOUT_S = 900.0
 _DRIVER_JOIN_S = 90.0
 
 
-@pytest.mark.provokes_log("each probe runs on heaps shaped below its need: one that degrades catches its MemoryError and logs ALLOC")
+@pytest.mark.provokes_log(
+    "each probe runs on heaps shaped below its need: one that degrades catches its MemoryError and logs ALLOC",
+    ("WEBSERVER", "E", "UNEXPECTED"),
+    ("WEBSERVER", "E", "CALLBACK"),
+    ("FRAM", "E", "ALLOC"),
+    ("SYSTEM", "W", "CONFIG_LOST"),
+)
+@pytest.mark.ends_unreachable
 def test_every_source_and_route_fits_a_small_free_run(isolated_board: "Board", result_note: "_load.Note") -> None:
     # No network. The device script shapes the heap so no free run exceeds S, for rising S, and
     # runs each data source and whole GET route on it; the host reduces that to each one's need.
@@ -73,7 +80,12 @@ def test_every_source_and_route_fits_a_small_free_run(isolated_board: "Board", r
     assert not too_big, f"{at}: these need a larger contiguous block than a loaded heap keeps (Part I.3): {too_big}"
 
 
-@pytest.mark.provokes_log("its levels run two past the ceiling, whose refusals trace HTTP_REFUSED")
+@pytest.mark.provokes_log(
+    "its levels run two past the ceiling, whose refusals trace HTTP_REFUSED",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
+@pytest.mark.ends_unreachable
 def test_serving_sweep_at_the_reactive_default(isolated_board: "Board", dut_ip: str, result_note: "_load.Note") -> None:
     # Ascending levels up past the configured ceiling, on one boot: the realistic case is a running
     # device whose heap carries every earlier burst. The bar is I.4(e): not one allocation failure.

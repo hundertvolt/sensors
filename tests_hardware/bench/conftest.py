@@ -1,10 +1,10 @@
 """Bench-tier fixtures: the board must run the image this round built (its record beside the .uf2 against GET /system's
 build date, device and lwIP ensemble; check_image() mid-session), and no test may leave an E or W entry in any logger
-unless provokes_log("<why>") says it is the test's purpose (no_unprovoked_log_entry)."""
+beyond those its provokes_log("<why>", (logger, kind, catalog name), ...) names (no_unprovoked_log_entry)."""
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, NoReturn, Protocol
+from typing import TYPE_CHECKING, NamedTuple, NoReturn, Protocol
 
 import error_log_helpers
 import harness
@@ -19,11 +19,24 @@ if TYPE_CHECKING:
 _SYSTEM_TIMEOUT_S = 10.0
 _REFLASH = "manual step: reflash the round's standard image (scripts/build_firmware.py), or rebuild from this tree"
 _TICK_OFFSET = "the board runs the tick-offset test image"
+_BENCH_DIR = Path(__file__).resolve().parent
 
 
 class _SessionNote(Protocol):
     # The root conftest's session_note fixture: record_session_note() bound to this session.
     def __call__(self, text: str, *, recovery: bool = False, source: str) -> None: ...
+
+
+class _Carry(NamedTuple):
+    # A window an ends_unreachable test left open: its first read, the clears made by then, the entries admitted, the tests.
+    before: "dict[str, error_log_helpers.ErrcountEntry]"
+    clears: int
+    expected: "frozenset[tuple[str, str, int]]"
+    tests: "tuple[str, ...]"
+
+
+# The one window still open, if any: set at an unanswered end, closed at the next read that answers.
+_CARRIED: "list[_Carry]" = []
 
 
 class _StandardStateExit(Protocol):
@@ -104,19 +117,70 @@ def log_check_host(dut_ip: str) -> "Callable[[], str]":
 
 @pytest.fixture(autouse=True)
 def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Callable[[], str]") -> "Iterator[None]":
-    # GET /status before and after each bench test, clearing and writing nothing: a new E or W entry in any logger fails
-    # the test unless it carries provokes_log("<why>"), whose one reason is required.
-    marker = request.node.get_closest_marker("provokes_log")
-    if marker is not None:
-        reason = marker.args[0] if len(marker.args) == 1 and not marker.kwargs else None
-        if not (isinstance(reason, str) and reason.strip()):
-            pytest.fail(f"{request.node.nodeid}: provokes_log takes one non-empty reason, why the test leaves its entries: {marker!r}")
-        yield
-        return
-    before, clears = _read_logs(log_check_host, request.node.nodeid, "before"), error_log_helpers.clears_made()
+    # GET /status before and after each bench test, clearing and writing nothing: an E or W entry in any logger beyond
+    # the test's provokes_log set fails it. An unanswered end of an ends_unreachable test carries its window on.
+    test, expected = request.node.nodeid, _expected_entries(request.node)
+    window = _Carry({}, error_log_helpers.clears_made(), expected, (test,))
+    if _CARRIED:
+        carried = _CARRIED.pop()
+        read = _try_read_logs(log_check_host)
+        if read is None:
+            window = carried._replace(expected=carried.expected | expected, tests=(*carried.tests, test))
+        else:
+            _check(carried, read)
+            window = window._replace(before=read)
+    else:
+        window = window._replace(before=_read_logs(log_check_host, test, "before"))
     yield
-    after = _read_logs(log_check_host, request.node.nodeid, "after")
-    error_log_helpers.assert_no_unprovoked_entry(before, after, request.node.nodeid, cleared=error_log_helpers.clears_made() != clears)
+    if request.node.get_closest_marker("ends_unreachable") is None:
+        _check(window, _read_logs(log_check_host, test, "after"))
+        return
+    after = _try_read_logs(log_check_host)
+    if after is None:
+        _CARRIED.append(window)
+    else:
+        _check(window, after)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def log_check_carry_settled(dut_ip: str) -> "Iterator[None]":
+    # A window still carried when the session ends is checked against one last read of the board.
+    yield
+    if _CARRIED:
+        carried = _CARRIED.pop()
+        _check(carried, _read_logs(lambda: dut_ip, " + ".join(carried.tests), "after"))
+
+
+def pytest_collection_modifyitems(config: "pytest.Config | None", items: "list[pytest.Item]") -> None:
+    # A bench test's provokes_log is refused at collection unless it names its reason and live catalog entries.
+    del config
+    refused = [f"{item.nodeid}: {problem}" for item in items if Path(item.path).is_relative_to(_BENCH_DIR) and (problem := _marker_problem(item)) is not None]
+    if refused:
+        raise pytest.UsageError("malformed provokes_log marker(s):\n" + "\n".join(refused))
+
+
+def _check(window: _Carry, after: "dict[str, error_log_helpers.ErrcountEntry]") -> None:
+    error_log_helpers.assert_no_unprovoked_entry(window.before, after, " + ".join(window.tests), cleared=error_log_helpers.clears_made() != window.clears, expected=window.expected)
+
+
+def _expected_entries(node: "pytest.Item") -> "frozenset[tuple[str, str, int]]":
+    marker = node.get_closest_marker("provokes_log")
+    if marker is None:
+        return frozenset()
+    try:
+        return error_log_helpers.provoked_entries(tuple(marker.args), marker.kwargs)[1]
+    except ValueError as exc:
+        pytest.fail(f"{node.nodeid}: {exc}", pytrace=False)
+
+
+def _marker_problem(item: "pytest.Item") -> "str | None":
+    marker = item.get_closest_marker("provokes_log")
+    try:
+        if marker is not None:
+            error_log_helpers.provoked_entries(tuple(marker.args), marker.kwargs)
+    except ValueError as exc:
+        return str(exc)
+    return None
 
 
 def _read_logs(log_check_host: "Callable[[], str]", test: str, when: str) -> "dict[str, error_log_helpers.ErrcountEntry]":
@@ -127,3 +191,11 @@ def _read_logs(log_check_host: "Callable[[], str]", test: str, when: str) -> "di
         return error_log_helpers.get_errcount(host)
     except (OSError, http_client.HTTP_ERROR, AssertionError, ValueError, TypeError) as exc:
         pytest.fail(f"{test}: the log check cannot read the loggers {when} the test - GET /status on {host}: {exc!r}; a test must leave the board serving", pytrace=False)
+
+
+def _try_read_logs(log_check_host: "Callable[[], str]") -> "dict[str, error_log_helpers.ErrcountEntry] | None":
+    # The same bounded read for a window that may stay open: None where the board does not answer.
+    try:
+        return error_log_helpers.get_errcount(log_check_host())
+    except (OSError, http_client.HTTP_ERROR, AssertionError, ValueError, TypeError):
+        return None

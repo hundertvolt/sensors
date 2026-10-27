@@ -103,7 +103,11 @@ def test_a_bootloader_reboot_is_attributed(board: "Board", bench: "BenchBridge",
 
 
 @pytest.mark.parametrize("mode", ["escalate", "hold_console"])
-@pytest.mark.provokes_log("the dead task's TASK_RAISED entries and the budget's TASK_BUDGET_REBOOT in SYSTEM")
+@pytest.mark.provokes_log(
+    "the dead task's TASK_RAISED entries and the budget's TASK_BUDGET_REBOOT in SYSTEM",
+    ("SYSTEM", "E", "TASK_RAISED"),
+    ("SYSTEM", "E", "TASK_BUDGET_REBOOT"),
+)
 def test_the_supervisor_escalation_reboot_is_attributed(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]", mode: str) -> None:
     # hold_console: the host holds the port open, reading nothing, while the task keeps dying - still the budget's reboot.
     try:
@@ -144,7 +148,10 @@ def test_an_invalid_record_reads_as_unknown(board: "Board", bench: "BenchBridge"
         restore_board_to_serving(board, bench, dut_ip)
 
 
-@pytest.mark.provokes_log("the planted EIO cuts the erase, over a scratch-config boot that logs CONFIG_LOST beside SYSTEM's FRAM history")
+@pytest.mark.provokes_log(
+    "the planted EIO cuts the erase, over a scratch-config boot that logs CONFIG_LOST beside SYSTEM's FRAM history",
+    ("SYSTEM", "W", "CONFIG_LOST"),
+)
 def test_an_incomplete_command_is_attributed(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]") -> None:
     try:
         before = get_errcount(dut_ip)
@@ -164,7 +171,10 @@ def test_an_incomplete_command_is_attributed(board: "Board", bench: "BenchBridge
 
 
 @pytest.mark.parametrize("phase", _BOOT_PHASES)
-@pytest.mark.provokes_log("phases 3-5 hang after the setups of a boot over an empty scratch config, which logs CONFIG_LOST beside SYSTEM's FRAM history")
+@pytest.mark.provokes_log(
+    "phases 3-5 hang after the setups of a boot over an empty scratch config, which logs CONFIG_LOST beside SYSTEM's FRAM history",
+    ("SYSTEM", "W", "CONFIG_LOST"),
+)
 def test_a_hang_in_boot_phase_p_is_attributed(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]", phase: int) -> None:
     try:
         _evidence(board, bench, dut_ip, f"reset-reason-boot-phase-{phase}")
@@ -177,7 +187,12 @@ def test_a_hang_in_boot_phase_p_is_attributed(board: "Board", bench: "BenchBridg
         restore_board_to_serving(board, bench, dut_ip)
 
 
-@pytest.mark.provokes_log("the recursing reader's TASK_RAISED and the supervisor's STACK_EXHAUSTED in SYSTEM")
+@pytest.mark.provokes_log(
+    "the recursing reader's TASK_RAISED and the supervisor's STACK_EXHAUSTED in SYSTEM",
+    ("SYSTEM", "E", "TASK_RAISED"),
+    ("SYSTEM", "E", "STACK_EXHAUSTED"),
+    ("SYSTEM", "W", "CONFIG_LOST"),
+)
 def test_a_c_stack_exhaustion_is_attributed(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]") -> None:
     # The reader dies of the stack check's RuntimeError; the handler that catches it records the overflow, and the
     # supervisor's next pass reboots with the stack code instead of restarting the chain (SPECIFICATION.md F.1).

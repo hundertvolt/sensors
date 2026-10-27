@@ -136,7 +136,11 @@ def test_http_soak_stays_live(board: "Board", dut_ip: str, request: pytest.Fixtu
     assert len(request_errors) <= _SOAK_REQUEST_FAILURE_RATE * len(sent), f"too many failed/non-200 requests during the soak ({len(request_errors)} of {len(sent)}): {request_errors[:10]}"
 
 
-@pytest.mark.provokes_log("the hammer's ceiling of readers saturates admission: a reader beating a slot's release is refused (HTTP_REFUSED)")
+@pytest.mark.provokes_log(
+    "the hammer's ceiling of readers saturates admission: a reader beating a slot's release is refused (HTTP_REFUSED)",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
 def test_loop_lag_under_http_load_on_every_route_stays_under_the_smallest_hard_consumer(board: "Board", bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # The loop-lag script's main() on the board's own config, its server on the board's address, under the hammer's
     # readers on every route: the twin scenario's load and evidence, beside the script's lag, main() and FRAM facts.

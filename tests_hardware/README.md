@@ -430,11 +430,16 @@ round. A test that reflashes mid-session runs the same comparison (`check_image(
 Every bench test runs inside `bench/conftest.py`'s autouse `no_unprovoked_log_entry`: one `GET /status` before the
 test and one after, clearing and writing nothing. A new E or W entry in any logger between the two fails the test,
 naming the logger, the code, its catalog name and the test - a normal operation logs neither. A test whose entries are
-its purpose carries `@pytest.mark.provokes_log("<why>")` (`markers.py`) and is not read at all; the marker without its
-one reason fails the test. A clear made through `reset_all_error_logs()` makes all of the later log new, so a test
-that clears at its end is checked only for what follows that clear. A board that cannot answer `/status` at a test's
-bound - unreachable, or still booting - fails that test by name after one read under the helpers' own timeout: a test
-leaves the board serving. The hotspot module reads through the DUT's gateway while the bench radio is its client.
+its purpose carries `@pytest.mark.provokes_log("<why>", (logger, kind, catalog name), ...)` (`markers.py`), naming
+every entry the source can leave on its path, and is read like any other: an entry outside that set fails it, and an
+entry in it need not appear (the test asserts its own). Collection refuses a marker with a reason alone, a malformed
+entry or a name with no live catalog row. A clear made through `reset_all_error_logs()` makes all of the later log
+new, so a test that clears at its end is checked only for what follows that clear. A board that cannot answer
+`/status` at a test's bound - unreachable, or still booting - fails that test by name after one read under the
+helpers' own timeout: a test leaves the board serving. The exception is a test marked `ends_unreachable` (the hotspot
+credential stage, the isolated-board heap module): its unanswered end leaves its window open, and the next read that
+answers - the next test's, or one at the session's end - closes it against the union of the sets it spans. The
+hotspot module reads through the DUT's gateway while the bench radio is its client.
 
 ## The NeoPixel sweep rig
 

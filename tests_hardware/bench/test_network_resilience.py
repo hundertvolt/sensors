@@ -151,7 +151,11 @@ _WEBSERVER = "asy_webserver_service.py"
 _CEILING_TRACES = (code("W", "HTTP_REFUSED"), code("W", "HTTP_PEER_RESET"))
 
 
-@pytest.mark.provokes_log("the real outage's WLAN warnings, checked by _assert_wifi_log_has_only_benign_outage_warnings")
+@pytest.mark.provokes_log(
+    "the real outage's WLAN warnings, checked by _assert_wifi_log_has_only_benign_outage_warnings",
+    ("WIFI", "W", "WLAN_NO_AP"),
+    ("WIFI", "W", "WLAN_AUTH_FAILED"),
+)
 def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     bench.ap_down()
@@ -166,7 +170,11 @@ def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, be
     assert_no_task_ended(dut_ip, "real WiFi outage")  # on the reset path too: FRAM keeps SYSTEM
 
 
-@pytest.mark.provokes_log("the repeated real outages' WLAN warnings, checked by _assert_wifi_log_has_only_benign_outage_warnings")
+@pytest.mark.provokes_log(
+    "the repeated real outages' WLAN warnings, checked by _assert_wifi_log_has_only_benign_outage_warnings",
+    ("WIFI", "W", "WLAN_NO_AP"),
+    ("WIFI", "W", "WLAN_AUTH_FAILED"),
+)
 def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     try:
@@ -428,7 +436,11 @@ def test_garbage_ssid_via_rest_config_is_handled_gracefully(board: Board, bench:
 _MAX_CONNECTIONS = configured_max_connections()  # the build's own ceiling, never a restated literal
 
 
-@pytest.mark.provokes_log("the connections above the ceiling are refused, each tracing HTTP_REFUSED (_assert_ceiling_traced)")
+@pytest.mark.provokes_log(
+    "the connections above the ceiling are refused, each tracing HTTP_REFUSED (_assert_ceiling_traced)",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
 def test_connections_at_and_above_the_real_socket_limit_degrade_cleanly(dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     # The PUT /status just made closes client-side before _serve()'s finally releases its slot (Part I.6): settle first.
@@ -539,7 +551,10 @@ def test_put_the_band_that_used_to_be_accepted_is_now_rejected_over_the_normal_n
     assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
-@pytest.mark.provokes_log("its over-bound NTPHost is answered Invalid, and a refused value logs BAD_ARG")
+@pytest.mark.provokes_log(
+    "its over-bound NTPHost is answered Invalid, and a refused value logs BAD_ARG",
+    ("NTP", "E", "BAD_ARG"),
+)
 def test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap(dut_ip: str, request: pytest.FixtureRequest) -> None:
     # Lowering a cap risks refusing something legitimate: the largest body the bench build's own schemas can produce
     # (derived from its definitions, as tests_scripts/test_request_body_cap_headroom.py derives it) is still served.
@@ -563,7 +578,10 @@ _CLOSE_MARGIN_S = 5.0
 _MIN_SOCKET_WAIT_S = 0.001  # a zero timeout would make the socket non-blocking, never a last short wait
 
 
-@pytest.mark.provokes_log("the body that never arrives logs HTTP_CALL_TIMEOUT, asserted exact")
+@pytest.mark.provokes_log(
+    "the body that never arrives logs HTTP_CALL_TIMEOUT, asserted exact",
+    ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
+)
 def test_an_oversized_body_is_refused_before_it_is_read(dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # The cap binds before the body: Content-Length one over the cap and no body byte is answered 413 at once, while at
     # the cap the server waits for a body that never comes and reclaims the connection at its per-call timeout.
@@ -606,7 +624,11 @@ def test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits(dut_
     assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
-@pytest.mark.provokes_log("the storm overloads admission: each refusal traces HTTP_REFUSED (_assert_ceiling_traced)")
+@pytest.mark.provokes_log(
+    "the storm overloads admission: each refusal traces HTTP_REFUSED (_assert_ceiling_traced)",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
 def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # max_connections bodies can be in flight at once, so the simultaneous contiguous demand is that many buffers - the
     # multi-buffer shape that motivated Part I.6, asserted on what the body cap owns.
@@ -732,7 +754,11 @@ def test_abrupt_disconnect_mid_response_does_not_hang_the_server(dut_ip: str, re
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.provokes_log("the ceiling walk ends on its one refusal, HTTP_REFUSED (_assert_ceiling_traced)")
+@pytest.mark.provokes_log(
+    "the ceiling walk ends on its one refusal, HTTP_REFUSED (_assert_ceiling_traced)",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
 def test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures(dut_ip: str, request: pytest.FixtureRequest) -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     discovered = discover_max_connections(dut_ip)
@@ -864,7 +890,14 @@ _LINGER_RESET = struct.pack("ii", 1, 0)  # SO_LINGER on with a zero timeout: the
 
 
 @pytest.mark.persistence_write
-@pytest.mark.provokes_log("its misbehaving clients (slowloris, a refused head, a truncated body, a reset) log their HTTP warnings")
+@pytest.mark.provokes_log(
+    "its misbehaving clients (slowloris, a refused head, a truncated body, a reset) log their HTTP warnings",
+    ("WEBSERVER", "W", "HTTP_REQUEST_CAP"),
+    ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
+    ("WEBSERVER", "W", "HTTP_BAD_HEAD"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+)
 def test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog(board: Board, dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     def adversary(kind: str, stop: threading.Event, seen: "list[str]") -> None:
         # One misbehaving client kind, repeated until stopped: slowloris, a refused head, a truncated body, a reset.

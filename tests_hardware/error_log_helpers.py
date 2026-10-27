@@ -38,6 +38,7 @@ __all__ = [
     "get_errcount",
     "new_logged_entries",
     "new_task_raised",
+    "provoked_entries",
     "read_live_system_log",
     "reset_all_error_logs",
     "save_errcount",
@@ -141,11 +142,11 @@ def assert_no_task_ended(dut_ip: str, context: str) -> None:
     assert entry["counter"] == 0, f"{context}: a task ended and was restarted (or the budget rebooted the board) - SYSTEM log: {entry!r}"
 
 
-def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, cleared: bool) -> None:
+def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, cleared: bool, expected: "frozenset[tuple[str, str, int]]" = frozenset()) -> None:
     # The bench log check's verdict: no logger gained an E or W entry between two reads around a test (SPECIFICATION.md
-    # C.7: a normal operation logs neither); each one found is named with its code, catalog name and the test.
-    found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in new_logged_entries(before, after, cleared=cleared)]
-    assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose carries provokes_log(\"<why>\")"
+    # C.7: a normal operation logs neither) beyond the test's provokes_log set; each one is named with its catalog name.
+    found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in new_logged_entries(before, after, cleared=cleared) if (module, kind, num) not in expected]
+    assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose names each in provokes_log(\"<why>\", (logger, kind, catalog name), ...)"
 
 
 def clears_made() -> int:
@@ -205,6 +206,25 @@ def new_task_raised(before: "dict[str, ErrcountEntry]", after: "dict[str, Errcou
         grew = len(used)
     window = used[len(used) - min(grew, len(used)) :]
     return sum(1 for h in window if h.get("type") == "E" and h.get("num") in _RAISED)
+
+
+def provoked_entries(args: "tuple[object, ...]", kwargs: "Mapping[str, object]") -> "tuple[str, frozenset[tuple[str, str, int]]]":
+    # provokes_log("<why>", (logger, kind, catalog name), ...): its reason and the (logger, kind, num) set it admits; a
+    # ValueError for a reason alone, a keyword, a malformed entry or a name with no live catalog row of that kind.
+    reason = args[0] if args else None
+    if kwargs or not isinstance(reason, str) or not reason.strip():
+        raise ValueError(f"provokes_log takes its reason first, then each entry as (logger, kind, catalog name): {args!r} {dict(kwargs)!r}")
+    if len(args) < 2:
+        raise ValueError(f"provokes_log names a reason but no entry ({reason!r}): add each one the test may leave as (logger, kind, catalog name)")
+    entries: set[tuple[str, str, int]] = set()
+    for entry in args[1:]:
+        if not (isinstance(entry, tuple) and len(entry) == 3 and all(isinstance(part, str) and part for part in entry) and entry[1] in ("E", "W")):
+            raise ValueError(f'provokes_log entry {entry!r} is not (logger, "E" or "W", catalog name)')
+        try:
+            entries.add((entry[0], entry[1], code(entry[1], entry[2])))
+        except KeyError:
+            raise ValueError(f"provokes_log entry {entry!r}: the catalog has no live {entry[1]} row named {entry[2]!r}") from None
+    return reason, frozenset(entries)
 
 
 def read_live_system_log(board: "Board") -> "dict[str, ErrcountEntry]":

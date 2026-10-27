@@ -1,6 +1,6 @@
 """tests_hardware/bench/conftest.py's no_unprovoked_log_entry on faked GET /status reads: a new E or W entry in any
-logger fails the test naming the logger, code, catalog name and test; provokes_log("<why>") exempts a test and a
-marker without its reason is refused; the hotspot module reads through the route its tests use at that moment."""
+logger fails the test naming the logger, code, catalog name and test, unless provokes_log("<why>", entries...) names it;
+a malformed marker is refused, at collection too; ends_unreachable carries a read on; the hotspot module's route."""
 
 import json
 import sys
@@ -34,23 +34,29 @@ def _entry(counter: int, *slots: "tuple[str, int]") -> "dict[str, object]":
     return {"counter": counter, "history": [{"type": "N", "num": 0}] * (3 - len(history)) + history}
 
 
+_REFUSED = ("WEBSERVER", "W", "HTTP_REFUSED")
+_MARK = pytest.mark.provokes_log("the burst is refused at the ceiling", _REFUSED).mark
+_UNREACHABLE = pytest.mark.ends_unreachable.mark
+
+
 class _Node:
-    def __init__(self, mark: "pytest.Mark | None") -> None:
-        self.nodeid = "tests_hardware/bench/test_x.py::test_case"
-        self.mark = mark
+    def __init__(self, mark: "pytest.Mark | None", *more: "pytest.Mark", nodeid: str = "tests_hardware/bench/test_x.py::test_case") -> None:
+        self.nodeid = nodeid
+        self.path = Path(__file__).resolve().parents[1] / nodeid.split("::", 1)[0]
+        self.marks = [m for m in (mark, *more) if m is not None]
 
     def get_closest_marker(self, marker_name: str) -> "pytest.Mark | None":
-        return self.mark if self.mark is not None and self.mark.name == marker_name else None
+        return next((m for m in self.marks if m.name == marker_name), None)
 
 
 class _Request:
-    def __init__(self, mark: "pytest.Mark | None" = None) -> None:
-        self.node = _Node(mark)
+    def __init__(self, mark: "pytest.Mark | None" = None, *more: "pytest.Mark", nodeid: str = "tests_hardware/bench/test_x.py::test_case") -> None:
+        self.node = _Node(mark, *more, nodeid=nodeid)
 
 
 class _Board:
     # GET /status answers from a list of errcount objects, one per read; reads past the list fail the test.
-    def __init__(self, reads: "Sequence[Mapping[str, object]]") -> None:
+    def __init__(self, reads: "Sequence[Mapping[str, object] | OSError]") -> None:
         self.reads = list(reads)
         self.hosts: list[str] = []
 
@@ -60,7 +66,10 @@ class _Board:
         assert path == "/status", path
         self.hosts.append(host)
         assert self.reads, "a read the case did not expect"
-        return http_client.HttpResponse(200, {}, json.dumps({"errcount": self.reads.pop(0)}).encode())
+        read = self.reads.pop(0)
+        if isinstance(read, OSError):  # a board unreachable at this read
+            raise read
+        return http_client.HttpResponse(200, {}, json.dumps({"errcount": read}).encode())
 
 
 class _UnreadableBoard(_Board):
@@ -84,12 +93,13 @@ def _bench_conftest() -> ModuleType:
     return load_script_module(_TESTS_HARDWARE / "bench" / "conftest.py", "bench_conftest_log_check")
 
 
-def _drive(monkeypatch: pytest.MonkeyPatch, reads: "Sequence[Mapping[str, object]]", *, mark: "pytest.Mark | None" = None, during: "Callable[[], None]" = lambda: None, host: str = _DUT_IP, board: "_Board | None" = None) -> _Board:
+def _drive(monkeypatch: pytest.MonkeyPatch, reads: "Sequence[Mapping[str, object] | OSError]", *, mark: "pytest.Mark | None" = None, more: "Sequence[pytest.Mark]" = (), during: "Callable[[], None]" = lambda: None, board: "_Board | None" = None, conftest: "ModuleType | None" = None, nodeid: str = "tests_hardware/bench/test_x.py::test_case") -> _Board:
     # The fixture's setup, the test body (`during`), then its teardown, against a board answering `reads` in turn.
     board = board if board is not None else _Board(reads)
     monkeypatch.setattr(http_client, "fetch", board.fetch)
     monkeypatch.setattr(evidence, "save_text", lambda *_a: Path("unused"))
-    gen: Generator[None, None, None] = _bench_conftest().no_unprovoked_log_entry.__wrapped__(_Request(mark), lambda: host)
+    module = conftest if conftest is not None else _bench_conftest()
+    gen: Generator[None, None, None] = module.no_unprovoked_log_entry.__wrapped__(_Request(mark, *more, nodeid=nodeid), lambda: _DUT_IP)
     next(gen)
     during()
     with pytest.raises(StopIteration):
@@ -151,15 +161,120 @@ def test_a_logger_on_one_side_only_fails_as_a_shape_change(monkeypatch: pytest.M
         _drive(monkeypatch, [{"WIFI": _entry(0)}, {"WIFI": _entry(0), "NEW": _entry(0)}])
 
 
-def test_a_marked_test_is_exempt_and_never_read(monkeypatch: pytest.MonkeyPatch) -> None:
-    board = _drive(monkeypatch, [], mark=pytest.mark.provokes_log("the test cuts NTP on purpose").mark)
-    assert board.hosts == [], board.hosts
+def test_a_marked_test_is_read_and_the_entries_it_names_pass(monkeypatch: pytest.MonkeyPatch) -> None:
+    refused = code("W", "HTTP_REFUSED")
+    board = _drive(monkeypatch, [{"WEBSERVER": _entry(0)}, {"WEBSERVER": _entry(2, ("W", refused), ("W", refused))}], mark=_MARK)
+    assert board.hosts == [_DUT_IP, _DUT_IP], board.hosts
 
 
-@pytest.mark.parametrize("mark", [pytest.mark.provokes_log.mark, pytest.mark.provokes_log("  ").mark, pytest.mark.provokes_log(reason="why").mark, pytest.mark.provokes_log("a", "b").mark])
-def test_a_marker_without_its_one_reason_is_refused(monkeypatch: pytest.MonkeyPatch, mark: "pytest.Mark") -> None:
-    with pytest.raises(pytest.fail.Exception, match="provokes_log takes one non-empty reason"):
+def test_an_entry_a_marked_test_does_not_name_fails_naming_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The set is per logger: the same code in another logger is outside it, as is another code in the named one.
+    refused, no_reply, timeout = code("W", "HTTP_REFUSED"), code("E", "NTP_NO_REPLY"), code("W", "HTTP_CALL_TIMEOUT")
+    before = {"WEBSERVER": _entry(0), "NTP": _entry(0), "WIFI": _entry(0)}
+    after = {"WEBSERVER": _entry(2, ("W", refused), ("W", timeout)), "NTP": _entry(1, ("E", no_reply)), "WIFI": _entry(1, ("W", refused))}
+    with pytest.raises(AssertionError) as caught:
+        _drive(monkeypatch, [before, after], mark=_MARK)
+    text = str(caught.value)
+    assert f"NTP E{no_reply} NTP_NO_REPLY" in text and f"WEBSERVER W{timeout} HTTP_CALL_TIMEOUT" in text and f"WIFI W{refused} HTTP_REFUSED" in text, text
+    assert f"WEBSERVER W{refused} " not in text and "test_x.py::test_case" in text, text
+
+
+def test_an_entry_a_marked_test_names_need_not_appear(monkeypatch: pytest.MonkeyPatch) -> None:
+    quiet = {"WEBSERVER": _entry(0)}
+    _drive(monkeypatch, [quiet, quiet], mark=_MARK)
+
+
+_MALFORMED = [
+    pytest.mark.provokes_log.mark,
+    pytest.mark.provokes_log("  ", _REFUSED).mark,
+    pytest.mark.provokes_log(_REFUSED).mark,
+    pytest.mark.provokes_log("why", _REFUSED, reason="why").mark,
+    pytest.mark.provokes_log("a reason alone").mark,
+    pytest.mark.provokes_log("why", ("WEBSERVER", "W")).mark,
+    pytest.mark.provokes_log("why", ["WEBSERVER", "W", "HTTP_REFUSED"]).mark,
+    pytest.mark.provokes_log("why", ("WEBSERVER", "X", "HTTP_REFUSED")).mark,
+    pytest.mark.provokes_log("why", ("", "W", "HTTP_REFUSED")).mark,
+    pytest.mark.provokes_log("why", ("WEBSERVER", "W", "NO_SUCH_NAME")).mark,
+    pytest.mark.provokes_log("why", ("WIFI", "E", "WLAN_OFF")).mark,
+    pytest.mark.provokes_log("why", ("WEBSERVER", "E", "HTTP_REFUSED")).mark,
+]
+
+
+@pytest.mark.parametrize("mark", _MALFORMED)
+def test_a_marker_without_its_reason_and_live_entries_fails_the_test(monkeypatch: pytest.MonkeyPatch, mark: "pytest.Mark") -> None:
+    # The reason, then each entry as (logger, "E" or "W", catalog name) with a live row: a retired name (WLAN_OFF) or a
+    # name of the other kind is refused as an unknown one is.
+    with pytest.raises(pytest.fail.Exception, match="test_case: provokes_log"):
         _drive(monkeypatch, [], mark=mark)
+
+
+class _Item:
+    def __init__(self, nodeid: str, mark: "pytest.Mark | None") -> None:
+        node = _Node(mark, nodeid=nodeid)
+        self.nodeid, self.path, self.get_closest_marker = node.nodeid, node.path, node.get_closest_marker
+
+
+def test_collection_refuses_a_malformed_marker_naming_each_test() -> None:
+    good = _Item("tests_hardware/bench/test_x.py::test_good", _MARK)
+    bare = _Item("tests_hardware/bench/test_x.py::test_reason_alone", pytest.mark.provokes_log("a reason alone").mark)
+    stale = _Item("tests_hardware/bench/test_y.py::test_stale", pytest.mark.provokes_log("why", ("WIFI", "E", "WLAN_OFF")).mark)
+    hook = _bench_conftest().pytest_collection_modifyitems
+    hook(None, [good, _Item("tests_hardware/bench/test_x.py::test_unmarked", None)])
+    with pytest.raises(pytest.UsageError) as caught:
+        hook(None, [good, bare, stale])
+    text = str(caught.value)
+    assert "test_reason_alone" in text and "test_stale" in text and "WLAN_OFF" in text and "test_good" not in text, text
+
+
+def test_a_test_that_ends_unreachable_hands_its_first_read_to_the_next_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A: after-read refused (carried); B: its before-read answers, so A's window ends there and B is checked on its own.
+    to_hotspot = code("W", "WLAN_TO_HOTSPOT")
+    module = _bench_conftest()
+    mark_a = pytest.mark.provokes_log("the streak fails", ("WIFI", "W", "WLAN_TO_HOTSPOT")).mark
+    _drive(monkeypatch, [{"WIFI": _entry(0)}, ConnectionRefusedError(111, "refused")], mark=mark_a, more=[_UNREACHABLE], conftest=module, nodeid="tests_hardware/bench/test_x.py::test_a")
+    gained = {"WIFI": _entry(1, ("W", to_hotspot))}
+    _drive(monkeypatch, [gained, gained], conftest=module, nodeid="tests_hardware/bench/test_x.py::test_b")
+
+
+def test_an_entry_outside_the_carried_set_fails_naming_the_carried_test(monkeypatch: pytest.MonkeyPatch) -> None:
+    silent = code("W", "WLAN_SILENT")
+    module = _bench_conftest()
+    mark_a = pytest.mark.provokes_log("the streak fails", ("WIFI", "W", "WLAN_TO_HOTSPOT")).mark
+    _drive(monkeypatch, [{"WIFI": _entry(0)}, TimeoutError("timed out")], mark=mark_a, more=[_UNREACHABLE], conftest=module, nodeid="tests_hardware/bench/test_x.py::test_a")
+    with pytest.raises(AssertionError, match=f"test_x.py::test_a logged WIFI W{silent} WLAN_SILENT"):
+        _drive(monkeypatch, [{"WIFI": _entry(1, ("W", silent))}, {"WIFI": _entry(1, ("W", silent))}], conftest=module, nodeid="tests_hardware/bench/test_x.py::test_b")
+
+
+def test_a_next_test_that_cannot_read_either_extends_the_carried_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    # B's before-read refused too: its window starts at A's read, and the union of both sets admits what it logged.
+    to_hotspot, silent, raised = code("W", "WLAN_TO_HOTSPOT"), code("W", "WLAN_SILENT"), code("E", "TASK_RAISED")
+    module = _bench_conftest()
+    mark_a = pytest.mark.provokes_log("the first streak fails", ("WIFI", "W", "WLAN_TO_HOTSPOT")).mark
+    mark_b = pytest.mark.provokes_log("the second streak goes silent", ("WIFI", "W", "WLAN_SILENT")).mark
+    _drive(monkeypatch, [{"WIFI": _entry(0), "SYSTEM": _entry(0)}, OSError(113, "no route")], mark=mark_a, more=[_UNREACHABLE], conftest=module, nodeid="tests_hardware/bench/test_x.py::test_a")
+    both = {"WIFI": _entry(2, ("W", to_hotspot), ("W", silent)), "SYSTEM": _entry(0)}
+    _drive(monkeypatch, [OSError(113, "no route"), both], mark=mark_b, conftest=module, nodeid="tests_hardware/bench/test_x.py::test_b")
+    _drive(monkeypatch, [{"WIFI": _entry(0), "SYSTEM": _entry(0)}, OSError(113, "no route")], mark=mark_a, more=[_UNREACHABLE], conftest=module, nodeid="tests_hardware/bench/test_x.py::test_a")
+    with pytest.raises(AssertionError, match=f"test_a \\+ tests_hardware/bench/test_x.py::test_b logged SYSTEM E{raised} TASK_RAISED"):
+        _drive(monkeypatch, [OSError(113, "no route"), {"WIFI": _entry(0), "SYSTEM": _entry(1, ("E", raised))}], mark=mark_b, conftest=module, nodeid="tests_hardware/bench/test_x.py::test_b")
+
+
+def test_a_window_still_carried_at_the_session_end_is_checked_then(monkeypatch: pytest.MonkeyPatch) -> None:
+    raised = code("E", "TASK_RAISED")
+    module = _bench_conftest()
+    _drive(monkeypatch, [{"SYSTEM": _entry(0)}, OSError(113, "no route")], mark=_MARK, more=[_UNREACHABLE], conftest=module)
+    board = _Board([{"SYSTEM": _entry(1, ("E", raised))}])
+    monkeypatch.setattr(http_client, "fetch", board.fetch)
+    settle: Generator[None, None, None] = module.log_check_carry_settled.__wrapped__(_DUT_IP)
+    next(settle)
+    with pytest.raises(AssertionError, match=f"test_x.py::test_case logged SYSTEM E{raised} TASK_RAISED"):
+        next(settle)
+    assert not board.reads and board.hosts == [_DUT_IP], board.hosts
+
+
+def test_an_unreadable_end_without_ends_unreachable_still_fails_plainly(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(pytest.fail.Exception, match="cannot read the loggers after the test"):
+        _drive(monkeypatch, [{"WEBSERVER": _entry(0)}, ConnectionRefusedError(111, "refused")], mark=_MARK)
 
 
 @pytest.mark.parametrize(("fail_at", "failure", "when"), [(0, TimeoutError("timed out"), "before"), (1, ConnectionRefusedError(111, "refused"), "after"), (1, 503, "after")])
@@ -175,8 +290,9 @@ def test_a_board_that_cannot_answer_fails_the_test_plainly_and_bounded(monkeypat
     assert board.timeouts == [error_log_helpers._ERRCOUNT_TIMEOUT_S], board.timeouts
 
 
-def test_provokes_log_is_in_the_one_marker_table() -> None:
-    assert "provokes_log" in markers.MARKERS and "reason" in markers.MARKERS["provokes_log"]
+def test_provokes_log_and_ends_unreachable_are_in_the_one_marker_table() -> None:
+    assert "provokes_log" in markers.MARKERS and "reason" in markers.MARKERS["provokes_log"] and "catalog name" in markers.MARKERS["provokes_log"]
+    assert "ends_unreachable" in markers.MARKERS and "carries" in markers.MARKERS["ends_unreachable"]
 
 
 def test_the_catalog_name_of_a_code_and_of_none() -> None:

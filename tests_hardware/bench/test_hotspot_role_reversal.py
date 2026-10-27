@@ -316,7 +316,10 @@ def test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link(joined
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.provokes_log("the refused head's HTTP_BAD_HEAD, asserted exact")
+@pytest.mark.provokes_log(
+    "the refused head's HTTP_BAD_HEAD, asserted exact",
+    ("WEBSERVER", "W", "HTTP_BAD_HEAD"),
+)
 def test_malformed_http_request_over_real_wireless_degrades_cleanly(joined_hotspot: str, request: pytest.FixtureRequest) -> None:
     # A head the server refuses: answered with a 400-class status line or closed, never left hanging; its one traced
     # drop is W HTTP_BAD_HEAD and HTTPDropped counts it.
@@ -353,7 +356,10 @@ def test_rapid_associate_disassociate_churn_doesnt_wedge_station_management(benc
 
 
 @pytest.mark.destructive_last
-@pytest.mark.provokes_log("the password one short of its bound is refused, which logs BAD_ARG on CFGMGR_WIFI")
+@pytest.mark.provokes_log(
+    "the password one short of its bound is refused, which logs BAD_ARG on CFGMGR_WIFI",
+    ("CFGMGR_WIFI", "E", "BAD_ARG"),
+)
 def test_invalid_credentials_rejected_without_triggering_reconnect(bench: "BenchBridge", joined_hotspot: str) -> None:
     # post_fct (the /networking group's reconnect hook) fires if any field validates; a PW one short of _VAL_PW's lower
     # bound is rejected, so nothing persists and nothing reconnects.
@@ -366,7 +372,12 @@ def test_invalid_credentials_rejected_without_triggering_reconnect(bench: "Bench
 
 @pytest.mark.destructive_last
 @pytest.mark.persistence_write
-@pytest.mark.provokes_log("the wrong password's failed streak and the reopened hotspot's WLAN warnings, asserted")
+@pytest.mark.provokes_log(
+    "the wrong password's failed streak and the reopened hotspot's WLAN warnings, asserted",
+    ("WIFI", "W", "WLAN_NO_AP"),
+    ("WIFI", "W", "WLAN_AUTH_FAILED"),
+    ("WIFI", "W", "WLAN_TO_HOTSPOT"),
+)
 def test_a_wrong_password_over_the_hotspot_reopens_the_hotspot(bench: "BenchBridge", joined_hotspot: str, hotspot_ssid: str, result_note: "_load.Note") -> None:
     # A credentials change lands in the fresh-boot state (owner, 2026-10-08, paraphrase): its streak fails (a wrong key, the
     # bench AP down while the radio is the DUT's client) and the hotspot opens once more. One owned flash write; the next test restores it.
@@ -389,7 +400,13 @@ def test_a_wrong_password_over_the_hotspot_reopens_the_hotspot(bench: "BenchBrid
 
 @pytest.mark.destructive_last
 @pytest.mark.persistence_write
-@pytest.mark.provokes_log("credentials stored while the bench AP is down: the DUT's next streak fails and reopens its hotspot")
+@pytest.mark.provokes_log(
+    "credentials stored while the bench AP is down: the DUT's next streak fails and reopens its hotspot",
+    ("WIFI", "W", "WLAN_NO_AP"),
+    ("WIFI", "W", "WLAN_AUTH_FAILED"),
+    ("WIFI", "W", "WLAN_TO_HOTSPOT"),
+)
+@pytest.mark.ends_unreachable
 def test_real_credentials_put_succeeds_and_confirms_accepted_values(bench: "BenchBridge", joined_hotspot: str, hotspot_ssid: str) -> None:
     # bench.ap_password() reads the real PSK (nmcli --show-secrets; BENCH_AP_PASSWORD overrides it): this PUT puts the
     # network back, so the flip back needs no SSID restore of its own (tests_hardware/README.md).
@@ -407,7 +424,14 @@ def test_real_credentials_put_succeeds_and_confirms_accepted_values(bench: "Benc
 @pytest.mark.destructive_last
 @pytest.mark.soak_duration
 @pytest.mark.persistence_write
-@pytest.mark.provokes_log("the second failed streak's WLAN_SILENT, asserted")
+@pytest.mark.provokes_log(
+    "the second failed streak's WLAN_SILENT, asserted",
+    ("WIFI", "W", "WLAN_NO_AP"),
+    ("WIFI", "W", "WLAN_AUTH_FAILED"),
+    ("WIFI", "W", "WLAN_TO_HOTSPOT"),
+    ("WIFI", "W", "WLAN_SILENT"),
+)
+@pytest.mark.ends_unreachable
 def test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt(bench: "BenchBridge", joined_hotspot: str, hotspot_ssid: str, dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # The second failed streak goes silent and a later attempt links (owner, 2026-10-08, paraphrase), on the preceding
     # test's stored credentials with the bench AP still down. Writes nothing: persistence_write is the AND-gate on that
@@ -456,7 +480,13 @@ def test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt(bench: 
 
 
 @pytest.mark.destructive_last
-@pytest.mark.provokes_log("the failed streaks of the stored credentials while the bench AP was down, and the switch back")
+@pytest.mark.provokes_log(
+    "the failed streaks of the stored credentials while the bench AP was down, and the switch back",
+    ("WIFI", "W", "WLAN_NO_AP"),
+    ("WIFI", "W", "WLAN_AUTH_FAILED"),
+    ("WIFI", "W", "WLAN_TO_HOTSPOT"),
+    ("WIFI", "W", "WLAN_SILENT"),
+)
 def test_the_role_flips_back_and_the_board_is_sta_connected_on_the_bridge(board: Board, bench: "BenchBridge", joined_hotspot: str, dut_ip: str, result_note: "_load.Note") -> None:
     # No STA-phase field is added to /networking (owner, 2026-09-26: 'It seems to be unreachable by definition.'): a
     # reachable board on the bridge network is STA-connected by definition, read as GET /status's networking.Mode.
