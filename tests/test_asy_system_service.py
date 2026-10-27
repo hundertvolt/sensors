@@ -2662,7 +2662,8 @@ def test_the_first_pass_past_the_deadline_unpauses_and_logs_one_line() -> None:
 
 def _raising_unpause(svc: SystemService) -> list[bool]:
     # The service's pause callback, raising at its first unpause only; the list records that raise.
-    set_pause, raised = svc._storage_pause, []
+    set_pause = svc._storage_pause
+    raised: list[bool] = []
 
     def pause(*, value: bool) -> None:
         if not value and not raised:
@@ -2720,13 +2721,14 @@ def test_a_raising_signature_line_never_lets_the_restarted_loop_draw_a_second_si
     # The random fallback at 120 s; the flag is set with the value, so the restarted loop keeps the signature.
     with _driven() as clock:
         svc = _make_service()
-        one, raised = svc.pr.one, []
+        one = svc.pr.one
+        raised: list[object] = []
 
-        def raising_one(*args: object) -> None:
+        def raising_one(*args: object, sep: str = " ", end: str = "\n") -> None:
             if not raised and "boot signature" in str(args[0]):
                 raised.append(args[0])
                 raise MemoryError("injected: no room for the signature line")
-            one(*args)
+            one(*args, sep=sep, end=end)
 
         svc.pr.one = raising_one  # type: ignore[method-assign]
 
