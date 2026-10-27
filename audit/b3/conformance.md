@@ -7,7 +7,7 @@ Requirement: one row per (fault path, rung R1-R7) from `audit/actions/SUPP_recov
 
 ## Recovery rungs (M.PROC.026)
 
-Built by `audit/b3/conformance_walk.py` at `e1ad71f` from SUPP_recovery.md's rung tables (agent, 2026-10-22): 120 rows, one per
+Built by `audit/b3/conformance_walk.py` at `36bee227` from SUPP_recovery.md's rung tables (agent, 2026-10-22): 120 rows, one per
 fault path and rung the record names; a cell lists the tests the record itself cites, "open" where it cites none (L1/L2),
 "queue_c" where silicon is the only way (236 L3/L4 cells). Bounded, once and race-free are each proven by the review.
 
