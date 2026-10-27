@@ -315,7 +315,7 @@ def _original(dut_ip: str, name: str, src_file: str, values: "dict[str, object]"
 
 def _sgp40_period_s() -> float:
     # SGP40_Reader.start_timer()'s fixed trigger period, read from src/: a literal there, so no const() name to read.
-    tree = ast.parse((SRC_DIR / _SGP40_SRC).read_text())
+    tree = ast.parse((SRC_DIR / _SGP40_SRC).read_text(encoding="utf-8"))
     timers = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "start_timer"]
     periods = [k.value.value for t in timers for k in ast.walk(t) if isinstance(k, ast.keyword) and k.arg == "period" and isinstance(k.value, ast.Constant)]
     assert len(periods) == 1 and isinstance(periods[0], int), f"src/{_SGP40_SRC} start_timer() holds no one int period: {periods!r}"
