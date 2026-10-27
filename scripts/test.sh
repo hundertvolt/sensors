@@ -14,6 +14,9 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 # firmware's TZ-agnostic override - so src/'s time.mktime(time.gmtime()) idiom is only a no-op round
 # trip under UTC. Not a production bug; CLAUDE.md's "Local test runs pin $TZ" has the account.
 export TZ=UTC
+# Every file job is given a TEST_TWIN_HOST of its own below; a caller's would reach the tests_scripts/ tier's and the
+# scenario jobs' twins, and could be the address a running file job holds.
+unset TEST_TWIN_HOST
 
 usage() {
     cat <<'EOF'
@@ -640,10 +643,10 @@ _no_twin_logs() {
     return 0
 }
 
-# run_test_file <test_file> <status_file> [<device>] [<binary>] (default $micropython_bin): one test file's job on the
-# unit MICROPYPATH (scripts/micropypath.toml); a device runs the file with TEST_DEVICE set to it.
+# run_test_file <test_file> <status_file> [<device>] [<binary>] (default $micropython_bin) [<twin_host>]: one file's job
+# on the unit MICROPYPATH (scripts/micropypath.toml), TEST_DEVICE set to its device and TEST_TWIN_HOST to its address.
 run_test_file() {
-    local test_file="$1" status_file="$2" device="${3:-}" binary="${4:-$micropython_bin}" runner cmd
+    local test_file="$1" status_file="$2" device="${3:-}" binary="${4:-$micropython_bin}" twin_host="${5:-}" runner cmd
     echo "== Running $test_file"
     # Every segment of the unit layout is load-bearing. ".frozen" explicitly, because MICROPYPATH
     # REPLACES the default sys.path rather than extending it, and that default is what makes
@@ -662,7 +665,7 @@ run_test_file() {
         runner=("$test_file")
     fi
     # @tunable l1.unix_heapsize = 16M
-    cmd=(env -u TEST_DEVICE "MICROPYPATH=$unit_micropypath" ${device:+"TEST_DEVICE=$device"} "$binary" -X heapsize=16M "${runner[@]}")
+    cmd=(env -u TEST_DEVICE -u TEST_TWIN_HOST "MICROPYPATH=$unit_micropypath" ${device:+"TEST_DEVICE=$device"} ${twin_host:+"TEST_TWIN_HOST=$twin_host"} "$binary" -X heapsize=16M "${runner[@]}")
     _run_with_retries "$(_job_tag "$test_file${device:+[$device]}")" "$test_file" "$status_file" "${per_file_timeout_overrides_s[$test_file]:-$per_file_timeout_s}" _no_twin_logs "${cmd[@]}"
 }
 
@@ -756,6 +759,26 @@ for test_file in "${test_files[@]}"; do
     fi
 done
 
+# Each running file job's twin binds its servers' wildcard on a loopback address no other running job holds
+# (TEST_TWIN_HOST, the UDP shim): on a shared one, the socket bound last takes every datagram sent to the port.
+# 127.0.0.101-254 is clear of 127.0.0.1, where host-side talkers reach a twin, and of resolvers on .11/.53/.54/.100.
+twin_hosts=()
+for ((host_octet = 101; host_octet <= 254; host_octet++)); do
+    twin_hosts+=("127.0.0.$host_octet")
+done
+declare -A twin_host_pid=()
+# _free_twin_host: sets twin_host to an address whose last holder (its job's pid) has stopped; returns 1 when none has.
+_free_twin_host() {
+    local running candidate
+    running=" $(jobs -rp | tr '\n' ' ') "
+    for candidate in "${twin_hosts[@]}"; do
+        if [[ "$running" != *" ${twin_host_pid[$candidate]:-none} "* ]]; then
+            twin_host="$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
 for job in "${job_list[@]}"; do
     # Bound concurrency at max_parallel: reap one finished job before starting another. `|| true`
     # because a job body always returns 0 (run_test_file's own comment), so a nonzero `wait -n` can
@@ -775,7 +798,12 @@ for job in "${job_list[@]}"; do
     if [[ "$test_file" == tests/lwip_host/* ]]; then
         binary="$lwip_bin"
     fi
-    run_test_file "$test_file" "$status_file" "${device%]}" "$binary" &
+    # With every address held, a job waits for one to free: two running jobs never share one, at any parallelism.
+    while ! _free_twin_host; do
+        wait -n || true
+    done
+    run_test_file "$test_file" "$status_file" "${device%]}" "$binary" "$twin_host" &
+    twin_host_pid[$twin_host]=$!
 done
 wait || true
 tests_scripts_pid=""  # reaped by the `wait` above - cleared so the EXIT trap can't signal a recycled PID
