@@ -273,7 +273,7 @@ def test_read_triggers_that_never_arm_end_at_the_budgets_reboot_with_one_entry()
             sysfunct._reset_timer.deinit()  # the in-process graph never takes the reset
             if sysfunct._reset_task is not None:
                 await cancel(sysfunct._reset_task)
-            await _stop_graph(supervisor)
+            await _driven(clock, "the graph never stopped", _stop_graph(supervisor))  # a restarted task ends on the clock
             for _key, reader in _readers():
                 reader.stop_timer()
 
