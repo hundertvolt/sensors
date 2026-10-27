@@ -4945,10 +4945,10 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests_hardware/bench/test_hotspot_role_reversal.py:435 | test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_hotspot_role_reversal.py:490 | test_the_role_flips_back_and_the_board_is_sta_connected_on_the_bridge | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_hotspot_role_reversal.py:502 | test_the_uart_link_across_the_mode_switch_is_recorded | bench (hardware) | fixed | hw_no_log | hw_no_log: fixed: the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it |
-| tests_hardware/bench/test_memory_stress_bench.py:70 | test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_memory_stress_bench.py:84 | test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_memory_stress_bench.py:106 | test_http_soak_stays_live | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_memory_stress_bench.py:149 | test_loop_lag_under_http_load_on_every_route_stays_under_the_smallest_hard_consumer | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_memory_stress_bench.py:72 | test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_memory_stress_bench.py:91 | test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_memory_stress_bench.py:113 | test_http_soak_stays_live | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_memory_stress_bench.py:156 | test_loop_lag_under_http_load_on_every_route_stays_under_the_smallest_hard_consumer | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_modlwip_send_stall.py:90 | test_no_send_stall_with_the_override | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_modlwip_send_stall.py:107 | test_send_stall_on_the_unpatched_image | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_network_resilience.py:159 | test_real_wifi_outage_and_recovery_while_in_normal_sta_mode | bench (hardware) | biting | ns_seed_text | ns_seed_text: biting: the seed word is in its provokes_log reason, naming the _assert_wifi_log_has_only_benign_outage_warnings helper, not a tolerance in the test |
