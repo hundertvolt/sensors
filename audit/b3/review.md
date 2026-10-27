@@ -4,34 +4,32 @@ Requirement: every test in `tests/`, `tests_scripts/`, `tests_js/` and `tests_ha
 
 ## Counts
 
-Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_verdicts.json`: 8467 rows, 345 flagged. A flag is a candidate; the verdict is the reviewer's.
+Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_verdicts.json`: 8466 rows, 333 flagged. A flag is a candidate; the verdict is the reviewer's.
 
 | level | rows | flagged |
 |---|---|---|
 | bench (hardware) | 121 | 26 |
 | device script | 90 | 0 |
 | flash (hardware) | 88 | 66 |
-| host (pytest) | 2899 | 66 |
+| host (pytest) | 2896 | 66 |
 | manual (hardware) | 21 | 2 |
-| twin (MicroPython) | 662 | 19 |
-| twin scenario | 174 | 11 |
-| unit (MicroPython) | 3920 | 148 |
-| web (vitest) | 492 | 7 |
+| twin (MicroPython) | 663 | 18 |
+| twin scenario | 175 | 10 |
+| unit (MicroPython) | 3920 | 139 |
+| web (vitest) | 492 | 6 |
 
 | verdict (per row) | rows |
 |---|---|
-| weak | 12 |
 | CRr2 | 178 |
-| fixed | 10 |
+| fixed | 28 |
 | justified | 73 |
-| biting | 8194 |
+| biting | 8187 |
 
 | red flag | rows | verdicts |
 |---|---|---|
-| no_assertion | 23 | weak 2, justified 19, biting 2 |
-| weak_only | 1 | weak 1 |
+| no_assertion | 21 | justified 19, biting 2 |
 | except_pass | 7 | biting 7 |
-| log_existence_only | 13 | weak 7, CRr2 1, biting 5 |
+| log_existence_only | 6 | CRr2 1, biting 5 |
 | loop_vacuous | 60 | justified 4, biting 56 |
 | wide_tolerance | 7 | justified 6, biting 1 |
 | name_overclaims | 8 | biting 8 |
@@ -39,10 +37,10 @@ Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_
 | same_callee | 36 | CRr2 1, biting 35 |
 | ns_seed_text | 39 | CRr2 2, biting 37 |
 | ns_allow_list | 4 | CRr2 2, justified 2 |
-| setup_credit_only | 38 | weak 2, justified 4, biting 32 |
+| setup_credit_only | 36 | justified 4, biting 32 |
 | hw_no_log | 83 | CRr2 83 |
 
-Detectors with no row at this base: cannot_fail, canned_return, ns_count_bound, ns_code_in_set.
+Detectors with no row at this base: weak_only, cannot_fail, canned_return, ns_count_bound, ns_code_in_set.
 
 ### Red flags (redflags.py's detectors)
 
@@ -116,7 +114,7 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 
 | site | name | verdict | reason |
 |---|---|---|---|
-| scripts/_digital_twin_ci_suite.py:790 | _restore_is_all_or_nothing | dead suite code | no run calls it: Run 5b (:1339) asserts Run 5's exact ring since its restore cannot be cut, and the cut-write case it judged is tests/test_digital_twin_fram_crash_points.py's; its one caller is its reader tests_scripts/test_digital_twin_ci_suite_errcount.py:105-128. The library rule keeps a module's real features; this is a private predicate of the suite runner with no run left to serve. Unchanged here (scripts/ is not this lane's): removal with its reader is the lead's |
+| scripts/_digital_twin_ci_suite.py:790 | _restore_is_all_or_nothing | removed | dead suite code: no run called it (Run 5b asserts Run 5's exact ring; the cut-write case is tests/test_digital_twin_fram_crash_points.py's), its one caller its reader tests_scripts/test_digital_twin_ci_suite_errcount.py; removed with the four tests that exercised only it (git grep, getattr strings and the run table: nothing else reached it). _non_empty_slots and _counter stay: Run 5b, Run 5c's loss sweep and other runs call them |
 
 ## What the scan cannot see
 
@@ -133,71 +131,72 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 
 | file:line | test | level | verdict (biting / weak / blank) | red flag | fix, or "biting as is" |
 |---|---|---|---|---|---|
-| scripts/_digital_twin_scenarios.py:433 | above_max_connections_all_flaky_survives | twin scenario | biting | setup_credit_only | setup_credit_only: biting: the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only) |
-| scripts/_digital_twin_scenarios.py:441 | above_max_connections_mixed_healthy_and_flaky_at_least_one_healthy_succeeds | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:464 | every_admitted_connection_is_actually_served_a_complete_correct_response | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:493 | a_full_ceiling_of_real_page_loads_is_served_without_truncation | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:507 | all_flaky_connections_dont_wedge_the_server | twin scenario | biting | setup_credit_only | setup_credit_only: biting: the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only) |
-| scripts/_digital_twin_scenarios.py:515 | api_burst_at_the_ceiling_during_bus_load | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:527 | the_accept_queue_is_never_shallower_than_the_admission_ceiling | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:571 | connections_beyond_max_connections_are_rejected_cleanly_not_crashed | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:585 | a_bounded_fault_storm_persists_only_what_its_events_allow | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:631 | a_real_bus_fault_degrades_to_a_clean_response_not_a_crash | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:651 | a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:672 | a_command_right_after_the_first_answer_resets_cleanly | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:719 | connections_at_each_count_from_one_to_max_connections_all_succeed | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:729 | erasefram_concurrent_with_a_reboot_accepts_exactly_one | twin scenario | biting | setup_credit_only | setup_credit_only: biting: the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only) |
-| scripts/_digital_twin_scenarios.py:735 | erasefram_on_a_silent_chip_stops_short_and_the_device_feeds_on | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:777 | an_escalation_entry_held_past_its_bound_is_cut_and_the_reset_still_follows | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:800 | every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:820 | existing_connections_survive_an_overflow_burst_untouched | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:873 | connection_count_fluctuating_in_real_time_server_stays_healthy | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:931 | high_concurrency_burst_at_historical_segfault_repro_scale_survives | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:962 | wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:983 | a_hung_shutdown_step_is_ended_by_the_watchdog | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1014 | isl29125_config_put_during_get_loops | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1169 | loop_lag_under_combined_load | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1214 | get_measurements_and_sensors_are_reachable_and_shaped_correctly | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1224 | mempause_over_real_http_reaches_the_real_fram_manager | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1236 | mempause_then_reboot_unpauses_on_the_relaunch | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1254 | mixed_healthy_and_flaky_connections_dont_wedge_the_server | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1266 | realistic_mixed_traffic_above_the_connection_ceiling_degrades_gracefully | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1278 | multiple_browser_like_sessions_concurrently_all_succeed | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1289 | n_healthy_concurrent_connections_up_to_max_connections_all_succeed | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1299 | negative_content_length_is_refused | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1333 | survives_bus_and_api_load_while_ntp_is_unreachable | twin scenario | biting | setup_credit_only | setup_credit_only: biting: the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only) |
-| scripts/_digital_twin_scenarios.py:1339 | survives_bus_and_api_load_while_ntp_is_unreachable_with_concurrent_config_writes | twin scenario | biting | setup_credit_only | setup_credit_only: biting: the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only) |
-| scripts/_digital_twin_scenarios.py:1351 | realistic_mixed_openhab_polling_and_browser_session_concurrently | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1373 | put_pause_time_round_trips_and_counts_down_over_real_http | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1393 | realistic_mixed_polling_and_a_concurrent_real_config_write | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1405 | put_round_trips_through_a_real_twin_backed_driver_over_real_http | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1421 | reboot_and_bootloader_at_once_accept_exactly_one | twin scenario | biting | setup_credit_only | setup_credit_only: biting: the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only) |
-| scripts/_digital_twin_scenarios.py:1435 | refusal_at_the_ceiling_is_counted | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1462 | refused_config_write_is_reported_unpersisted | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1522 | reset_errors_over_real_http_is_not_undone_by_a_fram_loggers_later_setup | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1538 | reset_errors_while_a_command_owns_the_reset_is_refused_and_clears_nothing | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1551 | reset_errors_while_the_escalation_logs_is_refused_and_clears_nothing | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1579 | reset_errors_while_storage_is_paused_is_refused_and_clears_nothing | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1593 | a_reboots_reset_fire_lost_to_a_full_scheduler_queue_leaves_the_reset_to_the_watchdog | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1710 | sensors_put_round_trips_a_real_scd30_field_over_real_http | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1718 | a_boot_stagger_fire_lost_to_a_full_scheduler_queue_stalls_the_timer_start_until_the_watchdog | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1734 | a_full_ceiling_of_concurrent_request_bodies_is_answered_correctly | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1764 | real_website_inlined_definitions_matches_the_booted_devices_own | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1777 | a_full_ceiling_of_concurrent_real_page_loads_all_serve_the_real_website | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1795 | real_website_put_to_unmatched_path_in_hotspot_mode_still_405 | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1804 | real_website_hotspot_mode_redirects_unmatched_path_to_root | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1813 | real_website_hotspot_mode_still_serves_real_index_and_real_api_route | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1822 | real_website_dynamic_hotspot_toggle_switches_redirect_behavior_live | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1837 | real_website_production_js_entry_is_served_not_the_prototype | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1846 | real_website_static_mount_never_shadows_a_real_api_route | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1854 | real_website_root_serves_the_actual_production_index_html | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1887 | a_slot_freed_by_a_stale_connections_timeout_accepts_a_new_connection | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:1903 | static_site_is_served_over_real_http | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:2062 | uart_ring_under_concurrent_load | twin scenario | biting | — | biting as is |
-| scripts/_digital_twin_scenarios.py:2133 | watchdog_fault_block | twin scenario | biting | setup_credit_only | setup_credit_only: biting: the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only) |
-| scripts/_digital_twin_scenarios.py:2139 | watchdog_fault_main_exit | twin scenario | biting | setup_credit_only | setup_credit_only: biting: the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only) |
-| scripts/_digital_twin_scenarios.py:2145 | watchdog_fault_supervisor_raise | twin scenario | biting | setup_credit_only | setup_credit_only: biting: the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only) |
-| scripts/_digital_twin_scenarios.py:2171 | zero_think_time_readers_saturate_then_recover | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:443 | above_max_connections_all_flaky_survives | twin scenario | biting | setup_credit_only | setup_credit_only: biting: the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only) |
+| scripts/_digital_twin_scenarios.py:451 | above_max_connections_mixed_healthy_and_flaky_at_least_one_healthy_succeeds | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:474 | every_admitted_connection_is_actually_served_a_complete_correct_response | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:503 | a_full_ceiling_of_real_page_loads_is_served_without_truncation | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:517 | all_flaky_connections_dont_wedge_the_server | twin scenario | biting | setup_credit_only | setup_credit_only: biting: the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only) |
+| scripts/_digital_twin_scenarios.py:525 | api_burst_at_the_ceiling_during_bus_load | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:537 | the_accept_queue_is_never_shallower_than_the_admission_ceiling | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:581 | connections_beyond_max_connections_are_rejected_cleanly_not_crashed | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:595 | a_bounded_fault_storm_persists_only_what_its_events_allow | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:641 | a_real_bus_fault_degrades_to_a_clean_response_not_a_crash | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:661 | a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:682 | a_command_right_after_the_first_answer_resets_cleanly | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:729 | connections_at_each_count_from_one_to_max_connections_all_succeed | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:739 | erasefram_concurrent_with_a_reboot_accepts_exactly_one | twin scenario | biting | setup_credit_only | setup_credit_only: biting: the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only) |
+| scripts/_digital_twin_scenarios.py:745 | erasefram_on_a_silent_chip_stops_short_and_the_device_feeds_on | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:787 | an_escalation_entry_held_past_its_bound_is_cut_and_the_reset_still_follows | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:810 | every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:830 | existing_connections_survive_an_overflow_burst_untouched | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:869 | failed_config_snapshot_is_sent_as_unavailable | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:916 | connection_count_fluctuating_in_real_time_server_stays_healthy | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:974 | high_concurrency_burst_at_historical_segfault_repro_scale_survives | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1005 | wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1026 | a_hung_shutdown_step_is_ended_by_the_watchdog | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1057 | isl29125_config_put_during_get_loops | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1212 | loop_lag_under_combined_load | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1257 | get_measurements_and_sensors_are_reachable_and_shaped_correctly | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1267 | mempause_over_real_http_reaches_the_real_fram_manager | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1279 | mempause_then_reboot_unpauses_on_the_relaunch | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1297 | mixed_healthy_and_flaky_connections_dont_wedge_the_server | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1309 | realistic_mixed_traffic_above_the_connection_ceiling_degrades_gracefully | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1321 | multiple_browser_like_sessions_concurrently_all_succeed | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1332 | n_healthy_concurrent_connections_up_to_max_connections_all_succeed | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1342 | negative_content_length_is_refused | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1376 | survives_bus_and_api_load_while_ntp_is_unreachable | twin scenario | biting | setup_credit_only | setup_credit_only: biting: the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only) |
+| scripts/_digital_twin_scenarios.py:1382 | survives_bus_and_api_load_while_ntp_is_unreachable_with_concurrent_config_writes | twin scenario | biting | setup_credit_only | setup_credit_only: biting: the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only) |
+| scripts/_digital_twin_scenarios.py:1394 | realistic_mixed_openhab_polling_and_browser_session_concurrently | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1416 | put_pause_time_round_trips_and_counts_down_over_real_http | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1444 | realistic_mixed_polling_and_a_concurrent_real_config_write | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1456 | put_round_trips_through_a_real_twin_backed_driver_over_real_http | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1472 | reboot_and_bootloader_at_once_accept_exactly_one | twin scenario | biting | setup_credit_only | setup_credit_only: biting: the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only) |
+| scripts/_digital_twin_scenarios.py:1486 | refusal_at_the_ceiling_is_counted | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1513 | refused_config_write_is_reported_unpersisted | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1573 | reset_errors_over_real_http_is_not_undone_by_a_fram_loggers_later_setup | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1589 | reset_errors_while_a_command_owns_the_reset_is_refused_and_clears_nothing | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1602 | reset_errors_while_the_escalation_logs_is_refused_and_clears_nothing | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1630 | reset_errors_while_storage_is_paused_is_refused_and_clears_nothing | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1644 | a_reboots_reset_fire_lost_to_a_full_scheduler_queue_leaves_the_reset_to_the_watchdog | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1761 | sensors_put_round_trips_a_real_scd30_field_over_real_http | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1769 | a_boot_stagger_fire_lost_to_a_full_scheduler_queue_stalls_the_timer_start_until_the_watchdog | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1785 | a_full_ceiling_of_concurrent_request_bodies_is_answered_correctly | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1815 | real_website_inlined_definitions_matches_the_booted_devices_own | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1828 | a_full_ceiling_of_concurrent_real_page_loads_all_serve_the_real_website | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1846 | real_website_put_to_unmatched_path_in_hotspot_mode_still_405 | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1855 | real_website_hotspot_mode_redirects_unmatched_path_to_root | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1864 | real_website_hotspot_mode_still_serves_real_index_and_real_api_route | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1873 | real_website_dynamic_hotspot_toggle_switches_redirect_behavior_live | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1888 | real_website_production_js_entry_is_served_not_the_prototype | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1897 | real_website_static_mount_never_shadows_a_real_api_route | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1905 | real_website_root_serves_the_actual_production_index_html | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1938 | a_slot_freed_by_a_stale_connections_timeout_accepts_a_new_connection | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:1954 | static_site_is_served_over_real_http | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:2113 | uart_ring_under_concurrent_load | twin scenario | biting | — | biting as is |
+| scripts/_digital_twin_scenarios.py:2184 | watchdog_fault_block | twin scenario | biting | setup_credit_only | setup_credit_only: biting: the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only) |
+| scripts/_digital_twin_scenarios.py:2190 | watchdog_fault_main_exit | twin scenario | biting | setup_credit_only | setup_credit_only: biting: the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only) |
+| scripts/_digital_twin_scenarios.py:2196 | watchdog_fault_supervisor_raise | twin scenario | biting | setup_credit_only | setup_credit_only: biting: the body is a case helper whose own assertions carry the claim (the scan credits them; a setup-named helper is a candidate only) |
+| scripts/_digital_twin_scenarios.py:2222 | zero_think_time_readers_saturate_then_recover | twin scenario | biting | — | biting as is |
 | tests/_digital_twin_construction_scenarios.py:103 | boot_sequence_matches_the_generated_expectation | twin scenario | biting | — | biting as is |
 | tests/_digital_twin_construction_scenarios.py:143 | build_system_boots_against_the_real_twin_buses_without_exception | twin scenario | biting | — | biting as is |
 | tests/_digital_twin_construction_scenarios.py:159 | irq_pins_are_shared_by_chip_fake_and_driver | twin scenario | biting | — | biting as is |
@@ -251,62 +250,62 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests/_sensortask_scenarios.py:2684 | every_logger_is_set_up_by_the_batch_before_any_task_starts | twin scenario | biting | — | biting as is |
 | tests/_sensortask_scenarios.py:2695 | no_get_route_serialises_a_non_finite_float | twin scenario | biting | — | biting as is |
 | tests/_sensortask_scenarios.py:2741 | webserver_every_get_route_fits_the_serving_demand_budget_and_sends_its_pieces_uncopied | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:2785 | collect_task_starters_never_touches_start_tasks | twin scenario | weak | setup_credit_only | setup_credit_only: weak: open: spy start_tasks and assert it is never called |
-| tests/_sensortask_scenarios.py:2801 | main_runs_setups_then_tasks_then_timers_then_force_sync_then_supervises_in_order | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:2875 | webserver_pr_is_fram_backed_when_device_wires_fram | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:2886 | webserver_measurements_and_sensors_get_include_every_real_sensor | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:2906 | webserver_sensors_put_round_trips_a_real_field_through_the_real_driver | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:2917 | webserver_sensors_put_round_trips_a_real_scd30_field_through_the_real_driver | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:2934 | webserver_sensors_get_sends_the_unavailable_marker_for_a_failed_chip_config_read | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:2967 | webserver_networking_put_ssid_group_reconnects_but_led_group_alone_does_not | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:2981 | webserver_networking_put_answers_an_unknown_key_invalid | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:2989 | webserver_networking_put_ntp_fields_forces_a_resync | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3001 | webserver_networking_put_ntp_fields_clears_synced_until_the_next_sync | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3014 | webserver_networking_put_dns_fallback_stores_a_list_and_refuses_a_malformed_one | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3028 | webserver_networking_put_hotspot_pw_configures_the_next_hotspot_and_reads_back_masked | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3041 | webserver_networking_put_of_the_mask_string_stores_it_as_the_password | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3054 | webserver_system_put_debug_level_propagates_to_every_logger | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3064 | webserver_system_put_gmt_dst_offset_applies_without_a_reconnect | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3105 | webserver_system_put_reboot_cmd_arms_the_real_reset_timer | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3120 | webserver_system_put_reboot_flushes_a_still_pending_config_write_first | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3154 | only_the_api_writes_the_scd30 | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3189 | every_api_write_is_refused_from_a_system_commands_acceptance_to_its_reset | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3223 | resetconfig_over_a_damaged_config_file_boots_next_on_every_default | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3256 | webserver_system_put_invalid_cmd_is_rejected_without_side_effects | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3265 | webserver_notification_put_light_cmd_led_dispatches_to_the_real_pixel_driver | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3296 | webserver_notification_put_light_cmd_led_accepts_integral_float_rgb_and_int_t_coerced | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3306 | webserver_notification_put_light_cmd_led_rejects_fractional_rgb | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3316 | webserver_notification_put_light_cmd_led_rejects_non_numeric_field | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3326 | webserver_notification_put_light_cmd_led_rejects_non_numeric_t | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3336 | webserver_notification_put_light_cmd_led_rejects_missing_field | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3343 | webserver_notification_put_light_cmd_led_rejects_out_of_range_rgb | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3353 | webserver_notification_put_light_cmd_led_rejects_negative_rgb | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3360 | webserver_notification_put_light_cmd_led_rejects_out_of_range_t | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3371 | webserver_notification_put_light_cmd_led_accepts_lower_boundary_rgb_and_t | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3381 | webserver_notification_put_light_cmd_led_accepts_upper_boundary_rgb_and_t | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3388 | webserver_notification_light_cmd_led_refuses_a_second_flash_at_once | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3403 | webserver_notification_put_pause_time_dispatches_to_the_real_coordinator | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3410 | webserver_notification_put_flat_field_round_trips_through_the_real_coordinator | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3419 | webserver_status_get_reflects_the_real_object_graph | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3479 | webserver_status_notification_state_says_why_signals_were_not_evaluated | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3526 | webserver_status_lists_exactly_the_modules_whose_config_file_was_unreadable_or_damaged | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3562 | webserver_status_lists_a_module_whose_config_write_failed_until_its_next_good_write | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3578 | webserver_status_answers_the_networking_snapshot_while_wifi_mode_lock_is_held | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3600 | webserver_status_in_ap_mode_reports_no_rssi_and_never_queries_it | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3624 | webserver_status_publishes_utc_time_only_after_the_first_ntp_sync | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3648 | webserver_status_keeps_utc_time_through_a_stale_sync_and_flags_it | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3672 | webserver_system_get_reports_the_real_build_info | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3687 | webserver_system_get_sends_the_unavailable_marker_for_an_unreadable_system_store | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3704 | webserver_status_put_reset_errors_clears_a_real_modules_history | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3716 | webserver_status_put_reset_errors_is_not_undone_by_a_fram_loggers_later_setup | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3750 | webserver_status_counts_a_refused_connection_in_http_dropped_until_reset_errors | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3775 | webserver_status_put_reset_errors_clears_nothing_while_storage_is_paused | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3816 | is_hotspot_active_wiring_redirects_when_conn_is_in_hotspot_phase | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3826 | is_hotspot_active_wiring_default_sta_phase_still_404s | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3837 | is_hotspot_active_wiring_dynamic_phase_switch_is_reflected_live | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3857 | is_hotspot_active_wiring_real_static_root_and_api_route_unaffected_in_hotspot_mode | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3874 | is_hotspot_active_wiring_directory_traversal_still_404s_in_hotspot_mode | twin scenario | biting | — | biting as is |
-| tests/_sensortask_scenarios.py:3885 | is_hotspot_active_wiring_put_to_unmatched_path_still_405_in_hotspot_mode | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:2785 | collect_task_starters_never_touches_start_tasks | twin scenario | fixed | was:setup_credit_only | was:setup_credit_only: fixed: spies on SystemService.start_tasks/start_timers: neither called, the starters collected; bite: start_tasks called inside the generated collector passes the old form, fails the new (S/u35/laneC/crr1c/r2/bite_scenario_collect_*.log) |
+| tests/_sensortask_scenarios.py:2820 | main_runs_setups_then_tasks_then_timers_then_force_sync_then_supervises_in_order | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:2894 | webserver_pr_is_fram_backed_when_device_wires_fram | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:2905 | webserver_measurements_and_sensors_get_include_every_real_sensor | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:2925 | webserver_sensors_put_round_trips_a_real_field_through_the_real_driver | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:2936 | webserver_sensors_put_round_trips_a_real_scd30_field_through_the_real_driver | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:2953 | webserver_sensors_get_sends_the_unavailable_marker_for_a_failed_chip_config_read | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:2986 | webserver_networking_put_ssid_group_reconnects_but_led_group_alone_does_not | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3000 | webserver_networking_put_answers_an_unknown_key_invalid | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3008 | webserver_networking_put_ntp_fields_forces_a_resync | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3020 | webserver_networking_put_ntp_fields_clears_synced_until_the_next_sync | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3033 | webserver_networking_put_dns_fallback_stores_a_list_and_refuses_a_malformed_one | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3047 | webserver_networking_put_hotspot_pw_configures_the_next_hotspot_and_reads_back_masked | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3060 | webserver_networking_put_of_the_mask_string_stores_it_as_the_password | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3073 | webserver_system_put_debug_level_propagates_to_every_logger | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3083 | webserver_system_put_gmt_dst_offset_applies_without_a_reconnect | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3124 | webserver_system_put_reboot_cmd_arms_the_real_reset_timer | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3139 | webserver_system_put_reboot_flushes_a_still_pending_config_write_first | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3173 | only_the_api_writes_the_scd30 | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3208 | every_api_write_is_refused_from_a_system_commands_acceptance_to_its_reset | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3242 | resetconfig_over_a_damaged_config_file_boots_next_on_every_default | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3275 | webserver_system_put_invalid_cmd_is_rejected_without_side_effects | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3284 | webserver_notification_put_light_cmd_led_dispatches_to_the_real_pixel_driver | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3315 | webserver_notification_put_light_cmd_led_accepts_integral_float_rgb_and_int_t_coerced | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3325 | webserver_notification_put_light_cmd_led_rejects_fractional_rgb | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3335 | webserver_notification_put_light_cmd_led_rejects_non_numeric_field | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3345 | webserver_notification_put_light_cmd_led_rejects_non_numeric_t | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3355 | webserver_notification_put_light_cmd_led_rejects_missing_field | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3362 | webserver_notification_put_light_cmd_led_rejects_out_of_range_rgb | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3372 | webserver_notification_put_light_cmd_led_rejects_negative_rgb | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3379 | webserver_notification_put_light_cmd_led_rejects_out_of_range_t | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3390 | webserver_notification_put_light_cmd_led_accepts_lower_boundary_rgb_and_t | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3400 | webserver_notification_put_light_cmd_led_accepts_upper_boundary_rgb_and_t | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3407 | webserver_notification_light_cmd_led_refuses_a_second_flash_at_once | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3422 | webserver_notification_put_pause_time_dispatches_to_the_real_coordinator | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3429 | webserver_notification_put_flat_field_round_trips_through_the_real_coordinator | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3438 | webserver_status_get_reflects_the_real_object_graph | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3498 | webserver_status_notification_state_says_why_signals_were_not_evaluated | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3545 | webserver_status_lists_exactly_the_modules_whose_config_file_was_unreadable_or_damaged | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3581 | webserver_status_lists_a_module_whose_config_write_failed_until_its_next_good_write | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3597 | webserver_status_answers_the_networking_snapshot_while_wifi_mode_lock_is_held | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3619 | webserver_status_in_ap_mode_reports_no_rssi_and_never_queries_it | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3643 | webserver_status_publishes_utc_time_only_after_the_first_ntp_sync | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3667 | webserver_status_keeps_utc_time_through_a_stale_sync_and_flags_it | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3691 | webserver_system_get_reports_the_real_build_info | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3706 | webserver_system_get_sends_the_unavailable_marker_for_an_unreadable_system_store | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3723 | webserver_status_put_reset_errors_clears_a_real_modules_history | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3735 | webserver_status_put_reset_errors_is_not_undone_by_a_fram_loggers_later_setup | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3769 | webserver_status_counts_a_refused_connection_in_http_dropped_until_reset_errors | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3794 | webserver_status_put_reset_errors_clears_nothing_while_storage_is_paused | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3835 | is_hotspot_active_wiring_redirects_when_conn_is_in_hotspot_phase | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3845 | is_hotspot_active_wiring_default_sta_phase_still_404s | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3856 | is_hotspot_active_wiring_dynamic_phase_switch_is_reflected_live | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3876 | is_hotspot_active_wiring_real_static_root_and_api_route_unaffected_in_hotspot_mode | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3893 | is_hotspot_active_wiring_directory_traversal_still_404s_in_hotspot_mode | twin scenario | biting | — | biting as is |
+| tests/_sensortask_scenarios.py:3904 | is_hotspot_active_wiring_put_to_unmatched_path_still_405_in_hotspot_mode | twin scenario | biting | — | biting as is |
 | tests/test_asy_api_response.py:103 | test_make_response_standard_success_code_uses_catalog_text | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_api_response.py:107 | test_make_response_success_text_can_be_overridden | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_api_response.py:112 | test_make_response_standard_error_code_uses_catalog_text | unit (MicroPython) | biting | — | biting as is |
@@ -504,31 +503,31 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests/test_asy_base_classes.py:2844 | test_set_dict_cfg_failed_push_on_special_alone_field_skips_recovery_entirely | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_base_classes.py:2868 | test_set_dict_cfg_special_alone_field_write_never_logs_a_spurious_config_read_error | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_base_classes.py:2899 | test_set_dict_cfg_mixed_persisted_and_special_alone_fields_in_one_request | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:2941 | test_set_dict_cfg_old_value_snapshot_read_exception_falls_back_to_default | unit (MicroPython) | weak | log_existence_only | log_existence_only: weak: open: the exact entry count |
-| tests/test_asy_base_classes.py:2969 | test_recover_failed_push_unknown_key_is_a_defensive_noop | unit (MicroPython) | weak | no_assertion | no_assertion: weak: open: assert the config and the log unchanged |
-| tests/test_asy_base_classes.py:2983 | test_set_dict_cfg_recover_failed_push_correction_write_exception_is_caught | unit (MicroPython) | weak | log_existence_only | log_existence_only: weak: open: the exact entry count |
-| tests/test_asy_base_classes.py:3018 | test_set_dict_cfg_multiple_fields_recover_independently_via_different_rungs | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3057 | test_set_dict_cfg_invalid_value_is_reported_and_never_pushed | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3079 | test_set_dict_cfg_unchanged_value_is_reported_and_never_pushed | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3102 | test_set_dict_cfg_unknown_key_is_reported_invalid_individually_not_whole_request | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3121 | test_set_dict_cfg_multi_field_request_reports_each_field_independently | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3142 | test_set_dict_cfg_multiple_invalid_fields_neither_pushed | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3172 | test_set_dict_cfg_whole_persist_failure_marks_every_field_failed | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3188 | test_set_dict_cfg_set_mgr_cfg_override_raising_marks_every_field_failed | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3209 | test_set_dict_cfg_set_mgr_cfg_override_malformed_result_marks_every_field_failed | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3231 | test_set_dict_cfg_set_mgr_cfg_override_missing_key_marks_it_failed | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3255 | test_set_dict_cfg_empty_data_returns_empty_result | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3266 | test_set_dict_cfg_push_callbacks_default_to_empty_and_are_per_instance | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3297 | test_a_plain_sensorreader_never_reports_its_writes_closed | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3301 | test_sensorreaderconfig_reads_its_stores_close_and_lends_the_store_its_put_lock | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3313 | test_a_put_on_a_closed_store_fails_every_key_before_any_chip_or_flash_write | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3333 | test_a_put_queued_behind_the_put_lock_when_the_store_closes_is_refused | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3352 | test_a_reader_given_a_logger_writes_through_it_and_keeps_its_own_name | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3404 | test_a_raising_pre_write_read_is_logged_as_cfg_snapshot_raised | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3408 | test_a_raising_store_write_is_logged_as_cfg_set_raised | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3412 | test_a_raising_push_is_logged_as_push_raised | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3416 | test_a_raising_recovery_read_back_is_logged_as_recovery_read_raised | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3420 | test_a_raising_recovery_write_is_logged_as_recovery_write_raised | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:2941 | test_set_dict_cfg_old_value_snapshot_read_exception_falls_back_to_default | unit (MicroPython) | fixed | was:log_existence_only | was:log_existence_only: fixed: ErrCount 1 and one CFG_SNAPSHOT_RAISED slot; bite: the request repeated passes the old >= 1, fails the new (S/u35/laneC/crr1c/r1/bite_bc_snapshot_*.log) |
+| tests/test_asy_base_classes.py:2969 | test_recover_failed_push_unknown_key_is_a_defensive_noop | unit (MicroPython) | fixed | was:no_assertion | was:no_assertion: fixed: no correction write, both logs empty, the stored config unchanged; bite: a known key (SampleInterval) passes the old form, fails the new on its correction write (S/u35/laneC/crr1c/r1/bite_bc_unknown_key_*.log) |
+| tests/test_asy_base_classes.py:2995 | test_set_dict_cfg_recover_failed_push_correction_write_exception_is_caught | unit (MicroPython) | fixed | was:log_existence_only | was:log_existence_only: fixed: ErrCount 1 and one RECOVERY_WRITE_RAISED slot; bite: the request repeated passes the old >= 1, fails the new (S/u35/laneC/crr1c/r1/bite_bc_correction_*.log) |
+| tests/test_asy_base_classes.py:3030 | test_set_dict_cfg_multiple_fields_recover_independently_via_different_rungs | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3069 | test_set_dict_cfg_invalid_value_is_reported_and_never_pushed | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3091 | test_set_dict_cfg_unchanged_value_is_reported_and_never_pushed | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3114 | test_set_dict_cfg_unknown_key_is_reported_invalid_individually_not_whole_request | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3133 | test_set_dict_cfg_multi_field_request_reports_each_field_independently | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3154 | test_set_dict_cfg_multiple_invalid_fields_neither_pushed | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3184 | test_set_dict_cfg_whole_persist_failure_marks_every_field_failed | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3200 | test_set_dict_cfg_set_mgr_cfg_override_raising_marks_every_field_failed | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3221 | test_set_dict_cfg_set_mgr_cfg_override_malformed_result_marks_every_field_failed | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3243 | test_set_dict_cfg_set_mgr_cfg_override_missing_key_marks_it_failed | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3267 | test_set_dict_cfg_empty_data_returns_empty_result | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3278 | test_set_dict_cfg_push_callbacks_default_to_empty_and_are_per_instance | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3309 | test_a_plain_sensorreader_never_reports_its_writes_closed | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3313 | test_sensorreaderconfig_reads_its_stores_close_and_lends_the_store_its_put_lock | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3325 | test_a_put_on_a_closed_store_fails_every_key_before_any_chip_or_flash_write | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3345 | test_a_put_queued_behind_the_put_lock_when_the_store_closes_is_refused | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3364 | test_a_reader_given_a_logger_writes_through_it_and_keeps_its_own_name | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3416 | test_a_raising_pre_write_read_is_logged_as_cfg_snapshot_raised | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3420 | test_a_raising_store_write_is_logged_as_cfg_set_raised | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3424 | test_a_raising_push_is_logged_as_push_raised | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3428 | test_a_raising_recovery_read_back_is_logged_as_recovery_read_raised | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3432 | test_a_raising_recovery_write_is_logged_as_recovery_write_raised | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_bmp3xx_driver.py:332 | test_setup_accepts_bmp388_chip_id | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_bmp3xx_driver.py:336 | test_setup_accepts_bmp390_chip_id | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_bmp3xx_driver.py:340 | test_setup_accepts_bmp384_since_it_shares_bmp388s_chip_id | unit (MicroPython) | biting | — | biting as is |
@@ -1185,11 +1184,11 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests/test_asy_fram_driver.py:1350 | test_set_values_before_setup_logs_a_persisted_error | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_fram_driver.py:1361 | test_set_values_out_of_range_logs_a_persisted_error | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_fram_driver.py:1374 | test_set_write_protected_before_setup_logs_a_persisted_error | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_fram_driver.py:1385 | test_write_protected_readback_mismatch_logs_a_persisted_error | unit (MicroPython) | weak | log_existence_only | log_existence_only: weak: open: the code's count in the history is exactly one |
-| tests/test_asy_fram_driver.py:1397 | test_verify_present_before_setup_logs_a_persisted_error | unit (MicroPython) | weak | log_existence_only | log_existence_only: weak: open: the code's count in the history is exactly one |
-| tests/test_asy_fram_driver.py:1407 | test_write_wel_did_not_set_logs_a_persisted_warning | unit (MicroPython) | weak | log_existence_only | log_existence_only: weak: open: the code's count in the history is exactly one |
-| tests/test_asy_fram_driver.py:1420 | test_set_write_protected_wel_did_not_set_logs_a_persisted_warning | unit (MicroPython) | weak | log_existence_only | log_existence_only: weak: open: the code's count in the history is exactly one |
-| tests/test_asy_fram_driver.py:1432 | test_wrdi_stuck_after_retry_logs_a_persisted_warning | unit (MicroPython) | weak | log_existence_only | log_existence_only: weak: open: the code's count in the history is exactly one |
+| tests/test_asy_fram_driver.py:1385 | test_write_protected_readback_mismatch_logs_a_persisted_error | unit (MicroPython) | fixed | was:log_existence_only | was:log_existence_only: fixed: ErrCount 1 and the code once in the history (a repeat spends no slot, so only ErrCount carries a second event); bite: the scenario run twice passes the old membership, fails the new (S/u35/laneC/crr1c/r1/bite_fram_wp_mismatch_*.log) |
+| tests/test_asy_fram_driver.py:1397 | test_verify_present_before_setup_logs_a_persisted_error | unit (MicroPython) | fixed | was:log_existence_only | was:log_existence_only: fixed: ErrCount 1 and the code once in the history (a repeat spends no slot, so only ErrCount carries a second event); bite: the scenario run twice passes the old membership, fails the new (S/u35/laneC/crr1c/r1/bite_fram_not_init_*.log) |
+| tests/test_asy_fram_driver.py:1407 | test_write_wel_did_not_set_logs_a_persisted_warning | unit (MicroPython) | fixed | was:log_existence_only | was:log_existence_only: fixed: ErrCount 1 and the code once in the history (a repeat spends no slot, so only ErrCount carries a second event); bite: the scenario run twice passes the old membership, fails the new (S/u35/laneC/crr1c/r1/bite_fram_wel_not_set_*.log) |
+| tests/test_asy_fram_driver.py:1420 | test_set_write_protected_wel_did_not_set_logs_a_persisted_warning | unit (MicroPython) | fixed | was:log_existence_only | was:log_existence_only: fixed: ErrCount 1 and the code once in the history (a repeat spends no slot, so only ErrCount carries a second event); bite: the scenario run twice passes the old membership, fails the new (S/u35/laneC/crr1c/r1/bite_fram_wp_wel_not_set_*.log) |
+| tests/test_asy_fram_driver.py:1432 | test_wrdi_stuck_after_retry_logs_a_persisted_warning | unit (MicroPython) | fixed | was:log_existence_only | was:log_existence_only: fixed: ErrCount 1 and the code once in the history (a repeat spends no slot, so only ErrCount carries a second event); bite: the scenario run twice passes the old membership, fails the new (drop_next_wrdi 4 for the two runs) (S/u35/laneC/crr1c/r1/bite_fram_wel_stuck_*.log) |
 | tests/test_asy_fram_driver.py:1447 | test_write_protected_and_access_not_locked_are_now_persisted | unit (MicroPython) | biting | ns_seed_text | ns_seed_text: biting: (b) both refusals are provoked by the test, each expecting its persisted code |
 | tests/test_asy_fram_driver.py:1469 | test_two_operations_on_the_same_fram_never_run_concurrently | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_fram_driver.py:1494 | test_task_cancelled_while_holding_frams_own_lock_still_releases_it | unit (MicroPython) | biting | — | biting as is |
@@ -1975,98 +1974,98 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests/test_asy_ntp_client.py:1778 | test_repeated_retry_exhaustion_counts_each_and_keep_one_slot | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_ntp_client.py:1787 | test_handle_sync_success_resets_retries_marks_synced_and_records_the_sync_time | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_ntp_client.py:1801 | test_handle_sync_success_deinits_a_pending_retry_timer | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:1831 | test_ntp_time_hours_counter_missing_config_falls_back_to_12h_default_without_raising | unit (MicroPython) | weak | setup_credit_only | setup_credit_only: weak: open: assert the 12 h fallback the name claims |
-| tests/test_asy_ntp_client.py:1846 | test_ntp_time_hours_counter_triggers_sync_immediately_when_not_yet_synced | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:1867 | test_ntp_time_hours_counter_waits_out_the_current_backoff_step_while_unsynced | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:1895 | test_ntp_time_hours_counter_does_not_retrigger_while_synced_and_under_interval | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:1918 | test_ntp_time_hours_counter_retriggers_once_interval_elapses | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:1948 | test_refresh_marks_the_sync_stale_three_intervals_after_the_last_success | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:1968 | test_ntp_goes_stale_when_every_due_resync_fails | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:1997 | test_a_successful_resync_restarts_the_age | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2021 | test_the_due_counter_never_exceeds_one_interval | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2064 | test_this_interpreters_gmtime_returns_nine_elements_not_eight | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2093 | test_cettime_returns_none_before_the_clock_was_set | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2106 | test_cettime_answers_after_synced_goes_stale | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2116 | test_cettime_returns_none_when_config_missing | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2121 | test_cettime_before_march_boundary_applies_gmt_offset_only | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2129 | test_cettime_between_march_and_october_applies_gmt_plus_dst_offset | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2137 | test_cettime_after_october_boundary_applies_gmt_offset_only | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2145 | test_cettime_zero_offsets_are_accepted_not_rejected | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2153 | test_cettime_negative_offsets_are_accepted_not_rejected | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2161 | test_cettime_switches_on_the_last_sundays_of_march_and_october | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2180 | test_cettime_follows_a_backward_rtc_step_across_the_march_switch | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2215 | test_cettime_returns_none_when_gmtime_result_has_the_wrong_length | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2232 | test_sync_age_follows_measured_time_while_synced | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2257 | test_a_late_wake_advances_the_age_by_the_measured_seconds | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2283 | test_sync_state_follows_measured_ticks_not_rtc_steps | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2309 | test_the_first_sync_from_the_boot_default_restarts_the_age | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2342 | test_an_offset_put_then_a_sync_shifts_the_rtc_and_cycles_synced | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2371 | test_time_counter_resets_to_none_while_not_synced | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2394 | test_run_sync_attempt_network_unavailable_skips_everything_downstream | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2407 | test_run_sync_attempt_network_available_raising_is_treated_as_unavailable | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2423 | test_run_sync_attempt_network_available_raising_persists_a_callback_error | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2434 | test_run_sync_attempt_missing_config_marks_not_synced_and_returns | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2446 | test_run_sync_attempt_resolve_failure_calls_handle_failure | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2466 | test_run_sync_attempt_passes_the_given_dns_server_to_resolve_ntp_server | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2485 | test_run_sync_attempt_fetch_failure_calls_handle_failure | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2509 | test_run_sync_attempt_parse_failure_calls_handle_failure | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2537 | test_run_sync_attempt_success_calls_handle_success_with_the_parsed_time | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2572 | test_asy_ntp_time_runs_one_attempt_per_trigger_and_releases_the_wifi_lock | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2601 | test_asy_ntp_time_releases_the_wifi_lock_even_if_the_attempt_raises | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2632 | test_the_sync_task_survives_a_cancel_at_every_await | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2679 | test_setup_initialises_the_logger_before_any_task | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2702 | test_asy_ntp_time_never_gives_up_on_a_persistently_failing_server | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2716 | test_asy_ntp_time_failed_unsynced_attempts_double_the_retry_interval_up_to_its_cap | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2729 | test_asy_ntp_time_network_unavailable_cycles_leave_the_retry_interval_alone | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2741 | test_asy_ntp_time_failures_while_synced_leave_the_unsynced_retry_interval_alone | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2755 | test_a_successful_sync_resets_the_backoff | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2762 | test_ntp_force_sync_resets_the_backoff | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2770 | test_constructor_clamps_the_backoff_pair_to_the_check_tick_and_to_each_other | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2777 | test_asy_ntp_time_alternating_failure_codes_spend_a_slot_each_and_count_every_one | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2792 | test_a_recurring_code_after_a_success_keeps_one_slot | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2811 | test_asy_ntp_time_keeps_running_across_alternating_failure_and_success | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2853 | test_the_fake_ntp_server_waits_out_an_eagain_receive | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2858 | test_the_fake_ntp_server_raises_any_other_receive_failure | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2865 | test_integration_full_task_reaches_synced_state_on_a_real_successful_reply | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2896 | test_integration_full_task_stays_not_synced_when_nobody_answers | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2916 | test_integration_full_task_stays_not_synced_on_a_malformed_reply | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2941 | test_integration_recovers_on_retry_after_one_dropped_request | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2991 | test_get_cfg_schema_is_the_schema_in_source | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:2996 | test_set_dict_cfg_persists_plain_fields_through_the_base_path | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3005 | test_set_dict_cfg_invalid_field_reported_individually_others_still_apply | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3013 | test_a_put_of_a_malformed_dns_fallback_is_invalid_and_stores_nothing | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3022 | test_a_refused_field_leaves_the_rest_of_the_put_to_apply | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3028 | test_a_put_of_an_ntp_host_that_is_not_a_host_name_is_invalid | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3037 | test_a_put_of_a_valid_host_or_ipv4_list_is_valid | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3053 | test_the_shape_corpus_judges_ntp_host_and_dns_fallback | unit (MicroPython) | biting | loop_vacuous | loop_vacuous: biting: the iterable is a fixed non-empty table, vector list, constant or the shipped device list |
-| tests/test_asy_ntp_client.py:3067 | test_no_push_callbacks_are_registered_for_any_ntp_field | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3074 | test_write_config_round_trips_a_real_value | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3094 | test_backoff_defaults_are_ten_seconds_doubling_to_ten_minutes | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3099 | test_missing_config_failure_logs_in_both_layers_one_slot_each | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3109 | test_dns_failure_is_counted_twice_but_persisted_once | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3119 | test_no_reply_is_counted_twice_but_persisted_once | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3125 | test_implausible_time_is_counted_twice_but_persisted_once | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3131 | test_malformed_reply_is_counted_twice_but_persisted_once | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3136 | test_kiss_of_death_warning_is_counted_twice_but_persisted_once | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3142 | test_an_error_and_a_warning_with_the_same_number_are_different_codes | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3157 | test_distinct_codes_each_keep_a_slot | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3172 | test_backoff_restarts_from_the_first_interval_after_a_recovery | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3191 | test_ntp_time_hours_counter_does_not_bank_synced_ticks_toward_the_unsynced_wait | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3224 | test_integration_self_heals_after_an_outage_through_the_real_task_and_socket | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3258 | test_integration_a_successful_exchange_persists_nothing | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3288 | test_a_sync_against_the_responder_sets_the_rtc_and_synced | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3297 | test_the_servers_offset_moves_the_set_time | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3306 | test_a_silent_responder_fails_each_attempt_with_no_reply | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3310 | test_an_unsynchronised_reply_fails_each_attempt_with_its_warning | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3314 | test_a_short_reply_fails_each_attempt_as_malformed | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3318 | test_an_implausible_reply_fails_each_attempt_as_implausible | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3322 | test_a_failed_resync_never_resets_the_staleness_count | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3361 | test_a_responder_back_mid_backoff_syncs_at_the_next_attempt | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3367 | test_a_dropped_check_tick_does_not_delay_the_due_resync | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3396 | test_the_boundary_tick_triggers_the_resync_though_the_cadence_restarted_after_a_fire | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3403 | test_the_resync_goes_to_the_check_tick_nearest_its_boundary | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3437 | test_a_dropped_check_tick_does_not_delay_the_unsynced_retry | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_ntp_client.py:3443 | test_a_dropped_tick_between_early_wakes_still_counts | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:1831 | test_ntp_time_hours_counter_missing_config_falls_back_to_12h_default_without_raising | unit (MicroPython) | fixed | was:setup_credit_only | was:setup_credit_only: fixed: under a stepped clock: no resync 10 s before 12 h, one at 12 h, the two CFG_READ events in one slot; bite: the fallback planted as 11 h passes the old form, fails the new (S/u35/laneC/crr1c/r1/bite_ntp_fallback_*.log) |
+| tests/test_asy_ntp_client.py:1858 | test_ntp_time_hours_counter_triggers_sync_immediately_when_not_yet_synced | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:1879 | test_ntp_time_hours_counter_waits_out_the_current_backoff_step_while_unsynced | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:1907 | test_ntp_time_hours_counter_does_not_retrigger_while_synced_and_under_interval | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:1930 | test_ntp_time_hours_counter_retriggers_once_interval_elapses | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:1960 | test_refresh_marks_the_sync_stale_three_intervals_after_the_last_success | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:1980 | test_ntp_goes_stale_when_every_due_resync_fails | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2009 | test_a_successful_resync_restarts_the_age | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2033 | test_the_due_counter_never_exceeds_one_interval | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2076 | test_this_interpreters_gmtime_returns_nine_elements_not_eight | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2105 | test_cettime_returns_none_before_the_clock_was_set | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2118 | test_cettime_answers_after_synced_goes_stale | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2128 | test_cettime_returns_none_when_config_missing | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2133 | test_cettime_before_march_boundary_applies_gmt_offset_only | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2141 | test_cettime_between_march_and_october_applies_gmt_plus_dst_offset | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2149 | test_cettime_after_october_boundary_applies_gmt_offset_only | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2157 | test_cettime_zero_offsets_are_accepted_not_rejected | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2165 | test_cettime_negative_offsets_are_accepted_not_rejected | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2173 | test_cettime_switches_on_the_last_sundays_of_march_and_october | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2192 | test_cettime_follows_a_backward_rtc_step_across_the_march_switch | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2227 | test_cettime_returns_none_when_gmtime_result_has_the_wrong_length | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2244 | test_sync_age_follows_measured_time_while_synced | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2269 | test_a_late_wake_advances_the_age_by_the_measured_seconds | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2295 | test_sync_state_follows_measured_ticks_not_rtc_steps | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2321 | test_the_first_sync_from_the_boot_default_restarts_the_age | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2354 | test_an_offset_put_then_a_sync_shifts_the_rtc_and_cycles_synced | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2383 | test_time_counter_resets_to_none_while_not_synced | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2406 | test_run_sync_attempt_network_unavailable_skips_everything_downstream | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2419 | test_run_sync_attempt_network_available_raising_is_treated_as_unavailable | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2435 | test_run_sync_attempt_network_available_raising_persists_a_callback_error | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2446 | test_run_sync_attempt_missing_config_marks_not_synced_and_returns | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2458 | test_run_sync_attempt_resolve_failure_calls_handle_failure | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2478 | test_run_sync_attempt_passes_the_given_dns_server_to_resolve_ntp_server | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2497 | test_run_sync_attempt_fetch_failure_calls_handle_failure | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2521 | test_run_sync_attempt_parse_failure_calls_handle_failure | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2549 | test_run_sync_attempt_success_calls_handle_success_with_the_parsed_time | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2584 | test_asy_ntp_time_runs_one_attempt_per_trigger_and_releases_the_wifi_lock | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2613 | test_asy_ntp_time_releases_the_wifi_lock_even_if_the_attempt_raises | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2644 | test_the_sync_task_survives_a_cancel_at_every_await | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2691 | test_setup_initialises_the_logger_before_any_task | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2714 | test_asy_ntp_time_never_gives_up_on_a_persistently_failing_server | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2728 | test_asy_ntp_time_failed_unsynced_attempts_double_the_retry_interval_up_to_its_cap | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2741 | test_asy_ntp_time_network_unavailable_cycles_leave_the_retry_interval_alone | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2753 | test_asy_ntp_time_failures_while_synced_leave_the_unsynced_retry_interval_alone | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2767 | test_a_successful_sync_resets_the_backoff | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2774 | test_ntp_force_sync_resets_the_backoff | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2782 | test_constructor_clamps_the_backoff_pair_to_the_check_tick_and_to_each_other | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2789 | test_asy_ntp_time_alternating_failure_codes_spend_a_slot_each_and_count_every_one | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2804 | test_a_recurring_code_after_a_success_keeps_one_slot | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2823 | test_asy_ntp_time_keeps_running_across_alternating_failure_and_success | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2865 | test_the_fake_ntp_server_waits_out_an_eagain_receive | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2870 | test_the_fake_ntp_server_raises_any_other_receive_failure | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2877 | test_integration_full_task_reaches_synced_state_on_a_real_successful_reply | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2908 | test_integration_full_task_stays_not_synced_when_nobody_answers | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2928 | test_integration_full_task_stays_not_synced_on_a_malformed_reply | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:2953 | test_integration_recovers_on_retry_after_one_dropped_request | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3003 | test_get_cfg_schema_is_the_schema_in_source | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3008 | test_set_dict_cfg_persists_plain_fields_through_the_base_path | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3017 | test_set_dict_cfg_invalid_field_reported_individually_others_still_apply | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3025 | test_a_put_of_a_malformed_dns_fallback_is_invalid_and_stores_nothing | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3034 | test_a_refused_field_leaves_the_rest_of_the_put_to_apply | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3040 | test_a_put_of_an_ntp_host_that_is_not_a_host_name_is_invalid | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3049 | test_a_put_of_a_valid_host_or_ipv4_list_is_valid | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3065 | test_the_shape_corpus_judges_ntp_host_and_dns_fallback | unit (MicroPython) | biting | loop_vacuous | loop_vacuous: biting: the iterable is a fixed non-empty table, vector list, constant or the shipped device list |
+| tests/test_asy_ntp_client.py:3079 | test_no_push_callbacks_are_registered_for_any_ntp_field | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3086 | test_write_config_round_trips_a_real_value | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3106 | test_backoff_defaults_are_ten_seconds_doubling_to_ten_minutes | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3111 | test_missing_config_failure_logs_in_both_layers_one_slot_each | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3121 | test_dns_failure_is_counted_twice_but_persisted_once | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3131 | test_no_reply_is_counted_twice_but_persisted_once | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3137 | test_implausible_time_is_counted_twice_but_persisted_once | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3143 | test_malformed_reply_is_counted_twice_but_persisted_once | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3148 | test_kiss_of_death_warning_is_counted_twice_but_persisted_once | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3154 | test_an_error_and_a_warning_with_the_same_number_are_different_codes | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3169 | test_distinct_codes_each_keep_a_slot | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3184 | test_backoff_restarts_from_the_first_interval_after_a_recovery | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3203 | test_ntp_time_hours_counter_does_not_bank_synced_ticks_toward_the_unsynced_wait | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3236 | test_integration_self_heals_after_an_outage_through_the_real_task_and_socket | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3270 | test_integration_a_successful_exchange_persists_nothing | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3300 | test_a_sync_against_the_responder_sets_the_rtc_and_synced | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3309 | test_the_servers_offset_moves_the_set_time | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3318 | test_a_silent_responder_fails_each_attempt_with_no_reply | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3322 | test_an_unsynchronised_reply_fails_each_attempt_with_its_warning | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3326 | test_a_short_reply_fails_each_attempt_as_malformed | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3330 | test_an_implausible_reply_fails_each_attempt_as_implausible | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3334 | test_a_failed_resync_never_resets_the_staleness_count | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3373 | test_a_responder_back_mid_backoff_syncs_at_the_next_attempt | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3379 | test_a_dropped_check_tick_does_not_delay_the_due_resync | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3408 | test_the_boundary_tick_triggers_the_resync_though_the_cadence_restarted_after_a_fire | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3415 | test_the_resync_goes_to_the_check_tick_nearest_its_boundary | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3449 | test_a_dropped_check_tick_does_not_delay_the_unsynced_retry | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_ntp_client.py:3455 | test_a_dropped_tick_between_early_wakes_still_counts | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_print_log.py:99 | test_set_level_none_is_off | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_print_log.py:103 | test_an_out_of_range_level_is_refused_not_clamped | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_print_log.py:110 | test_set_level_valid_value_passes_through | unit (MicroPython) | biting | — | biting as is |
@@ -2741,208 +2740,208 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests/test_asy_system_service.py:4557 | test_a_thousand_unretrieved_deaths_through_the_real_loop_retain_nothing | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_system_service.py:4574 | test_the_report_releases_the_dead_task_the_default_handler_keeps | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_system_service.py:4592 | test_the_raised_helper_lets_an_interrupt_through | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:195 | test_valid_construction_sets_the_gate_only_after_setup | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:202 | test_payload_size_boundaries_are_accepted_and_refused | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:215 | test_payload_size_is_never_silently_clamped | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:223 | test_non_positive_timeout_is_refused | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:228 | test_timeout_below_the_gc_pause_floor_is_refused | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:237 | test_an_idle_poll_rate_the_reply_budget_cannot_cover_is_refused | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:250 | test_invalid_role_is_refused_and_has_no_default | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:256 | test_a_none_bus_is_recorded_distinctly_and_never_raises | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:266 | test_construction_performs_no_bus_call | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:275 | test_maximum_payload_size_against_the_default_rxbuf_is_refused | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:288 | test_a_ring_too_small_for_one_poll_interval_is_refused | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:309 | test_the_ring_floor_covers_a_config_flush | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:323 | test_a_codec_that_failed_its_allocation_refuses_construction | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:379 | test_the_four_link_limits_arrive_as_one_transfer_limits | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:390 | test_the_default_limits_are_the_source_defaults_and_refuse_no_train | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:403 | test_chunk_bytes_outside_its_range_is_refused | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:413 | test_a_poll_rate_outside_one_to_nine_ms_is_refused | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:423 | test_the_timeout_ceiling_keeps_every_deadline_a_valid_tick_delay | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:434 | test_a_codec_below_one_frame_is_refused | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:445 | test_a_pair_on_exact_sized_codecs_completes_a_get_and_a_set | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:477 | test_every_public_method_is_gated_before_setup | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:492 | test_logger_injection_uses_both_routes | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:500 | test_a_fram_backed_log_reads_back_through_a_second_logger | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:517 | test_get_error_counter_returns_the_shared_envelope | unit (MicroPython) | biting | log_existence_only | log_existence_only: biting: a shape test: the claim is the envelope's keys, no event is logged |
-| tests/test_asy_uart_comm.py:527 | test_reset_clears_the_history_and_the_streak_state | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:553 | test_reset_errors_keeps_the_valid_frame_count | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:570 | test_a_repeated_identical_fault_spends_one_slot_and_counts_every_time | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:584 | test_a_single_transient_fault_leaves_one_entry_not_a_pair | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:592 | test_the_valid_frame_count_saturates | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:602 | test_the_blind_resync_streak_saturates | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:620 | test_bytes_a_failed_frame_read_dropped_count_toward_the_link_diagnostic | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:639 | test_the_discard_count_is_read_across_its_wrap | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:648 | test_a_delimited_frame_of_the_wrong_length_counts_as_discarded | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:671 | test_a_repeatedly_declined_command_does_not_refill_the_history | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:690 | test_tx_and_rx_buffers_are_separate | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:703 | test_a_failed_buffer_allocation_degrades_every_entry_point | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:714 | test_a_partially_failed_allocation_refuses_construction_outright | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:734 | test_padding_is_zero_filled_from_the_preallocated_buffer | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:746 | test_payload_size_is_immutable_after_construction | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:754 | test_starter_lists_match_the_role | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:765 | test_the_module_constructs_no_timer_at_all | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:774 | test_setup_drains_a_partial_frame_left_over_from_before | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:786 | test_a_ring_refused_at_setup_names_its_cause | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:798 | test_a_responder_without_callbacks_is_refused_at_construction | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:804 | test_the_listen_loop_backs_off_on_a_dead_link_and_resets_after_success | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:813 | test_the_listen_loop_survives_a_raising_callback | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:838 | test_a_declined_get_does_not_back_off_the_next_answer | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:868 | test_a_dead_link_still_doubles_its_backoff | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:895 | test_the_backoff_stays_a_valid_tick_delay_at_the_timeout_ceiling | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:922 | test_header_fields_land_at_their_documented_offsets | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:935 | test_out_of_range_header_fields_are_rejected_not_truncated | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:945 | test_a_payload_longer_than_the_region_is_rejected | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:950 | test_size_always_matches_the_bytes_actually_copied | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:956 | test_the_uid_cycle_covers_every_legal_value_and_never_0xff | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:971 | test_the_next_uid_prediction_is_correct_at_the_wrap_boundary | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:990 | test_validation_accepts_every_legal_frame_shape | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:999 | test_a_multi_bit_command_is_rejected_rather_than_falling_through | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1007 | test_an_undefined_command_is_distinguished_from_a_valid_but_unexpected_one | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1019 | test_a_changed_chunks_total_is_rejected | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1026 | test_a_stale_data_chunk_is_rejected_by_its_uid | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1032 | test_a_first_chunk_with_the_wrong_size_is_rejected | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1039 | test_a_short_middle_chunk_is_rejected | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1046 | test_an_empty_chunk_is_legal_only_as_a_two_chunk_trains_last | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1053 | test_a_set_declaring_a_single_chunk_is_rejected | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1059 | test_a_zero_chunk_train_is_rejected | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1064 | test_a_get_declaring_any_chunk_count_but_one_is_refused | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1073 | test_a_malformed_ack_is_rejected | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1081 | test_a_frame_of_the_wrong_kind_is_rejected_at_each_read_site | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1090 | test_validation_never_raises_on_a_short_or_missing_buffer | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1098 | test_a_received_uid_of_0xff_is_rejected | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1104 | test_the_ack_frame_is_byte_exact | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1125 | test_an_ack_is_sent_even_while_the_write_hold_off_is_active | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1147 | test_a_clean_write_round_trip_is_acknowledged | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1153 | test_a_responder_that_never_finishes_its_rounds_fails_the_exchange | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1166 | test_a_stall_the_test_declares_is_not_a_failure | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1171 | test_a_missing_ack_bounds_the_wait_and_resyncs | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1181 | test_a_write_that_never_reaches_the_peer_fails_the_same_way | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1188 | test_a_stale_ack_uid_is_rejected | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1198 | test_a_lost_final_ack_reports_failure_while_the_receiver_reports_success | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1222 | test_the_write_hold_off_uses_a_deadline_and_expires | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1236 | test_the_hold_off_window_derives_from_timeout | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1243 | test_the_hold_off_deadline_survives_the_ticks_rollover | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1291 | test_a_hold_off_aged_past_the_tick_horizon_expires | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1300 | test_the_aliased_band_holds_at_most_one_window | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1309 | test_an_unaged_hold_off_releases_at_its_window | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1317 | test_listening_clears_the_hold_off | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1327 | test_a_frame_read_failing_on_a_receive_error_persists_the_overrun_warning | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1337 | test_a_command_frame_the_crc_drops_ends_the_listen_under_its_own_message | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1348 | test_an_answer_the_crc_drops_is_named_apart_from_a_get_left_unanswered | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1360 | test_a_get_left_unanswered_keeps_its_silent_message | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1372 | test_a_listen_cleared_before_any_frame_keeps_its_silent_message | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1390 | test_a_train_chunk_the_crc_drops_is_named_apart_from_a_stalled_train | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1400 | test_an_ack_the_crc_drops_is_named_apart_from_a_missing_ack | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1410 | test_a_transmit_that_never_drains_fails_within_the_link_timeout | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1419 | test_the_drain_ends_once_the_line_is_quiet | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1430 | test_the_drain_is_bounded_against_a_peer_that_never_stops | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1451 | test_a_drain_that_hits_its_bound_persists_the_drain_warning | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1473 | test_a_quiet_resync_persists_nothing | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1486 | test_one_fault_on_a_quiet_line_adds_one_entry | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1496 | test_one_fault_hitting_the_drain_bound_adds_the_errno_and_w54 | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1518 | test_a_boot_drain_that_hits_its_bound_persists_nothing | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1541 | test_a_flood_that_laps_the_ring_drains_to_its_bound_not_as_quiet | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1565 | test_the_drain_reads_into_the_scratch_buffer | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1594 | test_a_resync_is_not_re_entrant | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1607 | test_every_public_entry_point_converges_on_its_own_sentinel | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1617 | test_clear_cancels_first_and_drains_exactly_once | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1640 | test_clear_with_nothing_in_flight_takes_the_lock_and_drains | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1647 | test_only_a_rise_in_the_drivers_unacked_count_is_reported | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1680 | test_a_payload_less_command_still_produces_two_chunks | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1694 | test_the_wire_log_of_a_multi_chunk_set_is_byte_exact | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1709 | test_chunk_counts_at_the_payload_size_boundaries | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1719 | test_an_oversize_payload_is_rejected_before_the_first_frame | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1727 | test_a_missing_ack_at_each_train_position_aborts_and_resyncs | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1740 | test_a_multi_chunk_payload_arrives_byte_identical | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1764 | test_all_three_expected_size_modes | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1780 | test_an_empty_payload_is_a_distinct_outcome_from_failure | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1789 | test_an_expected_size_the_train_could_never_deliver_is_rejected_early | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1799 | test_a_get_round_trip_returns_the_answer | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1807 | test_the_get_answer_echoes_the_requested_command_id | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1817 | test_a_rejected_get_callback_reports_a_distinct_outcome | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1837 | test_uart_listen_returns_the_namedtuple_on_every_path | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1848 | test_both_sync_and_async_callbacks_work | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1859 | test_a_callback_returning_the_wrong_shape_is_treated_like_a_raise | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1870 | test_a_callback_returning_a_non_buffer_payload_is_rejected | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1888 | test_a_callback_asking_for_an_impossible_size_is_rejected | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1903 | test_a_re_entrant_callback_is_refused_instead_of_deadlocking | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1927 | test_the_role_gate_refuses_the_wrong_direction | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1938 | test_a_responder_still_answers_a_get_while_the_role_gate_is_active | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1948 | test_the_role_is_immutable_after_construction | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1954 | test_both_halves_of_each_pair_move_identical_bytes | unit (MicroPython) | biting | same_callee | same_callee: biting: two distinct paths, objects or runs compared: their agreement is the claim |
-| tests/test_asy_uart_comm.py:1974 | test_an_into_destination_that_is_too_small_is_refused | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1981 | test_an_into_destination_of_none_returns_the_sentinel | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:1990 | test_a_payload_can_be_streamed_from_a_pull_callback | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2019 | test_a_payload_can_be_streamed_into_a_push_callback | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2033 | test_a_pull_callback_short_filling_a_non_final_chunk_aborts_locally | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2043 | test_a_pull_callback_returning_a_wrong_shape_is_guarded | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2052 | test_a_push_callback_failing_mid_train_aborts | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2061 | test_a_streamed_total_size_must_be_declared | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2075 | test_every_initiator_entry_point_answers_not_initialised_before_setup | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2087 | test_a_responder_refuses_the_role_before_any_argument | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2100 | test_the_command_id_is_checked_first_on_an_initiator | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2112 | test_an_empty_answer_into_a_buffer_is_zero_not_none | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2122 | test_an_answer_that_misses_its_expected_size_is_refused_before_its_final_ack | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2133 | test_an_empty_set_is_delivered_as_a_distinct_outcome | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2148 | test_a_zero_size_stream_sends_one_empty_data_chunk | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2163 | test_a_stream_of_the_largest_declarable_size_completes_and_one_more_byte_is_refused | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2183 | test_a_buffer_is_borrowed_only_for_the_call | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2211 | test_an_out_of_range_command_id_is_refused_not_truncated | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2223 | test_a_non_integer_command_id_returns_a_sentinel_instead_of_raising | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2229 | test_a_non_integer_size_returns_a_sentinel_instead_of_raising | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2237 | test_a_negative_expected_size_is_refused_not_read_as_dont_care | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2247 | test_a_non_buffer_payload_returns_a_sentinel_instead_of_raising | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2255 | test_an_immutable_destination_is_refused_before_the_train_starts | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2263 | test_a_refused_argument_is_logged_with_its_own_errno | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2276 | test_a_non_integer_payload_size_is_refused_instead_of_raising | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2287 | test_a_non_integer_timeout_is_refused_instead_of_raising | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2296 | test_a_read_only_destination_is_refused_before_the_train_starts | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2308 | test_a_stream_without_its_pull_callback_sends_nothing | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2317 | test_a_stream_without_its_push_callback_reports_failure_not_a_byte_count | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2328 | test_a_repeating_fault_spends_one_slot | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2344 | test_a_recovered_link_counts_every_later_fault | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2366 | test_a_rejected_command_is_distinguishable_from_a_link_fault | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2385 | test_the_owned_listen_loop_delivers_a_received_payload | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2411 | test_a_raising_message_callback_does_not_kill_the_listen_loop | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2435 | test_a_responder_without_a_message_callback_is_still_constructible | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2465 | test_a_dont_care_get_arrives_in_pieces_no_larger_than_chunk_bytes | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2476 | test_a_dont_care_set_is_assembled_in_pieces_no_larger_than_chunk_bytes | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2521 | test_the_default_chunk_bytes_is_the_reasoned_one | unit (MicroPython) | biting | same_callee | same_callee: biting: two distinct paths, objects or runs compared: their agreement is the claim |
-| tests/test_asy_uart_comm.py:2528 | test_a_caller_supplied_destination_is_still_filled_in_place | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2543 | test_a_declared_size_over_max_transfer_bytes_is_refused_before_any_allocation | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2590 | test_an_expected_size_over_the_cap_is_refused_before_any_allocation | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2604 | test_a_train_at_the_cap_is_accepted | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2614 | test_a_transfer_over_the_own_cap_is_refused_before_anything_is_sent | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2644 | test_a_transfer_over_the_own_cap_is_the_caps_refusal_at_every_cap | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2661 | test_a_size_within_a_cap_above_the_largest_train_is_refused_as_too_many_chunks | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2679 | test_repeated_maximum_size_and_over_cap_trains_keep_the_heap_flat | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2734 | test_a_lapped_ring_is_a_receive_overrun_and_the_link_resyncs | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2757 | test_a_ring_below_its_floor_is_refused | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2765 | test_a_ring_at_its_floor_holds_a_config_flush | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2814 | test_a_bus_cleared_after_construction_is_refused_at_every_entry_point | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2837 | test_a_declared_size_larger_than_its_buffer_is_refused_before_the_train | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2848 | test_an_answer_the_train_could_never_carry_is_refused_at_its_header | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2862 | test_an_answer_that_exactly_fills_its_train_arrives_intact | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2870 | test_a_set_callback_returning_an_unusable_result_is_treated_like_a_raise | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2887 | test_a_declined_set_is_a_distinct_outcome_just_like_a_declined_get | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2905 | test_a_set_callback_asking_for_more_than_this_train_carries_is_refused | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2925 | test_a_listener_whose_callbacks_were_cleared_refuses_instead_of_dispatching | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2951 | test_a_write_failing_at_each_point_of_a_get_reports_and_resyncs | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2981 | test_a_responder_that_cannot_acknowledge_a_set_reports_and_resyncs | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3000 | test_a_peer_answering_a_different_question_is_refused | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3050 | test_a_scratch_allocation_that_fails_during_construction_refuses_the_object | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3062 | test_a_failed_scratch_allocation_logs_its_own_text | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3073 | test_every_internal_buffer_read_rechecks_rather_than_indexing_none | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3107 | test_a_cancelled_transaction_still_releases_the_re_entrancy_flag | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3145 | test_cancelling_at_each_await_leaves_no_lock_or_busy_flag | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3202 | test_two_declined_ids_in_rotation_do_not_refill_the_history_either | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3219 | test_a_pull_callback_failing_mid_train_quiesces_like_any_other_fault | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3282 | test_the_legacy_bsec_command_set_still_runs_end_to_end | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3359 | test_the_two_spellings_the_boards_own_uart_script_used_still_work | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3380 | test_the_legacy_bsec_bus_parameters_meet_every_floor_but_one | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3398 | test_a_drain_that_cannot_run_clears_the_previous_drains_verdict | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3411 | test_an_ack_arriving_at_a_listener_is_logged_as_the_wrong_kind | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:199 | test_valid_construction_sets_the_gate_only_after_setup | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:206 | test_payload_size_boundaries_are_accepted_and_refused | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:219 | test_payload_size_is_never_silently_clamped | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:227 | test_non_positive_timeout_is_refused | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:232 | test_timeout_below_the_gc_pause_floor_is_refused | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:241 | test_an_idle_poll_rate_the_reply_budget_cannot_cover_is_refused | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:254 | test_invalid_role_is_refused_and_has_no_default | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:260 | test_a_none_bus_is_recorded_distinctly_and_never_raises | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:270 | test_construction_performs_no_bus_call | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:279 | test_maximum_payload_size_against_the_default_rxbuf_is_refused | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:292 | test_a_ring_too_small_for_one_poll_interval_is_refused | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:313 | test_the_ring_floor_covers_a_config_flush | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:327 | test_a_codec_that_failed_its_allocation_refuses_construction | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:383 | test_the_four_link_limits_arrive_as_one_transfer_limits | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:394 | test_the_default_limits_are_the_source_defaults_and_refuse_no_train | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:407 | test_chunk_bytes_outside_its_range_is_refused | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:417 | test_a_poll_rate_outside_one_to_nine_ms_is_refused | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:427 | test_the_timeout_ceiling_keeps_every_deadline_a_valid_tick_delay | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:438 | test_a_codec_below_one_frame_is_refused | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:449 | test_a_pair_on_exact_sized_codecs_completes_a_get_and_a_set | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:481 | test_every_public_method_is_gated_before_setup | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:496 | test_logger_injection_uses_both_routes | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:504 | test_a_fram_backed_log_reads_back_through_a_second_logger | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:521 | test_get_error_counter_returns_the_shared_envelope | unit (MicroPython) | biting | log_existence_only | log_existence_only: biting: a shape test: the claim is the envelope's keys, no event is logged |
+| tests/test_asy_uart_comm.py:531 | test_reset_clears_the_history_and_the_streak_state | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:557 | test_reset_errors_keeps_the_valid_frame_count | unit (MicroPython) | fixed | was:log_existence_only | was:log_existence_only: fixed: hand-read (a log read through persisted() is the scan's blind spot): (ErrCount, used slots) compared exactly, one entry per event, values read from a run (S/u35/laneC/crr1c/r1/uart_probe.log); bite: every _err logged twice passes the old membership, fails the new (S/u35/laneC/crr1c/r2/bite_uart_exact_*.log) |
+| tests/test_asy_uart_comm.py:574 | test_a_repeated_identical_fault_spends_one_slot_and_counts_every_time | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:588 | test_a_single_transient_fault_leaves_one_entry_not_a_pair | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:596 | test_the_valid_frame_count_saturates | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:606 | test_the_blind_resync_streak_saturates | unit (MicroPython) | fixed | was:log_existence_only | was:log_existence_only: fixed: hand-read (a log read through persisted() is the scan's blind spot): (ErrCount, used slots) compared exactly, one entry per event, values read from a run (S/u35/laneC/crr1c/r1/uart_probe.log); bite: every _err logged twice passes the old membership, fails the new (S/u35/laneC/crr1c/r2/bite_uart_exact_*.log) |
+| tests/test_asy_uart_comm.py:624 | test_bytes_a_failed_frame_read_dropped_count_toward_the_link_diagnostic | unit (MicroPython) | fixed | was:log_existence_only | was:log_existence_only: fixed: hand-read (a log read through persisted() is the scan's blind spot): (ErrCount, used slots) compared exactly, one entry per event, values read from a run (S/u35/laneC/crr1c/r1/uart_probe.log); bite: every _err logged twice passes the old membership, fails the new (S/u35/laneC/crr1c/r2/bite_uart_exact_*.log) |
+| tests/test_asy_uart_comm.py:643 | test_the_discard_count_is_read_across_its_wrap | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:652 | test_a_delimited_frame_of_the_wrong_length_counts_as_discarded | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:675 | test_a_repeatedly_declined_command_does_not_refill_the_history | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:694 | test_tx_and_rx_buffers_are_separate | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:707 | test_a_failed_buffer_allocation_degrades_every_entry_point | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:718 | test_a_partially_failed_allocation_refuses_construction_outright | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:738 | test_padding_is_zero_filled_from_the_preallocated_buffer | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:750 | test_payload_size_is_immutable_after_construction | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:758 | test_starter_lists_match_the_role | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:769 | test_the_module_constructs_no_timer_at_all | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:778 | test_setup_drains_a_partial_frame_left_over_from_before | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:790 | test_a_ring_refused_at_setup_names_its_cause | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:802 | test_a_responder_without_callbacks_is_refused_at_construction | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:808 | test_the_listen_loop_backs_off_on_a_dead_link_and_resets_after_success | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:817 | test_the_listen_loop_survives_a_raising_callback | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:842 | test_a_declined_get_does_not_back_off_the_next_answer | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:872 | test_a_dead_link_still_doubles_its_backoff | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:899 | test_the_backoff_stays_a_valid_tick_delay_at_the_timeout_ceiling | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:926 | test_header_fields_land_at_their_documented_offsets | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:939 | test_out_of_range_header_fields_are_rejected_not_truncated | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:949 | test_a_payload_longer_than_the_region_is_rejected | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:954 | test_size_always_matches_the_bytes_actually_copied | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:960 | test_the_uid_cycle_covers_every_legal_value_and_never_0xff | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:975 | test_the_next_uid_prediction_is_correct_at_the_wrap_boundary | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:994 | test_validation_accepts_every_legal_frame_shape | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1003 | test_a_multi_bit_command_is_rejected_rather_than_falling_through | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1011 | test_an_undefined_command_is_distinguished_from_a_valid_but_unexpected_one | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1023 | test_a_changed_chunks_total_is_rejected | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1030 | test_a_stale_data_chunk_is_rejected_by_its_uid | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1036 | test_a_first_chunk_with_the_wrong_size_is_rejected | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1043 | test_a_short_middle_chunk_is_rejected | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1050 | test_an_empty_chunk_is_legal_only_as_a_two_chunk_trains_last | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1057 | test_a_set_declaring_a_single_chunk_is_rejected | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1063 | test_a_zero_chunk_train_is_rejected | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1068 | test_a_get_declaring_any_chunk_count_but_one_is_refused | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1077 | test_a_malformed_ack_is_rejected | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1085 | test_a_frame_of_the_wrong_kind_is_rejected_at_each_read_site | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1094 | test_validation_never_raises_on_a_short_or_missing_buffer | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1102 | test_a_received_uid_of_0xff_is_rejected | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1108 | test_the_ack_frame_is_byte_exact | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1129 | test_an_ack_is_sent_even_while_the_write_hold_off_is_active | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1151 | test_a_clean_write_round_trip_is_acknowledged | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1157 | test_a_responder_that_never_finishes_its_rounds_fails_the_exchange | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1170 | test_a_stall_the_test_declares_is_not_a_failure | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1175 | test_a_missing_ack_bounds_the_wait_and_resyncs | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1185 | test_a_write_that_never_reaches_the_peer_fails_the_same_way | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1192 | test_a_stale_ack_uid_is_rejected | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1202 | test_a_lost_final_ack_reports_failure_while_the_receiver_reports_success | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1226 | test_the_write_hold_off_uses_a_deadline_and_expires | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1240 | test_the_hold_off_window_derives_from_timeout | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1247 | test_the_hold_off_deadline_survives_the_ticks_rollover | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1295 | test_a_hold_off_aged_past_the_tick_horizon_expires | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1304 | test_the_aliased_band_holds_at_most_one_window | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1313 | test_an_unaged_hold_off_releases_at_its_window | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1321 | test_listening_clears_the_hold_off | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1331 | test_a_frame_read_failing_on_a_receive_error_persists_the_overrun_warning | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1341 | test_a_command_frame_the_crc_drops_ends_the_listen_under_its_own_message | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1352 | test_an_answer_the_crc_drops_is_named_apart_from_a_get_left_unanswered | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1364 | test_a_get_left_unanswered_keeps_its_silent_message | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1376 | test_a_listen_cleared_before_any_frame_keeps_its_silent_message | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1394 | test_a_train_chunk_the_crc_drops_is_named_apart_from_a_stalled_train | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1404 | test_an_ack_the_crc_drops_is_named_apart_from_a_missing_ack | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1414 | test_a_transmit_that_never_drains_fails_within_the_link_timeout | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1423 | test_the_drain_ends_once_the_line_is_quiet | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1434 | test_the_drain_is_bounded_against_a_peer_that_never_stops | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1455 | test_a_drain_that_hits_its_bound_persists_the_drain_warning | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1477 | test_a_quiet_resync_persists_nothing | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1490 | test_one_fault_on_a_quiet_line_adds_one_entry | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1500 | test_one_fault_hitting_the_drain_bound_adds_the_errno_and_w54 | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1522 | test_a_boot_drain_that_hits_its_bound_persists_nothing | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1545 | test_a_flood_that_laps_the_ring_drains_to_its_bound_not_as_quiet | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1569 | test_the_drain_reads_into_the_scratch_buffer | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1598 | test_a_resync_is_not_re_entrant | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1611 | test_every_public_entry_point_converges_on_its_own_sentinel | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1621 | test_clear_cancels_first_and_drains_exactly_once | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1644 | test_clear_with_nothing_in_flight_takes_the_lock_and_drains | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1651 | test_only_a_rise_in_the_drivers_unacked_count_is_reported | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1684 | test_a_payload_less_command_still_produces_two_chunks | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1698 | test_the_wire_log_of_a_multi_chunk_set_is_byte_exact | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1713 | test_chunk_counts_at_the_payload_size_boundaries | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1723 | test_an_oversize_payload_is_rejected_before_the_first_frame | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1731 | test_a_missing_ack_at_each_train_position_aborts_and_resyncs | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1744 | test_a_multi_chunk_payload_arrives_byte_identical | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1768 | test_all_three_expected_size_modes | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1784 | test_an_empty_payload_is_a_distinct_outcome_from_failure | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1793 | test_an_expected_size_the_train_could_never_deliver_is_rejected_early | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1803 | test_a_get_round_trip_returns_the_answer | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1811 | test_the_get_answer_echoes_the_requested_command_id | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1821 | test_a_rejected_get_callback_reports_a_distinct_outcome | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1841 | test_uart_listen_returns_the_namedtuple_on_every_path | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1852 | test_both_sync_and_async_callbacks_work | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1863 | test_a_callback_returning_the_wrong_shape_is_treated_like_a_raise | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1874 | test_a_callback_returning_a_non_buffer_payload_is_rejected | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1892 | test_a_callback_asking_for_an_impossible_size_is_rejected | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1907 | test_a_re_entrant_callback_is_refused_instead_of_deadlocking | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1931 | test_the_role_gate_refuses_the_wrong_direction | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1942 | test_a_responder_still_answers_a_get_while_the_role_gate_is_active | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1952 | test_the_role_is_immutable_after_construction | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1958 | test_both_halves_of_each_pair_move_identical_bytes | unit (MicroPython) | biting | same_callee | same_callee: biting: two distinct paths, objects or runs compared: their agreement is the claim |
+| tests/test_asy_uart_comm.py:1978 | test_an_into_destination_that_is_too_small_is_refused | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1985 | test_an_into_destination_of_none_returns_the_sentinel | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:1994 | test_a_payload_can_be_streamed_from_a_pull_callback | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2023 | test_a_payload_can_be_streamed_into_a_push_callback | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2037 | test_a_pull_callback_short_filling_a_non_final_chunk_aborts_locally | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2047 | test_a_pull_callback_returning_a_wrong_shape_is_guarded | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2056 | test_a_push_callback_failing_mid_train_aborts | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2065 | test_a_streamed_total_size_must_be_declared | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2079 | test_every_initiator_entry_point_answers_not_initialised_before_setup | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2091 | test_a_responder_refuses_the_role_before_any_argument | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2104 | test_the_command_id_is_checked_first_on_an_initiator | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2116 | test_an_empty_answer_into_a_buffer_is_zero_not_none | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2126 | test_an_answer_that_misses_its_expected_size_is_refused_before_its_final_ack | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2137 | test_an_empty_set_is_delivered_as_a_distinct_outcome | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2152 | test_a_zero_size_stream_sends_one_empty_data_chunk | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2167 | test_a_stream_of_the_largest_declarable_size_completes_and_one_more_byte_is_refused | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2187 | test_a_buffer_is_borrowed_only_for_the_call | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2215 | test_an_out_of_range_command_id_is_refused_not_truncated | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2227 | test_a_non_integer_command_id_returns_a_sentinel_instead_of_raising | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2233 | test_a_non_integer_size_returns_a_sentinel_instead_of_raising | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2241 | test_a_negative_expected_size_is_refused_not_read_as_dont_care | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2251 | test_a_non_buffer_payload_returns_a_sentinel_instead_of_raising | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2259 | test_an_immutable_destination_is_refused_before_the_train_starts | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2267 | test_a_refused_argument_is_logged_with_its_own_errno | unit (MicroPython) | fixed | was:log_existence_only | was:log_existence_only: fixed: hand-read (a log read through persisted() is the scan's blind spot): (ErrCount, used slots) compared exactly, one entry per event, values read from a run (S/u35/laneC/crr1c/r1/uart_probe.log); bite: every _err logged twice passes the old membership, fails the new (S/u35/laneC/crr1c/r2/bite_uart_exact_*.log) |
+| tests/test_asy_uart_comm.py:2278 | test_a_non_integer_payload_size_is_refused_instead_of_raising | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2289 | test_a_non_integer_timeout_is_refused_instead_of_raising | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2298 | test_a_read_only_destination_is_refused_before_the_train_starts | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2310 | test_a_stream_without_its_pull_callback_sends_nothing | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2319 | test_a_stream_without_its_push_callback_reports_failure_not_a_byte_count | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2330 | test_a_repeating_fault_spends_one_slot | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2346 | test_a_recovered_link_counts_every_later_fault | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2368 | test_a_rejected_command_is_distinguishable_from_a_link_fault | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2387 | test_the_owned_listen_loop_delivers_a_received_payload | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2413 | test_a_raising_message_callback_does_not_kill_the_listen_loop | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2437 | test_a_responder_without_a_message_callback_is_still_constructible | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2467 | test_a_dont_care_get_arrives_in_pieces_no_larger_than_chunk_bytes | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2478 | test_a_dont_care_set_is_assembled_in_pieces_no_larger_than_chunk_bytes | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2523 | test_the_default_chunk_bytes_is_the_reasoned_one | unit (MicroPython) | biting | same_callee | same_callee: biting: two distinct paths, objects or runs compared: their agreement is the claim |
+| tests/test_asy_uart_comm.py:2530 | test_a_caller_supplied_destination_is_still_filled_in_place | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2545 | test_a_declared_size_over_max_transfer_bytes_is_refused_before_any_allocation | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2592 | test_an_expected_size_over_the_cap_is_refused_before_any_allocation | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2606 | test_a_train_at_the_cap_is_accepted | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2616 | test_a_transfer_over_the_own_cap_is_refused_before_anything_is_sent | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2646 | test_a_transfer_over_the_own_cap_is_the_caps_refusal_at_every_cap | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2663 | test_a_size_within_a_cap_above_the_largest_train_is_refused_as_too_many_chunks | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2681 | test_repeated_maximum_size_and_over_cap_trains_keep_the_heap_flat | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2736 | test_a_lapped_ring_is_a_receive_overrun_and_the_link_resyncs | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2759 | test_a_ring_below_its_floor_is_refused | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2767 | test_a_ring_at_its_floor_holds_a_config_flush | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2816 | test_a_bus_cleared_after_construction_is_refused_at_every_entry_point | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2839 | test_a_declared_size_larger_than_its_buffer_is_refused_before_the_train | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2850 | test_an_answer_the_train_could_never_carry_is_refused_at_its_header | unit (MicroPython) | fixed | was:log_existence_only | was:log_existence_only: fixed: hand-read (a log read through persisted() is the scan's blind spot): (ErrCount, used slots) compared exactly, one entry per event, values read from a run (S/u35/laneC/crr1c/r1/uart_probe.log); bite: every _err logged twice passes the old membership, fails the new (S/u35/laneC/crr1c/r2/bite_uart_exact_*.log) |
+| tests/test_asy_uart_comm.py:2864 | test_an_answer_that_exactly_fills_its_train_arrives_intact | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2872 | test_a_set_callback_returning_an_unusable_result_is_treated_like_a_raise | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2889 | test_a_declined_set_is_a_distinct_outcome_just_like_a_declined_get | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2907 | test_a_set_callback_asking_for_more_than_this_train_carries_is_refused | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2927 | test_a_listener_whose_callbacks_were_cleared_refuses_instead_of_dispatching | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2953 | test_a_write_failing_at_each_point_of_a_get_reports_and_resyncs | unit (MicroPython) | fixed | was:log_existence_only | was:log_existence_only: fixed: hand-read (a log read through persisted() is the scan's blind spot): (ErrCount, used slots) compared exactly, one entry per event, values read from a run (S/u35/laneC/crr1c/r1/uart_probe.log); bite: every _err logged twice passes the old membership, fails the new (S/u35/laneC/crr1c/r2/bite_uart_exact_*.log) |
+| tests/test_asy_uart_comm.py:2983 | test_a_responder_that_cannot_acknowledge_a_set_reports_and_resyncs | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3002 | test_a_peer_answering_a_different_question_is_refused | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3052 | test_a_scratch_allocation_that_fails_during_construction_refuses_the_object | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3064 | test_a_failed_scratch_allocation_logs_its_own_text | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3075 | test_every_internal_buffer_read_rechecks_rather_than_indexing_none | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3109 | test_a_cancelled_transaction_still_releases_the_re_entrancy_flag | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3147 | test_cancelling_at_each_await_leaves_no_lock_or_busy_flag | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3204 | test_two_declined_ids_in_rotation_do_not_refill_the_history_either | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3221 | test_a_pull_callback_failing_mid_train_quiesces_like_any_other_fault | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3284 | test_the_legacy_bsec_command_set_still_runs_end_to_end | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3361 | test_the_two_spellings_the_boards_own_uart_script_used_still_work | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3382 | test_the_legacy_bsec_bus_parameters_meet_every_floor_but_one | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3400 | test_a_drain_that_cannot_run_clears_the_previous_drains_verdict | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3413 | test_an_ack_arriving_at_a_listener_is_logged_as_the_wrong_kind | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_uart_driver.py:203 | test_valid_default_construction_succeeds | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_uart_driver.py:209 | test_valid_construction_on_both_real_uart_ports | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_uart_driver.py:215 | test_valid_buffer_size_boundaries | unit (MicroPython) | biting | — | biting as is |
@@ -3913,22 +3912,22 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests/test_digital_twin_http_client.py:362 | test_read_until_close_returns_empty_bytes_for_an_immediately_closed_stream | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_http_client.py:377 | test_drain_exact_consumes_exactly_n_bytes_without_returning_anything | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_http_client.py:383 | test_drain_exact_raises_incomplete_response_on_premature_stream_closure | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_http_client.py:392 | test_drain_exact_retries_a_spurious_none_read_instead_of_treating_it_as_eof | twin (MicroPython) | weak | no_assertion | no_assertion: weak: open: assert the reader was read to its last chunk |
-| tests/test_digital_twin_http_client.py:397 | test_drain_exact_bounds_its_own_scratch_buffer_to_the_shared_chunk_size | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_http_client.py:411 | test_drain_until_close_consumes_every_chunk_without_returning_anything | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_http_client.py:417 | test_drain_until_close_retries_a_spurious_none_read | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_http_client.py:423 | test_drain_until_close_returns_for_an_immediately_closed_stream | twin (MicroPython) | justified | no_assertion | no_assertion: justified: the claim is that the drain returns; run_timed()'s bound fails a hang (stated in place) |
-| tests/test_digital_twin_http_client.py:433 | test_http_response_json_decodes_the_body | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_http_client.py:447 | test_fetch_round_trips_a_real_request_through_a_real_socket | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_http_client.py:462 | test_fetch_reassembles_a_body_delivered_across_two_separate_writes | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_http_client.py:477 | test_fetch_reads_a_body_with_no_content_length_until_the_connection_closes | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_http_client.py:500 | test_fetch_with_read_body_false_drains_a_sized_response_without_materializing_it | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_http_client.py:515 | test_fetch_with_read_body_false_drains_an_unsized_response_without_materializing_it | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_http_client.py:537 | test_a_reset_before_any_response_byte_is_a_ceiling_refusal | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_http_client.py:543 | test_a_close_inside_the_header_block_is_an_incomplete_response | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_http_client.py:549 | test_a_close_inside_the_body_is_an_incomplete_response | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_http_client.py:554 | test_nothing_listening_stays_a_plain_oserror_and_no_refusal | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_http_client.py:566 | test_fetch_with_timeout_s_gives_up_on_a_server_that_never_answers | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_http_client.py:392 | test_drain_exact_retries_a_spurious_none_read_instead_of_treating_it_as_eof | twin (MicroPython) | fixed | was:no_assertion | was:no_assertion: fixed: all four reads made, both None reads retried, the next response's bytes left unread; bite: n 3 -> 2 (the body's last byte never read) passes the old form, fails the new (S/u35/laneC/crr1c/r1/bite_http_drain_*.log) |
+| tests/test_digital_twin_http_client.py:398 | test_drain_exact_bounds_its_own_scratch_buffer_to_the_shared_chunk_size | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_http_client.py:412 | test_drain_until_close_consumes_every_chunk_without_returning_anything | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_http_client.py:418 | test_drain_until_close_retries_a_spurious_none_read | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_http_client.py:424 | test_drain_until_close_returns_for_an_immediately_closed_stream | twin (MicroPython) | justified | no_assertion | no_assertion: justified: the claim is that the drain returns; run_timed()'s bound fails a hang (stated in place) |
+| tests/test_digital_twin_http_client.py:434 | test_http_response_json_decodes_the_body | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_http_client.py:448 | test_fetch_round_trips_a_real_request_through_a_real_socket | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_http_client.py:463 | test_fetch_reassembles_a_body_delivered_across_two_separate_writes | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_http_client.py:478 | test_fetch_reads_a_body_with_no_content_length_until_the_connection_closes | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_http_client.py:501 | test_fetch_with_read_body_false_drains_a_sized_response_without_materializing_it | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_http_client.py:516 | test_fetch_with_read_body_false_drains_an_unsized_response_without_materializing_it | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_http_client.py:538 | test_a_reset_before_any_response_byte_is_a_ceiling_refusal | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_http_client.py:544 | test_a_close_inside_the_header_block_is_an_incomplete_response | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_http_client.py:550 | test_a_close_inside_the_body_is_an_incomplete_response | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_http_client.py:555 | test_nothing_listening_stays_a_plain_oserror_and_no_refusal | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_http_client.py:567 | test_fetch_with_timeout_s_gives_up_on_a_server_that_never_answers | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_isl29125.py:91 | test_device_id_reads_the_datasheet_value | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_isl29125.py:96 | test_power_on_config_is_all_zero | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_isl29125.py:101 | test_brownout_flag_is_high_at_power_on | twin (MicroPython) | biting | — | biting as is |
@@ -4249,46 +4248,47 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests/test_digital_twin_run_generic_integration.py:122 | test_parse_args_takes_the_config_dir_the_online_ntp_switch_and_in_memory_state | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_run_generic_integration.py:130 | test_the_cut_system_entry_is_held_after_its_first_blocks_busy_mark_and_only_its_bound_ends_it | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_run_generic_integration.py:170 | test_every_test_only_flag_is_off_by_default_and_parses_when_named | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:184 | test_parse_args_takes_a_debug_level_the_products_loggers_take_and_refuses_any_other | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:190 | test_run_config_compares_and_prints_its_grouped_fields | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:200 | test_parse_args_device_host_port_and_the_run_limits | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:208 | test_parse_args_fault_hang_and_wifi_outcome_reuse_launchs_own_parsers | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:215 | test_parse_args_rejects_an_unrecognized_flag_or_a_missing_value | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:220 | test_parse_args_help_exits_zero_before_parsing_anything_else | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:234 | test_a_simulated_reset_maps_to_its_exit_code_and_its_line | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:266 | test_the_shutdown_line_carries_the_counts_the_largest_feed_gap_and_the_kept_registers | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:287 | test_a_feed_span_the_watchdog_dropped_is_no_gap | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:302 | test_ensure_dir_creates_or_keeps_a_dir_and_names_one_it_cannot_create | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:314 | test_the_runner_shares_launchs_one_chip_lookup_and_fault_plumbing | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:319 | test_collect_chips_finds_each_chip_through_the_constructed_bus_not_a_wrapper | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:334 | test_a_fault_naming_a_driver_this_device_does_not_carry_is_refused_by_name | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:341 | test_link_directions_finds_each_instances_bus_by_its_generated_construction_line | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:354 | test_the_construction_lines_read_name_each_generated_devices_link_buses | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:380 | test_the_wire_log_clearer_clears_each_bounded_log_in_place | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:516 | test_the_rebound_report_announces_itself_once_when_first_entered_then_never_returns | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:529 | test_the_held_system_entry_waits_for_its_release_and_lets_every_other_entry_through | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:549 | test_the_kbd_traceback_flag_catches_the_interrupt_object_by_a_sigint_and_prints_where_it_was_raised | twin (MicroPython) | biting | name_overclaims | name_overclaims: biting: the name's 'raise' is an adjective, a raised flag or interrupt, or the absence of a raise, and the body asserts it |
-| tests/test_digital_twin_run_generic_integration.py:565 | test_the_drop_flag_loses_that_one_shots_next_fire_alone_and_every_timer_runs_again_after_it | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:591 | test_the_flash_stall_flag_puts_every_flush_at_its_datasheet_maximum | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:597 | test_the_loop_lag_flag_prints_each_windows_maximum_p99_and_samples | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:623 | test_each_loop_lag_line_carries_every_links_transfers_so_far | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:653 | test_the_lag_p99_is_its_bins_upper_edge_never_past_the_maximum | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:679 | test_the_over_cap_offer_waits_for_each_initiators_next_transfer_then_offers_one_train_past_its_cap | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:695 | test_s1_ends_one_supervised_task_and_its_dead_task_report_never_returns | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:705 | test_s2_a_stores_flush_never_returns_and_s5reset_holds_its_lock | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:718 | test_s3_holds_one_fram_chunks_lock | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:726 | test_s5erase_arms_at_pass_two_and_the_refused_units_report_never_returns | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:735 | test_s6_the_reset_timer_never_fires | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:747 | test_a_shutdown_hang_arms_once_every_supervised_task_has_started_and_its_cancel_ends_the_hold | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:770 | test_the_held_closing_slot_releases_on_its_trigger | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:784 | test_the_status_lines_name_the_gauge_the_backlog_and_each_queued_fault | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:806 | test_serving_ends_at_once_when_the_stop_file_already_exists | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:815 | test_serving_ends_once_the_stop_file_appears | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:834 | test_serving_without_the_stop_file_lasts_the_whole_duration | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:864 | test_main_boots_at_the_stored_error_level_arms_a_fault_writes_the_responder_ntp_config_and_shuts_down_cleanly | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:966 | test_an_interrupt_in_the_shutdown_drain_is_let_through | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:993 | test_each_boot_phase_line_names_the_latest_in_process_boots_device | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_run_generic_integration.py:1009 | test_main_builds_the_booted_module_at_the_debug_level_asked_for | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:185 | test_parse_args_takes_a_debug_level_the_products_loggers_take_and_refuses_any_other | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:191 | test_run_config_compares_and_prints_its_grouped_fields | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:201 | test_parse_args_device_host_port_and_the_run_limits | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:209 | test_parse_args_fault_hang_and_wifi_outcome_reuse_launchs_own_parsers | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:216 | test_parse_args_rejects_an_unrecognized_flag_or_a_missing_value | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:221 | test_parse_args_help_exits_zero_before_parsing_anything_else | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:235 | test_a_simulated_reset_maps_to_its_exit_code_and_its_line | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:267 | test_the_shutdown_line_carries_the_counts_the_largest_feed_gap_and_the_kept_registers | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:288 | test_a_feed_span_the_watchdog_dropped_is_no_gap | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:303 | test_ensure_dir_creates_or_keeps_a_dir_and_names_one_it_cannot_create | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:315 | test_the_runner_shares_launchs_one_chip_lookup_and_fault_plumbing | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:320 | test_collect_chips_finds_each_chip_through_the_constructed_bus_not_a_wrapper | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:335 | test_a_fault_naming_a_driver_this_device_does_not_carry_is_refused_by_name | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:342 | test_link_directions_finds_each_instances_bus_by_its_generated_construction_line | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:355 | test_the_construction_lines_read_name_each_generated_devices_link_buses | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:381 | test_the_wire_log_clearer_clears_each_bounded_log_in_place | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:517 | test_the_rebound_report_announces_itself_once_when_first_entered_then_never_returns | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:530 | test_the_held_system_entry_waits_for_its_release_and_lets_every_other_entry_through | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:550 | test_the_kbd_traceback_flag_catches_the_interrupt_object_by_a_sigint_and_prints_where_it_was_raised | twin (MicroPython) | biting | name_overclaims | name_overclaims: biting: the name's 'raise' is an adjective, a raised flag or interrupt, or the absence of a raise, and the body asserts it |
+| tests/test_digital_twin_run_generic_integration.py:566 | test_the_drop_flag_loses_that_one_shots_next_fire_alone_and_every_timer_runs_again_after_it | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:592 | test_the_flash_stall_flag_puts_every_flush_at_its_datasheet_maximum | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:598 | test_the_loop_lag_flag_prints_each_windows_maximum_p99_and_samples | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:624 | test_each_loop_lag_line_carries_every_links_transfers_so_far | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:654 | test_the_lag_p99_is_its_bins_upper_edge_never_past_the_maximum | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:680 | test_the_over_cap_offer_waits_for_each_initiators_next_transfer_then_offers_one_train_past_its_cap | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:696 | test_s1_ends_one_supervised_task_and_its_dead_task_report_never_returns | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:706 | test_s2_a_stores_flush_never_returns_and_s5reset_holds_its_lock | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:719 | test_s3_holds_one_fram_chunks_lock | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:727 | test_s5erase_arms_at_pass_two_and_the_refused_units_report_never_returns | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:736 | test_s6_the_reset_timer_never_fires | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:748 | test_a_shutdown_hang_arms_once_every_supervised_task_has_started_and_its_cancel_ends_the_hold | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:771 | test_the_held_closing_slot_releases_on_its_trigger | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:785 | test_the_deferred_faults_are_queued_at_the_first_arm_trigger_alone | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:799 | test_the_status_lines_name_the_gauge_the_backlog_and_each_queued_fault | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:821 | test_serving_ends_at_once_when_the_stop_file_already_exists | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:830 | test_serving_ends_once_the_stop_file_appears | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:849 | test_serving_without_the_stop_file_lasts_the_whole_duration | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:879 | test_main_boots_at_the_stored_error_level_arms_a_fault_writes_the_responder_ntp_config_and_shuts_down_cleanly | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:981 | test_an_interrupt_in_the_shutdown_drain_is_let_through | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:1008 | test_each_boot_phase_line_names_the_latest_in_process_boots_device | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_run_generic_integration.py:1024 | test_main_builds_the_booted_module_at_the_debug_level_asked_for | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_scd30.py:127 | test_measurement_interval_set_then_get_round_trips | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_scd30.py:134 | test_self_calibration_enabled_set_then_get_round_trips | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_scd30.py:142 | test_ambient_pressure_set_then_get_round_trips | twin (MicroPython) | biting | — | biting as is |
@@ -6368,90 +6368,86 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests_scripts/test_digital_twin_ci_suite_errcount.py:88 | test_failure_events_subtracts_each_warning_slot | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_digital_twin_ci_suite_errcount.py:92 | test_failure_events_is_zero_for_an_empty_or_unreadable_entry | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_digital_twin_ci_suite_errcount.py:98 | test_link_failures_count_only_what_one_link_added | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:106 | test_a_restore_equal_to_the_ring_written_is_whole | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:111 | test_a_whole_ring_followed_by_this_boots_own_warning_is_whole | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:118 | test_a_lost_ring_holding_only_this_boots_warning_is_nothing | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:124 | test_a_partial_ring_or_a_lost_count_is_neither | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:147 | test_the_fault_instances_are_sorted_by_key_and_filtered_by_the_table | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:153 | test_an_instance_names_its_own_error_source | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:159 | test_every_faultable_driver_has_both_an_op_and_an_errcount_name | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:167 | test_run_5c_faults_every_chip_instance_but_never_the_store_or_a_link | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:175 | test_the_error_sources_exempt_from_run_5cs_loss_sweep_are_the_store_and_the_ram_only_config_log | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:184 | test_every_i2c_or_spi_attached_driver_a_real_device_declares_is_faultable | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:214 | test_errcount_is_tolerant_so_the_polling_helpers_can_retry | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:222 | test_errcount_is_also_tolerant_of_a_200_with_an_unusable_body | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:229 | test_errcount_required_raises_instead_of_answering_an_empty_entry | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:237 | test_errcount_required_raises_for_a_source_missing_from_a_readable_status | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:245 | test_errcount_required_returns_the_entry_when_status_is_genuinely_readable | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:250 | test_errcount_all_raises_rather_than_sweeping_an_unreadable_status | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:262 | test_errcount_all_raises_on_a_200_carrying_no_usable_table | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:270 | test_errcount_all_drops_only_the_rows_that_are_not_entries | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:275 | test_error_counts_settle_only_once_consecutive_reads_agree | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:284 | test_error_counts_settle_on_the_counter_while_a_repeated_code_keeps_one_slot | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:292 | test_error_counts_that_never_settle_raise_instead_of_returning_a_moving_target | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:305 | test_error_counts_settle_across_every_name_at_once_not_one_at_a_time | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:316 | test_the_run_4_assertion_shape_fails_closed_on_an_empty_entry | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:340 | test_a_sweep_inside_the_budget_passes_and_reports_its_share_of_the_cap | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:347 | test_a_sweep_past_the_budget_fails_even_though_the_request_itself_succeeded | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:357 | test_a_reset_that_did_not_answer_valid_fails_inside_the_budget | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:364 | test_the_budget_boundary_is_exclusive | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:371 | test_the_budget_sits_between_the_observed_worst_case_and_the_servers_own_cap | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:379 | test_the_commanded_reset_deadline_follows_both_src_constants | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:392 | test_every_reset_errors_call_in_the_suite_goes_through_the_timed_helper | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:402 | test_the_persisted_error_modules_are_real_errcount_sources_and_not_empty | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:412 | test_the_sgp40_asymmetry_between_the_three_driver_sets_is_deliberate | host (pytest) | biting | log_existence_only | log_existence_only: biting: set membership of suite constants, no log |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:425 | test_a_caught_and_degraded_allocation_failure_is_caught_though_it_never_says_memoryerror | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:432 | test_an_uncaught_traceback_is_still_caught | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:436 | test_a_clean_run_log_records_no_failure | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:441 | test_a_missing_or_unreadable_log_fails_the_check_and_names_the_path | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:463 | test_run_9_expects_no_reply_where_a_route_leaves_the_host | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:473 | test_run_9_expects_not_sent_where_no_route_leaves_the_host | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:482 | test_the_route_probe_finds_the_loopback_route | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:501 | test_the_route_probe_reports_a_host_with_no_route_out | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:520 | test_the_shutdown_line_yields_every_field_and_one_uart_entry_per_instance | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:532 | test_a_shutdown_line_without_uart_links_has_an_empty_uart_table | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:541 | test_a_log_without_a_shutdown_line_reads_none | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:546 | test_a_shutdown_line_missing_a_field_fails_naming_it | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:552 | test_a_shutdown_line_with_a_bad_r0_or_count_fails_naming_it | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:561 | test_a_shutdown_line_after_no_gc_summary_fails_naming_it | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:568 | test_a_feed_gap_above_three_quarters_of_the_watchdog_timeout_is_a_near_reset | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:577 | test_a_run_whose_feed_gap_came_near_the_watchdog_fails_unless_it_starves_it_by_design | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:587 | test_a_malformed_uart_entry_fails_naming_the_instance | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:592 | test_a_uart_instance_named_twice_fails | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:598 | test_the_shutdown_line_yields_the_fram_writes_in_total_and_per_logger | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:612 | test_a_malformed_per_logger_fram_count_fails_naming_the_field | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:620 | test_run_3_bounds_every_fram_write_the_product_issues_landed_or_silent | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:643 | test_the_machine_reset_line_names_its_kind_and_counts | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:649 | test_the_shared_exit_codes_are_the_runners_own | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:657 | test_a_signal_death_is_named_as_a_crash_and_never_as_a_failed_check | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:662 | test_the_callers_own_kill_and_timeout_are_named_as_theirs | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:673 | test_the_ignored_sigint_diagnostic_names_where_the_kernel_holds_sigint | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:727 | test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recorded | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:785 | test_a_twin_with_sigint_blocked_still_ends_cleanly_on_its_stop_file | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:797 | test_a_twin_that_ignores_its_stop_file_falls_back_to_sigint_and_says_so | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:808 | test_an_interrupt_shutdown_sends_sigint_at_once_and_leaves_the_stop_file_alone | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:818 | test_spawn_hands_the_runner_a_fresh_stop_file_and_refuses_a_callers_own | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:838 | test_an_empty_log_gives_no_memory_verdict | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:868 | test_a_signal_death_the_suite_did_not_cause_fails_as_a_crash_with_the_log_tail | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:875 | test_the_suites_own_kill_or_timeout_is_left_to_the_callers_check | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:879 | test_a_clean_or_reset_exit_is_no_crash | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:884 | test_an_ignored_stop_file_fails_even_a_clean_exit | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:891 | test_an_all_null_measurement_block_is_no_reading | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:899 | test_the_strict_history_reader_raises_on_an_entry_without_one | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:926 | test_run_9_fails_closed_on_a_system_entry_without_a_counter | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:934 | test_run_9_ends_its_watch_once_ntp_failed_every_scheduled_attempt_never_after_a_fixed_wait | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:948 | test_run_8_fails_closed_on_a_wifi_entry_without_a_counter | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:956 | test_run_10_ends_each_hang_run_on_the_runners_line_and_otherwise_waits_out_its_duration | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:999 | test_a_quiet_boot_passes_and_its_errcount_is_kept | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:1005 | test_one_warning_fails_the_normal_boot_naming_its_module | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:1012 | test_an_ntp_entry_fails_the_normal_boot_whether_or_not_ntp_synced | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:1018 | test_a_read_past_the_boots_own_background_deadline_fails | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:1024 | test_an_unreadable_status_raises_rather_than_reading_as_a_quiet_boot | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:1031 | test_the_reformat_relaunch_wants_exactly_one_config_lost_in_system_and_nothing_else | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:1054 | test_a_planted_warning_fails_run_1_whose_errcount_is_kept_before_the_reset | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:1072 | test_the_reformat_relaunch_boots_on_an_emptied_config_beside_the_kept_fram_then_puts_the_settings | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:1096 | test_run_12_ends_the_boot_its_sigint_relaunch_follows_by_sigint | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_ci_suite_errcount.py:1114 | test_the_ntp_sync_wait_ends_at_its_bound_unless_ntpsynced_turns_true | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:122 | test_the_fault_instances_are_sorted_by_key_and_filtered_by_the_table | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:128 | test_an_instance_names_its_own_error_source | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:134 | test_every_faultable_driver_has_both_an_op_and_an_errcount_name | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:142 | test_run_5c_faults_every_chip_instance_but_never_the_store_or_a_link | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:150 | test_the_error_sources_exempt_from_run_5cs_loss_sweep_are_the_store_and_the_ram_only_config_log | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:159 | test_every_i2c_or_spi_attached_driver_a_real_device_declares_is_faultable | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:189 | test_errcount_is_tolerant_so_the_polling_helpers_can_retry | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:197 | test_errcount_is_also_tolerant_of_a_200_with_an_unusable_body | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:204 | test_errcount_required_raises_instead_of_answering_an_empty_entry | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:212 | test_errcount_required_raises_for_a_source_missing_from_a_readable_status | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:220 | test_errcount_required_returns_the_entry_when_status_is_genuinely_readable | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:225 | test_errcount_all_raises_rather_than_sweeping_an_unreadable_status | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:237 | test_errcount_all_raises_on_a_200_carrying_no_usable_table | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:245 | test_errcount_all_drops_only_the_rows_that_are_not_entries | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:250 | test_error_counts_settle_only_once_consecutive_reads_agree | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:259 | test_error_counts_settle_on_the_counter_while_a_repeated_code_keeps_one_slot | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:267 | test_error_counts_that_never_settle_raise_instead_of_returning_a_moving_target | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:280 | test_error_counts_settle_across_every_name_at_once_not_one_at_a_time | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:291 | test_the_run_4_assertion_shape_fails_closed_on_an_empty_entry | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:315 | test_a_sweep_inside_the_budget_passes_and_reports_its_share_of_the_cap | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:322 | test_a_sweep_past_the_budget_fails_even_though_the_request_itself_succeeded | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:332 | test_a_reset_that_did_not_answer_valid_fails_inside_the_budget | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:339 | test_the_budget_boundary_is_exclusive | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:346 | test_the_budget_sits_between_the_observed_worst_case_and_the_servers_own_cap | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:354 | test_the_commanded_reset_deadline_follows_both_src_constants | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:367 | test_every_reset_errors_call_in_the_suite_goes_through_the_timed_helper | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:377 | test_the_persisted_error_modules_are_real_errcount_sources_and_not_empty | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:387 | test_the_sgp40_asymmetry_between_the_three_driver_sets_is_deliberate | host (pytest) | biting | log_existence_only | log_existence_only: biting: set membership of suite constants, no log |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:400 | test_a_caught_and_degraded_allocation_failure_is_caught_though_it_never_says_memoryerror | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:407 | test_an_uncaught_traceback_is_still_caught | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:411 | test_a_clean_run_log_records_no_failure | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:416 | test_a_missing_or_unreadable_log_fails_the_check_and_names_the_path | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:438 | test_run_9_expects_no_reply_where_a_route_leaves_the_host | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:448 | test_run_9_expects_not_sent_where_no_route_leaves_the_host | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:457 | test_the_route_probe_finds_the_loopback_route | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:476 | test_the_route_probe_reports_a_host_with_no_route_out | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:495 | test_the_shutdown_line_yields_every_field_and_one_uart_entry_per_instance | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:507 | test_a_shutdown_line_without_uart_links_has_an_empty_uart_table | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:516 | test_a_log_without_a_shutdown_line_reads_none | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:521 | test_a_shutdown_line_missing_a_field_fails_naming_it | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:527 | test_a_shutdown_line_with_a_bad_r0_or_count_fails_naming_it | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:536 | test_a_shutdown_line_after_no_gc_summary_fails_naming_it | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:543 | test_a_feed_gap_above_three_quarters_of_the_watchdog_timeout_is_a_near_reset | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:552 | test_a_run_whose_feed_gap_came_near_the_watchdog_fails_unless_it_starves_it_by_design | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:562 | test_a_malformed_uart_entry_fails_naming_the_instance | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:567 | test_a_uart_instance_named_twice_fails | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:573 | test_the_shutdown_line_yields_the_fram_writes_in_total_and_per_logger | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:587 | test_a_malformed_per_logger_fram_count_fails_naming_the_field | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:595 | test_run_3_bounds_every_fram_write_the_product_issues_landed_or_silent | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:618 | test_the_machine_reset_line_names_its_kind_and_counts | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:624 | test_the_shared_exit_codes_are_the_runners_own | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:632 | test_a_signal_death_is_named_as_a_crash_and_never_as_a_failed_check | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:637 | test_the_callers_own_kill_and_timeout_are_named_as_theirs | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:648 | test_the_ignored_sigint_diagnostic_names_where_the_kernel_holds_sigint | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:702 | test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recorded | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:760 | test_a_twin_with_sigint_blocked_still_ends_cleanly_on_its_stop_file | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:772 | test_a_twin_that_ignores_its_stop_file_falls_back_to_sigint_and_says_so | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:783 | test_an_interrupt_shutdown_sends_sigint_at_once_and_leaves_the_stop_file_alone | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:793 | test_spawn_hands_the_runner_a_fresh_stop_file_and_refuses_a_callers_own | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:813 | test_an_empty_log_gives_no_memory_verdict | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:843 | test_a_signal_death_the_suite_did_not_cause_fails_as_a_crash_with_the_log_tail | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:850 | test_the_suites_own_kill_or_timeout_is_left_to_the_callers_check | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:854 | test_a_clean_or_reset_exit_is_no_crash | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:859 | test_an_ignored_stop_file_fails_even_a_clean_exit | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:866 | test_an_all_null_measurement_block_is_no_reading | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:874 | test_the_strict_history_reader_raises_on_an_entry_without_one | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:901 | test_run_9_fails_closed_on_a_system_entry_without_a_counter | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:909 | test_run_9_ends_its_watch_once_ntp_failed_every_scheduled_attempt_never_after_a_fixed_wait | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:923 | test_run_8_fails_closed_on_a_wifi_entry_without_a_counter | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:931 | test_run_10_ends_each_hang_run_on_the_runners_line_and_otherwise_waits_out_its_duration | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:974 | test_a_quiet_boot_passes_and_its_errcount_is_kept | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:980 | test_one_warning_fails_the_normal_boot_naming_its_module | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:987 | test_an_ntp_entry_fails_the_normal_boot_whether_or_not_ntp_synced | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:993 | test_a_read_past_the_boots_own_background_deadline_fails | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:999 | test_an_unreadable_status_raises_rather_than_reading_as_a_quiet_boot | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:1006 | test_the_reformat_relaunch_wants_exactly_one_config_lost_in_system_and_nothing_else | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:1029 | test_a_planted_warning_fails_run_1_whose_errcount_is_kept_before_the_reset | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:1047 | test_the_reformat_relaunch_boots_on_an_emptied_config_beside_the_kept_fram_then_puts_the_settings | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:1071 | test_run_12_ends_the_boot_its_sigint_relaunch_follows_by_sigint | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_ci_suite_errcount.py:1089 | test_the_ntp_sync_wait_ends_at_its_bound_unless_ntpsynced_turns_true | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_digital_twin_ci_suite_matrix.py:53 | test_the_hook_scan_sees_the_chip_fakes | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_digital_twin_ci_suite_matrix.py:60 | test_every_hooked_op_is_driven_by_a_run_or_left_out_with_a_reason | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_digital_twin_ci_suite_matrix.py:66 | test_the_matrix_names_only_ops_the_twin_accepts | host (pytest) | biting | — | biting as is |
@@ -6702,13 +6698,14 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests_scripts/test_generated_tree.py:58 | test_an_edit_within_the_generations_own_second_is_refused | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_generated_tree.py:64 | test_an_edit_of_the_generator_itself_is_refused | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_generated_tree.py:70 | test_a_toml_added_after_the_generation_is_refused | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_generated_tree.py:77 | test_a_zz_test_fixture_in_devices_is_not_an_input | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_generated_tree.py:83 | test_a_missing_stamp_is_refused | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_generated_tree.py:90 | test_a_file_no_current_device_produces_is_refused_until_regenerated | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_generated_tree.py:101 | test_a_missing_output_is_refused | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_generated_tree.py:107 | test_a_stamp_listing_no_output_is_refused | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_generated_tree.py:115 | test_a_file_mid_rename_is_no_output | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_generated_tree.py:136 | test_the_guard_reads_the_stamp_and_the_inputs_the_generator_writes | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_generated_tree.py:77 | test_a_toml_removed_after_the_generation_is_refused | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_generated_tree.py:83 | test_a_zz_test_fixture_in_devices_is_not_an_input | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_generated_tree.py:89 | test_a_missing_stamp_is_refused | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_generated_tree.py:96 | test_a_file_no_current_device_produces_is_refused_until_regenerated | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_generated_tree.py:107 | test_a_missing_output_is_refused | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_generated_tree.py:113 | test_a_stamp_listing_no_output_is_refused | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_generated_tree.py:121 | test_a_file_mid_rename_is_no_output | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_generated_tree.py:142 | test_the_guard_reads_the_stamp_and_the_inputs_the_generator_writes | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_hardware_clones.py:30 | test_no_function_body_is_copied_in_the_hardware_levels | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_hardware_clones.py:35 | test_the_clone_scan_bites | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_hardware_runners.py:176 | test_the_flash_runner_runs_every_lower_level_first_in_order | host (pytest) | biting | — | biting as is |
@@ -8376,10 +8373,10 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests_js/shell.test.js:639 | reads the document's visibility and reports each change until released | web (vitest) | biting | — | biting as is |
 | tests_js/shell.test.js:679 | ${entry} reloads once its device reports another build than the page's own stamp: a reflash before the first watch | web (vitest) | biting | — | biting as is |
 | tests_js/site-functions.test.js:124 | shows one Measurements group and one writable Sensors group per sensor its TOML declares | web (vitest) | biting | — | biting as is |
-| tests_js/site-functions.test.js:135 | sets the Wi-Fi identity, the Wi-Fi LED and the NTP server | web (vitest) | weak | weak_only | weak_only: weak: open: assert the group holds the field writable |
-| tests_js/site-functions.test.js:142 | sets the system settings and sends reboot, bootloader and backup-pause commands | web (vitest) | biting | — | biting as is |
-| tests_js/site-functions.test.js:149 | flashes the LED, pauses and configures notifications where the device has them | web (vitest) | biting | — | biting as is |
-| tests_js/site-functions.test.js:157 | colours each field an Apply in the %s section sent with its own result | web (vitest) | biting | — | biting as is |
+| tests_js/site-functions.test.js:135 | sets the Wi-Fi identity, the Wi-Fi LED and the NTP server | web (vitest) | fixed | was:weak_only | was:weak_only: fixed: each field's submitted group key and its own kind, exactly; bite: SSID made readonly passes the old toBeDefined, fails the new (S/u35/laneC/crr1c/r2/js_bite_*.log) |
+| tests_js/site-functions.test.js:145 | sets the system settings and sends reboot, bootloader and backup-pause commands | web (vitest) | biting | — | biting as is |
+| tests_js/site-functions.test.js:152 | flashes the LED, pauses and configures notifications where the device has them | web (vitest) | biting | — | biting as is |
+| tests_js/site-functions.test.js:160 | colours each field an Apply in the %s section sent with its own result | web (vitest) | biting | — | biting as is |
 | tests_js/source-constants.test.js:10 | reads a module's integer constants | web (vitest) | biting | — | biting as is |
 | tests_js/source-constants.test.js:15 | reads the poll loop's back-off ceiling | web (vitest) | biting | — | biting as is |
 | tests_js/source-constants.test.js:19 | reads a negative literal and takes no expression or nested declaration | web (vitest) | biting | — | biting as is |

@@ -60,27 +60,27 @@
   ]
  },
  "tests/_sensortask_scenarios.py::collect_task_starters_never_touches_start_tasks": {
-  "setup_credit_only": [
-   "weak",
-   "open: spy start_tasks and assert it is never called"
+  "was:setup_credit_only": [
+   "fixed",
+   "spies on SystemService.start_tasks/start_timers: neither called, the starters collected; bite: start_tasks called inside the generated collector passes the old form, fails the new (S/u35/laneC/crr1c/r2/bite_scenario_collect_*.log)"
   ]
  },
  "tests/test_asy_base_classes.py::test_recover_failed_push_unknown_key_is_a_defensive_noop": {
-  "no_assertion": [
-   "weak",
-   "open: assert the config and the log unchanged"
+  "was:no_assertion": [
+   "fixed",
+   "no correction write, both logs empty, the stored config unchanged; bite: a known key (SampleInterval) passes the old form, fails the new on its correction write (S/u35/laneC/crr1c/r1/bite_bc_unknown_key_*.log)"
   ]
  },
  "tests/test_asy_base_classes.py::test_set_dict_cfg_old_value_snapshot_read_exception_falls_back_to_default": {
-  "log_existence_only": [
-   "weak",
-   "open: the exact entry count"
+  "was:log_existence_only": [
+   "fixed",
+   "ErrCount 1 and one CFG_SNAPSHOT_RAISED slot; bite: the request repeated passes the old >= 1, fails the new (S/u35/laneC/crr1c/r1/bite_bc_snapshot_*.log)"
   ]
  },
  "tests/test_asy_base_classes.py::test_set_dict_cfg_recover_failed_push_correction_write_exception_is_caught": {
-  "log_existence_only": [
-   "weak",
-   "open: the exact entry count"
+  "was:log_existence_only": [
+   "fixed",
+   "ErrCount 1 and one RECOVERY_WRITE_RAISED slot; bite: the request repeated passes the old >= 1, fails the new (S/u35/laneC/crr1c/r1/bite_bc_correction_*.log)"
   ]
  },
  "tests/test_asy_bmp3xx_driver.py::test_config_write_accepts_every_field_at_its_valid_boundaries_and_midpoint": {
@@ -222,21 +222,21 @@
   ]
  },
  "tests/test_asy_fram_driver.py::test_set_write_protected_wel_did_not_set_logs_a_persisted_warning": {
-  "log_existence_only": [
-   "weak",
-   "open: the code's count in the history is exactly one"
+  "was:log_existence_only": [
+   "fixed",
+   "ErrCount 1 and the code once in the history (a repeat spends no slot, so only ErrCount carries a second event); bite: the scenario run twice passes the old membership, fails the new (S/u35/laneC/crr1c/r1/bite_fram_wp_wel_not_set_*.log)"
   ]
  },
  "tests/test_asy_fram_driver.py::test_verify_present_before_setup_logs_a_persisted_error": {
-  "log_existence_only": [
-   "weak",
-   "open: the code's count in the history is exactly one"
+  "was:log_existence_only": [
+   "fixed",
+   "ErrCount 1 and the code once in the history (a repeat spends no slot, so only ErrCount carries a second event); bite: the scenario run twice passes the old membership, fails the new (S/u35/laneC/crr1c/r1/bite_fram_not_init_*.log)"
   ]
  },
  "tests/test_asy_fram_driver.py::test_wrdi_stuck_after_retry_logs_a_persisted_warning": {
-  "log_existence_only": [
-   "weak",
-   "open: the code's count in the history is exactly one"
+  "was:log_existence_only": [
+   "fixed",
+   "ErrCount 1 and the code once in the history (a repeat spends no slot, so only ErrCount carries a second event); bite: the scenario run twice passes the old membership, fails the new (drop_next_wrdi 4 for the two runs) (S/u35/laneC/crr1c/r1/bite_fram_wel_stuck_*.log)"
   ]
  },
  "tests/test_asy_fram_driver.py::test_write_protected_and_access_not_locked_are_now_persisted": {
@@ -246,15 +246,15 @@
   ]
  },
  "tests/test_asy_fram_driver.py::test_write_protected_readback_mismatch_logs_a_persisted_error": {
-  "log_existence_only": [
-   "weak",
-   "open: the code's count in the history is exactly one"
+  "was:log_existence_only": [
+   "fixed",
+   "ErrCount 1 and the code once in the history (a repeat spends no slot, so only ErrCount carries a second event); bite: the scenario run twice passes the old membership, fails the new (S/u35/laneC/crr1c/r1/bite_fram_wp_mismatch_*.log)"
   ]
  },
  "tests/test_asy_fram_driver.py::test_write_wel_did_not_set_logs_a_persisted_warning": {
-  "log_existence_only": [
-   "weak",
-   "open: the code's count in the history is exactly one"
+  "was:log_existence_only": [
+   "fixed",
+   "ErrCount 1 and the code once in the history (a repeat spends no slot, so only ErrCount carries a second event); bite: the scenario run twice passes the old membership, fails the new (S/u35/laneC/crr1c/r1/bite_fram_wel_not_set_*.log)"
   ]
  },
  "tests/test_asy_fram_manager.py::test_a_history_write_cancelled_at_each_await_keeps_one_readable_copy": {
@@ -354,9 +354,9 @@
   ]
  },
  "tests/test_asy_ntp_client.py::test_ntp_time_hours_counter_missing_config_falls_back_to_12h_default_without_raising": {
-  "setup_credit_only": [
-   "weak",
-   "open: assert the 12 h fallback the name claims"
+  "was:setup_credit_only": [
+   "fixed",
+   "under a stepped clock: no resync 10 s before 12 h, one at 12 h, the two CFG_READ events in one slot; bite: the fallback planted as 11 h passes the old form, fails the new (S/u35/laneC/crr1c/r1/bite_ntp_fallback_*.log)"
   ]
  },
  "tests/test_asy_ntp_client.py::test_the_shape_corpus_judges_ntp_host_and_dns_fallback": {
@@ -904,9 +904,9 @@
   ]
  },
  "tests/test_digital_twin_http_client.py::test_drain_exact_retries_a_spurious_none_read_instead_of_treating_it_as_eof": {
-  "no_assertion": [
-   "weak",
-   "open: assert the reader was read to its last chunk"
+  "was:no_assertion": [
+   "fixed",
+   "all four reads made, both None reads retried, the next response's bytes left unread; bite: n 3 -> 2 (the body's last byte never read) passes the old form, fails the new (S/u35/laneC/crr1c/r1/bite_http_drain_*.log)"
   ]
  },
  "tests/test_digital_twin_http_client.py::test_drain_until_close_returns_for_an_immediately_closed_stream": {
@@ -1760,9 +1760,9 @@
   ]
  },
  "tests_js/site-functions.test.js::sets the Wi-Fi identity, the Wi-Fi LED and the NTP server": {
-  "weak_only": [
-   "weak",
-   "open: assert the group holds the field writable"
+  "was:weak_only": [
+   "fixed",
+   "each field's submitted group key and its own kind, exactly; bite: SSID made readonly passes the old toBeDefined, fails the new (S/u35/laneC/crr1c/r2/js_bite_*.log)"
   ]
  },
  "tests_js/templates.test.js::leaves a null at the em dash even with a decimals hint": {
@@ -2175,6 +2175,42 @@
   "same_callee": [
    "biting",
    "two distinct paths, objects or runs compared: their agreement is the claim"
+  ]
+ },
+ "tests/test_asy_uart_comm.py::test_reset_errors_keeps_the_valid_frame_count": {
+  "was:log_existence_only": [
+   "fixed",
+   "hand-read (a log read through persisted() is the scan's blind spot): (ErrCount, used slots) compared exactly, one entry per event, values read from a run (S/u35/laneC/crr1c/r1/uart_probe.log); bite: every _err logged twice passes the old membership, fails the new (S/u35/laneC/crr1c/r2/bite_uart_exact_*.log)"
+  ]
+ },
+ "tests/test_asy_uart_comm.py::test_the_blind_resync_streak_saturates": {
+  "was:log_existence_only": [
+   "fixed",
+   "hand-read (a log read through persisted() is the scan's blind spot): (ErrCount, used slots) compared exactly, one entry per event, values read from a run (S/u35/laneC/crr1c/r1/uart_probe.log); bite: every _err logged twice passes the old membership, fails the new (S/u35/laneC/crr1c/r2/bite_uart_exact_*.log)"
+  ]
+ },
+ "tests/test_asy_uart_comm.py::test_bytes_a_failed_frame_read_dropped_count_toward_the_link_diagnostic": {
+  "was:log_existence_only": [
+   "fixed",
+   "hand-read (a log read through persisted() is the scan's blind spot): (ErrCount, used slots) compared exactly, one entry per event, values read from a run (S/u35/laneC/crr1c/r1/uart_probe.log); bite: every _err logged twice passes the old membership, fails the new (S/u35/laneC/crr1c/r2/bite_uart_exact_*.log)"
+  ]
+ },
+ "tests/test_asy_uart_comm.py::test_a_refused_argument_is_logged_with_its_own_errno": {
+  "was:log_existence_only": [
+   "fixed",
+   "hand-read (a log read through persisted() is the scan's blind spot): (ErrCount, used slots) compared exactly, one entry per event, values read from a run (S/u35/laneC/crr1c/r1/uart_probe.log); bite: every _err logged twice passes the old membership, fails the new (S/u35/laneC/crr1c/r2/bite_uart_exact_*.log)"
+  ]
+ },
+ "tests/test_asy_uart_comm.py::test_an_answer_the_train_could_never_carry_is_refused_at_its_header": {
+  "was:log_existence_only": [
+   "fixed",
+   "hand-read (a log read through persisted() is the scan's blind spot): (ErrCount, used slots) compared exactly, one entry per event, values read from a run (S/u35/laneC/crr1c/r1/uart_probe.log); bite: every _err logged twice passes the old membership, fails the new (S/u35/laneC/crr1c/r2/bite_uart_exact_*.log)"
+  ]
+ },
+ "tests/test_asy_uart_comm.py::test_a_write_failing_at_each_point_of_a_get_reports_and_resyncs": {
+  "was:log_existence_only": [
+   "fixed",
+   "hand-read (a log read through persisted() is the scan's blind spot): (ErrCount, used slots) compared exactly, one entry per event, values read from a run (S/u35/laneC/crr1c/r1/uart_probe.log); bite: every _err logged twice passes the old membership, fails the new (S/u35/laneC/crr1c/r2/bite_uart_exact_*.log)"
   ]
  }
 }

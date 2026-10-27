@@ -787,14 +787,6 @@ def _reset_code(name: str) -> int:
     return _src_int("asy_system_service.py", name)
 
 
-def _restore_is_all_or_nothing(written: JSONObject, restored: JSONObject) -> bool:
-    # Whole: the written ring and at least its count came back, newer slots only after it (this boot's
-    # own). Nothing: no "E" slot survived, only what this boot logged itself. Else partial or garbled.
-    slots, kept = _non_empty_slots(restored), _non_empty_slots(written)
-    whole = slots[: len(kept)] == kept and all(kind != "E" for kind, _ in slots[len(kept) :]) and _counter(restored) >= max(_counter(written), 0)
-    return whole or all(kind != "E" for kind, _ in slots)
-
-
 def _route_leaves_host(host: str, port: int) -> bool:
     # A UDP connect() sends nothing: it is the route lookup the twin's own UDPSocket makes on this same host, and
     # it fails (ENETUNREACH) where no route leaves - a network namespace holding only lo, for one.
