@@ -132,6 +132,10 @@ _ASYNC_CALLBACK_YIELD_MS = 1
 _BSEC_RUN_BOUND_S = 60
 # @tunable l1.asy_uart_comm_prompt_hold_ms = 5
 _PROMPT_HOLD_MS = 5
+# @tunable l1.asy_uart_comm_recorder_poll_ms = 1
+_RECORDER_POLL_MS = 1  # the test's own real look at the sleep recorder's delays
+# @tunable l1.asy_uart_comm_gate_look_ms = 5
+_GATE_LOOK_MS = 5  # a real sleep in which the write gate takes its looks, its clock held
 _PAST_CANCEL_ACK_HOLD_MS = 1300
 # @tunable l1.asy_uart_comm_cap_refusals = 50
 _REFUSALS = 50
@@ -911,7 +915,7 @@ def test_the_backoff_stays_a_valid_tick_delay_at_the_timeout_ceiling() -> None:
     async def scenario() -> None:
         task = comm.start_asy_listen()
         while len(recorder.delays) < 8:
-            await asyncio.sleep_ms(1)
+            await asyncio.sleep_ms(_RECORDER_POLL_MS)
         task.cancel()
 
     comm.uart_listen = no_command  # type: ignore[assignment, method-assign]
@@ -1258,10 +1262,10 @@ def test_the_hold_off_deadline_survives_the_ticks_rollover() -> None:
         window = comm._resync_window_ms()
         assert clock.now + window > TICKS_PERIOD
         gate = asyncio.create_task(comm._await_write_gate())
-        await asyncio.sleep_ms(5)  # the gate's first look, still before the wrap
+        await asyncio.sleep_ms(_GATE_LOOK_MS)  # the gate's first look, still before the wrap
         held_before_the_wrap = not gate.done()
         clock.advance(window - 1)
-        await asyncio.sleep_ms(5)  # several of the gate's rounds, each sleeping the 1 ms left
+        await asyncio.sleep_ms(_GATE_LOOK_MS)  # several of the gate's rounds, each sleeping the 1 ms left
         held_past_it = not gate.done()
         clock.advance(2)
         await asyncio.wait_for(gate, _PAST_DEADLINE_BOUND_S)
@@ -3447,7 +3451,7 @@ def test_a_raising_uart_listen_is_logged_and_the_loop_backs_off_and_keeps_listen
         async def scenario(comm: UARTComm = comm, recorder: _SleepRecorder = recorder) -> bool:
             task = comm.start_asy_listen()
             while len(recorder.delays) < 2:
-                await asyncio.sleep_ms(1)
+                await asyncio.sleep_ms(_RECORDER_POLL_MS)
             alive = not task.done()
             task.cancel()
             return alive
