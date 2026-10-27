@@ -65,7 +65,7 @@
   "_FRAMBaseChunk._blank_verdict::self.fram.verify_present": {
    "can_raise": "what verify_present() raises (the driver's rows): its TimeoutError is caught there (asy_fram_driver.py:494); a cancel and small fixed allocations remain",
    "verdict": "handled",
-   "proof": "reached from _read() at :236, outside any try: small fixed allocations only (conventions): I.4(a), and a cancel propagates by design"
+   "proof": "reached from _read() at :246, outside any try: small fixed allocations only (conventions): I.4(a), and a cancel propagates by design"
   },
   "_FRAMBaseChunk._blank_verdict::self.fram.lost.is_set": {
    "can_raise": "nothing: Event.is_set() returns its state (extmod/asyncio/event.py:13-14)",
@@ -80,7 +80,7 @@
   "_FRAMBaseChunk._compare_with::self._read_chunk": {
    "can_raise": "what _read_chunk() raises",
    "verdict": "handled",
-   "proof": "its body sits in a try catching Exception; outside it only `async with self.fram` (FRAM_SPI.__aenter__'s rows: a cancel, by design) and the coroutine remain, small fixed allocations only (conventions): I.4(a) (_read_chunk()'s try :271, except :328)"
+   "proof": "its body sits in a try catching Exception; outside it only `async with self.fram` (FRAM_SPI.__aenter__'s rows: a cancel, by design) and the coroutine remain, small fixed allocations only (conventions): I.4(a) (_read_chunk()'s try :281, except :338)"
   },
   "_FRAMBaseChunk._handle_status_bytes::self.crc.length": {
    "can_raise": "nothing: CRCBase.length() returns an attribute (asy_crc_checks.py:148-151)",
@@ -125,7 +125,7 @@
   "_FRAMBaseChunk._read::self._write_chunk": {
    "can_raise": "what _write_chunk() raises",
    "verdict": "handled",
-   "proof": "its body sits in a try catching Exception; outside it only `async with self.fram` (FRAM_SPI.__aenter__'s rows: a cancel, by design) and the coroutine remain, small fixed allocations only (conventions): I.4(a) (_write_chunk()'s try :400, except :423)"
+   "proof": "its body sits in a try catching Exception; outside it only `async with self.fram` (FRAM_SPI.__aenter__'s rows: a cancel, by design) and the coroutine remain, small fixed allocations only (conventions): I.4(a) (_write_chunk()'s try :410, except :433)"
   },
   "_FRAMBaseChunk._read::self._compare_with": {
    "can_raise": "what _compare_with() raises (its rows)",
@@ -135,17 +135,17 @@
   "_FRAMBaseChunk._read_chunk::self._read_progress": {
    "can_raise": "nothing with span -1 (its rows)",
    "verdict": "unreachable",
-   "proof": "called in the except body (:332) with span -1, which sets two flags and returns before the loop (:352-355)"
+   "proof": "called in the except body (:342) with span -1, which sets two flags and returns before the loop (:362-365)"
   },
   "_FRAMBaseChunk._read_into::self._read_chunk": {
    "can_raise": "what _read_chunk() raises",
    "verdict": "handled",
-   "proof": "its body sits in a try catching Exception; outside it only `async with self.fram` (FRAM_SPI.__aenter__'s rows: a cancel, by design) and the coroutine remain, small fixed allocations only (conventions): I.4(a) (:271, :328)"
+   "proof": "its body sits in a try catching Exception; outside it only `async with self.fram` (FRAM_SPI.__aenter__'s rows: a cancel, by design) and the coroutine remain, small fixed allocations only (conventions): I.4(a) (:281, :338)"
   },
   "_FRAMBaseChunk._read_progress::range": {
    "can_raise": "TypeError for a non-int; MemoryError for a range object",
    "verdict": "unreachable",
-   "proof": "span is a non-negative int here (:352 returned for a negative one), and the compiler turns `for x in range(...)` into a counter loop with no range object (py/compile.c:1430, :1563)"
+   "proof": "span is a non-negative int here (:362 returned for a negative one), and the compiler turns `for x in range(...)` into a counter loop with no range object (py/compile.c:1430, :1563)"
   },
   "_FRAMBaseChunk._write::self.fram.lost.is_set": {
    "can_raise": "nothing: Event.is_set() returns its state (extmod/asyncio/event.py:13-14)",
@@ -170,7 +170,7 @@
   "_FRAMBaseChunk._write::self._write_chunk": {
    "can_raise": "what _write_chunk() raises",
    "verdict": "handled",
-   "proof": "its body sits in a try catching Exception; outside it only `async with self.fram` (FRAM_SPI.__aenter__'s rows: a cancel, by design) and the coroutine remain, small fixed allocations only (conventions): I.4(a) (:400, :423)"
+   "proof": "its body sits in a try catching Exception; outside it only `async with self.fram` (FRAM_SPI.__aenter__'s rows: a cancel, by design) and the coroutine remain, small fixed allocations only (conventions): I.4(a) (:410, :433)"
   },
   "_FRAMBaseChunk._write::range": {
    "can_raise": "TypeError for a non-int; MemoryError for a range object",
@@ -220,7 +220,7 @@
   "_FRAMBaseChunk._copy_out::bytearray": {
    "can_raise": "MemoryError (py/gc.c via m_malloc_fail) for a copy of the chunk's data size",
    "verdict": "handled",
-   "proof": "the narrow except MemoryError at :468 prints the failure's own text, persists one ALLOC entry and returns None, the not-read sentinel both read()s pass on (:498, :568); a size that grows with the chunk, so it degrades rather than raising (I.4(a))"
+   "proof": "the narrow except MemoryError at :197 prints the failure's own text, persists one ALLOC entry and returns None, the not-read sentinel both read()s pass on (:498, :568); a size that grows with the chunk, so it degrades rather than raising (I.4(a))"
   },
   "FRAMChunkBuffer.__init__::super": {
    "can_raise": "what RegionBuffer.__init__() raises: its bytearray(size) is caught there (asy_base_classes.py:158-163)",
@@ -248,7 +248,7 @@
    "proof": "small fixed allocations only (conventions): I.4(a)"
   },
   "FRAMChunk.read::self._copy_out": {
-   "can_raise": "what _copy_out() raises: its MemoryError is caught there (:468)",
+   "can_raise": "what _copy_out() raises: its MemoryError is caught there (:197)",
    "verdict": "handled",
    "proof": "the coroutine is small fixed allocations only (conventions): I.4(a)"
   },
@@ -323,7 +323,7 @@
    "proof": "small fixed allocations only (conventions): I.4(a)"
   },
   "FRAMTimestampedChunk.read::self._copy_out": {
-   "can_raise": "what _copy_out() raises: its MemoryError is caught there (:468)",
+   "can_raise": "what _copy_out() raises: its MemoryError is caught there (:197)",
    "verdict": "handled",
    "proof": "the coroutine is small fixed allocations only (conventions): I.4(a)"
   },
