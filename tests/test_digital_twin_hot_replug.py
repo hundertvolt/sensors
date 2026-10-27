@@ -9,10 +9,12 @@ sys.path.insert(0, "digital_twin")  # see tests/test_digital_twin_sgp40.py's own
 sys.path.insert(0, "digital_twin/unixport")  # the UDP shim's directory (digital_twin/README.md "_unix_port_udp_addr_shim.py")
 
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
+from unix_port_idle_poll import skip_idle_flag_polls
 from unix_port_poll_prewarm import prewarm_poll_set
 
 prewarm_poll_set()  # before any poll object is registered (digital_twin/README.md "Known gaps")
 patch_asy_udp_socket_for_unix_port()  # before any UDPSocket is constructed (digital_twin/README.md "_unix_port_udp_addr_shim.py")
+skip_idle_flag_polls()  # no 1 ms poll wait per step while a flag waits, as on rp2 (digital_twin/README.md "unix_port_idle_poll.py")
 
 import asyncio  # noqa: E402 - imported after the prewarm and the UDP shim
 
