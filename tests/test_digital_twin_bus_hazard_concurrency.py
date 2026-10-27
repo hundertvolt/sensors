@@ -426,10 +426,21 @@ async def _sibling_reads(device: str, sibling: str, bus: "asy_i2c_driver.I2C", f
         await asyncio.sleep(0)
 
 
-async def _supervised_graph(module: "ModuleType") -> "asyncio.Task[None]":
-    # The tasks, timers and supervisor main() starts: the shutdown sequence parks and cancels the supervisor first.
+async def _start_graph(module: "ModuleType") -> None:
+    # The tasks and timers main() starts: start_tasks()'s stagger, then the timer sequencer.
     await module.sysfunct.start_tasks(module._collect_task_starters(), task_names=module._collect_task_names())
     await module.sysfunct.start_timers(module._collect_trigger_starters(), module._collect_timer_starters())
+
+
+async def _supervised_graph(module: "ModuleType", clock: "DrivenTime | None" = None) -> "asyncio.Task[None]":
+    # The tasks, timers and supervisor main() starts: the shutdown sequence parks and cancels the supervisor first. With
+    # a clock the stagger and the sequencer run on it, released before the supervisor starts: a first pass run inside
+    # the drive would sit one 2 s check away from where it parks for a command, which real time never makes it wait.
+    if clock is None:
+        await _start_graph(module)
+    else:
+        await _driven(clock, _start_graph(module))
+        clock.release()
     return asyncio.get_event_loop().create_task(module.sysfunct.supervise_tasks())
 
 
@@ -1155,24 +1166,25 @@ def test_the_erase_racing_a_logger_write_never_tears_a_chunk() -> None:
     # A logger write in flight when the erase starts completes; one after it is refused; the erase then zeroes the
     # whole chip, every unit inside it (no address rollover), and no ring reads back torn.
     async def scenario(device: str) -> None:
-        module, _watchdog = await _boot(device, port=_ports.next())
-        sysfunct, chip = module.sysfunct, _chip(module)
-        supervisor = await _supervised_graph(module)
-        _keep_evidence(chip, "fram_before_erase.bin")
-        before = chip.write_count
-        units = {addr: chip.writes_at.get(addr, 0) for addr in range(0, chip.size, _ERASE_UNIT)}
-        racing = asyncio.get_event_loop().create_task(sysfunct.pr.err_s("in flight at the erase", errno=code("E", "TEST_SEED_A")))
-        try:
-            assert await sysfunct.erase_fram() is True
-            await racing
-            assert chip.write_count > before, "the logger write in flight at the erase never landed"
-            await _armed(sysfunct)
-            erased = chip.write_count
-            await sysfunct.pr.err_s("after the erase", errno=code("E", "TEST_SEED_B"))
-            assert chip.write_count == erased, "a logger write after the erase reached the chip"
-        finally:
-            await _tear_down_at_the_armed_reset(sysfunct, supervisor)
-            await _cancel_started_tasks(module)
+        with DrivenTime(*_driven_modules(device), sleeps=True) as clock:  # the boot's waits, released before the race
+            module, _watchdog = await _driven(clock, _boot(device, port=_ports.next()))
+            sysfunct, chip = module.sysfunct, _chip(module)
+            supervisor = await _supervised_graph(module, clock)
+            _keep_evidence(chip, "fram_before_erase.bin")
+            before = chip.write_count
+            units = {addr: chip.writes_at.get(addr, 0) for addr in range(0, chip.size, _ERASE_UNIT)}
+            racing = asyncio.get_event_loop().create_task(sysfunct.pr.err_s("in flight at the erase", errno=code("E", "TEST_SEED_A")))
+            try:
+                assert await sysfunct.erase_fram() is True
+                await racing
+                assert chip.write_count > before, "the logger write in flight at the erase never landed"
+                await _armed(sysfunct)
+                erased = chip.write_count
+                await sysfunct.pr.err_s("after the erase", errno=code("E", "TEST_SEED_B"))
+                assert chip.write_count == erased, "a logger write after the erase reached the chip"
+            finally:
+                await _tear_down_at_the_armed_reset(sysfunct, supervisor)
+                await _cancel_started_tasks(module)
         _assert_no_rollover(chip)
         unwritten = [hex(addr) for addr, count in units.items() if chip.writes_at.get(addr, 0) <= count]
         assert unwritten == [], f"the erase never wrote the units at {unwritten[:4]}: a blank byte there is the old one"
@@ -1214,7 +1226,11 @@ def test_no_scd30_write_reaches_the_chip_while_a_system_command_runs() -> None:
     ports = {word: _ports.next() for word in words}  # a word's port, reused by each device: one a boot overruns the band
 
     async def one(device: str, word: str) -> None:
-        module, _watchdog = await _boot(device, port=ports[word])
+        with DrivenTime(*_driven_modules(device), sleeps=True) as clock:  # the boot's waits, released before the command
+            await _command_on(device, word, clock)
+
+    async def _command_on(device: str, word: str, clock: DrivenTime) -> None:
+        module, _watchdog = await _driven(clock, _boot(device, port=ports[word]))
         scd30 = module.scd30
         ((bus_name, address),) = [(bus, a["address"]) for bus, attachments in sorted(wiring_plan(device)["buses"].items()) for a in attachments if a["driver"] == "scd30"][:1]
         bus = machine.peripheral(bus_name)
@@ -1223,7 +1239,7 @@ def test_no_scd30_write_reaches_the_chip_while_a_system_command_runs() -> None:
         body: dict[str, object] = {}
         for name, kind, _default, low, _high, _choices in scd30.get_cfg_schema():
             body[name] = True if kind == "bool" else (low + 1.0 if kind == "float" else low + 1)
-        supervisor = await _supervised_graph(module)
+        supervisor = await _supervised_graph(module, clock)
         try:
             if word == words[0]:  # once: the healthy window, a whole SCD30 cycle writing no NVM at all
                 writes = chip.nvm_writes
