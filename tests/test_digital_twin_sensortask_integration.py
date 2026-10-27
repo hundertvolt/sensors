@@ -137,9 +137,10 @@ _PASS_YIELD_BOUND = 20000  # loop yields allowed for one wait below; a pass cost
 # The collected heap across the deaths, in-loop with every real task live: measured within 64 B at both GC stages,
 # while keeping each dead task and its exception measured 2.4 KB over the nine after the baseline (2026-10-14).
 _HEAP_DRIFT_BYTES = 2048
-# Per death, the median of every pairwise slope over the settled readings (Theil-Sen), so one transient sets nothing: 49
-# healthy runs read at most 10.7 B, a planted 16-byte bytearray per death at least 53 B (agent, 2026-10-21).
-_DRIFT_SLOPE_BYTES = 32  # limits: two transients at the last two deaths read 38 B; three mid-window ones bring a plant to 32 B
+# Per death, the median of every pairwise slope over the settled readings (Theil-Sen), each death on the driven clock
+# reading the same heap: 36 healthy runs, six devices at both stages, read 0 B, a planted 32 or 64 B per death exactly
+# that (agent, 2026-10-27).
+_DRIFT_SLOPE_BYTES = 32  # one GC block a death on the twin, the least a leak can retain
 _SETTLED_DEATH = 3  # the readings before it still settle: the second and third hold up to 0.8 KB the fourth does not
 # @tunable l2.sensortask_integration_heap_floor_reads = 3
 _FLOOR_READS = 3
@@ -701,12 +702,12 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
     drift = [0] * _STATUS_DEATHS  # sized up front: a growing list would read as heap drift
     resets = machine.reset_count
 
-    async def scenario() -> None:
-        watchdog = await _boot(_ports.next())
+    async def scenario(clock: DrivenTime) -> None:
+        watchdog = await _driven(clock, "the boot", _boot(_ports.next()))
         sysfunct: SystemService = module.sysfunct
         assert sysfunct.pr.set_level(0)
-        # A linked station, its link awaited below: with no SSID the hotspot fallback switches the radio and binds the
-        # captive DNS 8-14 s in, a one-time step a slow runner's deaths straddle (agent, 2026-10-14).
+        # A linked station, its link awaited below: with no SSID the hotspot fallback would switch the radio and bind the
+        # captive DNS instead (agent, 2026-10-14).
         persisted, _results = await module.conn.cfgmgr.write_config({"SSID": "TestNet"})
         assert persisted
         task_starters = module._collect_task_starters()
@@ -726,9 +727,11 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
         supervisor: asyncio.Task[None] | None = None
         try:
             await sysfunct.start_tasks(task_starters, task_names=module._collect_task_names())
-            supervisor = asyncio.get_event_loop().create_task(sysfunct.supervise_tasks())
             assert await _yield_until(lambda: all(starts)), starts
-            assert await _wait_until(lambda: module.conn._conn_phase == _STA_ESTABLISHED, timeout_s=_WAIT_TIMEOUT_S), "the station never linked"
+            # Linked on the clock before the supervisor runs, whose passes are a yield each: under them it never settles.
+            # The deaths then pass no virtual time, so every other task stays parked and each death reads the same heap.
+            assert await _wait_until(lambda: module.conn._conn_phase == _STA_ESTABLISHED, timeout_s=_WAIT_TIMEOUT_S, clock=clock), "the station never linked"
+            supervisor = asyncio.get_event_loop().create_task(sysfunct.supervise_tasks())
             assert asyncio.get_event_loop().get_exception_handler() is unix_port_unretrieved_report.report_unretrieved
             sysfunct._uptime = _StatusFault(real_uptime, lambda: latest[status_idx])  # type: ignore[assignment]
             _fill_wire_logs()
@@ -763,7 +766,7 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
             if module.conn._dns_server_task is not None:
                 await cancel(module.conn._dns_server_task)
 
-    run(scenario())
+    run(_on_driven_clock(scenario))
     assert (tap.reported, tap.traced, tap.wrong) == (_STATUS_DEATHS, _STATUS_DEATHS, []), (tap.reported, tap.traced, tap.wrong)
     assert machine.reset_count == resets  # the restart budget never escalated to a reset
     # The first reading still holds 0.9 KB the second no longer does (measured at both GC stages, 2026-10-14): the
