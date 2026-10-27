@@ -56,9 +56,25 @@ _DRIVER_JOIN_S = 90.0
 
 
 @pytest.mark.provokes_log(
-    "each probe runs on heaps shaped below its need: a streamed source that fails there logs CALLBACK, over a scratch-config boot that logs CONFIG_LOST",
+    "each probe runs on heaps shaped below its need, over a scratch-config boot that logs CONFIG_LOST: a streamed source"
+    " that fails there logs CALLBACK, a config read logs its module's CHIP_GET or config-read entry, and a history write"
+    " whose own buffers do not fit logs LOG_RAM_ONLY",
     ("WEBSERVER", "E", "CALLBACK"),
+    ("WEBSERVER", "E", "LOG_RAM_ONLY"),
     ("SYSTEM", "W", "CONFIG_LOST"),
+    ("BMP3XX", "E", "CHIP_GET"),
+    ("ISL29125", "E", "CHIP_GET"),
+    ("SCD30", "E", "CHIP_GET"),
+    ("BMP3XX", "E", "CFG_GET_RAISED"),
+    ("ISL29125", "E", "CFG_GET_RAISED"),
+    ("SCD30", "E", "CFG_GET_RAISED"),
+    ("SGP40", "E", "CFG_GET_RAISED"),
+    ("WIFI", "E", "CFG_GET_RAISED"),
+    ("NTP", "E", "CFG_GET_RAISED"),
+    ("NOTIFY", "E", "CFG_GET_RAISED"),
+    ("BMP3XX", "E", "CFG_CALLBACK_RAISED"),
+    ("ISL29125", "E", "CFG_CALLBACK_RAISED"),
+    ("WIFI", "E", "CFG_CALLBACK_RAISED"),
 )
 @pytest.mark.ends_unreachable
 def test_every_source_and_route_fits_a_small_free_run(isolated_board: "Board", result_note: "_load.Note") -> None:

@@ -5003,8 +5003,8 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests_hardware/bench/test_sensor_config_push_over_real_hardware.py:149 | test_sgp40_reset_voc_command_push_over_real_rest | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_sensor_config_push_over_real_hardware.py:165 | test_isl29125_calibrate_command_push_over_real_rest | bench (hardware) | biting | ns_seed_text | ns_seed_text: biting: the seed word is about an input, a value, a lock or a typo, not a logged code |
 | tests_hardware/bench/test_sensor_config_push_over_real_hardware.py:203 | test_scd30_altitude_takes_effect_while_ambient_pressure_is_zero | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_serving_heap_at_default_gc.py:64 | test_every_source_and_route_fits_a_small_free_run | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_serving_heap_at_default_gc.py:87 | test_serving_sweep_at_the_reactive_default | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_serving_heap_at_default_gc.py:80 | test_every_source_and_route_fits_a_small_free_run | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_serving_heap_at_default_gc.py:103 | test_serving_sweep_at_the_reactive_default | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_system_commands_over_rest.py:116 | test_config_reset_over_rest_brings_back_the_defaults | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_system_commands_over_rest.py:160 | test_fram_erase_over_rest_blanks_every_error_log | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_system_commands_over_rest.py:179 | test_near_miss_action_words_do_nothing_over_rest | bench (hardware) | biting | — | biting as is |
