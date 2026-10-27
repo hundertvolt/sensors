@@ -2958,7 +2958,7 @@ def test_set_dict_cfg_old_value_snapshot_read_exception_falls_back_to_default() 
         reader._push_callbacks["SampleInterval"] = push_fail
         results = run(reader._set_dict_cfg({"SampleInterval": 42}, _TEST_SCHEMA_SI))
         assert results == {"SampleInterval": "Failed"}
-        assert reader.pr._err_count >= 1  # the snapshot-read failure was logged, not silently swallowed
+        assert (reader.pr._err_count, _entries(reader, "E", "CFG_SNAPSHOT_RAISED")) == (1, 1)  # the snapshot-read failure, logged once
         # _get_dict_cfg would hit the same raising override, so verify directly against the real
         # ConfigManager instead of through the reader's own (overridden) getter path.
         assert run(reader.cfgmgr.get_dict(["SampleInterval"])) == {"SampleInterval": 2}
@@ -2970,12 +2970,24 @@ def test_recover_failed_push_unknown_key_is_a_defensive_noop() -> None:
     # Unreachable via _set_dict_cfg's normal flow, where a key only reaches _recover_failed_push after being
     # validated present in cfg_vals, but exercised directly like this file's other "shouldn't happen"
     # branches - proving the defensive early return holds, not just that it is never hit in practice.
+    class WriteCountingReader(SensorReaderConfig):
+        _write_calls = 0  # rebound per instance by the first `+= 1`, as FlakyOnSecondWriteReader's below
+
+        async def _set_mgr_cfg(
+            self, data: "JsonMapping", cfg_vals: "cm.ConfigSchema",
+        ) -> "tuple[bool, cm.WriteValidity]":
+            self._write_calls += 1
+            return await super()._set_mgr_cfg(data, cfg_vals)
+
     path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_recoverunknown.cfg")
     try:
-        reader = SensorReaderConfig(Meas(20.0, 50), "recoverunknown", _TEST_SCHEMA_SI, max_module_error=3, cfg_path=path_prefix)
+        reader = WriteCountingReader(Meas(20.0, 50), "recoverunknown", _TEST_SCHEMA_SI, max_module_error=3, cfg_path=path_prefix)
         run(reader.cfgmgr.setup())
-        run(reader._recover_failed_push("NoSuchField", {}, _TEST_SCHEMA_SI, fields=schema_dict(_TEST_SCHEMA_SI)))  # must not raise
+        run(reader._recover_failed_push("NoSuchField", {"NoSuchField": 7}, _TEST_SCHEMA_SI, fields=schema_dict(_TEST_SCHEMA_SI)))
+        # No correction write, no entry in either log, the stored config as it was.
+        assert (reader._write_calls, reader.pr._err_count, reader.cfgmgr.pr._err_count) == (0, 0, 0)
+        assert run(reader.cfgmgr.get_dict(["SampleInterval"])) == {"SampleInterval": 2}
     finally:
         _remove(path_prefix + "config_recoverunknown.cfg")
 
@@ -3010,7 +3022,7 @@ def test_set_dict_cfg_recover_failed_push_correction_write_exception_is_caught()
         reader._push_callbacks["SampleInterval"] = push_fail
         results = run(reader._set_dict_cfg({"SampleInterval": 42}, _TEST_SCHEMA_SI))
         assert results == {"SampleInterval": "Failed"}
-        assert reader.pr._err_count >= 1
+        assert (reader.pr._err_count, _entries(reader, "E", "RECOVERY_WRITE_RAISED")) == (1, 1)  # the correction write's failure, logged once
     finally:
         _remove(path_prefix + "config_pushfailcorrectionraise.cfg")
 

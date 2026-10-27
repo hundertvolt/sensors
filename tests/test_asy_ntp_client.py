@@ -1829,18 +1829,30 @@ class _SteppedClock(DrivenTime):
 
 
 def test_ntp_time_hours_counter_missing_config_falls_back_to_12h_default_without_raising() -> None:
-    client = _make_invalid_cfg_client()
+    # Synced, with no config to read: the tick at 12 h of measured time is due, the one 10 s before it is not.
+    with _SteppedClock() as clock:
+        client = _make_invalid_cfg_client()
 
-    async def scenario() -> None:
-        task = asyncio.create_task(client._refresh_loop())
-        await tick(client._ntp_timer_trigger_event, 1)
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+        async def fired() -> bool:
+            try:
+                await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
+            except asyncio.TimeoutError:
+                return False
+            return True
 
-    run(scenario())  # must not raise despite the missing config
+        async def scenario() -> "tuple[bool, bool]":
+            await client._set_synced(value=True)
+            task = asyncio.create_task(client._refresh_loop())
+            await asyncio.sleep(0)  # the loop starts its cadence before the first tick's time passes
+            await tick(client._ntp_timer_trigger_event, 1, clock, (12 * 3600 - _CHECK_INTERVAL_S) * 1000)
+            early = await fired()
+            await tick(client._ntp_timer_trigger_event, 1, clock, _CHECK_INTERVAL_S * 1000)
+            due = await fired()
+            await cancel(task)
+            return early, due
+
+        assert run(scenario()) == (False, True)
+    assert _slots(client) == (2, [code("E", "CFG_READ")])  # each tick's missing-config entry, one slot for the repeat
 
 
 def test_ntp_time_hours_counter_triggers_sync_immediately_when_not_yet_synced() -> None:

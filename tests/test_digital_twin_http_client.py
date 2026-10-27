@@ -390,8 +390,9 @@ def test_drain_exact_raises_incomplete_response_on_premature_stream_closure() ->
 
 
 def test_drain_exact_retries_a_spurious_none_read_instead_of_treating_it_as_eof() -> None:
-    reader = _ChunkedReader([None, b"ab", None, b"c"])
-    run_timed(http_client._drain_exact(reader, 3), _RUN_BOUND_S)  # no exception raised is the assertion
+    reader = _EofReader([None, b"ab", None, b"cNEXT"])
+    result = run_timed(http_client._drain_exact(reader, 3), _RUN_BOUND_S)
+    assert (result, len(reader.requests), reader.remaining()) == (None, 4, b"NEXT")  # both None reads retried, the body read to its last byte
 
 
 def test_drain_exact_bounds_its_own_scratch_buffer_to_the_shared_chunk_size() -> None:
