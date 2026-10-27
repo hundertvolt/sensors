@@ -546,6 +546,16 @@
    "can_raise": "what the caller's callback raises: the shutdown's _own_feed (asy_system_service.py:464)",
    "verdict": "handled",
    "proof": "inside the shutdown sequence's try (asy_system_service.py:445, except Exception :498)"
+  },
+  "FRAMManager.get_error_counter::self.pr.get_log": {
+   "can_raise": "what PrintLogHistory.get_log() raises (asy_print_log.py's rows): MemoryError growing its two lists to the configured history_length, and a small fixed allocation",
+   "verdict": "handled",
+   "proof": "get_error_counter() runs only inside WebserverService._write_errcount_entry() (handed over at asy_webserver_service.py:720, awaited at :1004), whose except Exception at :1005 logs the failure and writes this module's entry as unavailable"
+  },
+  "FRAMManager.reset_error_counter::self.pr.reset": {
+   "can_raise": "what PrintLogHistory.reset() or PrintLogHistoryStore.reset() raises (asy_print_log.py's rows): small fixed allocations",
+   "verdict": "handled",
+   "proof": "reset_error_counter() is called only by the ResetErrors fan-out, asyncio.gather(..., return_exceptions=True) at asy_webserver_service.py:871, which returns the raise as this store's outcome (extmod/asyncio/funcs.py:131-133); :876-880 log it and answer the key Failed"
   }
  }
 }

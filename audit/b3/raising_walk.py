@@ -24,6 +24,12 @@ class Walk(ast.NodeVisitor):
         for s in n.body: self.visit(s)
         self.handlers = saved; self.fn.pop()
     visit_AsyncFunctionDef = visit_FunctionDef
+    def visit_Lambda(self, n):  # its own scope as a nested def: the body runs later (a Timer callback), outside the enclosing try
+        for d in n.args.defaults + [d for d in n.args.kw_defaults if d is not None]: self.visit(d)
+        self.fn.append(self.fn[-1] + ".<lambda>")
+        saved, self.handlers = self.handlers, []
+        self.visit(n.body)
+        self.handlers = saved; self.fn.pop()
     def visit_ClassDef(self, n):
         self.fn.append(n.name)
         for s in n.body: self.visit(s)
@@ -54,8 +60,22 @@ def load_verdicts():  # module -> {"raises": {function: entry}, "calls": {"funct
     for m in MODULES:
         path = VERDICTS / (m[:-3] + ".json")
         data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-        out[m] = {"raises": data.get("raises", {}), "calls": data.get("calls", {})}
+        out[m] = {"raises": data.get("raises", {}), "calls": data.get("calls", {}), "conventions": data.get("conventions", "")}
     return out
+
+
+# A transitive call resolves to its callee's own rows: a receiver below names the classes it can be, a bare name a module function.
+RECEIVERS = {"self.pr": ("asy_print_log.py", ("PrintLog", "PrintLogHistory", "PrintLogHistoryStore")), "self._uptime": ("asy_base_classes.py", ("TickSeconds",)),
+             "self._boot_signature": ("asy_base_classes.py", ("LockedValue",)), "buf": ("asy_base_classes.py", ("RegionBuffer",))}
+TERMINAL = ("handled", "unreachable", "inherently safe", "defect")
+
+
+def callee_targets(callee, qualnames):  # [(module, qualname)] a callee can run, or [] when the walk cannot name it
+    recv, _, name = callee.rpartition(".")
+    if not recv:
+        return [(m, name) for m in MODULES if name in qualnames[m]]
+    mod, classes = RECEIVERS.get(recv, (None, ()))
+    return [(mod, f"{c}.{name}") for c in classes if f"{c}.{name}" in qualnames.get(mod, ())]
 
 
 RULES = [  # (callee test, can raise, verdict): first match wins; "open" rows need the campaign's per-site proof
@@ -89,11 +109,13 @@ def main():
     tree, out = Path(sys.argv[1]), Path(sys.argv[2])
     check = "--check" in sys.argv[3:]
     verdicts = load_verdicts()
-    defined = set()
+    defined, qualnames = set(), {}
     for m in MODULES:
         tree_ast = ast.parse((tree / "src" / m).read_text(encoding="utf-8"))
         Walk(m).visit(tree_ast)
         defined |= {n.name for n in ast.walk(tree_ast) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        qualnames[m] = {f"{c.name}.{f.name}" for c in tree_ast.body if isinstance(c, ast.ClassDef) for f in c.body if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        qualnames[m] |= {f.name for f in tree_ast.body if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))}
     groups = collections.OrderedDict()
     for r in rows:
         if r["kind"] != "call" or r["broad"]:
@@ -104,23 +126,50 @@ def main():
     used = {(mod, f"{fn}::{callee}") for mod, callee, fn in groups if fn is not None}
     used |= {(r["mod"], r["fn"]) for r in rows if r["kind"] == "raise"}
     stale = [f"{m} {k}" for m in MODULES for part in ("raises", "calls") for k in verdicts[m][part] if (m, k) not in used]
-    lines, counts, unreachable = [], collections.Counter(), []
-    for (mod, callee, fn), rs in groups.items():
-        last = callee.split(".")[-1]
-        sites = ", ".join(f":{r['line']}" for r in rs[:12]) + (f" (+{len(rs) - 12})" if len(rs) > 12 else "")
-        narrow = sorted({n for r in rs for names, _ in r["caught"] for n in names})
+    def base_verdict(key):  # (can raise, verdict word, proof) from the hand file or RULES, before a transitive group resolves
+        mod, callee, fn = key
         if fn is not None:
             entry = verdicts[mod]["calls"][f"{fn}::{callee}"]
-            what, word, proof = entry["can_raise"], entry["verdict"], entry["proof"]
-            if word == "unreachable":
-                guards = sorted({f"{'/'.join(names)} (:{', :'.join(map(str, hl))})" for r in rs for names, hl in r["caught"]})
-                unreachable.append(f"| `src/{mod}{sites.split(',')[0]}` | {fn} | `{callee}` at {sites} | {what} | {proof} | {'; '.join(guards) or 'none'} |")
-        else:
-            rule = next(((what, verdict) for test, what, verdict in RULES if test(callee)), None)
-            if rule is None and last in defined:
-                rule = ("what the callee raises", "transitive: the callee's own rows here")
-            what, verdict = rule or ("not classified", "open")
-            word, proof = verdict.split(":")[0], verdict.partition(": ")[2] or "-"
+            return entry["can_raise"], entry["verdict"], entry["proof"]
+        rule = next(((what, verdict) for test, what, verdict in RULES if test(callee)), None)
+        if rule is None and callee.split(".")[-1] in defined:
+            rule = ("what the callee raises", "transitive: the callee's own rows here")
+        what, verdict = rule or ("not classified", "open")
+        return what, verdict.split(":")[0], verdict.partition(": ")[2] or "-"
+
+    memo, cycles = {}, []
+    def target_words(tmod, q, seen):  # every verdict word of q's own rows: its raises and its call groups, nested defs excluded
+        words = [verdicts[tmod]["raises"].get(q, {"verdict": "open"})["verdict"] for r in rows if (r["mod"], r["kind"], r["fn"]) == (tmod, "raise", q)]
+        return words + [resolved(k, seen)[1] for k, rs in groups.items() if k[0] == tmod and any(r["fn"] == q for r in rs)]
+    def resolved(key, seen=frozenset()):
+        if key in memo:
+            return memo[key]
+        what, word, proof = base_verdict(key)
+        if word == "transitive":
+            if key in seen:
+                cycles.append(key)
+                return what, word, "a call cycle"
+            targets = callee_targets(key[1], qualnames)
+            per = {t: collections.Counter(target_words(*t, seen | {key})) for t in targets}
+            left = [f"{m[:-3]} {q}" for (m, q), ws in per.items() if set(ws) - set(TERMINAL)]
+            if targets and not left:
+                total = sum(per.values(), collections.Counter())
+                named = ", ".join(f"{m[:-3]} {q}" for m, q in targets)
+                what, word = "what the callee raises (its rows)", "handled"
+                proof = f"resolved against the callee's rows: {named}, every one terminal ({', '.join(f'{k} {v}' for k, v in sorted(total.items())) or 'none'}); what leaves it is caught where this file's conventions place this function's caller"
+            else:
+                proof = "the walk cannot name the callee" if not targets else "left open in the callee: " + ", ".join(left)
+        memo[key] = (what, word, proof)
+        return memo[key]
+
+    lines, counts, unreachable = [], collections.Counter(), []
+    for (mod, callee, fn), rs in groups.items():
+        sites = ", ".join(f":{r['line']}" for r in rs[:12]) + (f" (+{len(rs) - 12})" if len(rs) > 12 else "")
+        narrow = sorted({n for r in rs for names, _ in r["caught"] for n in names})
+        what, word, proof = resolved((mod, callee, fn))
+        if fn is not None and word == "unreachable":
+            guards = sorted({f"{'/'.join(names)} (:{', :'.join(map(str, hl))})" for r in rs for names, hl in r["caught"]})
+            unreachable.append(f"| `src/{mod}{sites.split(',')[0]}` | {fn} | `{callee}` at {sites} | {what} | {proof} | {'; '.join(guards) or 'none'} |")
         counts[word] += len(rs)
         lines.append(f"| {mod}{sites.split(',')[0]} | {rs[0]['fn']}{' +' + str(len({r['fn'] for r in rs}) - 1) if len({r['fn'] for r in rs}) > 1 else ''} | `{callee}` at {sites}{'; narrow except ' + '/'.join(narrow) if narrow else ''} | {what} | {word} | {proof} |")
     by_line = {(r["mod"], r["line"]): r for r in rows}
@@ -135,7 +184,9 @@ def main():
     for m in MODULES:
         body.append(f"| {m} | {summary[(m, 'call', 'broad')]} | {summary[(m, 'call', 'narrow')]} | {summary[(m, 'call', 'none')]} | {sum(v for k, v in summary.items() if k[0] == m and k[1] == 'raise')} |")
     body += ["", "Rows outside a broad `try`, by verdict: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())) + ".", "",
-             "## Raises", "", "| module:line | function | call or raise | can raise (pinned source) | verdict | proof or action |", "|---|---|---|---|---|---|"]
+             "## Shared classes (each verdict file's `conventions`)", "", "What every row of a module shares, stated once in its verdict file and not repeated per row.", ""]
+    body += [f"- `{m}`: {verdicts[m]['conventions']}" for m in MODULES if verdicts[m]["conventions"]]
+    body += ["", "## Raises", "", "| module:line | function | call or raise | can raise (pinned source) | verdict | proof or action |", "|---|---|---|---|---|---|"]
     for r in raises:
         entry = verdicts[r["mod"]]["raises"].get(r["fn"], {"verdict": "open", "proof": "-"})
         shown = "raise" if r["text"].startswith("raise ") else "raise " + r["text"]
@@ -150,6 +201,7 @@ def main():
     e51_new = splice_e51(e51_old, e51_section(unreachable)) if e51_old is not None and (unreachable or E51_START in e51_old) else e51_old
     if unreachable and e51_old is None:
         stale.append(f"no {e51} to hold the {len(unreachable)} unreachable rows")
+    stale += [f"{m} {c} in {fn or 'module'}: a call cycle the resolution cannot settle" for m, c, fn in cycles]
     if stale:
         print("stale or unplaceable verdicts (nothing written):\n  " + "\n  ".join(stale))
         sys.exit(1)
@@ -161,7 +213,7 @@ def main():
     if e51_new != e51_old:
         e51.write_text(e51_new, encoding="utf-8")
     print(len(rows), "sites;", len(lines), "groups;", dict(counts))
-    for key in (("asy_base_classes.py", 514), ("asy_base_classes.py", 696), ("asy_fram_manager.py", 817)):
+    for key in (("asy_base_classes.py", 514), ("asy_base_classes.py", 696), ("asy_fram_manager.py", 828)):
         r = by_line.get(key)
         print(key, r and (r["broad"], r["caught"]))
 

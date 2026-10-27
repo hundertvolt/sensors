@@ -43,7 +43,7 @@
    "proof": "small fixed, at boot: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
   },
   "SystemService.__init__::asyncio.ThreadSafeFlag": {
-   "can_raise": "MemoryError for the flag (extmod/asyncio/event.py:44-46)",
+   "can_raise": "MemoryError for the flag (extmod/asyncio/event.py:45-47)",
    "verdict": "handled",
    "proof": "small fixed, at boot: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
   },
@@ -87,10 +87,10 @@
    "verdict": "unreachable",
    "proof": ""
   },
-  "SystemService._reboot::self._reset_due.set": {
-   "can_raise": "nothing: ThreadSafeFlag.set() stores one existing member (extmod/asyncio/event.py:57-58)",
+  "SystemService._reboot.<lambda>::self._reset_due.set": {
+   "can_raise": "nothing: ThreadSafeFlag.set() stores one existing member (extmod/asyncio/event.py:54-55)",
    "verdict": "unreachable",
-   "proof": "it runs in the lambda the timer schedules, not here: a soft Timer callback goes through mp_sched_schedule (ports/rp2/machine_timer.c:53, shared/runtime/mpirq.c:105) and the scheduler calls it in mp_call_function_1_protected (py/scheduler.c:115, py/runtime_utils.c:30-40), outside the narrow except the walk places it in"
+   "proof": "the lambda runs later, outside the try around the arm: a soft Timer callback goes through mp_sched_schedule (ports/rp2/machine_timer.c:53, shared/runtime/mpirq.c:105) and the scheduler calls it in mp_call_function_1_protected (py/scheduler.c:115, py/runtime_utils.c:30-40), where the store allocates nothing"
   },
   "SystemService._reboot::self._reset_task.cancel": {
    "can_raise": "RuntimeError for cancelling the running task (extmod/modasyncio.c:203-207); it allocates nothing",
@@ -193,7 +193,7 @@
    "proof": "fixed in this lane: the deadline was spent before the unpause, so a raise there left FRAM paused for the boot; it is now spent after it (:532) and the raise ends the supervised task (:326), whose restart unpauses (test_an_auto_unpause_that_raises_keeps_its_deadline_for_the_restarted_loop)"
   },
   "SystemService._status_loop::self._uptime_event.wait": {
-   "can_raise": "MemoryError for its generator and its IOQueue entry (extmod/asyncio/event.py:63-66; core.py:75-88: a list, a map entry, a poll registration)",
+   "can_raise": "MemoryError for its generator and its IOQueue entry (extmod/asyncio/event.py:60-63; core.py:75-88: a list, a map entry, a poll registration)",
    "verdict": "handled",
    "proof": "small fixed, in the supervised status task: :326's except Exception in _log_dead_task(), then the restart (conventions)"
   },
@@ -387,13 +387,13 @@
    "verdict": "handled",
    "proof": "small fixed, at boot: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
   },
-  "SystemService.start_timers::self._sequencer_flag.set": {
-   "can_raise": "nothing: ThreadSafeFlag.set() stores one existing member (extmod/asyncio/event.py:57-58)",
+  "SystemService.start_timers.<lambda>::self._sequencer_flag.set": {
+   "can_raise": "nothing: ThreadSafeFlag.set() stores one existing member (extmod/asyncio/event.py:54-55)",
    "verdict": "unreachable",
-   "proof": "it runs in the lambda the timer schedules, not here: a soft Timer callback goes through mp_sched_schedule (ports/rp2/machine_timer.c:53, shared/runtime/mpirq.c:105) and the scheduler calls it in mp_call_function_1_protected (py/scheduler.c:115, py/runtime_utils.c:30-40), outside the narrow except the walk places it in"
+   "proof": "the lambda runs later, outside the try around the arm: a soft Timer callback goes through mp_sched_schedule (ports/rp2/machine_timer.c:53, shared/runtime/mpirq.c:105) and the scheduler calls it in mp_call_function_1_protected (py/scheduler.c:115, py/runtime_utils.c:30-40), where the store allocates nothing"
   },
   "SystemService.start_timers::self._sequencer_flag.wait": {
-   "can_raise": "MemoryError for its generator and its IOQueue entry (extmod/asyncio/event.py:63-66; core.py:75-88)",
+   "can_raise": "MemoryError for its generator and its IOQueue entry (extmod/asyncio/event.py:60-63; core.py:75-88)",
    "verdict": "handled",
    "proof": "small fixed, at boot: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
   },
@@ -418,7 +418,7 @@
    "proof": ""
   },
   "SystemService.start_uptime_timer::self._uptime_event.set": {
-   "can_raise": "nothing: ThreadSafeFlag.set() stores one existing member (extmod/asyncio/event.py:57-58)",
+   "can_raise": "nothing: ThreadSafeFlag.set() stores one existing member (extmod/asyncio/event.py:54-55)",
    "verdict": "unreachable",
    "proof": "a timer starter, reached through _run_timer_starter()'s try catching Exception (:436)"
   },
@@ -428,7 +428,7 @@
    "proof": "in phase BOOT_DONE: the generated entry's except BaseException, where record_loop_end() writes 22 (conventions)"
   },
   "SystemService.supervise_tasks::self._never.wait": {
-   "can_raise": "MemoryError for its generator (extmod/asyncio/event.py:29-36, a plain generator function)",
+   "can_raise": "MemoryError for its generator (extmod/asyncio/event.py:28-35, a plain generator function)",
    "verdict": "handled",
    "proof": "as create_task at :809"
   },
@@ -486,6 +486,16 @@
    "can_raise": "what _write_region() raises: nothing (mem_backup() of 0 or 1, three word stores)",
    "verdict": "unreachable",
    "proof": "its words stay below 2**30 (:80-81), so no store allocates, into indices 0-2 of a 3- or 4-word region"
+  },
+  "SystemService.get_error_counter::self.pr.get_log": {
+   "can_raise": "what PrintLogHistory.get_log() raises (asy_print_log.py's rows): MemoryError growing its two lists to the configured history_length, and a small fixed allocation",
+   "verdict": "handled",
+   "proof": "get_error_counter() runs only inside WebserverService._write_errcount_entry() (handed over at asy_webserver_service.py:720, awaited at :1004), whose except Exception at :1005 logs the failure and writes this module's entry as unavailable"
+  },
+  "SystemService.reset_error_counter::self.pr.reset": {
+   "can_raise": "what PrintLogHistory.reset() or PrintLogHistoryStore.reset() raises (asy_print_log.py's rows): small fixed allocations",
+   "verdict": "handled",
+   "proof": "reset_error_counter() is called only by the ResetErrors fan-out, asyncio.gather(..., return_exceptions=True) at asy_webserver_service.py:871, which returns the raise as this store's outcome (extmod/asyncio/funcs.py:131-133); :876-880 log it and answer the key Failed"
   }
  }
 }

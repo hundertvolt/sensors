@@ -222,10 +222,10 @@
    "verdict": "handled",
    "proof": "the MemoryError by the except at :388 (console() line, returns False), the OSError by the except at :391 (logged unless quiet, returns False); the parse errors cannot occur: the arguments are the literal 1000, the timer's own PERIODIC and a callable"
   },
-  "arm_tick_timer::flag.set": {
+  "arm_tick_timer.<lambda>::flag.set": {
    "can_raise": "nothing: ThreadSafeFlag.set() stores 1 into the `state` attribute its __init__ created (extmod/asyncio/event.py:46-55), replacing a slot",
    "verdict": "unreachable",
-   "proof": "the walk places the lambda's body inside the try, but it runs later as the Timer callback, outside it; there the zero-argument method call keeps its frame on the C stack (py/objfun.c:268-287) and the store allocates nothing, so the callback cannot raise"
+   "proof": "the lambda runs later as the Timer callback, outside the try around timer.init(); there the zero-argument method call keeps its frame on the C stack (py/objfun.c:268-287) and the store allocates nothing, so the callback cannot raise"
   },
   "arm_tick_timer::console": {
    "can_raise": "nothing (console()'s rows, asy_print_log.py:461, :463)",

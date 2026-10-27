@@ -23,7 +23,7 @@
    "proof": "small fixed, once at construction: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
   },
   "ConfigManager.__init__::self._commit_ready.set": {
-   "can_raise": "nothing: Event.set() moves each waiter to the run queue and stores state (extmod/asyncio/event.py:17-23); TaskQueue pop and push allocate nothing (extmod/modasyncio.c)",
+   "can_raise": "nothing: Event.set() moves each waiter to the run queue and stores state (extmod/asyncio/event.py:16-22); TaskQueue pop and push allocate nothing (extmod/modasyncio.c)",
    "verdict": "unreachable",
    "proof": "a just-built Event has no waiter; the store replaces an existing member, so no instance map grows"
   },
@@ -83,7 +83,7 @@
    "proof": "both callers hold it: setup() :594 in its try catching (MemoryError, OSError) (except :596) and _flush_staged() :403 in its try catching (MemoryError, OSError, ValueError) (except :405); the with-exit's close, where littlefs commits (lfs2.c:3473), raises into the same catches"
   },
   "ConfigManager.commit::self._commit_ready.set": {
-   "can_raise": "nothing: Event.set() moves each waiter to the run queue and stores state (extmod/asyncio/event.py:17-23); TaskQueue pop and push allocate nothing (extmod/modasyncio.c)",
+   "can_raise": "nothing: Event.set() moves each waiter to the run queue and stores state (extmod/asyncio/event.py:16-22); TaskQueue pop and push allocate nothing (extmod/modasyncio.c)",
    "verdict": "unreachable",
    "proof": "the store replaces an existing member, so no instance map grows"
   },
@@ -103,7 +103,7 @@
    "proof": ""
   },
   "ConfigManager.flush_pending::self._commit_ready.set": {
-   "can_raise": "nothing: Event.set() moves each waiter to the run queue and stores state (extmod/asyncio/event.py:17-23); TaskQueue pop and push allocate nothing (extmod/modasyncio.c)",
+   "can_raise": "nothing: Event.set() moves each waiter to the run queue and stores state (extmod/asyncio/event.py:16-22); TaskQueue pop and push allocate nothing (extmod/modasyncio.c)",
    "verdict": "unreachable",
    "proof": "the store replaces an existing member, so no instance map grows"
   },
@@ -248,12 +248,12 @@
    "proof": "small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions); a REST route's call: Microdot's except Exception (ext/microdot.py:1533) and the webserver's errorhandler (asy_webserver_service.py:791) (conventions)"
   },
   "ConfigManager.write_config::self._commit_ready.clear": {
-   "can_raise": "nothing: Event.clear() stores one existing member (extmod/asyncio/event.py:25-26)",
+   "can_raise": "nothing: Event.clear() stores one existing member (extmod/asyncio/event.py:24-25)",
    "verdict": "unreachable",
    "proof": ""
   },
   "ConfigManager.write_config::self._commit_ready.set": {
-   "can_raise": "nothing: Event.set() moves each waiter to the run queue and stores state (extmod/asyncio/event.py:17-23); TaskQueue pop and push allocate nothing (extmod/modasyncio.c)",
+   "can_raise": "nothing: Event.set() moves each waiter to the run queue and stores state (extmod/asyncio/event.py:16-22); TaskQueue pop and push allocate nothing (extmod/modasyncio.c)",
    "verdict": "unreachable",
    "proof": "the store replaces an existing member, so no instance map grows"
   },
@@ -461,6 +461,16 @@
    "can_raise": "nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033)",
    "verdict": "unreachable",
    "proof": "one argument; no allocation"
+  },
+  "ConfigManager.get_error_counter::self.pr.get_log": {
+   "can_raise": "what PrintLogHistory.get_log() raises (asy_print_log.py's rows): MemoryError growing its two lists to the configured history_length, and a small fixed allocation",
+   "verdict": "handled",
+   "proof": "get_error_counter() runs only inside WebserverService._write_errcount_entry() (handed over at asy_webserver_service.py:720, awaited at :1004), whose except Exception at :1005 logs the failure and writes this module's entry as unavailable"
+  },
+  "ConfigManager.reset_error_counter::self.pr.reset": {
+   "can_raise": "what PrintLogHistory.reset() or PrintLogHistoryStore.reset() raises (asy_print_log.py's rows): small fixed allocations",
+   "verdict": "handled",
+   "proof": "reset_error_counter() is called only by the ResetErrors fan-out, asyncio.gather(..., return_exceptions=True) at asy_webserver_service.py:871, which returns the raise as this store's outcome (extmod/asyncio/funcs.py:131-133); :876-880 log it and answer the key Failed"
   }
  }
 }
