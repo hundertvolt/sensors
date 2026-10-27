@@ -26,6 +26,7 @@ _TOMLS = [*(f"devices/{d}.toml" for d in DEVICE_NAMES), "tests_scripts/buildgen_
 _CONSUMER_ROOTS = ("digital_twin", "tests", "tests_scripts", "scripts")
 # The roles each bus kind's pins carry, stated here apart from the producer so the two can disagree.
 _ROLES_BY_KIND = {"i2c": {"scl", "sda"}, "spi": {"sck", "mosi", "miso"}, "uart": {"tx", "rx"}}
+_COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 
 
 def _typeddicts(hint: object, found: "dict[str, type]") -> "dict[str, type]":
@@ -108,13 +109,13 @@ def _plan_key_reads(tree: ast.Module) -> "list[tuple[int, str, str]]":
 
 
 def _scope_nodes(scope: ast.AST) -> "list[ast.AST]":
-    # Every node of one scope, a nested function's body left to its own scope.
+    # Every node of one scope, a nested function's body and a comprehension's insides each left to their own scope.
     found: list[ast.AST] = []
     pending = list(ast.iter_child_nodes(scope))
     while pending:
         node = pending.pop()
         found.append(node)
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, *_COMPREHENSIONS)):
             pending.extend(ast.iter_child_nodes(node))
     return found
 
@@ -158,6 +159,9 @@ class _PlanKeyReads:
             self._bind(target.elts[-1], value[1])
         elif isinstance(target, ast.Tuple) and isinstance(value, tuple) and value[0] == "values" and len(target.elts) == 1:
             self._bind(target.elts[0], value[1])
+        elif isinstance(target, (ast.Tuple, ast.List)) and get_origin(value) is list:  # `(x,) = [...]`: each name an item
+            for elt in target.elts:
+                self._bind(elt.value, value) if isinstance(elt, ast.Starred) else self._bind(elt, get_args(value)[0])
 
     def _call(self, node: ast.Call) -> object:
         if self._root(node.func):
@@ -211,7 +215,7 @@ class _PlanKeyReads:
                 break
         self.reads = []
         for node in self.nodes:
-            if isinstance(node, (ast.Subscript, ast.Call)):
+            if isinstance(node, (ast.Subscript, ast.Call, *_COMPREHENSIONS)):
                 self.type_of(node)
         return self.reads
 
@@ -227,6 +231,11 @@ class _PlanKeyReads:
             return self.type_of(node.body) or self.type_of(node.orelse)
         if isinstance(node, ast.Call):
             return self._call(node)
+        if isinstance(node, _COMPREHENSIONS):  # its own scope over this one's names, as Python runs it
+            inner = _PlanKeyReads(_scope_nodes(node), self.env)
+            self.reads += inner.run()
+            item = None if isinstance(node, ast.DictComp) else inner.type_of(node.elt)
+            return None if item is None or isinstance(item, tuple) else list[item]  # type: ignore[valid-type]  # a hint built at run time
         return None
 
 
@@ -252,6 +261,21 @@ def test_a_read_of_an_undeclared_pin_role_is_found() -> None:
     tree = ast.parse('plan = load_wiring_plan()\nok = plan["pins"]["i2c0"]["scl"]\nbad = plan["pins"]["spi0"]["clk"]\n')
     reads = _plan_key_reads(tree)
     assert [(line, key) for line, owner, key in reads if key not in _declared(owner)] == [(3, "clk")], reads
+
+
+def test_each_comprehension_reads_its_own_names() -> None:
+    # One name bound by two comprehensions over different tables: each read is checked against its own table.
+    tree = ast.parse('plan = load_wiring_plan()\ni2c = [a["address"] for a in plan["buses"]["i2c0"]]\nspi = [a["max_size"] for a in plan["spi"].values()]\n')
+    reads = _plan_key_reads(tree)
+    assert [read for read in reads if read[1] != "TwinWiringPlan"] == [(2, "I2CAttachment", "address"), (3, "SpiAttachment", "max_size")], reads
+
+
+def test_a_name_unpacked_from_a_comprehension_is_followed() -> None:
+    # `(chip,) = [...]` binds chip to the list's item: its reads are checked, the undeclared one found.
+    tree = ast.parse('plan = load_wiring_plan()\n(chip,) = [a for a in plan["buses"]["i2c1"] if a["driver"] == "isl29125"]\nok = chip["irq_pin"]\nbad = chip["clk"]\n')
+    reads = _plan_key_reads(tree)
+    assert [read for read in reads if read[0] > 2] == [(3, "I2CAttachment", "irq_pin"), (4, "I2CAttachment", "clk")], reads
+    assert [(line, key) for line, owner, key in reads if key not in _declared(owner)] == [(4, "clk")], reads
 
 
 def _annotations(path: Path) -> "dict[str, list[tuple[str, str]]]":
@@ -305,6 +329,16 @@ def test_device_with_picks_the_first_device_wiring_every_named_driver(twin_devic
     assert (twin_devices.device_with("scd30"), twin_devices.device_with("sgp40", "fram")) == ("fixture-device-a", "fixture-device-b")
     with pytest.raises(AssertionError, match=r"'isl29125'.*\['fixture-device-a', 'fixture-device-b', 'fixture-device-c'\]"):
         twin_devices.device_with("sgp40", "isl29125")
+
+
+def test_devices_with_lists_every_device_wiring_every_named_driver(twin_devices: types.ModuleType, tmp_path: Path) -> None:
+    _plant_plan(tmp_path, "fixture-device-a", ["fram", "scd30"], {})
+    _plant_plan(tmp_path, "fixture-device-b", ["fram", "scd30", "sgp40"], {})
+    _plant_plan(tmp_path, "fixture-device-c", ["fram", "scd30", "sgp40"], {})
+    assert twin_devices.devices_with("scd30") == ["fixture-device-a", "fixture-device-b", "fixture-device-c"]
+    assert twin_devices.devices_with("sgp40", "fram") == ["fixture-device-b", "fixture-device-c"]
+    with pytest.raises(AssertionError, match=r"'isl29125'.*\['fixture-device-a', 'fixture-device-b', 'fixture-device-c'\]"):
+        twin_devices.devices_with("sgp40", "isl29125")
 
 
 def test_the_shared_buses_are_every_device_s_buses_with_two_occupants(twin_devices: types.ModuleType, tmp_path: Path) -> None:

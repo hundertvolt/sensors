@@ -61,12 +61,16 @@ _SUFFIX = "_wiring_plan.json"
 
 def device_with(*drivers: str) -> str:
     # The first generated device whose plan wires every named driver.
+    return devices_with(*drivers)[0]
+
+
+def devices_with(*drivers: str) -> "list[str]":
+    # Every generated device whose plan wires every named driver, in device order; none fails naming the devices searched.
     searched = generated_devices()
-    for device in searched:
-        instances = wiring_plan(device)["instances"]
-        if all(driver in instances for driver in drivers):
-            return device
-    raise AssertionError(f"no generated device wires every one of {list(drivers)!r} - searched {searched!r}")
+    found = [device for device in searched if all(driver in wiring_plan(device)["instances"] for driver in drivers)]
+    if not found:
+        raise AssertionError(f"no generated device wires every one of {list(drivers)!r} - searched {searched!r}")
+    return found
 
 
 def devices_with_shared_bus() -> "list[tuple[str, str, list[str]]]":

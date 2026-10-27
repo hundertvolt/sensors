@@ -106,16 +106,18 @@ class _FlashSleeps:
         asyncio.sleep, asyncio.sleep_ms = self._real
 
 
-def _a_device_with_a_neopixel() -> str:
-    # The device comes from the generated wiring plans, chosen by its neopixel instance, never by name.
+def _devices_with_a_neopixel() -> "list[str]":
+    # Every device whose generated wiring plan declares a neopixel instance, each wiring its own; none fails.
     require_fresh()
+    found = []
     for name in sorted(os.listdir("build/generated_src")):
         if name.endswith("_wiring_plan.json"):
             with open("build/generated_src/" + name) as f:
                 plan = json.load(f)
             if "neopixel" in plan["instances"]:
-                return str(plan["device"])
-    raise AssertionError("no generated device declares a neopixel instance")
+                found.append(str(plan["device"]))
+    assert found, "no generated device declares a neopixel instance"
+    return found
 
 
 def _blocked_dir() -> str:
@@ -367,12 +369,13 @@ def test_a_neopixel_driver_is_an_error_source_of_the_webserver() -> None:
     assert {"num": 1, "type": "E"} not in history
 
 
-def test_the_drivers_empty_timer_list_reaches_a_generated_device() -> None:
-    module = build(_a_device_with_a_neopixel(), cfg_path=_tmp_cfg_dir())
-    assert isinstance(module.neopixel, NeopixelDriver)
-    assert module.neopixel.get_timer_starters() == []
-    starters = module._collect_timer_starters()  # collects the empty list among the other modules' starters
-    assert all(callable(s) for s in starters)
+def test_the_drivers_empty_timer_list_reaches_every_generated_device_wiring_it() -> None:
+    for device in _devices_with_a_neopixel():
+        module = build(device, cfg_path=_tmp_cfg_dir())
+        assert isinstance(module.neopixel, NeopixelDriver), device
+        assert module.neopixel.get_timer_starters() == [], device
+        starters = module._collect_timer_starters()  # collects the empty list among the other modules' starters
+        assert all(callable(s) for s in starters), device
 
 
 if __name__ == "__main__":
