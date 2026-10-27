@@ -2440,6 +2440,71 @@ def test_never_touches_any_address_but_its_own() -> None:
     assert touched == {_ADDR}, f"SCD30_I2C touched unexpected address(es): {touched - {_ADDR}}"
 
 
+def test_contmeas_false_with_the_bus_down_after_the_snapshot_comes_back_failed() -> None:
+    # The snapshot read, then the bus down: the stop command's write is refused, _send_dev_command() raises and
+    # stop_continuous_measurement() answers False, so the key fails in a body the snapshot let through.
+    reader = _make_reader()
+    _queue_snapshot(_reader_fake_i2c(reader))
+    real = reader._config_snapshot
+
+    async def snapshot_then_down() -> "dict[str, CfgValue] | None":
+        got = await real()
+        reader._scd._i2c_scd30.i2c_device.i2c.deinit()
+        return got
+
+    reader._config_snapshot = snapshot_then_down  # type: ignore[method-assign]
+    persisted, results = run(reader._set_mgr_cfg({"ContMeas": False}, reader.get_cfg_schema()))
+    assert results == {"ContMeas": "Failed"}, (persisted, results)
+    assert _entries(reader)[-1] == ("E", code("E", "CHIP_SET"))
+
+
+def test_a_command_write_the_bus_refuses_raises_oserror() -> None:
+    scd, i2c = _make_scd()
+    scd._i2c_scd30.i2c_device.i2c.deinit()
+    try:
+        run(scd.stop_continuous_measurement())
+        message = ""
+    except OSError as e:
+        message = str(e)
+    assert message == "I2C bus not initialized"
+    assert not any(entry[0] == "writeto" for entry in i2c.log), i2c.log
+
+
+class _ReadRefusingSession:
+    # An I2C session whose write lands and whose read is refused, as a bus cleared between them would answer.
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    async def write(self, _buf: bytearray, end: int) -> bool:
+        self.calls.append(f"write {end}")
+        return True
+
+    async def readinto(self, _buf: bytearray, end: int) -> bool:
+        self.calls.append(f"readinto {end}")
+        return False
+
+
+def test_a_register_read_the_session_refuses_raises_before_the_crc_check() -> None:
+    scd, _i2c = _make_scd()
+    session = _ReadRefusingSession()
+    checked: list[int] = []
+    real = scd.crc.check_from
+
+    async def check_from(buf: bytearray, size: int) -> "int | None":
+        checked.append(size)
+        return await real(buf, size)
+
+    scd.crc.check_from = check_from  # type: ignore[assignment, method-assign]
+    try:
+        run(scd._read_dev_register(session, 0x0202))  # type: ignore[arg-type]
+        message = ""
+    except OSError as e:
+        message = str(e)
+    assert message == "I2C bus not initialized"
+    assert session.calls == ["write 2", "readinto 3"]
+    assert checked == []
+
+
 if __name__ == "__main__":
     import microtest
 

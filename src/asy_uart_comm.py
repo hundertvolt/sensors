@@ -597,7 +597,7 @@ class UARTComm:
         # unacknowledged frame, plus one per re-initiation its timeout, drain and hold-off fit in _FLASH_HOLD_MAX_MS
         # (J.5), rounded up to a power of two (owner, 2026-10-05).
         bus = self._uart
-        if bus is None:
+        if bus is None:  # Unreachable: called only from _validate_receive(self._uart), after _validate_config() refused a missing bus - kept to narrow the Optional for the type checker
             return 0
         wire = bus.framing.max_encoded(_HEADER_LEN + self._payload_size + bus.crc.length())
         floor = max(self._min_rxbuf(), wire * (1 + _FLASH_HOLD_MAX_MS // (4 * self._timeout)))
@@ -898,7 +898,7 @@ class UARTComm:
         # Bytes a failed frame read swallowed since the last resync: without them a peer that only speaks when
         # spoken to never shows the mismatch signature (J.6).
         bus = self._uart
-        if bus is None:
+        if bus is None:  # Unreachable: runs only inside a transaction's resync, and no transaction runs once setup refused a missing bus - kept to narrow the Optional for the type checker
             return 0
         n = self._peek_discarded(bus)
         self._discarded_seen = bus.discarded_bytes

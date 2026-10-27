@@ -4236,6 +4236,65 @@ def test_init_runs_on_the_defaults_when_its_config_file_cannot_be_written() -> N
     assert run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.name]["ErrNum"][-1] == code("E", "CFG_FILE_WRITE")
 
 
+def test_an_interrupt_select_write_that_raises_is_logged_and_leaves_the_hold_state() -> None:
+    # Both arms, a routine error and a C-stack overflow: logged as CHIP_SET, the hold flag unchanged, and only the
+    # overflow recorded for the supervisor.
+    for error, fatal in ((OSError(errno_mod.EIO), False), (stack_overflow(), True)):
+        for armed in (True, False):
+            _i2c, reader = ready_reader("int_select_raises")
+            held = reader._int_held
+
+            async def raising(error: BaseException = error, **_kwargs: object) -> None:
+                raise error
+
+            reader._isl.configure = raising  # type: ignore[method-assign]
+            run(reader._set_int_armed(armed=armed))
+            assert reader._int_held is held, (error, armed)
+            assert errors(run(reader.get_error_counter()))[-1] == code("E", "CHIP_SET"), (error, armed)
+            assert fatal_reported() is fatal, (error, armed)
+            asy_print_log._fatal = False  # microtest fails a test that leaves it set
+
+
+def test_a_re_arm_write_that_raises_is_logged_and_writes_no_thresholds() -> None:
+    for error, fatal in ((OSError(errno_mod.EIO), False), (stack_overflow(), True)):
+        _i2c, reader = ready_reader("rearm_raises")
+        thresholds: list[int] = []
+
+        async def raising(error: BaseException = error, **_kwargs: object) -> None:
+            raise error
+
+        async def write_thresholds(thresholds: "list[int]" = thresholds) -> bool:
+            thresholds.append(1)
+            return True
+
+        reader._isl.configure = raising  # type: ignore[method-assign]
+        reader._write_thresholds = write_thresholds  # type: ignore[assignment, method-assign]
+        run(reader._rearm_interrupt())
+        assert thresholds == [], error
+        assert errors(run(reader.get_error_counter()))[-1] == code("E", "CHIP_SET"), error
+        assert fatal_reported() is fatal, error
+        asy_print_log._fatal = False
+
+
+def test_a_reset_write_the_bus_refuses_while_up_raises_with_no_config_read() -> None:
+    # The bus answers False for the reset write alone and stays up: reset() raises at once and never reads CONFIG1-3
+    # (on a down bus that read would raise the same error, so only an up bus tells the two apart).
+    i2c, isl = ready_protocol()
+
+    def refused(*_args: object) -> bool:
+        return False
+
+    i2c.set_register_struct = refused  # type: ignore[assignment, method-assign]
+    fake(i2c).log.clear()
+    try:
+        run(isl.reset())
+        message = ""
+    except OSError as e:
+        message = str(e)
+    assert message == "I2C bus not initialized"
+    assert register_reads(i2c) == []
+
+
 if __name__ == "__main__":
     import microtest
 

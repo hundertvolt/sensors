@@ -2567,6 +2567,34 @@ def test_init_bmp_runs_on_the_defaults_when_its_config_file_cannot_be_written() 
     assert run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.name]["ErrNum"][-1] == code("E", "CFG_FILE_WRITE")
 
 
+_RESET_RUN_BOUND_S = 2  # far past one reset's polls and settle: a reset() that never ends fails here, the file goes on
+
+
+def test_reset_raises_oserror_when_the_bus_goes_down_between_its_two_sessions() -> None:
+    # The soft reset written, then the bus down during the settle: the second session's register reads answer None and
+    # reset() raises, under its own run bound.
+    i2c, bmp = ready_bmp()
+    bus = fake(i2c)  # the fake outlives the deinit, which drops the driver's reference to it
+    real_sleep_ms = asyncio.sleep_ms
+    soft_reset = ("writeto", _ADDR, bytes([_REGISTER_CMD, 0xB6]), True)
+
+    async def settle_then_down(ms: int) -> None:
+        await real_sleep_ms(ms)
+        if soft_reset in bus.log:
+            i2c.deinit()
+
+    asyncio.sleep_ms = settle_then_down  # type: ignore[assignment]  # process-wide, restored below
+    try:
+        run(bmp.reset(), _RESET_RUN_BOUND_S)
+        message = ""
+    except OSError as e:  # the run bound's TimeoutError included, its message empty
+        message = str(e)
+    finally:
+        asyncio.sleep_ms = real_sleep_ms
+    assert message == "I2C bus not initialized", message
+    assert soft_reset in bus.log
+
+
 if __name__ == "__main__":
     import microtest
 

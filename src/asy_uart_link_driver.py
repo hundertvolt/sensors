@@ -182,7 +182,7 @@ class UARTLinkDriver:
         # host judges the script's (J.7); the link counters stay the echo's own.
         bus = self._uart
         try:
-            if bus is None:
+            if bus is None:  # Unreachable: only the exercise loop runs this, after setup() succeeded, and setup refuses a missing bus - kept to narrow the Optional for the type checker
                 return
             frame = bytearray(self._frame + bus.crc.length())  # room for the CRC: _write_raw() sends it in place
             ack = bytearray(self._frame + bus.crc.length())

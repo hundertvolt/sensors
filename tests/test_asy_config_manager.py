@@ -24,6 +24,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine, Sequence
+    from typing import NoReturn
 
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
@@ -3325,6 +3326,57 @@ def test_a_write_error_is_not_retried_and_keeps_the_old_document() -> None:
         assert _newest_code(mgr) == code("E", "CFG_FILE_WRITE")
     finally:
         _remove(path)
+
+
+def test_reset_error_counter_answers_false_when_the_history_clear_fails() -> None:
+    # The clear refused (its FRAM chunk write failing): the run of failed reads stays open, so it is not shown again.
+    mgr, path = _make("resetrefused.cfg")
+    try:
+        async def refused() -> bool:
+            return False
+
+        mgr.pr.reset = refused  # type: ignore[method-assign]
+        mgr._read_failing = True
+        assert run(mgr.reset_error_counter()) is False
+        assert mgr._read_failing is True
+    finally:
+        _remove(path)
+
+
+def test_a_schema_field_with_no_default_leaves_the_manager_invalid_and_writes_no_file() -> None:
+    path = _tmp_path("nodefault.cfg")
+    _remove(path)
+    mgr = cm.ConfigManager(path, _VAL_INT + (("Bad", "int", None, 0, 10, None),), "TEST")
+    try:
+        assert run(mgr.setup()) is False
+        assert mgr.valid is False
+        assert _newest_code(mgr) == code("E", "CFG_BAD_DEFAULT")
+        assert not _exists(path)
+    finally:
+        _remove(path)
+
+
+def test_a_compare_that_exhausts_the_heap_fails_the_write_with_no_file_io() -> None:
+    mgr, path = _make("compareexhausted.cfg")
+    try:
+        stored = _file_bytes(path)
+        real = cm.compare_before_write
+
+        def exhausted(*_args: object, **_kwargs: object) -> "NoReturn":
+            raise MemoryError("simulated allocation failure")  # worded clear of the memory gates' markers
+
+        cm.compare_before_write = exhausted
+        try:
+            assert run(_write_flushed(mgr, {"Count": 7})) == (False, {})
+        finally:
+            cm.compare_before_write = real
+        assert _newest_code(mgr) == code("E", "ALLOC")
+        assert mgr._pending_flush is None
+        assert _file_bytes(path) == stored
+        assert run(mgr.get_dict(["Count"])) == {"Count": 5}
+    finally:
+        _remove(path)
+
 
 if __name__ == "__main__":
     import microtest

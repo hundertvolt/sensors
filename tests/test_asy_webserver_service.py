@@ -4375,6 +4375,14 @@ def test_a_readable_field_named_error_is_never_taken_for_the_unavailable_marker(
         assert _json(status_body(res)) == {"DebugLevel": 2, "error": UNAVAILABLE}, endpoint
 
 
+def test_a_webserver_built_without_a_system_command_handler_answers_invalid() -> None:
+    # A build with no system service: a valid command name is answered Invalid and nothing runs.
+    _service, app = _make_service()
+    res = run(app.dispatch_request(_make_request(app, "PUT", "/system", {"SystemCmd": "reboot"})))
+    assert res.status_code == 200
+    assert _obj(_at(_json(res.body), "result")).get("SystemCmd") == "Invalid"
+
+
 if __name__ == "__main__":
     import microtest
 
