@@ -10,7 +10,7 @@ from _async_harness import run
 from _error_codes import code
 from _fram_builders import make_fram_manager
 from _recording_print import record_prints
-from _src_const import src_const
+from _src_const import src_const, src_int
 from _stack_overflow import stack_overflow
 
 import asy_print_log as print_log_module
@@ -105,6 +105,17 @@ def test_an_out_of_range_level_is_refused_not_clamped() -> None:
     pr = PrintLog(2)
     assert pr.set_level(10) is False
     assert pr.level == 2
+
+
+def test_the_error_sequence_wraps_from_its_top_to_zero() -> None:
+    # The counted-calls sequence a reset compares by masked difference: it reaches _WRAP_MAX, then wraps to 0.
+    top = src_int("src/asy_print_log.py", "_WRAP_MAX")
+    pr = PrintLogHistory(history_length=4)
+    pr._counted = top - 1
+    pr._count()
+    assert pr._counted == top
+    pr._count()
+    assert pr._counted == 0
 
 
 def test_set_level_valid_value_passes_through() -> None:

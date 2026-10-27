@@ -774,6 +774,16 @@ def test_set_tuning_parameters_smoke_test_normal_values() -> None:
     assert isinstance(voc_index, int)
 
 
+def test_both_estimator_uptimes_stop_at_the_uptime_limit() -> None:
+    # Checked before the step: one sampling interval below the limit steps onto it, at the limit both stay.
+    algo = VOCAlgorithm()
+    limit, step, params = algo._f16_uptime_limit, algo._f16_sampling_interval, algo.params
+    params.m_mean_variance_estimator_uptime_gamma = params.m_mean_variance_estimator_uptime_gating = limit - step
+    for _ in range(2):
+        algo._vocalgorithm__mean_variance_estimator___calculate_gamma(0)
+        assert (params.m_mean_variance_estimator_uptime_gamma, params.m_mean_variance_estimator_uptime_gating) == (limit, limit)
+
+
 if __name__ == "__main__":
     import microtest
 

@@ -2092,6 +2092,18 @@ def test_an_escalation_armed_during_the_erase_preflight_refuses_the_command() ->
     assert machine.mem_backup(0)[1] == _const("_RR_TASK_BUDGET")
 
 
+def test_the_task_budget_steps_once_past_its_max_and_stops() -> None:
+    # Checked before the step: the charge that first passes _TASK_FAIL_MAX lands, every later one leaves it there.
+    top_max, step = _const("_TASK_FAIL_MAX"), _const("_TASK_FAIL_INCREMENT")
+    svc = _make_service()
+    budgets = [0]
+    for _ in range(top_max // step + 4):
+        budgets.append(svc._charge_task_budget(budgets[-1]))
+    top = (top_max // step + 1) * step
+    assert budgets[: top_max // step + 2] == [n * step for n in range(top_max // step + 2)]
+    assert budgets[-3:] == [top, top, top] and top_max < top <= top_max + step
+
+
 def test_a_command_accepted_while_the_escalation_logs_keeps_its_own_reset() -> None:
     for purpose in ("_RR_REBOOT", "_RR_FRAM_ERASED"):
         rig = _Rig(tasks=0)
@@ -2113,7 +2125,11 @@ def test_a_command_accepted_while_the_escalation_logs_keeps_its_own_reset() -> N
 
         async def scenario(purpose: str = purpose, rig: _Rig = rig, release: asyncio.Event = release, reached: asyncio.Event = reached) -> None:
             sup = await rig.start()
-            await reached.wait()
+            for _ in range(_RUN_BOUND_S * 100):
+                if reached.is_set():
+                    break
+                await _real_time(10)
+            assert reached.is_set(), "the supervisor never logged its budget reboot"
             fed = rig.wdt.feed_count
             assert await _word(rig.svc, purpose)() is True
             release.set()
@@ -2127,6 +2143,7 @@ def test_a_command_accepted_while_the_escalation_logs_keeps_its_own_reset() -> N
         assert rig.svc._force_watchdog_starve is True  # set by the arm alone (Part C.9), not by the escalation's starve
         if purpose == "_RR_FRAM_ERASED":
             assert _all_zero(rig.chip.memory)
+
 
 
 def test_a_commands_acceptance_decides_the_reset_before_the_sequence_runs() -> None:
