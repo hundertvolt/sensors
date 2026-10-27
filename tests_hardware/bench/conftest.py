@@ -31,30 +31,19 @@ class _StandardStateExit(Protocol):
     def __call__(self, deviations: "Sequence[tuple[str, str, str, str]]") -> NoReturn: ...
 
 
-@pytest.fixture(scope="session", autouse=True)
-def board_image(dut_ip: str, bench_device_name: str, request: pytest.FixtureRequest, standard_state_exit: _StandardStateExit, session_note: _SessionNote) -> "dict[str, object]":
-    path = record_path(request.config.getoption("--image-record"), bench_device_name)
-    record = load_record(path)
-    deviations = check_image(dut_ip, record, allow_rollover=request.config.getoption("--allow-multi-day-rollover"))
-    if deviations:
-        standard_state_exit(deviations)
-    which = f"overrides {record.get('overrides')!r}, uartCrc {record.get('uartCrc')!r}, BuildDate {record.get('BuildDate')!r}"
-    if record.get("dirty") is True:
-        session_note(f"local-only image: revert after this round ({which})", source="board_image")
-    else:
-        session_note(f"image: {which}", source="board_image")
-    return record
+def record_path(option: "str | None", bench_device: str) -> Path:
+    # --image-record when given (a throwaway worktree's record), else the bench device's own beside its .uf2.
+    return Path(option) if option else harness.REPO_ROOT / "build" / f"firmware-{bench_device}.json"
 
 
-def check_image(dut_ip: str, record: "dict[str, object]", *, allow_rollover: bool = False) -> "list[tuple[str, str, str, str]]":
-    # The board's GET /system build against the record, strict: anything but a 200 object is itself a deviation.
-    res = http_client.fetch(dut_ip, 80, "GET", "/system", timeout_s=_SYSTEM_TIMEOUT_S)
+def load_record(path: Path) -> "dict[str, object]":
     try:
-        body = res.json() if res.status_code == 200 else None
-    except (ValueError, TypeError):  # no JSON, or a JSON value other than an object
-        body = None
-    build = body.get("build") if isinstance(body, dict) else f"GET /system {res.status_code} {res.body[:80]!r}"
-    return image_deviations(record, build, harness.bench_device(), allow_rollover=allow_rollover)
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        pytest.exit(f"no image record at {path}: build the bench image with scripts/build_firmware.py before a bench run", returncode=1)
+    if not isinstance(record, dict):
+        pytest.exit(f"the image record at {path} holds no JSON object: rebuild it with scripts/build_firmware.py", returncode=1)
+    return record
 
 
 def image_deviations(record: "dict[str, object]", build: object, bench_device: str, *, allow_rollover: bool) -> "list[tuple[str, str, str, str]]":
@@ -80,13 +69,29 @@ def image_deviations(record: "dict[str, object]", build: object, bench_device: s
     return found
 
 
-def load_record(path: Path) -> "dict[str, object]":
+def check_image(dut_ip: str, record: "dict[str, object]", *, allow_rollover: bool = False) -> "list[tuple[str, str, str, str]]":
+    # The board's GET /system build against the record, strict: anything but a 200 object is itself a deviation.
+    res = http_client.fetch(dut_ip, 80, "GET", "/system", timeout_s=_SYSTEM_TIMEOUT_S)
     try:
-        record = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        pytest.exit(f"no image record at {path}: build the bench image with scripts/build_firmware.py before a bench run", returncode=1)
-    if not isinstance(record, dict):
-        pytest.exit(f"the image record at {path} holds no JSON object: rebuild it with scripts/build_firmware.py", returncode=1)
+        body = res.json() if res.status_code == 200 else None
+    except (ValueError, TypeError):  # no JSON, or a JSON value other than an object
+        body = None
+    build = body.get("build") if isinstance(body, dict) else f"GET /system {res.status_code} {res.body[:80]!r}"
+    return image_deviations(record, build, harness.bench_device(), allow_rollover=allow_rollover)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def board_image(dut_ip: str, bench_device_name: str, request: pytest.FixtureRequest, standard_state_exit: _StandardStateExit, session_note: _SessionNote) -> "dict[str, object]":
+    path = record_path(request.config.getoption("--image-record"), bench_device_name)
+    record = load_record(path)
+    deviations = check_image(dut_ip, record, allow_rollover=request.config.getoption("--allow-multi-day-rollover"))
+    if deviations:
+        standard_state_exit(deviations)
+    which = f"overrides {record.get('overrides')!r}, uartCrc {record.get('uartCrc')!r}, BuildDate {record.get('BuildDate')!r}"
+    if record.get("dirty") is True:
+        session_note(f"local-only image: revert after this round ({which})", source="board_image")
+    else:
+        session_note(f"image: {which}", source="board_image")
     return record
 
 
@@ -112,8 +117,3 @@ def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Cal
     yield
     after = error_log_helpers.get_errcount(log_check_host())
     error_log_helpers.assert_no_unprovoked_entry(before, after, request.node.nodeid, cleared=error_log_helpers.clears_made() != clears)
-
-
-def record_path(option: "str | None", bench_device: str) -> Path:
-    # --image-record when given (a throwaway worktree's record), else the bench device's own beside its .uf2.
-    return Path(option) if option else harness.REPO_ROOT / "build" / f"firmware-{bench_device}.json"
