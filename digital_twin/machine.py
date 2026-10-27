@@ -991,6 +991,7 @@ class UARTLink:
         while self.a_to_b.in_flight or self.b_to_a.in_flight:
             remaining = deadline - self._now_us()
             if remaining <= 0:
+                self._advance()  # the deadline passed before this check (a loaded host): every byte is due now
                 break
             time.sleep_us(remaining)
             self._advance()
