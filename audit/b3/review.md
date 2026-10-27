@@ -4,7 +4,7 @@ Requirement: every test in `tests/`, `tests_scripts/`, `tests_js/` and `tests_ha
 
 ## Counts
 
-Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_verdicts.json`: 8538 rows, 336 flagged. A flag is a candidate; the verdict is the reviewer's.
+Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_verdicts.json`: 8536 rows, 336 flagged. A flag is a candidate; the verdict is the reviewer's.
 
 | level | rows | flagged |
 |---|---|---|
@@ -15,7 +15,7 @@ Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_
 | manual (hardware) | 21 | 2 |
 | twin (MicroPython) | 670 | 24 |
 | twin scenario | 176 | 10 |
-| unit (MicroPython) | 3955 | 140 |
+| unit (MicroPython) | 3953 | 140 |
 | web (vitest) | 492 | 6 |
 
 | verdict (per row) | rows |
@@ -23,7 +23,7 @@ Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_
 | CRr2 | 83 |
 | fixed | 46 |
 | justified | 129 |
-| biting | 8280 |
+| biting | 8278 |
 
 | red flag | rows | verdicts |
 |---|---|---|
@@ -2917,59 +2917,57 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests/test_asy_uart_comm.py:2233 | test_a_non_integer_command_id_returns_a_sentinel_instead_of_raising | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_uart_comm.py:2239 | test_a_non_integer_size_returns_a_sentinel_instead_of_raising | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_uart_comm.py:2247 | test_a_negative_expected_size_is_refused_not_read_as_dont_care | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2257 | test_a_non_buffer_payload_returns_a_sentinel_instead_of_raising | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2265 | test_an_immutable_destination_is_refused_before_the_train_starts | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2273 | test_a_refused_argument_is_logged_with_its_own_errno | unit (MicroPython) | fixed | was:log_existence_only | was:log_existence_only: fixed: hand-read (a log read through persisted() is the scan's blind spot): (ErrCount, used slots) compared exactly, one entry per event, values read from a run (S/u35/laneC/crr1c/r1/uart_probe.log); bite: every _err logged twice passes the old membership, fails the new (S/u35/laneC/crr1c/r2/bite_uart_exact_*.log) |
-| tests/test_asy_uart_comm.py:2284 | test_a_non_integer_payload_size_is_refused_instead_of_raising | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2295 | test_a_non_integer_timeout_is_refused_instead_of_raising | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2304 | test_a_read_only_destination_is_refused_before_the_train_starts | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2316 | test_a_stream_without_its_pull_callback_sends_nothing | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2325 | test_a_stream_without_its_push_callback_reports_failure_not_a_byte_count | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2336 | test_a_repeating_fault_spends_one_slot | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2352 | test_a_recovered_link_counts_every_later_fault | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2374 | test_a_rejected_command_is_distinguishable_from_a_link_fault | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2393 | test_the_owned_listen_loop_delivers_a_received_payload | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2419 | test_a_raising_message_callback_does_not_kill_the_listen_loop | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2443 | test_a_responder_without_a_message_callback_is_still_constructible | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2473 | test_a_dont_care_get_arrives_in_pieces_no_larger_than_chunk_bytes | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2484 | test_a_dont_care_set_is_assembled_in_pieces_no_larger_than_chunk_bytes | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2529 | test_the_default_chunk_bytes_is_the_reasoned_one | unit (MicroPython) | biting | same_callee | same_callee: biting: two distinct paths, objects or runs compared: their agreement is the claim |
-| tests/test_asy_uart_comm.py:2536 | test_a_caller_supplied_destination_is_still_filled_in_place | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2551 | test_a_declared_size_over_max_transfer_bytes_is_refused_before_any_allocation | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2598 | test_an_expected_size_over_the_cap_is_refused_before_any_allocation | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2612 | test_a_train_at_the_cap_is_accepted | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2622 | test_a_transfer_over_the_own_cap_is_refused_before_anything_is_sent | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2652 | test_a_transfer_over_the_own_cap_is_the_caps_refusal_at_every_cap | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2669 | test_a_size_within_a_cap_above_the_largest_train_is_refused_as_too_many_chunks | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2687 | test_repeated_maximum_size_and_over_cap_trains_keep_the_heap_flat | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2742 | test_a_lapped_ring_is_a_receive_overrun_and_the_link_resyncs | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2765 | test_a_ring_below_its_floor_is_refused | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2773 | test_a_ring_at_its_floor_holds_a_config_flush | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2822 | test_a_bus_cleared_after_construction_is_refused_at_every_entry_point | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2845 | test_a_declared_size_larger_than_its_buffer_is_refused_before_the_train | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2856 | test_an_answer_the_train_could_never_carry_is_refused_at_its_header | unit (MicroPython) | fixed | was:log_existence_only | was:log_existence_only: fixed: hand-read (a log read through persisted() is the scan's blind spot): (ErrCount, used slots) compared exactly, one entry per event, values read from a run (S/u35/laneC/crr1c/r1/uart_probe.log); bite: every _err logged twice passes the old membership, fails the new (S/u35/laneC/crr1c/r2/bite_uart_exact_*.log) |
-| tests/test_asy_uart_comm.py:2870 | test_an_answer_that_exactly_fills_its_train_arrives_intact | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2878 | test_a_set_callback_returning_an_unusable_result_is_treated_like_a_raise | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2895 | test_a_declined_set_is_a_distinct_outcome_just_like_a_declined_get | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2913 | test_a_set_callback_asking_for_more_than_this_train_carries_is_refused | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2933 | test_a_listener_whose_callbacks_were_cleared_refuses_instead_of_dispatching | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:2959 | test_a_write_failing_at_each_point_of_a_get_reports_and_resyncs | unit (MicroPython) | fixed | was:log_existence_only | was:log_existence_only: fixed: hand-read (a log read through persisted() is the scan's blind spot): (ErrCount, used slots) compared exactly, one entry per event, values read from a run (S/u35/laneC/crr1c/r1/uart_probe.log); bite: every _err logged twice passes the old membership, fails the new (S/u35/laneC/crr1c/r2/bite_uart_exact_*.log) |
-| tests/test_asy_uart_comm.py:2989 | test_a_responder_that_cannot_acknowledge_a_set_reports_and_resyncs | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3008 | test_a_peer_answering_a_different_question_is_refused | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3058 | test_a_scratch_allocation_that_fails_during_construction_refuses_the_object | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3070 | test_a_failed_scratch_allocation_logs_its_own_text | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3081 | test_every_internal_buffer_read_rechecks_rather_than_indexing_none | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3115 | test_a_cancelled_transaction_still_releases_the_re_entrancy_flag | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3153 | test_cancelling_at_each_await_leaves_no_lock_or_busy_flag | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3210 | test_two_declined_ids_in_rotation_do_not_refill_the_history_either | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3227 | test_a_pull_callback_failing_mid_train_quiesces_like_any_other_fault | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3290 | test_the_legacy_bsec_command_set_still_runs_end_to_end | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3367 | test_the_two_spellings_the_boards_own_uart_script_used_still_work | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3388 | test_the_legacy_bsec_bus_parameters_meet_every_floor_but_one | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3406 | test_a_drain_that_cannot_run_clears_the_previous_drains_verdict | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3419 | test_an_ack_arriving_at_a_listener_is_logged_as_the_wrong_kind | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3436 | test_a_raising_uart_listen_is_logged_and_the_loop_backs_off_and_keeps_listening | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_comm.py:3477 | test_a_received_piece_its_destination_refuses_fails_the_transfer_as_a_size_mismatch | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2257 | test_a_refused_argument_is_logged_with_its_own_errno | unit (MicroPython) | fixed | was:log_existence_only | was:log_existence_only: fixed: hand-read (a log read through persisted() is the scan's blind spot): (ErrCount, used slots) compared exactly, one entry per event, values read from a run (S/u35/laneC/crr1c/r1/uart_probe.log); bite: every _err logged twice passes the old membership, fails the new (S/u35/laneC/crr1c/r2/bite_uart_exact_*.log) |
+| tests/test_asy_uart_comm.py:2268 | test_a_non_integer_payload_size_is_refused_instead_of_raising | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2279 | test_a_non_integer_timeout_is_refused_instead_of_raising | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2288 | test_a_read_only_destination_is_refused_before_the_train_starts | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2300 | test_a_stream_without_its_pull_callback_sends_nothing | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2309 | test_a_stream_without_its_push_callback_reports_failure_not_a_byte_count | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2320 | test_a_repeating_fault_spends_one_slot | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2336 | test_a_recovered_link_counts_every_later_fault | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2358 | test_a_rejected_command_is_distinguishable_from_a_link_fault | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2377 | test_the_owned_listen_loop_delivers_a_received_payload | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2403 | test_a_raising_message_callback_does_not_kill_the_listen_loop | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2427 | test_a_responder_without_a_message_callback_is_still_constructible | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2457 | test_a_dont_care_get_arrives_in_pieces_no_larger_than_chunk_bytes | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2468 | test_a_dont_care_set_is_assembled_in_pieces_no_larger_than_chunk_bytes | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2513 | test_the_default_chunk_bytes_is_the_reasoned_one | unit (MicroPython) | biting | same_callee | same_callee: biting: two distinct paths, objects or runs compared: their agreement is the claim |
+| tests/test_asy_uart_comm.py:2520 | test_a_caller_supplied_destination_is_still_filled_in_place | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2535 | test_a_declared_size_over_max_transfer_bytes_is_refused_before_any_allocation | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2582 | test_an_expected_size_over_the_cap_is_refused_before_any_allocation | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2596 | test_a_train_at_the_cap_is_accepted | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2606 | test_a_transfer_over_the_own_cap_is_refused_before_anything_is_sent | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2636 | test_a_transfer_over_the_own_cap_is_the_caps_refusal_at_every_cap | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2653 | test_a_size_within_a_cap_above_the_largest_train_is_refused_as_too_many_chunks | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2671 | test_repeated_maximum_size_and_over_cap_trains_keep_the_heap_flat | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2726 | test_a_lapped_ring_is_a_receive_overrun_and_the_link_resyncs | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2749 | test_a_ring_below_its_floor_is_refused | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2757 | test_a_ring_at_its_floor_holds_a_config_flush | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2806 | test_a_bus_cleared_after_construction_is_refused_at_every_entry_point | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2829 | test_a_declared_size_larger_than_its_buffer_is_refused_before_the_train | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2840 | test_an_answer_the_train_could_never_carry_is_refused_at_its_header | unit (MicroPython) | fixed | was:log_existence_only | was:log_existence_only: fixed: hand-read (a log read through persisted() is the scan's blind spot): (ErrCount, used slots) compared exactly, one entry per event, values read from a run (S/u35/laneC/crr1c/r1/uart_probe.log); bite: every _err logged twice passes the old membership, fails the new (S/u35/laneC/crr1c/r2/bite_uart_exact_*.log) |
+| tests/test_asy_uart_comm.py:2854 | test_an_answer_that_exactly_fills_its_train_arrives_intact | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2862 | test_a_set_callback_returning_an_unusable_result_is_treated_like_a_raise | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2879 | test_a_declined_set_is_a_distinct_outcome_just_like_a_declined_get | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2897 | test_a_set_callback_asking_for_more_than_this_train_carries_is_refused | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2917 | test_a_listener_whose_callbacks_were_cleared_refuses_instead_of_dispatching | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2943 | test_a_write_failing_at_each_point_of_a_get_reports_and_resyncs | unit (MicroPython) | fixed | was:log_existence_only | was:log_existence_only: fixed: hand-read (a log read through persisted() is the scan's blind spot): (ErrCount, used slots) compared exactly, one entry per event, values read from a run (S/u35/laneC/crr1c/r1/uart_probe.log); bite: every _err logged twice passes the old membership, fails the new (S/u35/laneC/crr1c/r2/bite_uart_exact_*.log) |
+| tests/test_asy_uart_comm.py:2973 | test_a_responder_that_cannot_acknowledge_a_set_reports_and_resyncs | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:2992 | test_a_peer_answering_a_different_question_is_refused | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3042 | test_a_scratch_allocation_that_fails_during_construction_refuses_the_object | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3054 | test_a_failed_scratch_allocation_logs_its_own_text | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3065 | test_every_internal_buffer_read_rechecks_rather_than_indexing_none | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3099 | test_a_cancelled_transaction_still_releases_the_re_entrancy_flag | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3137 | test_cancelling_at_each_await_leaves_no_lock_or_busy_flag | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3194 | test_two_declined_ids_in_rotation_do_not_refill_the_history_either | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3211 | test_a_pull_callback_failing_mid_train_quiesces_like_any_other_fault | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3274 | test_the_legacy_bsec_command_set_still_runs_end_to_end | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3351 | test_the_two_spellings_the_boards_own_uart_script_used_still_work | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3372 | test_the_legacy_bsec_bus_parameters_meet_every_floor_but_one | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3390 | test_a_drain_that_cannot_run_clears_the_previous_drains_verdict | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3403 | test_an_ack_arriving_at_a_listener_is_logged_as_the_wrong_kind | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3420 | test_a_raising_uart_listen_is_logged_and_the_loop_backs_off_and_keeps_listening | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_comm.py:3461 | test_a_received_piece_its_destination_refuses_fails_the_transfer_as_a_size_mismatch | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_uart_driver.py:203 | test_valid_default_construction_succeeds | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_uart_driver.py:209 | test_valid_construction_on_both_real_uart_ports | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_uart_driver.py:215 | test_valid_buffer_size_boundaries | unit (MicroPython) | biting | — | biting as is |
