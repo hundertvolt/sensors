@@ -201,7 +201,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
 
 @pytest.mark.provokes_log(
     "each flap drops the AP under the readers: the outage pair, a connection cut mid-request or mid-write, and an NTP"
-    " attempt already past its network check when the AP drops",
+    " attempt already past its network check when the AP drops, or its whole retry chain where the link still reads as up",
     ("WEBSERVER", "W", "HTTP_REFUSED"),
     ("WEBSERVER", "W", "HTTP_PEER_RESET"),
     ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
@@ -213,6 +213,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
     ("NTP", "E", "NTP_DNS"),
     ("NTP", "E", "NTP_NOT_SENT"),
     ("NTP", "E", "NTP_NO_REPLY"),
+    ("NTP", "E", "NTP_RETRIES"),
 )
 def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_real_wifi_flapping(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)
