@@ -469,6 +469,7 @@ host-side harness reads:
 | `--test-kbd-traceback` | `KBD_CAPTURED <bool>`, `KBD_TRACEBACK` | the interpreter's one `KeyboardInterrupt` object, caught at start through a SIGINT to itself; a `KBD_TRACEBACK` line on stdin prints where the newest interrupt was raised |
 | `--test-watchdog-fault supervisor-raise\|main-exit\|block` | `WDT_AT_FAULT <feed_count>` | after the supervisor's first feed, one fault that ends the feeding: the dead-task report raises as a task ends, the product's `main()` is cancelled, or the whole loop blocks past the watchdog timeout |
 | `--test-defer-faults` | `FAULTS_ARMED` | every `--fault` is held back until a `FAULT_ARM` line arrives on stdin, then queued at once, so the boot meets none of them and a fault matching a read the boot shares reaches only what runs after it; a later `FAULT_ARM` queues nothing more |
+| `--test-pin-send-buffer` | `SNDBUF_PINNED bytes=<n> accepted_bytes=<n>` | each socket the server accepts has its send buffer set to the kernel's floor (socket(7): a request is doubled, then clamped) before it is served, as rp2's lwIP one is small and fixed (`TCP_SND_BUF` 6,400 B); both sizes are read back through libc's `getsockopt()`. Unpinned, a loopback socket starts with megabytes, so a whole page fits the kernel at once and a client's reset meets a finished write; pinned, a body larger than both ends' buffers is still being written when the client resets, on any host |
 
 `main-exit` keeps the runner's loop alive, since the twin's WDT countdown dies with its loop.
 

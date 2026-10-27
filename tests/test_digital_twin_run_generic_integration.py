@@ -8,6 +8,7 @@ Run 11."""
 import asyncio
 import io
 import os
+import socket
 import struct
 import sys
 import time
@@ -78,6 +79,7 @@ _MAIN_RUN_BOUND_S = 15.0
 
 # MICROPY_BYTES_PER_GC_BLOCK, 4 x the object word (py/mpconfig.h:251, v1.29.0), the unit of mem_info()'s max free sz.
 _GC_BLOCK_BYTES = 4 * struct.calcsize("P")
+_SNDBUF_MIN = 2048  # socket(7) SO_SNDBUF: "The minimum (doubled) value for this option is 2048."
 
 _scratch = TmpScratch("rgi")
 _PORTS = PortAllocator("test_digital_twin_run_generic_integration")
@@ -168,14 +170,14 @@ def test_the_cut_system_entry_is_held_after_its_first_blocks_busy_mark_and_only_
 
 
 def test_every_test_only_flag_is_off_by_default_and_parses_when_named() -> None:
-    assert runner.TestFlags(False, None, None, None, None, False, False, None, False, None, None, None, False) == runner._NO_TEST_FLAGS
+    assert runner.TestFlags(False, None, None, None, None, False, False, None, False, None, None, None, False, False) == runner._NO_TEST_FLAGS
     config = _parse(
         "--test-hold-closing-slot", "--test-stall-loop-ms", "40", "--test-conn-status-interval-ms", "50",
         "--test-fault-status-interval-ms", "60", "--test-shutdown-hang", "S5erase", "--test-flash-stall-max", "--test-uart-over-cap",
         "--test-hold-system-entry", "25", "--test-kbd-traceback", "--test-loop-lag-ms", "10", "--test-drop-timer-fire", "sequencer", "--test-watchdog-fault", "block",
-        "--test-defer-faults",
+        "--test-defer-faults", "--test-pin-send-buffer",
     )
-    assert config.instrumentation == runner.TestFlags(True, 40, 50, 60, "S5erase", True, True, (25, False), True, 10, "sequencer", "block", True)
+    assert config.instrumentation == runner.TestFlags(True, 40, 50, 60, "S5erase", True, True, (25, False), True, 10, "sequencer", "block", True, True)
     assert _parse("--test-hold-system-entry", "25:cut").instrumentation.hold_system_entry == (25, True)
     refused = (("--test-shutdown-hang", "S7"), ("--test-stall-loop-ms", "0"), ("--test-conn-status-interval-ms", "x"), ("--test-hold-system-entry", "0"), ("--test-hold-system-entry", "25:never"), ("--test-hold-system-entry", "0:cut"), ("--test-loop-lag-ms", "0"), ("--test-drop-timer-fire", "ntp"), ("--test-watchdog-fault", "reboot"))
     for flags in refused:
@@ -487,9 +489,14 @@ class _Counter:
 class _Webserver:
     def __init__(self) -> None:
         self._open_conns, self._backlog, self.closed = _Counter(), 7, 0
+        self.served: list[int] = []  # each served connection's send buffer, as the kernel read it back when serving began
 
     async def _close_writer(self, _writer: object) -> None:
         self.closed += 1
+
+    async def _serve(self, _reader: object, writer: "runner._Accepted") -> None:
+        self.served.append(runner._test_send_buffer(writer.s))
+        writer.s.close()
 
 
 class _Booted:
@@ -780,6 +787,46 @@ def test_the_held_closing_slot_releases_on_its_trigger() -> None:
         await cancel_all([t for t in booted.sysfunct._tasks if t is not None])
 
     run_timed(scenario(), _RUN_BOUND_S)
+
+
+def test_each_accepted_socket_is_served_with_its_send_buffer_pinned_at_the_kernels_floor() -> None:
+    # A real accept through the rebound _serve(): the size read back is below the one at accept(), the serve sees it, any
+    # request under it reads it again (the floor), and the reader agrees with the kernel's own default for a fresh socket.
+    port = _PORTS.next()
+
+    async def scenario() -> "list[str]":
+        booted = _Booted(asyncio.create_task(_forever()))
+        said: list[str] = []
+        runner._test_pin_send_buffer(_as_module(booted), said.append)
+        # The stub splits MicroPython's one Stream into StreamReader/StreamWriter (extmod/asyncio/stream.py:92-93), as the service's own call
+        server = await asyncio.start_server(booted.webserver._serve, "127.0.0.1", port)  # type: ignore[arg-type]
+        try:
+            _reader, writer = await asyncio.open_connection("127.0.0.1", port)
+            for _ in range(100):
+                if booted.webserver.served:
+                    break
+                await asyncio.sleep_ms(10)
+            writer.close()
+        finally:
+            server.close()
+            await server.wait_closed()
+            await cancel_all([t for t in booted.sysfunct._tasks if t is not None])
+        return said + [str(n) for n in booted.webserver.served]
+
+    said = run_timed(scenario(), _RUN_BOUND_S)
+    assert len(said) == 2 and said[0].startswith("SNDBUF_PINNED "), said
+    fields = dict(part.split("=") for part in said[0].split()[1:])
+    pinned, accepted = int(fields["bytes"]), int(fields["accepted_bytes"])
+    assert said[1] == str(pinned)  # the real serve ran on the pinned socket
+    assert _SNDBUF_MIN <= pinned < accepted, (pinned, accepted)
+    fresh = socket.socket()
+    try:
+        with open("/proc/sys/net/ipv4/tcp_wmem") as f:
+            assert runner._test_send_buffer(cast("runner._Sock", fresh)) == int(f.read().split()[1])
+        fresh.setsockopt(socket.SOL_SOCKET, runner._SO_SNDBUF, 2)
+        assert runner._test_send_buffer(cast("runner._Sock", fresh)) == pinned
+    finally:
+        fresh.close()
 
 
 def test_the_deferred_faults_are_queued_at_the_first_arm_trigger_alone() -> None:
