@@ -230,7 +230,8 @@ def website(tmp_path_factory: pytest.TempPathFactory) -> Path:
     (root / "site").mkdir()
     (root / "site" / "index.html").write_text("<p>stub</p>", encoding="utf-8")
     out = root / f"{_WEBSITE_MODULE}.py"
-    env = {**os.environ, "HTML_SRC_DIRS": str(root / "site")}
+    # The gzip tree in the fixture's own directory too: the builder's default is build/frozen_html/ in the checkout.
+    env = {**os.environ, "HTML_SRC_DIRS": str(root / "site"), "FROZEN_HTML_WORK_DIR": str(root / "work")}
     built = subprocess.run([str(REPO_ROOT / "scripts" / "build_frozen_html.sh"), str(out)], cwd=REPO_ROOT, env=env, capture_output=True, text=True, check=False)
     assert built.returncode == 0, f"build_frozen_html.sh failed:\n{built.stdout}{built.stderr}"
     return out
