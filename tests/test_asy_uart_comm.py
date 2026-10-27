@@ -2599,6 +2599,31 @@ def test_a_refused_piece_at_a_dont_care_get_faults_as_alloc_and_uart_get_answers
     assert "bytes for the answer: simulated allocation failure" in rec.text(), rec.text()
 
 
+@_on_poll_rounds
+def test_a_get_answered_with_a_piece_buffer_is_sent_from_its_pieces() -> None:
+    # A responder may answer with a PieceBuffer: each chunk is copied by index from the pieces, whose ends fall inside
+    # chunks, into the TX region, so the answer arrives whole and the comm allocates no bytearray to send it (J.8).
+    payload = bytes((i * 7) & 0xFF for i in range(1000))
+    answer = PieceBuffer(len(payload), 256)
+    assert answer.write_at(0, payload)
+    pair = run(build_pair(get_callback=lambda _cmd_id: (True, answer), set_callback=accept_set()), RUN_LIMIT_S)
+    sizes: list[int] = []
+
+    def recording(*args: object) -> bytearray:
+        made = bytearray(*args)
+        sizes.append(len(made))
+        return made
+
+    asy_uart_comm.bytearray = recording  # type: ignore[attr-defined]
+    try:
+        received = run(pair.with_listener(pair.initiator.uart_get(0x21)), _RUN_BOUND_S)
+    finally:
+        del asy_uart_comm.bytearray  # type: ignore[attr-defined]
+    assert copied_out(received) == payload
+    assert sizes == [], sizes
+    assert persisted(pair.responder) == [] and persisted(pair.initiator) == []
+
+
 def test_the_default_chunk_bytes_is_the_reasoned_one() -> None:
     # The webserver's piece size (Part I.3): one bound for the largest single receive allocation device-wide.
     assert _const("_DEFAULT_CHUNK_BYTES") == _const("_DEFAULT_CHUNK_BYTES", "src/asy_webserver_service.py")
@@ -3087,7 +3112,7 @@ def test_a_peer_answering_a_different_question_is_refused() -> None:
     real_send_train = pair.responder._send_train
 
     async def answers_the_wrong_question(
-        device: UART, cmd_id: int, payload: "bytes | bytearray | memoryview | None", total: int, pull: "_PullCallback | None",
+        device: UART, cmd_id: int, payload: "bytes | bytearray | memoryview | PieceBuffer | None", total: int, pull: "_PullCallback | None",
     ) -> bool:
         return await real_send_train(device, (cmd_id + 1) & 0xFF, payload, total, pull)
 

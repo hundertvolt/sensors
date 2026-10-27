@@ -7708,7 +7708,8 @@ backend-only or frontend-only validation/coercion policy change in this project.
   most `chunk_bytes`, every piece allocated at construction once the caller's cap has admitted the
   size (a `MemoryError` there goes to the caller, which catches it into its own failure result: J.8,
   C.3.2; owner, 2026-10-27), with its length (`len()`), iteration (`pieces()`), a
-  write at an offset (`write_at()`) and a copy-out (`copy_into(dest, start)`, never a partial copy:
+  write at an offset (`write_at()`), its mirror (`read_at(offset, dest)`, exactly `len(dest)` bytes)
+  and a copy-out (`copy_into(dest, start)`, never a partial copy:
   a short destination gets nothing), so no single allocation exceeds `chunk_bytes`; `trim(length)`
   shortens a short train's result without allocating. It is never joined into one buffer: no
   `__eq__`, no buffer protocol. `UARTComm` assembles every train without a caller destination in it
@@ -8786,8 +8787,8 @@ locks and lists, `SensorReaderConfig`'s `ConfigManager`, and the **hourly window
 A.8). `RegionBuffer` (per FRAM chunk operation, transient, fixed by its owner's size; allocated per
 operation by decision, agent, 2026-09-18): its bytearray; a failed allocation prints its text
 through `console()` and the buffer reads as `None`. `PieceBuffer` (G.2): every piece of at most
-`piece_bytes` allocated at construction, after the caller's cap admitted the size; its copy-out
-and write slice views, transient. `_get_dict_cfg()`/`_set_dict_cfg()`: the result and staging dicts,
+`piece_bytes` allocated at construction, after the caller's cap admitted the size; its copy-out,
+read and write slice views, transient. `_get_dict_cfg()`/`_set_dict_cfg()`: the result and staging dicts,
 per config GET/PUT, transient, bounded by the schema, `schema_dict()` built once per PUT; `_republish()`:
 the changed sample, per republish, replacing the last. `arm_tick_timer()`: one closure per arm, boot list.
 
@@ -8945,7 +8946,8 @@ growing by concatenation, a heap too short for its pieces answering `None` with 
 through `console()` (owner, 2026-10-27); `read_until_complete()` is bounded by its `n`.
 
 **`asy_uart_link_driver.py`** — construction, long-lived, fixed: the role's `UARTComm`, its callbacks
-and the bench payload buffer. Per GET served: the echo's one copy-out, bounded by the receive cap.
+and the bench payload buffer. Per GET served: no copy — the stored echo is answered from its own
+pieces (J.8; agent, 2026-10-27).
 Run phase, on demand (dev's initiator, `PUT /status`'s `UartHazards`): per hazard run its two
 initiation tasks and its raw frame and ACK buffers, transient; `_run_hazards()` stores
 `_hazard_facts`, one small dict of three lists (the two initiations' verdicts, the crossed exchange's
@@ -10069,7 +10071,10 @@ The module therefore follows Part G.2's buffer-ownership primitive, in the same 
 - **Paired transfer APIs.** `uart_set(id, data)`/`uart_get(id)` keep the convenience form for small
   payloads, `uart_get()` handing back the answer it assembled in pieces (J.9); `_into`/`_from`
   counterparts take a caller-owned buffer, and a callback form drives a chunk at a time so a large
-  transfer can stream to or from FRAM/flash without ever existing in RAM as a whole.
+  transfer can stream to or from FRAM/flash without ever existing in RAM as a whole. A responder's
+  `get_callback` answers with a buffer or with a `PieceBuffer` (a received train answered back, as
+  `dev`'s bench echo does), sent from its pieces chunk by chunk through `read_at()` into the TX
+  frame, never joined (agent, 2026-10-27).
 - **Preallocate from `CHUNKS`, never grow.** The total upper bound `(CHUNKS − 1) × payload_size`
   (chunk 1 carries only the command id) is known the moment the first frame of a train arrives, and
   the exact size is known whenever the caller passed `exp_size` — neither case justifies an

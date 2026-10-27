@@ -369,7 +369,7 @@ class UARTComm:
             # for and that the answer was withheld, while the peer learns it by timing out.
             await self._reject_wrn(device, cmd_id)
             return ListenResult(None, _CMD_GET, None)
-        if payload is not None and not isinstance(payload, (bytes, bytearray, memoryview)):
+        if payload is not None and not isinstance(payload, (bytes, bytearray, memoryview, PieceBuffer)):
             # The payload's type is part of the return shape, so it is checked rather than
             # trusted - a str or an int here would otherwise reach the frame builder.
             await self._fault(device, _ERR_CALLBACK, "get_callback returned a non-buffer payload for", cmd_id)
@@ -873,7 +873,7 @@ class UARTComm:
         self._ack[_MSG_UID] = uid
         return await device.writefrom(self._ack, self._frame_size, timeout_ms=self._timeout)
 
-    async def _send_train(self, device: "UART", cmd_id: int, payload: "Readable | None", total: int, pull: "_PullCallback | None") -> bool:
+    async def _send_train(self, device: "UART", cmd_id: int, payload: "Readable | PieceBuffer | None", total: int, pull: "_PullCallback | None") -> bool:
         chunks = self._chunk_count(total)
         if chunks is None:
             await self._err(_ERR_UART_PAYLOAD_TOO_LARGE, "payload of", total, "bytes needs more than", _CHUNKS_MAX, "chunks")
@@ -881,7 +881,8 @@ class UARTComm:
         self._cmd_buf[0] = cmd_id
         if not await self._write_frame_with_ack(device, CMD_SET, chunks, 1, self._cmd_buf, 1):
             return False
-        view = None if payload is None else memoryview(payload)  # sliced, never re-sliced as bytes
+        pieces = payload if isinstance(payload, PieceBuffer) else None  # a GET answered from pieces is never joined (J.8)
+        view = memoryview(payload) if isinstance(payload, (bytes, bytearray, memoryview)) else None  # sliced, never re-sliced as bytes
         sent = 0
         cur = 1
         while cur < chunks:
@@ -895,6 +896,15 @@ class UARTComm:
                 if written is None or not await self._write_frame_with_ack(device, CMD_SET, chunks, cur, None, written):
                     return False
                 sent += written
+                continue
+            if pieces is not None:  # copied by index into the TX data region, which data=None then leaves in place
+                region = self._tx.get_data_buf()
+                if region is None or not pieces.read_at(sent, region[0:size]):  # Unreachable: a refused TX buffer refuses construction, and size stays within the answer - kept to narrow the Optional
+                    await self._fault(device, _ERR_ALLOC, "no TX data region")
+                    return False
+                if not await self._write_frame_with_ack(device, CMD_SET, chunks, cur, None, size):
+                    return False
+                sent += size
                 continue
             data = view[sent : sent + size] if (view is not None and size) else None
             if not await self._write_frame_with_ack(device, CMD_SET, chunks, cur, data, size):

@@ -99,19 +99,15 @@ class UARTLinkDriver:
         self._transfers = 0
         self._failures = 0
 
-    def _get_callback(self, cmd_id: int) -> tuple[bool, bytes | bytearray | None]:
+    def _get_callback(self, cmd_id: int) -> "tuple[bool, bytes | bytearray | PieceBuffer | None]":
         # Answers a GET across the jumper. Returns (valid, payload); withholding validity is how
         # the responder signals "no such command", which the peer sees as a withheld answer.
         if cmd_id == _CMD_BANNER:
             return True, _BANNER
         if cmd_id == _CMD_ECHO:
             stored = self._last_echo
-            if stored is None:
-                return True, b""
-            # The stored echo is a PieceBuffer (no buffer protocol): one copy-out, bounded by the receive cap,
-            # answers the GET.
-            echo = bytearray(len(stored))
-            return stored.copy_into(echo), echo
+            # The stored echo is a PieceBuffer, answered from its pieces: no copy-out, no peer-sized allocation (J.8).
+            return True, b"" if stored is None else stored
         return False, None
 
     def _set_callback(self, cmd_id: int) -> tuple[bool, int | None]:
