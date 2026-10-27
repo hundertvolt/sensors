@@ -800,6 +800,17 @@ def test_buildgen_generation_runs_before_the_pytest_job_is_backgrounded(repo_roo
     assert generate_at < pytest_at, "scripts/test.sh must generate the buildgen device modules BEFORE backgrounding tests_scripts/ - see that block's own devices/*.toml race comment"
 
 
+def test_the_sites_are_built_before_the_pytest_job_is_backgrounded(repo_root: Path) -> None:
+    # The tier's twin boots import frozen_modules/'s frozen_html, which _build_sites writes: started before it ends, they
+    # find it missing on a fresh checkout or stale on a reused one.
+    text = _test_sh_text(repo_root)
+    build_at = text.find("\n_build_sites\n")
+    pytest_at = text.find(_PYTEST_LINE)
+    assert build_at != -1, "scripts/test.sh no longer calls _build_sites on a line of its own - update this test with it"
+    assert pytest_at != -1, f"scripts/test.sh no longer runs {_PYTEST_LINE!r} - update this test with it"
+    assert build_at < pytest_at, "scripts/test.sh must build the sites (_build_sites) BEFORE backgrounding tests_scripts/, which reads them"
+
+
 def test_stale_live_tree_fixtures_are_swept_before_anything_globs_devices(repo_root: Path) -> None:
     # The sweep covers the leak the ordering cannot: a fixture removes its file in `finally`, which a SIGKILL defeats,
     # so a later run reclaims it before its generation step globs devices/*.toml.

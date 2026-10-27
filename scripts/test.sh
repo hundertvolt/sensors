@@ -412,12 +412,23 @@ for cap_bin in "${cap_bins[@]}"; do
     fi
 done
 
-# tests_scripts/ needs nothing from the frozen-module steps below: it is real CPython touching only
-# pytest's tmp_path fixtures and OS-assigned free ports, never this repo's real build/generated_src/
-# or frozen_modules/ (tests_scripts/conftest.py's docstring).
-#
-# So it is backgrounded HERE, overlapping its own run with essentially the whole rest of this
-# script rather than serializing in front of it (SPECIFICATION.md Part E.1). It counts against
+# _build_sites: every generated sensortask_<device>.py imports frozen_html at module level, so the unit tier needs one
+# site on its path; any derived device serves, so the first is built and no device is named here (Part A.9). The
+# scenario harness boots each device on its own site, build/generated_html/<device>/, so a plain run builds those too.
+_build_sites() {
+    echo "== Building frozen_modules/frozen_html.py (the $site_device website, the first derived device)"
+    scripts/build_website.sh "$site_device"
+    if [ "$coverage" = "0" ]; then
+        echo "== Building every derived device's website into build/generated_html/ (the scenario harness boots each)"
+        scripts/build_device_websites.sh
+    fi
+}
+# Before tests_scripts/ starts: its twin boots import frozen_modules/'s frozen_html (25 tests fail and 1 errors without
+# it, measured 2026-10-27), and the device-websites build globs devices/, where the tier plants its zz_test_ fixtures.
+_build_sites
+
+# tests_scripts/ is backgrounded HERE, once everything it reads is built, overlapping its own run with the whole
+# MicroPython tier rather than serializing in front of it (SPECIFICATION.md Part E.1). It counts against
 # max_parallel like any other job, not as an extra process on top of that budget.
 #
 # timeout-wrapped for the standing "hanging tests are never allowed" rule: a hung pytest would hold the final `wait`
@@ -427,11 +438,9 @@ done
 # The timeout retry rule (E.3.1): a timed-out run is retried like a timed-out file, up to max_attempts in all, and a
 # pass after a retry is RETRIED-PASS; any other exit fails at once.
 #
-# MUST stay behind the generation step above, which globs devices/*.toml - Part E.1's reserved
+# MUST stay behind the generation and site steps above, which glob devices/*.toml - Part E.1's reserved
 # zz_test_ namespace has the race: the tier writes its live-tree fixtures there for the length of one test.
-#
-# Nothing else in the foreground re-globs devices/ once generation is done but build_device_websites.sh below, which
-# drops the zz_test_ fixtures, the only TOMLs the tier writes; every other step takes the device list read above.
+# Nothing in the foreground re-globs devices/ once the tier runs: every later step takes the device list read above.
 
 echo "== Running tests_scripts/ (CPython-side build-tooling tests)"
 # Created before the pytest job, which writes its run record, status and pid into it. One shared results_dir
@@ -483,21 +492,8 @@ tests_scripts_inner_pidfile="$results_dir/tests_scripts.pid"
 ) &
 tests_scripts_pid=$!
 
-# _build_sites: every generated sensortask_<device>.py imports frozen_html at module level, so the unit tier needs one
-# site on its path; any derived device serves, so the first is built and no device is named here (Part A.9). The
-# scenario harness boots each device on its own site, build/generated_html/<device>/, so a plain run builds those too.
-_build_sites() {
-    echo "== Building frozen_modules/frozen_html.py (the $site_device website, the first derived device)"
-    scripts/build_website.sh "$site_device"
-    if [ "$coverage" = "0" ]; then
-        echo "== Building every derived device's website into build/generated_html/ (the scenario harness boots each)"
-        scripts/build_device_websites.sh
-    fi
-}
-_build_sites
-
-# tests_scripts/ was backgrounded after the generation step above; RUN_SLOW_FIRMWARE_BUILD stays unset for it,
-# keeping the one real ARM firmware compile opt-in for local iteration; ci.yml's firmware-build-verify job sets it.
+# RUN_SLOW_FIRMWARE_BUILD stays unset for the backgrounded tests_scripts/, keeping the one real ARM firmware compile
+# opt-in for local iteration; ci.yml's firmware-build-verify job sets it.
 
 # Per-file timeout with two retries, plus stdbuf line buffering and -X heapsize=16M below. All
 # three are standing backstops rather than fixes for any specific hang, and the heap value is a
