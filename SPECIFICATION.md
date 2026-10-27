@@ -7313,8 +7313,8 @@ of the budget the initiator allows for an ACK, and a 17x cut in idle task switch
 defaults to 50 ms idle and 2 ms in-transaction, the dev bench's measured pair; a wiring states
 either only to depart from it. An out-of-range `poll_wait_ms`, `poll_idle_ms` or `timeout_ms` —
 beyond the ticks range, where `asyncio.sleep_ms()` raises `OverflowError` for a delta of 2**29 ms
-or more (`extmod/asyncio/core.py:57`, `extmod/modtime.c:191-192`) — degrades `ready()` to `False`,
-as a malformed mask (`TypeError`) does; the build bounds `poll_idle_ms` between `poll_wait_ms` and
+or more (`extmod/asyncio/core.py:57`, `extmod/modtime.c:191-192`) — degrades `ready()` to `False`;
+the build bounds `poll_idle_ms` between `poll_wait_ms` and
 the tick horizon (`buildgen/validate.py`). The rates are Part N `uart.poll_wait_ms_default`,
 `uart.poll_idle_ms_default` and `dev.uart_poll_wait_ms`/`dev.uart_poll_idle_ms`.
 

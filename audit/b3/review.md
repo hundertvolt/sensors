@@ -4,7 +4,7 @@ Requirement: every test in `tests/`, `tests_scripts/`, `tests_js/` and `tests_ha
 
 ## Counts
 
-Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_verdicts.json`: 8545 rows, 336 flagged. A flag is a candidate; the verdict is the reviewer's.
+Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_verdicts.json`: 8544 rows, 336 flagged. A flag is a candidate; the verdict is the reviewer's.
 
 | level | rows | flagged |
 |---|---|---|
@@ -15,7 +15,7 @@ Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_
 | manual (hardware) | 21 | 2 |
 | twin (MicroPython) | 670 | 24 |
 | twin scenario | 176 | 10 |
-| unit (MicroPython) | 3962 | 140 |
+| unit (MicroPython) | 3961 | 140 |
 | web (vitest) | 492 | 6 |
 
 | verdict (per row) | rows |
@@ -23,7 +23,7 @@ Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_
 | CRr2 | 83 |
 | fixed | 46 |
 | justified | 129 |
-| biting | 8287 |
+| biting | 8286 |
 
 | red flag | rows | verdicts |
 |---|---|---|
@@ -78,7 +78,7 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 - tests/test_asy_notification_service.py:1203 `test_monitor_loop_restart_does_not_clobber_an_active_led_override`: ns_seed_text → biting: the seed word is about an input, a value, a lock or a typo, not a logged code
 - tests/test_asy_sgp40_driver.py:310 `test_reset_tolerates_nak_at_general_call_address`: ns_seed_text → biting: the seed word is about an input, a value, a lock or a typo, not a logged code
 - tests/test_asy_sgp40_driver.py:687 `test_read_sgp_without_compensation_data_yet_logs_nothing`: ns_seed_text → biting: a normal situation asserting no entry: SGP40's first-boot wrnno 10 landed
-- tests/test_asy_uart_driver.py:1604 `test_aexit_tolerates_a_lock_already_released_inside_the_block`: ns_seed_text → biting: the seed word is about an input, a value, a lock or a typo, not a logged code
+- tests/test_asy_uart_driver.py:1596 `test_aexit_tolerates_a_lock_already_released_inside_the_block`: ns_seed_text → biting: the seed word is about an input, a value, a lock or a typo, not a logged code
 - tests/test_asy_webserver_service.py:975 `test_system_put_systemcmd_raising_callback_returns_failed_not_an_exception`: ns_seed_text → biting: the seed word is about an input, a value, a lock or a typo, not a logged code
 - tests/test_asy_webserver_service.py:1644 `test_notification_put_pause_time_raising_callback_returns_failed_not_an_exception`: ns_seed_text → biting: (b) a provoked raising callback expecting its Failed answer
 - tests/test_asy_webserver_service.py:1759 `test_notification_put_light_cmd_led_raising_callback_returns_failed_not_an_exception`: ns_seed_text → biting: (b) a provoked raising callback expecting its Failed answer
@@ -3004,147 +3004,146 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests/test_asy_uart_driver.py:566 | test_ready_returns_true_once_data_is_available | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_uart_driver.py:572 | test_ready_times_out_when_nothing_arrives | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_uart_driver.py:577 | test_ready_survives_a_concurrent_deinit_mid_loop | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:593 | test_ready_returns_false_on_a_malformed_mask | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:601 | test_cancel_read_timeout_returns_false_if_not_locked | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:606 | test_cancel_read_timeout_unblocks_a_pending_wait | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:625 | test_rxbuf_and_baudrate_are_readable_back | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:636 | test_no_uart_built_here_polls_through_a_real_select_poll | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:654 | test_a_complete_write_reslices_nothing | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:664 | test_a_short_write_still_completes_across_rounds | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:674 | test_writefrom_rejects_a_size_longer_than_the_buffer | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:681 | test_writefrom_rejects_a_buffer_with_no_room_for_the_crc | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:687 | test_into_methods_move_the_same_bytes_as_their_allocating_siblings | unit (MicroPython) | biting | same_callee | same_callee: biting: two distinct paths, objects or runs compared: their agreement is the claim |
-| tests/test_asy_uart_driver.py:756 | test_pass_through_codec_emits_exactly_what_it_always_did | unit (MicroPython) | biting | same_callee | same_callee: biting: two distinct paths, objects or runs compared: their agreement is the claim |
-| tests/test_asy_uart_driver.py:767 | test_cobs_write_emits_a_delimited_frame_with_no_inner_zero | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:775 | test_writefrom_is_framed_exactly_like_write | unit (MicroPython) | biting | same_callee | same_callee: biting: two distinct paths, objects or runs compared: their agreement is the claim |
-| tests/test_asy_uart_driver.py:786 | test_cobs_round_trips_through_the_driver | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:798 | test_cobs_round_trips_through_the_allocating_read | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:811 | test_cobs_round_trips_with_a_crc_underneath_it | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:824 | test_a_peer_that_never_sends_a_delimiter_fails_the_read_rather_than_blocking | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:833 | test_the_fragment_after_a_resync_is_discarded_never_decoded | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:857 | test_empty_frames_are_skipped_at_the_codec_layer | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:869 | test_a_corrupt_code_byte_is_a_decode_failure_not_an_overrun | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:877 | test_a_caller_buffer_too_small_for_the_encoded_frame_is_refused | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:883 | test_a_delimited_frame_that_decodes_to_nothing_is_a_failed_read | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:890 | test_a_codec_whose_allocation_failed_degrades_every_framed_call | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:898 | test_resync_framing_is_inert_for_the_pass_through_codec | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:909 | test_cancel_during_a_completing_read_still_terminates | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:939 | test_cancel_between_two_reads_is_not_lost | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:964 | test_two_concurrent_cancellers_both_return | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:986 | test_no_read_happens_after_the_cancel_is_acknowledged | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1006 | test_cancel_with_a_wedged_holder_is_bounded_and_counted | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1036 | test_cancelling_a_session_at_each_await_releases_the_lock | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1085 | test_leaving_the_locked_region_acknowledges_a_latched_cancel | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1113 | test_a_new_ready_call_does_not_clear_an_unrelated_cancel | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1132 | test_read_returns_bytes_once_ready | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1143 | test_read_returns_none_on_timeout | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1153 | test_read_with_explicit_nbytes_reads_exactly_that_many_bytes | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1164 | test_readinto_fills_buffer_and_returns_count | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1177 | test_readinto_with_explicit_nbytes_reads_exactly_that_many_bytes | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1190 | test_readline_returns_bytes_once_ready | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1206 | test_read_until_complete_zero_nbytes_returns_empty_immediately | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1216 | test_read_until_complete_assembles_across_multiple_rounds | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1230 | test_read_until_complete_default_crc_is_pass_through | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1242 | test_read_until_complete_strips_and_verifies_real_crc | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1255 | test_read_until_complete_bad_crc_returns_none | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1269 | test_readinto_until_complete_nbytes_too_large_for_buffer_returns_none | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1280 | test_readinto_until_complete_fills_buffer_and_strips_crc | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1301 | test_readline_until_complete_assembles_multi_part_line | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1315 | test_a_line_split_across_the_ring_end_reads_whole | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1330 | test_a_line_over_the_cap_is_discarded_and_logged_once | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1351 | test_a_line_at_the_cap_is_returned | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1385 | test_no_readline_allocation_exceeds_chunk_bytes | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1408 | test_write_empty_message_succeeds_without_touching_the_bus | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1422 | test_write_default_crc_is_pass_through | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1433 | test_write_frames_with_configured_crc | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1448 | test_write_can_be_cancelled_while_waiting_for_tx_ready | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1471 | test_write_waits_until_tx_becomes_writable | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1489 | test_writefrom_frames_with_crc_in_place | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1504 | test_writefrom_buffer_too_small_for_crc_returns_false | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1516 | test_write_retries_after_a_short_write_until_everything_is_sent | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1533 | test_write_returns_false_when_uart_write_returns_none | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1547 | test_writefrom_retries_after_a_short_write_until_everything_is_sent | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1570 | test_exception_inside_session_still_releases_the_lock | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1589 | test_context_manager_does_not_suppress_exceptions | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1604 | test_aexit_tolerates_a_lock_already_released_inside_the_block | unit (MicroPython) | biting | ns_seed_text | ns_seed_text: biting: the seed word is about an input, a value, a lock or a typo, not a logged code |
-| tests/test_asy_uart_driver.py:1616 | test_task_cancellation_while_holding_the_lock_still_releases_it | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1644 | test_two_tasks_sharing_one_uart_never_run_concurrently | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1664 | test_aenter_returns_the_uart_itself | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1674 | test_reentrant_acquisition_deadlocks_and_cleans_up | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1720 | test_write_returns_false_on_crc_add_memoryerror | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1746 | test_write_returns_false_when_crc_add_returns_none | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1758 | test_read_until_complete_returns_none_on_crc_check_memoryerror | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1792 | test_an_allocating_read_whose_buffer_fails_prints_its_own_text | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1843 | test_a_delimited_read_whose_copy_fails_drops_the_frame_counted | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1869 | test_a_multi_round_read_copies_only_what_has_arrived | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1886 | test_single_shot_reads_clamp_to_what_is_buffered_and_report_nothing_as_none | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1904 | test_a_negative_count_reads_nothing_and_consumes_nothing | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1918 | test_read_until_complete_refuses_a_negative_size | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1927 | test_readinto_until_complete_refuses_a_negative_size | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1935 | test_a_delimited_read_refuses_a_negative_size | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1951 | test_ready_yields_even_when_the_mask_is_already_satisfied | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1970 | test_a_deadlineless_wait_polls_at_the_idle_rate_and_a_bounded_one_does_not | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:1990 | test_uncounted_reads_are_clamped_to_what_is_buffered_too | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2010 | test_readline_reads_the_ring_never_the_fifo_api | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2025 | test_a_delimited_frame_read_across_rounds_reads_the_ring_only | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2060 | test_a_closed_receive_channel_reads_as_a_silent_line | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2095 | test_bytes_lapped_during_the_copy_fail_the_read | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2109 | test_an_allocating_read_started_before_its_bytes_arrive_returns_them_all | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2125 | test_a_delimited_read_with_nothing_on_the_line_times_out_on_both_paths | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2134 | test_a_delimited_codec_that_names_no_delimiter_fails_the_read | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2146 | test_a_delimited_read_whose_worst_case_buffer_will_not_fit_fails_cleanly | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2158 | test_a_delimited_frame_longer_than_the_yield_interval_still_yields | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2189 | test_a_crc_framed_write_of_nothing_succeeds_and_sends_nothing | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2196 | test_a_crc_framed_read_of_nothing_returns_empty | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2206 | test_a_zero_length_payload_is_nothing_to_transfer_in_every_crc_and_codec_mode | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2220 | test_a_readline_that_never_becomes_ready_returns_the_sentinel | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2237 | test_the_default_rates_are_two_and_fifty_ms | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2243 | test_a_long_message_goes_out_in_txbuf_sized_writes | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2254 | test_no_write_happens_while_the_ring_is_draining | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2292 | test_a_write_whose_line_never_drains_gives_up_at_its_deadline | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2310 | test_a_write_with_a_deadline_still_completes_once_the_line_drains | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2324 | test_cancel_or_deinit_during_the_drain_wait_returns_false | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2352 | test_a_run_of_delimiters_lets_another_task_run | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2381 | test_a_deinit_during_readys_closing_yield_hands_back_no_dead_uart | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2410 | test_a_deinit_during_the_delimited_reads_periodic_yield_ends_the_read | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2429 | test_an_idle_wait_beyond_the_ticks_range_returns_false | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2485 | test_every_init_clears_the_rx_interrupt_mask_and_enables_rx_dma | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2496 | test_a_re_init_masks_first_and_fails_the_next_read | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2515 | test_the_receive_path_never_touches_the_fifo_api | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2532 | test_progress_is_read_from_the_transfer_count_only | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2544 | test_the_count_reload_keeps_reception_going | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2559 | test_the_fill_level_is_the_modular_difference_of_totals | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2571 | test_a_frame_split_across_the_ring_end_reads_whole | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2586 | test_a_lap_is_an_overrun_never_data | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2600 | test_a_ring_size_the_dma_cannot_wrap_is_refused | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2607 | test_a_misaligned_ring_or_no_free_channel_is_refused_with_nothing_armed | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2631 | test_a_refused_ring_names_its_cause | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2665 | test_the_ring_size_is_public_and_set_by_init | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2674 | test_the_ring_is_allocated_once_in_setup | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2689 | test_a_read_retains_nothing | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2730 | test_thousands_of_back_to_back_frames_at_line_rate_lose_nothing | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2755 | test_random_consumer_stalls_within_and_beyond_the_bound | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2796 | test_a_uart_receive_error_fails_the_frame_and_the_next_reads_whole | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2817 | test_a_parity_error_alone_is_outside_the_mask | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2828 | test_an_error_flag_left_before_the_ring_existed_is_not_reported | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2842 | test_a_receive_overrun_fails_the_initiators_transaction_and_the_next_succeeds | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2887 | test_a_mid_frame_timeout_counts_the_partial_frame | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2892 | test_a_start_timeout_counts_nothing | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2898 | test_a_crc_failure_counts_the_whole_frame | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2912 | test_a_cobs_decode_failure_counts_the_consumed_bytes | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2920 | test_a_good_frame_counts_nothing | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2933 | test_the_discard_count_wraps_without_passing_the_cap | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2941 | test_an_exact_size_codec_delivers_a_full_frame | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2970 | test_a_cancel_at_the_counter_cap_wraps_and_is_acknowledged | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:2990 | test_the_unacknowledged_count_wraps_and_clear_still_reports_a_rise | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:3067 | test_a_receive_overrun_mid_read_fails_each_multi_round_read_and_counts_what_it_had_taken | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:3088 | test_a_receive_overrun_seen_by_readline_fails_it_and_the_next_read_is_whole | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:3100 | test_a_lap_during_the_copy_fails_every_read_path_and_no_phantom_byte_reaches_the_next_read | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:3120 | test_an_overrun_on_a_closed_receive_channel_still_fails_as_one_and_nothing_escapes | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:3138 | test_a_channel_closed_during_the_copy_fails_the_copy_and_never_raises | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:3157 | test_a_uart_with_no_receive_ring_is_never_ready_and_reads_nothing | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:3171 | test_a_line_the_peer_stops_mid_way_times_out_and_counts_its_partial_discarded | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_uart_driver.py:3183 | test_ready_with_nothing_to_clamp_to_yields_at_poll_wait_ms_and_the_read_completes | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:593 | test_cancel_read_timeout_returns_false_if_not_locked | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:598 | test_cancel_read_timeout_unblocks_a_pending_wait | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:617 | test_rxbuf_and_baudrate_are_readable_back | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:628 | test_no_uart_built_here_polls_through_a_real_select_poll | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:646 | test_a_complete_write_reslices_nothing | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:656 | test_a_short_write_still_completes_across_rounds | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:666 | test_writefrom_rejects_a_size_longer_than_the_buffer | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:673 | test_writefrom_rejects_a_buffer_with_no_room_for_the_crc | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:679 | test_into_methods_move_the_same_bytes_as_their_allocating_siblings | unit (MicroPython) | biting | same_callee | same_callee: biting: two distinct paths, objects or runs compared: their agreement is the claim |
+| tests/test_asy_uart_driver.py:748 | test_pass_through_codec_emits_exactly_what_it_always_did | unit (MicroPython) | biting | same_callee | same_callee: biting: two distinct paths, objects or runs compared: their agreement is the claim |
+| tests/test_asy_uart_driver.py:759 | test_cobs_write_emits_a_delimited_frame_with_no_inner_zero | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:767 | test_writefrom_is_framed_exactly_like_write | unit (MicroPython) | biting | same_callee | same_callee: biting: two distinct paths, objects or runs compared: their agreement is the claim |
+| tests/test_asy_uart_driver.py:778 | test_cobs_round_trips_through_the_driver | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:790 | test_cobs_round_trips_through_the_allocating_read | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:803 | test_cobs_round_trips_with_a_crc_underneath_it | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:816 | test_a_peer_that_never_sends_a_delimiter_fails_the_read_rather_than_blocking | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:825 | test_the_fragment_after_a_resync_is_discarded_never_decoded | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:849 | test_empty_frames_are_skipped_at_the_codec_layer | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:861 | test_a_corrupt_code_byte_is_a_decode_failure_not_an_overrun | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:869 | test_a_caller_buffer_too_small_for_the_encoded_frame_is_refused | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:875 | test_a_delimited_frame_that_decodes_to_nothing_is_a_failed_read | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:882 | test_a_codec_whose_allocation_failed_degrades_every_framed_call | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:890 | test_resync_framing_is_inert_for_the_pass_through_codec | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:901 | test_cancel_during_a_completing_read_still_terminates | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:931 | test_cancel_between_two_reads_is_not_lost | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:956 | test_two_concurrent_cancellers_both_return | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:978 | test_no_read_happens_after_the_cancel_is_acknowledged | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:998 | test_cancel_with_a_wedged_holder_is_bounded_and_counted | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1028 | test_cancelling_a_session_at_each_await_releases_the_lock | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1077 | test_leaving_the_locked_region_acknowledges_a_latched_cancel | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1105 | test_a_new_ready_call_does_not_clear_an_unrelated_cancel | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1124 | test_read_returns_bytes_once_ready | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1135 | test_read_returns_none_on_timeout | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1145 | test_read_with_explicit_nbytes_reads_exactly_that_many_bytes | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1156 | test_readinto_fills_buffer_and_returns_count | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1169 | test_readinto_with_explicit_nbytes_reads_exactly_that_many_bytes | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1182 | test_readline_returns_bytes_once_ready | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1198 | test_read_until_complete_zero_nbytes_returns_empty_immediately | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1208 | test_read_until_complete_assembles_across_multiple_rounds | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1222 | test_read_until_complete_default_crc_is_pass_through | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1234 | test_read_until_complete_strips_and_verifies_real_crc | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1247 | test_read_until_complete_bad_crc_returns_none | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1261 | test_readinto_until_complete_nbytes_too_large_for_buffer_returns_none | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1272 | test_readinto_until_complete_fills_buffer_and_strips_crc | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1293 | test_readline_until_complete_assembles_multi_part_line | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1307 | test_a_line_split_across_the_ring_end_reads_whole | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1322 | test_a_line_over_the_cap_is_discarded_and_logged_once | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1343 | test_a_line_at_the_cap_is_returned | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1377 | test_no_readline_allocation_exceeds_chunk_bytes | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1400 | test_write_empty_message_succeeds_without_touching_the_bus | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1414 | test_write_default_crc_is_pass_through | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1425 | test_write_frames_with_configured_crc | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1440 | test_write_can_be_cancelled_while_waiting_for_tx_ready | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1463 | test_write_waits_until_tx_becomes_writable | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1481 | test_writefrom_frames_with_crc_in_place | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1496 | test_writefrom_buffer_too_small_for_crc_returns_false | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1508 | test_write_retries_after_a_short_write_until_everything_is_sent | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1525 | test_write_returns_false_when_uart_write_returns_none | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1539 | test_writefrom_retries_after_a_short_write_until_everything_is_sent | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1562 | test_exception_inside_session_still_releases_the_lock | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1581 | test_context_manager_does_not_suppress_exceptions | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1596 | test_aexit_tolerates_a_lock_already_released_inside_the_block | unit (MicroPython) | biting | ns_seed_text | ns_seed_text: biting: the seed word is about an input, a value, a lock or a typo, not a logged code |
+| tests/test_asy_uart_driver.py:1608 | test_task_cancellation_while_holding_the_lock_still_releases_it | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1636 | test_two_tasks_sharing_one_uart_never_run_concurrently | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1656 | test_aenter_returns_the_uart_itself | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1666 | test_reentrant_acquisition_deadlocks_and_cleans_up | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1712 | test_write_returns_false_on_crc_add_memoryerror | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1738 | test_write_returns_false_when_crc_add_returns_none | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1750 | test_read_until_complete_returns_none_on_crc_check_memoryerror | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1784 | test_an_allocating_read_whose_buffer_fails_prints_its_own_text | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1835 | test_a_delimited_read_whose_copy_fails_drops_the_frame_counted | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1861 | test_a_multi_round_read_copies_only_what_has_arrived | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1878 | test_single_shot_reads_clamp_to_what_is_buffered_and_report_nothing_as_none | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1896 | test_a_negative_count_reads_nothing_and_consumes_nothing | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1910 | test_read_until_complete_refuses_a_negative_size | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1919 | test_readinto_until_complete_refuses_a_negative_size | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1927 | test_a_delimited_read_refuses_a_negative_size | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1943 | test_ready_yields_even_when_the_mask_is_already_satisfied | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1962 | test_a_deadlineless_wait_polls_at_the_idle_rate_and_a_bounded_one_does_not | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:1982 | test_uncounted_reads_are_clamped_to_what_is_buffered_too | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2002 | test_readline_reads_the_ring_never_the_fifo_api | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2017 | test_a_delimited_frame_read_across_rounds_reads_the_ring_only | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2052 | test_a_closed_receive_channel_reads_as_a_silent_line | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2087 | test_bytes_lapped_during_the_copy_fail_the_read | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2101 | test_an_allocating_read_started_before_its_bytes_arrive_returns_them_all | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2117 | test_a_delimited_read_with_nothing_on_the_line_times_out_on_both_paths | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2126 | test_a_delimited_codec_that_names_no_delimiter_fails_the_read | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2138 | test_a_delimited_read_whose_worst_case_buffer_will_not_fit_fails_cleanly | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2150 | test_a_delimited_frame_longer_than_the_yield_interval_still_yields | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2181 | test_a_crc_framed_write_of_nothing_succeeds_and_sends_nothing | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2188 | test_a_crc_framed_read_of_nothing_returns_empty | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2198 | test_a_zero_length_payload_is_nothing_to_transfer_in_every_crc_and_codec_mode | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2212 | test_a_readline_that_never_becomes_ready_returns_the_sentinel | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2229 | test_the_default_rates_are_two_and_fifty_ms | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2235 | test_a_long_message_goes_out_in_txbuf_sized_writes | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2246 | test_no_write_happens_while_the_ring_is_draining | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2284 | test_a_write_whose_line_never_drains_gives_up_at_its_deadline | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2302 | test_a_write_with_a_deadline_still_completes_once_the_line_drains | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2316 | test_cancel_or_deinit_during_the_drain_wait_returns_false | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2344 | test_a_run_of_delimiters_lets_another_task_run | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2373 | test_a_deinit_during_readys_closing_yield_hands_back_no_dead_uart | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2402 | test_a_deinit_during_the_delimited_reads_periodic_yield_ends_the_read | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2421 | test_an_idle_wait_beyond_the_ticks_range_returns_false | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2477 | test_every_init_clears_the_rx_interrupt_mask_and_enables_rx_dma | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2488 | test_a_re_init_masks_first_and_fails_the_next_read | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2507 | test_the_receive_path_never_touches_the_fifo_api | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2524 | test_progress_is_read_from_the_transfer_count_only | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2536 | test_the_count_reload_keeps_reception_going | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2551 | test_the_fill_level_is_the_modular_difference_of_totals | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2563 | test_a_frame_split_across_the_ring_end_reads_whole | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2578 | test_a_lap_is_an_overrun_never_data | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2592 | test_a_ring_size_the_dma_cannot_wrap_is_refused | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2599 | test_a_misaligned_ring_or_no_free_channel_is_refused_with_nothing_armed | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2623 | test_a_refused_ring_names_its_cause | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2657 | test_the_ring_size_is_public_and_set_by_init | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2666 | test_the_ring_is_allocated_once_in_setup | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2681 | test_a_read_retains_nothing | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2722 | test_thousands_of_back_to_back_frames_at_line_rate_lose_nothing | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2747 | test_random_consumer_stalls_within_and_beyond_the_bound | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2788 | test_a_uart_receive_error_fails_the_frame_and_the_next_reads_whole | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2809 | test_a_parity_error_alone_is_outside_the_mask | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2820 | test_an_error_flag_left_before_the_ring_existed_is_not_reported | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2834 | test_a_receive_overrun_fails_the_initiators_transaction_and_the_next_succeeds | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2879 | test_a_mid_frame_timeout_counts_the_partial_frame | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2884 | test_a_start_timeout_counts_nothing | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2890 | test_a_crc_failure_counts_the_whole_frame | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2904 | test_a_cobs_decode_failure_counts_the_consumed_bytes | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2912 | test_a_good_frame_counts_nothing | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2925 | test_the_discard_count_wraps_without_passing_the_cap | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2933 | test_an_exact_size_codec_delivers_a_full_frame | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2962 | test_a_cancel_at_the_counter_cap_wraps_and_is_acknowledged | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:2982 | test_the_unacknowledged_count_wraps_and_clear_still_reports_a_rise | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:3059 | test_a_receive_overrun_mid_read_fails_each_multi_round_read_and_counts_what_it_had_taken | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:3080 | test_a_receive_overrun_seen_by_readline_fails_it_and_the_next_read_is_whole | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:3092 | test_a_lap_during_the_copy_fails_every_read_path_and_no_phantom_byte_reaches_the_next_read | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:3112 | test_an_overrun_on_a_closed_receive_channel_still_fails_as_one_and_nothing_escapes | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:3130 | test_a_channel_closed_during_the_copy_fails_the_copy_and_never_raises | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:3149 | test_a_uart_with_no_receive_ring_is_never_ready_and_reads_nothing | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:3163 | test_a_line_the_peer_stops_mid_way_times_out_and_counts_its_partial_discarded | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_uart_driver.py:3175 | test_ready_with_nothing_to_clamp_to_yields_at_poll_wait_ms_and_the_read_completes | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_uart_link_driver.py:128 | test_name_resolution_matches_instance_name_convention | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_uart_link_driver.py:137 | test_initiator_task_starters_include_exercise_loop | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_uart_link_driver.py:149 | test_responder_task_starters_are_the_listen_loop_only | unit (MicroPython) | biting | — | biting as is |
