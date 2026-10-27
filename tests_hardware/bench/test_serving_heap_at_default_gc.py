@@ -56,10 +56,8 @@ _DRIVER_JOIN_S = 90.0
 
 
 @pytest.mark.provokes_log(
-    "each probe runs on heaps shaped below its need: one that degrades catches its MemoryError and logs ALLOC",
-    ("WEBSERVER", "E", "UNEXPECTED"),
+    "each probe runs on heaps shaped below its need: a streamed source that fails there logs CALLBACK, over a scratch-config boot that logs CONFIG_LOST",
     ("WEBSERVER", "E", "CALLBACK"),
-    ("FRAM", "E", "ALLOC"),
     ("SYSTEM", "W", "CONFIG_LOST"),
 )
 @pytest.mark.ends_unreachable
