@@ -4,7 +4,7 @@ Requirement: per never-raise module an `ast` walk lists every call outside a `tr
 
 ## Walk summary
 
-Walked over `src/` as of `1298e714` by `audit/b3/raising_walk.py` (agent, 2026-10-22). Re-run it on the integration head: lanes P
+Walked over `src/` as of `8cf55c6b` by `audit/b3/raising_walk.py` (agent, 2026-10-22). Re-run it on the integration head: lanes P
 and Y edit four of these modules in U35. A row left "open" needs its per-site proof from the pinned source in the B3 campaign.
 
 Sites per module (call or raise) by the `try` enclosing them: inside one catching `Exception` (broad), inside one
@@ -15,18 +15,19 @@ catching named classes only (narrow), or none. Broad sites are handled by constr
 | asy_base_classes.py | 16 | 4 | 164 | 1 |
 | asy_config_manager.py | 6 | 29 | 134 | 0 |
 | asy_print_log.py | 2 | 15 | 113 | 0 |
-| asy_system_service.py | 53 | 9 | 202 | 0 |
+| asy_system_service.py | 54 | 9 | 201 | 1 |
 | asy_fram_manager.py | 49 | 2 | 248 | 0 |
 | asy_fram_driver.py | 1 | 3 | 165 | 4 |
 | math_helpers.py | 0 | 10 | 35 | 0 |
 
-Rows outside a broad `try`, by verdict: inherently safe 12, open 413, transitive 500, unreachable 208.
+Rows outside a broad `try`, by verdict: handled 59, inherently safe 12, open 346, transitive 457, unreachable 258.
 
 ## Raises
 
 | module:line | function | call or raise | can raise (pinned source) | verdict | proof or action |
 |---|---|---|---|---|---|
 | asy_base_classes.py:370 | _checked_write_results | `raise TypeError('_set_mgr_cfg returned a non-dict result')` | the raise itself | handled | both callers sit in a try catching Exception: asy_base_classes.py:507 (except :508) and :689 (except :690); the raise is that try's logged failure, as its comment says |
+| asy_system_service.py:396 | SystemService._request_shutdown | `raise` | the raise itself | open | - |
 | asy_fram_driver.py:162 | FRAM_SPI.__aenter__ | `raise` | the raise itself | inherently safe | cleanup then re-raise: a BaseException (a cancel) while waiting for the bus lock releases the session lock first; a cancellation must propagate |
 | asy_fram_driver.py:207 | FRAM_SPI._check_device_id | `raise ValueError(f"FRAM max_size {self._max_size:#x} has no known product ID to verify against -` | the raise itself | exempt (setup) | one-time identification error, outside M.PROC.025's scope; reached from FRAM_SPI.setup(), whose one caller asy_fram_manager.py:795 sits in a try catching Exception (except :796) |
 | asy_fram_driver.py:455 | FRAM_SPI.setup | `raise OSError('SPI bus not initialized')` | the raise itself | exempt (setup) | one-time setup error, outside M.PROC.025's scope; the one caller asy_fram_manager.py:795 sits in a try catching Exception (except :796) |
@@ -114,73 +115,109 @@ Rows outside a broad `try`, by verdict: inherently safe 12, open 413, transitive
 | asy_base_classes.py:823 | SensorReaderConfig._commit_mgr_cfg | `self.cfgmgr.commit` at :823 | what the callee raises | transitive | the callee's own rows here |
 | asy_base_classes.py:827 | SensorReaderConfig._writes_closed | `self.cfgmgr.writes_closed` at :827 | what the callee raises | transitive | the callee's own rows here |
 | asy_base_classes.py:845 | SensorReaderConfig.setup | `self.cfgmgr.setup` at :845 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:30 | <module> | `TypeVar` at :30 | not classified | open | - |
-| asy_config_manager.py:58 | <module> | `const` at :58, :59, :60, :61, :62, :63, :64, :65, :66, :67, :68, :69 (+2) | nothing at run time | unreachable | folded at compile time (py/compile.c, MICROPY_COMP_CONST) |
-| asy_config_manager.py:75 | _as_bool +11 | `type` at :75, :79, :85, :87, :99, :101, :115, :115, :116, :121, :165, :165 (+11); narrow except MemoryError | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_config_manager.py:91 | _coerce_float +1 | `float` at :91, :106 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_config_manager.py:103 | _coerce_int | `int` at :103; narrow except OverflowError/ValueError | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_config_manager.py:116 | _special_bypass | `any` at :116 | not classified | open | - |
-| asy_config_manager.py:132 | _stored_float | `json.loads` at :132 | OSError/MemoryError/ValueError/TypeError (extmod/modjson.c) | open | - |
-| asy_config_manager.py:132 | _stored_float +1 | `json.dumps` at :132, :592; narrow except MemoryError/OSError | OSError/MemoryError/ValueError/TypeError (extmod/modjson.c) | open | - |
-| asy_config_manager.py:145 | check_cfg_get_default +1 | `isinstance` at :145, :527, :539; narrow except MemoryError/OSError/ValueError | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_config_manager.py:148 | check_cfg_get_default +2 | `type_or_range_error` at :148, :214, :569 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:157 | checked_float | `_coerce_float` at :157 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:162 | checked_float +2 | `_special_bypass` at :162, :176, :305 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:171 | checked_int | `_coerce_int` at :171 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:187 | checked_numeric | `checked_int` at :187 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:189 | checked_numeric | `checked_float` at :189 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:206 | compare_before_write +2 | `schema_dict` at :206, :549, :621; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:209 | compare_before_write | `data.items` at :209 | not classified | open | - |
-| asy_config_manager.py:210 | compare_before_write | `fields.get` at :210 | not classified | open | - |
-| asy_config_manager.py:225 | compare_before_write | `resolution.get` at :225 | not classified | open | - |
-| asy_config_manager.py:227 | compare_before_write | `res` at :227, :227 | not classified | open | - |
-| asy_config_manager.py:262 | make_dict | `getattr` at :262 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_config_manager.py:266 | name_cfg +2 | `schema_names` at :266, :351, :371; narrow except KeyError | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:267 | name_cfg +2 | `len` at :267, :308, :550 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_config_manager.py:298 | type_or_range_error | `checked_numeric` at :298 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:30 | <module> | `TypeVar` at :30 | TypeError for a bad constraint set (typing.TypeVar) | unreachable | inside `if TYPE_CHECKING:` (:23); TYPE_CHECKING is False at run time: v1.29.0 builds no typing module (no MP_QSTR_typing in py/ or extmod/) and rp2 freezes none, so the import at :19 raises ImportError, caught at :20-21; the block is mypy's alone |
+| asy_config_manager.py:58 | <module> | `const` at :58, :59, :60, :61, :62, :63, :64, :65, :66, :67, :68, :69 (+2) | nothing at run time: the parser folds `_X = const(v)` (py/parse.c:832-866); a non-constant value is a SyntaxError at compile time (:842) | unreachable | no call is left at run time: each const() is replaced by its value while parsing (py/parse.c:864, MICROPY_COMP_CONST) and the underscore names are dropped from the module (:855-858); the frozen build parses them in mpy-cross, so a bad value fails the build, never a boot |
+| asy_config_manager.py:75 | _as_bool | `type` at :75 | nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033) | unreachable | one argument; no allocation |
+| asy_config_manager.py:79 | _as_str | `type` at :79 | nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033) | unreachable | one argument; no allocation |
+| asy_config_manager.py:85 | _coerce_float | `type` at :85, :87 | nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033) | unreachable | one argument; no allocation |
+| asy_config_manager.py:91 | _coerce_float | `float` at :91 | MemoryError boxing the float (mp_obj_new_float); for an int argument nothing else (a huge int converts to inf, no raise) | handled | check_val is exactly an int here (:87); small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions) |
+| asy_config_manager.py:99 | _coerce_int | `type` at :99, :101 | nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033) | unreachable | one argument; no allocation |
+| asy_config_manager.py:103 | _coerce_int | `int` at :103; narrow except OverflowError/ValueError | ValueError for NaN and OverflowError for +-inf (py/objint.c, mp_obj_new_int_from_float); MemoryError for a result of 2**30 or more (a big int) | handled | the ValueError and OverflowError are caught at :104 (None); the big int is small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions) |
+| asy_config_manager.py:106 | _coerce_int | `float` at :106 | MemoryError boxing the float; as_int is an int, so nothing else | handled | small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions) |
+| asy_config_manager.py:115 | _special_bypass | `type` at :115, :115, :116, :121 | nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033) | unreachable | one argument; no allocation |
+| asy_config_manager.py:116 | _special_bypass | `any` at :116 | any() itself nothing (its iter_buf is on the C stack, py/modbuiltins.c:109-119); the generator expression it consumes is a heap object | handled | val_special is a tuple or list here (:115), so the iteration cannot raise TypeError; the generator is small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions) |
+| asy_config_manager.py:132 | _stored_float | `json.loads` at :132 | ValueError for text that is no JSON value (extmod/modjson.c:357); MemoryError for the float | handled | the text is json.dumps() of a float a validator accepted, finite since every float field's bounds are finite (tests_scripts/test_config_schemas.py), so it parses back and the ValueError cannot occur; the MemoryError is caught at :626 or :657, as json.dumps at :132 |
+| asy_config_manager.py:132 | _stored_float | `json.dumps` at :132 | MemoryError for its text (extmod/modjson.c:101); a float prints with no other raise | handled | both callers hold it in a try catching MemoryError: write_config() :625 through compare_before_write()'s resolution (except :626) and :655 (except :657) |
+| asy_config_manager.py:145 | check_cfg_get_default | `isinstance` at :145 | TypeError for a classinfo that is no class or tuple of classes (py/objtype.c:1486) | unreachable | classinfo is the tuple (tuple, list); isinstance() allocates nothing (that tuple is a small fixed allocation, conventions) |
+| asy_config_manager.py:148 | check_cfg_get_default | `type_or_range_error` at :148 | what type_or_range_error() raises: its rows' small fixed allocations (a boxed float, a whole float's int) | handled | type_or_range_error()'s rows (:296-312) test exact types before any operation, so only those allocations remain; check_cfg_get_default() runs in setup() :557 (boot) and in write_config() :623 (inside the try catching MemoryError, except :626) |
+| asy_config_manager.py:157 | checked_float | `_coerce_float` at :157 | what _coerce_float() raises: the boxed float of an int (:91) | handled | small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions) |
+| asy_config_manager.py:162 | checked_float | `_special_bypass` at :162 | what _special_bypass() raises: its generator expression (:116) | handled | small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions) |
+| asy_config_manager.py:165 | checked_float | `type` at :165, :165 | nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033) | unreachable | one argument; no allocation |
+| asy_config_manager.py:171 | checked_int | `_coerce_int` at :171 | what _coerce_int() raises: the big int and boxed float of a whole float (:103, :106) | handled | small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions) |
+| asy_config_manager.py:176 | checked_int | `_special_bypass` at :176 | what _special_bypass() raises: its generator expression (:116) | handled | small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions) |
+| asy_config_manager.py:179 | checked_int | `type` at :179, :179 | nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033) | unreachable | one argument; no allocation |
+| asy_config_manager.py:187 | checked_numeric | `checked_int` at :187 | what checked_int() raises (its rows above) | handled | small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions) |
+| asy_config_manager.py:189 | checked_numeric | `checked_float` at :189 | what checked_float() raises (its rows above) | handled | small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions) |
+| asy_config_manager.py:204 | compare_before_write | `type` at :204 | nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033) | unreachable | one argument; no allocation |
+| asy_config_manager.py:206 | compare_before_write | `schema_dict` at :206 | MemoryError for the dict of the schema's fields (schema_dict() :273) | handled | sized by the const schema; the one caller, write_config() :625, holds it in its try catching MemoryError (except :626) |
+| asy_config_manager.py:209 | compare_before_write | `data.items` at :209 | MemoryError for the dict view (py/objdict.c:550-551, :562) | handled | data is a dict here (:204); caught at :626 as schema_dict at :206 |
+| asy_config_manager.py:210 | compare_before_write | `fields.get` at :210 | TypeError for an unhashable key (dict_get_helper, py/objdict.c:309-340) | unreachable | key is a key of the dict data, so hashable; get() returns the value or None and allocates nothing |
+| asy_config_manager.py:214 | compare_before_write | `type_or_range_error` at :214 | what type_or_range_error() raises: its small fixed allocations | handled | caught at :626 as schema_dict at :206; value is any JSON value, which its exact-type tests take without a raise |
+| asy_config_manager.py:225 | compare_before_write | `resolution.get` at :225 | TypeError for an unhashable key (py/objdict.c:309-340) | unreachable | resolution is a dict here (None tested on the same line) and key a str key of data |
+| asy_config_manager.py:227 | compare_before_write | `res` at :227, :227 | what the resolution callable raises: write_config() passes only _stored_float (:624), whose rows leave MemoryError | handled | both arguments are validated floats of a float field (the value :214 accepted, the stored one validated by setup() :569 or staged through _stored_float() :655); caught at :626 |
+| asy_config_manager.py:261 | make_dict | `type` at :261 | nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033) | unreachable | one argument; `.__name__` of a type is its qstr name, so nothing allocates |
+| asy_config_manager.py:262 | make_dict | `getattr` at :262 | AttributeError for a name nt lacks (mp_load_attr, py/runtime.c:1240-1295) | unreachable | every caller passes the `_FIELDS` literal its namedtuple was built from (asy_bmp3xx_driver.py:396, asy_notification_service.py:367, asy_ntp_client.py:533, asy_scd30_driver.py:599, asy_sgp40_driver.py:648, asy_wifi_service.py:945), so each name is a field |
+| asy_config_manager.py:266 | name_cfg | `schema_names` at :266 | MemoryError for the names list (schema_names() :277) | handled | the list has the schema's field count, one for every caller (the drivers' push tables at construction, asy_system_service.py:270 on a REST PUT): small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions) |
+| asy_config_manager.py:267 | name_cfg | `len` at :267 | nothing for a list | unreachable | names is schema_names()' list |
+| asy_config_manager.py:298 | type_or_range_error | `checked_numeric` at :298 | what checked_numeric() raises (its rows above) | handled | small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions) |
+| asy_config_manager.py:302 | type_or_range_error | `type` at :302, :308, :308, :310 | nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033) | unreachable | one argument; no allocation |
+| asy_config_manager.py:305 | type_or_range_error | `_special_bypass` at :305 | what _special_bypass() raises: its generator expression (:116) | handled | small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions) |
+| asy_config_manager.py:308 | type_or_range_error | `len` at :308 | TypeError for an object with no len (mp_obj_len) | unreachable | check_val is exactly a str here (:302); len() of a str allocates nothing |
 | asy_config_manager.py:321 | ConfigManager.__init__ | `make_logger` at :321 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:322 | ConfigManager.__init__ | `asyncio.Lock` at :322 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_config_manager.py:342 | ConfigManager.__init__ | `asyncio.Event` at :342 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_config_manager.py:343 | ConfigManager.__init__ +3 | `self._commit_ready.set` at :343, :477, :501, :665 | not classified | open | - |
-| asy_config_manager.py:348 | ConfigManager._get_typed_values | `self._get_values` at :348 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:353 | ConfigManager._get_typed_values | `enumerate` at :353 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_config_manager.py:354 | ConfigManager._get_typed_values | `coerce` at :354 | not classified | open | - |
-| asy_config_manager.py:356 | ConfigManager._get_typed_values +2 | `self._read_run_starts` at :356, :365, :373, :444, :452 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:322 | ConfigManager.__init__ | `asyncio.Lock` at :322 | MemoryError for the Lock and its TaskQueue (extmod/asyncio/lock.py:9-16) | handled | small fixed, once at construction: construction or a setup() at boot: the generated entry's except BaseException (conventions) |
+| asy_config_manager.py:342 | ConfigManager.__init__ | `asyncio.Event` at :342 | MemoryError for the Event and its TaskQueue (extmod/asyncio/event.py:9-11) | handled | small fixed, once at construction: construction or a setup() at boot: the generated entry's except BaseException (conventions) |
+| asy_config_manager.py:343 | ConfigManager.__init__ | `self._commit_ready.set` at :343 | nothing: Event.set() moves each waiter to the run queue and stores state (extmod/asyncio/event.py:17-23); TaskQueue pop and push allocate nothing (extmod/modasyncio.c) | unreachable | a just-built Event has no waiter; the store replaces an existing member, so no instance map grows |
+| asy_config_manager.py:348 | ConfigManager._get_typed_values | `self._get_values` at :348 | MemoryError for the coroutine, and what _get_values() raises: its list of the schema's values (:371) | handled | each getter passes its module's const schema: small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions) |
+| asy_config_manager.py:351 | ConfigManager._get_typed_values | `schema_names` at :351 | MemoryError for the names list (:277) | handled | small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions) |
+| asy_config_manager.py:353 | ConfigManager._get_typed_values | `enumerate` at :353 | MemoryError for the enumerate object (py/objenumerate.c:42-50) | handled | values is a list, so no TypeError; small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions) |
+| asy_config_manager.py:354 | ConfigManager._get_typed_values | `coerce` at :354 | what the getter's coercer raises: _as_bool()/_as_str() nothing, _coerce_float() its boxed float (:91), _coerce_int() its int and float (:103, :106) | handled | the four getters (:437, :462, :465, :468) pass only these: small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions) |
+| asy_config_manager.py:356 | ConfigManager._get_typed_values | `self._read_run_starts` at :356 | nothing: two attribute operations and a bool (:422-427) | unreachable |  |
 | asy_config_manager.py:357 | ConfigManager._get_typed_values +5 | `self.pr.err_s` at :357, :366, :374, :420, :445, :453, :536, :551, :559, :598, :612, :627 (+5); narrow except MemoryError/OSError | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:359 | ConfigManager._get_typed_values | `typed.append` at :359 | not classified | open | - |
+| asy_config_manager.py:359 | ConfigManager._get_typed_values | `typed.append` at :359 | MemoryError growing the list (mp_obj_list_append's m_renew, py/objlist.c:232) | handled | at most len(keys) items, the getter's const schema: small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions) |
+| asy_config_manager.py:365 | ConfigManager._get_values | `self._read_run_starts` at :365, :373 | nothing: two attribute operations and a bool (:422-427) | unreachable |  |
 | asy_config_manager.py:368 | ConfigManager._get_values +1 | `self.pr.all` at :368, :447 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:370 | ConfigManager._get_values +2 | `self._current` at :370, :449, :625, :653; narrow except KeyError/MemoryError | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:370 | ConfigManager._get_values | `self._current` at :370; narrow except KeyError | nothing: _current() returns one of two attributes (:383-387) | unreachable |  |
+| asy_config_manager.py:371 | ConfigManager._get_values | `schema_names` at :371; narrow except KeyError | MemoryError for the names list and the comprehension's list | handled | its try catches KeyError only (:372); small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions) |
 | asy_config_manager.py:380 | ConfigManager._closed_for_reset +2 | `self.pr.evt` at :380, :493, :615, :645, :647, :668 | what the callee raises | transitive | the callee's own rows here |
 | asy_config_manager.py:418 | ConfigManager._flush_staged | `report_if_fatal` at :418 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:432 | ConfigManager._write_file +1 | `open` at :432, :524; narrow except MemoryError/OSError | OSError (extmod/vfs*.c) | open | - |
-| asy_config_manager.py:433 | ConfigManager._write_file | `f.write` at :433 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:437 | ConfigManager.get_bool_values +3 | `self._get_typed_values` at :437, :462, :465, :468 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:432 | ConfigManager._write_file | `open` at :432 | OSError from the filesystem (mp_vfs_open, extmod/vfs.c:322; littlefs ENOSPC, EIO, EISDIR); MemoryError for the file object and its path (lookup_path, extmod/vfs.c:100-108) | handled | both callers hold it: setup() :594 in its try catching (MemoryError, OSError) (except :596) and _flush_staged() :403 in its try catching (MemoryError, OSError, ValueError) (except :405); the with-exit's close, where littlefs commits (lfs2.c:3473), raises into the same catches |
+| asy_config_manager.py:433 | ConfigManager._write_file | `f.write` at :433 | OSError from the stream write (ENOSPC, EIO); f is a file object, not one of the walked modules' write() | handled | as open at :432: setup()'s except :596 and _flush_staged()'s except :405 |
+| asy_config_manager.py:437 | ConfigManager.get_bool_values | `self._get_typed_values` at :437 | MemoryError for the coroutine, and what _get_typed_values() raises (its rows above) | handled | small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions) |
+| asy_config_manager.py:444 | ConfigManager.get_dict | `self._read_run_starts` at :444, :452 | nothing: two attribute operations and a bool (:422-427) | unreachable |  |
+| asy_config_manager.py:449 | ConfigManager.get_dict | `self._current` at :449; narrow except KeyError | nothing: _current() returns one of two attributes (:383-387) | unreachable |  |
 | asy_config_manager.py:459 | ConfigManager.get_error_counter | `self.pr.get_log` at :459 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:482 | ConfigManager.delete_file | `self.close_writes` at :482 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:485 | ConfigManager.delete_file | `range` at :485 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_config_manager.py:487 | ConfigManager.delete_file | `os.remove` at :487; narrow except OSError | OSError (extmod/vfs*.c) | open | - |
+| asy_config_manager.py:462 | ConfigManager.get_float_values | `self._get_typed_values` at :462 | MemoryError for the coroutine, and what _get_typed_values() raises (its rows above) | handled | small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions) |
+| asy_config_manager.py:465 | ConfigManager.get_int_values | `self._get_typed_values` at :465 | MemoryError for the coroutine, and what _get_typed_values() raises (its rows above) | handled | small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions) |
+| asy_config_manager.py:468 | ConfigManager.get_str_values | `self._get_typed_values` at :468 | MemoryError for the coroutine, and what _get_typed_values() raises (its rows above) | handled | small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions) |
+| asy_config_manager.py:477 | ConfigManager.commit | `self._commit_ready.set` at :477 | nothing: Event.set() moves each waiter to the run queue and stores state (extmod/asyncio/event.py:17-23); TaskQueue pop and push allocate nothing (extmod/modasyncio.c) | unreachable | the store replaces an existing member, so no instance map grows |
+| asy_config_manager.py:482 | ConfigManager.delete_file | `self.close_writes` at :482 | nothing: one attribute store (:470-473) | unreachable |  |
+| asy_config_manager.py:485 | ConfigManager.delete_file | `range` at :485 | nothing: `for i in range(n)` compiles to a counted loop with no range object (py/compile.c:1430, :1519-1563) | unreachable | the literal bound 2 |
+| asy_config_manager.py:487 | ConfigManager.delete_file | `os.remove` at :487; narrow except OSError | OSError from the filesystem (mp_vfs_remove, extmod/vfs.c:480); MemoryError for the path string (lookup_path, extmod/vfs.c:100-108) | handled | the OSError is caught at :488 (ENOENT answers True, any other retries once, then False); the MemoryError is small fixed and the one caller, _shutdown_sequence() (asy_system_service.py:480), sits in its try catching Exception (except :498), which logs it and leaves the unfed watchdog to reset |
 | asy_config_manager.py:495 | ConfigManager.delete_file | `self.pr.err` at :495 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:501 | ConfigManager.flush_pending | `self._commit_ready.set` at :501 | nothing: Event.set() moves each waiter to the run queue and stores state (extmod/asyncio/event.py:17-23); TaskQueue pop and push allocate nothing (extmod/modasyncio.c) | unreachable | the store replaces an existing member, so no instance map grows |
 | asy_config_manager.py:509 | ConfigManager.reset_error_counter | `self.pr.reset` at :509 | what the callee raises | transitive | the callee's own rows here |
 | asy_config_manager.py:515 | ConfigManager.setup | `self.pr.setup` at :515 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:522 | ConfigManager.setup | `os.stat` at :522; narrow except MemoryError/OSError | OSError (extmod/vfs*.c) | open | - |
-| asy_config_manager.py:526 | ConfigManager.setup | `json.load` at :526; narrow except MemoryError/OSError/ValueError | OSError/MemoryError/ValueError/TypeError (extmod/modjson.c) | open | - |
+| asy_config_manager.py:522 | ConfigManager.setup | `os.stat` at :522; narrow except MemoryError/OSError | OSError (ENOENT, EIO) from the filesystem; MemoryError for the stat tuple | handled | inside the try catching (MemoryError, OSError) (except :538): ENOENT writes the defaults once, anything else reads as unreadable |
+| asy_config_manager.py:524 | ConfigManager.setup | `open` at :524; narrow except MemoryError/OSError | OSError from the filesystem; MemoryError for the file object (extmod/vfs.c:322) | handled | caught at :538 as os.stat at :522 |
+| asy_config_manager.py:526 | ConfigManager.setup | `json.load` at :526; narrow except MemoryError/OSError/ValueError | ValueError for malformed JSON (extmod/modjson.c:357); OSError from the stream read; MemoryError for the parsed value (extmod/modjson.c:148) | handled | the ValueError is caught at :531 (repaired), the OSError and MemoryError at :538 (unreadable) |
+| asy_config_manager.py:527 | ConfigManager.setup | `isinstance` at :527, :539; narrow except MemoryError/OSError/ValueError | TypeError for a classinfo that is no class (py/objtype.c:1486) | unreachable | classinfo is the builtin dict (:527) or OSError (:539); isinstance() allocates nothing |
 | asy_config_manager.py:530 | ConfigManager.setup | `self.pr.wrn_s` at :530, :533, :547, :574, :584; narrow except MemoryError/OSError/ValueError | what the callee raises | transitive | the callee's own rows here |
 | asy_config_manager.py:543 | ConfigManager.setup | `self.pr.one` at :543, :588, :590, :595; narrow except MemoryError/OSError | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:556 | ConfigManager.setup | `defaults.items` at :556 | not classified | open | - |
-| asy_config_manager.py:557 | ConfigManager.setup +1 | `check_cfg_get_default` at :557, :623; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:568 | ConfigManager.setup | `data.pop` at :568 | not classified | open | - |
-| asy_config_manager.py:594 | ConfigManager.setup | `self._write_file` at :594; narrow except MemoryError/OSError | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:609 | ConfigManager.write_config | `self._closed_for_reset` at :609, :618 | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:623 | ConfigManager.write_config | `tuple` at :623; narrow except MemoryError | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_config_manager.py:623 | ConfigManager.write_config | `fields.items` at :623, :624; narrow except MemoryError | not classified | open | - |
-| asy_config_manager.py:625 | ConfigManager.write_config | `compare_before_write` at :625; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:635 | ConfigManager.write_config | `dict_results.items` at :635 | not classified | open | - |
-| asy_config_manager.py:653 | ConfigManager.write_config | `dict` at :653; narrow except MemoryError | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_config_manager.py:654 | ConfigManager.write_config | `write.items` at :654; narrow except MemoryError | not classified | open | - |
-| asy_config_manager.py:655 | ConfigManager.write_config | `_stored_float` at :655; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:656 | ConfigManager.write_config | `asyncio.create_task` at :656; narrow except MemoryError | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_config_manager.py:656 | ConfigManager.write_config | `self._flush_staged` at :656; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
-| asy_config_manager.py:663 | ConfigManager.write_config | `self._commit_ready.clear` at :663 | what the callee raises | transitive | the callee's own rows here |
+| asy_config_manager.py:549 | ConfigManager.setup | `schema_dict` at :549 | MemoryError for the dict of the schema's fields (:273) | handled | construction or a setup() at boot: the generated entry's except BaseException (conventions) |
+| asy_config_manager.py:550 | ConfigManager.setup | `len` at :550 | nothing for a dict | unreachable | defaults is schema_dict()'s dict |
+| asy_config_manager.py:556 | ConfigManager.setup | `defaults.items` at :556 | MemoryError for the dict view (py/objdict.c:550-551) | handled | construction or a setup() at boot: the generated entry's except BaseException (conventions) |
+| asy_config_manager.py:557 | ConfigManager.setup | `check_cfg_get_default` at :557 | what check_cfg_get_default() raises (its rows above) | handled | construction or a setup() at boot: the generated entry's except BaseException (conventions) |
+| asy_config_manager.py:568 | ConfigManager.setup | `data.pop` at :568 | KeyError only without a default (dict_get_helper with MP_MAP_LOOKUP_REMOVE_IF_FOUND, py/objdict.c:309-346) | unreachable | data is a dict here (:527; the None branch at :564 excludes the rest) and the default None is given; a removal allocates nothing |
+| asy_config_manager.py:569 | ConfigManager.setup | `type_or_range_error` at :569 | what type_or_range_error() raises: small fixed allocations for any stored JSON value | handled | its exact-type tests take any JSON value: construction or a setup() at boot: the generated entry's except BaseException (conventions) |
+| asy_config_manager.py:576 | ConfigManager.setup | `type` at :576, :576 | nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033) | unreachable | one argument; no allocation |
+| asy_config_manager.py:592 | ConfigManager.setup | `json.dumps` at :592; narrow except MemoryError/OSError | MemoryError for the text (extmod/modjson.c:101) | handled | inside the try catching (MemoryError, OSError) (except :596): runs unpersisted |
+| asy_config_manager.py:594 | ConfigManager.setup | `self._write_file` at :594; narrow except MemoryError/OSError | what _write_file() raises: OSError and MemoryError (its rows) | handled | caught at :596 as json.dumps at :592 |
+| asy_config_manager.py:609 | ConfigManager.write_config | `self._closed_for_reset` at :609, :618 | what _closed_for_reset() raises: its pr.evt()'s small fixed allocation (asy_print_log.py's rows) | handled | small fixed per call site: F.2 -> I.4(a), the caller's catch (conventions); a REST route's call: Microdot's except Exception (ext/microdot.py:1533) and the webserver's errorhandler (asy_webserver_service.py:791) (conventions) |
+| asy_config_manager.py:621 | ConfigManager.write_config | `schema_dict` at :621; narrow except MemoryError | MemoryError for the dict of the schema's fields (:273) | handled | inside the try catching MemoryError (except :626): nothing staged, the answer (False, {}) |
+| asy_config_manager.py:623 | ConfigManager.write_config | `tuple` at :623; narrow except MemoryError | MemoryError for the tuple and its generator expression | handled | caught at :626 as schema_dict at :621 |
+| asy_config_manager.py:623 | ConfigManager.write_config | `fields.items` at :623, :624; narrow except MemoryError | MemoryError for the dict view (py/objdict.c:550-551) | handled | caught at :626 as schema_dict at :621 |
+| asy_config_manager.py:623 | ConfigManager.write_config | `check_cfg_get_default` at :623; narrow except MemoryError | what check_cfg_get_default() raises (its rows above) | handled | caught at :626 as schema_dict at :621 |
+| asy_config_manager.py:625 | ConfigManager.write_config | `compare_before_write` at :625; narrow except MemoryError | what compare_before_write() raises: its dicts, which grow with the request's keys, and its rows above | handled | caught at :626 (its comment: the compare exhausting the heap); the request body is capped by Request.max_content_length (asy_webserver_service.py:596) |
+| asy_config_manager.py:625 | ConfigManager.write_config | `self._current` at :625, :653; narrow except MemoryError | nothing: _current() returns one of two attributes (:383-387) | unreachable |  |
+| asy_config_manager.py:635 | ConfigManager.write_config | `dict_results.items` at :635 | MemoryError for the dict view (py/objdict.c:550-551) | handled | outside both trys, small fixed: nothing is staged yet and the async with releases the lock; a REST route's call: Microdot's except Exception (ext/microdot.py:1533) and the webserver's errorhandler (asy_webserver_service.py:791) (conventions) |
+| asy_config_manager.py:653 | ConfigManager.write_config | `dict` at :653; narrow except MemoryError | MemoryError for the copy of the schema-sized snapshot | handled | inside the try catching MemoryError (except :657): nothing staged, the answer (False, {}) |
+| asy_config_manager.py:654 | ConfigManager.write_config | `write.items` at :654; narrow except MemoryError | MemoryError for the dict view (py/objdict.c:550-551) | handled | caught at :657 as dict at :653 |
+| asy_config_manager.py:655 | ConfigManager.write_config | `type` at :655; narrow except MemoryError | nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033) | unreachable | one argument; no allocation |
+| asy_config_manager.py:655 | ConfigManager.write_config | `_stored_float` at :655; narrow except MemoryError | what _stored_float() raises: MemoryError (its rows above) | handled | value is a validated finite float (:655's type test); caught at :657 |
+| asy_config_manager.py:656 | ConfigManager.write_config | `asyncio.create_task` at :656; narrow except MemoryError | MemoryError for the Task (extmod/modasyncio.c:176-178); TypeError only for a non-coroutine (extmod/asyncio/core.py:143-145) | handled | the argument is the _flush_staged() coroutine; caught at :657 as dict at :653 |
+| asy_config_manager.py:656 | ConfigManager.write_config | `self._flush_staged` at :656; narrow except MemoryError | MemoryError for its coroutine (py/objgenerator.c:53-62); its body runs in its own task, whose except Exception (:417) holds it | handled | caught at :657 as dict at :653 |
+| asy_config_manager.py:663 | ConfigManager.write_config | `self._commit_ready.clear` at :663 | nothing: Event.clear() stores one existing member (extmod/asyncio/event.py:25-26) | unreachable |  |
+| asy_config_manager.py:665 | ConfigManager.write_config | `self._commit_ready.set` at :665 | nothing: Event.set() moves each waiter to the run queue and stores state (extmod/asyncio/event.py:17-23); TaskQueue pop and push allocate nothing (extmod/modasyncio.c) | unreachable | the store replaces an existing member, so no instance map grows |
 | asy_print_log.py:59 | <module> | `const` at :59, :60, :61, :62, :63, :64, :67, :68, :69, :70, :71, :72 (+4) | nothing at run time | unreachable | folded at compile time (py/compile.c, MICROPY_COMP_CONST) |
 | asy_print_log.py:89 | PrintLog.__init__ | `self.set_level` at :89 | what the callee raises | transitive | the callee's own rows here |
 | asy_print_log.py:96 | PrintLog._line +2 | `print` at :96, :184, :461, :463 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
@@ -233,9 +270,9 @@ Rows outside a broad `try`, by verdict: inherently safe 12, open 413, transitive
 | asy_system_service.py:139 | _write_region +2 | `mem_backup` at :139, :153, :154, :176, :177 | not classified | open | - |
 | asy_system_service.py:161 | begin_boot | `reset_cause` at :161 | not classified | open | - |
 | asy_system_service.py:167 | begin_boot | `range` at :167 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_system_service.py:167 | begin_boot +2 | `len` at :167, :769, :778, :788, :799 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_system_service.py:169 | begin_boot +2 | `_write_region` at :169, :185, :688 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:180 | record_loop_end +2 | `write_reset_record` at :180, :357, :373, :409 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:167 | begin_boot +2 | `len` at :167, :773, :782, :792, :803 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_system_service.py:169 | begin_boot +2 | `_write_region` at :169, :185, :692 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:180 | record_loop_end +2 | `write_reset_record` at :180, :357, :373, :413 | what the callee raises | transitive | the callee's own rows here |
 | asy_system_service.py:200 | SystemService.__init__ | `make_logger` at :200 | what the callee raises | transitive | the callee's own rows here |
 | asy_system_service.py:206 | SystemService.__init__ | `TickSeconds` at :206 | not classified | open | - |
 | asy_system_service.py:207 | SystemService.__init__ | `asyncio.ThreadSafeFlag` at :207, :213, :239 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
@@ -250,70 +287,69 @@ Rows outside a broad `try`, by verdict: inherently safe 12, open 413, transitive
 | asy_system_service.py:269 | SystemService._set_dict_cfg | `dict.fromkeys` at :269 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
 | asy_system_service.py:270 | SystemService._set_dict_cfg | `results.get` at :270 | not classified | open | - |
 | asy_system_service.py:270 | SystemService._set_dict_cfg | `name_cfg` at :270 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:271 | SystemService._set_dict_cfg +1 | `self.cfgmgr.get_int_values` at :271, :758 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:273 | SystemService._set_dict_cfg +1 | `self._apply_level` at :273, :760 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:284 | SystemService._apply_level +8 | `report_if_fatal` at :284, :308, :327, :339, :426, :433, :496, :503, :615 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:285 | SystemService._apply_level +10 | `self.pr.err_s` at :285, :309, :325, :328, :330, :340, :427, :434, :497, :504, :514, :617 (+1) | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:298 | SystemService._flush_config_stores +1 | `store.close_writes` at :298, :413 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:271 | SystemService._set_dict_cfg +1 | `self.cfgmgr.get_int_values` at :271, :762 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:273 | SystemService._set_dict_cfg +1 | `self._apply_level` at :273, :764 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:284 | SystemService._apply_level +8 | `report_if_fatal` at :284, :308, :327, :339, :430, :437, :500, :507, :619 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:285 | SystemService._apply_level +10 | `self.pr.err_s` at :285, :309, :325, :328, :330, :340, :431, :438, :501, :508, :518, :621 (+1) | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:298 | SystemService._flush_config_stores +1 | `store.close_writes` at :298, :417 | what the callee raises | transitive | the callee's own rows here |
 | asy_system_service.py:313 | SystemService._flush_config_stores | `step_done` at :313 | not classified | open | - |
-| asy_system_service.py:321 | SystemService._log_dead_task +2 | `self._uptime.read` at :321, :521, :681 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:321 | SystemService._log_dead_task +2 | `self._uptime.read` at :321, :525, :685 | what the callee raises | transitive | the callee's own rows here |
 | asy_system_service.py:344 | SystemService._ntp_boot_signature | `utc_now` at :344 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:349 | SystemService._own_feed +1 | `self._watchdog.feed` at :349, :698 | not classified | open | - |
-| asy_system_service.py:354 | SystemService._reboot +4 | `self.pr.evt` at :354, :359, :362, :397, :414, :436, :528, :709, :712 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:349 | SystemService._own_feed +1 | `self._watchdog.feed` at :349, :702 | not classified | open | - |
+| asy_system_service.py:354 | SystemService._reboot +4 | `self.pr.evt` at :354, :359, :362, :401, :418, :440, :531, :712, :716 | what the callee raises | transitive | the callee's own rows here |
 | asy_system_service.py:358 | SystemService._reboot | `self._flush_config_stores` at :358 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:361 | SystemService._reboot +2 | `self._storage_pause` at :361, :527, :710, :713 | not classified | open | - |
-| asy_system_service.py:364 | SystemService._reboot +2 | `asyncio.create_task` at :364, :400, :805; narrow except MemoryError/OSError | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
+| asy_system_service.py:361 | SystemService._reboot +2 | `self._storage_pause` at :361, :530, :713, :717 | not classified | open | - |
+| asy_system_service.py:364 | SystemService._reboot +2 | `asyncio.create_task` at :364, :404, :809; narrow except MemoryError/OSError | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
 | asy_system_service.py:364 | SystemService._reboot | `self._reset_when_due` at :364; narrow except MemoryError/OSError | what the callee raises | transitive | the callee's own rows here |
 | asy_system_service.py:366 | SystemService._reboot | `self._own_feed` at :366; narrow except MemoryError/OSError | what the callee raises | transitive | the callee's own rows here |
 | asy_system_service.py:367 | SystemService._reboot | `self._reset_timer.init` at :367; narrow except MemoryError/OSError | not classified | open | - |
 | asy_system_service.py:367 | SystemService._reboot | `self._reset_due.set` at :367; narrow except MemoryError/OSError | not classified | open | - |
 | asy_system_service.py:372 | SystemService._reboot | `self._reset_task.cancel` at :372 | not classified | open | - |
-| asy_system_service.py:377 | SystemService._reboot +1 | `self.pr.err` at :377, :403 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:391 | SystemService._request_shutdown | `self._storage.erase_ready` at :391 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:400 | SystemService._request_shutdown | `self._shutdown_sequence` at :400; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:414 | SystemService._request_shutdown | `_purpose_name` at :414 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:516 | SystemService._status_loop +2 | `asyncio.sleep_ms` at :516, :778, :796 | not classified | open | - |
-| asy_system_service.py:518 | SystemService._status_loop +1 | `arm_tick_timer` at :518, :631 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:520 | SystemService._status_loop | `self._uptime_event.wait` at :520 | not classified | open | - |
-| asy_system_service.py:522 | SystemService._status_loop | `self.pr.all` at :522 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:523 | SystemService._status_loop +1 | `time.ticks_diff` at :523, :790 | TypeError only for a non-int argument | inherently safe | small-int arguments (extmod/modtime.c:150-196) |
-| asy_system_service.py:523 | SystemService._status_loop +2 | `time.ticks_ms` at :523, :715, :787, :790 | TypeError only for a non-int argument | inherently safe | small-int arguments (extmod/modtime.c:150-196) |
-| asy_system_service.py:531 | SystemService._status_loop | `self._ntp_boot_signature` at :531 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:533 | SystemService._status_loop | `self._boot_signature.set_value` at :533, :539 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:534 | SystemService._status_loop +1 | `self.pr.one` at :534, :540, :800 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:539 | SystemService._status_loop | `random.getrandbits` at :539 | not classified | open | - |
-| asy_system_service.py:626 | SystemService.start_asy_status +1 | `asyncio.get_event_loop` at :626, :773 | not classified | open | - |
-| asy_system_service.py:627 | SystemService.start_asy_status | `evtloop.create_task` at :627 | not classified | open | - |
-| asy_system_service.py:627 | SystemService.start_asy_status | `self._status_loop` at :627 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:633 | SystemService.start_uptime_timer | `self._uptime_event.set` at :633 | not classified | open | - |
-| asy_system_service.py:638 | SystemService.get_boot_signature | `self._boot_signature.get_value` at :638 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:653 | SystemService.get_dict_cfg | `self.cfgmgr.get_dict` at :653 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:653 | SystemService.get_dict_cfg | `schema_names` at :653 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:657 | SystemService.get_error_counter | `self.pr.get_log` at :657 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:691 | SystemService.erase_fram +3 | `self._request_shutdown` at :691, :719, :722, :732 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:706 | SystemService.pause_permanent_storage | `min` at :706 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_system_service.py:706 | SystemService.pause_permanent_storage | `max` at :706 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_system_service.py:715 | SystemService.pause_permanent_storage +1 | `time.ticks_add` at :715, :790 | TypeError only for a non-int argument | inherently safe | small-int arguments (extmod/modtime.c:150-196) |
-| asy_system_service.py:729 | SystemService.reset_error_counter | `self.pr.reset` at :729 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:737 | SystemService.run_setups +1 | `gc.collect` at :737, :741, :770, :779 | not classified | open | - |
-| asy_system_service.py:739 | SystemService.run_setups | `setup` at :739 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:740 | SystemService.run_setups | `self.feed_watchdog` at :740 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:747 | SystemService.setup | `self.pr.setup` at :747 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:749 | SystemService.setup | `self._level_setters_provider` at :749 | not classified | open | - |
-| asy_system_service.py:751 | SystemService.setup | `self._config_stores_provider` at :751 | not classified | open | - |
-| asy_system_service.py:752 | SystemService.setup | `self.cfgmgr.setup` at :752 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:756 | SystemService.setup | `self.pr.wrn_s` at :756 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:774 | SystemService.start_tasks | `loop.get_exception_handler` at :774 | not classified | open | - |
-| asy_system_service.py:775 | SystemService.start_tasks | `loop.set_exception_handler` at :775 | not classified | open | - |
-| asy_system_service.py:776 | SystemService.start_tasks +1 | `enumerate` at :776, :785, :789 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_system_service.py:777 | SystemService.start_tasks | `self._start_task` at :777 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:786 | SystemService.start_timers | `self._run_timer_starter` at :786, :799 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:793 | SystemService.start_timers | `self._sequencer_timer.init` at :793; narrow except MemoryError/OSError | not classified | open | - |
-| asy_system_service.py:793 | SystemService.start_timers | `self._sequencer_flag.set` at :793; narrow except MemoryError/OSError | not classified | open | - |
-| asy_system_service.py:798 | SystemService.start_timers | `self._sequencer_flag.wait` at :798 | not classified | open | - |
-| asy_system_service.py:805 | SystemService.supervise_tasks | `self._supervise` at :805 | what the callee raises | transitive | the callee's own rows here |
-| asy_system_service.py:807 | SystemService.supervise_tasks | `self._never.wait` at :807 | not classified | open | - |
-| asy_system_service.py:809 | SystemService.supervise_tasks | `self._supervisor_task.cancel` at :809 | not classified | open | - |
+| asy_system_service.py:377 | SystemService._reboot +1 | `self.pr.err` at :377, :407 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:404 | SystemService._request_shutdown | `self._shutdown_sequence` at :404; narrow except MemoryError | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:418 | SystemService._request_shutdown | `_purpose_name` at :418 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:520 | SystemService._status_loop +2 | `asyncio.sleep_ms` at :520, :782, :800 | not classified | open | - |
+| asy_system_service.py:522 | SystemService._status_loop +1 | `arm_tick_timer` at :522, :635 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:524 | SystemService._status_loop | `self._uptime_event.wait` at :524 | not classified | open | - |
+| asy_system_service.py:526 | SystemService._status_loop | `self.pr.all` at :526 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:527 | SystemService._status_loop +1 | `time.ticks_diff` at :527, :794 | TypeError only for a non-int argument | inherently safe | small-int arguments (extmod/modtime.c:150-196) |
+| asy_system_service.py:527 | SystemService._status_loop +2 | `time.ticks_ms` at :527, :719, :791, :794 | TypeError only for a non-int argument | inherently safe | small-int arguments (extmod/modtime.c:150-196) |
+| asy_system_service.py:535 | SystemService._status_loop | `self._ntp_boot_signature` at :535 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:537 | SystemService._status_loop | `self._boot_signature.set_value` at :537, :543 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:539 | SystemService._status_loop +1 | `self.pr.one` at :539, :545, :804 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:543 | SystemService._status_loop | `random.getrandbits` at :543 | not classified | open | - |
+| asy_system_service.py:630 | SystemService.start_asy_status +1 | `asyncio.get_event_loop` at :630, :777 | not classified | open | - |
+| asy_system_service.py:631 | SystemService.start_asy_status | `evtloop.create_task` at :631 | not classified | open | - |
+| asy_system_service.py:631 | SystemService.start_asy_status | `self._status_loop` at :631 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:637 | SystemService.start_uptime_timer | `self._uptime_event.set` at :637 | not classified | open | - |
+| asy_system_service.py:642 | SystemService.get_boot_signature | `self._boot_signature.get_value` at :642 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:657 | SystemService.get_dict_cfg | `self.cfgmgr.get_dict` at :657 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:657 | SystemService.get_dict_cfg | `schema_names` at :657 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:661 | SystemService.get_error_counter | `self.pr.get_log` at :661 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:695 | SystemService.erase_fram +3 | `self._request_shutdown` at :695, :723, :726, :736 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:710 | SystemService.pause_permanent_storage | `min` at :710 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_system_service.py:710 | SystemService.pause_permanent_storage | `max` at :710 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_system_service.py:719 | SystemService.pause_permanent_storage +1 | `time.ticks_add` at :719, :794 | TypeError only for a non-int argument | inherently safe | small-int arguments (extmod/modtime.c:150-196) |
+| asy_system_service.py:733 | SystemService.reset_error_counter | `self.pr.reset` at :733 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:741 | SystemService.run_setups +1 | `gc.collect` at :741, :745, :774, :783 | not classified | open | - |
+| asy_system_service.py:743 | SystemService.run_setups | `setup` at :743 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:744 | SystemService.run_setups | `self.feed_watchdog` at :744 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:751 | SystemService.setup | `self.pr.setup` at :751 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:753 | SystemService.setup | `self._level_setters_provider` at :753 | not classified | open | - |
+| asy_system_service.py:755 | SystemService.setup | `self._config_stores_provider` at :755 | not classified | open | - |
+| asy_system_service.py:756 | SystemService.setup | `self.cfgmgr.setup` at :756 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:760 | SystemService.setup | `self.pr.wrn_s` at :760 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:778 | SystemService.start_tasks | `loop.get_exception_handler` at :778 | not classified | open | - |
+| asy_system_service.py:779 | SystemService.start_tasks | `loop.set_exception_handler` at :779 | not classified | open | - |
+| asy_system_service.py:780 | SystemService.start_tasks +1 | `enumerate` at :780, :789, :793 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_system_service.py:781 | SystemService.start_tasks | `self._start_task` at :781 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:790 | SystemService.start_timers | `self._run_timer_starter` at :790, :803 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:797 | SystemService.start_timers | `self._sequencer_timer.init` at :797; narrow except MemoryError/OSError | not classified | open | - |
+| asy_system_service.py:797 | SystemService.start_timers | `self._sequencer_flag.set` at :797; narrow except MemoryError/OSError | not classified | open | - |
+| asy_system_service.py:802 | SystemService.start_timers | `self._sequencer_flag.wait` at :802 | not classified | open | - |
+| asy_system_service.py:809 | SystemService.supervise_tasks | `self._supervise` at :809 | what the callee raises | transitive | the callee's own rows here |
+| asy_system_service.py:811 | SystemService.supervise_tasks | `self._never.wait` at :811 | not classified | open | - |
+| asy_system_service.py:813 | SystemService.supervise_tasks | `self._supervisor_task.cancel` at :813 | not classified | open | - |
 | asy_fram_manager.py:30 | <module> | `const` at :30, :31, :32, :33, :34, :35, :36, :37, :38, :39, :42, :43 (+18) | nothing at run time | unreachable | folded at compile time (py/compile.c, MICROPY_COMP_CONST) |
 | asy_fram_manager.py:71 | _owner_seed | `min` at :71 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
 | asy_fram_manager.py:71 | _owner_seed +2 | `crc.length` at :71, :688, :739 | not classified | open | - |
