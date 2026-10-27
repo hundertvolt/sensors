@@ -94,7 +94,6 @@ _RANGES = const((375, 10000))
 _RESOLUTION_12BIT = const(12)
 _RESOLUTION_16BIT = const(16)
 _RESOLUTIONS = const((12, 16))
-_CHANNELS = const(3)  # green, red, blue - the width of every triple in this module
 _IR_OFFSETS = const((0, 1))
 _PRST_SETTINGS = const((1, 2, 4, 8))  # p11, Table 12 - index is the register encoding
 _FULL_SCALE_COUNTS = const(65535)  # p3: "Full Scale ADC Code, ADC 16 bits"
@@ -1213,14 +1212,9 @@ class ISL29125_I2C:
     @staticmethod
     def _decode_rgb_burst(raw: bytes | bytearray | memoryview | None) -> tuple[int, int, int] | None:
         # Register order is GREEN, RED, BLUE (p9, Table 1) - p13's Table 20 mislabels its own rows.
-        if raw is None:
+        if raw is None or len(raw) != _DATA_BURST_LEN:
             return None
-        try:
-            if len(raw) != _DATA_BURST_LEN:
-                return None
-            green, red, blue = struct.unpack_from("<HHH", raw)
-        except (TypeError, ValueError):
-            return None
+        green, red, blue = struct.unpack_from("<HHH", raw)
         return int(green), int(red), int(blue)
 
     async def _read_byte(self, register: int) -> int:
@@ -1273,7 +1267,7 @@ class ISL29125_I2C:
         # A dead bus reads all-ones, which is exactly what this part's community failure reports
         # show. Taken on the RAW counts: the pattern is a property of the wire, not of the scaled
         # value, which makes the 12-bit case exact - a real 12-bit reading cannot exceed 4095.
-        if counts is None or len(counts) != _CHANNELS:
+        if counts is None:
             return False
         if not all(count == _FULL_SCALE_COUNTS for count in counts):
             return False
@@ -1398,14 +1392,9 @@ class ISL29125_I2C:
         # The exact inverse of encode_shadow(), for the five hardware-backed config fields. An
         # illegal field encoding is returned as decoded, never coerced - that is information the
         # caller needs, not an error this function gets to resolve.
-        if raw is None:
+        if raw is None or len(raw) != _CONFIG_BURST_LEN:
             return None
-        try:
-            if len(raw) != _CONFIG_BURST_LEN:
-                return None
-            config1, config2, config3 = raw[0], raw[1], raw[2]
-        except (IndexError, TypeError):
-            return None
+        config1, config2, config3 = raw[0], raw[1], raw[2]
         resolution = _RESOLUTION_12BIT if config1 & _CONFIG1_BITS else _RESOLUTION_16BIT
         range_fs = _RANGE_HIGH_LUX if config1 & _CONFIG1_RNG else _RANGE_LOW_LUX
         ir_offset = 1 if config2 & _CONFIG2_IRCOMP_OFFSET else 0

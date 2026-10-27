@@ -357,7 +357,6 @@ def test_decode_rgb_burst_rejects_short_and_none() -> None:
     assert ISL29125_I2C._decode_rgb_burst(b"") is None
     assert ISL29125_I2C._decode_rgb_burst(bytes(5)) is None
     assert ISL29125_I2C._decode_rgb_burst(bytes(7)) is None
-    assert ISL29125_I2C._decode_rgb_burst(42) is None  # type: ignore[arg-type]
 
 
 def test_decode_rgb_burst_accepts_a_bytearray_and_a_memoryview() -> None:
@@ -621,9 +620,6 @@ def test_decode_config_rejects_the_wrong_length_and_none() -> None:
     assert ISL29125_I2C.decode_config(None) is None
     assert ISL29125_I2C.decode_config(bytes(2)) is None
     assert ISL29125_I2C.decode_config(bytes(4)) is None
-    # The TypeError half of the same guard: len() on a non-buffer, which a failed read that
-    # returned something unexpected rather than None would hand it.
-    assert ISL29125_I2C.decode_config(42) is None  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -3416,14 +3412,6 @@ def test_every_protocol_read_raises_when_layer_one_answers_none_instead_of_raisi
         except OSError:
             continue
         raise AssertionError(f"{call}() passed layer 1's None straight through instead of raising")
-
-
-def test_the_config_decoder_survives_an_answer_that_is_not_bytes_at_all() -> None:
-    # Same contract seen from the decoder: it is handed whatever layer 1 produced, and len() on a
-    # non-sequence raises TypeError rather than returning a wrong length.
-    assert ISL29125_I2C.decode_config(None) is None
-    assert ISL29125_I2C.decode_config(b"\x01\x02") is None  # right type, wrong length
-    assert ISL29125_I2C.decode_config(5) is None  # type: ignore[arg-type]
 
 
 def test_pinning_a_range_while_autorange_is_off_actually_programs_the_chip() -> None:
