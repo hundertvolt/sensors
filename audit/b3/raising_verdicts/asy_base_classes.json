@@ -40,7 +40,7 @@
   "DeviceSession.__init__::super": {
    "can_raise": "what Lockable.__init__ raises: the Lock's fixed allocation (row :115); `super().__init__()` compiles to LOAD_SUPER_METHOD, whose super object lives on the C stack (py/objtype.c:1425-1428)",
    "verdict": "handled",
-   "proof": "construction only (asy_bmp3xx_driver.py:465, asy_isl29125_driver.py:1187, asy_scd30_driver.py:715, asy_sgp40_driver.py:674, each in a driver's __init__ inside build_system()): the boot entry's except BaseException (conventions)"
+   "proof": "construction only (asy_bmp3xx_driver.py:465, asy_isl29125_driver.py:1186,asy_scd30_driver.py:715, asy_sgp40_driver.py:674, each in a driver's __init__ inside build_system()): the boot entry's except BaseException (conventions)"
   },
   "RegionBuffer.__init__::bytearray": {
    "can_raise": "MemoryError (array_new); OverflowError for a size past a machine word (mp_obj_get_int, py/objarray.c:190-192)",
@@ -60,7 +60,7 @@
   "PieceBuffer.__init__::bytearray": {
    "can_raise": "MemoryError for each piece of at most piece_bytes (array_new); OverflowError cannot: size is bounded by the callers' caps, small ints",
    "verdict": "handled",
-   "proof": "the module header's one documented raise (:7-8) and SPECIFICATION.md G.2's decision ('a MemoryError there is not caught'): every caller (asy_uart_comm.py:278, :313, :1111; asy_uart_driver.py:660) admits size by its cap first (max_transfer_bytes, J.8; max_bytes) and catches nothing, so the raise ends the UART task, which _log_dead_task() persists and the supervisor restarts (conventions); no allocation exceeds piece_bytes, the design I.4(a) asks for"
+   "proof": "the module header's one documented raise (:7-8) and SPECIFICATION.md G.2's decision ('a MemoryError there is not caught'): every caller (asy_uart_comm.py:278, :313, :1104; asy_uart_driver.py:660) admits size by its cap first (max_transfer_bytes, J.8; max_bytes) and catches nothing, so the raise ends the UART task, which _log_dead_task() persists and the supervisor restarts (conventions); no allocation exceeds piece_bytes, the design I.4(a) asks for"
   },
   "PieceBuffer.__init__::min": {
    "can_raise": "TypeError when the arguments do not compare (mp_builtin_min_max, py/modbuiltins.c:250-290)",
@@ -70,7 +70,7 @@
   "PieceBuffer.__init__::range": {
    "can_raise": "ValueError('zero step') (py/objrange.c:103-106); MemoryError for the range object, which a comprehension's iterable is (the counted-loop form is compile_for_stmt's alone, py/compile.c:1512-1563)",
    "verdict": "handled",
-   "proof": "every caller passes piece_bytes >= 1 (asy_uart_driver.py:658; asy_uart_comm.py:974, checked at construction :236), so the ValueError cannot occur; the range object is one fixed allocation that lands where the pieces' does (row :181's bytearray)"
+   "proof": "every caller passes piece_bytes >= 1 (asy_uart_driver.py:658; asy_uart_comm.py:967, checked at construction :236), so the ValueError cannot occur; the range object is one fixed allocation that lands where the pieces' does (row :181's bytearray)"
   },
   "PieceBuffer.copy_into::len": {
    "can_raise": "nothing for a bytearray, memoryview or list (each type's LEN slot)",
@@ -255,7 +255,7 @@
   "SensorReader._climb_ladder::self.pr.err_s": {
    "can_raise": "MemoryError from err_s()'s *args tuple and generator, and what its rows leave (asy_print_log.py:261)",
    "verdict": "handled",
-   "proof": "small fixed allocations in the reader task that calls _error_check() (asy_bmp3xx_driver.py:303, asy_isl29125_driver.py:750, asy_scd30_driver.py:475, asy_sgp40_driver.py:386, asy_wifi_service.py:430): _log_dead_task() (conventions)"
+   "proof": "small fixed allocations in the reader task that calls _error_check() (asy_bmp3xx_driver.py:303, asy_isl29125_driver.py:749,asy_scd30_driver.py:475, asy_sgp40_driver.py:386, asy_wifi_service.py:430): _log_dead_task() (conventions)"
   },
   "SensorReader._climb_ladder::self.pr.wrn_s": {
    "can_raise": "MemoryError from wrn_s()'s *args tuple and generator (asy_print_log.py:275)",
@@ -308,7 +308,7 @@
    "proof": "_rearm_timer() runs at its task's start (asy_scd30_driver.py:448, asy_sgp40_driver.py:327, _trigger_loop() :733): the task's top (conventions)"
   },
   "SensorReader._rearm_timer::self.start_timer": {
-   "can_raise": "what the driver's starter raises: each catches (MemoryError, OSError) around its timer.init() and hands it to _timer_failed() (asy_bmp3xx_driver.py:369-378, asy_isl29125_driver.py:987-996, asy_scd30_driver.py:552-561, asy_sgp40_driver.py:622-631); SCD30's and ISL29125's pin irq() after that try can raise only MemoryError, the IRQ object being allocated once, at its pin's first registration (ports/rp2/machine_pin.c:423-433), and the closure per call fixed",
+   "can_raise": "what the driver's starter raises: each catches (MemoryError, OSError) around its timer.init() and hands it to _timer_failed() (asy_bmp3xx_driver.py:369-378, asy_isl29125_driver.py:986-995,asy_scd30_driver.py:552-561, asy_sgp40_driver.py:622-631); SCD30's and ISL29125's pin irq() after that try can raise only MemoryError, the IRQ object being allocated once, at its pin's first registration (ports/rp2/machine_pin.c:423-433), and the closure per call fixed",
    "verdict": "handled",
    "proof": "the closure is a small fixed allocation at the task's top (conventions); the arm failures are the starters' own excepts"
   },
@@ -355,7 +355,7 @@
   "SensorReader._trigger_loop::self._rearm_timer": {
    "can_raise": "what _rearm_timer() raises: its rows (:621, :623)",
    "verdict": "handled",
-   "proof": "_trigger_loop() is a supervised task (asy_bmp3xx_driver.py:353, :367; asy_isl29125_driver.py:985): _log_dead_task() (conventions)"
+   "proof": "_trigger_loop() is a supervised task (asy_bmp3xx_driver.py:353, :367; asy_isl29125_driver.py:984): _log_dead_task() (conventions)"
   },
   "SensorReader._trigger_loop::self._base_trigger_event.wait": {
    "can_raise": "MemoryError for the wait's generator and the IOQueue entry, map slot and poll registration (extmod/asyncio/event.py:60-63, core.py:75-88); AssertionError (core.py:83-84) only for a second reader of the same flag; CancelledError (conventions)",
@@ -370,7 +370,7 @@
   "SensorReader._trigger_loop::self._trigger_period.get_value": {
    "can_raise": "MemoryError for the async call's generator; LockedValue.get_value() returns its value (:287-288)",
    "verdict": "handled",
-   "proof": "a small fixed allocation at this task's top (conventions); the period is the int set at construction (asy_bmp3xx_driver.py:185, asy_isl29125_driver.py:260)"
+   "proof": "a small fixed allocation at this task's top (conventions); the period is the int set at construction (asy_bmp3xx_driver.py:185, asy_isl29125_driver.py:259)"
   },
   "SensorReader._trigger_loop::self._read_event.set": {
    "can_raise": "nothing: ThreadSafeFlag.set() replaces its `state` slot (extmod/asyncio/event.py:54-55)",
