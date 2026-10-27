@@ -924,6 +924,35 @@ def test_a_hazard_run_sends_every_raw_frame_without_a_copy() -> None:
         CRC16.add = real_add  # type: ignore[method-assign]
     assert added == [], f"{len(added)} raw frames copied for their CRC"
 
+
+def test_an_echo_get_before_any_echo_set_answers_valid_and_empty() -> None:
+    DMA.reset_registry()
+    driver = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
+    responder = UARTLinkDriver(driver, ROLE_RESPONDER)
+    assert responder._get_callback(src_int("src/asy_uart_link_driver.py", "_CMD_ECHO")) == (True, b"")
+
+
+def test_a_double_initiation_cancelled_at_its_first_await_leaves_no_transaction_behind() -> None:
+    # The cancel is forwarded to the first initiation, so the second, scheduled but not awaited yet, is what the finally
+    # cancels: left alone it would run a whole transaction against the silent responder.
+    pair = Pair()
+    assert run(pair.setup(), RUN_LIMIT_S) is True
+    comm = pair.initiator._comm
+
+    async def scenario() -> bool:
+        outer = asyncio.create_task(pair.initiator._two_initiations())
+        await asyncio.sleep_ms(0)  # the outer task runs to `await first`; neither initiation has run yet
+        outer.cancel()
+        try:
+            await outer
+        except asyncio.CancelledError:
+            pass
+        await asyncio.sleep_ms(POLL_WAIT_MS)  # a leftover initiation is now inside its transaction
+        return comm._busy
+
+    assert run(scenario(), RUN_LIMIT_S) is False
+
+
 if __name__ == "__main__":
     import microtest
 

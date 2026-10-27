@@ -921,6 +921,14 @@ def test_crc_yielding_is_not_a_side_effect_of_check_returning_early() -> None:
     assert ticks_during_call == 0  # no await point reached at all - the counter never even started
 
 
+def test_add_into_refuses_an_init_outside_the_crc_width_and_leaves_the_buffer_untouched() -> None:
+    for crc in (CRC8(), CRC16(), CRC32()):
+        for init in (-1, crc._all_set + 1):
+            buf = bytearray(b"ab" + bytes(crc.length()))
+            assert run(crc.add_into(buf, 2, init=init)) is None, (crc, init)
+            assert buf == bytearray(b"ab" + bytes(crc.length())), (crc, init)
+
+
 if __name__ == "__main__":
     import microtest
 

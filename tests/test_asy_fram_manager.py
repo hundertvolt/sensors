@@ -12,13 +12,15 @@ from _fram_builders import make_fram_manager
 from _fram_chip_fake import FakeMB85RS64V
 from _recording_print import record_prints
 from _src_const import src_int
+from _stack_overflow import stack_overflow
 
 import asy_base_classes
 import asy_fram_manager
+import asy_print_log
 import asy_spi_driver
 from asy_crc_checks import CRC8, CRC16, CRC32, CRCPass
 from asy_fram_manager import FRAMChunk, FRAMChunkBuffer, FRAMChunkTimestampedBuffer, FRAMManager
-from asy_print_log import LogConfig, PrintLogHistory, PrintLogHistoryStore
+from asy_print_log import LogConfig, PrintLogHistory, PrintLogHistoryStore, fatal_reported
 from asy_spi_driver import SPI
 
 # Same one-process-per-test-file swap as test_asy_fram_driver.py - see its own comment.
@@ -3586,6 +3588,35 @@ def test_an_erase_asked_while_a_found_chip_loss_is_still_being_reported_is_refus
     assert wrote is False
     assert manager.fram.lost.is_set()
     assert _entries(run(manager.get_error_counter())) == [(code("E", "FRAM_CHIP_LOST"), "E")]
+
+
+def _raise_on_chip_write(chunk: "FRAMChunk", error: BaseException) -> None:
+    # The payload's set_values_sync() raising while the status-byte pair still lands: an unexpected raise in the chip write.
+    original_sync = chunk.fram.set_values_sync
+
+    def raising(buf: bytes | bytearray | memoryview, addr_start: int) -> int:
+        if len(buf) > 2:
+            raise error
+        return original_sync(buf, addr_start)
+
+    chunk.fram.set_values_sync = raising  # type: ignore[method-assign]
+
+
+def test_an_unexpected_raise_in_the_chip_write_fails_the_clear_and_the_write_and_is_logged() -> None:
+    # A routine error and a C-stack overflow: the clear and the write each answer False with E UNEXPECTED, and only the
+    # overflow is recorded for the supervisor.
+    for error, fatal in ((OSError(5), False), (stack_overflow(), True)):
+        for step in ("clear", "write"):
+            manager, _chip = _make_manager()
+            run(_setup_manager(manager))
+            chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
+            assert chunk is not None
+            _raise_on_chip_write(chunk, error)
+            ok = run(chunk._clear_chunk(chunk._block_addr[0])) if step == "clear" else run(chunk.write(b"good"))
+            assert ok is False, (error, step)
+            assert code("E", "UNEXPECTED") in [n for n, _t in _entries(run(manager.get_error_counter()))], (error, step)
+            assert fatal_reported() is fatal, (error, step)
+            asy_print_log._fatal = False  # microtest fails a test that leaves it set
 
 
 if __name__ == "__main__":
