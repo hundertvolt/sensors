@@ -22,6 +22,10 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
 
 _scratch = TmpScratch("async_harness")
+# @tunable l1.async_harness_answer_bound_s = 5
+_ANSWER_BOUND_S = 5  # a hang bound on a coroutine that answers at once
+# @tunable l1.async_harness_sleeper_bound_s = 0.01
+_SLEEPER_BOUND_S = 0.01  # waited out: the sleeper never returns
 
 
 class _Reboot(BaseException):  # stands in for the fakes' simulated reset, a BaseException
@@ -78,10 +82,10 @@ def test_run_returns_the_coroutines_value_and_a_bound_raises_timeout() -> None:
         return 42
 
     assert run(answer()) == 42
-    assert run(answer(), 5) == 42
+    assert run(answer(), _ANSWER_BOUND_S) == 42
     raised = False
     try:
-        run(_sleeper(), 0.01)
+        run(_sleeper(), _SLEEPER_BOUND_S)
     except asyncio.TimeoutError:
         raised = True
     assert raised
@@ -91,7 +95,7 @@ def test_run_returns_the_coroutines_value_and_a_bound_raises_timeout() -> None:
 def test_run_timed_bounds_the_coroutine_and_leaves_nothing_parked() -> None:
     raised = False
     try:
-        run_timed(_sleeper(), 0.01)
+        run_timed(_sleeper(), _SLEEPER_BOUND_S)
     except asyncio.TimeoutError:
         raised = True
     assert raised

@@ -1024,6 +1024,10 @@ def test_tickseconds_ignores_a_zero_or_negative_delta() -> None:
         _restore_time()
 
 
+# @tunable l1.asy_base_classes_fired_bound_ms = 100
+_FIRED_BOUND_MS = 100  # a hang bound on a flag the triggered timer sets at once
+
+
 def test_arm_tick_timer_arms_a_periodic_one_second_timer() -> None:
     timer = machine.Timer()
     flag = asyncio.ThreadSafeFlag()
@@ -1033,7 +1037,7 @@ def test_arm_tick_timer_arms_a_periodic_one_second_timer() -> None:
 
     async def fired() -> bool:
         timer.trigger()
-        await asyncio.wait_for_ms(flag.wait(), 100)
+        await asyncio.wait_for_ms(flag.wait(), _FIRED_BOUND_MS)
         return True
 
     assert run(fired()) is True
