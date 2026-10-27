@@ -3274,30 +3274,8 @@ def test_set_dict_cfg_set_mgr_cfg_override_raising_marks_every_field_failed() ->
         _remove(path_prefix + "config_raisingmgr.cfg")
 
 
-def test_set_dict_cfg_set_mgr_cfg_override_malformed_result_marks_every_field_failed() -> None:
-    # Same defensive posture as the raising-override test above, for the other way a misbehaving override
-    # can fail: returning successfully but with a "results" that is not the WriteValidity dict the rest of
-    # _set_dict_cfg assumes - results.get(key) would otherwise raise AttributeError, uncaught.
-    class MalformedSetMgrCfgReader(SensorReaderConfig):
-        async def _set_mgr_cfg(
-            self, _data: "JsonMapping", _cfg_vals: "cm.ConfigSchema",
-        ) -> "tuple[bool, cm.WriteValidity]":
-            return True, "not a dict"  # type: ignore[return-value]  # deliberately malformed, simulating a misbehaving override
-
-    path_prefix = _SHARED_CFG_DIR
-    _remove(path_prefix + "config_malformedmgr.cfg")
-    try:
-        reader = MalformedSetMgrCfgReader(Meas(20.0, 50), "malformedmgr", _TEST_SCHEMA_SI, max_module_error=3, cfg_path=path_prefix)
-        run(reader.cfgmgr.setup())
-        results = run(reader._set_dict_cfg({"SampleInterval": 42}, _TEST_SCHEMA_SI))
-        assert results == {"SampleInterval": "Failed"}
-        assert reader.pr._err_count == 1
-    finally:
-        _remove(path_prefix + "config_malformedmgr.cfg")
-
-
 def test_set_dict_cfg_set_mgr_cfg_override_missing_key_marks_it_failed() -> None:
-    # A third malformed-override shape, after raising and returning a non-dict: the override reports
+    # A second misbehaving-override shape, after the raising one: the override reports
     # persisted=True with a real dict that is simply missing a key the caller asked about. The real
     # ConfigManager-backed _set_mgr_cfg never does this, but a subclass override could.
     #

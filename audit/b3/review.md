@@ -4,7 +4,7 @@ Requirement: every test in `tests/`, `tests_scripts/`, `tests_js/` and `tests_ha
 
 ## Counts
 
-Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_verdicts.json`: 8546 rows, 336 flagged. A flag is a candidate; the verdict is the reviewer's.
+Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_verdicts.json`: 8545 rows, 336 flagged. A flag is a candidate; the verdict is the reviewer's.
 
 | level | rows | flagged |
 |---|---|---|
@@ -15,7 +15,7 @@ Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_
 | manual (hardware) | 21 | 2 |
 | twin (MicroPython) | 670 | 24 |
 | twin scenario | 176 | 10 |
-| unit (MicroPython) | 3963 | 140 |
+| unit (MicroPython) | 3962 | 140 |
 | web (vitest) | 492 | 6 |
 
 | verdict (per row) | rows |
@@ -23,7 +23,7 @@ Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_
 | CRr2 | 83 |
 | fixed | 46 |
 | justified | 129 |
-| biting | 8288 |
+| biting | 8287 |
 
 | red flag | rows | verdicts |
 |---|---|---|
@@ -515,20 +515,19 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests/test_asy_base_classes.py:3210 | test_set_dict_cfg_multiple_invalid_fields_neither_pushed | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_base_classes.py:3240 | test_set_dict_cfg_whole_persist_failure_marks_every_field_failed | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_base_classes.py:3256 | test_set_dict_cfg_set_mgr_cfg_override_raising_marks_every_field_failed | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3277 | test_set_dict_cfg_set_mgr_cfg_override_malformed_result_marks_every_field_failed | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3299 | test_set_dict_cfg_set_mgr_cfg_override_missing_key_marks_it_failed | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3323 | test_set_dict_cfg_empty_data_returns_empty_result | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3334 | test_set_dict_cfg_push_callbacks_default_to_empty_and_are_per_instance | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3365 | test_a_plain_sensorreader_never_reports_its_writes_closed | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3369 | test_sensorreaderconfig_reads_its_stores_close_and_lends_the_store_its_put_lock | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3381 | test_a_put_on_a_closed_store_fails_every_key_before_any_chip_or_flash_write | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3401 | test_a_put_queued_behind_the_put_lock_when_the_store_closes_is_refused | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3420 | test_a_reader_given_a_logger_writes_through_it_and_keeps_its_own_name | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3472 | test_a_raising_pre_write_read_is_logged_as_cfg_snapshot_raised | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3476 | test_a_raising_store_write_is_logged_as_cfg_set_raised | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3480 | test_a_raising_push_is_logged_as_push_raised | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3484 | test_a_raising_recovery_read_back_is_logged_as_recovery_read_raised | unit (MicroPython) | biting | — | biting as is |
-| tests/test_asy_base_classes.py:3488 | test_a_raising_recovery_write_is_logged_as_recovery_write_raised | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3277 | test_set_dict_cfg_set_mgr_cfg_override_missing_key_marks_it_failed | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3301 | test_set_dict_cfg_empty_data_returns_empty_result | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3312 | test_set_dict_cfg_push_callbacks_default_to_empty_and_are_per_instance | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3343 | test_a_plain_sensorreader_never_reports_its_writes_closed | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3347 | test_sensorreaderconfig_reads_its_stores_close_and_lends_the_store_its_put_lock | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3359 | test_a_put_on_a_closed_store_fails_every_key_before_any_chip_or_flash_write | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3379 | test_a_put_queued_behind_the_put_lock_when_the_store_closes_is_refused | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3398 | test_a_reader_given_a_logger_writes_through_it_and_keeps_its_own_name | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3450 | test_a_raising_pre_write_read_is_logged_as_cfg_snapshot_raised | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3454 | test_a_raising_store_write_is_logged_as_cfg_set_raised | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3458 | test_a_raising_push_is_logged_as_push_raised | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3462 | test_a_raising_recovery_read_back_is_logged_as_recovery_read_raised | unit (MicroPython) | biting | — | biting as is |
+| tests/test_asy_base_classes.py:3466 | test_a_raising_recovery_write_is_logged_as_recovery_write_raised | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_bmp3xx_driver.py:332 | test_setup_accepts_bmp388_chip_id | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_bmp3xx_driver.py:336 | test_setup_accepts_bmp390_chip_id | unit (MicroPython) | biting | — | biting as is |
 | tests/test_asy_bmp3xx_driver.py:340 | test_setup_accepts_bmp384_since_it_shares_bmp388s_chip_id | unit (MicroPython) | biting | — | biting as is |
