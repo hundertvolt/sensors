@@ -2660,6 +2660,60 @@ def test_the_first_pass_past_the_deadline_unpauses_and_logs_one_line() -> None:
     assert _auto_unpause_lines(recorder) == 1
 
 
+def _raising_unpause(svc: SystemService) -> list[bool]:
+    # The service's pause callback, raising at its first unpause only; the list records that raise.
+    set_pause, raised = svc._storage_pause, []
+
+    def pause(*, value: bool) -> None:
+        if not value and not raised:
+            raised.append(value)
+            raise MemoryError("injected: no room at the unpause")
+        assert set_pause is not None
+        set_pause(value=value)
+
+    svc._storage_pause = pause
+    return raised
+
+
+def test_an_auto_unpause_that_raises_keeps_its_deadline_for_the_restarted_loop() -> None:
+    # The raise ends the status task; the deadline survives it, so the supervisor's restart still ends the pause.
+    with _driven() as clock:
+        svc, manager = _paused_service()
+        raised = _raising_unpause(svc)
+
+        async def ended(task: "asyncio.Task[None]") -> str:
+            try:
+                await task
+            except MemoryError as e:
+                return str(e)
+            return "returned"
+
+        async def scenario() -> None:
+            first = asyncio.create_task(svc._status_loop())
+            outcome = asyncio.create_task(ended(first))
+            assert svc.pause_permanent_storage(60) is True
+            await _pump(svc._uptime_event, 60, clock)
+            assert (await outcome).startswith("injected") and raised and manager.get_pause() is True
+            second = asyncio.create_task(svc._status_loop())  # the supervisor's restart
+            await _pump(svc._uptime_event, 1, clock)
+            assert (manager.get_pause(), _pending(svc)) == (False, False)
+            await cancel(second)
+
+        run(scenario())
+
+
+def test_an_immediate_unpause_that_raises_keeps_the_pending_deadline() -> None:
+    svc, manager = _paused_service()
+    assert svc.pause_permanent_storage(60) is True
+    raised = _raising_unpause(svc)
+    message = ""
+    try:
+        svc.pause_permanent_storage(0)
+    except MemoryError as e:
+        message = str(e)
+    assert message.startswith("injected") and raised and manager.get_pause() is True and _pending(svc), message
+
+
 def test_a_second_pause_replaces_the_first_deadline() -> None:
     with _driven() as clock:
         svc, manager = _paused_service()

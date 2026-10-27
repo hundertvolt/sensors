@@ -525,11 +525,11 @@ class SystemService:
             uptime = self._uptime.read()
             self.pr.all("System uptime:", uptime)
             if self._unpause_at is not None and time.ticks_diff(time.ticks_ms(), self._unpause_at) >= 0:
-                self._unpause_at = None
                 # A reset or a shutdown has paused storage for good; a late auto-unpause must not reopen it.
                 if not (self._reset_armed or self._feed_owned) and self._storage_pause is not None:
                     self._storage_pause(value=False)
                     self.pr.evt("Storage auto-unpaused.")
+                self._unpause_at = None  # spent once the unpause ran: a raise above leaves it to the restarted loop
             if self._start_time_set:
                 continue
             utc = await self._ntp_boot_signature()
@@ -709,9 +709,9 @@ class SystemService:
         if self._storage_pause is not None:
             duration = min(max(duration, 0), _MAX_STORAGE_PAUSE)
             if duration == 0:
-                self._unpause_at = None
                 self.pr.evt("Storage immediately unpaused.")
                 self._storage_pause(value=False)
+                self._unpause_at = None  # cleared once the unpause ran: a raise above leaves a pending pause to end
             else:
                 self.pr.evt("Storage paused for", duration, "seconds.")
                 self._storage_pause(value=True)
