@@ -406,6 +406,206 @@
    "can_raise": "what setup() raises (asy_print_log.py:271, :398): its rows",
    "verdict": "handled",
    "proof": "setup() runs in the one-time boot batch (run_setups(), asy_system_service.py:734-740): the boot entry's except BaseException (conventions)"
+  },
+  "SensorReader._get_dict_cfg::schema_names": {
+   "can_raise": "MemoryError for the list of field names (asy_config_manager.py:276-277); IndexError or TypeError for a field that is not a sequence",
+   "verdict": "handled",
+   "proof": "each field is a 6-tuple (FieldSchema, mypy-checked; the schemas pinned by tests_scripts/test_config_schemas.py), so only the allocation is left, sized by the module's constant schema and fixed per build (SPECIFICATION.md I.3, 'bounded by the schema'); the GET reaches here from the webserver's config routes (_get_sensors :644-648, _get_settings_flat :650-659), so Microdot's dispatch catch holds it (conventions)"
+  },
+  "SensorReader._get_dict_cfg::dict.fromkeys": {
+   "can_raise": "MemoryError for the heap iterator and the dict sized from the name list (dict_fromkeys, py/objdict.c:279-296); TypeError for an unhashable key",
+   "verdict": "handled",
+   "proof": "the keys are the schema's str names, so no TypeError; the allocation is fixed per build as at :449, in the GET's REST handler (conventions)"
+  },
+  "SensorReader._get_dict_cfg::report_if_fatal": {
+   "can_raise": "nothing (asy_print_log.py:482-487)",
+   "verdict": "unreachable",
+   "proof": "as Lockable.__aexit__'s at :132"
+  },
+  "SensorReader._get_dict_cfg::self.pr.err_s": {
+   "can_raise": "MemoryError from err_s()'s *args tuple and generator (asy_print_log.py:261)",
+   "verdict": "handled",
+   "proof": "small fixed allocations in the GET's REST handler (conventions)"
+  },
+  "SensorReader._set_dict_cfg::self._writes_closed": {
+   "can_raise": "nothing: the base returns False (:745-747); SensorReaderConfig's returns cfgmgr.writes_closed(), a bool attribute (asy_config_manager.py:671-673)",
+   "verdict": "unreachable",
+   "proof": "a zero-argument call of a fixed-arity method (py/objfun.c:268-287); no override allocates"
+  },
+  "SensorReader._set_dict_cfg::dict.fromkeys": {
+   "can_raise": "MemoryError for the heap iterator and a dict sized by data's key count (py/objdict.c:279-296); TypeError for an unhashable key",
+   "verdict": "handled",
+   "proof": "data is a parsed JSON object, so its keys are str; its key count is bounded by the request body cap (web.max_content_length, 2048 B, asy_webserver_service.py:152), the same order as the parsed body already held; there is no true alternative flow (the answer is a word per requested key, I.4(a)), so a failed allocation ends the PUT in Microdot's dispatch catch (conventions); the PUT reaches here from _put_sensors (asy_webserver_service.py:846) and handle_set_cmd() (asy_api_response.py:64)"
+  },
+  "SensorReader._set_dict_cfg::schema_dict": {
+   "can_raise": "MemoryError for the dict built from the schema (asy_config_manager.py:272-273); IndexError or TypeError for a malformed field",
+   "verdict": "handled",
+   "proof": "every field is a 6-tuple (as :449), and the dict is fixed per build by the constant schema (SPECIFICATION.md I.3, 'schema_dict() built once per PUT'), in the PUT's REST handler (conventions)"
+  },
+  "SensorReader._set_dict_cfg::fields.items": {
+   "can_raise": "MemoryError for the view, the comprehension's heap iterator and a 2-tuple per item (py/objdict.c:457-470, :550-555)",
+   "verdict": "handled",
+   "proof": "fixed per item over the constant schema, and persisted_keys holds at most its field count; the PUT's REST handler (conventions)"
+  },
+  "SensorReader._set_dict_cfg::check_cfg_get_default": {
+   "can_raise": "what check_cfg_get_default() raises (asy_config_manager.py:136-153): the field's 6-tuple unpack and type_or_range_error()'s checks, with a small result tuple",
+   "verdict": "handled",
+   "proof": "the unpack cannot fail on a FieldSchema (as :449) and type_or_range_error() tests exact types before any arithmetic (row :540); the result tuple is a small fixed allocation in the PUT's REST handler (conventions)"
+  },
+  "SensorReader._set_dict_cfg::report_if_fatal": {
+   "can_raise": "nothing (asy_print_log.py:482-487)",
+   "verdict": "unreachable",
+   "proof": "as Lockable.__aexit__'s at :132"
+  },
+  "SensorReader._set_dict_cfg::self.pr.err_s": {
+   "can_raise": "MemoryError from err_s()'s *args tuple and generator (asy_print_log.py:261)",
+   "verdict": "handled",
+   "proof": "small fixed allocations in the PUT's REST handler (conventions); the finally at :550 still commits the staged write"
+  },
+  "SensorReader._set_dict_cfg::results.setdefault": {
+   "can_raise": "MemoryError when a missing key grows the map (dict_setdefault, py/objdict.c:349-351); TypeError for an unhashable key",
+   "verdict": "handled",
+   "proof": "results is a dict (checked at :514; the {} at :518 returned at :524 before this loop) and the keys are str; growth is at most data's key count, bounded by the body cap as at :493, in the PUT's REST handler (conventions)"
+  },
+  "SensorReader._set_dict_cfg::data.items": {
+   "can_raise": "MemoryError for the view and a 2-tuple per item (py/objdict.c:469, :550-555); the for loop's iterator sits in a stack buffer (:486)",
+   "verdict": "handled",
+   "proof": "fixed per item, in the PUT's REST handler (conventions)"
+  },
+  "SensorReader._set_dict_cfg::results.get": {
+   "can_raise": "nothing: dict.get() answers None for a missing key (dict_get_helper, py/objdict.c:309-338; its KeyError is the pop form's only)",
+   "verdict": "unreachable",
+   "proof": "results is a dict and key a str; the method call through LOAD_METHOD allocates nothing"
+  },
+  "SensorReader._set_dict_cfg::self._push_callbacks.get": {
+   "can_raise": "nothing (py/objdict.c:309-338)",
+   "verdict": "unreachable",
+   "proof": "_push_callbacks is the dict built at :429 and key a str"
+  },
+  "SensorReader._set_dict_cfg::fields.get": {
+   "can_raise": "nothing (py/objdict.c:309-338)",
+   "verdict": "unreachable",
+   "proof": "fields is schema_dict()'s dict (:494) and key a str"
+  },
+  "SensorReader._set_dict_cfg::type_or_range_error": {
+   "can_raise": "what type_or_range_error() raises (asy_config_manager.py:291-312): exact-type tests and comparisons, int(float) inside its own except (OverflowError, ValueError) (:101-104), a boxed float (:91) and its result tuple",
+   "verdict": "handled",
+   "proof": "no value reaches arithmetic before its exact-type test, so only the small fixed allocations are left, in the PUT's REST handler (conventions); the value is one write_config() accepted as Valid"
+  },
+  "SensorReader._set_dict_cfg::self._recover_failed_push": {
+   "can_raise": "what _recover_failed_push() raises: its rows (:668-703)",
+   "verdict": "handled",
+   "proof": "each of its rows is handled or unreachable; the generator is a small fixed allocation in the PUT's REST handler (conventions)"
+  },
+  "SensorReader._set_dict_cfg::self._commit_mgr_cfg": {
+   "can_raise": "nothing: the base returns (:580-582); SensorReaderConfig's calls cfgmgr.commit() (row :823)",
+   "verdict": "unreachable",
+   "proof": "a zero-argument call of a fixed-arity method, and commit() sets an asyncio.Event, which allocates nothing (row :823)"
+  },
+  "SensorReader._recover_failed_push::fields.get": {
+   "can_raise": "nothing (py/objdict.c:309-338)",
+   "verdict": "unreachable",
+   "proof": "fields is the caller's schema_dict() dict and key a str"
+  },
+  "SensorReader._recover_failed_push::check_cfg_get_default": {
+   "can_raise": "what check_cfg_get_default() raises: as at :499",
+   "verdict": "handled",
+   "proof": "as _set_dict_cfg's at :499: its one caller is _set_dict_cfg() (:549), in the PUT's REST handler (conventions)"
+  },
+  "SensorReader._recover_failed_push::self._get_callbacks.get": {
+   "can_raise": "nothing (py/objdict.c:309-338)",
+   "verdict": "unreachable",
+   "proof": "_get_callbacks is the dict built at :432 and key a str"
+  },
+  "SensorReader._recover_failed_push::report_if_fatal": {
+   "can_raise": "nothing (asy_print_log.py:482-487)",
+   "verdict": "unreachable",
+   "proof": "as Lockable.__aexit__'s at :132"
+  },
+  "SensorReader._recover_failed_push::self.pr.err_s": {
+   "can_raise": "MemoryError from err_s()'s *args tuple and generator (asy_print_log.py:261)",
+   "verdict": "handled",
+   "proof": "small fixed allocations in the PUT's REST handler (conventions)"
+  },
+  "SensorReader._recover_failed_push::type_or_range_error": {
+   "can_raise": "what type_or_range_error() raises: as at :540",
+   "verdict": "handled",
+   "proof": "recovered is a getter's raw read, any value: type_or_range_error() tests exact types before any arithmetic (asy_config_manager.py:82-104, :291-312) and catches int()'s own OverflowError and ValueError (:102), so only its small fixed allocations are left, in the PUT's REST handler (conventions)"
+  },
+  "SensorReader._recover_failed_push::old_values.get": {
+   "can_raise": "AttributeError if old_values were not a dict; nothing for a dict (py/objdict.c:309-338)",
+   "verdict": "unreachable",
+   "proof": "old_values is _get_mgr_cfg()'s result, typed `dict | None` and checked by mypy (D.2): the base returns {} (:483-484), SensorReaderConfig's ConfigManager.get_dict()'s dict or None (:810-814), SCD30's a dict or None (asy_scd30_driver.py:244-259), and None becomes {} at :507-508"
+  },
+  "SensorReader._recover_failed_push::res.get": {
+   "can_raise": "nothing (py/objdict.c:309-338)",
+   "verdict": "unreachable",
+   "proof": "res is the dict _checked_write_results() returned at :696 and key a str"
+  },
+  "SensorReader._recover_failed_push::self.pr.err": {
+   "can_raise": "MemoryError from err()'s *args tuple and its at-level print (asy_print_log.py:115)",
+   "verdict": "handled",
+   "proof": "small fixed allocations in the PUT's REST handler (conventions)"
+  },
+  "SensorReaderConfig.__init__::super": {
+   "can_raise": "what SensorReader.__init__ raises: its rows (:418-426); `super().__init__()` loads through LOAD_SUPER_METHOD, its super object on the C stack (py/objtype.c:1425-1428)",
+   "verdict": "handled",
+   "proof": "construction only: the boot entry's except BaseException (conventions)"
+  },
+  "SensorReaderConfig.__init__::LogConfig": {
+   "can_raise": "TypeError for a positional count other than its three fields (py/objnamedtuple.c:95-106); MemoryError for the tuple",
+   "verdict": "handled",
+   "proof": "three positional arguments for LogConfig's three fields (asy_print_log.py:451), so no TypeError; the tuple is built at construction only: the boot entry's except BaseException (conventions)"
+  },
+  "SensorReaderConfig.__init__::ConfigManager": {
+   "can_raise": "what ConfigManager.__init__ raises (asy_config_manager.py:316-344): its construction-time allocations (its own rows)",
+   "verdict": "handled",
+   "proof": "construction only: the boot entry's except BaseException (conventions)"
+  },
+  "SensorReaderConfig.__init__::config_filename": {
+   "can_raise": "MemoryError for the concatenated name (asy_config_manager.py:235-238)",
+   "verdict": "handled",
+   "proof": "str operands (cfg_path and the resolved name); construction only: the boot entry's except BaseException (conventions)"
+  },
+  "SensorReaderConfig._get_mgr_cfg::self.pr.evt": {
+   "can_raise": "MemoryError from evt()'s *args tuple and its at-level print (asy_print_log.py:118)",
+   "verdict": "handled",
+   "proof": "_get_mgr_cfg() is awaited only inside the trys whose except Exception sits at :457 (_get_dict_cfg()) and :503 (_set_dict_cfg()), directly or through SCD30's override (asy_scd30_driver.py:255); either logs it and answers the GET's marker or drops the snapshot"
+  },
+  "SensorReaderConfig._get_mgr_cfg::self.cfgmgr.get_dict": {
+   "can_raise": "what ConfigManager.get_dict() raises (asy_config_manager.py:439): its rows",
+   "verdict": "handled",
+   "proof": "as evt at :811: caught by the except Exception at :457 or :503"
+  },
+  "SensorReaderConfig._set_mgr_cfg::self.pr.evt": {
+   "can_raise": "MemoryError from evt()'s *args tuple and its at-level print (asy_print_log.py:118)",
+   "verdict": "handled",
+   "proof": "_set_mgr_cfg() is awaited only inside the trys whose except Exception sits at :515 (_set_dict_cfg()) and :697 (_recover_failed_push()), directly or through the overrides' super() calls (asy_ntp_client.py:240, asy_wifi_service.py:301, asy_scd30_driver.py:321)"
+  },
+  "SensorReaderConfig._set_mgr_cfg::self.cfgmgr.write_config": {
+   "can_raise": "what ConfigManager.write_config() raises (asy_config_manager.py:605): its rows",
+   "verdict": "handled",
+   "proof": "as evt at :819: caught by the except Exception at :515 or :697"
+  },
+  "SensorReaderConfig._commit_mgr_cfg::self.cfgmgr.commit": {
+   "can_raise": "nothing: commit() sets the store's asyncio.Event (asy_config_manager.py:342, :475-477), whose set() moves waiters between C TaskQueues and replaces its `state` slot (extmod/asyncio/event.py:16-22)",
+   "verdict": "unreachable",
+   "proof": "zero-argument calls of fixed-arity methods, their frames on the C stack (py/objfun.c:268-287); nothing allocates"
+  },
+  "SensorReaderConfig._writes_closed::self.cfgmgr.writes_closed": {
+   "can_raise": "nothing: it returns the store's bool attribute (asy_config_manager.py:671-673)",
+   "verdict": "unreachable",
+   "proof": "a zero-argument call of a fixed-arity method"
+  },
+  "SensorReaderConfig.setup::super": {
+   "can_raise": "what SensorReader.setup() raises: its row (:777); `super().setup()` loads through LOAD_SUPER_METHOD (py/objtype.c:1425-1428)",
+   "verdict": "handled",
+   "proof": "the one-time boot batch (run_setups(), asy_system_service.py:734-740): the boot entry's except BaseException (conventions)"
+  },
+  "SensorReaderConfig.setup::self.cfgmgr.setup": {
+   "can_raise": "what ConfigManager.setup() raises (asy_config_manager.py:514): its rows",
+   "verdict": "handled",
+   "proof": "as super().setup() at :844: the boot entry's except BaseException (conventions)"
   }
  }
 }
