@@ -25,6 +25,7 @@ import run_generic_integration  # noqa: E402 - imported after the prewarm and th
 from _async_harness import cancel, cancel_all, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
+from _fake_time import DrivenTime  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _ntp_responder import NtpResponder  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config, write_responder_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -71,31 +72,46 @@ microtest.after_each(machine.reset_test_state)
 microtest.after_each(network.reset_test_state)
 
 
+class _DrivenWall(DrivenTime):
+    # DrivenTime's ticks and sleeps; time(), gmtime() and localtime() as each module read them before it: the twin wall
+    # clock once installed, its steps included, else the built-in (agent, 2026-10-27).
+    def gmtime(self, *secs: int) -> "tuple[int, ...]":
+        return tuple(_wall().gmtime(*secs))
+
+    def localtime(self, *secs: int) -> "tuple[int, ...]":
+        return tuple(_wall().localtime(*secs))
+
+    def time(self) -> int:
+        return int(_wall().time())
+
+
 def _backup_after_a_backward_step_on(device: str) -> None:
-    # The test above on one device.
+    # The test above on one device, each boot on one driven clock: the SGP40's 1 s reset and datasheet waits pass in
+    # driven time, as the backup's age reads only the wall clock (agent, 2026-10-27).
     cfg_path = _scratch.dir()
     machine.configure_fram_state_path(cfg_path + "fram_state.json")
+    load_device(device)  # the modules the clock drives, loaded
 
-    async def backed_up() -> int:
-        module = await _boot(device, cfg_path)
-        await _set_clock(module)
-        await module.scd30._set_meas_data(_SCD30_READING)
+    async def backed_up(clock: "DrivenTime") -> int:
+        module = await _driven(clock, "no boot", _boot(device, cfg_path))
+        await _driven(clock, "no clock set", _set_clock(module))
+        await _driven(clock, "no SCD30 reading", module.scd30._set_meas_data(_SCD30_READING))
         sgp = module.sgp40
-        assert (await sgp.cfgmgr.write_config({"WaitTimeNTP": 0}))[0]
+        assert (await _driven(clock, "no config write", sgp.cfgmgr.write_config({"WaitTimeNTP": 0})))[0]
         task = sgp.start_asy_read()
         try:
 
             async def initialised() -> bool:
                 return bool(sgp._voc_init == 1)
 
-            await _until(initialised, "no SGP40 init")
+            await _driven_until(clock, initialised, "no SGP40 init")
             sgp._backup_counter = 59  # BackupPeriod 1 (minute): the next cycle backs up
             sgp._read_event.set()
 
             async def written() -> bool:
                 return (await sgp.get_mem_status())[0] is not None
 
-            await _until(written, "no backup written")
+            await _driven_until(clock, written, "no backup written")
         finally:
             await cancel(task)
         stamp = (await sgp.get_mem_status())[0]
@@ -103,36 +119,36 @@ def _backup_after_a_backward_step_on(device: str) -> None:
         machine.flush_fram()
         return stamp
 
-    async def restored(max_age: int) -> "tuple[object, list[int]]":
-        module = await _boot(device, cfg_path)
-        await _set_clock(module)
+    async def restored(clock: "DrivenTime", max_age: int) -> "tuple[object, list[int]]":
+        module = await _driven(clock, "no boot", _boot(device, cfg_path))
+        await _driven(clock, "no clock set", _set_clock(module))
         _clock().step(-7200)
-        await module.scd30._set_meas_data(_SCD30_READING)
+        await _driven(clock, "no SCD30 reading", module.scd30._set_meas_data(_SCD30_READING))
         sgp = module.sgp40
-        assert (await sgp.cfgmgr.write_config({"BackupMaxAge": max_age}))[0]
+        assert (await _driven(clock, "no config write", sgp.cfgmgr.write_config({"BackupMaxAge": max_age})))[0]
         task = sgp.start_asy_read()
         try:
 
             async def initialised() -> bool:
                 return bool(sgp._voc_init == 1)
 
-            await _until(initialised, "no SGP40 init")
+            await _driven_until(clock, initialised, "no SGP40 init")
             sgp._read_event.set()
 
             async def decided() -> bool:
                 entry = (await sgp.get_error_counter())["SGP40"]
                 return (await sgp.get_mem_status())[1] is not None or code("W", "SGP_BACKUP_AGE") in list(entry["ErrNum"])
 
-            await _until(decided, "the restore neither ran nor was refused")
+            await _driven_until(clock, decided, "the restore neither ran nor was refused")
         finally:
             await cancel(task)
         entry = (await sgp.get_error_counter())["SGP40"]
         return (await sgp.get_mem_status())[1], [entry["ErrNum"][i] for i in range(len(entry["ErrNum"])) if entry["ErrType"][i] == "W"]
 
-    stamp = run_timed(backed_up(), 3 * _WAIT_TIMEOUT_S)
-    refused, warnings = run_timed(restored(60), 3 * _WAIT_TIMEOUT_S)
+    stamp = run_timed(_on_driven_clock(backed_up), 3 * _WAIT_TIMEOUT_S)
+    refused, warnings = run_timed(_on_driven_clock(lambda clock: restored(clock, 60)), 3 * _WAIT_TIMEOUT_S)
     assert (refused, warnings.count(code("W", "SGP_BACKUP_AGE"))) == (None, 1), (refused, warnings)
-    kept, _warnings = run_timed(restored(0), 3 * _WAIT_TIMEOUT_S)
+    kept, _warnings = run_timed(_on_driven_clock(lambda clock: restored(clock, 0)), 3 * _WAIT_TIMEOUT_S)
     assert kept == stamp, f"BackupMaxAge 0 restored {kept}, not the backup of {stamp}"
 
 
@@ -203,6 +219,34 @@ def _clock() -> "_wall_clock.WallClock":
     return clock
 
 
+async def _driven(clock: "DrivenTime", what: str, coro: "Coroutine[object, object, T]") -> "T":
+    # `coro` as a task, the driven clock elapsed until it ends (tests/test_digital_twin_hot_replug.py's own).
+    task = asyncio.get_event_loop().create_task(coro)
+    await clock.run_until(task.done, int(_WAIT_TIMEOUT_S * 1000))
+    assert task.done(), what
+    return await task
+
+
+def _driven_modules() -> "list[object]":
+    # Every src module holding asyncio and the twin's machine and network: one clock for each sleep and tick read.
+    return [m for name, m in sorted(sys.modules.items()) if (name.startswith("asy_") or name in ("machine", "network")) and getattr(m, "asyncio", None) is asyncio]
+
+
+async def _driven_until(clock: "DrivenTime", holds: "Callable[[], Coroutine[object, object, bool]]", what: str) -> None:
+    # _until() on the driven clock: `holds` looked at every _POLL_MS of driven time, within _WAIT_TIMEOUT_S of it.
+    for _ in range(int(_WAIT_TIMEOUT_S * 1000) // _POLL_MS):
+        if await holds():
+            return
+        await clock.elapse(_POLL_MS)
+    raise AssertionError(f"{what} within {_WAIT_TIMEOUT_S} driven s")
+
+
+async def _on_driven_clock(scenario: "Callable[[DrivenTime], Coroutine[object, object, T]]") -> "T":
+    # `scenario` with every driven module on one _DrivenWall, put back after.
+    with _DrivenWall(*_driven_modules(), sleeps=True) as clock:
+        return await scenario(clock)
+
+
 def _stepped_stamps_on(device: str) -> None:
     # The test above on one device.
 
@@ -250,6 +294,11 @@ async def _until(holds: "Callable[[], Coroutine[object, object, bool]]", what: s
             return
         await asyncio.sleep_ms(_POLL_MS)
     raise AssertionError(f"{what} within {_WAIT_TIMEOUT_S} s")
+
+
+def _wall() -> "_wall_clock.WallClock | ModuleType":
+    # The wall clock a module reads: the twin's once installed, else the built-in time.
+    return _wall_clock.installed() or time
 
 
 def test_a_reader_stamps_each_sample_with_the_clock_as_stepped() -> None:
