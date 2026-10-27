@@ -35,6 +35,7 @@ from _twin_devices import devices_with_shared_bus, distinct_wirings, generated_d
 
 import asy_i2c_driver  # noqa: E402 - imported after the prewarm and the UDP shim
 import asy_wifi_service  # noqa: E402 - imported after the prewarm and the UDP shim
+from asy_bmp3xx_driver import BMP3XX_I2C  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_crc_checks import CRC8  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_isl29125_driver import ISL29125_I2C, ISL29125_Reader  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_scd30_driver import SCD30_I2C  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -861,6 +862,23 @@ def test_an_scd30_soft_reset_mid_read_leaves_every_twin_sibling_read_valid() -> 
         if "scd30" in occupants:
             _rung_across_offsets(device, bus_name, tuple(s for s in occupants if s != "scd30"), rung, check)
     assert ran, "no generated device shares a bus with an SCD30 - the case covers nothing"
+
+
+def test_a_bmp3xx_setup_reset_mid_read_leaves_every_twin_sibling_read_valid() -> None:
+    # The soft reset each BMP3XX setup sends (0xB6 to CMD, DS001 4.3.22), its cmd_rdy wait and settle included,
+    # fired at every offset into its siblings' reads on a shared bus.
+    async def rung(bus: "asy_i2c_driver.I2C") -> None:
+        await BMP3XX_I2C(bus, address=0x77).reset()
+
+    def check(bus: "asy_i2c_driver.I2C") -> None:
+        assert bus._i2c is not None
+        assert ("writeto", 0x77, b"\x7e\xb6", True) in bus._i2c.log, "the soft reset never reached the BMP3XX"
+
+    ran = [(d, b) for d, b, o in _SHARED if "bmp3xx" in o]
+    for device, bus_name, occupants in _SHARED:
+        if "bmp3xx" in occupants:
+            _rung_across_offsets(device, bus_name, tuple(s for s in occupants if s != "bmp3xx"), rung, check)
+    assert ran, "no generated device shares a bus with a BMP3XX - the case covers nothing"
 
 
 def test_sgp40_heater_off_mid_read_leaves_every_twin_sibling_read_valid() -> None:
