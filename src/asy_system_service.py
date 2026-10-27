@@ -535,14 +535,14 @@ class SystemService:
             utc = await self._ntp_boot_signature()
             if utc is not None:
                 await self._boot_signature.set_value(utc)
+                self._start_time_set = True  # with the value: a raise in its line never lets a restart draw another
                 self.pr.one("System boot signature set by NTP.")
-                self._start_time_set = True
             elif uptime >= _NTP_WAIT_TIME:
                 # get_rand_32()-seeded (pico-sdk pico_rand, real ring-oscillator entropy) - unique
                 # per boot, not a fixed/repeatable seed.
                 await self._boot_signature.set_value(random.getrandbits(32))
-                self.pr.one("System boot signature set by random number.")
                 self._start_time_set = True
+                self.pr.one("System boot signature set by random number.")
 
     async def _supervise(self) -> None:
         # The supervisor loop, its own task (supervise_tasks() owns it): restarts every ended task, charging the restart

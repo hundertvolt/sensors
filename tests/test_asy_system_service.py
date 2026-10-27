@@ -2675,22 +2675,24 @@ def _raising_unpause(svc: SystemService) -> list[bool]:
     return raised
 
 
+async def _ended(task: "asyncio.Task[None]") -> str:
+    # Awaits a status task the scenario lets die, so its injected raise is retrieved here rather than reported.
+    try:
+        await task
+    except MemoryError as e:
+        return str(e)
+    return "returned"
+
+
 def test_an_auto_unpause_that_raises_keeps_its_deadline_for_the_restarted_loop() -> None:
     # The raise ends the status task; the deadline survives it, so the supervisor's restart still ends the pause.
     with _driven() as clock:
         svc, manager = _paused_service()
         raised = _raising_unpause(svc)
 
-        async def ended(task: "asyncio.Task[None]") -> str:
-            try:
-                await task
-            except MemoryError as e:
-                return str(e)
-            return "returned"
-
         async def scenario() -> None:
             first = asyncio.create_task(svc._status_loop())
-            outcome = asyncio.create_task(ended(first))
+            outcome = asyncio.create_task(_ended(first))
             assert svc.pause_permanent_storage(60) is True
             await _pump(svc._uptime_event, 60, clock)
             assert (await outcome).startswith("injected") and raised and manager.get_pause() is True
@@ -2712,6 +2714,36 @@ def test_an_immediate_unpause_that_raises_keeps_the_pending_deadline() -> None:
     except MemoryError as e:
         message = str(e)
     assert message.startswith("injected") and raised and manager.get_pause() is True and _pending(svc), message
+
+
+def test_a_raising_signature_line_never_lets_the_restarted_loop_draw_a_second_signature() -> None:
+    # The random fallback at 120 s; the flag is set with the value, so the restarted loop keeps the signature.
+    with _driven() as clock:
+        svc = _make_service()
+        one, raised = svc.pr.one, []
+
+        def raising_one(*args: object) -> None:
+            if not raised and "boot signature" in str(args[0]):
+                raised.append(args[0])
+                raise MemoryError("injected: no room for the signature line")
+            one(*args)
+
+        svc.pr.one = raising_one  # type: ignore[method-assign]
+
+        async def scenario() -> "tuple[int | float | None, int | float | None]":
+            first = asyncio.create_task(svc._status_loop())
+            outcome = asyncio.create_task(_ended(first))
+            await _pump(svc._uptime_event, 120, clock)
+            assert (await outcome).startswith("injected") and raised
+            before = await svc.get_boot_signature()
+            second = asyncio.create_task(svc._status_loop())  # the supervisor's restart
+            await _pump(svc._uptime_event, 2, clock)
+            after = await svc.get_boot_signature()
+            await cancel(second)
+            return before, after
+
+        before, after = run(scenario())
+    assert before is not None and before == after, (before, after)
 
 
 def test_a_second_pause_replaces_the_first_deadline() -> None:
