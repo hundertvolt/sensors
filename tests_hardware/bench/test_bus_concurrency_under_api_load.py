@@ -240,6 +240,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
         note=noted,
         description="WiFi flapping under bus load",
     )
+    _load.wait_for_ntp_quiet(dut_ip, time.monotonic(), result_note)
     if not noted.recovered:
         _assert_bus_logs_empty(dut_ip)
     assert_no_task_ended(dut_ip, "bus load + real WiFi flapping")  # on both paths - FRAM keeps SYSTEM
