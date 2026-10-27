@@ -59,7 +59,7 @@ from _recording_print import record_prints  # noqa: E402 - imported after the pr
 from _strict_json import strict_loads  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_common import Injections, StatePaths  # noqa: E402 - imported after the prewarm and the UDP shim
-from _twin_devices import generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
+from _twin_devices import distinct_wirings, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
 from _untraced import untraced  # noqa: E402 - imported after the prewarm and the UDP shim
 
 import asy_config_manager  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -959,36 +959,17 @@ def test_serving_without_the_stop_file_lasts_the_whole_duration() -> None:
 
 
 # ---------------------------------------------------------------------------
-# main() - one real, short, bounded end-to-end smoke boot of a generated module with one injected fault. Exactly one:
-# the supervisor leaves background tasks running after main_task.cancel() (the twin integration suite's docstring).
+# main() - a real, short, bounded end-to-end smoke boot of a generated module with one injected fault, once per distinct
+# wiring of the FRAM its stores write and the SGP40 the fault arms; main()'s shutdown drains each (agent, 2026-10-27).
 # ---------------------------------------------------------------------------
 
 
-async def _times_out(aw: "Coroutine[object, object, object]") -> bool:
-    # Every stand-in answers at once, so a call still pending after a few milliseconds is one that never returns.
-    try:
-        await asyncio.wait_for_ms(aw, _HUNG_AFTER_MS)
-    except asyncio.TimeoutError:
-        return True
-    return False
-
-
-async def _until_returned(returned: "list[bool]", run: "Coroutine[object, object, None]") -> None:
-    # Serves until the held setup has returned, then ends the run on main()'s own shutdown path by its cancel.
-    task = asyncio.create_task(run)
-    while not task.done() and not returned:
-        await asyncio.sleep_ms(runner._READY_POLL_MS)
-    await cancel(task)
-
-
-def test_main_boots_at_the_stored_error_level_arms_a_fault_writes_the_responder_ntp_config_and_shuts_down_cleanly() -> None:
-    # The memory gate reads the printed lines (owner, 2026-10-20: "Option 1 is good"): with DebugLevel 1 stored, the first
-    # store set up after SYSTEM's prints the error a directory on its path makes, which a default boot keeps silent.
+def _stored_level_boot_on(device: str) -> None:
+    # The test below on one device.
     config_dir = _scratch.dir("boot")
     with open(config_dir + "config_SYSTEM.cfg", "w") as f:
         f.write('{"DebugLevel": 1}')
     os.mkdir(config_dir + "config_WIFI.cfg")
-    device = generated_devices()[0]
     config = runner.RunConfig(
         "sensortask_" + device,
         f"build/generated_src/sensortask_{device}_wiring_plan.json",  # buildgen wrote both
@@ -1014,27 +995,53 @@ def test_main_boots_at_the_stored_error_level_arms_a_fault_writes_the_responder_
             run_timed(_until_returned(returned, runner.main(config)), timeout_s=_MAIN_RUN_BOUND_S)
     finally:
         asy_wifi_service.WifiService.setup = setup  # type: ignore[method-assign]  # as above
-    assert returned, "the run ended before WifiService.setup() returned"
+    assert returned, f"{device}: the run ended before WifiService.setup() returned"
     # Exact, per layer: the store's own logger holds the one fault and printed it once; the service's own is not read.
     booted = runner._module
     assert booted is not None
     log = run_timed(booted.conn.cfgmgr.pr.get_log(), _RUN_BOUND_S)["CFGMGR_WIFI"]
     entries = [(kind, num) for kind, num in zip(log["ErrType"], log["ErrNum"]) if kind != "N"]
-    assert (log["ErrCount"], entries) == (1, [("E", code("E", "CFG_PATH_IS_DIR"))]), log
+    assert (log["ErrCount"], entries) == (1, [("E", code("E", "CFG_PATH_IS_DIR"))]), (device, log)
     lines = [line for line in printed.lines if line and line[0] == "CFGMGR_WIFI"]
-    assert len(lines) == 1, lines
+    assert len(lines) == 1, (device, lines)
     # The WDT the runner built and passed to the booted module's main(): an ordinary boot never starves it.
     watchdog = runner._watchdog
     assert watchdog is not None
-    assert watchdog.would_have_triggered_count == 0
+    assert watchdog.would_have_triggered_count == 0, device
     with open(config_dir + "config_NTP.cfg") as f:
         stored = strict_loads(f.read())  # the whole store: the local responder, no fallback, every other key its default
-    assert stored == {"NTPHost": "127.0.0.1", "DNSFallback": "", "NTPOffset": 0, "NTPInterval": 12, "GMTOffset": 3600, "DSTOffset": 3600}
+    assert stored == {"NTPHost": "127.0.0.1", "DNSFallback": "", "NTPOffset": 0, "NTPInterval": 12, "GMTOffset": 3600, "DSTOffset": 3600}, (device, stored)
     # rp2's RTC is the wall clock: every loaded product module reads the one the runner installed, the twin's own the host's
     assert _wall_clock.installed() is not None and asy_ntp_client.__dict__["time"] is _wall_clock.installed()
     clocks = [m.__dict__["time"] for m in (runner, machine)]
     assert not any(isinstance(clock, _wall_clock.WallClock) for clock in clocks), clocks
-    assert _flash_stall_installed(), "the runner never installed the flash stall on the config manager"
+    assert _flash_stall_installed(), f"{device}: the runner never installed the flash stall on the config manager"
+
+
+async def _times_out(aw: "Coroutine[object, object, object]") -> bool:
+    # Every stand-in answers at once, so a call still pending after a few milliseconds is one that never returns.
+    try:
+        await asyncio.wait_for_ms(aw, _HUNG_AFTER_MS)
+    except asyncio.TimeoutError:
+        return True
+    return False
+
+
+async def _until_returned(returned: "list[bool]", run: "Coroutine[object, object, None]") -> None:
+    # Serves until the held setup has returned, then ends the run on main()'s own shutdown path by its cancel.
+    task = asyncio.create_task(run)
+    while not task.done() and not returned:
+        await asyncio.sleep_ms(runner._READY_POLL_MS)
+    await cancel(task)
+
+
+def test_main_boots_at_the_stored_error_level_arms_a_fault_writes_the_responder_ntp_config_and_shuts_down_cleanly() -> None:
+    # The memory gate reads the printed lines (owner, 2026-10-20: "Option 1 is good"): with DebugLevel 1 stored, the first
+    # store set up after SYSTEM's prints the error a directory on its path makes, which a default boot keeps silent.
+    for device in distinct_wirings("fram", "sgp40"):
+        machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
+        network.reset_test_state()
+        _stored_level_boot_on(device)
 
 
 class _IdleBoot:
