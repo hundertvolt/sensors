@@ -2447,6 +2447,12 @@
    "no unread fact it emits: errors is the included bus_reader_loops.py's report_errors() key, which this script never calls (i2c_held_sda_recovery.py:18); its own facts are asserted by test_a_held_sda_line_is_cleared_and_every_device_answers"
   ]
  },
+ "tests_hardware/device_scripts/setup_resets_each_chip_once.py::setup_resets_each_chip_once": {
+  "ds_facts": [
+   "biting",
+   "its one fact, setups, is read whole by test_every_chip_setup_resets_it_once_after_a_read_identified_it (test_bus_concurrency.py:279-295): each chip's driver, address, transfer record and read after setup asserted; no included helper's key is emitted (errors: report_errors() is never called); bitten under --twin on three plants (a setup without its reset, a reset before the identity read, a second reset) (agent, 2026-10-27)"
+  ]
+ },
  "tests_hardware/device_scripts/isl29125_cross_device_concurrency.py::isl29125_cross_device_concurrency": {
   "ds_facts": [
    "justified",
@@ -2781,6 +2787,12 @@
   "setup_credit_only": [
    "biting",
    "a false flag from the per-device split: the test loops distinct_wirings() and calls _restore_through_the_outage_on(device) (:340-387), whose own assertions carry the claim: no restore while the boot's sync attempt fails (:385), the restore after the sync takes the backup's stamp (:386) and SGP40 logs nothing (:387)"
+  ]
+ },
+ "tests/test_digital_twin_ntp.py::test_a_product_socket_failing_its_setup_or_connect_is_torn_down_and_the_next_fetch_builds_one_that_syncs": {
+  "setup_credit_only": [
+   "biting",
+   "a false flag from the per-step split: the test loops the two steps and calls _a_socket_failing_at(step) (:481-502), whose own assertions carry the claim: the fault fired once (:498), one E NTP_NOT_SENT and no request (:499), the attempt that synced added nothing (:500) and every socket made was closed (:502); bitten on a plant: a failed setup raising instead of self-healing failed it at its first wait (agent, 2026-10-27)"
   ]
  },
  "tests/test_digital_twin_ntp.py::test_a_lost_sync_keeps_the_local_time_and_the_alert_flashing": {

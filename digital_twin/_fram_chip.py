@@ -144,7 +144,7 @@ def _header_int(prefix: str, key: str) -> "int | None":
 
 
 class FRAMChip:
-    TEST_API = ("drop_next_wren", "fault", "rdid_once", "silent", "silent_wren_count", "silent_write_count", "write_count", "writes_at", "writes_at_dropped")
+    TEST_API = ("corrupt_next_write", "drop_next_wren", "fault", "rdid_once", "silent", "silent_wren_count", "silent_write_count", "stick_next_wrdi", "write_count", "writes_at", "writes_at_dropped")
 
     def __init__(self, size: int, rdid_response: bytes, state_path: "str | None" = None) -> None:
         self.size = size
@@ -154,6 +154,12 @@ class FRAMChip:
         # rp2's SPI raises only on a reading transfer (ports/rp2/machine_spi.c:312-315): only readinto() takes a fault.
         self.fault = FaultInjector(raisable_ops=("readinto",))
         self.drop_next_wren = 0  # twin-only test knob: each WREN while > 0 leaves WEL clear and counts down
+        # Twin-only test knob: each WRDI while > 0 leaves WEL set and counts down - a WRDI lost while WEL holds, as the
+        # MB85RS2MTA's does after a WRITE (continual programming, p.6); this model clears WEL at the WRITE, so it sets it.
+        self.stick_next_wrdi = 0
+        # Twin-only test knob: each payload WRITE while > 0 stores its first byte with bit 0 flipped and counts down - a
+        # bit error on SI, written as received (MB85RS64V p.9): the array then disagrees with what the product sent.
+        self.corrupt_next_write = 0
         self.rdid_once: bytes | None = None  # twin-only test knob: answered by the next RDID only, then cleared
         # Twin-only test knob: a deselected or lost chip - every write() changes nothing, every readinto() reads 0x00
         # (SO is High-Z, MB85RS64V datasheet p10; the MISO pad's reset pull-down reads 0, RP2040 datasheet Table 341).
@@ -319,6 +325,9 @@ class FRAMChip:
         if self._pending_op == _OPCODE_WRITE and self._pending_addr is not None:
             # data phase of a previously-opened WRITE (opcode+address arrived in the prior call)
             if self._wel:
+                if len(data) > 1 and self.corrupt_next_write > 0:
+                    self.corrupt_next_write -= 1
+                    data = bytes((data[0] ^ 0x01,)) + data[1:]
                 self._write_wrapped(self._pending_addr, data)
                 if len(data) > 1:  # a chunk copy, a clear or an erase unit, never a one-byte status write
                     self._count_write(self._pending_addr)
@@ -333,7 +342,11 @@ class FRAMChip:
             else:
                 self.status |= _WEL_BIT
         elif opcode == _OPCODE_WRDI:
-            self.status &= ~_WEL_BIT
+            if self.stick_next_wrdi > 0:
+                self.stick_next_wrdi -= 1
+                self.status |= _WEL_BIT
+            else:
+                self.status &= ~_WEL_BIT
         elif opcode == _OPCODE_WRSR:
             if self._wel:
                 self.status = (data[1] & ~_WEL_BIT) | (self.status & _WEL_BIT)

@@ -4,16 +4,16 @@ Requirement: every test in `tests/`, `tests_scripts/`, `tests_js/` and `tests_ha
 
 ## Counts
 
-Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_verdicts.json`: 8584 rows, 339 flagged. A flag is a candidate; the verdict is the reviewer's.
+Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_verdicts.json`: 8592 rows, 340 flagged. A flag is a candidate; the verdict is the reviewer's.
 
 | level | rows | flagged |
 |---|---|---|
 | bench (hardware) | 121 | 22 |
-| device script | 90 | 0 |
-| flash (hardware) | 88 | 65 |
+| device script | 91 | 0 |
+| flash (hardware) | 89 | 65 |
 | host (pytest) | 2955 | 70 |
 | manual (hardware) | 21 | 2 |
-| twin (MicroPython) | 683 | 24 |
+| twin (MicroPython) | 689 | 25 |
 | twin scenario | 176 | 10 |
 | unit (MicroPython) | 3958 | 140 |
 | web (vitest) | 492 | 6 |
@@ -23,7 +23,7 @@ Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_
 | CRr2 | 63 |
 | fixed | 67 |
 | justified | 129 |
-| biting | 8325 |
+| biting | 8333 |
 
 | red flag | rows | verdicts |
 |---|---|---|
@@ -37,7 +37,7 @@ Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_
 | same_callee | 36 | biting 36 |
 | ns_seed_text | 37 | biting 37 |
 | ns_allow_list | 2 | justified 2 |
-| setup_credit_only | 45 | justified 4, biting 41 |
+| setup_credit_only | 46 | justified 4, biting 42 |
 | hw_no_log | 83 | CRr2 63, fixed 20 |
 
 Detectors with no row at this base: weak_only, cannot_fail, canned_return, ns_count_bound, ns_code_in_set.
@@ -3853,63 +3853,67 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests/test_digital_twin_clock_jump.py:328 | test_a_year_forward_then_two_back_leave_sync_and_its_age_on_the_ticks | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_clock_jump.py:350 | test_the_first_sync_sets_a_boot_default_clock_and_restarts_its_age | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_clock_jump.py:372 | test_an_ntp_offset_change_clears_synced_and_the_next_sync_applies_it | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:252 | test_rdid_reports_the_id_it_was_built_with | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:257 | test_a_chip_needs_its_rdid_given | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:265 | test_rdid_once_answers_the_next_rdid_only | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:272 | test_drop_next_wren_drops_that_many_wrens_and_no_more | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:286 | test_a_silent_chip_reads_zeros_and_ignores_every_write | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:300 | test_write_fault_injection_is_refused | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:311 | test_readinto_with_no_recognized_pending_op_zero_fills_the_buffer | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:325 | test_write_requires_wren_first | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:331 | test_write_after_wren_persists_to_memory | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:338 | test_wel_autoclears_after_a_write_so_a_second_write_needs_a_fresh_wren | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:346 | test_wrdi_clears_wel | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:354 | test_rdsr_reflects_wel_bit | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:361 | test_read_returns_zero_bytes_for_untouched_memory | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:366 | test_wrsr_requires_wel_and_preserves_the_wel_bit_itself | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:377 | test_save_state_then_construct_a_fresh_chip_from_the_same_path_reads_back_identical_data | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:392 | test_state_is_not_written_until_save_state_is_called | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:408 | test_persisted_file_is_json_with_hex_encoded_memory | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:420 | test_save_state_round_trips_correctly_across_chunk_boundaries | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:448 | test_load_state_with_no_memory_hex_marker_says_so_and_leaves_a_blank_chip | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:459 | test_a_truncated_state_file_says_so_and_keeps_none_of_its_partial_bytes | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:469 | test_a_state_file_of_the_other_chip_size_says_so_and_loads_blank | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:481 | test_a_save_leaves_no_temporary_file_and_a_cut_save_keeps_the_previous_image | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:509 | test_load_state_handles_a_hex_byte_pair_straddling_a_chunk_boundary | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:532 | test_missing_state_file_starts_from_a_blank_chip_without_a_line | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:544 | test_a_readinto_fault_keyed_to_the_read_opcode_spares_a_long_rdid_read | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:558 | test_24_bit_address_write_and_read_round_trip_correctly_on_a_256kb_chip | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:568 | test_24_bit_address_low_byte_is_not_dropped_so_aliasing_addresses_stay_distinct | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:580 | test_16_bit_address_chip_is_unaffected_by_the_24_bit_address_path | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:589 | test_a_256kb_chip_holds_its_memory_in_pages_never_one_large_block | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:599 | test_paged_memory_reads_and_writes_like_the_bytearray_it_replaces | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:619 | test_a_write_past_the_chip_end_is_refused_not_grown | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:630 | test_a_chunk_on_the_twin_chip_reads_true_with_the_bytes_it_wrote | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:643 | test_a_blank_chunk_reads_false_and_takes_no_busy_marker | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:654 | test_a_blank_read_of_a_silent_twin_chip_finds_the_loss_and_reads_none | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:667 | test_a_persistent_chip_read_fault_reads_none_then_the_leftover_busy_markers_read_false | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:687 | test_a_persistent_overrun_reads_none_then_the_leftover_busy_markers_read_false | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:709 | test_the_timestamped_chunk_read_carries_the_same_tri_state | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:738 | test_every_chunk_operation_stays_silent_on_the_twin_while_the_chip_is_lost | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:757 | test_readinto_fault_fires_only_on_a_long_read | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:770 | test_the_long_read_threshold_is_the_twin_buses_dma_threshold | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:774 | test_a_write_across_the_last_address_wraps_to_address_zero | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:783 | test_a_read_past_the_end_wraps_to_address_zero | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:792 | test_opcode_address_and_data_in_one_write_are_refused | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:803 | test_an_rdid_into_an_8_byte_buffer_keeps_8_bytes_and_holds_the_last_bit | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:813 | test_fram_rdid_table_matches_the_driver | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:821 | test_payload_writes_are_counted_by_address | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:846 | test_a_silent_chip_counts_the_payload_writes_issued_to_it | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:866 | test_a_silent_chip_counts_the_write_enables_sent_to_it | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:881 | test_a_chunk_write_survives_one_dropped_wren | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:892 | test_a_logger_over_its_written_chunk_on_a_protected_chip_stays_uninitialised_and_writes_nothing | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:912 | test_a_booted_device_whose_fram_goes_silent_restarts_its_task_and_recovers_or_arms_the_reset | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:921 | test_a_blank_read_whose_probe_meets_a_held_session_stays_blank_and_declares_no_loss | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:957 | test_two_valid_but_differing_copies_fail_each_read_with_one_slot_and_the_next_write_heals_them | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:979 | test_a_paused_twin_fram_refuses_every_chunk_operation_with_one_slot_and_resumes_untouched | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:999 | test_counting_writes_at_new_addresses_allocates_nothing | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:1017 | test_a_save_writes_the_image_only_up_to_its_last_nonzero_byte | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_fram.py:1036 | test_a_state_file_naming_more_used_bytes_than_the_chip_holds_says_so_and_loads_blank | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:258 | test_rdid_reports_the_id_it_was_built_with | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:263 | test_a_chip_needs_its_rdid_given | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:271 | test_rdid_once_answers_the_next_rdid_only | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:278 | test_drop_next_wren_drops_that_many_wrens_and_no_more | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:292 | test_stick_next_wrdi_leaves_wel_set_for_that_many_wrdis_and_no_more | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:304 | test_corrupt_next_write_flips_bit_0_of_that_many_payload_writes_and_no_more | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:319 | test_a_silent_chip_reads_zeros_and_ignores_every_write | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:333 | test_write_fault_injection_is_refused | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:344 | test_readinto_with_no_recognized_pending_op_zero_fills_the_buffer | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:358 | test_write_requires_wren_first | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:364 | test_write_after_wren_persists_to_memory | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:371 | test_wel_autoclears_after_a_write_so_a_second_write_needs_a_fresh_wren | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:379 | test_wrdi_clears_wel | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:387 | test_rdsr_reflects_wel_bit | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:394 | test_read_returns_zero_bytes_for_untouched_memory | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:399 | test_wrsr_requires_wel_and_preserves_the_wel_bit_itself | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:410 | test_save_state_then_construct_a_fresh_chip_from_the_same_path_reads_back_identical_data | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:425 | test_state_is_not_written_until_save_state_is_called | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:441 | test_persisted_file_is_json_with_hex_encoded_memory | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:453 | test_save_state_round_trips_correctly_across_chunk_boundaries | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:481 | test_load_state_with_no_memory_hex_marker_says_so_and_leaves_a_blank_chip | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:492 | test_a_truncated_state_file_says_so_and_keeps_none_of_its_partial_bytes | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:502 | test_a_state_file_of_the_other_chip_size_says_so_and_loads_blank | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:514 | test_a_save_leaves_no_temporary_file_and_a_cut_save_keeps_the_previous_image | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:542 | test_load_state_handles_a_hex_byte_pair_straddling_a_chunk_boundary | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:565 | test_missing_state_file_starts_from_a_blank_chip_without_a_line | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:577 | test_a_readinto_fault_keyed_to_the_read_opcode_spares_a_long_rdid_read | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:591 | test_24_bit_address_write_and_read_round_trip_correctly_on_a_256kb_chip | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:601 | test_24_bit_address_low_byte_is_not_dropped_so_aliasing_addresses_stay_distinct | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:613 | test_16_bit_address_chip_is_unaffected_by_the_24_bit_address_path | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:622 | test_a_256kb_chip_holds_its_memory_in_pages_never_one_large_block | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:632 | test_paged_memory_reads_and_writes_like_the_bytearray_it_replaces | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:652 | test_a_write_past_the_chip_end_is_refused_not_grown | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:663 | test_a_chunk_on_the_twin_chip_reads_true_with_the_bytes_it_wrote | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:676 | test_a_blank_chunk_reads_false_and_takes_no_busy_marker | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:687 | test_a_blank_read_of_a_silent_twin_chip_finds_the_loss_and_reads_none | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:700 | test_a_persistent_chip_read_fault_reads_none_then_the_leftover_busy_markers_read_false | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:720 | test_a_persistent_overrun_reads_none_then_the_leftover_busy_markers_read_false | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:742 | test_the_timestamped_chunk_read_carries_the_same_tri_state | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:771 | test_every_chunk_operation_stays_silent_on_the_twin_while_the_chip_is_lost | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:790 | test_readinto_fault_fires_only_on_a_long_read | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:803 | test_the_long_read_threshold_is_the_twin_buses_dma_threshold | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:807 | test_a_write_across_the_last_address_wraps_to_address_zero | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:816 | test_a_read_past_the_end_wraps_to_address_zero | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:825 | test_opcode_address_and_data_in_one_write_are_refused | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:836 | test_an_rdid_into_an_8_byte_buffer_keeps_8_bytes_and_holds_the_last_bit | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:846 | test_fram_rdid_table_matches_the_driver | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:854 | test_payload_writes_are_counted_by_address | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:879 | test_a_silent_chip_counts_the_payload_writes_issued_to_it | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:899 | test_a_silent_chip_counts_the_write_enables_sent_to_it | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:914 | test_a_chunk_write_survives_one_dropped_wren | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:925 | test_a_logger_over_its_written_chunk_on_a_protected_chip_stays_uninitialised_and_writes_nothing | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:945 | test_a_booted_device_whose_fram_goes_silent_restarts_its_task_and_recovers_or_arms_the_reset | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:954 | test_a_blank_read_whose_probe_meets_a_held_session_stays_blank_and_declares_no_loss | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:990 | test_two_valid_but_differing_copies_fail_each_read_with_one_slot_and_the_next_write_heals_them | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:1012 | test_a_paused_twin_fram_refuses_every_chunk_operation_with_one_slot_and_resumes_untouched | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:1032 | test_a_latch_one_wrdi_leaves_set_clears_on_the_retry_and_a_stuck_one_warns_once_per_event_with_the_payload_landed | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:1055 | test_a_verified_write_the_chip_stored_wrong_fails_once_rewrites_nothing_and_the_next_write_heals | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:1077 | test_counting_writes_at_new_addresses_allocates_nothing | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:1095 | test_a_save_writes_the_image_only_up_to_its_last_nonzero_byte | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_fram.py:1114 | test_a_state_file_naming_more_used_bytes_than_the_chip_holds_says_so_and_loads_blank | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_fram_crash_points.py:149 | test_a_logger_write_cut_after_every_transaction_restores_the_old_or_the_new_history | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_fram_crash_points.py:191 | test_a_backup_write_cut_after_every_transaction_restores_the_old_or_the_new_backup | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_fram_crash_points.py:243 | test_an_erase_cut_inside_its_blanking_pass_or_its_first_and_last_units_restores_each_ring_or_blanks_it | twin (MicroPython) | biting | — | biting as is |
@@ -4256,22 +4260,23 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests/test_digital_twin_network_neopixel.py:725 | test_connect_on_an_inactive_station_raises_eperm | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_network_neopixel.py:740 | test_deactivating_the_station_drops_its_link_its_address_and_a_pending_connect | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_network_neopixel.py:757 | test_connect_refuses_what_the_real_driver_cannot_take | twin (MicroPython) | biting | except_pass | except_pass: biting: the expect-raise idiom: the handler is the refusal path and the statement after the try raises AssertionError |
-| tests/test_digital_twin_ntp.py:151 | test_a_request_gets_a_synchronised_server_reply_at_the_hosts_utc | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_ntp.py:158 | test_offset_s_shifts_the_served_time_exactly | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_ntp.py:166 | test_each_failure_mode_answers_as_its_name_says | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_ntp.py:186 | test_a_datagram_that_is_no_client_request_is_counted_and_unanswered | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_ntp.py:192 | test_the_request_counter_saturates_at_the_projects_cap | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_ntp.py:200 | test_the_epoch_delta_is_the_clients_own | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_ntp.py:204 | test_serving_never_starves_a_task_beside_it | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_ntp.py:224 | test_a_second_responder_on_a_held_port_waits_and_takes_it_once_freed | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_ntp.py:300 | test_a_public_destination_is_refused_counted_and_fails_on_the_products_own_path | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_ntp.py:307 | test_a_malformed_or_public_literal_is_refused_the_same_way | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_ntp.py:314 | test_a_send_to_a_refused_address_fails_on_the_products_own_path | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_ntp.py:442 | test_a_booted_device_syncs_at_its_first_sync_with_a_clean_log | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_ntp.py:456 | test_an_outage_from_boot_backs_off_and_a_returning_responder_syncs_within_the_step | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_ntp.py:480 | test_an_sgp40_restore_waits_out_the_outage_and_follows_the_sync | twin (MicroPython) | biting | setup_credit_only | setup_credit_only: biting: a false flag from the per-device split: the test loops distinct_wirings() and calls _restore_through_the_outage_on(device) (:340-387), whose own assertions carry the claim: no restore while the boot's sync attempt fails (:385), the restore after the sync takes the backup's stamp (:386) and SGP40 logs nothing (:387) |
-| tests/test_digital_twin_ntp.py:488 | test_each_failing_reply_leaves_synced_false_with_its_catalog_code | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_ntp.py:511 | test_a_lost_sync_keeps_the_local_time_and_the_alert_flashing | twin (MicroPython) | biting | setup_credit_only | setup_credit_only: biting: a false flag from the per-device split: the test loops distinct_wirings() and calls _lost_sync_on(device) (:258-293), whose own assertions carry the claim: once the sync is lost both flags read False (:291), the local time is kept (:292) and the alert flashes (:293) |
+| tests/test_digital_twin_ntp.py:152 | test_a_request_gets_a_synchronised_server_reply_at_the_hosts_utc | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_ntp.py:159 | test_offset_s_shifts_the_served_time_exactly | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_ntp.py:167 | test_each_failure_mode_answers_as_its_name_says | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_ntp.py:187 | test_a_datagram_that_is_no_client_request_is_counted_and_unanswered | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_ntp.py:193 | test_the_request_counter_saturates_at_the_projects_cap | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_ntp.py:201 | test_the_epoch_delta_is_the_clients_own | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_ntp.py:205 | test_serving_never_starves_a_task_beside_it | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_ntp.py:225 | test_a_second_responder_on_a_held_port_waits_and_takes_it_once_freed | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_ntp.py:301 | test_a_public_destination_is_refused_counted_and_fails_on_the_products_own_path | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_ntp.py:308 | test_a_malformed_or_public_literal_is_refused_the_same_way | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_ntp.py:315 | test_a_send_to_a_refused_address_fails_on_the_products_own_path | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_ntp.py:443 | test_a_booted_device_syncs_at_its_first_sync_with_a_clean_log | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_ntp.py:457 | test_an_outage_from_boot_backs_off_and_a_returning_responder_syncs_within_the_step | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_ntp.py:505 | test_a_product_socket_failing_its_setup_or_connect_is_torn_down_and_the_next_fetch_builds_one_that_syncs | twin (MicroPython) | biting | setup_credit_only | setup_credit_only: biting: a false flag from the per-step split: the test loops the two steps and calls _a_socket_failing_at(step) (:481-502), whose own assertions carry the claim: the fault fired once (:498), one E NTP_NOT_SENT and no request (:499), the attempt that synced added nothing (:500) and every socket made was closed (:502); bitten on a plant: a failed setup raising instead of self-healing failed it at its first wait (agent, 2026-10-27) |
+| tests/test_digital_twin_ntp.py:512 | test_an_sgp40_restore_waits_out_the_outage_and_follows_the_sync | twin (MicroPython) | biting | setup_credit_only | setup_credit_only: biting: a false flag from the per-device split: the test loops distinct_wirings() and calls _restore_through_the_outage_on(device) (:340-387), whose own assertions carry the claim: no restore while the boot's sync attempt fails (:385), the restore after the sync takes the backup's stamp (:386) and SGP40 logs nothing (:387) |
+| tests/test_digital_twin_ntp.py:520 | test_each_failing_reply_leaves_synced_false_with_its_catalog_code | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_ntp.py:543 | test_a_lost_sync_keeps_the_local_time_and_the_alert_flashing | twin (MicroPython) | biting | setup_credit_only | setup_credit_only: biting: a false flag from the per-device split: the test loops distinct_wirings() and calls _lost_sync_on(device) (:258-293), whose own assertions carry the claim: once the sync is lost both flags read False (:291), the local time is kept (:292) and the alert flashes (:293) |
 | tests/test_digital_twin_poll_prewarm.py:35 | test_a_port_another_process_already_holds_is_skipped_not_fatal | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_poll_prewarm.py:50 | test_a_port_lost_between_bind_and_listen_is_skipped_too | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_poll_prewarm.py:86 | test_every_port_of_a_full_window_is_tried_before_giving_up | twin (MicroPython) | biting | — | biting as is |
@@ -4391,24 +4396,25 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests/test_digital_twin_scd30.py:853 | test_missing_state_file_starts_from_factory_fresh_settings_without_raising | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_scd30.py:865 | test_an_unloadable_state_file_says_why_and_leaves_factory_fresh_settings | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_scd30.py:882 | test_state_path_none_never_touches_disk | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:559 | test_sgp40_reading_before_scd30_has_measured_yet_logs_no_bogus_error | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:580 | test_watchdog_is_never_starved_while_the_real_supervisor_runs | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:631 | test_the_supervisor_restarts_a_real_dead_task | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:677 | test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0 | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:756 | test_a_dhcp_server_that_never_answers_leaves_a_persisted_trace | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:795 | test_a_failed_config_snapshot_is_the_unavailable_marker | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:816 | test_a_factory_state_unit_returns_to_the_hotspot_after_every_window | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:848 | test_a_failing_wlan_status_keeps_the_link_and_warns_once_per_unreadable_tick | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:886 | test_two_failed_joins_re_select_the_radio_once_and_the_link_comes_back | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:931 | test_hotspot_fallback_drives_the_status_led_and_binds_the_dns_server | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:949 | test_the_captive_dns_listener_idles_at_its_idle_rate | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:1027 | test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chunk | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:1051 | test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanly_to_the_last_flushed_state | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:1085 | test_a_restored_backup_reports_its_timestamp_without_ntp | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:1115 | test_a_restarted_sgp40_task_keeps_its_live_voc_state | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:1167 | test_the_notification_window_spanning_midnight_flashes_red | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:1224 | test_a_stopped_scd30_ends_its_alerts_and_sgp40_compensation | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:1288 | test_a_boot_without_ntp_reports_no_local_time | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:560 | test_sgp40_reading_before_scd30_has_measured_yet_logs_no_bogus_error | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:581 | test_watchdog_is_never_starved_while_the_real_supervisor_runs | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:632 | test_the_supervisor_restarts_a_real_dead_task | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:678 | test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0 | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:757 | test_a_dhcp_server_that_never_answers_leaves_a_persisted_trace | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:796 | test_a_failed_config_snapshot_is_the_unavailable_marker | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:817 | test_a_factory_state_unit_returns_to_the_hotspot_after_every_window | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:849 | test_a_failing_wlan_status_keeps_the_link_and_warns_once_per_unreadable_tick | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:887 | test_two_failed_joins_re_select_the_radio_once_and_the_link_comes_back | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:932 | test_hotspot_fallback_drives_the_status_led_and_binds_the_dns_server | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:950 | test_the_captive_dns_listener_idles_at_its_idle_rate | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:979 | test_the_captive_dns_socket_whose_bind_fails_logs_once_then_rebuilds_binds_and_answers | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:1052 | test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chunk | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:1076 | test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanly_to_the_last_flushed_state | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:1110 | test_a_restored_backup_reports_its_timestamp_without_ntp | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:1140 | test_a_restarted_sgp40_task_keeps_its_live_voc_state | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:1192 | test_the_notification_window_spanning_midnight_flashes_red | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:1249 | test_a_stopped_scd30_ends_its_alerts_and_sgp40_compensation | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:1313 | test_a_boot_without_ntp_reports_no_local_time | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_setup_resets.py:139 | test_every_chip_is_reset_once_by_its_setup_after_its_identity_check | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_sgp40.py:32 | test_crc8_matches_datasheet_worked_example | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_sgp40.py:36 | test_word_appends_correct_crc_trailer | twin (MicroPython) | biting | — | biting as is |
@@ -5068,26 +5074,27 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests_hardware/bench/test_wifi_networking.py:85 | test_real_dns_resolution_succeeds_over_genuine_udp | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_wifi_networking.py:98 | test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing | bench (hardware) | fixed | was:ns_seed_text | was:ns_seed_text: fixed: (b) contains became exact before the clear: NTP holds E NTP_NO_REPLY alone. Bitten on synthetic errcount (a teardown warning beside it passes contains, fails the new check) |
 | tests_hardware/bench/test_wifi_radio_reinit.py:21 | test_the_radio_reinit_rung_restores_the_link | bench (hardware) | fixed | hw_no_log | hw_no_log: fixed: the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it |
-| tests_hardware/flash/test_bus_concurrency.py:99 | test_scd30_same_device_read_write_concurrency | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:110 | test_same_device_concurrent_sessions_never_corrupt_each_other | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:119 | test_cross_device_concurrent_sessions_genuinely_interleave | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:137 | test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_transactions | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:148 | test_bmp3xx_same_device_read_write_concurrency | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:160 | test_isl29125_same_device_read_write_concurrency | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:170 | test_sgp40_concurrent_sessions_each_get_a_tick | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:181 | test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:192 | test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:206 | test_scd30_config_write_does_not_disturb_concurrent_sibling_reads | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:221 | test_isl29125_real_irq_edge_beats_the_periodic_fallback | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:236 | test_bus_topology_autodetect_address_and_reserved_range_sweep | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:255 | test_a_held_sda_line_is_cleared_and_every_device_answers | flash (hardware) | CRr2 | log_existence_only; hw_no_log | log_existence_only: biting: a transfer's errno, not a log: rp2's two transfer failures (ports/rp2/machine_i2c.c:152/:154, v1.29.0); the claim is the clear after; hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:272 | test_bmp3xx_alone_survives_a_general_call | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:285 | test_fram_same_device_read_write_concurrency | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:296 | test_fram_cs_pin_hijack_fault_injection_and_recovery | flash (hardware) | fixed | was:log_existence_only | was:log_existence_only: fixed: exactly one chip-lost entry: lost['errnos'].count(54) == 1, the driver's one entry per loss (src/asy_fram_driver.py _report_chip_lost). Bitten on synthetic output ([26, 54, 54]); the hijack is silicon-only (twin record) |
-| tests_hardware/flash/test_bus_concurrency.py:315 | test_fram_hard_reset_race_during_write_and_recovery | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:332 | test_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:345 | test_fram_erase_racing_a_chunk_write_leaves_no_torn_chunk | flash (hardware) | biting | — | biting as is |
-| tests_hardware/flash/test_bus_concurrency.py:364 | test_reboot_command_shuts_down_then_resets | flash (hardware) | biting | — | biting as is |
+| tests_hardware/flash/test_bus_concurrency.py:106 | test_scd30_same_device_read_write_concurrency | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:117 | test_same_device_concurrent_sessions_never_corrupt_each_other | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:126 | test_cross_device_concurrent_sessions_genuinely_interleave | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:144 | test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_transactions | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:155 | test_bmp3xx_same_device_read_write_concurrency | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:167 | test_isl29125_same_device_read_write_concurrency | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:177 | test_sgp40_concurrent_sessions_each_get_a_tick | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:188 | test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:199 | test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:213 | test_scd30_config_write_does_not_disturb_concurrent_sibling_reads | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:228 | test_isl29125_real_irq_edge_beats_the_periodic_fallback | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:243 | test_bus_topology_autodetect_address_and_reserved_range_sweep | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:262 | test_a_held_sda_line_is_cleared_and_every_device_answers | flash (hardware) | CRr2 | log_existence_only; hw_no_log | log_existence_only: biting: a transfer's errno, not a log: rp2's two transfer failures (ports/rp2/machine_i2c.c:152/:154, v1.29.0); the claim is the clear after; hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:279 | test_every_chip_setup_resets_it_once_after_a_read_identified_it | flash (hardware) | biting | — | biting as is |
+| tests_hardware/flash/test_bus_concurrency.py:299 | test_bmp3xx_alone_survives_a_general_call | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:312 | test_fram_same_device_read_write_concurrency | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:323 | test_fram_cs_pin_hijack_fault_injection_and_recovery | flash (hardware) | fixed | was:log_existence_only | was:log_existence_only: fixed: exactly one chip-lost entry: lost['errnos'].count(54) == 1, the driver's one entry per loss (src/asy_fram_driver.py _report_chip_lost). Bitten on synthetic output ([26, 54, 54]); the hijack is silicon-only (twin record) |
+| tests_hardware/flash/test_bus_concurrency.py:342 | test_fram_hard_reset_race_during_write_and_recovery | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:359 | test_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:372 | test_fram_erase_racing_a_chunk_write_leaves_no_torn_chunk | flash (hardware) | biting | — | biting as is |
+| tests_hardware/flash/test_bus_concurrency.py:391 | test_reboot_command_shuts_down_then_resets | flash (hardware) | biting | — | biting as is |
 | tests_hardware/flash/test_bus_electrical_timing.py:30 | test_soft_timer_callback_drop_self_heals_under_scheduler_saturation | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
 | tests_hardware/flash/test_bus_electrical_timing.py:41 | test_timer_init_raises_enomem_when_real_alarm_pool_is_exhausted | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
 | tests_hardware/flash/test_bus_electrical_timing.py:49 | test_scd30_real_irq_edge_drives_a_real_read | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
@@ -8689,6 +8696,7 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests_hardware/device_scripts/scd30_start_continuous_measurement.py:1 | scd30_start_continuous_measurement | device script | justified | ds_facts | ds_facts: justified: sent and invalid_readback raise when wrong (scd30_prerequisite.py:69); ambient is the value re-sent; an error leaves sent False, which raises |
 | tests_hardware/device_scripts/scheduler_saturation_drop.py:1 | scheduler_saturation_drop | device script | justified | ds_facts | ds_facts: justified: counts_busy/counts_heal are the per-timer counts in the message of the asserted all_self_healed (test_bus_electrical_timing.py:37) |
 | tests_hardware/device_scripts/serving_at_default_gc.py:1 | serving_at_default_gc | device script | justified | ds_facts | ds_facts: justified: failure_maps is in the result_note (test_serving_heap_at_default_gc.py:100); the allocation failures themselves are asserted absent from the output |
+| tests_hardware/device_scripts/setup_resets_each_chip_once.py:1 | setup_resets_each_chip_once | device script | biting | ds_facts | ds_facts: biting: its one fact, setups, is read whole by test_every_chip_setup_resets_it_once_after_a_read_identified_it (test_bus_concurrency.py:279-295): each chip's driver, address, transfer record and read after setup asserted; no included helper's key is emitted (errors: report_errors() is never called); bitten under --twin on three plants (a setup without its reset, a reset before the identity read, a second reset) (agent, 2026-10-27) |
 | tests_hardware/device_scripts/sgp40_conformance_probe.py:1 | sgp40_conformance_probe | device script | biting | ds_facts | ds_facts: biting: every fact it emits is read by key in the test that runs it: test_chip_conformance.py::<module>, test_chip_conformance.py::test_sgp40_matches_its_twin_fake |
 | tests_hardware/device_scripts/sgp40_fram_backup_restore.py:1 | sgp40_fram_backup_restore | device script | justified | ds_facts | ds_facts: justified: setup/allocated: no VOC-state chunk returns before the backup (sgp40_fram_backup_restore.py:60), failing the asserted backup_written; cleared_first and rebooted_setup are implied by the asserted restored_state_matches |
 | tests_hardware/device_scripts/sgp40_general_call_reset_hazard.py:1 | sgp40_general_call_reset_hazard | device script | biting | ds_facts | ds_facts: biting: every fact it emits is read by key in the test that runs it: test_bus_concurrency.py::test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_transactions |

@@ -40,6 +40,7 @@ from _src_const import src_const, src_int  # noqa: E402 - imported after the pre
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_devices import distinct_wirings, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
 from _udp_port_redirect import redirect_udp_port  # noqa: E402 - imported after the prewarm and the UDP shim
+from _udp_step_fault import FailNextUdpSetup  # noqa: E402 - imported after the prewarm and the UDP shim
 
 import asy_ntp_client  # noqa: E402 - imported after the prewarm and the UDP shim
 import asy_udp_socket  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -475,6 +476,37 @@ def test_an_outage_from_boot_backs_off_and_a_returning_responder_syncs_within_th
     synced, log, step, ticks = _booted(generated_devices()[0], responder, scenario, _scratch.dir())
     assert (synced, log) == (False, (1, [code("E", "NTP_NO_REPLY")])), (synced, log)
     assert ticks <= step // _CHECK_S, (ticks, step)  # the next attempt within that step
+
+
+def _a_socket_failing_at(step: str) -> None:
+    # The boot's first fetch with its socket failing at `step`: one E NTP_NOT_SENT and no request sent, the socket made
+    # for it closed, and the next attempt builds a fresh one and syncs (asy_udp_socket.py's teardown, then a new setup).
+    responder = NtpResponder(_PORTS.next())
+
+    async def scenario(module: "ModuleType", clock: "DrivenTime") -> "tuple[tuple[int, list[int]], int, int, tuple[int, list[int]]]":
+        async def failed() -> bool:
+            return (await _log(module))[0] >= 1
+
+        await _until(clock, failed, f"{step}: the boot's attempt never failed")
+        log, sent = await _log(module), responder.requests
+        ticks = await _ticks_to_attempt(module, responder, clock)
+        await _until(clock, module.ntp.ntp_issynced, f"{step}: the next attempt never synced")
+        return log, sent, ticks, await _log(module)
+
+    with FailNextUdpSetup(step) as fault:
+        log, sent, ticks, after = _booted(generated_devices()[0], responder, scenario, _scratch.dir())
+    assert fault.fired == 1, f"{step}: the fault failed {fault.fired} setups"
+    assert (log, sent) == ((1, [code("E", "NTP_NOT_SENT")]), 0), f"{step}: the failed attempt logged {log} and sent {sent}"
+    assert after == log, f"{step}: the attempt that synced logged {after}"
+    closed = fault.closed()  # a failed socket()'s attempt made none
+    assert closed == [True] * (2 if step == "address" else 1), f"{step}: sockets made and closed {closed}, after {ticks} check ticks"
+
+
+def test_a_product_socket_failing_its_setup_or_connect_is_torn_down_and_the_next_fetch_builds_one_that_syncs() -> None:
+    for step in ("socket", "address"):
+        machine.reset_test_state()  # the file's per-test reset, between the two boots
+        network.reset_test_state()
+        _a_socket_failing_at(step)
 
 
 def test_an_sgp40_restore_waits_out_the_outage_and_follows_the_sync() -> None:

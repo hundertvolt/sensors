@@ -46,6 +46,7 @@ from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm a
 from _twin_common import Walk  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _twin_devices import device_with, distinct_wirings, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _twin_readiness import wait_for_value  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
+from _udp_step_fault import FailNextUdpSetup  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 
 import asy_base_classes  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 import asy_captive_dns  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
@@ -971,6 +972,30 @@ def test_the_captive_dns_listener_idles_at_its_idle_rate() -> None:
         assert answered == _BURST, f"{answered} of {_BURST} queries sent together were answered"
         assert burst_rounds <= _BURST + 1, f"the burst took {burst_rounds} listener wake-ups, not back to back (at most {_BURST + 1})"
         assert burst_sleeps <= 1, f"the listener slept {burst_sleeps} idle polls during the burst, not back to back (at most 1)"
+
+    run(scenario())
+
+
+def test_the_captive_dns_socket_whose_bind_fails_logs_once_then_rebuilds_binds_and_answers() -> None:
+    # The listener's first bind refused: one E INIT, that socket torn down, and after the backoff the same UDPSocket builds
+    # a fresh socket, binds it and answers a burst (asy_udp_socket.py's teardown and lazy rebuild). One device, as above.
+    _first_device_wiring("neopixel")
+
+    async def scenario() -> None:
+        with FailNextUdpSetup("address", mode="server") as fault:
+            conn, _pixel, tasks = await _hotspot_boot()
+        counter = _CountingPoller(conn._dns_server._udps)
+        try:
+            answered, _rounds, _sleeps = await _dns_burst(counter)
+            entry = (await conn._dns_server.get_error_counter())["DNSSRV"]
+        finally:
+            counter.uninstall()
+            await _stop_hotspot(conn, tasks)
+        slots = [(kind, n) for kind, n in zip(entry["ErrType"], entry["ErrNum"]) if kind != "N"]
+        assert fault.fired == 1, f"the fault failed {fault.fired} binds"
+        assert fault.closed()[:1] == [True] and len(fault.made) == 2, f"sockets made, closed or not: {fault.closed()}"
+        assert (entry["ErrCount"], slots) == (1, [("E", code("E", "INIT"))]), f"the refused bind logged {entry['ErrCount']}: {slots}"
+        assert answered == _BURST, f"{answered} of {_BURST} queries answered by the rebuilt socket"
 
     run(scenario())
 
