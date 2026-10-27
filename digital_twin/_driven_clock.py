@@ -66,8 +66,8 @@ class DrivenClock:
         self._origin = _time.ticks_ms()  # virtual 0, and the host's reading there
         self._stalled = _flash_stall.stalled_ms
         self._sleepers: list[_Wake] = []  # one per sleeping task, so the list stays small
-        self._turns = 0  # lent tasks waiting on their turn on the loop
-        self._woken = 0  # lent tasks released from a sleep that have not run since
+        self._turning: set[object] = set()  # lent tasks waiting on their turn on the loop
+        self._woken: set[_Wake] = set()  # the wakes released whose task has not run since
         self._parked = asyncio.Event()  # set by every park, so a waiting driver reads the earliest wake again
         self._quiet = asyncio.Event()  # set when the last lent task runnable at this instant stops being so
         self._saved: list[tuple[object, object]] = []
@@ -79,7 +79,7 @@ class DrivenClock:
         self._parked.set()
 
     def _calm(self) -> None:
-        if not self._turns and not self._woken:
+        if not self._turning and not self._woken:
             self._quiet.set()
 
     def _park(self, at: int) -> _Wake:
@@ -96,17 +96,17 @@ class DrivenClock:
         while self._sleepers and self._sleepers[0].at <= self.elapsed:
             wake = self._sleepers.pop(0)
             wake.listed = False
-            self._woken += 1
+            self._woken.add(wake)
             wake.event.set()
 
     async def drive(self) -> None:
         # Moves the clock until cancelled, then release()s it.
         try:
             while True:
-                while self._turns or self._woken:
+                while self._turning or self._woken:
                     self._quiet.clear()
                     await self._quiet.wait()
-                    if self._turns or self._woken:  # one task between two turns of its compute: look again later
+                    if self._turning or self._woken:  # one task between two turns of its compute: look again later
                         await asyncio.sleep_ms(_BUSY_RECHECK_MS)
                 stalled = _flash_stall.stalled_ms
                 if stalled != self._stalled:  # a flash hold: device time passed with nothing running, all at once
@@ -158,17 +158,19 @@ class DrivenClock:
             wake.event.set()
 
     async def sleep_ms(self, ms: int) -> None:
-        # Refused as core.sleep_ms()'s ticks_add() refuses it; a zero or negative delay is one real turn, counted.
+        # Refused as core.sleep_ms()'s ticks_add() refuses it; a zero or negative delay is one real turn, its task listed
+        # meanwhile (a set of the tasks themselves, never a count: none can be in two turns at once).
         _time.ticks_add(self._origin, ms)
         if self._released is not None:
             await asyncio.sleep_ms(ms)
             return
         if ms <= 0:
-            self._turns += 1
+            task = asyncio.current_task()
+            self._turning.add(task)
             try:
                 await asyncio.sleep_ms(0)
             finally:
-                self._turns -= 1
+                self._turning.discard(task)
                 self._calm()
             return
         wake = self._park(self.elapsed + ms)
@@ -179,7 +181,7 @@ class DrivenClock:
                 wake.listed = False
                 self._sleepers.remove(wake)
             elif self._released is None:  # released by the clock: this task runs now
-                self._woken -= 1
+                self._woken.discard(wake)
                 self._calm()
 
     def ticks_ms(self) -> "_TicksMs":

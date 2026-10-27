@@ -77,14 +77,15 @@ async def _on_clock(module: _Module, scenario: "Callable[[DrivenClock], Coroutin
 def test_a_sleep_wakes_at_its_virtual_time_and_never_before_the_host_reaches_it() -> None:
     module = _Module()
 
-    async def scenario(_clock: DrivenClock) -> "tuple[int, int]":
-        t0, h0 = module.time.ticks_ms(), time.ticks_ms()
+    async def scenario(clock: DrivenClock) -> "tuple[int, int, int]":
+        t0 = module.time.ticks_ms()
         await module.asyncio.sleep_ms(_SLEEP_MS)
-        return time.ticks_diff(module.time.ticks_ms(), t0), time.ticks_diff(time.ticks_ms(), h0)
+        # The host read from the clock's origin, not from t0: virtual time lags the host while a task is runnable.
+        return time.ticks_diff(module.time.ticks_ms(), t0), clock.elapsed, time.ticks_diff(time.ticks_ms(), clock._origin)
 
-    virtual, host = run(_on_clock(module, scenario), _RUN_LIMIT_S)
-    assert virtual == _SLEEP_MS, f"a {_SLEEP_MS} ms sleep woke at virtual +{virtual} ms"
-    assert host >= virtual, f"virtual time ran ahead of the host: +{virtual} virtual ms in {host} host ms"
+    slept, virtual, host = run(_on_clock(module, scenario), _RUN_LIMIT_S)
+    assert slept == _SLEEP_MS, f"a {_SLEEP_MS} ms sleep woke at virtual +{slept} ms"
+    assert host >= virtual, f"virtual time ran ahead of the host: {virtual} virtual ms at {host} host ms from the origin"
 
 
 def test_sleeps_due_at_one_time_wake_in_the_order_they_slept() -> None:
@@ -185,9 +186,10 @@ def test_a_task_outside_the_lent_modules_that_never_stops_being_runnable_does_no
         spinner = asyncio.create_task(busy())
         t0 = module.time.ticks_ms()
         await module.asyncio.sleep_ms(_SLEEP_MS)
+        woke = time.ticks_diff(module.time.ticks_ms(), t0)  # read at the wake: past it, the clock follows the host again
         spinning[0] = False
         await spinner
-        return time.ticks_diff(module.time.ticks_ms(), t0)
+        return woke
 
     assert run(_on_clock(module, scenario), _RUN_LIMIT_S) == _SLEEP_MS, "a spinning task outside the lent modules held the clock"
 
@@ -280,4 +282,6 @@ def test_release_hands_the_sleeps_back_wakes_every_parked_one_and_steps_no_tick(
 
 
 if __name__ == "__main__":
+    import microtest
+
     microtest.run(globals())
