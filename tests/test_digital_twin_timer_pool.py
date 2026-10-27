@@ -256,6 +256,30 @@ def test_a_reader_whose_trigger_cannot_arm_ends_restarts_and_reads_once_the_pool
     run_timed(_run_on_clock(scenario), timeout_s=_RUN_BOUND_S)
 
 
+def test_read_triggers_that_never_arm_end_at_the_budgets_reboot_with_one_entry() -> None:
+    # The pool stays empty: each reader's restart ends once more on its failed arm, so the supervisor's budget runs out and
+    # it escalates to its reboot once, with one budget entry; the reset itself is the reboot path's (the test below's).
+    async def scenario(clock: "DrivenTime") -> None:
+        watchdog = await _driven(clock, "the boot never finished", _boot(_POOL))
+        sysfunct = module.sysfunct
+        machine.set_alarm_pool_free(0)
+        supervisor = await _driven(clock, "the tasks and timers never started", _supervise(module._collect_task_starters(), module._collect_task_names(), module._collect_trigger_starters(), module._collect_timer_starters()))
+        try:
+            await _until(clock, "the restart budget never ran out", lambda: sysfunct._reset_decided)
+            await _until(clock, "the budget's reboot entry was never written", lambda: sysfunct._force_watchdog_starve)
+            assert await _errors(sysfunct, code("E", "TASK_BUDGET_REBOOT")) == 1, f"{device}: the budget's reboot was not logged once"
+            assert (machine.reset_count, watchdog.would_have_triggered_count) == (0, 0), f"{device}: the escalation reset the board before its reboot path"
+        finally:
+            sysfunct._reset_timer.deinit()  # the in-process graph never takes the reset
+            if sysfunct._reset_task is not None:
+                await cancel(sysfunct._reset_task)
+            await _driven(clock, "the graph never stopped", _stop_graph(supervisor))  # a restarted task ends on the clock
+            for _key, reader in _readers():
+                reader.stop_timer()
+
+    run_timed(_run_on_clock(scenario), timeout_s=_RUN_BOUND_S)
+
+
 def test_the_tick_timers_degrade_in_place_and_rearm_once_the_pool_frees() -> None:
     # SYSTEM's uptime runs on its one-second fallback with one E TIMER (the boot signature it feeds resolves only after
     # system.ntp_wait_s offline); once the pool frees, SYSTEM's, NTP's and WiFi's tick timers re-arm. No reset arms.

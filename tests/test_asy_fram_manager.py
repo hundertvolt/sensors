@@ -2604,6 +2604,27 @@ def test_rx_overrun_on_block_0s_payload_read_is_absorbed_by_the_dual_copy_recove
     assert not [w for w in warnings if w.startswith("Invalid data in block 0")]  # a fault, not corruption
 
 
+def test_one_rx_overrun_logs_the_fault_and_the_fall_through_once_each_and_the_repair_nothing() -> None:
+    # Once per event: one failed payload read adds one E UNEXPECTED (the fault, _read_chunk) and one W
+    # FRAM_BLOCK_INVALID (the fall-through to block 1, "fault" not "invalid"); block 0's rewrite adds nothing.
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
+    chunk = manager.get_chunk(40, crc=CRC8(), owner="T1")  # 41 bytes with CRC - over the 32-byte DMA threshold
+    assert chunk is not None
+    run(chunk.write(bytes(range(40))))
+    before = run(manager.get_error_counter())
+    assert _entries(before) == [], f"the setup and the write logged {_entries(before)}"
+    chip.rx_overrun_remaining = 1
+    warnings = _recorded_warnings(manager)
+    assert run(chunk.read_into(chunk.get_buffer())) is True
+    after = run(manager.get_error_counter())
+    assert chip.rx_overrun_remaining == 0  # the overrun really did fire
+    assert _entries(after) == [(code("E", "UNEXPECTED"), "E"), (code("W", "FRAM_BLOCK_INVALID"), "W")], f"one overrun logged {_entries(after)}"
+    rose = after["FRAM"]["ErrCount"] - before["FRAM"]["ErrCount"]
+    assert rose == 2, f"the count rose by {rose}"
+    assert warnings == ["Read fault in block 0, reading block 1"], f"the read and its repair warned {warnings}"
+
+
 def test_rx_overrun_on_every_payload_read_fails_cleanly_instead_of_killing_the_caller() -> None:
     # Both copies unreadable is the genuinely unrecoverable case - it must still degrade to a
     # None result rather than propagate, since an escaping OSError would take the reader task

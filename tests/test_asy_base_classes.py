@@ -1606,6 +1606,33 @@ def test_a_failure_the_loop_persisted_is_not_persisted_again_by_the_restarts_re_
     assert (_timer_count(reader), len(reader._trigger_timer.arms)) == (1, 1)
 
 
+def test_two_wakes_finding_one_failed_arm_persist_it_once_however_they_interleave() -> None:
+    # The trigger loop and a driver's read loop (SCD30, SGP40) both wake on one failed arm: the first parks in its log
+    # write, the second must find the failure taken. One TIMER entry, and both still end their task.
+    reader = _DividingReader(1)
+    with RaiseOnArm(OSError), record_prints():
+        reader.start_timer()
+    gate, parked, real = asyncio.Event(), [], reader.pr.err_s
+
+    async def held(*args: object, errno: int) -> None:  # a log write held open until both wakes ran
+        parked.append(errno)
+        await gate.wait()
+        await real(*args, errno=errno)
+
+    setattr(reader.pr, "err_s", held)  # noqa: B010 - an instance attribute shadowing the logger's method
+
+    async def body() -> "tuple[bool, bool]":
+        first = asyncio.create_task(reader._timer_fault())
+        await _until(lambda: bool(parked), "the first wake never reached its log write")
+        second = asyncio.create_task(reader._timer_fault())
+        await _until(lambda: second.done() or len(parked) > 1, "the second wake neither ended nor wrote")
+        gate.set()
+        return await first, await second
+
+    assert run(body()) == (True, True)
+    assert (_timer_count(reader), len(parked)) == (1, 1), f"a failed arm two wakes found was persisted {len(parked)} times"
+
+
 def test_a_failed_re_arm_persists_the_stored_failure_then_its_own_and_ends_the_loop() -> None:
     for exc in (OSError, MemoryError):
         reader = _DividingReader(1)
