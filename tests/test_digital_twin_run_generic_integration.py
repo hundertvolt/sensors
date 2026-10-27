@@ -75,6 +75,36 @@ microtest.after_each(network.reset_test_state)
 _RUN_BOUND_S = 5.0
 # @tunable l2.run_generic_integration_main_run_bound_s = 15.0
 _MAIN_RUN_BOUND_S = 15.0
+# @tunable l2.run_generic_integration_prompt_bound_ms = 100
+_PROMPT_BOUND_MS = 100  # an entry, or a released hold, that finishes at once
+# @tunable l2.run_generic_integration_cut_wait_ms = 50
+_CUT_WAIT_MS = 50  # the cut entry's bound, waited out
+# @tunable l2.run_generic_integration_clearer_run_ms = 20
+_CLEARER_RUN_MS = 20
+# @tunable l2.run_generic_integration_reach_ms = 5
+_REACH_MS = 5  # a started task reaches its first wait
+# @tunable l2.run_generic_integration_drop_clear_bound_ms = 2000
+_DROP_CLEAR_BOUND_MS = 2000
+# @tunable l2.run_generic_integration_rearm_run_ms = 20
+_REARM_RUN_MS = 20
+# @tunable l2.run_generic_integration_stall_ms = 20
+_STALL_MS = 20
+# @tunable l2.run_generic_integration_lag_run_ms = 50
+_LAG_RUN_MS = 50
+# @tunable l2.run_generic_integration_lag_step_ms = 12
+_LAG_STEP_MS = 12
+# @tunable l2.run_generic_integration_offer_bound_ms = 1000
+_OFFER_BOUND_MS = 1000
+# @tunable l2.run_generic_integration_timer_watch_ms = 5
+_TIMER_WATCH_MS = 5
+# @tunable l2.run_generic_integration_slot_reach_ms = 1
+_SLOT_REACH_MS = 1
+# @tunable l2.run_generic_integration_served_poll_ms = 10
+_SERVED_POLL_MS = 10
+# @tunable l2.run_generic_integration_stop_write_delay_ms = 150
+_STOP_WRITE_DELAY_MS = 150
+# @tunable l2.run_generic_integration_hung_after_ms = 5
+_HUNG_AFTER_MS = 5  # a stand-in call still pending this long never returns
 
 
 # MICROPY_BYTES_PER_GC_BLOCK, 4 x the object word (py/mpconfig.h:251, v1.29.0), the unit of mem_info()'s max free sz.
@@ -161,12 +191,12 @@ def test_the_cut_system_entry_is_held_after_its_first_blocks_busy_mark_and_only_
 
         logger.err_s = entry  # type: ignore[method-assign]
         release = runner._test_hold_system_entry(_as_module(booted), 25, said.append, cut=True)
-        await asyncio.wait_for_ms(logger.err_s("Task error counter above", errno=24), 100)  # another errno: not held
+        await asyncio.wait_for_ms(logger.err_s("Task error counter above", errno=24), _PROMPT_BOUND_MS)  # another errno: not held
         assert marks == [2, 1] and said == [], (marks, said)
         cut = asyncio.create_task(logger.err_s("C stack exhausted - reboot triggered", errno=25))
         release()  # no release: ENTRY_RELEASE reaches nothing in this mode
         try:
-            await asyncio.wait_for_ms(cut, 50)  # the service's own bound, counting the hold
+            await asyncio.wait_for_ms(cut, _CUT_WAIT_MS)  # the service's own bound, counting the hold
         except asyncio.TimeoutError:
             pass
         else:
@@ -396,7 +426,7 @@ def test_the_wire_log_clearer_clears_each_bounded_log_in_place() -> None:
 
     async def scenario() -> None:
         task = asyncio.create_task(runner._wire_log_clearer(link))
-        await asyncio.sleep_ms(20)
+        await asyncio.sleep_ms(_CLEARER_RUN_MS)
         task.cancel()
         try:
             await task
@@ -549,13 +579,13 @@ def test_the_held_system_entry_waits_for_its_release_and_lets_every_other_entry_
         booted = _Booted(asyncio.create_task(_forever()))
         logger = booted.sysfunct.pr
         release = runner._test_hold_system_entry(_as_module(booted), 25, said.append)
-        await asyncio.wait_for_ms(logger.err_s("Task error counter above", errno=24), 100)  # another errno: not held
+        await asyncio.wait_for_ms(logger.err_s("Task error counter above", errno=24), _PROMPT_BOUND_MS)  # another errno: not held
         held = asyncio.create_task(logger.err_s("C stack exhausted - reboot triggered", errno=25))
-        await asyncio.sleep_ms(5)
+        await asyncio.sleep_ms(_REACH_MS)
         assert logger.written == [24] and not held.done() and said == ["ENTRY_HELD"], (logger.written, said)
         release()
-        await asyncio.wait_for_ms(held, 100)
-        await asyncio.wait_for_ms(logger.err_s("again", errno=25), 100)  # released for good
+        await asyncio.wait_for_ms(held, _PROMPT_BOUND_MS)
+        await asyncio.wait_for_ms(logger.err_s("again", errno=25), _PROMPT_BOUND_MS)  # released for good
         assert logger.written == [24, 25, 25] and said == ["ENTRY_HELD", "ENTRY_RELEASED"], (logger.written, said)
         await cancel_all([t for t in booted.sysfunct._tasks if t is not None])
 
@@ -590,10 +620,10 @@ def test_the_drop_flag_loses_that_one_shots_next_fire_alone_and_every_timer_runs
         cleared = asyncio.create_task(runner._test_drop_timer_fire(cast("ModuleType", module), "sequencer", said.append))
         ticker = machine.Timer(period=3, callback=lambda _t: ticks.append(1))
         sysfunct._sequencer_timer.init(period=15, mode=machine.Timer.ONE_SHOT, callback=lambda _t: fired.append(1))  # type: ignore[attr-defined]
-        await asyncio.wait_for_ms(cleared, 2000)
+        await asyncio.wait_for_ms(cleared, _DROP_CLEAR_BOUND_MS)
         during = len(ticks)
         sysfunct._sequencer_timer.init(period=5, mode=machine.Timer.ONE_SHOT, callback=lambda _t: fired.append(2))  # type: ignore[attr-defined]
-        await asyncio.sleep_ms(20)
+        await asyncio.sleep_ms(_REARM_RUN_MS)
         ticker.deinit()
         await asyncio.sleep_ms(0)  # the deinit's cancel lands before the run ends
         return len(ticks) - during
@@ -617,9 +647,9 @@ def test_the_loop_lag_flag_prints_each_windows_maximum_p99_and_samples() -> None
 
     async def drive() -> None:
         lag = asyncio.create_task(runner._test_loop_lag(5, said.append))
-        await asyncio.sleep_ms(5)
-        time.sleep_ms(20)  # one synchronous stall of the whole loop
-        await asyncio.sleep_ms(50)
+        await asyncio.sleep_ms(_REACH_MS)
+        time.sleep_ms(_STALL_MS)  # one synchronous stall of the whole loop
+        await asyncio.sleep_ms(_LAG_RUN_MS)
         lag.cancel()
         try:
             await lag
@@ -650,7 +680,7 @@ def test_each_loop_lag_line_carries_every_links_transfers_so_far() -> None:
     async def drive() -> None:
         lag = asyncio.create_task(runner._test_loop_lag(2, said.append, [("uart_link_init", link, None)]))
         for _ in range(3):
-            await asyncio.sleep_ms(12)
+            await asyncio.sleep_ms(_LAG_STEP_MS)
             link._transfers += 1
         lag.cancel()
         try:
@@ -701,7 +731,7 @@ def test_the_over_cap_offer_waits_for_each_initiators_next_transfer_then_offers_
         await asyncio.sleep_ms(runner._READY_POLL_MS * 2)  # two of its polls
         assert initiator._comm.offered == []  # no transfer seen yet: a transaction may be in flight
         initiator._transfers += 1
-        await asyncio.wait_for_ms(offer, 1000)
+        await asyncio.wait_for_ms(offer, _OFFER_BOUND_MS)
 
     run_timed(scenario(), _RUN_BOUND_S)
     assert initiator._comm.offered == [(0x02, 12193)] and responder._comm.offered == []
@@ -754,7 +784,7 @@ def test_s6_the_reset_timer_never_fires() -> None:
         assert isinstance(timer, runner._TestInertTimer)
         fired: list[object] = []
         timer.init(period=1, mode=0, callback=fired.append)
-        await asyncio.sleep_ms(5)
+        await asyncio.sleep_ms(_TIMER_WATCH_MS)
         assert fired == [] and timer.armed == 1
 
     _hang_on("S6", check)
@@ -788,10 +818,10 @@ def test_the_held_closing_slot_releases_on_its_trigger() -> None:
         booted = _Booted(asyncio.create_task(_forever()))
         release = runner._test_hold_closing_slot(_as_module(booted))
         closing = asyncio.create_task(booted.webserver._close_writer(object()))
-        await asyncio.sleep_ms(1)
+        await asyncio.sleep_ms(_SLOT_REACH_MS)
         assert booted.webserver.closed == 1 and not closing.done()  # the real close ran; the slot is still held
         release()
-        await asyncio.wait_for_ms(closing, 100)
+        await asyncio.wait_for_ms(closing, _PROMPT_BOUND_MS)
         await cancel_all([t for t in booted.sysfunct._tasks if t is not None])
 
     run_timed(scenario(), _RUN_BOUND_S)
@@ -813,7 +843,7 @@ def test_each_accepted_socket_is_served_with_its_send_buffer_pinned_at_the_kerne
             for _ in range(100):
                 if booted.webserver.served:
                     break
-                await asyncio.sleep_ms(10)
+                await asyncio.sleep_ms(_SERVED_POLL_MS)
             writer.close()
         finally:
             server.close()
@@ -887,7 +917,7 @@ def test_serving_ends_once_the_stop_file_appears() -> None:
 
     async def scenario() -> int:
         async def write_later() -> None:
-            await asyncio.sleep_ms(150)
+            await asyncio.sleep_ms(_STOP_WRITE_DELAY_MS)
             with open(stop, "w"):
                 pass
 
@@ -898,7 +928,7 @@ def test_serving_ends_once_the_stop_file_appears() -> None:
         return time.ticks_diff(time.ticks_ms(), start)
 
     elapsed = run_timed(scenario(), _RUN_BOUND_S)
-    assert 150 <= elapsed < 3000, elapsed  # after the write, long before the 30 s bound
+    assert _STOP_WRITE_DELAY_MS <= elapsed < 3000, elapsed  # after the write, long before the 30 s bound
 
 
 def test_serving_without_the_stop_file_lasts_the_whole_duration() -> None:
@@ -917,7 +947,7 @@ def test_serving_without_the_stop_file_lasts_the_whole_duration() -> None:
 async def _times_out(aw: "Coroutine[object, object, object]") -> bool:
     # Every stand-in answers at once, so a call still pending after a few milliseconds is one that never returns.
     try:
-        await asyncio.wait_for_ms(aw, 5)
+        await asyncio.wait_for_ms(aw, _HUNG_AFTER_MS)
     except asyncio.TimeoutError:
         return True
     return False
