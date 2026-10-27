@@ -8,6 +8,7 @@ import { neverUnchanged } from "../js/definitions.js";
 import { expectedDisplay } from "./_expected_display.js";
 import { DEVICE_IDS, GENERATED_DEFINITIONS } from "./_generated_definitions.js";
 import { collectPutFieldCases, dedupePutFieldCases, shardPutFieldCases, validStringValue } from "./_put_field_cases.js";
+import offlineNtpConfigSource from "../digital_twin/unixport/_offline_ntp_config.py?raw";
 
 /** @typedef {import("./_put_field_cases.js").PutFieldCase} PutFieldCase */
 /** @typedef {import("../js/definitions.js").SiteDefinitions} SiteDefinitions */
@@ -24,6 +25,11 @@ const NO_DATA = /** @type {import("../js/definitions.js").MockDeviceData} */ ({
 // against a local twin, but under real browser/event-loop scheduling.
 // @tunable l0.put_matrix_case_timeout_ms = 15000
 const CASE_TIMEOUT_MS = 15000;
+// The ResetErrors probe's wait for NTP to sync over a station link: one loopback round trip to the twin's responder.
+// @tunable l0.put_matrix_ntp_sync_timeout_ms = 5000
+const NTP_SYNC_TIMEOUT_MS = 5000;
+// The twin's local NTP responder, read from the module that points every boot at it: no copy to drift (agent, 2026-10-27).
+const RESPONDER_HOST = responderHost(offlineNtpConfigSource);
 
 // The skips a full run takes, each with its reason, keyed by the case's section, the group its device wires and the
 // field: a skip not listed, or a listed case that ran, fails the file in its last hook. Each case runs on the first
@@ -54,8 +60,10 @@ const PROBED_OPTIONS = new Map([["SystemCmd", "mempause"]]);
 const ACTION_PROBES = {
     async ResetErrors(testCase) {
         const { device, defs, sectionKey, groupKey, field } = testCase;
-        // A backup round that read its interval before this PUT ends long before the reset, two served requests later.
+        // A backup round that read its interval before this PUT ends long before the reset, several served requests later.
         await turnBackupsOff(defs);
+        await pointNtpAtResponder(defs);
+        await expectNtpStill(defs);
         const archived = await commands.archiveErrcount(`${device}-before-reset`);
         expect(archived).toContain(`build/archive/live_twin/`);
         const applied = await commands.applyField({ sectionKey, groupKey, fieldKey: field.key, field, value: true, expectRenderedValue: null, confirmMessage: confirmationFor(testCase, true), readCaption: false });
@@ -181,6 +189,43 @@ function decideSkip(ctx, { device, sectionKey, groupKey, field }, probe, skip, r
 }
 
 /**
+ * Waits, bounded, until the status page shows NTP synced or the Wi-Fi off a station link, where NTP tries nothing;
+ * fails naming NTP otherwise, since each failed try logs an error that a reset's all-zero read would race.
+ * @param {SiteDefinitions} defs
+ */
+async function expectNtpStill(defs) {
+    /** @param {string} fieldKey */
+    const shown = async (fieldKey) => (await commands.remountAndReadField({ sectionKey: "status", groupKey: statusGroupKey(defs, fieldKey), fieldKey, kind: "readonly" })).valueText;
+    if ((await shown("Mode")) !== expectedDisplay({ kind: "readonly" }, "STA")) {
+        return;
+    }
+    const synced = expectedDisplay({ kind: "readonly" }, true);
+    const deadline = Date.now() + NTP_SYNC_TIMEOUT_MS;
+    let text = await shown("NTPSynced");
+    while (text !== synced && Date.now() < deadline) {
+        // eslint-disable-next-line no-await-in-loop -- one status read after another, as a visitor reloads the page
+        text = await shown("NTPSynced");
+    }
+    expect(text, "NTP reads unsynced on a station link before the reset").toBe(synced);
+}
+
+/**
+ * Points NTPHost back at the twin's local responder through the page, as a visitor would: over a station link, a host
+ * the twin cannot resolve makes every NTP try log an error (the matrix's string cases leave one behind).
+ * @param {SiteDefinitions} defs
+ */
+async function pointNtpAtResponder(defs) {
+    const networking = defs.sections.find((section) => section.key === "networking");
+    const cards = (networking?.groups ?? []).flatMap((group) => ("fields" in group ? group.fields : []).filter((field) => field.key === "NTPHost").map((field) => ({ groupKey: group.key, field })));
+    expect(cards, "the networking section declares no NTPHost card").toHaveLength(1);
+    for (const { groupKey, field } of cards) {
+        // eslint-disable-next-line no-await-in-loop -- the one card, applied as a visitor applies it
+        const applied = await commands.applyField({ sectionKey: "networking", groupKey, fieldKey: field.key, field, value: RESPONDER_HOST, expectRenderedValue: RESPONDER_HOST, readCaption: false });
+        expect(["valid", "unchanged"]).toContain(applied.applyStatus);
+    }
+}
+
+/**
  * The value the twin holds for `testCase`'s field right now, read straight from its GET (undefined when absent).
  * @param {PutFieldCase} testCase
  * @returns {Promise<unknown>}
@@ -190,6 +235,20 @@ async function readCurrentValue({ sectionKey, groupKey, field, putPath }) {
     const body = /** @type {Record<string, unknown>} */ (real[putPath]);
     const scoped = sectionKey === "sensors" ? /** @type {Record<string, unknown> | undefined} */ (body[groupKey]) : body;
     return scoped?.[field.key];
+}
+
+/**
+ * `_RESPONDER_HOST` of digital_twin/unixport/_offline_ntp_config.py's source: its Python string literal, read as JSON.
+ * @param {string} source
+ * @returns {string}
+ */
+function responderHost(source) {
+    const literal = /^_RESPONDER_HOST = (?<literal>\S+)/mu.exec(source)?.groups?.literal;
+    const host = literal === undefined ? undefined : /** @type {unknown} */ (JSON.parse(literal));
+    if (typeof host !== "string") {
+        throw new Error("digital_twin/unixport/_offline_ntp_config.py assigns no string _RESPONDER_HOST");
+    }
+    return host;
 }
 
 /**
@@ -218,8 +277,9 @@ function statusGroupKey(defs, fieldKey) {
 }
 
 /**
- * Sets every backup interval to "Backups off" through the page. The twin has no NTP, so each SGP40 backup warns (once a
- * minute by default): the one counter that climbs by itself, which a reset's all-zero read would otherwise race.
+ * Sets every backup interval to "Backups off" through the page. Two counters climb by themselves, which a reset's all-zero
+ * read would race: each SGP40 backup warns while the clock is unsynced (once a minute by default), and each failed NTP
+ * try over a station link logs an error (pointNtpAtResponder()).
  * @param {SiteDefinitions} defs
  */
 async function turnBackupsOff(defs) {
