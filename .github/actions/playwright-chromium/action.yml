@@ -1,0 +1,68 @@
+# Playwright's Chromium and its OS packages for a web job, behind the apt mirror check and package cache; the install
+# is the one step here that can fail a job, as it was before them (SPECIFICATION.md B.10.1).
+name: Playwright Chromium
+description: >
+  Restores Playwright's Chromium from the cache keyed on package-lock.json and the runner identity, bounds and retries
+  apt's fetches, runs apt-cache-restore on Playwright's own package list, installs (the browser and its packages on a
+  browser-cache miss, the packages alone on a hit) and keeps the fetched packages with apt-cache-save. Used by
+  web-unit-tests, web-put-matrix, web-coverage and web-cross-browser-smoke.
+
+inputs:
+  always-check:
+    required: false
+    default: 'false'
+    description: Probe the apt mirror even on a full package-cache hit (the job fetches more from it later)
+
+runs:
+  using: composite
+  steps:
+    - name: Runner and compiler identity for the cache key
+      id: ident
+      shell: bash
+      run: printf 'id=%s\n' "$(printf '%s\n' "${ImageOS:-unknown}" "$(gcc --version | head -n1)" "$(ldd --version | head -n1)" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+    # The browser keyed on package-lock.json (which pins its version) and on the runner identity the toolchain cache
+    # keys on; its OS packages go through apt-cache-restore below.
+    - name: Cache Playwright Chromium
+      id: playwright-cache
+      uses: actions/cache@v6
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-chromium-${{ runner.os }}-${{ steps.ident.outputs.id }}-${{ hashFiles('package-lock.json') }}
+    # apt_options()'s values for Playwright's own apt calls; a later-sorting drop-in of the runner image wins over this
+    # one (B.10.1), so the values apt will use are printed after it.
+    - name: Bound and retry apt's downloads
+      shell: bash
+      run: |
+        # @tunable tool.uv_sync_attempts = 3
+        attempts=3
+        # @tunable tool.apt_acquire_timeout_s = 30
+        timeout_s=30
+        printf 'Acquire::Retries "%s";\nAcquire::http::Timeout "%s";\nAcquire::https::Timeout "%s";\n' "$((attempts - 1))" "$timeout_s" "$timeout_s" | sudo tee /etc/apt/apt.conf.d/80-bounded-downloads
+        apt-config dump Acquire::Retries Acquire::http::Timeout Acquire::https::Timeout || true
+    - name: Check the apt mirror and restore cached packages
+      id: apt
+      uses: ./.github/actions/apt-cache-restore
+      with:
+        family: playwright
+        playwright-deps: chromium
+        always-check: ${{ inputs.always-check }}
+    - name: Install Playwright Chromium and its OS packages
+      shell: bash
+      env:
+        BROWSER_HIT: ${{ steps.playwright-cache.outputs.cache-hit }}
+      run: |
+        # A composite step takes no timeout-minutes, so `timeout` holds the bound.
+        # @tunable ci.playwright_install_timeout_min = 5
+        limit_min=5
+        if [ "$BROWSER_HIT" = true ]; then args=(install-deps chromium); else args=(install --with-deps chromium); fi
+        status=0
+        timeout "${limit_min}m" npx playwright "${args[@]}" || status=$?
+        if [ "$status" -eq 124 ]; then echo "::error::npx playwright ${args[*]} timed out after $limit_min minutes"; fi
+        exit "$status"
+    - name: Keep the fetched packages
+      if: ${{ !cancelled() }}
+      uses: ./.github/actions/apt-cache-save
+      with:
+        family: playwright
+        key: ${{ steps.apt.outputs.key }}
+        cache-hit: ${{ steps.apt.outputs.cache-hit }}

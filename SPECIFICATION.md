@@ -1545,7 +1545,9 @@ each fetch by `tool.apt_acquire_timeout_s`; then one `apt-get install` from the 
 build budget. Only the download is retried, so no retry can kill `dpkg` mid-configure, which leaves
 the package database interrupted until `dpkg --configure -a`. A failed download or install adds
 the remedy: let sudo keep the proxy variables (`env_keep`), or install the packages by hand and pass
-`--skip-apt`.
+`--skip-apt`. In CI the apt mirror check and package cache (B.10.1) run around this installer, which is
+unchanged: the archives it needs are then already in place, and it fetches the rest through the
+checked mirror list.
 `npx playwright install-deps` runs sudo itself with the caller's environment (B.12).
 
 **Shell script conventions** (agent, 2026-09-30), checked over every `scripts/*.sh` by
@@ -1696,12 +1698,16 @@ rolling a 20-minute budget while taking three other jobs' signals with it. `devi
 `devices/*.toml` without the `zz_test_` fixtures (the `tests_scripts/_devices.py` rule) and fails
 on an empty set, so no job names a device.
 
-Two composite actions carry the shared steps: `.github/actions/uv-sync` (the pinned uv and the
+Five composite actions carry the shared steps: `.github/actions/uv-sync` (the pinned uv and the
 retried sync; `lint-and-typecheck`, `shellcheck`, `actionlint`, `zizmor` and
-`web-lint-and-typecheck` call it) and `.github/actions/setup-micropython-toolchain` (that action
+`web-lint-and-typecheck` call it), `.github/actions/setup-micropython-toolchain` (that action
 first, then the cached Unix-port toolchain, built through `scripts/_unix_port.sh ensure standard`
-on a miss when a job passes `build-unix-port: 'true'`; the other nine jobs that sync). A matrix
-value reaches a script through `env`, never through the script text.
+on a miss when a job passes `build-unix-port: 'true'`; the other nine jobs that sync),
+`.github/actions/playwright-chromium` (the four testing web jobs' browser cache, apt bounds and
+Playwright install) and the pair `.github/actions/apt-cache-restore` and `apt-cache-save` (the apt
+mirror check and package cache around an apt install; `firmware-build-verify` calls them directly,
+the Playwright action around its install; B.10.1). A matrix value reaches a script through `env`,
+never through the script text.
 
 The cache key hashes every file whose content is compiled into the cached binaries —
 `versions.toml`, `setup_toolchain.py` and `micropython_overrides.py` — and the runner's identity,
@@ -1776,14 +1782,20 @@ on a tree with nothing wrong with it. Its coverage report gates nothing and its 
   `unit-tests`' cache key; the build step grants the binary `cap_net_bind_service` on a hit as on a
   miss, since every twin boot binds the local NTP responder's port 123 and a restored cache carries
   no file capabilities. It `needs: web-lint-and-typecheck` for order only, with `!cancelled()`, so
-  a red web lint does not skip the web tests (CLAUDE.md). Playwright's browser is cached keyed on
-  `package-lock.json` (which pins its version) and on the runner identity the toolchain cache keys
-  on (above), hashed by a step identical to the toolchain action's; its OS packages are reinstalled
-  every run, Playwright's own documented pattern. Before either install an apt drop-in bounds and retries
-  apt's fetches as `setup_toolchain.py`'s `apt_options()` does (`Acquire::Retries` one under Part N
-  `tool.uv_sync_attempts`, `Acquire::http(s)::Timeout` `tool.apt_acquire_timeout_s`), and each
-  install step is bounded by `ci.playwright_install_timeout_min`; the four web jobs that test share
-  these steps. `npm run test:unit`'s `pretest:unit` hook builds every device's website first.
+  a red web lint does not skip the web tests (CLAUDE.md). The four web jobs that test install
+  Playwright's Chromium through one action, `.github/actions/playwright-chromium`: the browser is
+  cached keyed on `package-lock.json` (which pins its version) and on the runner identity the
+  toolchain cache keys on (above), hashed by a step identical to the toolchain action's; its OS
+  packages are installed every run, Playwright's own documented pattern, through the apt mirror check
+  and package cache below. Before the install an apt drop-in, `80-bounded-downloads`, writes
+  `setup_toolchain.py`'s `apt_options()` values (`Acquire::Retries` one under Part N
+  `tool.uv_sync_attempts`, `Acquire::http(s)::Timeout` `tool.apt_acquire_timeout_s`); on the
+  20261012 runner image it does not take effect, since the image's own `zz-retries` (`Acquire::Retries`
+  1, both timeouts 15 s on x64; actions/runner-images `configure-apt.sh`) sorts after it and apt keeps
+  the last value read. The one install step runs the browser and its packages on a browser-cache miss,
+  the packages alone on a hit, held to `ci.playwright_install_timeout_min` by `timeout`, since a
+  composite step takes no `timeout-minutes`. `npm run test:unit`'s `pretest:unit` hook builds every
+  device's website first.
 - **`web-put-matrix`** is split out and sharded because the live PUT matrix IS the web tier's wall
   clock — 567 s of the suite's 578 s, 243 of 778 tests (2026-09-19) — and kept rolling a 20-minute
   budget, taking the other tests, coverage and the smoke with it. Each shard is its own runner, so
@@ -1805,7 +1817,10 @@ on a tree with nothing wrong with it. Its coverage report gates nothing and its 
   every device's site in a step of its own (`npm run build:site`). Firefox/geckodriver come from
   conda-forge via micromamba (~106 MB, no version file to key on), cached under a key that rolls
   monthly and with the installer (`cross-browser-firefox-<os>-<installer hash>-<YYYY-MM>`), so the
-  floating engine stays current; WebKit and Edge reinstall every run. Each Xvfb reports its own
+  floating engine stays current; WebKit and Edge reinstall every run. Its Playwright action passes
+  `always-check: 'true'`: the installer's WebKit packages come from the same runner mirror list later
+  in the job (43.4 MB on run 40570757608), so the mirror is checked even when the package cache holds
+  all of Playwright's (Edge comes from Microsoft's own repository, which the list does not cover). Each Xvfb reports its own
   display (H.7). `needs: web-unit-tests`, success-gated on purpose: no browser installs if the fast
   suite already failed.
 - **`lint-and-typecheck`** names every ruff scope explicitly, `build/generated_src` included after
@@ -1852,12 +1867,61 @@ on a tree with nothing wrong with it. Its coverage report gates nothing and its 
   also requires `needs.devices.result == 'success'`. It installs the ARM compiler through
   `setup_toolchain.py`'s `ensure_apt_packages()` against `versions.toml`, since apt packages never
   survive between jobs; a version without that failed with "Compiler 'arm-none-eabi-gcc' not
-  found". It then installs the cached picotool: picotool lives in `/usr/local`, outside the cache,
+  found". A step before it reads that same package list for the apt mirror check and package cache
+  below, and `apt-cache-save` runs right after it with `if: !cancelled()`. It then installs the cached picotool: picotool lives in `/usr/local`, outside the cache,
   while its build tree is inside it, so `sudo make install` from that tree installs the very binary
   `setup` built, and `picotool version` proves it. Without an installed picotool the pinned
   pico-sdk (2.3.0, `tools/Findpicotool.cmake`) warns "No installed picotool with version … found -
   building from source" and clones and builds picotool from GitHub inside the firmware build. A
   cache miss fails the picotool step by name (no cached build tree), never skipping the build.
+- **The apt mirror check and package cache** (owner, 2026-10-27: "Yes do it like you proposed", on a
+  per-job mirror check plus GitHub's cache for the downloaded packages). Some `azure.archive.ubuntu.com`
+  nodes serve `.deb` files at 45-130 kB/s while serving the package index at about 9 MB/s, against
+  30 MB/s or more on a healthy node, and which node a job gets is luck (actions/runner-images#14823,
+  open since 2026-09-30). apt's `Acquire::http::Timeout` fires only when no data arrives at all, so
+  apt never moves on to the list's next mirror: on run 40570757608 a `firmware-build-verify` job could
+  not fetch its 588 MB inside three 150 s attempts (job 122430825421), and `web-coverage`'s 25.9 MB
+  `install-deps` outlasted its 5 minutes (job 122426649230). `.github/actions/apt-cache-restore`
+  runs before the install, every step of it warning and carrying on (`continue-on-error`), so only the
+  install's own failure fails a job, as before:
+  1. a bounded `apt-get update` (`tool.apt_step_timeout_s`, with `apt_options()`'s values as `-o`);
+  2. the plan: `apt-get install --print-uris -o Acquire::ForceHash=SHA256` on the job's package list
+     (`firmware-build-verify` reads `versions.toml` as `ensure_apt_packages()` does; the Playwright
+     action takes Playwright's own list from `npx playwright install-deps --dry-run`), keyed by
+     `scripts/ci_apt_cache.py plan` as `apt-<family>-<os>-<SHA-256 of the sorted file, size and
+     SHA-256 lines>`: a changed version changes the key, a reordered set does not;
+  3. `actions/cache/restore` of `~/.cache/apt-archives/<family>` under that key, falling back to the
+     `apt-<family>-<os>-` prefix, so a changed version restores the last set and fetches only what
+     changed; `copy-in` lists each cached archive whose size and SHA-256 match the fresh index, and the
+     step copies those into `/var/cache/apt/archives` with `sudo`;
+  4. the mirror check, skipped when the cache holds every planned archive unless the caller passes
+     `always-check`: `check` takes the smallest archive still to fetch holding the probe's budget
+     (`ci.apt_mirror_probe_cap_s` × `ci.apt_mirror_min_bytes_per_s`, 10 MB), else the largest, and
+     reads at most that much from each mirror of `/etc/apt/apt-mirrors.txt` in apt's order (lowest
+     `priority:` first, apt's `methods/mirror.cc`), each read waiting only what is left of the cap.
+     Every mirror ahead of the first that moves its budget at the healthy rate is dropped for the
+     rest of the job; with none healthy the fastest measured goes first; the list keeps that mirror
+     and all after it, so it is never left empty, and a list in any form but `URI<TAB>priority:N`
+     lines is left as it is. The list and each probe's bytes, seconds and rate print into the job
+     log, a drop as a `::warning::`; the new list is written beside the old one and renamed over it.
+
+  After the install `.github/actions/apt-cache-save` (`if: !cancelled()`) copies each planned archive
+  apt fetched whose SHA-256 matches into the cache folder, drops what the set no longer holds, and
+  saves the folder under the plan's key when it holds the whole set and that key was not a hit.
+  **Integrity stays with Ubuntu's signature** (agent, 2026-10-27): apt checks an archive already in
+  `/var/cache/apt/archives` by its size alone (`apt-pkg/acquire-item.cc`, `pkgAcqArchive`, the same in
+  apt 2.7.14 and 2.8.3), so a same-size altered file would reach dpkg unverified; `copy-in` checks each
+  against the SHA-256 of the index `apt-get update` has just fetched and verified, and a stale version
+  carries another file name, so apt fetches it afresh. **The budget**, measured from run 40570757608's
+  logs (2026-10-27): in pull request 107's scope, the only one CI has run in since 2026-10-13, the
+  caches hold the Unix-port toolchain at 444 MB a key (at most three toolchain hashes in the last seven
+  days, 1.33 GB), Playwright's Chromium at 271 MB, npm's cache at 35 MB and the cross-browser Firefox
+  at 253 MB a key (at most two), about 2.4 GB at most; the new entries add the firmware set's 588 MB
+  (the ARM compiler packages are 574 MB of it) and Playwright's 26 MB a key. That stays well under
+  8 GB of GitHub's 10 GB with room for a second key of each and for main's own scope, so by the
+  owner's rule of 2026-10-27 the firmware job caches its full set. `scripts/setup_cross_browser_toolchain.sh`
+  runs on the same runner after the Playwright action, so its apt fetches use the checked list (the
+  smoke job forces the check, above).
 
 **Every job's `timeout-minutes`** is a `ci.*` row in Part N with the runs behind it: the larger of
 the cold-cache wall clock and the warm wall clock plus the job's largest single retry budget, plus
@@ -1870,7 +1934,9 @@ the commit pins, the shallow checkout without submodules, no hidden test result,
 `env`, the toolchain action's key, callers and build, the sync first, the derived matrices, the
 smoke's flag and Firefox key, the built-page lint, the html-validate config check run required,
 every repo script a step runs as a command marked executable in git (CI's checkout takes the
-mode from git), the tagged budgets and the bounded Playwright installs.
+mode from git), the tagged budgets, the one shared and bounded Playwright install, and the apt cache
+around every apt install, none of whose steps can fail a job; `tests_scripts/test_ci_apt_cache.py`
+runs `scripts/ci_apt_cache.py` against loopback mirrors, one throttled and one fast.
 
 ## B.11 Building this project's firmware
 
@@ -12064,13 +12130,13 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `lwip.mem_size_per_connection_floor` | 2000 B | `toolchain/micropython_overrides.py` — `2000` | `MEM_SIZE` (derived per `max_connections`, `toolchain/versions.toml`) | estimated (agent, `31da2b3`) — measurement owed: a connection's arena share at the ceiling, L4 | unknown until measured | the pin moves or the serving piece size changes |
 | `lwip.spare_tcp_pcbs` | 3 | `toolchain/micropython_overrides.py` — `3` | `MEMP_NUM_TCP_PCB` and `MEMP_NUM_TCP_SEG` (derived per `max_connections`) | estimated (agent, `58b14ac`) — measurement owed: pcbs in TIME_WAIT at the ceiling, L4 | unknown until measured | the pin moves or the close linger changes |
 | `tool.preprocess_timeout_s` | 120 s | `toolchain/micropython_overrides.py` — `120` | each post-build proof that runs a subprocess: the lwIP options' and the tick-offset sentinel's `-E` readbacks, the SIGINT readback's `make <build>/unix_mphal.pp`, and the host lwIP binary's runtime probe, which sleeps 2.5 s (B.14) | estimated (agent, `bcea110`) — measurement owed: the readback's wall clock on the bench Pi4 | unknown until measured | the toolchain or the host class changes |
-| `tool.apt_acquire_timeout_s` | 30 s | `toolchain/setup_toolchain.py` — `30`; `.github/workflows/ci.yml` — `30` (4 tags); `scripts/setup_cross_browser_toolchain.sh` — `30` | every apt fetch `ensure_apt_packages()` makes (`Acquire::http(s)::Timeout`, with `Acquire::Retries` one under `tool.uv_sync_attempts`): a mirror silent this long is stalled; the list `update` runs once, non-fatal, and the package download is the step retried (B.4); the same bound on the four web jobs' apt drop-in before each Playwright install (CI, B.10.1) and on every apt fetch `scripts/setup_cross_browser_toolchain.sh` makes (H.7), each with `Acquire::Retries` one under `tool.uv_sync_attempts` | estimated (agent, 2026-10-08) — measurement owed: a healthy mirror's longest silent gap, L0 | three 30 s attempts fit the firmware job's 15-minute limit 10x over | a mirror's failure pattern changes |
-| `tool.uv_sync_attempts` | 3 | `toolchain/setup_toolchain.py` — `3`; `scripts/uv_sync_retried.sh` — `3`; `.github/workflows/ci.yml` — `3` (4 tags); `scripts/setup_cross_browser_toolchain.sh` — `3` | `NETWORK_ATTEMPTS`, every retried network step of the installer (B.4): the clones, the fetches, both `git ls-remote` tag queries, the pico-sdk `lib/mbedtls` and both ports' submodule updates, `uv sync`, apt's package download and both Node `curl` calls; `scripts/uv_sync_retried.sh`, the one retried `uv sync --locked` every CI job that syncs and every hardware runner calls (B.10), pinned equal by `tests_scripts/test_uv_sync_retried_sh.py`; and, one under it, `Acquire::Retries` of CI's apt drop-in and of `scripts/setup_cross_browser_toolchain.sh`'s apt fetches | owner decision (owner, 2026-09-26: the three-attempt retry stays) | two transient failures absorbed | a third party's failure pattern changes |
+| `tool.apt_acquire_timeout_s` | 30 s | `toolchain/setup_toolchain.py` — `30`; `.github/actions/playwright-chromium/action.yml` — `30`; `.github/actions/apt-cache-restore/action.yml` — `30`; `scripts/setup_cross_browser_toolchain.sh` — `30` | every apt fetch `ensure_apt_packages()` makes (`Acquire::http(s)::Timeout`, with `Acquire::Retries` one under `tool.uv_sync_attempts`): a mirror silent this long is stalled; the list `update` runs once, non-fatal, and the package download is the step retried (B.4); the same bound in the shared Playwright action's apt drop-in before its install (CI, B.10.1), which on the 20261012 runner image the image's own later-sorting `zz-retries` (15 s, one retry) overrides; in the `-o` options of `.github/actions/apt-cache-restore`'s list update, which win over every drop-in; and on every apt fetch `scripts/setup_cross_browser_toolchain.sh` makes (H.7) | estimated (agent, 2026-10-08) — measurement owed: a healthy mirror's longest silent gap, L0 | three 30 s attempts fit the firmware job's 15-minute limit 10x over | a mirror's failure pattern changes |
+| `tool.uv_sync_attempts` | 3 | `toolchain/setup_toolchain.py` — `3`; `scripts/uv_sync_retried.sh` — `3`; `.github/actions/playwright-chromium/action.yml` — `3`; `.github/actions/apt-cache-restore/action.yml` — `3`; `scripts/setup_cross_browser_toolchain.sh` — `3` | `NETWORK_ATTEMPTS`, every retried network step of the installer (B.4): the clones, the fetches, both `git ls-remote` tag queries, the pico-sdk `lib/mbedtls` and both ports' submodule updates, `uv sync`, apt's package download and both Node `curl` calls; `scripts/uv_sync_retried.sh`, the one retried `uv sync --locked` every CI job that syncs and every hardware runner calls (B.10), pinned equal by `tests_scripts/test_uv_sync_retried_sh.py`; and, one under it, `Acquire::Retries` of the shared Playwright action's apt drop-in, of `.github/actions/apt-cache-restore`'s list update and of `scripts/setup_cross_browser_toolchain.sh`'s apt fetches | owner decision (owner, 2026-09-26: the three-attempt retry stays) | two transient failures absorbed | a third party's failure pattern changes |
 | `tool.uv_sync_backoff_step_s` | 10 s | `toolchain/setup_toolchain.py` — `10.0`; `scripts/uv_sync_retried.sh` — `10` | the pause before each retry of every step `tool.uv_sync_attempts` lists, growing by one step per attempt, in the installer and in `scripts/uv_sync_retried.sh` alike | owner decision (owner, 2026-09-26: the three-attempt retry stays) | 10 s, then 20 s | a third party's failure pattern changes |
 | `tool.remote_query_timeout_s` | 120 s | `toolchain/setup_toolchain.py` — `120` | every short query or probe `run()` makes: `git` queries and checkouts, both `git ls-remote` tag queries (per attempt), the built binaries' version and frozen-module probes, `picotool version`, the `nmcli`/`ip`/`systemctl` calls and bridge changes, the sudo probe; `node_on_path_matches()`'s own `node --version` | estimated (agent, `65088de`) — measurement owed: the longest probe on a loaded CI runner and on the bench Pi4, L0 | unknown until measured | a probe's work or the host class changes |
 | `tool.network_step_timeout_s` | 1800 s | `toolchain/setup_toolchain.py` — `1800` | one attempt of a third-party download: clones, fetches, submodule updates, `uv sync`, `npm ci`, the Playwright `install`/`install-deps`; × `tool.uv_sync_attempts` for a retried one | estimated (agent, `65088de`) — measurement owed: a cold MicroPython/pico-sdk clone with submodules on CI and over the bench Pi4's uplink, L0 | unknown until measured | a source's size or the uplink changes |
 | `tool.build_step_timeout_s` | 3600 s | `toolchain/setup_toolchain.py` — `3600` | every compile or install: each `make`/`cmake`, `sudo make install`, `mpy-cross`, the apt install from the local cache, the Node unpack | estimated (agent, `65088de`) — measurement owed: the longest build step on the bench Pi4, L0; a whole `test` run took 161-169 s at `-j2` on this host (2026-10-08) | unknown until measured on the Pi4 | a build's size or the host class changes |
-| `tool.apt_step_timeout_s` | 150 s | `toolchain/setup_toolchain.py` — `150` | one apt attempt: the list `update` (once, non-fatal) and each `install --download-only` attempt (B.4); worst case 150 + 3 × 150 + 10 + 20 = 630 s of fetching, the largest single retry inside `ci.firmware_build_verify_timeout_min` | estimated (agent, `65088de`) — measurement owed: the download share of the apt step on CI (the whole step took 27-66 s on run 37799699030), the sandbox and the bench Pi4, L0 | about 2.3× the longest whole apt step seen on CI | a mirror's failure pattern or the package list changes |
+| `tool.apt_step_timeout_s` | 150 s | `toolchain/setup_toolchain.py` — `150`; `.github/actions/apt-cache-restore/action.yml` — `150` | one apt attempt: the list `update` (once, non-fatal) and each `install --download-only` attempt (B.4); worst case 150 + 3 × 150 + 10 + 20 = 630 s of fetching, the largest single retry inside `ci.firmware_build_verify_timeout_min`; and the list `update` `.github/actions/apt-cache-restore` runs before it plans (CI, B.10.1), non-fatal too | estimated (agent, `65088de`) — measurement owed: the download share of the apt step on CI (the whole step took 27-66 s on run 37799699030), the sandbox and the bench Pi4, L0 | about 2.3× the longest whole apt step seen on CI | a mirror's failure pattern or the package list changes |
 | `tool.bench_bridge_recovery_arm_s` | 300 s | `toolchain/setup_toolchain.py` — `300` | the recovery timer's window around a bridge creation or channel re-pin (B.13); must cover the change plus `tool.bench_bridge_up_poll_s` | estimated (agent, `65088de`) — measurement owed: a real bridge creation's wall time and its time to a DHCP lease on the bench Pi4 (B.13 measured about 30 s to a lease, 2026-09-04), L4 | arm ≥ the sequence + the poll + 60 s | the bridge sequence or the bench host changes |
 | `tool.bench_bridge_up_poll_s` | 90 s | `toolchain/setup_toolchain.py` — `90` | how long `br0` may take after `up` to hold an address and the default route before the change counts as failed and the timer stays armed (B.13) | estimated (agent, `65088de`) — measurement owed: as `tool.bench_bridge_recovery_arm_s`, L4 | 3× the single 30 s lease measured on the bench Pi4 (2026-09-04) | the bridge sequence or the bench host changes |
 | `tool.node_shasums_timeout_s` | 60 s | `toolchain/setup_toolchain.py` — `60` | `curl --max-time` for the Node `SHASUMS256.txt`; `run()` allows each attempt that plus 30 s, so curl names a stall first | estimated (agent, `65088de`) — measurement owed: the fetch on CI and the bench Pi4, L0 | unknown until measured | the download source or the uplink changes |
@@ -12109,6 +12175,8 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l0.ci_suite_ceiling_get_timeout_s` | 5.0 s | `tests_scripts/test_digital_twin_ci_suite_ceiling.py` — `5.0` | — | estimated (agent, `a91c576`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 | against that measurement, once taken | the code under test or the host class changes |
 | `l0.request_timeout_ceiling_join_timeout_s` | 5.0 s | `tests_scripts/test_request_timeout_ceiling.py` — `5.0` | — | estimated (agent, `58b14ac`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 | against that measurement, once taken | the code under test or the host class changes |
 | `l0.request_timeout_ceiling_hammer_join_timeout_s` | 2.0 s | `tests_scripts/test_request_timeout_ceiling.py` — `2.0` | — | estimated (agent, `45af8eb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 | against that measurement, once taken | the code under test or the host class changes |
+| `l0.apt_mirror_probe_test_cap_s` | 0.5 s | `tests_scripts/test_ci_apt_cache.py` — `0.5` | the probe cap the mirror-check tests pass to `scripts/ci_apt_cache.py`: each throttled loopback mirror (80 or 20 kB/s) is waited out to it, against the tests' healthy rate of 400 kB/s, a 200 kB budget | estimated (agent, 2026-10-27) — measurement owed: elapsed of the file's slowest test on the slowest host that runs it, L0 (the file took 5.8 s in the audit container, single observation (2026-10-27)) | the throttled mirror moves about 40 kB of its 200 kB budget in the cap, a 5x margin; the fast one the whole budget in milliseconds | the probe's verdict rule changes |
+| `l0.apt_mirror_probe_stall_test_cap_s` | 2.0 s | `tests_scripts/test_ci_apt_cache.py` — `2.0` | the stall test's probe cap: one byte at half the cap, then nothing; its bound, 1.25 caps, sits midway between a probe whose reads wait only the time left (ends at the cap) and one whose read waits a whole cap (ends at 1.5 caps) | estimated (agent, 2026-10-27) — measurement owed: elapsed of the test on the slowest host that runs it, L0 (2.01 s in the audit container, single observation (2026-10-27); 3.01 s with the read wait planted unclamped) | 0.5 s either side of the bound | the probe's read-timeout handling changes |
 | `l0.fram_less_boot_timeout_s` | 60 s | `tests_scripts/test_fram_less_boot.py` — `60` | — | estimated (agent, 2026-10-13): one construction and setup list on the Unix port takes a few seconds — measurement owed: elapsed of the boot at both GC stages on the slowest host that runs it, L0 | against that measurement, once taken | the boot's construction or setup list grows |
 | `l0.vitest_test_timeout_ms` | 20000 ms | `vitest.config.js` — `20000` | — | estimated (agent, `803ffaf`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
 | `l0.vitest_timeout_retries` | 2 | `vitest.config.js` — `2` | `retry.count`, on vitest's own `Test timed out in <n>ms` or `Hook timed out in <n>ms` message only (`retry.condition`), inside a test with its `beforeEach`/`afterEach` (a suite's `beforeAll`/`afterAll` runs once); three of a test's timeouts (`l0.vitest_test_timeout_ms`, or a live file's own), the first attempt and the two retries, are its retry budget inside its web job's minutes (B.10.1); a pass after a retry reads `Passed only on retry` | owner decision (owner, 2026-10-20: 'Simply put, do the consistent rule adaptation to tests only and only for those running into timeout.') | two transient timeouts absorbed | the timeout retry rule changes (E.3.1) |
@@ -13207,7 +13275,9 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `ci.web_put_matrix_timeout_min` | 15 min | `.github/workflows/ci.yml` — `15` | — | derived (agent, 2026-10-20): warm 5.22 and 5.20 min (runs `39344544377`, `38777834467`) plus the cold toolchain build's 3.7 min, derived as in `ci.web_unit_tests_timeout_min`, so cold 8.9 min; the cold run `39335426899` measured none (`web-unit-tests` failed at 0.5 min, the other three skipped); largest single retry the Playwright install's 5-minute bound (`ci.playwright_install_timeout_min`), so warm 5.22 + 5 min decides; B.10.1's budget rule — measurement owed: a cold web run, at the next toolchain key change | 1.5× the warmer shard plus the install's bound | the job's steps or its tier grows, or the cold web run is measured |
 | `ci.web_coverage_timeout_min` | 20 min | `.github/workflows/ci.yml` — `20` | — | derived (agent, 2026-10-20): warm 3.40 and 3.37 min (runs `39344544377`, `38777834467`) plus the cold toolchain build's 3.7 min, derived as in `ci.web_unit_tests_timeout_min`, so cold 7.1 min; the cold run `39335426899` measured none (`web-unit-tests` failed at 0.5 min, the other three skipped); largest single retry a timed-out live test's three attempts, the first and `l0.vitest_timeout_retries`' two, × `l0.live_concurrent_tabs_timeout_ms`, 10 min, over the Playwright install's 5-minute bound (`ci.playwright_install_timeout_min`), so (3.40 + 10) × 1.25 = 16.75, rounded up (agent, 2026-10-20); B.10.1's budget rule — measurement owed: a cold web run, at the next toolchain key change | 1.5× the warmer run plus that retry | the job's steps or its tier grows, or the cold web run is measured |
 | `ci.web_cross_browser_smoke_timeout_min` | 15 min | `.github/workflows/ci.yml` — `15` | — | derived (agent, 2026-10-20): warm 5.60 and 6.40 min (runs `39344544377`, `38777834467`) plus the cold toolchain build's 3.7 min, derived as in `ci.web_unit_tests_timeout_min`, so cold 10.1 min; the cold run `39335426899` measured none (`web-unit-tests` failed at 0.5 min, the other three skipped); largest single retry the Playwright install's 5-minute bound (`ci.playwright_install_timeout_min`), so warm 6.40 + 5 min decides; B.10.1's budget rule — measurement owed: a cold web run, at the next toolchain key change | 1.3× the warmer run plus the install's bound; a month's first Firefox install (a cache miss) is unmeasured | the job's steps or its tier grows, or the cold web run is measured |
-| `ci.playwright_install_timeout_min` | 5 min | `.github/workflows/ci.yml` — `5` (8 tags) | each of the eight Playwright install steps of `web-unit-tests`, `web-put-matrix`, `web-coverage` and `web-cross-browser-smoke` (the cold `npx playwright install --with-deps chromium`, the cache-hit `npx playwright install-deps chromium`), under its job's `ci.web_unit_tests_timeout_min`, `ci.web_put_matrix_timeout_min`, `ci.web_coverage_timeout_min` or `ci.web_cross_browser_smoke_timeout_min` | measured (agent, 2026-10-19) from CI logs on GitHub's ubuntu-latest runners, five runs: the longest cold install 30 s (run 37421540220; 21-23 s on runs 37439055590, 37764306450 and 37799699030), the cache-hit `install-deps` 12-24 s (run 38777834467) | 10× the longest install | Playwright's dependency list or the runner image changes |
+| `ci.playwright_install_timeout_min` | 5 min | `.github/actions/playwright-chromium/action.yml` — `5` | the shared Playwright action's one install step, which `web-unit-tests`, `web-put-matrix`, `web-coverage` and `web-cross-browser-smoke` run (the browser and its packages on a browser-cache miss, `npx playwright install --with-deps chromium`; the packages alone on a hit, `npx playwright install-deps chromium`), held by `timeout` since a composite step takes no `timeout-minutes`, under its job's `ci.web_unit_tests_timeout_min`, `ci.web_put_matrix_timeout_min`, `ci.web_coverage_timeout_min` or `ci.web_cross_browser_smoke_timeout_min` | measured (agent, 2026-10-19) from CI logs on GitHub's ubuntu-latest runners, five runs: the longest cold install 30 s (run 37421540220; 21-23 s on runs 37439055590, 37764306450 and 37799699030), the cache-hit `install-deps` 12-24 s (run 38777834467) | 10× the longest install | Playwright's dependency list or the runner image changes |
+| `ci.apt_mirror_probe_cap_s` | 10 s | `scripts/ci_apt_cache.py` — `10` | the longest one mirror's probe runs (`check`, each read waiting only the time left), at most once per mirror of the runner's list, before apt's own fetch in every job running `.github/actions/apt-cache-restore` with an archive left to fetch (B.10.1); with `ci.apt_mirror_min_bytes_per_s` it sets the probe's byte budget, cap × rate = 10 MB, so "healthy" is "the budget, or the whole archive, inside the cap at that rate" | estimated (agent, 2026-10-27) — measurement owed: the probe's seconds on a healthy and on a slow runner node, from the first CI runs' logs (each probe prints its bytes, seconds and rate), CI | a slow node (45-130 kB/s, actions/runner-images#14823) moves at most 1.3 MB of the budget in the cap; a healthy one (30 MB/s or more) the whole budget in about a third of a second | the runner's mirror list or its slow-node pattern changes |
+| `ci.apt_mirror_min_bytes_per_s` | 1000000 B/s | `scripts/ci_apt_cache.py` — `1000000` | the rate a probed mirror must reach to stay first in the runner's `/etc/apt/apt-mirrors.txt` (`check`); every mirror apt would try before the first that reaches it is dropped for the rest of the job, and with none reaching it the fastest measured goes first | estimated (agent, 2026-10-27) — measurement owed: the rates the probe logs on healthy and slow runner nodes, from the first CI runs' logs, CI | about 8x the fastest slow node reported (130 kB/s; job 122430825421 fetched cmake's 11.2 MB at 112 kB/s) and a thirtieth of a healthy node's 30 MB/s | the runner's mirror list or its slow-node pattern changes |
 | `ci.lint_and_typecheck_timeout_min` | 5 min | `.github/workflows/ci.yml` — `5` | — | measured 2026-10-20, GitHub's ubuntu-latest runners, 3 runs: cold 0.38 min (run `39335426899`), warm 0.48 and 0.43 min (runs `39344544377`, `38777834467`); largest single retry the retried `uv sync`, 0.7 min (its 10 s and 20 s pauses and two more syncs of at most 6 s); B.10.1's budget rule | 4.2× the warmer run plus the retried sync | the job's steps or its tier grows |
 | `ci.shellcheck_timeout_min` | 5 min | `.github/workflows/ci.yml` — `5` | — | measured 2026-10-20, GitHub's ubuntu-latest runners, 3 runs: cold 0.25 min (run `39335426899`), warm 0.27 and 0.28 min (runs `39344544377`, `38777834467`); largest single retry the retried `uv sync`, 0.7 min (its 10 s and 20 s pauses and two more syncs of at most 6 s); B.10.1's budget rule | 5.1× the warmer run plus the retried sync | the job's steps or its tier grows |
 | `ci.actionlint_timeout_min` | 5 min | `.github/workflows/ci.yml` — `5` | — | measured 2026-10-20, GitHub's ubuntu-latest runners, 3 runs: cold 0.23 min (run `39335426899`), warm 0.23 and 0.35 min (runs `39344544377`, `38777834467`); largest single retry the retried `uv sync`, 0.7 min (its 10 s and 20 s pauses and two more syncs of at most 6 s); B.10.1's budget rule | 4.8× the warmer run plus the retried sync | the job's steps or its tier grows |

@@ -139,3 +139,6 @@ Append-only; each line names its source hand-back in S/u35r/handbacks_redo/ or t
 - (lead) CLAUDE.md's "Two suites that both bind real ports" bullet: its "overlap safely" covers the port-53 bind, not
   datagram delivery between processes sharing it; corrected text from N15's hand-back, plus digital_twin/README.md's
   shim section (the per-process loopback address).
+- (lead, 2026-10-27T23:16) N15's doc text, as written in S/u35r/handbacks_redo/N15.md "Doc text for D3r":
+  digital_twin/README.md's shim section (two paragraphs), CLAUDE.md "Two suites that both bind real ports" (its last
+  sentence replaced), SPECIFICATION.md E.1 (the third per-job resource, and the 127.0.0.1:123/:53 sentence).

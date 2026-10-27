@@ -12,6 +12,7 @@ import time
 
 sys.path.insert(0, "digital_twin/unixport")  # the Unix-port UDP address shim (SPECIFICATION.md F.7 row 1)
 
+import _unix_port_udp_addr_shim
 from _async_harness import run
 from _cancel_sweep import SocketLedger, assert_unlocked, cancel_at_each_await
 from _fake_time import DrivenTime
@@ -1390,7 +1391,7 @@ def test_ntp_client_pattern_garbage_reply_is_delivered_not_rejected() -> None:
 def test_dns_server_pattern_bound_to_all_interfaces_end_to_end() -> None:
     # Mirrors asy_captive_dns.py's exact call shape: a server-mode socket bound to ("0.0.0.0", port),
     # recvfrom(DNS_UDP_MAX), conditional sendto(response, addr) - including the real bind-any-interface
-    # then receive-via-127.0.0.1 path that every other test in this file skips.
+    # then receive-via-the-twin-host path (the shim's twin_host) that every other test in this file skips.
     port = _make_port()
     server_addr = ("0.0.0.0", port)
     client_addr = _make_addr()
@@ -1402,7 +1403,7 @@ def test_dns_server_pattern_bound_to_all_interfaces_end_to_end() -> None:
         client = _AdversarialPeer(client_addr)
         try:
             await server._connect()
-            client.send(query, ("127.0.0.1", port))
+            client.send(query, (_unix_port_udp_addr_shim.twin_host, port))
             data, addr = await server.recvfrom(DNS_UDP_MAX, timeout_ms=_LONG_REPLY_TIMEOUT_MS)
             if data is not None and addr is not None:  # asy_captive_dns.py's exact guard
                 await server.sendto(response, addr)
@@ -1432,8 +1433,8 @@ def test_a_wildcard_server_bind_stays_on_the_loopback_beside_a_specific_address_
         client = _AdversarialPeer(client_addr)
         try:
             await server._connect()
-            on_loopback = server._addr == socket.getaddrinfo("127.0.0.1", port)[0][-1]
-            client.send(query, ("127.0.0.1", port))
+            on_loopback = server._addr == socket.getaddrinfo(_unix_port_udp_addr_shim.twin_host, port)[0][-1]
+            client.send(query, (_unix_port_udp_addr_shim.twin_host, port))
             data, _ = await server.recvfrom(DNS_UDP_MAX, timeout_ms=_LONG_REPLY_TIMEOUT_MS)
             return server.connected, on_loopback, data
         finally:

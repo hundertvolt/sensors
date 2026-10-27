@@ -301,7 +301,7 @@ async def _dns_burst(counter: _CountingPoller, clock: DrivenTime) -> "tuple[int,
     poller.register(peer, select.POLLIN)
     replied: set[int] = set()
     try:
-        addr = socket.getaddrinfo("127.0.0.1", 53)[0][-1]  # sendto() takes the resolved address (SPECIFICATION.md F.7)
+        addr = socket.getaddrinfo(_unix_port_udp_addr_shim.twin_host, 53)[0][-1]  # where the shim bound the listener, resolved for sendto() (SPECIFICATION.md F.7)
         before, slept = counter.rounds, counter.sleeps.count
         for query_id in range(_BURST):
             peer.sendto(bytes([0, query_id]) + b"\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00" + _DNS_QUESTION, addr)

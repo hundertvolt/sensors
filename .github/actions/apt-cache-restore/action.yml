@@ -1,0 +1,116 @@
+# Plans an apt download, restores its archives from GitHub's cache and checks the runner's mirror before apt fetches
+# the rest; apt-cache-save keeps what apt fetched. Every step warns and carries on: nothing here fails a job
+# (SPECIFICATION.md B.10.1).
+name: apt cache restore and mirror check
+description: >
+  Refreshes apt's lists, plans the exact archives an apt-get install of `packages` (or of Playwright's own list for
+  `playwright-deps`) would fetch, copies the cached ones that match the fresh index into apt's archive folder and probes
+  the runner's mirror list, dropping a slow mirror for the rest of the job. Used by firmware-build-verify and, through
+  playwright-chromium, by web-unit-tests, web-put-matrix, web-coverage and web-cross-browser-smoke.
+
+inputs:
+  family:
+    required: true
+    description: The cache key's family (firmware, playwright), also naming the cache folder
+  packages:
+    required: false
+    default: ''
+    description: The packages the job's own apt-get install names
+  playwright-deps:
+    required: false
+    default: ''
+    description: A browser whose Playwright dependency list is the package set instead
+  always-check:
+    required: false
+    default: 'false'
+    description: Probe the mirror even when the cache holds every planned archive (the job fetches more from it later)
+
+outputs:
+  key:
+    description: The planned set's cache key, empty when nothing was planned
+    value: ${{ steps.plan.outputs.key }}
+  cache-hit:
+    description: true when the cache held this exact key
+    value: ${{ steps.restore.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - name: Refresh apt's package lists for the plan
+      shell: bash
+      continue-on-error: true
+      run: |
+        # @tunable tool.uv_sync_attempts = 3
+        attempts=3
+        # @tunable tool.apt_acquire_timeout_s = 30
+        timeout_s=30
+        # @tunable tool.apt_step_timeout_s = 150
+        step_s=150
+        timeout "$step_s" sudo apt-get -o "Acquire::Retries=$((attempts - 1))" -o "Acquire::http::Timeout=$timeout_s" -o "Acquire::https::Timeout=$timeout_s" update \
+            || echo "::warning::apt-get update did not finish - the plan reads the lists already on this runner"
+    - name: Plan the apt download (its key is the exact archives)
+      id: plan
+      shell: bash
+      continue-on-error: true
+      env:
+        FAMILY: ${{ inputs.family }}
+        PACKAGES: ${{ inputs.packages }}
+        PLAYWRIGHT_DEPS: ${{ inputs.playwright-deps }}
+      run: |
+        source scripts/_require_python.sh && require_python311
+        dir="$RUNNER_TEMP/apt-cache-$FAMILY"
+        mkdir -p "$dir"
+        wanted=$PACKAGES
+        if [ -n "$PLAYWRIGHT_DEPS" ]; then
+            # Exits 1 when packages are missing, its normal case: the reader below decides.
+            npx playwright install-deps --dry-run "$PLAYWRIGHT_DEPS" > "$dir/dry-run.txt" 2>&1 || true
+            if ! wanted=$(python3 -I scripts/ci_apt_cache.py dry-run-packages --dry-run "$dir/dry-run.txt"); then
+                echo "::warning::npx playwright install-deps --dry-run printed no list ci_apt_cache.py reads - no apt cache or mirror check in this job"
+                cat "$dir/dry-run.txt"
+                exit 0
+            fi
+        fi
+        read -ra names <<< "$wanted"
+        if [ "${#names[@]}" -eq 0 ]; then echo "== no package to install: nothing to plan"; exit 0; fi
+        apt-get -qq --print-uris -o Acquire::ForceHash=SHA256 install -y --no-install-recommends "${names[@]}" > "$dir/uris.txt" \
+            || { echo "::warning::apt-get --print-uris failed - no apt cache or mirror check in this job"; exit 0; }
+        python3 -I scripts/ci_apt_cache.py plan --uris "$dir/uris.txt" --manifest "$dir/manifest.json" --key-prefix "apt-$FAMILY-$RUNNER_OS-" --github-output "$GITHUB_OUTPUT"
+    - name: Restore the cached apt archives
+      id: restore
+      if: steps.plan.outputs.key != ''
+      continue-on-error: true
+      uses: actions/cache/restore@v6
+      with:
+        path: ~/.cache/apt-archives/${{ inputs.family }}
+        key: ${{ steps.plan.outputs.key }}
+        # A changed version restores the last set, so only the changed archives are fetched.
+        restore-keys: ${{ steps.plan.outputs.restore-prefix }}
+    - name: Copy the cached archives that match the index into apt's archive
+      if: steps.plan.outputs.key != ''
+      shell: bash
+      continue-on-error: true
+      env:
+        FAMILY: ${{ inputs.family }}
+      run: |
+        dir="$RUNNER_TEMP/apt-cache-$FAMILY"
+        python3 -I scripts/ci_apt_cache.py copy-in --manifest "$dir/manifest.json" --cache-dir "$HOME/.cache/apt-archives/$FAMILY" --list "$dir/copy-in"
+        if [ -s "$dir/copy-in" ] && ! xargs -0 sudo cp -t /var/cache/apt/archives/ -- < "$dir/copy-in"; then
+            echo "::warning::copying the cached archives into /var/cache/apt/archives failed - apt fetches them"
+            : > "$dir/copy-in"
+        fi
+    - name: Check the apt mirror
+      if: steps.plan.outputs.key != ''
+      shell: bash
+      continue-on-error: true
+      env:
+        FAMILY: ${{ inputs.family }}
+        ALWAYS_CHECK: ${{ inputs.always-check }}
+      run: |
+        dir="$RUNNER_TEMP/apt-cache-$FAMILY"
+        force=()
+        if [ "$ALWAYS_CHECK" = true ]; then force=(--force); fi
+        python3 -I scripts/ci_apt_cache.py check --manifest "$dir/manifest.json" --have "$dir/copy-in" --mirror-list /etc/apt/apt-mirrors.txt --out "$dir/apt-mirrors.txt" "${force[@]}"
+        # Written beside it, then renamed over it: a failed write leaves apt the whole old list, never a cut one.
+        if [ -f "$dir/apt-mirrors.txt" ] && ! { sudo install -m 0644 "$dir/apt-mirrors.txt" /etc/apt/apt-mirrors.txt.new && sudo mv /etc/apt/apt-mirrors.txt.new /etc/apt/apt-mirrors.txt; }; then
+            echo "::warning::writing /etc/apt/apt-mirrors.txt failed - apt keeps the list it had"
+        fi

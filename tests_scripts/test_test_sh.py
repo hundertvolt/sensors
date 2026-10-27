@@ -45,6 +45,15 @@ _COMPLETE = ("record", "build-standard", "build-settrace", "build-lwip")
 _GREEN_RECORD = '{"tests": [{"nodeid": "tests_scripts/test_a.py::test_a", "outcome": "passed", "when": "call", "reason": "", "markers": [], "user_properties": []}], "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": false, "session_notes": [], "exitstatus": 0}'
 
 
+class _FileJob(NamedTuple):
+    # A run_test_file() job's device and twin host, as the dispatch passes them; empty, the job has none.
+    device: str = ""
+    twin_host: str = ""
+
+
+_PLAIN_JOB = _FileJob()
+
+
 class _JobLimits(NamedTuple):
     # A run_test_file() job's per-file timeout, attempts and the timeout's --kill-after, in place of the runner's own.
     timeout_s: int = 1
@@ -81,6 +90,7 @@ _UNIT_LAYOUT = tomllib.loads((Path(__file__).resolve().parent.parent / "scripts"
 _INTERN_REFUSAL = f" - the Unix port interns each as a qstr of at most {_LIMIT} bytes and dies before a file starts\n"
 
 _ENV_PROBE = 'echo "TEST_DEVICE=${TEST_DEVICE-<unset>}"\necho "1/1 passed, 0 failed, 0 skipped"'
+_TWIN_HOST_PROBE = 'echo "TEST_TWIN_HOST=${TEST_TWIN_HOST-<unset>}"\necho "1/1 passed, 0 failed, 0 skipped"'
 
 
 def _annotation_block(repo_root: Path) -> str:
@@ -159,6 +169,28 @@ def _dispatch_section(text: str, heavy: "tuple[str, ...]") -> str:
     start = text.index("_heavy_files_priority=(")
     listed = text.index("\n)\n", start) + len("\n)\n")
     return f"_heavy_files_priority=({' '.join(heavy)})\n" + text[listed : text.index("\nwait || true\n", start)]
+
+
+def _dispatched_twin_hosts(repo_root: Path, tmp_path: Path, *, files: int, max_parallel: int, pool_last: int) -> list[str]:
+    # scripts/test.sh's dispatch of `files` planted files at max_parallel, its twin hosts cut to 127.0.0.101-<pool_last>;
+    # each stub job holds its host as a directory while it runs, a host another running job holds recorded "SHARED".
+    text = _test_sh_text(repo_root)
+    pool = "for ((host_octet = 101; host_octet <= 254; host_octet++)); do"
+    assert text.count(pool) == 1, "scripts/test.sh no longer builds its twin hosts from 127.0.0.101-254"
+    (tmp_path / "tests").mkdir()
+    for i in range(files):
+        (tmp_path / "tests" / f"test_f{i:02d}.py").write_text("", encoding="utf-8")
+    held, record = tmp_path / "held", tmp_path / "dispatched"
+    held.mkdir()
+    script = tmp_path / "dispatch.sh"
+    script.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        f'coverage=1\nmax_parallel={max_parallel}\nresults_dir="{tmp_path}"\nmicropython_bin=/std\nlwip_bin=/lwip\ndevices=(fixture-device-a)\n'
+        f'run_test_file() {{ mkdir "{held}/$5" 2>/dev/null || echo "SHARED $5" >>"{record}"; echo "$1 $5" >>"{record}"; sleep 0.05; rmdir "{held}/$5" || true; }}\n'
+        + _job_tag_body(repo_root) + "\n" + _dispatch_section(text.replace(pool, pool.replace("254", str(pool_last))), ()) + "\nwait || true\n", encoding="utf-8",
+    )
+    subprocess.run(["/bin/bash", str(script)], cwd=tmp_path, capture_output=True, text=True, check=True, timeout=_SNIPPET_TIMEOUT_S)
+    return record.read_text(encoding="utf-8").splitlines()
 
 
 def _failure(name: str, *message: str, kind: str = "FAIL") -> str:
@@ -547,10 +579,10 @@ def _run_detector_with_uptime(repo_root: Path, tmp_path: Path, elapsed_ms: int, 
     return (jobs, cores, multiplier, probe_ms), done.stderr
 
 
-def _run_file_job(repo_root: Path, tmp_path: Path, first_attempt: str, later_attempts: str, *, own_binary: bool = False, limits: _JobLimits = _JOB_LIMITS, env: "dict[str, str] | None" = None, device: str = "") -> Path:
+def _run_file_job(repo_root: Path, tmp_path: Path, first_attempt: str, later_attempts: str, *, own_binary: bool = False, limits: _JobLimits = _JOB_LIMITS, env: "dict[str, str] | None" = None, job: _FileJob = _PLAIN_JOB) -> Path:
     # Runs scripts/test.sh's own run_test_file() for one fixture test file over a stub interpreter whose first call
     # runs `first_attempt` and every later one `later_attempts` (bash); returns results_dir, its stderr in tmp_path/stderr.
-    # With own_binary the stub is passed as the job's binary and $micropython_bin is one that fails; device names the job's.
+    # With own_binary the stub is passed as the job's binary and $micropython_bin is one that fails; job names the rest.
     text = _test_sh_text(repo_root).replace("--kill-after=10 ", f"--kill-after={limits.kill_after_s} ")
     bodies = [re.search(rf"^{name}\(\) \{{.*?^\}}", text, re.DOTALL | re.MULTILINE) for name in ("_job_tag", "_flag_memory_errors", "_run_with_retries", "_no_twin_logs", "run_test_file")]
     assert all(bodies), "scripts/test.sh no longer defines _job_tag(), _flag_memory_errors(), _run_with_retries(), _no_twin_logs() and run_test_file()"
@@ -571,7 +603,7 @@ def _run_file_job(repo_root: Path, tmp_path: Path, first_attempt: str, later_att
         f'results_dir="{results}"\ncoverage=0\nmicropython_bin="{default_bin}"\nper_file_timeout_s={limits.timeout_s}\nmax_attempts={limits.attempts}\n'
         'unit_micropypath="build/generated_src:src:tests:.frozen"\ndeclare -A per_file_timeout_overrides_s=()\n'
         + "\n".join(b.group(0) for b in bodies if b)
-        + f'\nrun_test_file tests/test_x.py "{results}/{_tag(f"tests/test_x.py[{device}]" if device else "tests/test_x.py")}.status" "{device}"' + (f' "{stub}"' if own_binary else "") + "\n", encoding="utf-8",
+        + f'\nrun_test_file tests/test_x.py "{results}/{_tag(f"tests/test_x.py[{job.device}]" if job.device else "tests/test_x.py")}.status" "{job.device}" "{stub if own_binary else ""}" "{job.twin_host}"\n', encoding="utf-8",
     )
     done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, env=env, check=False, timeout=120)
     (tmp_path / "stderr").write_text(done.stderr, encoding="utf-8")
@@ -774,6 +806,15 @@ def _tag(job: str) -> str:
 
 def _test_sh_text(repo_root: Path) -> str:
     return (repo_root / "scripts" / "test.sh").read_text(encoding="utf-8")
+
+
+def _twin_hosts(repo_root: Path) -> list[str]:
+    # scripts/test.sh's twin-host pool, as its own loop builds it.
+    text = _test_sh_text(repo_root)
+    start = text.index("\ntwin_hosts=()\n") + 1
+    end = text.index("\ndone\n", start) + len("\ndone\n")
+    done = subprocess.run(["/bin/bash", "-c", text[start:end] + 'printf "%s\\n" "${twin_hosts[@]}"\n'], capture_output=True, text=True, check=True, timeout=_SNIPPET_TIMEOUT_S)
+    return done.stdout.split()
 
 
 def _verdict_tail(repo_root: Path) -> str:
@@ -2318,7 +2359,7 @@ def test_a_per_device_file_refuses_to_run_without_a_device(repo_root: Path, micr
 
 
 def test_a_device_job_runs_with_its_device_and_its_own_tag(repo_root: Path, tmp_path: Path) -> None:
-    results = _run_file_job(repo_root, tmp_path, _ENV_PROBE, "exit 1", device="fixture-device-a")
+    results = _run_file_job(repo_root, tmp_path, _ENV_PROBE, "exit 1", job=_FileJob(device="fixture-device-a"))
     tag = "test_x[fixture-device-a]"
     assert (results / f"{tag}.status").read_text(encoding="utf-8") == "PASS\n"
     assert f"[{tag}] TEST_DEVICE=fixture-device-a\n" in (results / f"{tag}.log").read_text(encoding="utf-8")
@@ -2327,6 +2368,44 @@ def test_a_device_job_runs_with_its_device_and_its_own_tag(repo_root: Path, tmp_
 def test_a_plain_job_runs_without_a_device_even_when_the_caller_has_one(repo_root: Path, tmp_path: Path) -> None:
     results = _run_file_job(repo_root, tmp_path, _ENV_PROBE, "exit 1", env={**os.environ, "TEST_DEVICE": "fixture-device-a"})
     assert "[test_x] TEST_DEVICE=<unset>\n" in (results / "test_x.log").read_text(encoding="utf-8")
+
+
+def test_a_file_job_runs_with_its_own_twin_host_never_the_callers(repo_root: Path, tmp_path: Path) -> None:
+    results = _run_file_job(repo_root, tmp_path, _TWIN_HOST_PROBE, "exit 1", env={**os.environ, "TEST_TWIN_HOST": "127.0.0.9"}, job=_FileJob(twin_host="127.0.0.150"))
+    assert "[test_x] TEST_TWIN_HOST=127.0.0.150\n" in (results / "test_x.log").read_text(encoding="utf-8")
+
+
+def test_a_file_job_given_no_twin_host_runs_without_the_callers(repo_root: Path, tmp_path: Path) -> None:
+    # Unset, the shim binds 127.0.0.1, where the host-side talkers reach a twin; a caller's own value never leaks in.
+    results = _run_file_job(repo_root, tmp_path, _TWIN_HOST_PROBE, "exit 1", env={**os.environ, "TEST_TWIN_HOST": "127.0.0.9"})
+    assert "[test_x] TEST_TWIN_HOST=<unset>\n" in (results / "test_x.log").read_text(encoding="utf-8")
+
+
+def test_a_callers_twin_host_reaches_nothing_the_run_starts(repo_root: Path) -> None:
+    # Unset before the tests_scripts/ tier and the scenario jobs start, whose twins would bind on it: a caller's value
+    # could be the address a running file job holds.
+    code = _without_comments(_test_sh_text(repo_root))
+    unset_at = code.find("\nunset TEST_TWIN_HOST\n")
+    assert -1 < unset_at < code.find(_PYTEST_LINE) < code.find('run_scenarios_job "${device%]}"'), unset_at
+
+
+@pytest.mark.parametrize(("max_parallel", "pool_last"), [(8, 254), (4, 102)])
+def test_no_two_running_file_jobs_share_a_twin_host(repo_root: Path, tmp_path: Path, max_parallel: int, pool_last: int) -> None:
+    # Sharing one, the socket bound last takes every datagram sent to either process; past the pool a job waits for one.
+    lines = _dispatched_twin_hosts(repo_root, tmp_path, files=20, max_parallel=max_parallel, pool_last=pool_last)
+    assert [line for line in lines if line.startswith("SHARED")] == [], lines
+    hosts = [line.split(" ")[1] for line in lines]
+    assert len(hosts) == 20 and set(hosts) <= {f"127.0.0.{n}" for n in range(101, pool_last + 1)}, lines
+    assert len(set(hosts)) > 1, "the jobs ran one at a time, so the check saw no concurrency"
+
+
+def test_the_twin_hosts_keep_clear_of_127_0_0_1_and_the_host_resolvers(repo_root: Path) -> None:
+    # 127.0.0.1 is where every host-side talker reaches a twin; .11 is Docker's resolver, .53 and .54 systemd-resolved's,
+    # .100 a CI runner's. On the twin AP's own /24 (digital_twin/network.py), and never fewer than CI's parallelism.
+    hosts = _twin_hosts(repo_root)
+    assert len(hosts) == len(set(hosts)) >= 16, hosts
+    assert all(host.startswith("127.0.0.") for host in hosts), hosts
+    assert {"127.0.0.1", "127.0.0.11", "127.0.0.53", "127.0.0.54", "127.0.0.100"}.isdisjoint(hosts), hosts
 
 
 def test_a_device_job_is_reported_under_its_file_and_device(repo_root: Path, tmp_path: Path) -> None:

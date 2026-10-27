@@ -188,3 +188,18 @@ source.
   settings (I2C frequency and timeout, UART poll rates), and the twin shared-bus fixture fixes its timeout while
   claiming to build the bus as generated. No pick changes today (0 of 14 call shapes); fixed in U35 anyway (WR1) so
   a TOML that changes only a bus setting cannot hide behind it.
+- N15 (lead, 23:16): the port-53 CI red is fixed at its root. Each test process's twin now binds its servers' wildcard
+  on its own loopback address (scripts/test.sh hands out 127.0.0.101-254, one per running job; the real port 53 and
+  its capability path are kept). Reproduced first: of two processes sharing the address, the one bound last received
+  all 6 of the other's queries and the sender's own listener 0, the CI excess exactly. Seven bites red; the whole twin
+  tier passes on all six devices at both stages (1876 s before, 1897 s after). Not taken, the agent's call: moving the
+  port-53 DNS scenarios into test.sh, since they already run in CI's digital-twin-e2e job.
+- Container restart at ~23:11 (lead): three lane runs were killed and re-run; nothing was lost on disk.
+- CI apt fix (lead, 23:37): every CI apt install now first checks the runner's mirror and drops a slow node for the rest
+  of the job, and restores the packages from GitHub's cache (firmware set 588 MB, Playwright's ~26 MB; worst-case cache
+  total ~5.2 GB of 10). Nothing in it can turn a job red; only the install can, as before. Correction to what the lead
+  told you: apt itself checks only the SIZE of a package file placed in its archive folder, not its hash. The build
+  therefore checks each cached file's SHA-256 against the freshly downloaded, signed index before copying it in, so a
+  stale or altered file is never installed; the integrity you were told holds, by our check rather than apt's.
+  Found on the way: the runner image's own apt setting (1 retry, 15 s) overrides the documented 2 retries / 30 s for
+  Playwright's apt calls; left as is until the next CI log shows the effective values (the lead's call then).

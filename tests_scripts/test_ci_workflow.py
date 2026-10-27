@@ -1,6 +1,6 @@
-"""Standing rules over .github/workflows/ci.yml and both composite actions, read as text (no pyyaml): gating, web
+"""Standing rules over .github/workflows/ci.yml and its composite actions, read as text (no pyyaml): gating, web
 filter, pins, composite actions, derived device matrices, values reaching `run:` only via `env:`, executable scripts,
-bounded installs, Playwright caches' runner identity. Each failure names its job and fix (SPECIFICATION.md B.10.1)."""
+bounded installs, the Playwright cache's runner identity, the apt cache around each install (B.10.1)."""
 
 import re
 from pathlib import Path
@@ -14,6 +14,15 @@ _TOOLCHAIN_ACTION = _ACTIONS / "setup-micropython-toolchain" / "action.yml"
 _UV_SYNC_ACTION = _ACTIONS / "uv-sync" / "action.yml"
 _TOOLCHAIN_USES = "uses: ./.github/actions/setup-micropython-toolchain"
 _UV_SYNC_USES = "uses: ./.github/actions/uv-sync"
+_PLAYWRIGHT_ACTION = _ACTIONS / "playwright-chromium" / "action.yml"
+_APT_RESTORE_ACTION = _ACTIONS / "apt-cache-restore" / "action.yml"
+_APT_SAVE_ACTION = _ACTIONS / "apt-cache-save" / "action.yml"
+_PLAYWRIGHT_USES = "uses: ./.github/actions/playwright-chromium"
+_APT_RESTORE_USES = "uses: ./.github/actions/apt-cache-restore"
+_APT_SAVE_USES = "uses: ./.github/actions/apt-cache-save"
+_WEB_TEST_JOBS = ("web-unit-tests", "web-put-matrix", "web-coverage", "web-cross-browser-smoke")
+_APT_PACKAGES = 'versions["toolchain"]["apt_packages"]'
+_CACHE_ACTION = re.compile(r"uses: actions/cache(?:/restore|/save)?@(\S+)")
 _SUCCESS_GATED = "success-gated on purpose"
 # CLAUDE.md's carriers: each needs a job for order or cache reuse only, so a red job before it never skips it.
 _ORDER_ONLY = ("unit-tests", "unit-tests-gc-threshold", "firmware-build-verify", "web-unit-tests")
@@ -288,19 +297,23 @@ def test_every_job_budget_is_tagged() -> None:
 
 
 def test_every_playwright_install_is_bounded_and_retried_by_apt() -> None:
-    # A stalled runner mirror otherwise holds the job to its own limit and it ends cancelled, naming nothing.
-    problems = []
-    for name, job in _jobs().items():
-        bounded = False
-        for step in _steps(job, 6):
-            run = "\n".join(_run_lines(step))
-            bounded = bounded or ("/etc/apt/apt.conf.d/" in run and "Acquire::Retries" in run and "Acquire::http::Timeout" in run)
-            if "npx playwright install" not in run:
-                continue
-            if not bounded:
-                problems.append(f"{name}: no apt retry and timeout step before {_run_lines(step)[0]!r}")
-            if not re.search(r"^\s+# @tunable ci\.\w+ = \d+\n\s+timeout-minutes: \d+$", step, re.MULTILINE):
-                problems.append(f"{name}: {_run_lines(step)[0]!r} has no tagged step timeout-minutes")
+    # A stalled runner mirror otherwise holds the job to its own limit and it ends cancelled, naming nothing. A composite
+    # step takes no timeout-minutes, so the shared action's install holds its tagged bound through `timeout`.
+    jobs = _jobs()
+    problems = [f"{name}: installs Playwright itself - call the playwright-chromium action" for name, job in jobs.items() if "npx playwright install" in job]
+    users = sorted(name for name, job in jobs.items() if _PLAYWRIGHT_USES in job)
+    if users != sorted(_WEB_TEST_JOBS):
+        problems.append(f"the playwright-chromium action's callers are {users}, the web jobs that test are {sorted(_WEB_TEST_JOBS)}")
+    steps = _action_steps(_PLAYWRIGHT_ACTION)
+    runs = ["\n".join(_run_lines(step)) for step in steps]
+    bound = [i for i, run in enumerate(runs) if "/etc/apt/apt.conf.d/" in run and "Acquire::Retries" in run and "Acquire::http::Timeout" in run]
+    installs = [i for i, run in enumerate(runs) if "npx playwright" in run and "--dry-run" not in run]
+    if len(installs) != 1 or len(bound) != 1 or bound[0] > installs[0] or re.search(r"^\s+if:", steps[bound[0]], re.MULTILINE):
+        problems.append(f"playwright-chromium: one install step, after an unconditional apt retry and timeout step (installs at {installs}, the bound at {bound})")
+    for i in installs:
+        tagged = re.search(r"^\s+# @tunable ci\.playwright_install_timeout_min = (\d+)\n\s+limit_min=\1$", steps[i], re.MULTILINE)
+        if not tagged or 'timeout "${limit_min}m" npx playwright' not in runs[i] or "continue-on-error" in steps[i]:
+            problems.append('playwright-chromium: the install runs under `timeout "${limit_min}m"`, limit_min tagged ci.playwright_install_timeout_min, and gates')
     assert not problems, "\n".join(problems)
 
 
@@ -308,20 +321,68 @@ def test_every_playwright_cache_keys_on_the_runner_identity_the_toolchain_action
     # A browser restored under another runner image or C library fails at launch; a key read before its step is empty.
     ident = [_step_lines(step) for step in _action_steps(_TOOLCHAIN_ACTION) if _IDENT_ID.search(step)]
     assert len(ident) == 1, "the toolchain action must hold exactly one `id: ident` step, the identity every Playwright cache copies"
-    problems = []
-    caches = 0
-    for name, job in _jobs().items():
-        steps = _steps(job, 6)
-        for index, step in enumerate(steps):
-            if _IDENT_ID.search(step) and _step_lines(step) != ident[0]:
-                problems.append(f"{name}: its identity step differs from the toolchain action's - copy that step's text unchanged")
-            if "path: ~/.cache/ms-playwright" not in step:
-                continue
-            caches += 1
-            key = re.search(r"^\s+key: (.*)$", step, re.MULTILINE)
-            if not key or "${{ steps.ident.outputs.id }}" not in key.group(1):
-                problems.append(f"{name}: the Playwright cache key misses `${{{{ steps.ident.outputs.id }}}}` - a runner-image change would restore a stale browser")
-            if not any(_IDENT_ID.search(earlier) for earlier in steps[:index]):
-                problems.append(f"{name}: no identity step (the toolchain action's, `id: ident`) before its Playwright cache")
-    assert caches, "no step caches ~/.cache/ms-playwright: a reshaped workflow must fail this rule rather than pass it empty"
+    problems = [f"{name}: caches ~/.cache/ms-playwright itself - the playwright-chromium action holds the one cache" for name, job in _jobs().items() if "path: ~/.cache/ms-playwright" in job]
+    steps = _action_steps(_PLAYWRIGHT_ACTION)
+    idents = [i for i, step in enumerate(steps) if _IDENT_ID.search(step)]
+    caches = [i for i, step in enumerate(steps) if "path: ~/.cache/ms-playwright" in step]
+    assert caches, "the playwright-chromium action caches no ~/.cache/ms-playwright: a reshaped action must fail this rule rather than pass it empty"
+    if [_step_lines(steps[i]) for i in idents] != ident:
+        problems.append("playwright-chromium: its one identity step must be the toolchain action's, text unchanged")
+    for i in caches:
+        key = re.search(r"^\s+key: (.*)$", steps[i], re.MULTILINE)
+        if not key or "${{ steps.ident.outputs.id }}" not in key.group(1):
+            problems.append("playwright-chromium: the browser cache key misses `${{ steps.ident.outputs.id }}` - a runner-image change would restore a stale browser")
+        if not idents or idents[0] > i:
+            problems.append("playwright-chromium: no identity step before the browser cache")
     assert not problems, "\n".join(problems)
+
+
+def _uses_index(steps: "list[str]", uses: str) -> "list[int]":
+    return [i for i, step in enumerate(steps) if uses in step]
+
+
+def test_the_apt_cache_runs_around_every_apt_install() -> None:
+    # The mirror check and package cache before apt fetches, the save right after the install whatever came next.
+    problems = []
+    firmware = _steps(_jobs()["firmware-build-verify"], 6)
+    runs = ["\n".join(_run_lines(step)) for step in firmware]
+    listed = [i for i, run in enumerate(runs) if _APT_PACKAGES in run and "ensure_apt_packages" not in run]
+    installs = [i for i, run in enumerate(runs) if f"st.ensure_apt_packages({_APT_PACKAGES}" in run]
+    restore, save = _uses_index(firmware, _APT_RESTORE_USES), _uses_index(firmware, _APT_SAVE_USES)
+    if not (len(listed) == len(restore) == len(installs) == len(save) == 1 and listed[0] < restore[0] < installs[0] and save[0] == installs[0] + 1):
+        problems.append(f"firmware-build-verify: list the install's packages, then apt-cache-restore, the install, and apt-cache-save right after it (at {listed}, {restore}, {installs}, {save})")
+    else:
+        if "packages: ${{ steps.apt-packages.outputs.list }}" not in firmware[restore[0]] or not re.search(r"^\s+id: apt-packages$", firmware[listed[0]], re.MULTILINE):
+            problems.append("firmware-build-verify: apt-cache-restore's packages are the apt-packages step's list")
+        if "if: ${{ !cancelled() }}" not in firmware[save[0]] or "key: ${{ steps.apt.outputs.key }}" not in firmware[save[0]]:
+            problems.append("firmware-build-verify: apt-cache-save runs `if: ${{ !cancelled() }}` on apt-cache-restore's key")
+    steps = _action_steps(_PLAYWRIGHT_ACTION)
+    installs = [i for i, step in enumerate(steps) if "npx playwright" in step and "--dry-run" not in step]
+    restore, save = _uses_index(steps, _APT_RESTORE_USES), _uses_index(steps, _APT_SAVE_USES)
+    if not (len(restore) == len(installs) == len(save) == 1 and restore[0] < installs[0] and save[0] == installs[0] + 1 and "if: ${{ !cancelled() }}" in steps[save[0]]):
+        problems.append("playwright-chromium: apt-cache-restore before the install, apt-cache-save right after it with `if: ${{ !cancelled() }}`")
+    elif "playwright-deps: chromium" not in steps[restore[0]]:
+        problems.append("playwright-chromium: apt-cache-restore plans Playwright's own chromium list")
+    smoke = _jobs()["web-cross-browser-smoke"]
+    if "always-check: 'true'" not in smoke:
+        problems.append("web-cross-browser-smoke: pass always-check: 'true' - its WebKit install fetches from the same mirror list after the package cache")
+    found = [re.search(r"^\s+path: (.*)$", step, re.MULTILINE) for path in (_APT_RESTORE_ACTION, _APT_SAVE_ACTION) for step in _action_steps(path) if "uses: actions/cache/" in step]
+    paths = {match.group(1) if match else "(none)" for match in found}
+    if len(found) != 2 or len(paths) != 1:
+        problems.append(f"the apt cache's restore and save name different paths, so a save is never restored: {sorted(paths)}")
+    assert not problems, "\n".join(problems)
+
+
+def test_no_apt_cache_step_can_fail_a_job() -> None:
+    # A failed check, restore, save or list edit warns and carries on; only the real install's own failure gates.
+    loud = [f"{path.parent.name}: {step.splitlines()[0].strip()}" for path in (_APT_RESTORE_ACTION, _APT_SAVE_ACTION) for step in _action_steps(path) if not re.search(r"^\s+continue-on-error: true$", step, re.MULTILINE)]
+    firmware = [step for step in _steps(_jobs()["firmware-build-verify"], 6) if re.search(r"^\s+id: apt-packages$", step, re.MULTILINE)]
+    loud += [f"firmware-build-verify: {step.splitlines()[0].strip()}" for step in firmware if "continue-on-error: true" not in step]
+    assert firmware, "firmware-build-verify has no apt-packages step: a reshaped job must fail this rule rather than pass it empty"
+    assert not loud, f"give these steps `continue-on-error: true` (and a ::warning:: where they fail): {loud}"
+
+
+def test_every_cache_action_is_one_tag() -> None:
+    # actions/cache and its restore and save sub-actions come from one release, as zizmor's ref-pin policy lets them.
+    tags = {(path.relative_to(_REPO).as_posix(), tag) for path in (_CI, *_ACTIONS.glob("*/action.yml")) for tag in _CACHE_ACTION.findall(path.read_text(encoding="utf-8"))}
+    assert len({tag for _, tag in tags}) == 1, f"pin every actions/cache, actions/cache/restore and actions/cache/save to one tag: {sorted(tags)}"

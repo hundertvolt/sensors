@@ -173,37 +173,9 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Runner and compiler identity for the cache key
-        id: ident
-        shell: bash
-        run: printf 'id=%s\n' "$(printf '%s\n' "${ImageOS:-unknown}" "$(gcc --version | head -n1)" "$(ldd --version | head -n1)" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
-      # Playwright's browser cached on package-lock.json (which pins its version) and on the runner identity the
-      # toolchain cache keys on; OS packages reinstalled every run - Playwright's documented CI pattern.
-      - name: Cache Playwright Chromium
-        id: playwright-cache
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ steps.ident.outputs.id }}-${{ hashFiles('package-lock.json') }}
-      # A stalled mirror otherwise holds the install to the job's limit: apt retries each fetch, then fails the
-      # install step below by name (toolchain/setup_toolchain.py's apt_options()).
-      - name: Bound and retry apt's downloads
-        run: |
-          # @tunable tool.uv_sync_attempts = 3
-          attempts=3
-          # @tunable tool.apt_acquire_timeout_s = 30
-          timeout_s=30
-          printf 'Acquire::Retries "%s";\nAcquire::http::Timeout "%s";\nAcquire::https::Timeout "%s";\n' "$((attempts - 1))" "$timeout_s" "$timeout_s" | sudo tee /etc/apt/apt.conf.d/80-bounded-downloads
-      - name: Install Playwright Chromium
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        # @tunable ci.playwright_install_timeout_min = 5
-        timeout-minutes: 5
-        run: npx playwright install --with-deps chromium
-      - name: Install Playwright OS dependencies (cache hit)
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        # @tunable ci.playwright_install_timeout_min = 5
-        timeout-minutes: 5
-        run: npx playwright install-deps chromium
+      # Browser cache, apt mirror check and package cache, one shared action for the four web jobs (B.10.1).
+      - name: Install Playwright Chromium and its OS packages
+        uses: ./.github/actions/playwright-chromium
       - name: Set up MicroPython toolchain (uv sync, restore or build)
         uses: ./.github/actions/setup-micropython-toolchain
         with:
@@ -240,33 +212,9 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Runner and compiler identity for the cache key
-        id: ident
-        shell: bash
-        run: printf 'id=%s\n' "$(printf '%s\n' "${ImageOS:-unknown}" "$(gcc --version | head -n1)" "$(ldd --version | head -n1)" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
-      - name: Cache Playwright Chromium
-        id: playwright-cache
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ steps.ident.outputs.id }}-${{ hashFiles('package-lock.json') }}
-      - name: Bound and retry apt's downloads
-        run: |
-          # @tunable tool.uv_sync_attempts = 3
-          attempts=3
-          # @tunable tool.apt_acquire_timeout_s = 30
-          timeout_s=30
-          printf 'Acquire::Retries "%s";\nAcquire::http::Timeout "%s";\nAcquire::https::Timeout "%s";\n' "$((attempts - 1))" "$timeout_s" "$timeout_s" | sudo tee /etc/apt/apt.conf.d/80-bounded-downloads
-      - name: Install Playwright Chromium
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        # @tunable ci.playwright_install_timeout_min = 5
-        timeout-minutes: 5
-        run: npx playwright install --with-deps chromium
-      - name: Install Playwright OS dependencies (cache hit)
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        # @tunable ci.playwright_install_timeout_min = 5
-        timeout-minutes: 5
-        run: npx playwright install-deps chromium
+      # Browser cache, apt mirror check and package cache, one shared action for the four web jobs (B.10.1).
+      - name: Install Playwright Chromium and its OS packages
+        uses: ./.github/actions/playwright-chromium
       - name: Set up MicroPython toolchain (uv sync, restore or build)
         uses: ./.github/actions/setup-micropython-toolchain
         with:
@@ -297,33 +245,9 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Runner and compiler identity for the cache key
-        id: ident
-        shell: bash
-        run: printf 'id=%s\n' "$(printf '%s\n' "${ImageOS:-unknown}" "$(gcc --version | head -n1)" "$(ldd --version | head -n1)" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
-      - name: Cache Playwright Chromium
-        id: playwright-cache
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ steps.ident.outputs.id }}-${{ hashFiles('package-lock.json') }}
-      - name: Bound and retry apt's downloads
-        run: |
-          # @tunable tool.uv_sync_attempts = 3
-          attempts=3
-          # @tunable tool.apt_acquire_timeout_s = 30
-          timeout_s=30
-          printf 'Acquire::Retries "%s";\nAcquire::http::Timeout "%s";\nAcquire::https::Timeout "%s";\n' "$((attempts - 1))" "$timeout_s" "$timeout_s" | sudo tee /etc/apt/apt.conf.d/80-bounded-downloads
-      - name: Install Playwright Chromium
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        # @tunable ci.playwright_install_timeout_min = 5
-        timeout-minutes: 5
-        run: npx playwright install --with-deps chromium
-      - name: Install Playwright OS dependencies (cache hit)
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        # @tunable ci.playwright_install_timeout_min = 5
-        timeout-minutes: 5
-        run: npx playwright install-deps chromium
+      # Browser cache, apt mirror check and package cache, one shared action for the four web jobs (B.10.1).
+      - name: Install Playwright Chromium and its OS packages
+        uses: ./.github/actions/playwright-chromium
       - name: Set up MicroPython toolchain (uv sync, restore or build)
         uses: ./.github/actions/setup-micropython-toolchain
         with:
@@ -385,35 +309,12 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Runner and compiler identity for the cache key
-        id: ident
-        shell: bash
-        run: printf 'id=%s\n' "$(printf '%s\n' "${ImageOS:-unknown}" "$(gcc --version | head -n1)" "$(ldd --version | head -n1)" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
       # Installed here too: every job is a fresh VM, and without it the Chromium leg failed with
-      # "Executable doesn't exist" (B.10.1).
-      - name: Cache Playwright Chromium
-        id: playwright-cache
-        uses: actions/cache@v6
+      # "Executable doesn't exist" (B.10.1). always-check: the WebKit install below fetches from the same mirror list.
+      - name: Install Playwright Chromium and its OS packages
+        uses: ./.github/actions/playwright-chromium
         with:
-          path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ steps.ident.outputs.id }}-${{ hashFiles('package-lock.json') }}
-      - name: Bound and retry apt's downloads
-        run: |
-          # @tunable tool.uv_sync_attempts = 3
-          attempts=3
-          # @tunable tool.apt_acquire_timeout_s = 30
-          timeout_s=30
-          printf 'Acquire::Retries "%s";\nAcquire::http::Timeout "%s";\nAcquire::https::Timeout "%s";\n' "$((attempts - 1))" "$timeout_s" "$timeout_s" | sudo tee /etc/apt/apt.conf.d/80-bounded-downloads
-      - name: Install Playwright Chromium
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        # @tunable ci.playwright_install_timeout_min = 5
-        timeout-minutes: 5
-        run: npx playwright install --with-deps chromium
-      - name: Install Playwright OS dependencies (cache hit)
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        # @tunable ci.playwright_install_timeout_min = 5
-        timeout-minutes: 5
-        run: npx playwright install-deps chromium
+          always-check: 'true'
       - name: Set up MicroPython toolchain (uv sync, restore or build)
         uses: ./.github/actions/setup-micropython-toolchain
         with:
@@ -711,6 +612,28 @@ jobs:
           persist-credentials: false
       - name: Set up MicroPython toolchain (uv sync, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
+      # The list ensure_apt_packages() installs below, read as it reads it, for the mirror check and package cache
+      # around that install; like every step of theirs it cannot fail the job (B.10.1).
+      - name: The ARM toolchain's apt packages
+        id: apt-packages
+        continue-on-error: true
+        run: |
+          source scripts/_require_python.sh
+          require_python311
+          python3 - >> "$GITHUB_OUTPUT" <<'PYEOF'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "toolchain")
+          import setup_toolchain as st
+          versions = st.load_versions(Path("toolchain/versions.toml"))
+          print("list=" + " ".join(versions["toolchain"]["apt_packages"]))
+          PYEOF
+      - name: Check the apt mirror and restore cached packages
+        id: apt
+        uses: ./.github/actions/apt-cache-restore
+        with:
+          family: firmware
+          packages: ${{ steps.apt-packages.outputs.list }}
       # A cache miss fails the picotool step below by name (no cached build tree), never skipping the
       # build.
       #
@@ -729,6 +652,14 @@ jobs:
           versions = st.load_versions(Path("toolchain/versions.toml"))
           st.ensure_apt_packages(versions["toolchain"]["apt_packages"], skip=False)
           PYEOF
+      # Right after the install, so no later step's failure costs the save.
+      - name: Keep the fetched packages
+        if: ${{ !cancelled() }}
+        uses: ./.github/actions/apt-cache-save
+        with:
+          family: firmware
+          key: ${{ steps.apt.outputs.key }}
+          cache-hit: ${{ steps.apt.outputs.cache-hit }}
       # picotool lives in /usr/local, outside the cache; its build tree is inside it, so a hit installs
       # the very binary setup built (B.10.1).
       - name: Install the cached picotool
