@@ -425,6 +425,24 @@ the image record (`--image-record`, default beside the `.uf2`) and compares it w
 that fixes it; a record from a dirty tree is reported as a local-only image to revert after the
 round. A test that reflashes mid-session runs the same comparison (`check_image()`).
 
+## The bench log check
+
+Every bench test runs inside `bench/conftest.py`'s autouse `no_unprovoked_log_entry`: one `GET /status` before the
+test and one after, clearing and writing nothing. A new E or W entry in any logger between the two fails the test,
+naming the logger, the code, its catalog name and the test - a normal operation logs neither. A test whose entries are
+its purpose carries `@pytest.mark.provokes_log("<why>", (logger, kind, catalog name), ...)` (`markers.py`), naming
+every entry the source can leave on its path, and is read like any other: an entry outside that set fails it, and an
+entry in it need not appear (the test asserts its own). Collection refuses a marker with a reason alone, a malformed
+entry or a name with no live catalog row. A clear made through `reset_all_error_logs()` hides nothing: the `GET
+/status` it already takes before its `PUT` (saved to the evidence first) is kept, so the check reads each segment - the
+test's first read to its first clear's, each clear to the next one's, the last to the after-read, all of a segment
+after a clear new - against the same set, adding no read and no write. A board that cannot answer
+`/status` at a test's bound - unreachable, or still booting - fails that test by name after one read under the
+helpers' own timeout: a test leaves the board serving. The exception is a test marked `ends_unreachable` (the hotspot
+credential stage, the isolated-board heap module): its unanswered end leaves its window open, and the next read that
+answers - the next test's, or one at the session's end - closes it against the union of the sets it spans. The
+hotspot module reads through the DUT's gateway while the bench radio is its client.
+
 ## The NeoPixel sweep rig
 
 Two flash-tier tests are gated on physical geometry rather than on wear or wall clock -
@@ -950,7 +968,7 @@ needs a driver-level trigger is not reachable at L4 except by hand.
 | task restart | a starter that dies at once; a chip unplugged live | L3; manual L4 | `flash/test_task_supervisor.py`; `manual/manual_bus_electrical.py::test_hot_unplug_replug_i2c_recovery`, `::test_fram_unplug_replug_recovery` | the starter called again, SYSTEM's log holding one `TASK_RETURNED` end per restart; by hand the log entries while unplugged and the readings back with no reboot |
 | FRAM chip lost | CS held inactive across two writes; the chip unplugged | L3; manual L4 | `test_fram_cs_pin_hijack_fault_injection_and_recovery`; `::test_fram_unplug_replug_recovery` | the chip-lost entry, then recovery; by hand the seconds from the pull to the first FRAM log entry (`fram-pull-latency.txt`, "none within 120 s" when none) |
 | UART link lost | the crossover jumper pulled mid-transfer | manual L4 | `manual/manual_bus_electrical.py::test_uart_crossover_pull_recovery` | the link's `Failures` rise and every code logged meanwhile (`uart-crossover-pull.txt`, the verbatim errcount beside it), its `Transfers` advancing within 30 s of the replug, no reboot |
-| supervisor reboot | a task dying until the restart budget is spent | L4 | `bench/test_reset_reasons.py::test_the_supervisor_escalation_reboot_is_attributed` | `ResetReason` 5 and SYSTEM's escalation entry |
+| supervisor reboot | a task dying until the restart budget is spent | L4 | `bench/test_reset_reasons.py::test_the_supervisor_escalation_reboot_is_attributed` | `ResetReason` 5 with the forced bit; SYSTEM's escalation entry in the rounds the script printed before the reset (its log is RAM-only, so production's history never holds it) |
 | hardware watchdog | the watchdog starved | L3, L4 | `flash/test_watchdog_starvation.py`; `bench/test_reset_reasons.py` (codes 2 and 6) | the reset, then the code |
 
 ## The hotspot role reversal

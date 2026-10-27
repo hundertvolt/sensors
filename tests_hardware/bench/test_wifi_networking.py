@@ -94,6 +94,7 @@ def test_real_dns_resolution_succeeds_over_genuine_udp(board: Board) -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.provokes_log("the blocked NTP port's attempts, which the test asserts as NTP_NO_REPLY", ("NTP", "E", "NTP_NO_REPLY"))
 def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # Only UDP 123 is blocked, not the AP, so the STA link stays up: "isconnected()==True but one downstream operation
     # is unreachable" (SPECIFICATION.md F.2), which tests/test_ntp_wifi_dns_integration.py proves at the mock level.

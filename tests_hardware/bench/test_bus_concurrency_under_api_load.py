@@ -87,6 +87,11 @@ _SYSTEM = "asy_system_service.py"
 _LOAD_CODES = (("W", "BMP_CHIP_RESET"), ("E", "READ_RANGE"), ("W", "ISL_DIVERGED"))
 
 
+@pytest.mark.provokes_log(
+    "the readers and the resets meet the stack's reject-when-full, which this module's fetch retries",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
 def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_crashes(board: Board, dut_ip: str, request: pytest.FixtureRequest) -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     load = _load.Load()
@@ -112,6 +117,13 @@ def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_c
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.provokes_log(
+    "the ceiling's reject-when-full, and a lossy link's stalled read or request reclaimed by its per-call or outer timeout",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+    ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
+    ("WEBSERVER", "W", "HTTP_REQUEST_CAP"),
+)
 def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_network_degradation(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest) -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     context = " under degraded network"
@@ -140,6 +152,12 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_netw
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.provokes_log(
+    "the blocked NTP port's NTP_NO_REPLY the test waits for, and the ceiling's reject-when-full under the readers",
+    ("NTP", "E", "NTP_NO_REPLY"),
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
 def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # A synced client attempts nothing for NTPInterval hours and an unchanged NTPHost PUT fires no post function
     # (src/asy_api_response.py), so the reset under the block makes the boot's first sync fail; the client's own
@@ -181,6 +199,22 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.provokes_log(
+    "each flap drops the AP under the readers: the outage pair, a connection cut mid-request or mid-write, and an NTP"
+    " attempt already past its network check when the AP drops, or its whole retry chain where the link still reads as up",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+    ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
+    ("WEBSERVER", "W", "HTTP_REQUEST_CAP"),
+    ("WEBSERVER", "W", "HTTP_SOCKET_ERROR"),
+    ("WIFI", "W", "WLAN_NO_AP"),
+    ("WIFI", "W", "WLAN_AUTH_FAILED"),
+    ("NTP", "E", "NTP_DNS_NOT_SENT"),
+    ("NTP", "E", "NTP_DNS"),
+    ("NTP", "E", "NTP_NOT_SENT"),
+    ("NTP", "E", "NTP_NO_REPLY"),
+    ("NTP", "E", "NTP_RETRIES"),
+)
 def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_real_wifi_flapping(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     context = " during WiFi flapping"
@@ -223,6 +257,11 @@ _ISL29125_WRITE_CYCLES = 4  # modest relative to flash tier's 8 - each cycle her
 
 
 @pytest.mark.persistence_write
+@pytest.mark.provokes_log(
+    "the readers and the writer meet the stack's reject-when-full, which this module's fetch retries",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
 def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load(board: Board, dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     sensors = _load.get_object(dut_ip, "/sensors", _PROBE_TIMEOUT_S)
@@ -270,6 +309,11 @@ def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_a
 
 
 @pytest.mark.persistence_write
+@pytest.mark.provokes_log(
+    "the readers and the writer meet the stack's reject-when-full, which this module's fetch retries",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
 def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load(board: Board, dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     sensors = _load.get_object(dut_ip, "/sensors", _PROBE_TIMEOUT_S)
@@ -320,6 +364,11 @@ _SCD30_OFFSET_STEP_K = 0.5
 
 @pytest.mark.persistence_write
 @pytest.mark.scd30_extra_write
+@pytest.mark.provokes_log(
+    "the readers and the writer meet the stack's reject-when-full, which this module's fetch retries",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
 def test_scd30_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load(board: Board, dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     original = _load.as_object(_load.get_object(dut_ip, "/sensors", _PROBE_TIMEOUT_S).get("SCD30"), "GET /sensors SCD30").get("TempOffset")

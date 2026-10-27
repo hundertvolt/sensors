@@ -55,6 +55,28 @@ _SERVING_SCRIPT_TIMEOUT_S = 900.0
 _DRIVER_JOIN_S = 90.0
 
 
+@pytest.mark.provokes_log(
+    "each probe runs on heaps shaped below its need, over a scratch-config boot that logs CONFIG_LOST: a streamed source"
+    " that fails there logs CALLBACK, a config read logs its module's CHIP_GET or config-read entry, and a history write"
+    " whose own buffers do not fit logs LOG_RAM_ONLY",
+    ("WEBSERVER", "E", "CALLBACK"),
+    ("WEBSERVER", "E", "LOG_RAM_ONLY"),
+    ("SYSTEM", "W", "CONFIG_LOST"),
+    ("BMP3XX", "E", "CHIP_GET"),
+    ("ISL29125", "E", "CHIP_GET"),
+    ("SCD30", "E", "CHIP_GET"),
+    ("BMP3XX", "E", "CFG_GET_RAISED"),
+    ("ISL29125", "E", "CFG_GET_RAISED"),
+    ("SCD30", "E", "CFG_GET_RAISED"),
+    ("SGP40", "E", "CFG_GET_RAISED"),
+    ("WIFI", "E", "CFG_GET_RAISED"),
+    ("NTP", "E", "CFG_GET_RAISED"),
+    ("NOTIFY", "E", "CFG_GET_RAISED"),
+    ("BMP3XX", "E", "CFG_CALLBACK_RAISED"),
+    ("ISL29125", "E", "CFG_CALLBACK_RAISED"),
+    ("WIFI", "E", "CFG_CALLBACK_RAISED"),
+)
+@pytest.mark.ends_unreachable
 def test_every_source_and_route_fits_a_small_free_run(isolated_board: "Board", result_note: "_load.Note") -> None:
     # No network. The device script shapes the heap so no free run exceeds S, for rising S, and
     # runs each data source and whole GET route on it; the host reduces that to each one's need.
@@ -72,6 +94,12 @@ def test_every_source_and_route_fits_a_small_free_run(isolated_board: "Board", r
     assert not too_big, f"{at}: these need a larger contiguous block than a loaded heap keeps (Part I.3): {too_big}"
 
 
+@pytest.mark.provokes_log(
+    "its levels run two past the ceiling, whose refusals trace HTTP_REFUSED",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
+@pytest.mark.ends_unreachable
 def test_serving_sweep_at_the_reactive_default(isolated_board: "Board", dut_ip: str, result_note: "_load.Note") -> None:
     # Ascending levels up past the configured ceiling, on one boot: the realistic case is a running
     # device whose heap carries every earlier burst. The bar is I.4(e): not one allocation failure.

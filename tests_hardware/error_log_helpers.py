@@ -13,10 +13,10 @@ import http_client
 # The one catalog lookup every tier shares, re-exported for the bench modules. The repo root is
 # appended, so tests/ resolves as this repository's namespace package and no tests/ fake shadows a host module.
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from tests._error_codes import code
+from tests._error_codes import code, name
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
 
     from harness import Board
     from http_client import JSONObject
@@ -30,11 +30,17 @@ __all__ = [
     "assert_no_module_logged_a_new_error",
     "assert_no_new_task_raised",
     "assert_no_task_ended",
+    "assert_no_unprovoked_entry",
+    "clears_made",
     "code",
     "errcount_entry",
+    "gained_entries",
     "get_errcount",
+    "new_logged_entries",
     "new_task_raised",
+    "provoked_entries",
     "read_live_system_log",
+    "reads_before_clears",
     "reset_all_error_logs",
     "save_errcount",
 ]
@@ -60,6 +66,14 @@ _READ_SYSTEM_LOG = (
     "m = [v for k, v in sys.modules.items() if k.startswith('sensortask_') and getattr(v, 'sysfunct', None) is not None]\n"
     "print('SYSLOG', json.dumps(asyncio.run(m[0].sysfunct.get_error_counter())['SYSTEM'] if m else None))\n"
 )
+# The parsed GET /status reset_all_error_logs() takes before each ResetErrors it makes this session, in order: what
+# each clear erased, which the bench log check reads as the end of a segment (CLAUDE.md: read before any ResetErrors).
+_CLEARS: "list[dict[str, ErrcountEntry]]" = []
+
+
+def _slots(entry: ErrcountEntry) -> "list[tuple[str, int]]":
+    # A history's (type, num) slots, oldest first, "N" for an unused one.
+    return [(str(h.get("type")), int(str(h.get("num", 0)))) for h in entry["history"]]
 
 
 def _status(dut_ip: str) -> "tuple[bytes, JSONObject]":
@@ -69,11 +83,21 @@ def _status(dut_ip: str) -> "tuple[bytes, JSONObject]":
     return res.body, res.json()
 
 
-def get_errcount(dut_ip: str) -> "dict[str, ErrcountEntry]":
-    _body, status = _status(dut_ip)
+def _errcount(status: "JSONObject") -> "dict[str, ErrcountEntry]":
     counts = status.get("errcount")
     assert isinstance(counts, dict), f"GET /status carries no errcount object: {status!r}"
     return {name: errcount_entry(counts, name) for name in counts}
+
+
+def _saved_status(dut_ip: str, reason: str) -> "tuple[Path, JSONObject]":
+    # The verbatim GET /status body - errcount, the reset reason and every other field - in the run's evidence.
+    body, status = _status(dut_ip)
+    return evidence.save_text(f"errcount-{reason}.json", body.decode("utf-8", "replace")), status
+
+
+def get_errcount(dut_ip: str) -> "dict[str, ErrcountEntry]":
+    _body, status = _status(dut_ip)
+    return _errcount(status)
 
 
 def assert_module_error_log_clean(dut_ip: str, module_name: str, allowed_warnings: "tuple[int, ...]" = (), allowed_errors: "tuple[int, ...]" = ()) -> None:
@@ -129,6 +153,19 @@ def assert_no_task_ended(dut_ip: str, context: str) -> None:
     assert entry["counter"] == 0, f"{context}: a task ended and was restarted (or the budget rebooted the board) - SYSTEM log: {entry!r}"
 
 
+def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, pre_clear: "Sequence[dict[str, ErrcountEntry]]" = (), expected: "frozenset[tuple[str, str, int]]" = frozenset()) -> None:
+    # The bench log check's verdict (C.7: a normal operation logs neither E nor W): over each segment from a test's first
+    # read through the reads its own clears took first to its last, no logger gained one beyond its provokes_log set.
+    bounds = [before, *pre_clear, after]
+    gained = [entry for i in range(len(bounds) - 1) for entry in new_logged_entries(bounds[i], bounds[i + 1], cleared=i > 0)]
+    found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in dict.fromkeys(gained) if (module, kind, num) not in expected]
+    assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose names each in provokes_log(\"<why>\", (logger, kind, catalog name), ...)"
+
+
+def clears_made() -> int:
+    return len(_CLEARS)
+
+
 def errcount_entry(counts: "Mapping[str, object]", name: str) -> ErrcountEntry:
     # One logger's entry, never a default: a missing name or a malformed entry fails naming what is there.
     entry: object = counts.get(name)
@@ -139,6 +176,35 @@ def errcount_entry(counts: "Mapping[str, object]", name: str) -> ErrcountEntry:
     shape = f"{name!r}'s errcount entry {entry!r} lacks an int counter or a history list - a changed /status shape"
     assert isinstance(counter, int) and not isinstance(counter, bool) and isinstance(history, list) and all(isinstance(h, dict) for h in history), shape
     return ErrcountEntry(counter=counter, history=history)
+
+
+def gained_entries(before: ErrcountEntry, after: ErrcountEntry) -> "list[tuple[str, int]] | None":
+    # The (type, num) slots a fixed-length history gained between two reads: each new code shifts it one slot (a repeat
+    # of the newest spends none), so the gain is the smallest shift within the counter's growth that lines the reads
+    # up; None where none does, a clear or a reboot in between.
+    old, new = _slots(before), _slots(after)
+    for shift in range(min(after["counter"] - before["counter"], len(new)) + 1):
+        if new[: len(new) - shift] == old[shift:]:
+            return new[len(new) - shift :]
+    return None
+
+
+def new_logged_entries(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", *, cleared: bool) -> "list[tuple[str, str, int]]":
+    # (logger, type, num) of each E or W entry every logger gained between two reads. After a clear (`cleared`, or a
+    # history the later read does not continue) all of a log is newer; a counter that grew with no slot gained is a
+    # repeat of the newest. A logger on one side only is a /status shape change.
+    appeared, vanished = sorted(set(after) - set(before)), sorted(set(before) - set(after))
+    assert not appeared and not vanished, f"/status errcount changed shape between the reads: appeared {appeared!r}, vanished {vanished!r}"
+    found: list[tuple[str, str, int]] = []
+    for module in sorted(after):
+        old, new = before[module], after[module]
+        gained = None if cleared else gained_entries(old, new)
+        if gained is None:
+            gained = _slots(new)
+        elif not gained and new["counter"] > old["counter"]:
+            gained = _slots(new)[-1:]
+        found += [(module, kind, num) for kind, num in gained if kind in ("E", "W")]
+    return found
 
 
 def new_task_raised(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]") -> int:
@@ -155,6 +221,25 @@ def new_task_raised(before: "dict[str, ErrcountEntry]", after: "dict[str, Errcou
     return sum(1 for h in window if h.get("type") == "E" and h.get("num") in _RAISED)
 
 
+def provoked_entries(args: "tuple[object, ...]", kwargs: "Mapping[str, object]") -> "tuple[str, frozenset[tuple[str, str, int]]]":
+    # provokes_log("<why>", (logger, kind, catalog name), ...): its reason and the (logger, kind, num) set it admits; a
+    # ValueError for a reason alone, a keyword, a malformed entry or a name with no live catalog row of that kind.
+    reason = args[0] if args else None
+    if kwargs or not isinstance(reason, str) or not reason.strip():
+        raise ValueError(f"provokes_log takes its reason first, then each entry as (logger, kind, catalog name): {args!r} {dict(kwargs)!r}")
+    if len(args) < 2:
+        raise ValueError(f"provokes_log names a reason but no entry ({reason!r}): add each one the test may leave as (logger, kind, catalog name)")
+    entries: set[tuple[str, str, int]] = set()
+    for entry in args[1:]:
+        if not (isinstance(entry, tuple) and len(entry) == 3 and all(isinstance(part, str) and part for part in entry) and entry[1] in ("E", "W")):
+            raise ValueError(f'provokes_log entry {entry!r} is not (logger, "E" or "W", catalog name)')
+        try:
+            entries.add((entry[0], entry[1], code(entry[1], entry[2])))
+        except KeyError:
+            raise ValueError(f"provokes_log entry {entry!r}: the catalog has no live {entry[1]} row named {entry[2]!r}") from None
+    return reason, frozenset(entries)
+
+
 def read_live_system_log(board: "Board") -> "dict[str, ErrcountEntry]":
     # SYSTEM's log in /status's errcount shape, read off the running firmware over the REPL (see _READ_SYSTEM_LOG).
     output = board.exec_live(_READ_SYSTEM_LOG)
@@ -166,18 +251,22 @@ def read_live_system_log(board: "Board") -> "dict[str, ErrcountEntry]":
     return {"SYSTEM": ErrcountEntry(counter=entry["ErrCount"], history=history)}
 
 
+def reads_before_clears(since: int) -> "list[dict[str, ErrcountEntry]]":
+    # The reads the clears after the first `since` of this session took before their PUT, oldest first.
+    return _CLEARS[since:]
+
+
 def reset_all_error_logs(dut_ip: str, reason: str) -> None:
     # Save, then clear: ResetErrors wipes every registered logger, FRAM-backed history included, and nothing brings it
-    # back - so the verbatim /status goes to the run's evidence first (CLAUDE.md's FRAM-log rule).
-    save_errcount(dut_ip, reason)
+    # back - so the verbatim /status goes to the run's evidence first, its parse to the bench log check (CLAUDE.md).
+    erased = _errcount(_saved_status(dut_ip, reason)[1])
     res = http_client.fetch(dut_ip, 80, "PUT", "/status", {"ResetErrors": True}, timeout_s=_RESET_ERRORS_TIMEOUT_S)
     answer = res.json() if res.status_code == 200 else {}
     result = answer.get("result")
     # "Failed": a store's cleared state was not written, or a pending reboot refused it - nothing is clear (A.8).
     assert answer.get("res") == "OK" and isinstance(result, dict) and result.get("ResetErrors") == "Valid", f"PUT /status ResetErrors did not clear the logs: {res.status_code} {res.body!r}"
+    _CLEARS.append(erased)
 
 
 def save_errcount(dut_ip: str, reason: str) -> Path:
-    # The verbatim GET /status body - errcount, the reset reason and every other field - in the run's evidence.
-    body, _status_object = _status(dut_ip)
-    return evidence.save_text(f"errcount-{reason}.json", body.decode("utf-8", "replace"))
+    return _saved_status(dut_ip, reason)[0]

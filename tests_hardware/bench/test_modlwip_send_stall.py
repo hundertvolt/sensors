@@ -80,6 +80,13 @@ class _Verdicts:
         return failed
 
 
+@pytest.mark.provokes_log(
+    "its dead clients are reclaimed at the per-call timeout (HTTP_CALL_TIMEOUT), and one the ceiling refuses traces HTTP_REFUSED",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+    ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
+    ("WEBSERVER", "W", "HTTP_REQUEST_CAP"),
+)
 def test_no_send_stall_with_the_override(board: "Board", dut_ip: str, result_note: "_load.Note") -> None:
     # A failed bound goes to the owner as an override change (a short POLLOUT back-off), never a larger bound.
     verdicts = _measure(board, dut_ip)
@@ -90,6 +97,13 @@ def test_no_send_stall_with_the_override(board: "Board", dut_ip: str, result_not
 
 
 @pytest.mark.flash_cycle
+@pytest.mark.provokes_log(
+    "the control image stalls its sends by design: the stalled calls' timeouts stay in WEBSERVER's log",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+    ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
+    ("WEBSERVER", "W", "HTTP_REQUEST_CAP"),
+)
 def test_send_stall_on_the_unpatched_image(board: "Board", bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # The control image the round built (--lwip-control-image) must stall where the normal image does not; both flash
     # cycles are this test's, and the FRAM evidence is saved first (a reflash is a clearing path).
