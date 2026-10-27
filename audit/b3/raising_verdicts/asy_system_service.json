@@ -108,7 +108,7 @@
    "proof": "caught at :370 as create_task at :364"
   },
   "SystemService._reboot::self._storage_pause": {
-   "can_raise": "what FRAMManager.set_pause() raises (asy_fram_manager.py:764-767, its own rows): its pr.evt()'s small fixed allocation, before its store",
+   "can_raise": "what FRAMManager.set_pause() raises (asy_fram_manager.py:775-778, its own rows): its pr.evt()'s small fixed allocation, before its store",
    "verdict": "handled",
    "proof": "as _flush_config_stores at :358: the callers' except Exception (:498, :618), ending unfed with the record written at :357"
   },

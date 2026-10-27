@@ -1,5 +1,5 @@
 {
- "conventions": "Read at 36bee227 against v1.29.0 (agent, 2026-10-27). Not repeated per row: RuntimeError from a C-stack overflow (MP_STACK_CHECK) is I.4(d.1)'s design defect, recorded by report_if_fatal() in the handler that catches it, never a per-site raise. Small fixed allocations: a call to a function with a *args parameter packs a heap tuple (py/bc.c:163), an async def call allocates its generator (py/objgenerator.c:53-66) and a star-call its argument array (py/runtime.c:790-812, mp_nonlocal_alloc); each is fixed per call site, so every logging call (err/wrn/evt/one/all, _diag, err_s, wrn_s) can raise MemoryError at entry on an exhausted heap (G.2's task-top caveat). F.2 sends these to I.4(a): a function doomed without memory does not catch, and asyncio primitives are never wrapped as a blanket policy. On a run-time path the task ends and asy_system_service.py:326's except Exception in _log_dead_task() persists it as TASK_RAISED, after which the supervisor restarts the task (I.4(c)). At construction (inside build_system()) and in a setup() (run_setups() catches nothing, asy_system_service.py:734-740) the raise ends asyncio.run(main()), where the generated boot entry's except BaseException catches it (build/generated_src/sensortask_<device>_main.py:38, emitted by buildgen/codegen.py:867), records the loop end and leaves the armed watchdog to reset. An import-time allocation precedes that try (the entry imports at :22) and is the armed watchdog's alone (WDT armed at :6, I.4(d)).",
+ "conventions": "Read at 36bee227 against v1.29.0 (agent, 2026-10-27). Not repeated per row: RuntimeError from a C-stack overflow (MP_STACK_CHECK) is I.4(d.1)'s design defect, recorded by report_if_fatal() in the handler that catches it, never a per-site raise. Small fixed allocations: a call to a function with a *args parameter packs a heap tuple (py/bc.c:163), an async def call allocates its generator (py/objgenerator.c:53-66) and a star-call its argument array (py/runtime.c:790-812, mp_nonlocal_alloc); each is fixed per call site, so every logging call (err/wrn/evt/one/all, _diag, err_s, wrn_s) can raise MemoryError at entry on an exhausted heap (G.2's task-top caveat). F.2 sends these to I.4(a): a function doomed without memory does not catch, and asyncio primitives are never wrapped as a blanket policy. On a run-time path the task ends and asy_system_service.py:326's except Exception in _log_dead_task() persists it as TASK_RAISED, after which the supervisor restarts the task (I.4(c)). At construction (inside build_system()) and in a setup() (run_setups() catches nothing, asy_system_service.py:738-744) the raise ends asyncio.run(main()), where the generated boot entry's except BaseException catches it (build/generated_src/sensortask_<device>_main.py:38, emitted by buildgen/codegen.py:867), records the loop end and leaves the armed watchdog to reset. An import-time allocation precedes that try (the entry imports at :22) and is the armed watchdog's alone (WDT armed at :6, I.4(d)).",
  "raises": {},
  "calls": {
   "<module>::const": {
@@ -238,7 +238,7 @@
    "proof": "self.history is always a deque"
   },
   "PrintLogHistoryStore.__init__::fram.get_chunk": {
-   "can_raise": "MemoryError, and what FRAMManager.get_chunk() raises (asy_fram_manager.py:681, its own rows)",
+   "can_raise": "MemoryError, and what FRAMManager.get_chunk() raises (asy_fram_manager.py:692, its own rows)",
    "verdict": "handled",
    "proof": "the MemoryError is caught at :294 (no chunk, _heap_failed, its console line); every other raise is get_chunk()'s own row in asy_fram_manager.py; construction runs inside build_system(), under the boot entry's except BaseException (conventions)"
   },
@@ -265,7 +265,7 @@
   "PrintLogHistoryStore._pack_reset::struct.pack_into": {
    "can_raise": "ValueError \"buffer too small\" (py/modstruct.c:242, :252); TypeError for a non-int value",
    "verdict": "unreachable",
-   "proof": "dbuf is the chunk's data view, exactly the requested size (FRAMChunkBuffer gives RegionBuffer data_length = size, asy_fram_manager.py:471-472; asy_base_classes.py:168-171), which is _HDR_SIZE + len(history) (:289), so 2 bytes fit at offset 0; the value is _since_counted()'s int, and struct never range-checks a value (Part F)"
+   "proof": "dbuf is the chunk's data view, exactly the requested size (FRAMChunkBuffer gives RegionBuffer data_length = size, asy_fram_manager.py:481-482; asy_base_classes.py:168-171), which is _HDR_SIZE + len(history) (:289), so 2 bytes fit at offset 0; the value is _since_counted()'s int, and struct never range-checks a value (Part F)"
   },
   "PrintLogHistoryStore._pack_reset::self._since_counted": {
    "can_raise": "nothing (:202-203)",
@@ -288,7 +288,7 @@
    "proof": "an int bound"
   },
   "PrintLogHistoryStore._read::self.fram.get_buffer": {
-   "can_raise": "MemoryError, and what FRAMChunk.get_buffer() raises (asy_fram_manager.py:476, its own rows)",
+   "can_raise": "MemoryError, and what FRAMChunk.get_buffer() raises (asy_fram_manager.py:486, its own rows)",
    "verdict": "handled",
    "proof": "the MemoryError is caught at :328 (None: unreadable); any other raise is that callee's own row"
   },
@@ -348,7 +348,7 @@
    "proof": "a three-argument call of a fixed-arity function (py/objfun.c:268-287)"
   },
   "PrintLogHistoryStore.reset::self._paused": {
-   "can_raise": "nothing: FRAMManager.get_pause() returns its flag (asy_fram_manager.py:722-723)",
+   "can_raise": "nothing: FRAMManager.get_pause() returns its flag (asy_fram_manager.py:733-734)",
    "verdict": "unreachable",
    "proof": "a call of the bound method stored once at :291; no allocation"
   },

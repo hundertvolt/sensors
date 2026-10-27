@@ -1,5 +1,5 @@
 {
- "conventions": "Read at 32a62f28 against v1.29.0 (agent, 2026-10-27). Not repeated per row: RuntimeError from a C-stack overflow (MP_STACK_CHECK) is I.4(d.1)'s design defect, recorded by report_if_fatal() in the handler that catches it, never a per-site raise; CancelledError delivered at an await is its task's cancellation and propagates by design (a BaseException subclass, extmod/asyncio/core.py:18, so none of this module's eight `except Exception` clauses, :457, :472, :503, :515, :543, :569, :681, :697, swallows it). Small fixed allocations: a *args tuple (py/bc.c:163), a star-call's argument array (py/runtime.c:790-812), an async def's or a generator expression's generator (py/objgenerator.c:53-66), a closure, a heap iterator, a dict view and its 2-tuple per item (py/objdict.c:469, :550-555), a memoryview or its slice (py/objarray.c:216-233, :456-470), a divmod() pair, a boxed float, or a timestamp past 2**30 (shared/timeutils/timeutils.h:86-92); each is fixed per call site, so such a call can raise MemoryError on an exhausted heap. F.2 sends these to I.4(a): a function doomed without memory does not catch, and asyncio primitives are never wrapped as a blanket policy. Where each lands, by context: at construction (inside build_system()) and in a setup() (run_setups() catches nothing, asy_system_service.py:734-740) the raise ends asyncio.run(main()), where the generated boot entry's except BaseException catches it (build/generated_src/sensortask_<device>_main.py:38, emitted by buildgen/codegen.py:867), records the loop end and leaves the armed watchdog to reset; in a supervised task (a reader's _read_loop() or _trigger_loop(), a service loop) the task ends and _log_dead_task()'s except Exception (asy_system_service.py:326) persists it as TASK_RAISED, after which the supervisor restarts the task (I.4(c)); in a timer starter, _run_timer_starter()'s except Exception (asy_system_service.py:432); in a REST handler (a config GET or PUT) Microdot's dispatch_request() catches it (ext/microdot.py:1533) and hands it to the errorhandler registered for Exception (asy_webserver_service.py:617, _handle_unhandled_exception() :791), which persists it and answers 500 (SPECIFICATION.md A.5). An import-time allocation precedes the boot entry's try and is the armed watchdog's alone (WDT armed at sensortask_<device>_main.py:6, I.4(d)). Parameter types are the mypy-checked ones of each signature; D.2 forbids defending against out-of-contract types at run time.",
+ "conventions": "Read at 32a62f28 against v1.29.0 (agent, 2026-10-27). Not repeated per row: RuntimeError from a C-stack overflow (MP_STACK_CHECK) is I.4(d.1)'s design defect, recorded by report_if_fatal() in the handler that catches it, never a per-site raise; CancelledError delivered at an await is its task's cancellation and propagates by design (a BaseException subclass, extmod/asyncio/core.py:18, so none of this module's eight `except Exception` clauses, :457, :472, :503, :515, :543, :569, :681, :697, swallows it). Small fixed allocations: a *args tuple (py/bc.c:163), a star-call's argument array (py/runtime.c:790-812), an async def's or a generator expression's generator (py/objgenerator.c:53-66), a closure, a heap iterator, a dict view and its 2-tuple per item (py/objdict.c:469, :550-555), a memoryview or its slice (py/objarray.c:216-233, :456-470), a divmod() pair, a boxed float, or a timestamp past 2**30 (shared/timeutils/timeutils.h:86-92); each is fixed per call site, so such a call can raise MemoryError on an exhausted heap. F.2 sends these to I.4(a): a function doomed without memory does not catch, and asyncio primitives are never wrapped as a blanket policy. Where each lands, by context: at construction (inside build_system()) and in a setup() (run_setups() catches nothing, asy_system_service.py:738-744) the raise ends asyncio.run(main()), where the generated boot entry's except BaseException catches it (build/generated_src/sensortask_<device>_main.py:38, emitted by buildgen/codegen.py:867), records the loop end and leaves the armed watchdog to reset; in a supervised task (a reader's _read_loop() or _trigger_loop(), a service loop) the task ends and _log_dead_task()'s except Exception (asy_system_service.py:326) persists it as TASK_RAISED, after which the supervisor restarts the task (I.4(c)); in a timer starter, _run_timer_starter()'s except Exception (asy_system_service.py:436); in a REST handler (a config GET or PUT) Microdot's dispatch_request() catches it (ext/microdot.py:1533) and hands it to the errorhandler registered for Exception (asy_webserver_service.py:617, _handle_unhandled_exception() :791), which persists it and answers 500 (SPECIFICATION.md A.5). An import-time allocation precedes the boot entry's try and is the armed watchdog's alone (WDT armed at sensortask_<device>_main.py:6, I.4(d)). Parameter types are the mypy-checked ones of each signature; D.2 forbids defending against out-of-contract types at run time.",
  "raises": {
   "_checked_write_results": {
    "verdict": "handled",
@@ -235,7 +235,7 @@
   "arm_tick_timer::pr.err": {
    "can_raise": "MemoryError from err()'s *args tuple (asy_print_log.py:115) and its at-level print (conventions)",
    "verdict": "handled",
-   "proof": "small fixed allocations: the callers arm from a timer starter (asy_ntp_client.py:516, asy_wifi_service.py:925, asy_system_service.py:631, under _run_timer_starter()'s except at :432) or from their own supervised loop (asy_ntp_client.py:361, asy_wifi_service.py:414, asy_system_service.py:518, under _log_dead_task()) (conventions)"
+   "proof": "small fixed allocations: the callers arm from a timer starter (asy_ntp_client.py:516, asy_wifi_service.py:925, asy_system_service.py:635, under _run_timer_starter()'s except at :436) or from their own supervised loop (asy_ntp_client.py:361, asy_wifi_service.py:414, asy_system_service.py:522, under _log_dead_task()) (conventions)"
   },
   "utc_now::time.mktime": {
    "can_raise": "TypeError for a tuple whose length is not 8 or 9 (extmod/modtime.c:83-90); MemoryError for the result, boxed past 2**30 (timeutils_obj_from_timestamp, shared/timeutils/timeutils.h:86-92; rp2 counts from 1970, ports/rp2/mpconfigport.h:147, so every current time exceeds the small-int range)",
@@ -355,7 +355,7 @@
   "SensorReader._timer_failed::self.pr.err": {
    "can_raise": "MemoryError from err()'s *args tuple and its at-level print (asy_print_log.py:115)",
    "verdict": "handled",
-   "proof": "called from a starter's except, under _run_timer_starter()'s except (asy_system_service.py:432) or _rearm_timer()'s task (conventions)"
+   "proof": "called from a starter's except, under _run_timer_starter()'s except (asy_system_service.py:436) or _rearm_timer()'s task (conventions)"
   },
   "SensorReader._timer_failed::waiter.set": {
    "can_raise": "nothing: ThreadSafeFlag.set() replaces its `state` slot (extmod/asyncio/event.py:54-55)",
@@ -405,7 +405,7 @@
   "SensorReader.setup::self.pr.setup": {
    "can_raise": "what setup() raises (asy_print_log.py:271, :398): its rows",
    "verdict": "handled",
-   "proof": "setup() runs in the one-time boot batch (run_setups(), asy_system_service.py:734-740): the boot entry's except BaseException (conventions)"
+   "proof": "setup() runs in the one-time boot batch (run_setups(), asy_system_service.py:738-744): the boot entry's except BaseException (conventions)"
   },
   "SensorReader._get_dict_cfg::schema_names": {
    "can_raise": "MemoryError for the list of field names (asy_config_manager.py:276-277); IndexError or TypeError for a field that is not a sequence",
@@ -600,7 +600,7 @@
   "SensorReaderConfig.setup::super": {
    "can_raise": "what SensorReader.setup() raises: its row (:777); `super().setup()` loads through LOAD_SUPER_METHOD (py/objtype.c:1425-1428)",
    "verdict": "handled",
-   "proof": "the one-time boot batch (run_setups(), asy_system_service.py:734-740): the boot entry's except BaseException (conventions)"
+   "proof": "the one-time boot batch (run_setups(), asy_system_service.py:738-744): the boot entry's except BaseException (conventions)"
   },
   "SensorReaderConfig.setup::self.cfgmgr.setup": {
    "can_raise": "what ConfigManager.setup() raises (asy_config_manager.py:514): its rows",

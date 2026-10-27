@@ -1,5 +1,5 @@
 {
- "conventions": "Read at 651d3e79 against v1.29.0 (agent, 2026-10-27). Not repeated per row: RuntimeError from a C-stack overflow (MP_STACK_CHECK) is I.4(d.1)'s design defect, recorded by report_if_fatal() in the handler that catches it, never a per-site raise. A call never raises for its frame (py/objfun.c:268-287 falls back to the C stack); `super().m()` compiles to LOAD_SUPER_METHOD (py/emitbc.c:536) with the super object on the C stack (py/objtype.c:1425-1426), so no super() call or allocation is left of it; an exception object falls back to the emergency object and an empty or emergency tuple (py/objexcept.c:209-240), so constructing one never raises. Small fixed allocations: an async def call's generator (py/objgenerator.c:53-66), a *args call's tuple, asyncio's Task and Lock/Event generators; F.2 sends these to I.4(a): a function doomed without memory does not catch. On a run-time path the calling task ends and _log_dead_task()'s except Exception (asy_system_service.py:326) persists it, after which the supervisor restarts the task (I.4(c)); at construction (FRAMManager and FRAM_SPI are built inside build_system()) and in FRAMManager.setup() (run_setups() catches nothing, asy_system_service.py:734-740) the raise ends asyncio.run(main()), where the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867) records the loop end and leaves the armed watchdog to reset. asyncio.CancelledError is a BaseException (extmod/asyncio/core.py:18): no `except Exception` here swallows a cancel, and every await may deliver one, which propagates to the canceller by design. Calls into asy_base_classes, asy_print_log and math_helpers that the walk marks transitive take those modules' own rows and are not repeated here. The chunk layer runs in the calling task: a logger's persistence (asy_print_log.py:321, :354, in whichever task logs), the SGP40 backup (asy_sgp40_driver.py:512, :558) and the shutdown sequence's erase and quiesce (asy_system_service.py:460, :479), inside the shutdown sequence's try (asy_system_service.py:441, except Exception :494). get_chunk()/get_timestamped_chunk() run at construction only: their callers catch MemoryError (asy_print_log.py:292-294, asy_sgp40_driver.py:242-246) and the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867) holds the rest.",
+ "conventions": "Read at 651d3e79 against v1.29.0 (agent, 2026-10-27). Not repeated per row: RuntimeError from a C-stack overflow (MP_STACK_CHECK) is I.4(d.1)'s design defect, recorded by report_if_fatal() in the handler that catches it, never a per-site raise. A call never raises for its frame (py/objfun.c:268-287 falls back to the C stack); `super().m()` compiles to LOAD_SUPER_METHOD (py/emitbc.c:536) with the super object on the C stack (py/objtype.c:1425-1426), so no super() call or allocation is left of it; an exception object falls back to the emergency object and an empty or emergency tuple (py/objexcept.c:209-240), so constructing one never raises. Small fixed allocations: an async def call's generator (py/objgenerator.c:53-66), a *args call's tuple, asyncio's Task and Lock/Event generators; F.2 sends these to I.4(a): a function doomed without memory does not catch. On a run-time path the calling task ends and _log_dead_task()'s except Exception (asy_system_service.py:326) persists it, after which the supervisor restarts the task (I.4(c)); at construction (FRAMManager and FRAM_SPI are built inside build_system()) and in FRAMManager.setup() (run_setups() catches nothing, asy_system_service.py:738-744) the raise ends asyncio.run(main()), where the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867) records the loop end and leaves the armed watchdog to reset. asyncio.CancelledError is a BaseException (extmod/asyncio/core.py:18): no `except Exception` here swallows a cancel, and every await may deliver one, which propagates to the canceller by design. Calls into asy_base_classes, asy_print_log and math_helpers that the walk marks transitive take those modules' own rows and are not repeated here. The chunk layer runs in the calling task: a logger's persistence (asy_print_log.py:321, :354, in whichever task logs), the SGP40 backup (asy_sgp40_driver.py:512, :558) and the shutdown sequence's erase and quiesce (asy_system_service.py:464, :483), inside the shutdown sequence's try (asy_system_service.py:445, except Exception :498). get_chunk()/get_timestamped_chunk() run at construction only: their callers catch MemoryError (asy_print_log.py:292-294, asy_sgp40_driver.py:242-246) and the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867) holds the rest.",
  "raises": {},
  "calls": {
   "<module>::const": {
@@ -215,7 +215,7 @@
   "_FRAMBaseChunk.invalidate::self._handle_status_bytes": {
    "can_raise": "what _handle_status_bytes() raises with check_idle=False: two status-byte writes (set_values_sync() cannot raise) and report_set_values()'s small allocations",
    "verdict": "handled",
-   "proof": "called only by erase_chip() :788, inside the shutdown sequence's try (asy_system_service.py:441, except Exception :494)"
+   "proof": "called only by erase_chip() :788, inside the shutdown sequence's try (asy_system_service.py:445, except Exception :498)"
   },
   "_FRAMBaseChunk._copy_out::bytearray": {
    "can_raise": "MemoryError (py/gc.c via m_malloc_fail) for a copy of the chunk's data size",
@@ -400,7 +400,7 @@
   "FRAMManager._watch_chip_loop::self.fram.lost.wait": {
    "can_raise": "CancelledError when the task is cancelled while it waits; MemoryError for its generator (extmod/asyncio/event.py:28-35)",
    "verdict": "handled",
-   "proof": "the shutdown cancels it and awaits it in an except (asyncio.CancelledError, Exception) (asy_system_service.py:463-469); its generator is small and fixed, which ends the task and reaches _log_dead_task()'s except Exception (asy_system_service.py:326)"
+   "proof": "the shutdown cancels it and awaits it in an except (asyncio.CancelledError, Exception) (asy_system_service.py:467-473); its generator is small and fixed, which ends the task and reaches _log_dead_task()'s except Exception (asy_system_service.py:326)"
   },
   "FRAMManager.start_asy_watch_chip::asyncio.get_event_loop": {
    "can_raise": "nothing: it returns the Loop class (extmod/asyncio/core.py:304-305)",
@@ -410,12 +410,12 @@
   "FRAMManager.start_asy_watch_chip::evtloop.create_task": {
    "can_raise": "TypeError('coroutine expected') for an object without send; MemoryError for the Task (extmod/asyncio/core.py:143-146)",
    "verdict": "handled",
-   "proof": "the argument is a coroutine, so the TypeError cannot occur; the Task's allocation reaches _start_task()'s except Exception (asy_system_service.py:502), which persists TASK_STARTER_RAISED"
+   "proof": "the argument is a coroutine, so the TypeError cannot occur; the Task's allocation reaches _start_task()'s except Exception (asy_system_service.py:506), which persists TASK_STARTER_RAISED"
   },
   "FRAMManager.start_asy_watch_chip::self._watch_chip_loop": {
    "can_raise": "MemoryError for its generator (py/objgenerator.c:53-66)",
    "verdict": "handled",
-   "proof": "_start_task()'s except Exception (asy_system_service.py:502)"
+   "proof": "_start_task()'s except Exception (asy_system_service.py:506)"
   },
   "FRAMManager.get_chunk::CRCPass": {
    "can_raise": "MemoryError for the instance (asy_crc_checks.py:169-171)",
@@ -475,17 +475,17 @@
   "FRAMManager.erase_chip::self.erase_ready": {
    "can_raise": "what erase_ready() raises (its rows)",
    "verdict": "handled",
-   "proof": "inside the shutdown sequence's try (asy_system_service.py:441, except Exception :494)"
+   "proof": "inside the shutdown sequence's try (asy_system_service.py:445, except Exception :498)"
   },
   "FRAMManager.erase_chip::chunk.invalidate": {
    "can_raise": "what invalidate() raises (its rows)",
    "verdict": "handled",
-   "proof": "inside the shutdown sequence's try (asy_system_service.py:441, except Exception :494)"
+   "proof": "inside the shutdown sequence's try (asy_system_service.py:445, except Exception :498)"
   },
   "FRAMManager.erase_chip::step_done": {
-   "can_raise": "what the caller's callback raises: the shutdown's _own_feed (asy_system_service.py:479)",
+   "can_raise": "what the caller's callback raises: the shutdown's _own_feed (asy_system_service.py:483)",
    "verdict": "handled",
-   "proof": "inside the shutdown sequence's try (asy_system_service.py:441, except Exception :494)"
+   "proof": "inside the shutdown sequence's try (asy_system_service.py:445, except Exception :498)"
   },
   "FRAMManager.erase_chip::bytearray": {
    "can_raise": "MemoryError (py/gc.c via m_malloc_fail)",
@@ -495,7 +495,7 @@
   "FRAMManager.erase_chip::self.fram.get_size": {
    "can_raise": "MemoryError for its coroutine; it returns an attribute (asy_fram_driver.py:320-321)",
    "verdict": "handled",
-   "proof": "inside the shutdown sequence's try (asy_system_service.py:441, except Exception :494)"
+   "proof": "inside the shutdown sequence's try (asy_system_service.py:445, except Exception :498)"
   },
   "FRAMManager.erase_chip::range": {
    "can_raise": "TypeError for a non-int; MemoryError for a range object",
@@ -510,7 +510,7 @@
   "FRAMManager.erase_chip::self.fram.report_set_values": {
    "can_raise": "its err_s/wrn_s calls, _report_chip_lost() and its coroutine (the driver's rows)",
    "verdict": "handled",
-   "proof": "inside the shutdown sequence's try (asy_system_service.py:441, except Exception :494)"
+   "proof": "inside the shutdown sequence's try (asy_system_service.py:445, except Exception :498)"
   },
   "FRAMManager.erase_chip::asyncio.sleep": {
    "can_raise": "nothing: sleep(0) is sleep_ms(0), which re-arms and returns the module's one SingletonGenerator (extmod/asyncio/core.py:55-63) with small-int arithmetic, so it allocates nothing; its assert holds because every sleep here is awaited at once",
@@ -530,22 +530,22 @@
   "FRAMManager.erase_ready::self.fram.get_write_protected": {
    "can_raise": "its err_s call and its coroutine (the driver's rows)",
    "verdict": "handled",
-   "proof": "called only by erase_chip() :783, inside the shutdown sequence's try (asy_system_service.py:441, except Exception :494)"
+   "proof": "called only by erase_chip() :783, inside the shutdown sequence's try (asy_system_service.py:445, except Exception :498)"
   },
   "FRAMManager.quiesce::self.set_pause": {
    "can_raise": "what set_pause() raises: its evt call (asy_print_log.py's rows)",
    "verdict": "handled",
-   "proof": "called only by the shutdown (asy_system_service.py:460), inside the shutdown sequence's try (asy_system_service.py:441, except Exception :494)"
+   "proof": "called only by the shutdown (asy_system_service.py:464), inside the shutdown sequence's try (asy_system_service.py:445, except Exception :498)"
   },
   "FRAMManager.quiesce::chunk.wait_idle": {
    "can_raise": "CancelledError while waiting for the chunk's lock; MemoryError for the generators (extmod/asyncio/lock.py); its release cannot raise, the lock being held",
    "verdict": "handled",
-   "proof": "inside the shutdown sequence's try (asy_system_service.py:441, except Exception :494)"
+   "proof": "inside the shutdown sequence's try (asy_system_service.py:445, except Exception :498)"
   },
   "FRAMManager.quiesce::step_done": {
-   "can_raise": "what the caller's callback raises: the shutdown's _own_feed (asy_system_service.py:460)",
+   "can_raise": "what the caller's callback raises: the shutdown's _own_feed (asy_system_service.py:464)",
    "verdict": "handled",
-   "proof": "inside the shutdown sequence's try (asy_system_service.py:441, except Exception :494)"
+   "proof": "inside the shutdown sequence's try (asy_system_service.py:445, except Exception :498)"
   }
  }
 }
