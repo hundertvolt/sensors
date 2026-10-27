@@ -61,6 +61,8 @@ RECORDS = RF.scan(tree)  # type: ignore[attr-defined]
 _VERDICTS = json.loads((tree / "audit/sweeps/review_verdicts.json").read_text(encoding="utf-8"))
 VERDICT = {str(r["key"]): RR.row_verdict(r, _VERDICTS)[0] for r in RECORDS}  # type: ignore[attr-defined]
 TERMINAL = set(RR.TERMINAL)  # type: ignore[attr-defined]
+DATA = json.loads((tree / "audit/b3/levels_data.json").read_text(encoding="utf-8"))
+USED: set[str] = set()  # data keys a row consumed; one left over is stale, and the walk fails
 BY_FILE: dict[str, list[dict[str, object]]] = defaultdict(list)
 for _r in RECORDS:
     BY_FILE[str(_r["file"])].append(_r)
@@ -462,13 +464,20 @@ for path in sorted(tree.glob("src/*.py")):
                 found.append(f"{lv} {c2.text()}")
         biting = any(" biting in " in f for f in found)
         istates["biting" if biting else "gap"] += 1
-        irows.append(f"| function | {path.name} | {'E' if kind == 'ERR' else 'W'} {name} ({num}) | src/{path.name}:{n} | {'; '.join(found) or '-'} | {'' if biting else 'gap: no biting test function names the code and drives the module'} |")
+        note_key = f"{path.name} {'E' if kind == 'ERR' else 'W'} {name}"
+        note = DATA["intent_notes"].get(note_key, "")
+        USED.add(f"intent_notes/{note_key}") if note else None
+        irows.append(f"| function | {path.name} | {'E' if kind == 'ERR' else 'W'} {name} ({num}) | src/{path.name}:{n} | {'; '.join(found) or '-'} | {note if biting else 'gap: no biting test function names the code and drives the module' + ('; ' + note if note else '')} |")
 intent = tree / "audit/b3/intent.md"
 intent.write_text(keep_header(intent) + f"\n## Items\n\nBuilt by `audit/b3/levels_walk.py` at `{src_head}` (agent, 2026-10-27): per module its direct and real-chain rows, then each catalog code\nit defines with the test functions naming it in a file that drives the module, joined with review.md's verdict; rows by state: {dict(istates)}. Schema bounds, `None` and NaN/±inf rows, and the functional and system integration layers, are open.\n\n| layer | module | intent item | source | biting tests (level) | gap → action |\n|---|---|---|---|---|---|\n" + "\n".join(irows) + "\n", encoding="utf-8")
 if "--dump" in sys.argv:
     Path(sys.argv[sys.argv.index("--dump") + 1]).write_text(json.dumps({"rows": DUMP, "unreached": sorted(str(r["key"]) for r in RECORDS if str(r["key"]) not in REACHED)}, indent=1), encoding="utf-8")
 per_tier = Counter(str(r["level"]) for r in RECORDS if str(r["key"]) not in REACHED)
 print(len(rows), "files,", gaps, "gaps, rows", dict(states), ";", len(irows), "intent rows", dict(istates), "; unreached test functions", sum(per_tier.values()), dict(per_tier))
+STALE = [f"intent_notes/{k}" for k in DATA["intent_notes"] if f"intent_notes/{k}" not in USED]
+if STALE:
+    print("STALE DATA (levels_data.json names a row the walk did not render):\n" + "\n".join(STALE))
+    sys.exit(1)
 if SUPERSET_FAILS:
     print("SUPERSET FAILS:\n" + "\n".join(SUPERSET_FAILS))
     sys.exit(1)

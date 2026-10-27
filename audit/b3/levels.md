@@ -7,7 +7,7 @@ Requirement: every file of `src/`, the generated device modules, `buildgen/`, `t
 
 ## Matrix
 
-Built by `audit/b3/levels_walk.py` at `49f629e4` (agent, 2026-10-27): 138 files, 0 named by no test at any level; rows by state: {'biting': 136, 'open': 2}.
+Built by `audit/b3/levels_walk.py` at `c618a62f` (agent, 2026-10-27): 138 files, 0 named by no test at any level; rows by state: {'biting': 136, 'open': 2}.
 A cell names the test functions driving the file at that level (its own code, or a helper of its file that does), counted against review.md's verdict: "k/n biting" names the biting ones first; "open" means no function there is verdicted biting, fixed or justified; "- (mentioned only in …)" is a mention no test function drives (a comment, a helper's import, a name another file shares). No-change proof, checked on every run (the walk fails otherwise): each cell's files lie inside the old file-level reference cell. The multi-chunk SET ladder (A.U35.22 (1)) is open.
 
 | file | L0 | L1 | L2 | L3 | L4 | gap → action |
