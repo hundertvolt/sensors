@@ -107,7 +107,8 @@ the UDP shim or the NTP responder (see "Running the twin's own tests" below).
   `tests/test_digital_twin_hot_replug.py`, whose FRAM log writes yield once per CRC byte (measured;
   agent, 2026-10-27). Only a zero-timeout round in which every registered stream is a clear
   `ThreadSafeFlag` is skipped, the one round whose poll can report nothing; every other round takes
-  the real poll. Called at module level after the prewarm and the UDP shim by the hot-replug file
+  the real poll; `tests/test_digital_twin_unix_port_idle_poll.py` pins which rounds those are.
+  Called at module level after the prewarm and the UDP shim by the hot-replug file
   alone: the NTP and bus-hazard files measured no gain, their time being real timed waits. It goes
   when a pin re-check finds that branch bounding its wait by the timeout.
 - `unix_port_poll_prewarm.py` — a workaround for the Unix port's `extmod/modselect.c` poll-set
