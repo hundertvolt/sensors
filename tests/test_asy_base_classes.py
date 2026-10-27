@@ -1637,12 +1637,16 @@ def test_two_wakes_finding_one_failed_arm_persist_it_once_however_they_interleav
     assert (_timer_count(reader), len(parked)) == (1, 1), f"a failed arm two wakes found was persisted {len(parked)} times"
 
 
+# @tunable l1.asy_base_classes_trigger_loop_bound_s = 1
+_TRIGGER_LOOP_BOUND_S = 1  # a hang bound on a trigger loop that ends by itself on its failed re-arm
+
+
 def test_a_failed_re_arm_persists_the_stored_failure_then_its_own_and_ends_the_loop() -> None:
     for exc in (OSError, MemoryError):
         reader = _DividingReader(1)
         with RaiseOnArm(exc), record_prints():
             reader.start_timer()
-            run(reader._trigger_loop(), 1)  # ends by itself: no cancel needed
+            run(reader._trigger_loop(), _TRIGGER_LOOP_BOUND_S)  # ends by itself: no cancel needed
         assert _timer_count(reader) == 2, exc  # one entry per failed arm, the boot's and the re-arm's
         assert isinstance(reader._timer_error, exc)
         assert reader._read_event.state == 0  # no read was triggered by the fault's wake

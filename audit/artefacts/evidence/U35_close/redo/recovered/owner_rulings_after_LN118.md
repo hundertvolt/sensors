@@ -116,3 +116,10 @@ overwhelmed with AI findings. So we should report it later and bundled, if at al
 of just leaving it as is?"
 (owner, 2026-10-27, ~12:41 UTC) On the lead's answer (leave it as is; a Part F paragraph with the bounds; a
 BACKLOG.md entry of upstream findings to report later as one bundle, if at all): "Yes, let's do it like that"
+- Intermediate pushes (2026-10-27): "Whenever there is a close good opportunity, commit and push intermediate results.
+  I don't want to lose anything again." (owner, 2026-10-27). Applied as "U35 (preliminary N)" snapshots on the audit
+  branch (the 2026-10-22 precedent): the integration head's tree plus the redo's records in the evidence folder, each
+  on the last pushed commit, never while CI runs; the close commit then goes on the last snapshot.
+
+## 2026-10-27, about 16:48 (CI)
+"Don't care about proven external issues so far."

@@ -51,7 +51,7 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
+    from collections.abc import Awaitable, Callable, Coroutine
     from types import ModuleType
     from typing import TypeVar
 
@@ -129,7 +129,7 @@ class _RetryOnDrivenClock:
     def __getattr__(self, name: str) -> object:
         return getattr(asyncio, name)
 
-    def sleep(self, seconds: float) -> "Coroutine[object, object, None]":
+    def sleep(self, seconds: float) -> "Awaitable[None]":
         return self._clock._sleep_ms(int(seconds * 1000)) if seconds == _STA_RETRY_S else asyncio.sleep(seconds)  # as core.sleep() hands it on
 
 

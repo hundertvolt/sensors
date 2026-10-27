@@ -138,9 +138,10 @@ _PASS_YIELD_BOUND = 20000  # loop yields allowed for one wait below; a pass cost
 # The collected heap across the deaths, in-loop with every real task live: measured within 64 B at both GC stages,
 # while keeping each dead task and its exception measured 2.4 KB over the nine after the baseline (2026-10-14).
 _HEAP_DRIFT_BYTES = 2048
-# Per death, the median of every pairwise slope over the settled readings (Theil-Sen), so one transient sets nothing: 49
-# healthy runs read at most 10.7 B, a planted 16-byte bytearray per death at least 53 B (agent, 2026-10-21).
-_DRIFT_SLOPE_BYTES = 32  # limits: two transients at the last two deaths read 38 B; three mid-window ones bring a plant to 32 B
+# Per death, the median of every pairwise slope over the settled readings (Theil-Sen), each death on the driven clock
+# reading the same heap: 36 healthy runs, six devices at both stages, read 0 B, a planted 32 or 64 B per death exactly
+# that (agent, 2026-10-27).
+_DRIFT_SLOPE_BYTES = 32  # one GC block a death on the twin, the least a leak can retain
 _SETTLED_DEATH = 3  # the readings before it still settle: the second and third hold up to 0.8 KB the fourth does not
 # @tunable l2.sensortask_integration_heap_floor_reads = 3
 _FLOOR_READS = 3
@@ -383,7 +384,8 @@ async def _heap_floor(watchdog: "machine.WDT") -> int:
 
 async def _hotspot_boot(clock: DrivenTime) -> "tuple[WifiService, NeopixelDriver, list[asyncio.Task[None]]]":
     # SSID written, every connect scripted to fail: the boot streak fails for real until the hotspot opens, on the driven
-    # clock. Returns the WiFi service, its LED's pixel driver and the tasks started (the overlay, the connect loop).
+    # clock, its to-hotspot W slot in WIFI's RAM ring and FRAM chunk. Returns the WiFi service, its LED's pixel driver
+    # and the tasks started (the overlay, the connect loop).
     await _driven(clock, "the boot", _boot())
     conn, pixel = module.conn, module.neopixel
     persisted, _results = await conn.cfgmgr.write_config({"SSID": "TestNet"})
@@ -398,6 +400,10 @@ async def _hotspot_boot(clock: DrivenTime) -> "tuple[WifiService, NeopixelDriver
         assert started, "real hotspot activation never started the real DNSServer task"
         bound = await _wait_until(lambda: conn._dns_server._udps.connected, timeout_s=_WAIT_TIMEOUT_S, interval_s=_BIND_POLL_S, clock=clock)
         assert bound, "the real DNSServer never bound its port 53 socket"
+        entry = (await conn.get_error_counter())["WIFI"]
+        slots = [entry["ErrNum"][i] for i in range(len(entry["ErrNum"])) if entry["ErrType"][i] == "W"]
+        assert slots.count(code("W", "WLAN_TO_HOTSPOT")) == 1, f"the streak persisted no single to-hotspot slot: {entry}"
+        await _ring_in_fram(clock, conn)
     finally:
         asy_wifi_service.asyncio = held  # type: ignore[attr-defined]
         network._CONNECT_DELAY_S = join_s
@@ -463,6 +469,14 @@ async def _restore(sgp: "SGP40_Reader", what: str) -> None:
     finally:
         _step_sensor_waits(on=False)
         await cancel(task)
+
+
+async def _ring_in_fram(clock: DrivenTime, conn: "WifiService") -> None:
+    # WIFI's ring as its FRAM chunk holds it, read back through the store's own chunk read as the next boot's setup()
+    # restores it: a write that never landed leaves the chip's older image, a RAM-only logger holds no chunk at all.
+    ring = tuple(conn.pr.history)
+    stored = await _driven(clock, "the WIFI chunk's read", conn.pr._read())
+    assert isinstance(stored, tuple) and stored[1] == ring, f"WIFI's FRAM copy {stored} is not its RAM ring {ring}"
 
 
 async def _seed_compensation() -> None:
@@ -702,12 +716,12 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
     drift = [0] * _STATUS_DEATHS  # sized up front: a growing list would read as heap drift
     resets = machine.reset_count
 
-    async def scenario() -> None:
-        watchdog = await _boot(_ports.next())
+    async def scenario(clock: DrivenTime) -> None:
+        watchdog = await _driven(clock, "the boot", _boot(_ports.next()))
         sysfunct: SystemService = module.sysfunct
         assert sysfunct.pr.set_level(0)
-        # A linked station, its link awaited below: with no SSID the hotspot fallback switches the radio and binds the
-        # captive DNS 8-14 s in, a one-time step a slow runner's deaths straddle (agent, 2026-10-14).
+        # A linked station, its link awaited below: with no SSID the hotspot fallback would switch the radio and bind the
+        # captive DNS instead (agent, 2026-10-14).
         persisted, _results = await module.conn.cfgmgr.write_config({"SSID": "TestNet"})
         assert persisted
         task_starters = module._collect_task_starters()
@@ -727,9 +741,11 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
         supervisor: asyncio.Task[None] | None = None
         try:
             await sysfunct.start_tasks(task_starters, task_names=module._collect_task_names())
-            supervisor = asyncio.get_event_loop().create_task(sysfunct.supervise_tasks())
             assert await _yield_until(lambda: all(starts)), starts
-            assert await _wait_until(lambda: module.conn._conn_phase == _STA_ESTABLISHED, timeout_s=_WAIT_TIMEOUT_S), "the station never linked"
+            # Linked on the clock before the supervisor runs, whose passes are a yield each: under them it never settles.
+            # The deaths then pass no virtual time, so every other task stays parked and each death reads the same heap.
+            assert await _wait_until(lambda: module.conn._conn_phase == _STA_ESTABLISHED, timeout_s=_WAIT_TIMEOUT_S, clock=clock), "the station never linked"
+            supervisor = asyncio.get_event_loop().create_task(sysfunct.supervise_tasks())
             assert asyncio.get_event_loop().get_exception_handler() is unix_port_unretrieved_report.report_unretrieved
             sysfunct._uptime = _StatusFault(real_uptime, lambda: latest[status_idx])  # type: ignore[assignment]
             _fill_wire_logs()
@@ -764,7 +780,7 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
             if module.conn._dns_server_task is not None:
                 await cancel(module.conn._dns_server_task)
 
-    run(scenario())
+    run(_on_driven_clock(scenario))
     assert (tap.reported, tap.traced, tap.wrong) == (_STATUS_DEATHS, _STATUS_DEATHS, []), (tap.reported, tap.traced, tap.wrong)
     assert machine.reset_count == resets  # the restart budget never escalated to a reset
     # The first reading still holds 0.9 KB the second no longer does (measured at both GC stages, 2026-10-14): the
@@ -779,7 +795,7 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
 def test_a_dhcp_server_that_never_answers_leaves_a_persisted_trace() -> None:
     # Every join reaches the access point and never gets an address: each attempt ends with no verdict, persisted as one
     # W slot (the newest-entry rule, SPECIFICATION.md C.7.1), and the streak's end opens the hotspot with its own W. The
-    # slots are read from RAM, but each one is written to WIFI's FRAM chunk: one run per distinct FRAM wiring (measured).
+    # slots are read from RAM and back from WIFI's FRAM chunk: one run per distinct FRAM wiring (measured).
     _driver_specific("fram")
 
     async def scenario(clock: DrivenTime) -> None:
@@ -813,6 +829,7 @@ def test_a_dhcp_server_that_never_answers_leaves_a_persisted_trace() -> None:
         slots = [entry["ErrNum"][i] for i in range(len(entry["ErrNum"])) if entry["ErrType"][i] == "W"]
         counts = (slots.count(code("W", "WLAN_NO_VERDICT")), slots.count(code("W", "WLAN_TO_HOTSPOT")))
         assert counts == (1, 1), f"the streak persisted {counts} no-verdict and to-hotspot slots, not one each: {entry}"
+        await _ring_in_fram(clock, conn)
 
     run(_on_driven_clock(scenario))
 
@@ -912,7 +929,7 @@ def test_a_failing_wlan_status_keeps_the_link_and_warns_once_per_unreadable_tick
 def test_two_failed_joins_re_select_the_radio_once_and_the_link_comes_back() -> None:
     # A linked station loses its link and each next join raises EIO, a failed hardware call, up to the rung's threshold:
     # the radio is re-selected once (one deinit, one new STA interface, one W), then the link comes back. Its W and E
-    # slots are written to WIFI's FRAM chunk: one run per distinct FRAM wiring (measured).
+    # slots are read from RAM and back from WIFI's FRAM chunk: one run per distinct FRAM wiring (measured).
     _driver_specific("fram")
 
     async def scenario(clock: DrivenTime) -> None:
@@ -945,6 +962,7 @@ def test_two_failed_joins_re_select_the_radio_once_and_the_link_comes_back() -> 
             entry = (await conn.get_error_counter())["WIFI"]
             recovered = [i for i in range(len(entry["ErrNum"])) if entry["ErrType"][i] == "W" and entry["ErrNum"][i] == code("W", "DEVICE_RECOVERY")]
             assert len(recovered) == 1, f"the re-selection persisted {len(recovered)} W DEVICE_RECOVERY slots, not one: {entry}"
+            await _ring_in_fram(clock, conn)
         finally:
             for task in tasks:
                 await cancel(task)

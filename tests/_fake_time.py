@@ -17,7 +17,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
+    from collections.abc import Awaitable, Callable, Coroutine, Generator
     from typing import TypeVar
 
     from _mpy_shed.time_mp import _TicksMs, _TicksUs
@@ -36,10 +36,10 @@ class _DrivenAsyncio:
     def __getattr__(self, name: str) -> object:
         return getattr(asyncio, name)
 
-    def sleep(self, seconds: float) -> "Coroutine[object, object, None]":
+    def sleep(self, seconds: float) -> "Awaitable[None]":
         return self._clock._sleep_ms(int(seconds * 1000))  # as core.sleep(): sleep_ms(int(t * 1000))
 
-    def sleep_ms(self, ms: int) -> "Coroutine[object, object, None]":
+    def sleep_ms(self, ms: int) -> "Awaitable[None]":
         return self._clock._sleep_ms(ms)
 
     def wait_for(self, aw: "Coroutine[object, object, T] | asyncio.Task[T]", timeout: "float | None") -> "Coroutine[object, object, T]":
@@ -49,13 +49,53 @@ class _DrivenAsyncio:
         return self._clock._wait_ms(aw, timeout_ms)
 
 
+_STOP = StopIteration()  # every driven sleep's end: one object, its traceback cleared each time, as core.py's SingletonGenerator
+
+
 class _Wake:
-    # One parked driven sleep: its virtual wake time and the event the clock sets then; `resumed` once its task ran on.
-    def __init__(self, at: int) -> None:
+    # One driven sleep and what its task awaits: the virtual wake time, the parked task, `listed` while the clock lists it,
+    # `resumed` once its task ran on. The generator protocol by hand, as core.py's SingletonGenerator: no frame per sleep.
+    def __init__(self, clock: "DrivenTime", at: int) -> None:
+        self.clock = clock
         self.at = at
-        self.event = asyncio.Event()
+        self.task: object = None
+        self.fired = False
         self.listed = True
         self.resumed = False
+
+    def __iter__(self) -> "Generator[None, None, None]":
+        return self  # type: ignore[return-value]  # await is yield from (py/compile.c), which takes __iter__'s object
+
+    __await__ = __iter__
+
+    def __next__(self) -> None:
+        # The first step parks the task until fire() (event.py's wait()); the step fire() schedules ends the sleep.
+        if self.task is None and not self.fired:
+            self.task = _core.cur_task
+            _core.cur_task.data = self  # Task.cancel() calls remove() on it, as on an Event's TaskQueue (modasyncio.c)
+            return
+        self.task = None
+        self.clock._unpark(self)
+        _STOP.__traceback__ = None
+        raise _STOP
+
+    def close(self) -> None:
+        self.remove(None)
+
+    def fire(self) -> None:
+        # The clock reached the wake: its task runs on at the loop's next round (event.py's set()).
+        self.fired = True
+        if self.task is not None:
+            _core._task_queue.push(self.task)
+
+    def remove(self, _task: object) -> None:
+        # The task leaves without its wake (a cancel, a close or a thrown exception): the clock lists the wake no more.
+        self.task = None
+        self.clock._delist(self)
+
+    def throw(self, exc: BaseException, *_args: object) -> None:
+        self.remove(None)
+        raise exc
 
 
 class DrivenTime(Ticks30Time):
@@ -99,6 +139,11 @@ class DrivenTime(Ticks30Time):
             raise AssertionError("the wall clock was read: time." + name)
         return getattr(time, name)
 
+    def _delist(self, wake: _Wake) -> None:
+        if wake.listed:
+            self._sleepers.remove(wake)
+            wake.listed = False
+
     def _driving(self) -> None:
         if self._real is not None:
             raise AssertionError(f"the driven clock was used after release() at virtual t={self.now} ms")
@@ -108,7 +153,7 @@ class DrivenTime(Ticks30Time):
         self._driving()
         if len(self._sleepers) >= self.SLEEPERS:
             raise AssertionError(f"more than {self.SLEEPERS} driven sleepers parked at virtual t={self.now} ms")
-        wake = _Wake(self.now + ms)
+        wake = _Wake(self, self.now + ms)
         index = len(self._sleepers)
         while index and self._sleepers[index - 1].at > wake.at:
             index -= 1
@@ -119,7 +164,7 @@ class DrivenTime(Ticks30Time):
         while self._sleepers and self._sleepers[0].at <= self.now:
             wake = self._sleepers.pop(0)
             wake.listed = False
-            wake.event.set()
+            wake.fire()
 
     async def _settle(self) -> None:
         # Yields until no task is due on the run queue: one parked on a real timed sleep (run()'s own bound) is not
@@ -132,25 +177,18 @@ class DrivenTime(Ticks30Time):
                 return
         raise AssertionError(f"a task is still runnable after {self.ROUNDS} rounds at virtual t={self.now} ms: a busy loop")
 
-    async def _sleep_ms(self, ms: int) -> None:
-        # The delay refused as core.sleep_ms()'s ticks_add() refuses it on rp2: a float, or 2**29 ms and more. A zero or
-        # negative sleep stays the real one-yield sleep, so the task never leaves the run queue.
+    def _sleep_ms(self, ms: int) -> "Awaitable[None]":
+        # The delay refused as core.sleep_ms()'s ticks_add() refuses it on rp2, at the call as there: a float, or 2**29 ms
+        # and more. A zero or negative sleep stays the real one-yield sleep, so the task never leaves the run queue.
         check_sleep_ms(ms)
         self.ticks_add(self.ticks_ms(), max(0, ms))
         if ms <= 0:
-            await _core.sleep_ms(0)
-            return
-        wake = self._park(ms)
-        try:
-            await wake.event.wait()
-        finally:
-            self._unpark(wake)
+            return _core.sleep_ms(0)  # type: ignore[no-any-return]  # core has no stub
+        return self._park(ms)
 
     def _unpark(self, wake: _Wake) -> None:
         wake.resumed = True
-        if wake.listed:
-            self._sleepers.remove(wake)
-            wake.listed = False
+        self._delist(wake)
 
     async def _wait_ms(self, aw: "Coroutine[object, object, T] | asyncio.Task[T]", timeout_ms: "int | None") -> "T":
         # extmod/asyncio/funcs.py:7-51 (v1.29.0) with its sleep parked on this clock: the runner cancels the waiter only
@@ -168,7 +206,7 @@ class DrivenTime(Ticks30Time):
         wake = self._park(timeout_ms)
         runner = asyncio.create_task(_run(waiter, task, wake))
         try:
-            await wake.event.wait()
+            await wake
         except asyncio.CancelledError as er:
             status = er.args[0] if er.args else None
             if status is None:
@@ -209,18 +247,24 @@ class DrivenTime(Ticks30Time):
         # elapse() one wake at a time until condition() holds: the virtual ms it took, or a failure naming the time reached.
         start = self.now
         limit = start + limit_ms
-        await self._settle()
-        while not condition():
-            if not self._sleepers or self._sleepers[0].at > limit:
-                self.now = max(self.now, limit)
-                await self._settle()
-                if condition():
+        while True:
+            self._driving()  # _settle() in place: a coroutine built per wake was the costliest part of a long driven run
+            for _ in range(self.ROUNDS):
+                await _core.sleep_ms(0)
+                head = _core._task_queue.peek()
+                if head is None or time.ticks_diff(head.ph_key, time.ticks_ms()) > 0:
                     break
+            else:
+                raise AssertionError(f"a task is still runnable after {self.ROUNDS} rounds at virtual t={self.now} ms: a busy loop")
+            if condition():
+                return self.now - start
+            if self._sleepers and self._sleepers[0].at <= limit:
+                self.now = self._sleepers[0].at
+                self._release_due()
+            elif self.now < limit:
+                self.now = limit
+            else:
                 raise AssertionError(f"run_until: the condition still fails at virtual t={self.now} ms, {limit_ms} ms after t={start}")
-            self.now = self._sleepers[0].at
-            self._release_due()
-            await self._settle()
-        return self.now - start
 
     def release(self) -> None:
         # Real time from the instant reached: `now` runs on at the real rate, each module's asyncio is the real one again,
@@ -288,15 +332,15 @@ async def _run(waiter: "asyncio.Task[object]", task: "asyncio.Task[object]", wak
     except BaseException as er:  # every ending, its cancellation included, is the waiter's to raise
         result = None
         status = er
-    data = waiter.data  # the wake's event queue while parked (event.py:33), None once released (a push resets it, modasyncio.c:118)
-    if not wake.resumed and (data is None or data is wake.event.waiting) and waiter.cancel():  # type: ignore[attr-defined]  # Event's queue (event.py:11), in no stub
+    data = waiter.data  # the wake itself while parked (_Wake.__next__), None once released (a push resets it, modasyncio.c:118)
+    if not wake.resumed and (data is None or data is wake) and waiter.cancel():
         waiter.data = asyncio.CancelledError(status, result)  # the field funcs.py sets
 
 
 async def _wake_after(wake: _Wake, ms: int) -> None:
     # A wake parked at release(), set on the real clock once the time it had left has passed.
     await asyncio.sleep_ms(max(0, ms))
-    wake.event.set()
+    wake.fire()
 
 
 async def tick(flag: "asyncio.ThreadSafeFlag", times: int = 1, clock: "DrivenTime | None" = None, step_ms: int = 1000) -> None:

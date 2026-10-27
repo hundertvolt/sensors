@@ -145,3 +145,22 @@ source.
   needed on these facts). A new bench check confirms each chip's setup reset, with volatile writes only.
 - Lead merge note: the recovery lane's new DNS test was written against the old helpers that the Wi-Fi lane had moved
   to a driven clock; adapted in the merge and its planted-fault check replayed.
+
+## N11d and CMr1l (lead, 2026-10-27T17:47)
+- The gate's timeout reds on the UART hazard tests are root-caused. Under the gate's load, the three hazard runs reach
+  their 10 s bound after about 2 s of CPU at 32768. No change brought it: base and head are the same.
+  - Fixed by efficiency (N11d): a driven sleep costs 128 B and 22 us, down from 608 B and 27 us.
+  - The lead decided (N11e) to run the hazard tests at the bench device's configured poll rates, as the twin
+    already does. Verdicts are unchanged, CPU is about 3x lower, and the 10 s bound stays, to be measured. This is a
+    test-only call the lead may make (CHECKLIST 1d).
+- The ThreadSafeFlag poll artefact accounts for 12.6 s of test_sensortask[dev]'s wall time (16 tests).
+- The waits scanner was fixed and bitten (9/9 plants). Every one of the 1003 sites is classed by reading; the
+  last real waits are tagged by N11e and CMr1k.
+- The drift check (CMr1l) runs on one driven clock: healthy 36/36 at slope 0.0, the 32 B and 64 B plants fail 12/12.
+  - The two transients were twin artefacts: the watchdog's per-feed countdown tasks pinned by a stale child_last,
+    and one stale C-stack word.
+  - The parked form narrowed what the check sees, so a concurrent arm follows (CMr1m).
+  - A hung cleanup cancel found on the way is being root-caused (CMr1m), in case it is a product defect.
+- The FRAM read-back now covers the four widened Wi-Fi scenarios, and both bites fail 12/12.
+- Merge note: N11d had tagged a real sleep that CMr1j had already moved to the driven clock. The lead dropped the tag
+  in the merge, and CMr1k got the ntp/clock_jump sites by message so that cannot happen again.

@@ -68,6 +68,9 @@ _NTP_BUDGET_POLL_MS = 1  # with `_NTP_BUDGET_POLL_TRIES`, the budget case's serv
 _NTP_BUDGET_POLL_TRIES = 3
 # @tunable l1.shared_helpers_ntp_budget_bound_s = 5
 _NTP_BUDGET_BOUND_S = 5
+# The real-time hang bound around each fast-sleep and driven-clock self-test run.
+# @tunable l1.shared_helpers_clock_run_bound_s = 5
+_CLOCK_RUN_BOUND_S = 5
 
 
 class _Holder:
@@ -338,7 +341,7 @@ def test_fast_sleep_turns_both_sleeps_into_one_yield_and_records_each_delay() ->
         return time.ticks_diff(time.ticks_ms(), start) / 1000, fast.of(asyncio.current_task())
 
     with FastAsyncSleep() as fast:
-        elapsed, mine = run(scenario(), 5)  # bounded: an unpatched sleep would wait out the hour
+        elapsed, mine = run(scenario(), _CLOCK_RUN_BOUND_S)  # bounded: an unpatched sleep would wait out the hour
     assert elapsed < 1.0
     assert mine == [3600, 0.25]
     assert (asyncio.sleep, asyncio.sleep_ms) == (real_sleep, real_sleep_ms)
@@ -352,7 +355,7 @@ def test_fast_sleep_advances_a_given_clock_by_each_slept_time() -> None:
         await asyncio.sleep_ms(500)
 
     with FastAsyncSleep(clock):
-        run(scenario(), 5)
+        run(scenario(), _CLOCK_RUN_BOUND_S)
     assert clock.now == 2500
 
 
@@ -362,7 +365,7 @@ def test_fast_sleep_keeps_a_bounded_record_and_counts_what_it_dropped() -> None:
             await asyncio.sleep(0)
 
     with FastAsyncSleep() as fast:
-        run(scenario(FastAsyncSleep.CAP + 3), 5)
+        run(scenario(FastAsyncSleep.CAP + 3), _CLOCK_RUN_BOUND_S)
     assert len(fast.slept) == FastAsyncSleep.CAP
     assert fast.dropped == 3
 
@@ -379,7 +382,7 @@ def test_fast_sleep_keeps_the_form_each_wait_was_asked_in() -> None:
         return fast.ms_of(task), fast.of(task)
 
     with FastAsyncSleep() as fast:
-        asked = run(scenario(), 5)
+        asked = run(scenario(), _CLOCK_RUN_BOUND_S)
     assert asked == ([250, 0], [0.25, 0.25, 1, 0]), asked
     assert [form for _task, _seconds, form in fast.slept] == [250, None, None, 0], fast.slept
 
@@ -387,9 +390,9 @@ def test_fast_sleep_keeps_the_form_each_wait_was_asked_in() -> None:
 def test_fast_sleep_refuses_a_float_sleep_ms_as_the_real_one_does() -> None:
     # The real sleep_ms() hands its delay to ticks_add(), whose mp_obj_get_int() refuses a float (extmod/asyncio/core.py:55-57,
     # extmod/modtime.c:181, v1.29.0), and MicroPython's 2.0 == 2 would let a recorded float pass an int pin.
-    real = run(_refused_sleep_ms(2.0), 5)
+    real = run(_refused_sleep_ms(2.0), _CLOCK_RUN_BOUND_S)
     with FastAsyncSleep() as fast:
-        stood_in = run(_refused_sleep_ms(2.0), 5)
+        stood_in = run(_refused_sleep_ms(2.0), _CLOCK_RUN_BOUND_S)
     assert real == stood_in == "TypeError: can't convert float to int", (real, stood_in)
     assert fast.slept == [], fast.slept  # refused before it was recorded
 
@@ -401,7 +404,7 @@ def test_check_sleep_ms_refuses_what_the_real_sleep_ms_refuses_and_takes_an_int(
         said = "no error"
     except TypeError as e:
         said = f"TypeError: {e}"
-    assert said == run(_refused_sleep_ms(2.0), 5), said
+    assert said == run(_refused_sleep_ms(2.0), _CLOCK_RUN_BOUND_S), said
     check_sleep_ms(5)
     check_sleep_ms(-1)  # sleep_ms() clamps a negative delay to 0
 
@@ -495,7 +498,7 @@ def test_tick_sets_the_flag_once_per_time_and_advances_a_given_clock() -> None:
         except asyncio.CancelledError:
             pass
 
-    run(scenario(), 5)
+    run(scenario(), _CLOCK_RUN_BOUND_S)
     assert wakes == [1000, 2000, 3000]
 
 

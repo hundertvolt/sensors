@@ -13,4 +13,5 @@ lose anything again.", 2026-10-27), `redo/` holds the redo's records: its plan (
 LEAD NOTES through 290), the run register (`RUNS.md.gz`), the checklist, the owner-report and D3r/REC2 item lists, the
 Q35 tables and the lead's run tools. Scanned before the push: no hotspot default, no LAN address, no credential
 pattern. The tree around it is the integration head of the time, with the lanes merged so far; lane work not yet
-merged is not in it, and the next snapshot carries it.
+merged is not in it, and the next snapshot carries it. Each later preliminary snapshot replaces `redo/` with the
+records of its own time, scanned the same way.
