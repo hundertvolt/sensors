@@ -331,11 +331,11 @@ class I2C:
         return True
 
     async def clear(self) -> int:
-        # The bus-clear rung: nine SCL pulses and a STOP at most, under the bus lock. Returns _REC_* bits.
+        # The bus-clear rung: nine SCL pulses and a STOP at most, under the bus lock. Returns _REC_* bits. recoveries
+        # steps before the lock wait, so a second reader whose rung comes while this one waits finds it taken.
+        self.recoveries = self.recoveries + 1 if self.recoveries < COUNTER_CAP else 0  # a wrap-by-design sequence: compared for equality only
         async with self.bus_lock:
-            status = await self._clear_locked()
-            self.recoveries = self.recoveries + 1 if self.recoveries < COUNTER_CAP else 0  # a wrap-by-design sequence: compared for equality only
-        return status
+            return await self._clear_locked()
 
     def deinit(self) -> bool:
         # machine.I2C.deinit() does NOT deactivate the rp2 bus - forwarded for portability, it cannot
@@ -386,13 +386,13 @@ class I2C:
     async def recover(self) -> int:
         # The controller rung: the bus clear, then a re-construction with the stored arguments - rp2's only
         # controller re-init (Part F.5.1) - under one bus-lock hold. _REC_NO_CONTROLLER leaves no bus.
+        self.recoveries = self.recoveries + 1 if self.recoveries < COUNTER_CAP else 0  # stepped before the lock wait, as clear()
         async with self.bus_lock:
             status = await self._clear_locked()
             try:
                 self.init(*self._args)
             except (OSError, ValueError):
                 status |= _REC_NO_CONTROLLER
-            self.recoveries = self.recoveries + 1 if self.recoveries < COUNTER_CAP else 0  # a wrap-by-design sequence: compared for equality only
         return status
 
     def scan(self) -> list[int] | None:
