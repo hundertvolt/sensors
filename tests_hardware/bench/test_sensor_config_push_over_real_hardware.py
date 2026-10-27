@@ -2,6 +2,7 @@
 hardware, the real-hardware counterpart to tests/test_setter_microdot_integration.py's mock. A
 "Valid" result plus a follow-up GET confirms the live-push callback took effect and stuck."""
 
+import ast
 import time
 from typing import TYPE_CHECKING
 
@@ -10,7 +11,7 @@ import evidence
 import http_client
 import pytest
 from error_log_helpers import assert_module_error_log_empty, assert_module_logged_one_code, code, errcount_entry, get_errcount, reset_all_error_logs
-from harness import schema_default
+from harness import SRC_DIR, schema_default
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -46,6 +47,7 @@ _OVERRIDE_POLL_TRIES = 10
 _BMP3XX_SRC = "asy_bmp3xx_driver.py"
 _ISL29125_SRC = "asy_isl29125_driver.py"
 _SCD30_SRC = "asy_scd30_driver.py"
+_SGP40_SRC = "asy_sgp40_driver.py"
 # A shift the compensation must show, kept inside _VAL_ALTITUDE's range either way round.
 # @tunable l4.sensor_config_push_altitude_step_m = 1000
 _ALTITUDE_STEP_M = 1000
@@ -59,6 +61,9 @@ _OBSERVE_INTERVALS = 5
 _CAL_END_MARGIN_S = 10.0
 # @tunable l4.sensor_config_push_calibration_poll_s = 2.0
 _CAL_POLL_S = 2.0
+# A ResetVOC runs at the SGP40's next read cycle, after the PUT's answer: the test waits one cycle and this margin.
+# @tunable l4.sensor_config_push_reset_voc_settle_margin_s = 2.0
+_RESET_VOC_SETTLE_MARGIN_S = 2.0
 
 
 @pytest.mark.persistence_write
@@ -160,6 +165,9 @@ def test_sgp40_reset_voc_command_push_over_real_rest(board: "Board", dut_ip: str
     assert put_res.status_code == 200, f"PUT /sensors ResetVOC failed: {put_res.status_code} {put_res.body!r}"
     result = _load.as_object(_load.as_object(put_res.json().get("result"), "result").get("SGP40"), "result.SGP40")
     assert result.get("ResetVOC") == "Valid", f"real reset_voc() push was rejected: {result!r}"
+    # _read_sgp() takes the request at the next cycle's start and clears the FRAM backup there: waited out, so a failed
+    # clear's SGP_BACKUP_CLEAR lands in this test's window and the check below, never in the next test's.
+    time.sleep(_sgp40_period_s() + _RESET_VOC_SETTLE_MARGIN_S)
 
     # The sensor must still be alive and producing real readings afterward - a reset that wedged
     # the real algorithm/hardware would otherwise only surface as a silent later gap.
@@ -303,6 +311,15 @@ def _original(dut_ip: str, name: str, src_file: str, values: "dict[str, object]"
         result_note(f"repaired a leftover {name} {sorted(leftover)} from an aborted run to the schema defaults", recovery=True)
         current = _load.as_object(_load.get_object(dut_ip, "/sensors", _PROBE_TIMEOUT_S).get(name), f"GET /sensors {name}")
     return {field: current.get(field) for field in values}
+
+
+def _sgp40_period_s() -> float:
+    # SGP40_Reader.start_timer()'s fixed trigger period, read from src/: a literal there, so no const() name to read.
+    tree = ast.parse((SRC_DIR / _SGP40_SRC).read_text())
+    timers = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "start_timer"]
+    periods = [k.value.value for t in timers for k in ast.walk(t) if isinstance(k, ast.keyword) and k.arg == "period" and isinstance(k.value, ast.Constant)]
+    assert len(periods) == 1 and isinstance(periods[0], int), f"src/{_SGP40_SRC} start_timer() holds no one int period: {periods!r}"
+    return periods[0] / 1000
 
 
 def _pause_time(dut_ip: str) -> int:
