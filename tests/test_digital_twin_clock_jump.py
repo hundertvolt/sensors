@@ -23,9 +23,8 @@ import microtest  # noqa: E402 - imported after the prewarm and the UDP shim
 import network  # noqa: E402 - imported after the prewarm and the UDP shim
 import run_generic_integration  # noqa: E402 - imported after the prewarm and the UDP shim
 from _async_harness import cancel, cancel_all, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
-from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim
+from _digital_twin_construction_scenarios import DrivenWall, load_device  # noqa: E402 - imported after the prewarm and the UDP shim
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
-from _fake_time import DrivenTime  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _ntp_responder import NtpResponder  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config, write_responder_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -53,6 +52,7 @@ if TYPE_CHECKING:
     from types import ModuleType
     from typing import TypeVar
 
+    from _fake_time import DrivenTime
     from launch import _Plan
 
     T = TypeVar("T")
@@ -70,19 +70,6 @@ _scratch = TmpScratch("dt_clock_jump")
 _PORTS = PortAllocator("test_digital_twin_clock_jump")
 microtest.after_each(machine.reset_test_state)
 microtest.after_each(network.reset_test_state)
-
-
-class _DrivenWall(DrivenTime):
-    # DrivenTime's ticks and sleeps; time(), gmtime() and localtime() as each module read them before it: the twin wall
-    # clock once installed, its steps included, else the built-in (agent, 2026-10-27).
-    def gmtime(self, *secs: int) -> "tuple[int, ...]":
-        return tuple(_wall().gmtime(*secs))
-
-    def localtime(self, *secs: int) -> "tuple[int, ...]":
-        return tuple(_wall().localtime(*secs))
-
-    def time(self) -> int:
-        return int(_wall().time())
 
 
 def _backup_after_a_backward_step_on(device: str) -> None:
@@ -242,8 +229,8 @@ async def _driven_until(clock: "DrivenTime", holds: "Callable[[], Coroutine[obje
 
 
 async def _on_driven_clock(scenario: "Callable[[DrivenTime], Coroutine[object, object, T]]") -> "T":
-    # `scenario` with every driven module on one _DrivenWall, put back after.
-    with _DrivenWall(*_driven_modules(), sleeps=True) as clock:
+    # `scenario` with every driven module on one DrivenWall, put back after.
+    with DrivenWall(*_driven_modules(), sleeps=True) as clock:
         return await scenario(clock)
 
 
@@ -294,11 +281,6 @@ async def _until(holds: "Callable[[], Coroutine[object, object, bool]]", what: s
             return
         await asyncio.sleep_ms(_POLL_MS)
     raise AssertionError(f"{what} within {_WAIT_TIMEOUT_S} s")
-
-
-def _wall() -> "_wall_clock.WallClock | ModuleType":
-    # The wall clock a module reads: the twin's once installed, else the built-in time.
-    return _wall_clock.installed() or time
 
 
 def test_a_reader_stamps_each_sample_with_the_clock_as_stepped() -> None:

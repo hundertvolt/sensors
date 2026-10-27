@@ -1,20 +1,23 @@
 """Shared scenario library: twin-tier construction, wiring and boot across every generated device (SPECIFICATION.md Part
-L.4), fast, no wall-clock waits. Not a test file: it exports register_for_device() and load_device(), after the caller's
-prewarm and UDP shim (tests/test_digital_twin_construction.py); Part E.2.1 has the per-device split."""
+L.4), fast, no wall-clock waits. Not a test file: it exports register_for_device(), load_device() and DrivenWall, after
+the caller's prewarm and UDP shim (tests/test_digital_twin_construction.py); Part E.2.1 has the per-device split."""
 
 import asyncio
 import json
 import sys
+import time
 
 sys.path.insert(0, "ext")  # same convention as tests/_sensortask_scenarios.py's own comment
 sys.path.insert(0, "digital_twin")  # see tests/test_digital_twin_sgp40.py's own comment for why
 
+import _wall_clock
 import machine
 import microtest
 import network
 import run_generic_integration
 from _async_harness import cancel, run_timed
 from _boot_recorder import BootRecorder, expected_entries
+from _fake_time import DrivenTime
 from _generated_module import ERROR_LEVEL, boot_entry_watchdog, boot_generated, write_error_level_config
 from _generated_tree import require_fresh
 from _offline_ntp_config import write_offline_ntp_config  # _generated_module's import put its directory on the path
@@ -195,6 +198,24 @@ def _scenario_load_device_returns_the_generated_module(device: str) -> None:
 def _tmp_cfg_dir() -> str:
     assert _scratch is not None, "register_for_device() must run before any scenario calls _tmp_cfg_dir()"
     return _scratch.dir()
+
+
+def _wall() -> "_wall_clock.WallClock | ModuleType":
+    # The wall clock a module reads: the twin's once installed, else the built-in time.
+    return _wall_clock.installed() or time
+
+
+class DrivenWall(DrivenTime):
+    # DrivenTime's ticks and sleeps; time(), gmtime() and localtime() as each module read them before it: the twin wall
+    # clock once installed, its steps included, else the built-in (agent, 2026-10-27).
+    def gmtime(self, *secs: int) -> "tuple[int, ...]":
+        return tuple(_wall().gmtime(*secs))
+
+    def localtime(self, *secs: int) -> "tuple[int, ...]":
+        return tuple(_wall().localtime(*secs))
+
+    def time(self) -> int:
+        return int(_wall().time())
 
 
 # ---------------------------------------------------------------------------
