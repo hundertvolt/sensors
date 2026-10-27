@@ -1,6 +1,6 @@
 """In-process twin tier for the device named by TEST_DEVICE: its generated graph booted on the twin buses with no HTTP
-(requests are driven host-side by scripts/_digital_twin_scenarios.py). Driver-specific scenarios run only on the device
-tests/_twin_devices.py picks for them (SPECIFICATION.md E.2.1)."""
+(requests are driven host-side by scripts/_digital_twin_scenarios.py). A driver-specific scenario runs on every device
+whose plan wires its drivers, each wired its own way (SPECIFICATION.md E.2.1)."""
 
 import asyncio
 import gc
@@ -44,7 +44,7 @@ from _port_bands import PortAllocator  # noqa: E402 - imported after the prewarm
 from _src_const import src_const, src_int  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _twin_common import Walk  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
-from _twin_devices import device_with, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
+from _twin_devices import device_with, devices_with, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _twin_readiness import wait_for_value  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 
 import asy_base_classes  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
@@ -126,6 +126,8 @@ _MEASURE_RAW = b"\x26\x0f"  # the SGP40's measure command (datasheet Table 9), a
 _RUNG_AT = src_int("src/asy_base_classes.py", "_RECOVER_DEVICE_AT")  # consecutive failed iterations to the device rung
 _WIFI_STEP_MS = src_int("src/asy_wifi_service.py", "_STA_CONNECT_POLL_MS")  # the connect poll's step: _SteppedAsyncio's cap
 _NO_IP_STEP_MS = 100  # ten polls outlast the twin's 0.7 s join (digital_twin/network.py), so each attempt ends joined without an IP
+_STREAK_JOIN_S = 0.05  # the hotspot streak's twin join, whose length no hotspot check reads: ten 10 ms polls outlast it
+_STREAK_STEP_MS = 10
 _WAIT_TIMEOUT_MS = int(_WAIT_TIMEOUT_S * 1000)
 _STATUS_DEATHS = 10
 _DECAY_PASSES = 110  # clean supervisor passes between two deaths: each decays the restart budget by one, a death adds 100
@@ -310,11 +312,11 @@ async def _dns_burst(counter: _CountingPoller) -> "tuple[int, int, int]":
 
 
 def _driver_specific(*drivers: str) -> None:
-    # A driver-specific scenario runs on the one device the plans pick for its drivers; every module's L1 suite covers
-    # each device that wires it.
-    chosen = device_with(*drivers)
-    if device != chosen:
-        raise microtest.Skip(f"runs on {chosen}, the first device wiring {list(drivers)}")
+    # A driver-specific scenario runs on every device whose plan wires its drivers, as each wires them its own way; none
+    # wiring them fails in devices_with() rather than skipping everywhere.
+    wired = devices_with(*drivers)
+    if device not in wired:
+        raise microtest.Skip(f"runs on {wired}, the devices wiring {list(drivers)}")
 
 
 async def _fed_cycle(sgp: "SGP40_Reader") -> None:
@@ -339,6 +341,13 @@ def _first_device_only() -> None:
     first = generated_devices()[0]
     if device != first:
         raise microtest.Skip(f"runs on {first}, the first generated device: every device runs the same mechanism")
+
+
+def _first_device_wiring(*drivers: str) -> None:
+    # A scenario no device setting reaches, whose boot needs these drivers, runs once on the first device wiring them.
+    chosen = device_with(*drivers)
+    if device != chosen:
+        raise microtest.Skip(f"runs on {chosen}, the first device wiring {list(drivers)}: no device setting reaches it")
 
 
 async def _heap_floor(watchdog: "machine.WDT") -> int:
@@ -367,15 +376,17 @@ async def _hotspot_boot() -> "tuple[WifiService, NeopixelDriver, list[asyncio.Ta
     persisted, _results = await conn.cfgmgr.write_config({"SSID": "TestNet"})
     assert persisted
     conn._wlan.script_connect_outcomes([network.STAT_NO_AP_FOUND] * 8)  # more than the streak to the hotspot needs
-    asy_wifi_service.asyncio = _SteppedAsyncio()  # type: ignore[assignment, attr-defined]  # the streak's waits stepped
+    asy_wifi_service.asyncio = _SteppedAsyncio(_STREAK_STEP_MS)  # type: ignore[assignment, attr-defined]  # the streak's waits stepped
+    join_s, network._CONNECT_DELAY_S = network._CONNECT_DELAY_S, _STREAK_JOIN_S
     try:
         tasks = [pixel.start_asy_overlay(), conn.start_asy_connect()]
-        started = await _wait_until(lambda: conn._dns_server_task is not None, timeout_s=_HOTSPOT_WAIT_TIMEOUT_S)
+        started = await _wait_until(lambda: conn._dns_server_task is not None, timeout_s=_HOTSPOT_WAIT_TIMEOUT_S, interval_s=_BIND_POLL_S)
         assert started, "real hotspot activation never started the real DNSServer task"
         bound = await _wait_until(lambda: conn._dns_server._udps.connected, timeout_s=_WAIT_TIMEOUT_S, interval_s=_BIND_POLL_S)
         assert bound, "the real DNSServer never bound its port 53 socket"
     finally:
         asy_wifi_service.asyncio = asyncio  # type: ignore[attr-defined]
+        network._CONNECT_DELAY_S = join_s
     return conn, pixel, tasks
 
 
@@ -938,8 +949,8 @@ def test_hotspot_fallback_drives_the_status_led_and_binds_the_dns_server() -> No
 def test_the_captive_dns_listener_idles_at_its_idle_rate() -> None:
     # With no DNS traffic for a window, the listener wakes once per udp.poll_idle_ms (its ready(POLLIN) rounds, counted on
     # the instance), the twin half of that rate's measured basis; then a burst is answered back to back (lwIP's drop past
-    # its queue shows on the bench only). Same boot as the hotspot test above, so the same device.
-    _driver_specific("neopixel")
+    # its queue shows on the bench only). No device setting reaches the listener, so one device runs it (agent, 2026-10-27).
+    _first_device_wiring("neopixel")
 
     async def scenario() -> None:
         conn, _pixel, tasks = await _hotspot_boot()
