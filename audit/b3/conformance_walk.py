@@ -150,6 +150,18 @@ REVIEWED.update({
     ("U16", "write-protection readback mismatch", "-"): (f"{FD}test_write_protected_readback_mismatch_returns_false_and_does_not_update_cached_state", "not reachable: no product caller (git grep 'set_write_protected(' in src/ and buildgen/ finds its definition only)", "none: the caller's retry; no product caller", DISPO),
     ("U16", "SPI bus clear / controller re-init", "-"): (REVIEWED[("U13", "SPI \"held bus\"", "R3")][0], NA_SPI, "as U13's SPI held-bus and controller-state rows", DISPO + "; cross-reference to U13"),
 })
+# The U17 rows (lane CO4, agent, 2026-10-27), on today's code: the two PieceBuffer catch sites wait on the owner.
+UC, UK = ("test_asy_uart_comm.py::", "test_asy_uart_link_driver.py::")
+PIECE = "pending owner (agent, 2026-10-27): on today's code the PieceBuffer allocations at src/asy_uart_comm.py:278 (GET, initiator) and :313 (SET, responder) let a MemoryError out uncaught; the catch with the protocol's own fault flow is the owner's decision and its own lane's, so these cells stand on today's code"
+REVIEWED.update({
+    ("U17", "a frame fails", "R1"): (f"{UC}test_a_single_transient_fault_leaves_one_entry_not_a_pair, {UC}test_a_missing_ack_bounds_the_wait_and_resyncs, {UC}test_setup_drains_a_partial_frame_left_over_from_before, {UK}test_each_recovery_try_first_waits_one_window (the next exchange, a window apart), " + REVIEWED[("U13", "UART driver fault paths", "R1")][0], f"{UL}test_one_sided_silence_forces_a_resync_and_both_sides_recover, {UL}test_a_crc16_exerciser_pair_catches_a_corrupted_byte", f"bounded: {UC}test_a_missing_ack_bounds_the_wait_and_resyncs, {UC}test_the_write_hold_off_uses_a_deadline_and_expires (the bounded drain, then the hold-off window); once: {UC}test_a_repeated_identical_fault_spends_one_slot_and_counts_every_time, {UC}test_a_single_transient_fault_leaves_one_entry_not_a_pair, {UC}test_the_blind_resync_streak_saturates; race-free: {UC}test_clear_cancels_first_and_drains_exactly_once (an outside clear racing a transaction), {UC}test_cancelling_at_each_await_leaves_no_lock_or_busy_flag", DONE + "; " + PIECE),
+    ("U17", "controller re-init", "-"): ("not reachable: rp2 latches no receive error (ports/rp2/machine_uart.c:162-190)", "not reachable: as L1", "none: no fault class for a re-init", DISPO + "; as U13's UART R4 row"),
+    ("U17", "construction refused / task ends", "R5"): (f"{UK}test_a_refused_construction_ends_every_task_for_both_roles, then U10's: " + R5[0], R5[1], R5[2], DONE + "; " + PIECE),
+    ("U17", "construction refused / task ends", "R6"): (*R6[:3], DONE + "; " + PIECE),
+    ("U17", "construction refused / task ends", "R7"): R7,
+    ("U17", "participant", "-"): ("not reachable: the peer MCU has no reset command from this side (initiator/responder, no negotiation: owner, 2026-09-11)", "not reachable: as L1", "none: no rung from this side", DISPO),
+})
+REVIEWED[("U13", "UART driver fault paths", "R1")] = (*REVIEWED[("U13", "UART driver fault paths", "R1")][:3], "cross-reference (agent, 2026-10-27): U17's 'a frame fails' R1 row carries the cells")
 rows, unit, l34_open = [], "", 0
 supp = (tree / "audit/actions/SUPP_recovery.md").read_text(encoding="utf-8").split("## Actions")[0]
 for line in supp.splitlines():
