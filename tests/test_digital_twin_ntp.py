@@ -133,10 +133,13 @@ def _booted(device: str, responder: NtpResponder, scenario: "Callable[[ModuleTyp
         f.write(json.dumps({"SSID": _SSID}))
     module = load_device(device)
     _wall_clock.install(runner.product_modules())
-    earlier = getattr(module, "webserver", None)  # an earlier boot's, until main() constructs its own (the last one)
+    # An earlier boot's webserver until main() constructs its own, held by id() alone: the object itself would chain that
+    # boot's whole graph to this run's frame, which a Task's stale pairing-heap child pointer keeps, one boot per re-boot.
+    earlier = id(getattr(module, "webserver", None))
 
     async def built() -> bool:
-        return getattr(module, "webserver", None) not in (None, earlier)
+        webserver = getattr(module, "webserver", None)
+        return webserver is not None and id(webserver) != earlier
 
     async def whole() -> "T":
         with redirect_udp_port(asy_ntp_client, 123, responder.port), DrivenWall(*_driven_modules(), sleeps=True) as clock:
