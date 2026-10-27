@@ -45,7 +45,7 @@ from _port_bands import PortAllocator  # noqa: E402 - imported after the prewarm
 from _src_const import src_const, src_int  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _twin_common import Walk  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
-from _twin_devices import device_with, distinct_wirings, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
+from _twin_devices import distinct_wirings, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _twin_readiness import wait_for_value  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 
 import asy_base_classes  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
@@ -360,13 +360,6 @@ def _first_device_only() -> None:
     first = generated_devices()[0]
     if device != first:
         raise microtest.Skip(f"runs on {first}, the first generated device: every device runs the same mechanism")
-
-
-def _first_device_wiring(*drivers: str) -> None:
-    # A scenario no device setting reaches, whose boot needs these drivers, runs once on the first device wiring them.
-    chosen = device_with(*drivers)
-    if device != chosen:
-        raise microtest.Skip(f"runs on {chosen}, the first device wiring {list(drivers)}: no device setting reaches it")
 
 
 async def _heap_floor(watchdog: "machine.WDT") -> int:
@@ -784,8 +777,9 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
 
 def test_a_dhcp_server_that_never_answers_leaves_a_persisted_trace() -> None:
     # Every join reaches the access point and never gets an address: each attempt ends with no verdict, persisted as one
-    # W slot (the newest-entry rule, SPECIFICATION.md C.7.1), and the streak's end opens the hotspot with its own W.
-    _first_device_only()
+    # W slot (the newest-entry rule, SPECIFICATION.md C.7.1), and the streak's end opens the hotspot with its own W. The
+    # slots are read from RAM, but each one is written to WIFI's FRAM chunk: one run per distinct FRAM wiring (measured).
+    _driver_specific("fram")
 
     async def scenario(clock: DrivenTime) -> None:
         await _driven(clock, "the boot", _boot())
@@ -846,6 +840,7 @@ def test_a_failed_config_snapshot_is_the_unavailable_marker() -> None:
 def test_a_factory_state_unit_returns_to_the_hotspot_after_every_window() -> None:
     # No SSID: the boot opens the hotspot, and each window's end (its timer's callback, called as the twin Timer calls it)
     # leads straight back to it: with nothing to attempt there is no failure streak, so the silent mode is never reached.
+    # After its boot it touches no wired part, no FRAM write and no LED frame among them (measured), so one device runs it.
     _first_device_only()
 
     async def scenario() -> None:
@@ -915,8 +910,9 @@ def test_a_failing_wlan_status_keeps_the_link_and_warns_once_per_unreadable_tick
 
 def test_two_failed_joins_re_select_the_radio_once_and_the_link_comes_back() -> None:
     # A linked station loses its link and each next join raises EIO, a failed hardware call, up to the rung's threshold:
-    # the radio is re-selected once (one deinit, one new STA interface, one W), then the link comes back.
-    _first_device_only()
+    # the radio is re-selected once (one deinit, one new STA interface, one W), then the link comes back. Its W and E
+    # slots are written to WIFI's FRAM chunk: one run per distinct FRAM wiring (measured).
+    _driver_specific("fram")
 
     async def scenario(clock: DrivenTime) -> None:
         await _driven(clock, "the boot", _boot())
@@ -962,8 +958,8 @@ def test_two_failed_joins_re_select_the_radio_once_and_the_link_comes_back() -> 
 def test_hotspot_fallback_drives_the_status_led_and_binds_the_dns_server() -> None:
     # The in-process half of the hotspot scenario: real failure cycles open the hotspot, the WiFi-status LED wired by
     # build_system() writes real frames, the captive DNS binds; its answer and the captive redirect are the host
-    # harness's. Driver-specific (the status LED is a NeoPixel); tests/test_asy_wifi_service.py covers every device.
-    _driver_specific("neopixel")
+    # harness's. Per distinct wiring of the status LED and of the FRAM the hotspot's W slots are written to (measured).
+    _driver_specific("neopixel", "fram")
 
     async def scenario(clock: DrivenTime) -> None:
         conn, pixel, tasks = await _hotspot_boot(clock)
@@ -978,10 +974,10 @@ def test_hotspot_fallback_drives_the_status_led_and_binds_the_dns_server() -> No
 
 
 def test_the_captive_dns_listener_idles_at_its_idle_rate() -> None:
-    # With no DNS traffic for a window, the listener wakes once per udp.poll_idle_ms (its ready(POLLIN) rounds, counted on
-    # the instance), the twin half of that rate's measured basis; then a burst is answered back to back (lwIP's drop past
-    # its queue shows on the bench only). No device setting reaches the listener, so one device runs it (agent, 2026-10-27).
-    _first_device_wiring("neopixel")
+    # With no DNS traffic for a window, the listener wakes once per udp.poll_idle_ms (its ready(POLLIN) rounds), the twin
+    # half of that rate's basis, then answers a burst back to back (lwIP's drop past its queue shows on the bench). Its
+    # hotspot boot drives the LED and writes WIFI's FRAM chunk (measured): one run per wiring of both (agent, 2026-10-27).
+    _driver_specific("neopixel", "fram")
 
     async def scenario(clock: DrivenTime) -> None:
         conn, _pixel, tasks = await _hotspot_boot(clock)
