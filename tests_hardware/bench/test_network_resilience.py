@@ -35,6 +35,7 @@ from harness import (
     SRC_DIR,
     Board,
     HardwareTestFailureError,
+    _wait_for_slots_to_drain,
     bench_device,
     boot_lines,
     configured_max_connections,
@@ -922,6 +923,8 @@ def test_openhab_case_two_pollers_and_an_open_website_are_all_served(dut_ip: str
 _CONSOLE_LOAD_S = 60.0
 # @tunable l4.console_starvation_slowloris_clients = 6
 _CONSOLE_SLOWLORIS = 6
+# @tunable l4.console_starvation_drain_timeout_s = 30.0
+_CONSOLE_DRAIN_TIMEOUT_S = 30.0
 _LINGER_RESET = struct.pack("ii", 1, 0)  # SO_LINGER on with a zero timeout: the close sends an RST (socket(7))
 
 
@@ -975,8 +978,14 @@ def test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog(b
         stop.set()
         alive = _load.join(threads, _SLOWLORIS_SOCKET_TIMEOUT_S)
         port.close()
-        restore = http_client.fetch(dut_ip, 80, "PUT", "/system", {"DebugLevel": 5}, timeout_s=_PROBE_TIMEOUT_S)
-        assert _load.as_object(restore.json().get("result"), "result").get("DebugLevel") == "Valid", f"restoring DebugLevel 5 was refused: {restore.body!r}"
+        try:
+            # Each adversary's server task writes its warning before its slot frees (src/asy_webserver_service.py _serve()):
+            # a whole ceiling admitted again means every one has written it in this window, and the restore finds a slot.
+            if not alive:  # a client still running holds its slot: the assertion below names it instead
+                _wait_for_slots_to_drain(dut_ip, 80, _MAX_CONNECTIONS, timeout_s=_CONSOLE_DRAIN_TIMEOUT_S)
+        finally:
+            restore = http_client.fetch(dut_ip, 80, "PUT", "/system", {"DebugLevel": 5}, timeout_s=_PROBE_TIMEOUT_S)
+            assert _load.as_object(restore.json().get("result"), "result").get("DebugLevel") == "Valid", f"restoring DebugLevel 5 was refused: {restore.body!r}"
     assert not alive, f"{alive} adversary client(s) never finished"
     system_after = _load.as_object(_load.get_object(dut_ip, "/status", _PROBE_TIMEOUT_S).get("system"), "GET /status system")
     result_note(f"{len(seen)} adversarial connections over {_CONSOLE_LOAD_S:g}s; SysUptime {system_before.get('SysUptime')} -> {system_after.get('SysUptime')}")
