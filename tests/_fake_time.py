@@ -6,6 +6,7 @@ import asyncio
 import asyncio.core as _core  # type: ignore[import-not-found]  # the run queue; no stub covers it
 import time
 
+from _async_harness import cancel as _harness_cancel
 from _fast_sleep import check_sleep_ms
 from _ticks30 import TICKS_PERIOD, Ticks30Time  # every 2**30 clock here is tests/_ticks30.py's Ticks30Time
 
@@ -226,6 +227,17 @@ class DrivenTime(Ticks30Time):
         self._driving()
         self.now += ms
         self._release_due()
+
+    async def cancel(self, task: "asyncio.Task[T]", limit_ms: int) -> None:
+        # The harness's cancel() with this clock run until the task ends: its cleanup may sleep on the clock (an I2C probe's
+        # settle in a `finally`), which a canceller driving nothing never wakes. Past limit_ms it fails, naming the time.
+        if not task.done():
+            task.cancel()
+            try:
+                await self.run_until(task.done, limit_ms)
+            except AssertionError as e:
+                raise AssertionError(f"the cancelled {task.coro} never ended - {e}") from None
+        await _harness_cancel(task)
 
     async def elapse(self, ms: int) -> None:
         # Moves the clock to each wake due within ms in order, letting what it wakes run there, then to now + ms.

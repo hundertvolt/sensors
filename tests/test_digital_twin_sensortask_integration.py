@@ -776,7 +776,7 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
                 # A dead one stays: the supervisor awaited it already, and a second await of a task whose first
                 # one raced asyncio's pending handler entry raises None, a segfault (SPECIFICATION.md Part F.1).
                 if task is not None and not task.done():
-                    await cancel(task)
+                    await clock.cancel(task, _WAIT_TIMEOUT_MS)  # a reader cancelled mid-probe settles on the clock first
             if module.conn._dns_server_task is not None:
                 await cancel(module.conn._dns_server_task)
 
