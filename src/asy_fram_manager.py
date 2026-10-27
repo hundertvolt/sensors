@@ -189,6 +189,16 @@ class _FRAMBaseChunk:
         valid = self._read_valid and valid_bytes == self.size and self._read_iters > 0
         return valid, uninit, self._read_match, self._read_fault
 
+    async def _copy_out(self, data: memoryview) -> bytearray | None:
+        # read()'s copy of the data region is chunk-sized, so it degrades as the buffer it copies from does
+        # (RegionBuffer): the not-read sentinel on an exhausted heap, never a raise.
+        try:
+            return bytearray(data)
+        except MemoryError as e:
+            console(_NAME, "chunk read: no buffer for the data copy:", e)  # ungated: the memory gates read this text (CLAUDE.md)
+            await self.pr.err_s("No buffer for the chunk read", errno=_ERR_ALLOC)
+            return None
+
     async def _handle_status_bytes(
         self, fram: FRAM_SPI, addr: int, val: int, *, check_idle: bool,
     ) -> bool | None:
@@ -459,16 +469,6 @@ class _FRAMBaseChunk:
                     if await self._handle_status_bytes(fram, addr, _STATUS_UNINIT, check_idle=False) is None:
                         return False
             return True
-
-    async def _copy_out(self, data: memoryview) -> bytearray | None:
-        # read()'s copy of the data region is chunk-sized, so it degrades as the buffer it copies from does
-        # (RegionBuffer): the not-read sentinel on an exhausted heap, never a raise.
-        try:
-            return bytearray(data)
-        except MemoryError as e:
-            console(_NAME, "chunk read: no buffer for the data copy:", e)  # ungated: the memory gates read this text (CLAUDE.md)
-            await self.pr.err_s("No buffer for the chunk read", errno=_ERR_ALLOC)
-            return None
 
     async def wait_idle(self) -> None:
         # Returns once this chunk's operation in flight, if any, has ended; one queued behind it then

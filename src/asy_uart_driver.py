@@ -722,8 +722,7 @@ class UART(Lockable):
                 if (timeout_ms > 0) and (time.ticks_diff(time.ticks_ms(), t0) > timeout_ms):
                     return False
                 await asyncio.sleep_ms(wait_ms)
-            except (MemoryError, OSError, OverflowError, TypeError) as e:
-                # TypeError: a malformed mask/timeout_ms; callers' excepts wrap only the UART call.
+            except (MemoryError, OSError, OverflowError) as e:
                 # OverflowError: a wait beyond the ticks range - asyncio.sleep_ms() raises it for a delta >= 2**29 ms.
                 if isinstance(e, MemoryError):
                     console(_NAME, "readiness poll failed:", e)

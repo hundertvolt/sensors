@@ -41,23 +41,13 @@ _OVERLAY_REFRESH_MS = const(300000)
 # One optional live cross-instance dependency (SPECIFICATION.md Parts C.14 and L.4): the FRAM store its logger writes to, passed as log=.
 # @wiring fram_target FRAMManager log optional kwarg
 
-# The value types a signal accepts; bool is listed because it is no int subclass here (SPECIFICATION.md Part F.1).
-_NUMERIC = (bool, int, float)
+def _clamp_byte(value: int) -> int:
+    return min(max(int(value), 0), 255)  # int(): a bool counts as 0 or 1
 
 
-def _clamp_byte(value: object) -> int:
-    if not isinstance(value, _NUMERIC):  # anything else has no byte value
-        return 0
-    try:
-        return min(max(int(value), 0), 255)
-    except (OverflowError, ValueError):  # int() of +/-inf raises OverflowError, of NaN ValueError
-        return 0
-
-
-def _signal_values(r: object, g: object, b: object, t: object) -> list[int | float] | None:
-    # Every value a signal request carries, made safe where it enters: None refuses a non-numeric one.
-    if not (isinstance(r, _NUMERIC) and isinstance(g, _NUMERIC) and isinstance(b, _NUMERIC) and isinstance(t, _NUMERIC)):
-        return None
+def _signal_values(r: int, g: int, b: int, t: float) -> list[int | float]:
+    # Every value a signal request carries, made safe where it enters: each colour clamped to a byte, the duration
+    # bounded. The types are the entry points' signatures' (D.2).
     if t - t != 0 or t < _MIN_SIGNAL_S:  # inf - inf and NaN - NaN are NaN: a non-finite t takes the floor
         dur = _MIN_SIGNAL_S
     elif t > _MAX_SIGNAL_S:
@@ -157,8 +147,6 @@ class NeopixelDriver:
 
     def led_signal(self, r: int, g: int, b: int, t: float) -> bool:
         values = _signal_values(r, g, b, t)
-        if values is None:
-            return False
         if self._start_signal_event.is_set():
             self.pr.evt("External LED command refused: busy, retry later.")
             return False
@@ -177,8 +165,6 @@ class NeopixelDriver:
     # Internal requests are bounded in number and rate, so one waits for a running signal, then queues; an external command is refused instead, and told to retry (owner, 2026-10-02).
     async def request_signal(self, r: int, g: int, b: int, t: float) -> bool:
         values = _signal_values(r, g, b, t)
-        if values is None:
-            return False
         deadline = time.ticks_add(time.ticks_ms(), _SIGNAL_WAIT_MS)
         while self._start_signal_event.is_set():
             if time.ticks_diff(deadline, time.ticks_ms()) <= 0:
