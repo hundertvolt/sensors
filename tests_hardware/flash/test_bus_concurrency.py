@@ -196,6 +196,7 @@ def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads(board: 
     assert facts["write_count"] == facts["write_cycles_planned"], f"ISL29125 completed {facts['write_count']} of {facts['write_cycles_planned']} writes"
     assert _count(facts, "scd_reads") > 0, "the SCD30 completed no read"
     assert _count(facts, "sgp_reads") > 0, "the SGP40 completed no read"
+    assert _count(facts, "overlapped_reads") > 0, "no sibling read overlapped an ISL29125 write window - the writes raced nothing"
     _no_errors(facts, "ISL29125 write among sibling reads")
 
 
