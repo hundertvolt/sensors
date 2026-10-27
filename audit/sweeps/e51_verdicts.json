@@ -38,19 +38,19 @@
  "src/asy_fram_manager.py::FRAMTimestampedChunk.read::`dbuf is None` true::return None, None, None": {
   "action": "none (comment in place; E.5.1's FRAM-manager line)",
   "class": "c",
-  "proof": "as :487",
+  "proof": "as :497",
   "verdict": "kept: type narrowing, stated in place"
  },
  "src/asy_fram_manager.py::FRAMTimestampedChunk.read_into::`tbuf is None` true::return None, None, None": {
   "action": "none (comment in place; E.5.1's FRAM-manager line)",
   "class": "c",
-  "proof": "as :487",
+  "proof": "as :497",
   "verdict": "kept: type narrowing, stated in place"
  },
  "src/asy_fram_manager.py::FRAMTimestampedChunk.write_into::`bbuf is None` true::return False, False, None": {
   "action": "none (comment in place; E.5.1's FRAM-manager line)",
   "class": "c",
-  "proof": "as :487 (get_ts_buf() above found the buffer)",
+  "proof": "as :497 (get_ts_buf() above found the buffer)",
   "verdict": "kept: type narrowing, stated in place"
  },
  "src/asy_fram_manager.py::_FRAMBaseChunk._clear_chunk::`except Exception` catches::except Exception as e:": {

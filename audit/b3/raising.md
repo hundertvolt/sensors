@@ -16,11 +16,11 @@ catching named classes only (narrow), or none. Broad sites are handled by constr
 | asy_config_manager.py | 6 | 29 | 134 | 0 |
 | asy_print_log.py | 2 | 15 | 113 | 0 |
 | asy_system_service.py | 53 | 9 | 202 | 0 |
-| asy_fram_manager.py | 49 | 2 | 248 | 0 |
+| asy_fram_manager.py | 49 | 3 | 250 | 0 |
 | asy_fram_driver.py | 1 | 3 | 165 | 4 |
 | math_helpers.py | 0 | 10 | 35 | 0 |
 
-Rows outside a broad `try`, by verdict: inherently safe 12, open 413, transitive 500, unreachable 208.
+Rows outside a broad `try`, by verdict: inherently safe 12, open 412, transitive 504, unreachable 208.
 
 ## Raises
 
@@ -316,79 +316,80 @@ Rows outside a broad `try`, by verdict: inherently safe 12, open 413, transitive
 | asy_system_service.py:809 | SystemService.supervise_tasks | `self._supervisor_task.cancel` at :809 | not classified | open | - |
 | asy_fram_manager.py:30 | <module> | `const` at :30, :31, :32, :33, :34, :35, :36, :37, :38, :39, :42, :43 (+18) | nothing at run time | unreachable | folded at compile time (py/compile.c, MICROPY_COMP_CONST) |
 | asy_fram_manager.py:71 | _owner_seed | `min` at :71 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_fram_manager.py:71 | _owner_seed +2 | `crc.length` at :71, :688, :739 | not classified | open | - |
+| asy_fram_manager.py:71 | _owner_seed +2 | `crc.length` at :71, :699, :750 | not classified | open | - |
 | asy_fram_manager.py:75 | _owner_seed | `owner.encode` at :75 | not classified | open | - |
-| asy_fram_manager.py:97 | _FRAMBaseChunk.__init__ +5 | `self.crc.length` at :97, :195, :216, :372, :477, :545 | not classified | open | - |
+| asy_fram_manager.py:97 | _FRAMBaseChunk.__init__ +5 | `self.crc.length` at :97, :195, :216, :372, :487, :555 | not classified | open | - |
 | asy_fram_manager.py:99 | _FRAMBaseChunk.__init__ | `asyncio.Lock` at :99 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_fram_manager.py:103 | _FRAMBaseChunk.__init__ +3 | `bytearray` at :103, :104, :107, :488, :558, :783; narrow except MemoryError/OverflowError | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_fram_manager.py:111 | _FRAMBaseChunk.__init__ +1 | `console` at :111, :785 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:113 | _FRAMBaseChunk.__init__ +2 | `memoryview` at :113, :184, :525 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
+| asy_fram_manager.py:103 | _FRAMBaseChunk.__init__ +2 | `bytearray` at :103, :104, :107, :467, :794; narrow except MemoryError/OverflowError | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
+| asy_fram_manager.py:111 | _FRAMBaseChunk.__init__ +2 | `console` at :111, :469, :796 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:113 | _FRAMBaseChunk.__init__ +2 | `memoryview` at :113, :184, :535 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
 | asy_fram_manager.py:128 | _FRAMBaseChunk._set_check_sb | `fram.get_values_sync` at :128 | what the callee raises | transitive | the callee's own rows here |
 | asy_fram_manager.py:130 | _FRAMBaseChunk._set_check_sb | `fram.report_get_values` at :130 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:131 | _FRAMBaseChunk._set_check_sb +15 | `self.pr.err_s` at :131, :137, :144, :170, :178, :203, :217, :240, :255, :262, :330, :373 (+16) | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:140 | _FRAMBaseChunk._set_check_sb +1 | `fram.set_values_sync` at :140, :790 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:131 | _FRAMBaseChunk._set_check_sb +16 | `self.pr.err_s` at :131, :137, :144, :170, :178, :203, :217, :240, :255, :262, :330, :373 (+17) | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:140 | _FRAMBaseChunk._set_check_sb +1 | `fram.set_values_sync` at :140, :801 | what the callee raises | transitive | the callee's own rows here |
 | asy_fram_manager.py:143 | _FRAMBaseChunk._set_check_sb | `fram.report_set_values` at :143 | what the callee raises | transitive | the callee's own rows here |
 | asy_fram_manager.py:152 | _FRAMBaseChunk._blank_verdict | `self.fram.verify_present` at :152 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:152 | _FRAMBaseChunk._blank_verdict +6 | `self.fram.lost.is_set` at :152, :210, :366, :438, :454, :665, :801 | not classified | open | - |
-| asy_fram_manager.py:169 | _FRAMBaseChunk._clear_chunk +5 | `report_if_fatal` at :169, :329, :424, :583, :618, :819 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:152 | _FRAMBaseChunk._blank_verdict +6 | `self.fram.lost.is_set` at :152, :210, :366, :438, :454, :676, :812 | not classified | open | - |
+| asy_fram_manager.py:169 | _FRAMBaseChunk._clear_chunk +5 | `report_if_fatal` at :169, :329, :424, :594, :629, :830 | what the callee raises | transitive | the callee's own rows here |
 | asy_fram_manager.py:186 | _FRAMBaseChunk._compare_with +1 | `self._read_chunk` at :186, :343 | what the callee raises | transitive | the callee's own rows here |
 | asy_fram_manager.py:196 | _FRAMBaseChunk._handle_status_bytes | `self._set_check_sb` at :196, :199 | what the callee raises | transitive | the callee's own rows here |
 | asy_fram_manager.py:213 | _FRAMBaseChunk._read +2 | `self._mempause` at :213, :369, :441 | not classified | open | - |
 | asy_fram_manager.py:214 | _FRAMBaseChunk._read +2 | `self.pr.wrn_s` at :214, :224, :226, :232, :234, :251, :253, :370, :442 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:216 | _FRAMBaseChunk._read +4 | `len` at :216, :217, :372, :373, :388, :444, :503, :503, :504, :504, :506, :601 (+4) | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_fram_manager.py:216 | _FRAMBaseChunk._read +4 | `len` at :216, :217, :372, :373, :388, :444, :513, :513, :514, :514, :516, :612 (+4) | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
 | asy_fram_manager.py:219 | _FRAMBaseChunk._read | `self._read_into` at :219, :227 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:222 | _FRAMBaseChunk._read +7 | `self.pr.evt` at :222, :230, :249, :387, :393, :433, :448, :576, :578, :590, :625, :630 (+2) | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:222 | _FRAMBaseChunk._read +7 | `self.pr.evt` at :222, :230, :249, :387, :393, :433, :448, :587, :589, :601, :636, :641 (+2) | what the callee raises | transitive | the callee's own rows here |
 | asy_fram_manager.py:236 | _FRAMBaseChunk._read | `self._blank_verdict` at :236 | what the callee raises | transitive | the callee's own rows here |
 | asy_fram_manager.py:237 | _FRAMBaseChunk._read +1 | `self.pr.all` at :237, :242, :244, :257, :264, :375 | what the callee raises | transitive | the callee's own rows here |
 | asy_fram_manager.py:239 | _FRAMBaseChunk._read +1 | `self._write_chunk` at :239, :254, :376, :380 | what the callee raises | transitive | the callee's own rows here |
 | asy_fram_manager.py:245 | _FRAMBaseChunk._read +1 | `self._compare_with` at :245, :389 | what the callee raises | transitive | the callee's own rows here |
 | asy_fram_manager.py:332 | _FRAMBaseChunk._read_chunk | `self._read_progress` at :332 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:361 | _FRAMBaseChunk._read_progress +3 | `range` at :361, :388, :444, :788 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_fram_manager.py:361 | _FRAMBaseChunk._read_progress +3 | `range` at :361, :388, :444, :799 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
 | asy_fram_manager.py:445 | _FRAMBaseChunk.clear | `self._clear_chunk` at :445 | what the callee raises | transitive | the callee's own rows here |
 | asy_fram_manager.py:459 | _FRAMBaseChunk.invalidate | `self._handle_status_bytes` at :459 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:472 | FRAMChunkBuffer.__init__ +2 | `super` at :472, :472, :520, :520, :540, :540 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_fram_manager.py:477 | FRAMChunk.get_buffer | `FRAMChunkBuffer` at :477 | not classified | open | - |
-| asy_fram_manager.py:480 | FRAMChunk.read +3 | `self.get_buffer` at :480, :498, :549, :596 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:481 | FRAMChunk.read +1 | `self.read_into` at :481, :550 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:483 | FRAMChunk.read +3 | `buf.get_data_buf` at :483, :499, :553, :597 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:491 | FRAMChunk.read_into +3 | `buf.get_buf` at :491, :511, :561, :636 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:495 | FRAMChunk.read_into +1 | `self._read` at :495, :565 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:508 | FRAMChunk.write +1 | `self.write_into` at :508, :606 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:515 | FRAMChunk.write_into +1 | `self._write` at :515, :641 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:540 | FRAMTimestampedChunk.__init__ +2 | `struct.calcsize` at :540, :545, :545, :739 | ValueError/TypeError on a bad format or short buffer (py/modstruct.c) | open | format and buffer size proof |
-| asy_fram_manager.py:544 | FRAMTimestampedChunk.get_buffer | `FRAMChunkTimestampedBuffer` at :544 | not classified | open | - |
-| asy_fram_manager.py:569 | FRAMTimestampedChunk.read_into +1 | `buf.get_ts_buf` at :569, :631 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:574 | FRAMTimestampedChunk.read_into | `int` at :574 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
-| asy_fram_manager.py:574 | FRAMTimestampedChunk.read_into | `struct.unpack_from` at :574 | ValueError/TypeError on a bad format or short buffer (py/modstruct.c) | open | format and buffer size proof |
-| asy_fram_manager.py:586 | FRAMTimestampedChunk.read_into +1 | `utc_now` at :586, :621 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:635 | FRAMTimestampedChunk.write_into | `struct.pack_into` at :635 | ValueError/TypeError on a bad format or short buffer (py/modstruct.c) | open | format and buffer size proof |
-| asy_fram_manager.py:649 | FRAMManager.__init__ | `PrintLogHistory` at :649 | not classified | open | - |
-| asy_fram_manager.py:657 | FRAMManager.__init__ | `FRAM_SPI` at :657 | not classified | open | - |
-| asy_fram_manager.py:663 | FRAMManager._watch_chip_loop +3 | `self.pr.err` at :663, :685, :698, :736, :749, :773, :780, :792 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:666 | FRAMManager._watch_chip_loop | `self.setup` at :666 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:668 | FRAMManager._watch_chip_loop +2 | `self.pr.one` at :668, :690, :703, :741, :757 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:669 | FRAMManager._watch_chip_loop | `self.fram.lost.wait` at :669 | not classified | open | - |
-| asy_fram_manager.py:678 | FRAMManager.start_asy_watch_chip | `asyncio.get_event_loop` at :678 | not classified | open | - |
-| asy_fram_manager.py:679 | FRAMManager.start_asy_watch_chip | `evtloop.create_task` at :679 | not classified | open | - |
-| asy_fram_manager.py:679 | FRAMManager.start_asy_watch_chip | `self._watch_chip_loop` at :679 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:687 | FRAMManager.get_chunk +1 | `CRCPass` at :687, :738 | not classified | open | - |
-| asy_fram_manager.py:700 | FRAMManager.get_chunk | `FRAMChunk` at :700 | not classified | open | - |
-| asy_fram_manager.py:700 | FRAMManager.get_chunk +1 | `_owner_seed` at :700, :753 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:701 | FRAMManager.get_chunk +1 | `self._chunks.append` at :701, :755 | not classified | open | - |
-| asy_fram_manager.py:711 | FRAMManager.get_error_counter | `self.pr.get_log` at :711 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:752 | FRAMManager.get_timestamped_chunk | `FRAMTimestampedChunk` at :752 | not classified | open | - |
-| asy_fram_manager.py:772 | FRAMManager.erase_chip | `self.erase_ready` at :772 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:777 | FRAMManager.erase_chip | `chunk.invalidate` at :777 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:778 | FRAMManager.erase_chip +1 | `step_done` at :778, :794, :809 | not classified | open | - |
-| asy_fram_manager.py:787 | FRAMManager.erase_chip | `self.fram.get_size` at :787 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:791 | FRAMManager.erase_chip | `self.fram.report_set_values` at :791 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:795 | FRAMManager.erase_chip | `asyncio.sleep` at :795 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
-| asy_fram_manager.py:801 | FRAMManager.erase_ready | `self.fram.is_ready` at :801 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:801 | FRAMManager.erase_ready | `self.fram.get_write_protected` at :801 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:806 | FRAMManager.quiesce | `self.set_pause` at :806 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:808 | FRAMManager.quiesce | `chunk.wait_idle` at :808 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:812 | FRAMManager.reset_error_counter | `self.pr.reset` at :812 | what the callee raises | transitive | the callee's own rows here |
-| asy_fram_manager.py:815 | FRAMManager.setup | `self.pr.setup` at :815 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:482 | FRAMChunkBuffer.__init__ +2 | `super` at :482, :482, :530, :530, :550, :550 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_fram_manager.py:487 | FRAMChunk.get_buffer | `FRAMChunkBuffer` at :487 | not classified | open | - |
+| asy_fram_manager.py:490 | FRAMChunk.read +3 | `self.get_buffer` at :490, :508, :559, :607 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:491 | FRAMChunk.read +1 | `self.read_into` at :491, :560 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:493 | FRAMChunk.read +3 | `buf.get_data_buf` at :493, :509, :563, :608 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:498 | FRAMChunk.read +1 | `self._copy_out` at :498, :568 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:501 | FRAMChunk.read_into +3 | `buf.get_buf` at :501, :521, :572, :647 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:505 | FRAMChunk.read_into +1 | `self._read` at :505, :576 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:518 | FRAMChunk.write +1 | `self.write_into` at :518, :617 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:525 | FRAMChunk.write_into +1 | `self._write` at :525, :652 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:550 | FRAMTimestampedChunk.__init__ +2 | `struct.calcsize` at :550, :555, :555, :750 | ValueError/TypeError on a bad format or short buffer (py/modstruct.c) | open | format and buffer size proof |
+| asy_fram_manager.py:554 | FRAMTimestampedChunk.get_buffer | `FRAMChunkTimestampedBuffer` at :554 | not classified | open | - |
+| asy_fram_manager.py:580 | FRAMTimestampedChunk.read_into +1 | `buf.get_ts_buf` at :580, :642 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:585 | FRAMTimestampedChunk.read_into | `int` at :585 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
+| asy_fram_manager.py:585 | FRAMTimestampedChunk.read_into | `struct.unpack_from` at :585 | ValueError/TypeError on a bad format or short buffer (py/modstruct.c) | open | format and buffer size proof |
+| asy_fram_manager.py:597 | FRAMTimestampedChunk.read_into +1 | `utc_now` at :597, :632 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:646 | FRAMTimestampedChunk.write_into | `struct.pack_into` at :646 | ValueError/TypeError on a bad format or short buffer (py/modstruct.c) | open | format and buffer size proof |
+| asy_fram_manager.py:660 | FRAMManager.__init__ | `PrintLogHistory` at :660 | not classified | open | - |
+| asy_fram_manager.py:668 | FRAMManager.__init__ | `FRAM_SPI` at :668 | not classified | open | - |
+| asy_fram_manager.py:674 | FRAMManager._watch_chip_loop +3 | `self.pr.err` at :674, :696, :709, :747, :760, :784, :791, :803 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:677 | FRAMManager._watch_chip_loop | `self.setup` at :677 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:679 | FRAMManager._watch_chip_loop +2 | `self.pr.one` at :679, :701, :714, :752, :768 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:680 | FRAMManager._watch_chip_loop | `self.fram.lost.wait` at :680 | not classified | open | - |
+| asy_fram_manager.py:689 | FRAMManager.start_asy_watch_chip | `asyncio.get_event_loop` at :689 | not classified | open | - |
+| asy_fram_manager.py:690 | FRAMManager.start_asy_watch_chip | `evtloop.create_task` at :690 | not classified | open | - |
+| asy_fram_manager.py:690 | FRAMManager.start_asy_watch_chip | `self._watch_chip_loop` at :690 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:698 | FRAMManager.get_chunk +1 | `CRCPass` at :698, :749 | not classified | open | - |
+| asy_fram_manager.py:711 | FRAMManager.get_chunk | `FRAMChunk` at :711 | not classified | open | - |
+| asy_fram_manager.py:711 | FRAMManager.get_chunk +1 | `_owner_seed` at :711, :764 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:712 | FRAMManager.get_chunk +1 | `self._chunks.append` at :712, :766 | not classified | open | - |
+| asy_fram_manager.py:722 | FRAMManager.get_error_counter | `self.pr.get_log` at :722 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:763 | FRAMManager.get_timestamped_chunk | `FRAMTimestampedChunk` at :763 | not classified | open | - |
+| asy_fram_manager.py:783 | FRAMManager.erase_chip | `self.erase_ready` at :783 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:788 | FRAMManager.erase_chip | `chunk.invalidate` at :788 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:789 | FRAMManager.erase_chip +1 | `step_done` at :789, :805, :820 | not classified | open | - |
+| asy_fram_manager.py:798 | FRAMManager.erase_chip | `self.fram.get_size` at :798 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:802 | FRAMManager.erase_chip | `self.fram.report_set_values` at :802 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:806 | FRAMManager.erase_chip | `asyncio.sleep` at :806 | MemoryError (py/gc.c gc_alloc via m_malloc_fail) | open | setup-only or run-time allocation decides (I.4) |
+| asy_fram_manager.py:812 | FRAMManager.erase_ready | `self.fram.is_ready` at :812 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:812 | FRAMManager.erase_ready | `self.fram.get_write_protected` at :812 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:817 | FRAMManager.quiesce | `self.set_pause` at :817 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:819 | FRAMManager.quiesce | `chunk.wait_idle` at :819 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:823 | FRAMManager.reset_error_counter | `self.pr.reset` at :823 | what the callee raises | transitive | the callee's own rows here |
+| asy_fram_manager.py:826 | FRAMManager.setup | `self.pr.setup` at :826 | what the callee raises | transitive | the callee's own rows here |
 | asy_fram_driver.py:38 | <module> | `const` at :38, :39, :49, :50, :51, :56, :57, :58, :59, :63, :64, :65 (+33) | nothing at run time | unreachable | folded at compile time (py/compile.c, MICROPY_COMP_CONST) |
 | asy_fram_driver.py:132 | FRAM_SPI.__init__ +2 | `super` at :132, :132, :157, :157, :175, :175 | TypeError/ValueError on unsupported operands (py/modbuiltins.c, py/obj.c) | open | operand-type proof |
 | asy_fram_driver.py:134 | FRAM_SPI.__init__ | `SPIDevice` at :134 | not classified | open | - |

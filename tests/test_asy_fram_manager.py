@@ -3000,6 +3000,39 @@ def test_a_failed_check_buffer_allocation_prints_its_own_text_once() -> None:
     assert rec.lines == []  # the read's own entry is persisted, not a second console line
 
 
+def test_a_failed_read_copy_returns_the_sentinel_on_both_chunk_classes() -> None:
+    # read()'s copy-out is chunk-sized, so it degrades as the buffer it copies from does: the not-read sentinel, the
+    # failure's own text on the console (the memory gates read it) and one persisted ALLOC entry, never a raise.
+    err = MemoryError("injected for the read copy")  # worded clear of the memory gates' markers
+    real = bytearray
+
+    def failing(*args: object) -> bytearray:
+        if args and isinstance(args[0], memoryview):  # the copy of the data region: no other bytearray() takes a view
+            raise err
+        return real(*args)
+
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
+    plain = manager.get_chunk(4, crc=CRC8(), owner="T1")
+    stamped = manager.get_timestamped_chunk(4, _synced, crc=CRC8(), owner="T2")
+    assert plain is not None and stamped is not None
+    assert run(plain.write(b"data")) is True
+    assert run(stamped.write(b"stmp"))[0] is True
+    asy_fram_manager.bytearray = failing  # type: ignore[attr-defined]
+    try:
+        with record_prints() as rec:
+            assert run(plain.read()) is None
+            assert run(stamped.read()) == (None, None, None)
+    finally:
+        del asy_fram_manager.bytearray  # type: ignore[attr-defined]
+    assert rec.lines == [("FRAM", "chunk read: no buffer for the data copy:", err)] * 2
+    log = run(manager.get_error_counter())
+    assert log["FRAM"]["ErrNum"][-1] == code("E", "ALLOC")
+    assert log["FRAM"]["ErrCount"] == 2
+    assert run(plain.read()) == bytearray(b"data")  # nothing stored was touched: the next read copies again
+    assert run(stamped.read())[2] == bytearray(b"stmp")
+
+
 # ---------------------------------------------------------------------------
 # The central newest-entry rule (asy_print_log.py, SPECIFICATION.md C.7.1): a repeated identical code spends no
 # new slot; ErrCount counts every event.
