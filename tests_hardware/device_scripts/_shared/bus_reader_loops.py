@@ -39,13 +39,14 @@ class Drivers:
 
 
 class Record:
-    # One loop's completed rounds, its failures (counted, the first few kept) and, when asked, each completed round's
-    # (start, end) ticks_ms() window for an interleave check.
+    # One loop's completed rounds, its failures (counted, the first few kept), whether a round is in flight now and,
+    # when asked, each completed round's (start, end) ticks_ms() window for an interleave or overlap check.
     def __init__(self, name: str, *, windows: bool = False) -> None:
         self.name = name
         self.reads = 0
         self.total = 0
         self.first: list[str] = []
+        self.in_flight = False
         self.windows: list[tuple[_TicksMs, _TicksMs]] | None = [] if windows else None
 
     def fail(self, message: str) -> None:
@@ -139,15 +140,23 @@ def outside(bounds: "dict[str, tuple[float, float, str]]", name: str, value: "fl
     return None if value is None or low <= value <= high else f"{name}={value} outside [{low}, {high}]"
 
 
+def overlapped(writes: Record, readers: "list[Record]") -> int:
+    # Sibling reads whose window shares time with a write's: one that ended before a write began, or began after it
+    # ended, raced nothing. Ticks wrap, so every comparison goes through ticks_diff().
+    return sum(1 for r in readers for start, end in r.windows or [] if any(time.ticks_diff(w_end, start) > 0 and time.ticks_diff(end, w_start) > 0 for w_start, w_end in writes.windows or []))
+
+
 async def read_loop(read: "Callable[[], Awaitable[str | None]]", iterations: "int | None", step_ms: int, wdt: machine.WDT, record: Record, stop: Stop) -> None:
     # Up to `iterations` rounds (None: until `stop`); `read` returns None for a good round or names what was wrong.
     i = 0
     while not stop.is_set and (iterations is None or i < iterations):
         start = time.ticks_ms()
+        record.in_flight = True
         try:
             problem = await read()
         except Exception as e:  # every failure is recorded and the loop goes on; the host gives the verdict
             problem = f"{type(e).__name__}: {e}"
+        record.in_flight = False
         if problem is None:
             record.reads += 1
             if record.windows is not None:

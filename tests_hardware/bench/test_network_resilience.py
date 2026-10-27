@@ -101,10 +101,6 @@ _UDP_CAPTURE_TIMEOUT_S = 55.0
 _RTC_WRITE_WAIT_S = 3.0
 # @tunable l4.network_resilience_ntp_resync_after_reset_timeout_s = 120.0
 _NTP_RESYNC_AFTER_RESET_TIMEOUT_S = 120.0
-# @tunable l4.network_resilience_ntp_retry_chain_margin_s = 10.0
-_NTP_RETRY_CHAIN_MARGIN_S = 10.0
-# @tunable l4.network_resilience_sync_age_slack_s = 2.0
-_SYNC_AGE_SLACK_S = 2.0
 # @tunable l4.network_resilience_no_ap_tail_s = 15.0
 _NO_AP_TAIL_S = 15.0
 # @tunable l4.hotspot_role_reversal_join_hotspot_timeout_s = 45.0
@@ -269,7 +265,7 @@ def test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage(board: Boa
     word = _load.as_object(res.json().get("result"), "result").get("NTPHost")
     assert res.status_code == 200 and word == "Unchanged", f"an NTPHost PUT of its current value answered {word!r}: something was written"
     reset_all_error_logs(dut_ip, request.node.name)
-    block_s = _ntp_retry_period_s() + _NTP_BLOCK_MARGIN_S
+    block_s = _load.ntp_retry_period_s() + _NTP_BLOCK_MARGIN_S
     bench.block_udp_ports([123])
     try:
         _load.reset_and_wait(board, bench, dut_ip, timeout_s=_RECONNECT_TIMEOUT_S)
@@ -347,7 +343,7 @@ def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: B
     assert year_before is not None, "GET /status's UTCTime is null: the DUT has not synced NTP yet, so its clock is no signal for this test"
     assert year_before < _SPOOF_YEAR - 1, f"the DUT's own UTCTime year {year_before} leaves no room to tell the spoof's {_SPOOF_YEAR} apart"
     reset_all_error_logs(dut_ip, request.node.name)
-    deadline_s = _fetch_timeout_s()
+    deadline_s = _load.ntp_fetch_timeout_s()
     bench.block_udp_ports_from([123])  # the real reply held back: the spoof is the only answer the waiting socket gets
     try:
         port, captured_at = _capture_dut_ntp_port(board, bench, dut_ip, result_note)
@@ -369,8 +365,8 @@ def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: B
 
 # ---------------------------------------------------------------------------
 # A config-level NTP fault rather than a network-level one (owner, 2026-09-02): PUT a garbage NTPHost on a live link,
-# watch the DNS failure degrade cleanly, restore, confirm recovery. Starting synced reaches
-# _handle_ntp_sync_failure()'s ntp_issynced() branch, which nothing else does.
+# watch the DNS failure degrade cleanly, restore, confirm recovery. The PUT's post function, ntp_force_sync(), clears
+# Synced before the attempt, so the failure takes the unsynced backoff and arms no retry timer.
 # ---------------------------------------------------------------------------
 
 # RFC 2606 reserves .invalid so it can never resolve: a genuine, permanent DNS-resolution failure.
@@ -1070,7 +1066,7 @@ def _assert_recovered(board: Board, bench: "BenchBridge", dut_ip: str, result_no
     started = time.monotonic()
     recover_by_reset(board, bench, ready=lambda: _load.serving(dut_ip), first_wait_s=_OUTAGE_RECONNECT_TIMEOUT_S, retry_wait_s=_RECONNECT_TIMEOUT_S, skipped="_assert_wifi_log_has_only_benign_outage_warnings", note=noted, description=description)
     served_at = time.monotonic()
-    _wait_for_ntp_quiet(dut_ip, served_at, result_note)
+    _load.wait_for_ntp_quiet(dut_ip, served_at, result_note)
     if not noted.recovered:
         result_note(f"recovered gracefully in {served_at - started:.1f}s ({since} to the first reachable /status)")
         _assert_wifi_log_has_only_benign_outage_warnings(dut_ip)
@@ -1144,11 +1140,6 @@ def _extra_outcome(dut_ip: str, held: list[socket.socket]) -> bytes:
             return b"<held open: admitted>"
 
 
-def _fetch_timeout_s() -> float:
-    # The client's reply timeout: NtpTiming.fetch_timeout_ms, which buildgen/codegen.py writes into the device module.
-    return _load.buildgen_number("codegen.py", "_NTP_FETCH_TIMEOUT_MS") / 1000
-
-
 def _garbage_window(board: Board, bench: "BenchBridge", dut_ip: str, port: int) -> "tuple[list[str], dict[str, int]]":
     # A rogue responder on the port the OS picked, the DUT's `port` redirected to it, a reset forcing a fresh exchange,
     # and the log tailed; the redirect is cleared on every path.
@@ -1215,37 +1206,6 @@ def _mem_free(dut_ip: str) -> int:
     free = _load.as_object(_load.get_object(dut_ip, "/status", _PROBE_TIMEOUT_S).get("system"), "GET /status system").get("MemFree")
     assert isinstance(free, int), f"GET /status carries no MemFree: {free!r}"
     return free
-
-
-def _ntp_attempt_s() -> float:
-    # One sync attempt's longest run (src/asy_ntp_client.py _run_ntp_sync_attempt()): a send and a reply wait per lookup
-    # try on each server, the DHCP one and up to _DNS_FALLBACK_MAX more (asy_dns_client.py resolve_ipv4()), then the NTP
-    # request's send and reply wait (_fetch_ntp_reply()), each bounded by its timeout in buildgen/codegen.py.
-    servers = 1 + _load.src_number(_NTP, "_DNS_FALLBACK_MAX")
-    lookup_s = servers * _load.buildgen_number("codegen.py", "_DNS_TRIES") * 2 * _load.buildgen_number("codegen.py", "_DNS_TIMEOUT_MS") / 1000
-    return lookup_s + 2 * _fetch_timeout_s()
-
-
-def _ntp_retry_chain_s() -> float:
-    # A synced client's failed attempt arms up to _NTP_SYNC_RETRIES one-shot retries, each _NTP_RETRY_INTERV after the
-    # failure before it (src/asy_ntp_client.py _handle_ntp_sync_failure()); a retry finding no network ends it silently.
-    return _load.src_number(_NTP, "_NTP_SYNC_RETRIES") * (_load.src_number(_NTP, "_NTP_RETRY_INTERV") + _ntp_attempt_s())
-
-
-def _ntp_retry_period_s() -> float:
-    # The unsynced client's first retry step: its default interval, rounded up to the check tick it is counted on.
-    return max(_load.src_number(_NTP, "_DEFAULT_RETRY_S"), _load.src_number(_NTP, "_NTP_CHECK_INTERV"))
-
-
-def _ntp_view(dut_ip: str) -> "tuple[int, bool, object] | None":
-    # NTP's logged count, NTPSynced and NTPLastSyncAge from one GET /status, None while the board does not answer.
-    try:
-        status = _load.get_object(dut_ip, "/status", _PROBE_TIMEOUT_S)
-        networking = _load.as_object(status.get("networking"), "GET /status networking")
-        counter = errcount_entry(_load.as_object(status.get("errcount"), "GET /status errcount"), "NTP")["counter"]
-    except (OSError, http_client.HTTP_ERROR, ValueError, TypeError, AssertionError):
-        return None
-    return counter, networking.get("NTPSynced") is True, networking.get("NTPLastSyncAge")
 
 
 def _openhab_client(dut_ip: str, paths: "list[str]", interval_s: float, stop: threading.Event, latencies: "dict[str, list[float]]", failures: "list[str]") -> None:
@@ -1359,32 +1319,6 @@ def _utc_year(dut_ip: str) -> "int | None":
     year = _load.as_object(utc, "GET /status system.UTCTime").get("Year")
     assert isinstance(year, int), f"UTCTime carries no Year: {utc!r}"
     return year
-
-
-def _wait_for_ntp_quiet(dut_ip: str, served_at: float, result_note: "_load.Note") -> None:
-    # What NTP still does after an outage logs into this window: the reset path's boot sync, after serving, and the
-    # retries a failure here arms. Synced is required; a logged failure then waits for a newer sync, or for the chain's
-    # longest run since serving: an attempt holds wifi_mode_lock, which the reconnect takes (_sync_loop()).
-    synced_by = served_at + _NTP_RESYNC_AFTER_RESET_TIMEOUT_S
-    chain_by = served_at + _ntp_retry_chain_s() + _NTP_RETRY_CHAIN_MARGIN_S
-    counted, counted_at, view = -1, served_at, None
-    while True:
-        asked = time.monotonic()
-        view = _ntp_view(dut_ip)
-        answered = time.monotonic()
-        if view is not None:
-            counter, synced, age = view
-            if counter != counted:
-                counted, counted_at = counter, answered  # every failure counted so far lies before this answer
-            # LastSyncAge is whole seconds, refreshed on a 1 s tick (asy_base_classes.py arm_tick_timer(), TickSeconds.read()).
-            fresh = isinstance(age, (int, float)) and not isinstance(age, bool) and asked - age - _SYNC_AGE_SLACK_S > counted_at
-            if synced and (counter == 0 or fresh or answered >= chain_by):
-                ended = "nothing logged" if counter == 0 else "a sync newer than its last failure" if fresh else "the retry chain's bound"
-                result_note(f"NTP quiet {answered - served_at:.0f}s after serving: {ended}")
-                return
-        if answered >= synced_by:
-            raise TimeoutError(f"NTP not synced within {_NTP_RESYNC_AFTER_RESET_TIMEOUT_S}s of serving after the outage, so its sync would log into the next test's window: last view (counter, synced, age) {view!r}")
-        time.sleep(_WAIT_POLL_S)
 
 
 def _website_routes(device: str) -> "tuple[str, float]":

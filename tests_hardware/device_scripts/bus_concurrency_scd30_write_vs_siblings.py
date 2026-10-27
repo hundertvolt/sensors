@@ -20,7 +20,7 @@ except ImportError:  # typing has no runtime presence on MicroPython
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from _shared.bus_reader_loops import Record, Stop, isl29125_counts_problem, read_loop, report_errors
+    from _shared.bus_reader_loops import Record, Stop, isl29125_counts_problem, overlapped, read_loop, report_errors
     from _shared.facts import done, fact
     from _shared.watchdog import arm, fed_sleep_ms
     from bench_facts import BenchFacts
@@ -33,7 +33,7 @@ _SIBLING_STEP_MS = 15
 _AFTER_WRITE_S = 1.0
 # @tunable l3.bus_concurrency_scd30_write_vs_siblings_run_bound_s = 60.0
 _RUN_BOUND_S = 60.0
-# The write waits until both siblings completed a read, at most this long (a deadline, never a fixed head start).
+# The write waits until both siblings completed a read, then for an SGP40 round's head, both by this deadline.
 # @tunable l3.bus_concurrency_scd30_write_vs_siblings_writer_delay_ms = 1000
 _WRITER_DELAY_MS = 1000
 # The offset the write sends, inside the schema's TempOffset range; the restore sends back what the chip held.
@@ -56,7 +56,7 @@ async def _main() -> None:
         await sgp.measure_raw(temperature=25, relative_humidity=50)
         return None
 
-    isl_rec, sgp_rec, write_rec = Record("isl29125"), Record("sgp40"), Record("scd30_write")
+    isl_rec, sgp_rec, write_rec = Record("isl29125", windows=True), Record("sgp40", windows=True), Record("scd30_write", windows=True)
     stop = Stop()
     prior = None
     try:
@@ -66,14 +66,23 @@ async def _main() -> None:
     fact("prior_offset", prior)
 
     async def writer() -> None:
-        waited_ms = 0
-        while (isl_rec.reads == 0 or sgp_rec.reads == 0) and waited_ms < _WRITER_DELAY_MS:
+        deadline = time.ticks_add(time.ticks_ms(), _WRITER_DELAY_MS)
+        while (isl_rec.reads == 0 or sgp_rec.reads == 0) and time.ticks_diff(deadline, time.ticks_ms()) > 0:
             await fed_sleep_ms(wdt, _SIBLING_STEP_MS)
-            waited_ms += _SIBLING_STEP_MS
+        # Then an SGP40 round's head: the write begins inside that sibling's session, ahead of its command, which then
+        # waits on the bus (its CRC staging yields first, src/asy_crc_checks.py _crc()).
+        was_in_flight = sgp_rec.in_flight
+        while (was_in_flight or not sgp_rec.in_flight) and time.ticks_diff(deadline, time.ticks_ms()) > 0:
+            was_in_flight = sgp_rec.in_flight
+            await asyncio.sleep_ms(0)
+        fact("write_in_sgp_round", sgp_rec.in_flight)  # read where the write begins: one the deadline sent outside a round shows
         start = time.ticks_ms()
         try:
             await scd.set_temperature_offset(_WRITE_OFFSET_C)  # owned writes: the offset, and its restore after the run
-            fact("write_done", time.ticks_diff(time.ticks_ms(), start))
+            end = time.ticks_ms()
+            fact("write_done", time.ticks_diff(end, start))
+            if write_rec.windows is not None:
+                write_rec.windows.append((start, end))
         except (OSError, RuntimeError, ValueError) as e:
             fact("write_error", repr(e))
         await fed_sleep_ms(wdt, int(_AFTER_WRITE_S * 1000))
@@ -89,8 +98,9 @@ async def _main() -> None:
             fact("restored", await scd.get_temperature_offset())
         except (OSError, RuntimeError, ValueError) as e:
             fact("restore_error", repr(e))
-    fact("isl_windows", isl_rec.reads)
+    fact("isl_reads", isl_rec.reads)
     fact("sgp_reads", sgp_rec.reads)
+    fact("overlapped_reads", overlapped(write_rec, [isl_rec, sgp_rec]))
     report_errors([isl_rec, sgp_rec, write_rec])
     done()
 

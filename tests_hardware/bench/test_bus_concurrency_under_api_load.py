@@ -81,7 +81,6 @@ _REBOOT_READY_TIMEOUT_S = 60.0
 _NTP_BLOCK_MARGIN_S = 10.0
 # @tunable l4.bus_concurrency_under_api_load_command_after_answered = 3
 _COMMAND_AFTER_ANSWERED = 3
-_NTP = "asy_ntp_client.py"
 _SYSTEM = "asy_system_service.py"
 # The read paths' new codes, named so a load arm that provokes one says which (catalog names, checked at run time).
 _LOAD_CODES = (("W", "BMP_CHIP_RESET"), ("E", "READ_RANGE"), ("W", "ISL_DIVERGED"))
@@ -169,7 +168,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
     reset_all_error_logs(dut_ip, request.node.name)
     context = " during the NTP outage"
     load = _load.Load(context)
-    block_s = _ntp_retry_period_s() + _NTP_BLOCK_MARGIN_S
+    block_s = _load.ntp_retry_period_s() + _NTP_BLOCK_MARGIN_S
     bench.block_udp_ports([123])
     try:
         _load.reset_and_wait(board, bench, dut_ip, timeout_s=_REBOOT_READY_TIMEOUT_S)
@@ -240,6 +239,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
         note=noted,
         description="WiFi flapping under bus load",
     )
+    _load.wait_for_ntp_quiet(dut_ip, time.monotonic(), result_note)
     if not noted.recovered:
         _assert_bus_logs_empty(dut_ip)
     assert_no_task_ended(dut_ip, "bus load + real WiFi flapping")  # on both paths - FRAM keeps SYSTEM
@@ -247,9 +247,9 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
 
 
 # ---------------------------------------------------------------------------
-# Flash-tier parity, per Part C.8's standing rule: every flash-tier bus hazard gets a bench-tier
-# counterpart through the real HTTP/REST stack. This one answers test_bus_concurrency.py's
-# test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads.
+# Flash-tier parity (Part C.8) for test_bus_concurrency.py's ISL29125 write-vs-siblings test: the REST path under load
+# while PUT /sensors writes, whose GETs read the ISL29125's and SCD30's config over i2c1. No host-side view shows a
+# read overlapping a write, so that proof is the flash test's overlapped_reads.
 # ---------------------------------------------------------------------------
 
 # @tunable l4.bus_concurrency_under_api_load_isl29125_write_cycles = 4
@@ -502,11 +502,6 @@ def _noted_ceiling_retries(note: "_load.Note") -> "Iterator[None]":
     counts = _take_ceiling_retries()
     if counts:
         note(f"CEILING_RETRIES rest of the test: {counts}")
-
-
-def _ntp_retry_period_s() -> float:
-    # The unsynced client's first retry step: its default interval, rounded up to the check tick it is counted on.
-    return max(_load.src_number(_NTP, "_DEFAULT_RETRY_S"), _load.src_number(_NTP, "_NTP_CHECK_INTERV"))
 
 
 def _offset_values(original: float) -> "list[float]":
