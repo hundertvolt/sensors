@@ -109,6 +109,9 @@ _WDT_OVERRUN_WAIT_S = 9.0
 # @tunable l2.sensortask_integration_idle_window_s = 3.0
 _IDLE_WINDOW_S = 3.0
 _BURST = 6  # DNS queries sent with no yield between them: more than lwIP queues for one socket (asy_captive_dns.py)
+# The burst's look for its replies, at most _WAIT_TIMEOUT_MS of them.
+# @tunable l2.sensortask_integration_burst_poll_ms = 1
+_BURST_POLL_MS = 1
 _DNS_QUESTION = b"\x07captive\x07example\x00\x00\x01\x00\x01"  # one A record (RFC 1035 4.1.2)
 _POLL_IDLE_MS = src_const("src/asy_udp_socket.py", "_POLL_IDLE_MS")
 _STA_ESTABLISHED = src_const("src/asy_wifi_service.py", "_PHASE_STA_ESTABLISHED")
@@ -304,7 +307,7 @@ async def _dns_burst(counter: _CountingPoller) -> "tuple[int, int, int]":
                 replied.add(peer.recv(512)[1])
             if len(replied) == _BURST:
                 break
-            await asyncio.sleep_ms(1)
+            await asyncio.sleep_ms(_BURST_POLL_MS)
         return len(replied), counter.rounds - before, counter.sleeps.count - slept
     finally:
         poller.unregister(peer)

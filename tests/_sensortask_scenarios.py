@@ -2576,6 +2576,13 @@ class _SilentNtpPeer:
         return len(msg)
 
 
+# One NTP attempt's end, polled in real time: at most _NTP_ATTEMPT_POLLS looks, _NTP_ATTEMPT_POLL_MS apart.
+# @tunable l1.sensortask_ntp_attempt_polls = 2000
+_NTP_ATTEMPT_POLLS = 2000
+# @tunable l1.sensortask_ntp_attempt_poll_ms = 1
+_NTP_ATTEMPT_POLL_MS = 1
+
+
 @_register("an_ntp_server_that_never_replies_spends_one_slot_and_a_reply_syncs_once_it_answers")
 def _scenario_ntp_no_reply_storm(device: str) -> None:
     # The real sync loop against a server that never replies (the offline host's literal address, no DNS): each attempt
@@ -2609,8 +2616,8 @@ def _scenario_ntp_no_reply_storm(device: str) -> None:
     async def attempt() -> None:
         opened = len(peer.peers)
         ntp._ntp_sync_trigger_event.set()
-        for _ in range(2000):
-            await asyncio.sleep_ms(1)
+        for _ in range(_NTP_ATTEMPT_POLLS):
+            await asyncio.sleep_ms(_NTP_ATTEMPT_POLL_MS)
             if len(peer.peers) > opened and peer.closed == len(peer.peers) and not ntp.wifi_mode_lock.locked():
                 return  # torn down and the lock released: nothing yields before the loop waits again
         raise AssertionError(f"{device}: an NTP attempt never ended: {peer.peers}, {got}")
