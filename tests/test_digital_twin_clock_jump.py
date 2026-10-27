@@ -59,6 +59,7 @@ if TYPE_CHECKING:
 
 # @tunable l2.clock_jump_wait_timeout_s = 20.0
 _WAIT_TIMEOUT_S = 20.0
+# @tunable l2.clock_jump_poll_ms = 50
 _POLL_MS = 50  # how often a wait below looks again
 _TICKS_TO_RETRY = 4  # check ticks fired by hand toward the next attempt (tests/test_digital_twin_ntp.py's count)
 _SSID = "TestNet"

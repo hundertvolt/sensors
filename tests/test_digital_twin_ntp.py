@@ -70,6 +70,7 @@ microtest.after_each(network.reset_test_state)
 
 # @tunable l2.ntp_reply_wait_ms = 1000
 _REPLY_WAIT_MS = 1000  # a reply on loopback arrives within one responder poll; the bound only ends a lost one
+# @tunable l2.ntp_reply_poll_ms = 5
 _POLL_MS = 5
 # @tunable l2.ntp_run_bound_s = 10.0
 _RUN_BOUND_S = 10.0
@@ -274,7 +275,9 @@ def test_serving_never_starves_a_task_beside_it() -> None:
         task = asyncio.create_task(responder.serve())
         ticks = 0
         start = time.ticks_ms()
+        # @tunable l2.ntp_starve_window_ms = 200
         while time.ticks_diff(time.ticks_ms(), start) < 200:
+            # @tunable l2.ntp_starve_tick_ms = 1
             await asyncio.sleep_ms(1)
             ticks += 1
         task.cancel()
