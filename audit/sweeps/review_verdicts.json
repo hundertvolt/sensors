@@ -2453,6 +2453,12 @@
    "no unread fact it emits: errors is the included bus_reader_loops.py's report_errors() key, which this script never calls (i2c_held_sda_recovery.py:18); its own facts are asserted by test_a_held_sda_line_is_cleared_and_every_device_answers"
   ]
  },
+ "tests_hardware/device_scripts/setup_resets_each_chip_once.py::setup_resets_each_chip_once": {
+  "ds_facts": [
+   "biting",
+   "its one fact, setups, is read whole by test_every_chip_setup_resets_it_once_after_a_read_identified_it (test_bus_concurrency.py:279-295): each chip's driver, address, transfer record and read after setup asserted; no included helper's key is emitted (errors: report_errors() is never called); bitten under --twin on three plants (a setup without its reset, a reset before the identity read, a second reset) (agent, 2026-10-27)"
+  ]
+ },
  "tests_hardware/device_scripts/isl29125_cross_device_concurrency.py::isl29125_cross_device_concurrency": {
   "ds_facts": [
    "justified",
