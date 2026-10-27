@@ -460,6 +460,16 @@ class _FRAMBaseChunk:
                         return False
             return True
 
+    async def _copy_out(self, data: memoryview) -> bytearray | None:
+        # read()'s copy of the data region is chunk-sized, so it degrades as the buffer it copies from does
+        # (RegionBuffer): the not-read sentinel on an exhausted heap, never a raise.
+        try:
+            return bytearray(data)
+        except MemoryError as e:
+            console(_NAME, "chunk read: no buffer for the data copy:", e)  # ungated: the memory gates read this text (CLAUDE.md)
+            await self.pr.err_s("No buffer for the chunk read", errno=_ERR_ALLOC)
+            return None
+
     async def wait_idle(self) -> None:
         # Returns once this chunk's operation in flight, if any, has ended; one queued behind it then
         # meets the pause FRAMManager.quiesce() set first.
@@ -485,7 +495,7 @@ class FRAMChunk(_FRAMBaseChunk):
             # Unreachable: read_into() already failed on a missing buffer, and a RegionBuffer's buffer is fixed at
             # construction - kept to narrow the Optional for the type checker.
             return None
-        return bytearray(dbuf)
+        return await self._copy_out(dbuf)
 
     async def read_into(self, buf: RegionBuffer) -> bool | None:
         dbuf = buf.get_buf()
@@ -555,7 +565,8 @@ class FRAMTimestampedChunk(_FRAMBaseChunk):
             # Unreachable: read_into() already failed on a missing buffer, and a RegionBuffer's buffer is fixed at
             # construction - kept to narrow the Optional for the type checker.
             return None, None, None
-        return ts, age, bytearray(dbuf)
+        data = await self._copy_out(dbuf)
+        return (None, None, None) if data is None else (ts, age, data)
 
     async def read_into(self, buf: FRAMChunkTimestampedBuffer) -> tuple[bool | None, int | None, int | None]:
         bbuf = buf.get_buf()
