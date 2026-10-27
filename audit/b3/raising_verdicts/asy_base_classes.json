@@ -246,6 +246,166 @@
    "can_raise": "MemoryError for its 8-tuple (gmtime is localtime's entry, extmod/modtime.c:203, :55-75)",
    "verdict": "handled",
    "proof": "no argument, so the RTC is read as it stands; the tuple is a small fixed allocation (conventions)"
+  },
+  "SensorReader.__init__::instance_name": {
+   "can_raise": "MemoryError for the joined name (asy_config_manager.py:241-247: the name itself when name_ext is empty, else one concatenation)",
+   "verdict": "handled",
+   "proof": "construction only (every reader is built inside build_system()): the boot entry's except BaseException (conventions)"
+  },
+  "SensorReader.__init__::make_logger": {
+   "can_raise": "what make_logger() raises (asy_print_log.py:470): the logger's construction-time allocations (its own rows)",
+   "verdict": "handled",
+   "proof": "construction only: the boot entry's except BaseException (conventions)"
+  },
+  "SensorReader.__init__::asyncio.Lock": {
+   "can_raise": "MemoryError for each Lock and its TaskQueue (extmod/asyncio/lock.py:9-16), a fixed size",
+   "verdict": "handled",
+   "proof": "construction only: the boot entry's except BaseException (conventions)"
+  },
+  "SensorReader._climb_ladder::report_if_fatal": {
+   "can_raise": "nothing (asy_print_log.py:482-487)",
+   "verdict": "unreachable",
+   "proof": "as Lockable.__aexit__'s at :132"
+  },
+  "SensorReader._climb_ladder::self.pr.err_s": {
+   "can_raise": "MemoryError from err_s()'s *args tuple and generator, and what its rows leave (asy_print_log.py:261)",
+   "verdict": "handled",
+   "proof": "small fixed allocations in the reader task that calls _error_check() (asy_bmp3xx_driver.py:303, asy_isl29125_driver.py:750, asy_scd30_driver.py:475, asy_sgp40_driver.py:386, asy_wifi_service.py:430): _log_dead_task() (conventions)"
+  },
+  "SensorReader._climb_ladder::self.pr.wrn_s": {
+   "can_raise": "MemoryError from wrn_s()'s *args tuple and generator (asy_print_log.py:275)",
+   "verdict": "handled",
+   "proof": "as err_s at :571: the reader task's top (conventions)"
+  },
+  "SensorReader._climb_ladder::self._recover_bus": {
+   "can_raise": "what _recover_bus() raises: its rows (:645, :646, :648, :649)",
+   "verdict": "handled",
+   "proof": "each of its rows is handled at the reader task's top; the generator is a small fixed allocation (conventions)"
+  },
+  "SensorReader._error_check::any": {
+   "can_raise": "MemoryError for the generator expression's generator; any() itself iterates through a stack buffer (py/modbuiltins.c:109-118)",
+   "verdict": "handled",
+   "proof": "`res is None` raises nothing and results is the reader's tuple; the generator is a small fixed allocation at the reader task's top (conventions)"
+  },
+  "SensorReader._error_check::self.pr.err_s": {
+   "can_raise": "MemoryError from err_s()'s *args tuple and generator (asy_print_log.py:261)",
+   "verdict": "handled",
+   "proof": "as _climb_ladder's at :571: the reader task's top (conventions)"
+  },
+  "SensorReader._error_check::self._climb_ladder": {
+   "can_raise": "what _climb_ladder() raises: its rows (:570-578); _recover_device() sits in its except Exception at :569",
+   "verdict": "handled",
+   "proof": "each of its rows is handled at the reader task's top (conventions)"
+  },
+  "SensorReader._error_check::self.pr.err": {
+   "can_raise": "MemoryError from err()'s *args tuple and its at-level print (asy_print_log.py:115)",
+   "verdict": "handled",
+   "proof": "small fixed allocations at the reader task's top (conventions)"
+  },
+  "SensorReader._init_done::bus.take_boot_clear_status": {
+   "can_raise": "nothing: it reads and clears an int attribute (asy_i2c_driver.py:404-408)",
+   "verdict": "unreachable",
+   "proof": "a zero-argument call of a fixed-arity method; bus is the I2C the driver bound (None returns at :609-610)"
+  },
+  "SensorReader._init_done::self.pr.wrn_s": {
+   "can_raise": "MemoryError from wrn_s()'s *args tuple and generator (asy_print_log.py:275)",
+   "verdict": "handled",
+   "proof": "_init_done() runs from a driver's _init_*(), in its setup() or at its reader task's restart: the boot entry or _log_dead_task() (conventions)"
+  },
+  "SensorReader._init_failed::self._recover_bus": {
+   "can_raise": "what _recover_bus() raises: its rows",
+   "verdict": "handled",
+   "proof": "as _init_done's wrn_s at :613: setup() or the reader task's top (conventions)"
+  },
+  "SensorReader._rearm_timer::self._timer_fault": {
+   "can_raise": "what _timer_fault() raises: its err_s row (:727)",
+   "verdict": "handled",
+   "proof": "_rearm_timer() runs at its task's start (asy_scd30_driver.py:448, asy_sgp40_driver.py:327, _trigger_loop() :733): the task's top (conventions)"
+  },
+  "SensorReader._rearm_timer::self.start_timer": {
+   "can_raise": "what the driver's starter raises: each catches (MemoryError, OSError) around its timer.init() and hands it to _timer_failed() (asy_bmp3xx_driver.py:369-378, asy_isl29125_driver.py:987-996, asy_scd30_driver.py:552-561, asy_sgp40_driver.py:622-631); SCD30's and ISL29125's pin irq() after that try can raise only MemoryError, the IRQ object being allocated once, at its pin's first registration (ports/rp2/machine_pin.c:423-433), and the closure per call fixed",
+   "verdict": "handled",
+   "proof": "the closure is a small fixed allocation at the task's top (conventions); the arm failures are the starters' own excepts"
+  },
+  "SensorReader._recover_bus::bus.clear": {
+   "can_raise": "what I2C.clear() raises (asy_i2c_driver.py:333-337): the bus lock's acquire (CancelledError, its generator), _clear_locked()'s pulses and pin hand-back (:161-168), small fixed allocations",
+   "verdict": "handled",
+   "proof": "_recover_bus() runs from the ladder in the reader task or from _init_failed() in setup(): the task's top or the boot entry (conventions)"
+  },
+  "SensorReader._recover_bus::self.pr.wrn_s": {
+   "can_raise": "MemoryError from wrn_s()'s *args tuple and generator (asy_print_log.py:275)",
+   "verdict": "handled",
+   "proof": "as bus.clear at :645 (conventions)"
+  },
+  "SensorReader._recover_bus::bus.recover": {
+   "can_raise": "what I2C.recover() raises (asy_i2c_driver.py:386-396): as clear(), plus init()'s star-call array; init()'s OSError and ValueError are caught at :393",
+   "verdict": "handled",
+   "proof": "small fixed allocations at the task's top or the boot entry, as bus.clear at :645 (conventions)"
+  },
+  "SensorReader._republish::getattr": {
+   "can_raise": "AttributeError for a name the sample lacks (mp_builtin_getattr, py/modbuiltins.c:564-569)",
+   "verdict": "unreachable",
+   "proof": "the one caller (asy_scd30_driver.py:388) passes _FIELDS, the same eight names in order as its SCD30 namedtuple (:160-161), and `changes[n]` is read only under its `in` test; a field load allocates nothing"
+  },
+  "SensorReader._republish::type": {
+   "can_raise": "type(old) with one argument: nothing (py/objtype.c:1032-1033); the call of the class: TypeError for a positional count other than its fields' (py/objnamedtuple.c:95-106) and MemoryError for the star-call's array (py/runtime.c:790-812), the generator expression's generator and the new tuple",
+   "verdict": "handled",
+   "proof": "names covers all eight fields (row :710), so the TypeError cannot occur; the allocations are small and fixed by the sample's field count, at SCD30's reader task top or the config PUT's handler (conventions)"
+  },
+  "SensorReader._timer_failed::self.pr.err": {
+   "can_raise": "MemoryError from err()'s *args tuple and its at-level print (asy_print_log.py:115)",
+   "verdict": "handled",
+   "proof": "called from a starter's except, under _run_timer_starter()'s except (asy_system_service.py:432) or _rearm_timer()'s task (conventions)"
+  },
+  "SensorReader._timer_failed::waiter.set": {
+   "can_raise": "nothing: ThreadSafeFlag.set() replaces its `state` slot (extmod/asyncio/event.py:54-55)",
+   "verdict": "unreachable",
+   "proof": "a zero-argument method call whose frame stays on the C stack (py/objfun.c:268-287); waiter is the reader's ThreadSafeFlag"
+  },
+  "SensorReader._timer_fault::self.pr.err_s": {
+   "can_raise": "MemoryError from err_s()'s *args tuple and generator (asy_print_log.py:261)",
+   "verdict": "handled",
+   "proof": "_timer_fault() runs in the reader task (_rearm_timer(), _trigger_loop(), the drivers' read loops): its top (conventions)"
+  },
+  "SensorReader._trigger_loop::self._rearm_timer": {
+   "can_raise": "what _rearm_timer() raises: its rows (:631, :633)",
+   "verdict": "handled",
+   "proof": "_trigger_loop() is a supervised task (asy_bmp3xx_driver.py:353, :367; asy_isl29125_driver.py:985): _log_dead_task() (conventions)"
+  },
+  "SensorReader._trigger_loop::self._base_trigger_event.wait": {
+   "can_raise": "MemoryError for the wait's generator and the IOQueue entry, map slot and poll registration (extmod/asyncio/event.py:60-63, core.py:75-88); AssertionError (core.py:83-84) only for a second reader of the same flag; CancelledError (conventions)",
+   "verdict": "handled",
+   "proof": "an asyncio primitive F.2 never wraps: small fixed allocations at this task's top (conventions); this loop is the flag's one waiter (one task per reader), so the assertion cannot fail"
+  },
+  "SensorReader._trigger_loop::self._timer_fault": {
+   "can_raise": "what _timer_fault() raises: its err_s row (:727)",
+   "verdict": "handled",
+   "proof": "this task's top (conventions)"
+  },
+  "SensorReader._trigger_loop::self._trigger_period.get_value": {
+   "can_raise": "MemoryError for the async call's generator; LockedValue.get_value() returns its value (:287-288)",
+   "verdict": "handled",
+   "proof": "a small fixed allocation at this task's top (conventions); the period is the int set at construction (asy_bmp3xx_driver.py:185, asy_isl29125_driver.py:260)"
+  },
+  "SensorReader._trigger_loop::self._read_event.set": {
+   "can_raise": "nothing: ThreadSafeFlag.set() replaces its `state` slot (extmod/asyncio/event.py:54-55)",
+   "verdict": "unreachable",
+   "proof": "as _timer_failed's waiter.set at :718"
+  },
+  "SensorReader.get_error_counter::self.pr.get_log": {
+   "can_raise": "what get_log() raises (asy_print_log.py:241): its lists grow with the configured history_length",
+   "verdict": "handled",
+   "proof": "its one caller, _write_errcount_entry() (asy_webserver_service.py:720), awaits it inside the except Exception at :1005, which writes this source's entry as unavailable (I.4(b))"
+  },
+  "SensorReader.reset_error_counter::self.pr.reset": {
+   "can_raise": "what reset() raises (asy_print_log.py:265, :362): its rows",
+   "verdict": "handled",
+   "proof": "its one caller gathers it with return_exceptions=True (asy_webserver_service.py:871), so a raise comes back as an outcome, recorded and answered Failed (:876-880)"
+  },
+  "SensorReader.setup::self.pr.setup": {
+   "can_raise": "what setup() raises (asy_print_log.py:271, :398): its rows",
+   "verdict": "handled",
+   "proof": "setup() runs in the one-time boot batch (run_setups(), asy_system_service.py:734-740): the boot entry's except BaseException (conventions)"
   }
  }
 }
