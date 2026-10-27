@@ -1815,12 +1815,16 @@ mock-tier generic scenario type against what real hardware actually covers for d
 
 **Flash-tier -> bench-tier parity**: added
 `test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load`
-(`tests_hardware/bench/test_bus_concurrency_under_api_load.py`) - the same ISL29125-writes-while-
-siblings-read hazard as the flash-tier test above, driven through the real HTTP/REST stack instead of
-the bare driver (`PUT /sensors {"ISL29125": {"Resolution": ...}}` alternating between both real valid
-settings, concurrent with `GET /sensors` hammering, with the board's original `Resolution` restored
-in a `finally` block - the same push/restore duty `test_sensor_config_push_over_real_hardware.py`'s
-own BMP3xx test already owes for a shared bench rig).
+(`tests_hardware/bench/test_bus_concurrency_under_api_load.py`) - the flash-tier test above's writes
+driven through the real HTTP/REST stack instead of the bare driver (`PUT /sensors {"ISL29125":
+{"Resolution": ...}}` alternating between both real valid settings, concurrent with `GET /sensors`
+hammering, with the board's original `Resolution` restored in a `finally` block - the same
+push/restore duty `test_sensor_config_push_over_real_hardware.py`'s own BMP3xx test already owes for
+a shared bench rig). It proves the REST path under load while the writes run: every write answered
+`Valid`, the readers' floor met with schema-sane bodies, the bus logs clean. Each `GET /sensors` reads the
+ISL29125's and SCD30's config from the chips over i2c1, so real sibling bus reads run beside the
+writes, but nothing host-side shows one overlapping a write: that proof stays with the flash test's
+`overlapped_reads`.
 
 **SCD30's write-vs-siblings hazard has its bench-tier counterpart**: `PUT /sensors` reaches
 SCD30's NVM through its chip store (`_set_mgr_cfg()`, compare-before-write), so

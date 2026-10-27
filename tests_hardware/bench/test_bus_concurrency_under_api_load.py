@@ -247,9 +247,9 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
 
 
 # ---------------------------------------------------------------------------
-# Flash-tier parity, per Part C.8's standing rule: every flash-tier bus hazard gets a bench-tier
-# counterpart through the real HTTP/REST stack. This one answers test_bus_concurrency.py's
-# test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads.
+# Flash-tier parity (Part C.8) for test_bus_concurrency.py's ISL29125 write-vs-siblings test: the REST path under load
+# while PUT /sensors writes, whose GETs read the ISL29125's and SCD30's config over i2c1. No host-side view shows a
+# read overlapping a write, so that proof is the flash test's overlapped_reads.
 # ---------------------------------------------------------------------------
 
 # @tunable l4.bus_concurrency_under_api_load_isl29125_write_cycles = 4
