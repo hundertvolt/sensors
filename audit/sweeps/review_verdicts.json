@@ -2649,8 +2649,8 @@
  },
  "tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py::system_service_restarts_a_real_dead_task": {
   "ds_facts": [
-   "biting",
-   "round_<n> is read by prefix and asserted (test_reset_reasons.py:114); the restart mode's facts are asserted in test_task_supervisor.py"
+   "fixed",
+   "round_<n> is read by prefix, and its system value now carries the escalation's evidence: the script logs RAM-only (LogConfig(None, ...), :54), so test_the_supervisor_escalation_reboot_is_attributed asserts a round before the reset holds SYSTEM's E TASK_BUDGET_REBOOT (_round_holds_the_budget_entry) instead of production's FRAM history, which could pass only on a stale entry and failed on a cleared board. Bites: synthetic output with a stale board entry and no round holding it passes HEAD's test and fails the new one; rounds holding it pass the new test on a cleared board, where HEAD's fails; through TwinBoard the real script passes at both GC stages, 5 of 11 rounds holding it (S/u35/laneC/crr2b6/bites_escalation.log). The restart mode's facts are asserted in test_task_supervisor.py (agent, 2026-10-27)"
   ]
  },
  "tests_hardware/device_scripts/timer_alarm_pool_exhaustion.py::timer_alarm_pool_exhaustion": {

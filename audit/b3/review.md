@@ -21,9 +21,9 @@ Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_
 | verdict (per row) | rows |
 |---|---|
 | CRr2 | 63 |
-| fixed | 61 |
+| fixed | 62 |
 | justified | 128 |
-| biting | 8260 |
+| biting | 8259 |
 
 | red flag | rows | verdicts |
 |---|---|---|
@@ -4982,16 +4982,16 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests_hardware/bench/test_network_resilience.py:867 | test_openhab_case_two_pollers_and_an_open_website_are_all_served | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_network_resilience.py:923 | test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_network_resilience.py:984 | test_a_flash_write_holding_interrupts_off_keeps_the_wifi_link | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_reset_reasons.py:73 | test_a_harness_hard_reset_reads_as_watchdog_without_a_record | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_reset_reasons.py:83 | test_a_bootloader_reboot_is_attributed | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_reset_reasons.py:111 | test_the_supervisor_escalation_reboot_is_attributed | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_reset_reasons.py:129 | test_the_starved_watchdog_fallback_is_attributed | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_reset_reasons.py:140 | test_an_invalid_record_reads_as_unknown | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_reset_reasons.py:155 | test_an_incomplete_command_is_attributed | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_reset_reasons.py:178 | test_a_hang_in_boot_phase_p_is_attributed | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_reset_reasons.py:196 | test_a_c_stack_exhaustion_is_attributed | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_reset_reasons.py:212 | test_a_console_interrupt_is_attributed | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_reset_reasons.py:226 | test_a_loop_ended_by_an_exception_after_boot_is_attributed | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_reset_reasons.py:79 | test_a_harness_hard_reset_reads_as_watchdog_without_a_record | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_reset_reasons.py:89 | test_a_bootloader_reboot_is_attributed | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_reset_reasons.py:112 | test_the_supervisor_escalation_reboot_is_attributed | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_reset_reasons.py:131 | test_the_starved_watchdog_fallback_is_attributed | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_reset_reasons.py:142 | test_an_invalid_record_reads_as_unknown | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_reset_reasons.py:157 | test_an_incomplete_command_is_attributed | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_reset_reasons.py:180 | test_a_hang_in_boot_phase_p_is_attributed | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_reset_reasons.py:198 | test_a_c_stack_exhaustion_is_attributed | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_reset_reasons.py:214 | test_a_console_interrupt_is_attributed | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_reset_reasons.py:228 | test_a_loop_ended_by_an_exception_after_boot_is_attributed | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_rest_endpoints_over_sta.py:30 | test_real_static_website_content_serves_over_the_normal_bridge_network | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_rest_endpoints_over_sta.py:44 | test_measurements_endpoint_returns_plausible_values_for_every_real_sensor | bench (hardware) | fixed | hw_no_log | hw_no_log: fixed: the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it |
 | tests_hardware/bench/test_rest_endpoints_over_sta.py:57 | test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot | bench (hardware) | fixed | hw_no_log | hw_no_log: fixed: the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it |
@@ -8630,7 +8630,7 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests_hardware/device_scripts/system_command_hang.py:1 | system_command_hang | device script | justified | ds_facts | ds_facts: justified: command echoes COMMAND (an unknown one ends in failure); hung_store names the hung store beside the asserted HANG line (test_system_commands.py:230); leftover_errno: the os.mkdir() of the same path follows (system_command_hang.py:53) and raises on any leftover, so the run dies before the outcome facts its test asserts |
 | tests_hardware/device_scripts/system_command_reboot.py:1 | system_command_reboot | device script | fixed | ds_facts | ds_facts: fixed: _attributed_reset now asserts the mempause answer Valid in the mempause state (test_system_commands.py:78); the extractor first counted mempause read through the STATE="mempause" argument. command/state echo the host's arguments (an unknown one ends in failure); leftover_errno: the os.mkdir() of the same path follows (system_command_reboot.py:98) and raises on any leftover, so the run dies before the outcome facts its test asserts. Bitten on synthetic output (vacuous output passes HEAD's test and fails the new one, healthy passes both: S/u35/laneC/crr2a2/bites.out); twin: S/u35/laneC/crr2a2/twin_paused.log |
 | tests_hardware/device_scripts/system_debug_level_set_standard.py:1 | system_debug_level_set_standard | device script | justified | ds_facts | ds_facts: justified: before and written raise when wrong (conftest.py:414); valid and validity are implied: a failed setup or refused write leaves written False with before off the standard |
-| tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py:1 | system_service_restarts_a_real_dead_task | device script | biting | ds_facts | ds_facts: biting: round_<n> is read by prefix and asserted (test_reset_reasons.py:114); the restart mode's facts are asserted in test_task_supervisor.py |
+| tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py:1 | system_service_restarts_a_real_dead_task | device script | fixed | ds_facts | ds_facts: fixed: round_<n> is read by prefix, and its system value now carries the escalation's evidence: the script logs RAM-only (LogConfig(None, ...), :54), so test_the_supervisor_escalation_reboot_is_attributed asserts a round before the reset holds SYSTEM's E TASK_BUDGET_REBOOT (_round_holds_the_budget_entry) instead of production's FRAM history, which could pass only on a stale entry and failed on a cleared board. Bites: synthetic output with a stale board entry and no round holding it passes HEAD's test and fails the new one; rounds holding it pass the new test on a cleared board, where HEAD's fails; through TwinBoard the real script passes at both GC stages, 5 of 11 rounds holding it (S/u35/laneC/crr2b6/bites_escalation.log). The restart mode's facts are asserted in test_task_supervisor.py (agent, 2026-10-27) |
 | tests_hardware/device_scripts/timer_alarm_pool_exhaustion.py:1 | timer_alarm_pool_exhaustion | device script | justified | ds_facts | ds_facts: justified: constructed is in the result_note and the message (test_bus_electrical_timing.py:43) beside the asserted raised and errno |
 | tests_hardware/device_scripts/uart_comm_hazards.py:1 | uart_comm_hazards | device script | justified | ds_facts | ds_facts: justified: part echoes the PART default; setup is asserted through _setup_ok (test_uart_crossover.py:210) |
 | tests_hardware/device_scripts/uart_crossover_exchange.py:1 | uart_crossover_exchange | device script | justified | ds_facts | ds_facts: justified: setup is asserted through _setup_ok; train_bytes/max_train_bytes echo constants in the message (test_uart_crossover.py:105); gc_threshold names the stage |

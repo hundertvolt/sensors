@@ -62,6 +62,12 @@ def _evidence(board: "Board", bench: "BenchBridge", dut_ip: str, name: str) -> N
     restore_board_to_serving(board, bench, dut_ip)
 
 
+def _round_holds_the_budget_entry(facts: "dict[str, object]") -> bool:
+    # A round the script printed after the escalation's entry write: SYSTEM's RAM log there, the one place it lands.
+    rounds = [value.get("system") for key, value in facts.items() if key.startswith("round_") and isinstance(value, dict)]
+    return any(isinstance(log, dict) and ("E", code("E", "TASK_BUDGET_REBOOT")) in zip(log.get("ErrType", []), log.get("ErrNum", []), strict=False) for log in rounds)
+
+
 def _system_status(dut_ip: str) -> "JSONObject":
     # The production boot's /status system block, once it serves (passive polling only).
     wait_until(lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_STATUS_TIMEOUT_S).status_code == 200, timeout_s=_SERVING_TIMEOUT_S, poll_interval_s=_SERVING_POLL_S, description="DUT serving /status after the reset")
@@ -103,13 +109,10 @@ def test_a_bootloader_reboot_is_attributed(board: "Board", bench: "BenchBridge",
 
 
 @pytest.mark.parametrize("mode", ["escalate", "hold_console"])
-@pytest.mark.provokes_log(
-    "the dead task's TASK_RAISED entries and the budget's TASK_BUDGET_REBOOT in SYSTEM",
-    ("SYSTEM", "E", "TASK_RAISED"),
-    ("SYSTEM", "E", "TASK_BUDGET_REBOOT"),
-)
 def test_the_supervisor_escalation_reboot_is_attributed(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]", mode: str) -> None:
     # hold_console: the host holds the port open, reading nothing, while the task keeps dying - still the budget's reboot.
+    # The script's log is RAM-only, so escalate reads its entry off the rounds; hold_console prints none, and the
+    # entry is pinned by tests/test_asy_system_service.py::test_the_supervisor_escalates_past_the_failure_budget.
     try:
         _evidence(board, bench, dut_ip, f"reset-reason-escalation-{mode}")
         if mode == "hold_console":
@@ -118,10 +121,9 @@ def test_the_supervisor_escalation_reboot_is_attributed(board: "Board", bench: "
             facts = parse_facts(board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "system_service_restarts_a_real_dead_task.py", timeout_s=_SCRIPT_TIMEOUT_S, mode=mode), allow_missing_done=True)
             assert facts.get("mode") == mode and any(key.startswith("round_") for key in facts), f"the escalation reported no round before the reset: {facts}"
             assert "starter_calls" not in facts, f"the watch ended without the budget's reboot: {facts}"
+            assert _round_holds_the_budget_entry(facts), f"no round before the reset holds SYSTEM's TASK_BUDGET_REBOOT entry: {facts}"
         bits = _attributed(dut_ip, _RR["TASK_BUDGET"], result_note, f"supervisor escalation ({mode})")
         assert bits & _FORCED_BIT, f"the budget's machine.reset() left the forced bit clear (a 2 would be the watchdog): {bits}"
-        logged = get_errcount(dut_ip)["SYSTEM"]["history"]
-        assert any(entry.get("type") == "E" and entry.get("num") == code("E", "TASK_BUDGET_REBOOT") for entry in logged), f"SYSTEM holds no escalation entry: {logged}"
     finally:
         restore_board_to_serving(board, bench, dut_ip)
 
