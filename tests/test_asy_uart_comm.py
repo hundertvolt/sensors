@@ -2510,6 +2510,12 @@ def _real_pieces() -> None:
     asy_uart_comm.PieceBuffer = PieceBuffer  # type: ignore[misc]
 
 
+class _UnbuildablePieceBuffer(PieceBuffer):
+    # Rebound as the module's PieceBuffer: built as on a heap with no room left for one piece.
+    def __init__(self, size: int, piece_bytes: int) -> None:
+        raise MemoryError("simulated allocation failure")
+
+
 def _scrub(pair: Pair) -> None:
     # The fakes' call and wire logs are scaffolding a test reads back, not something the protocol retains.
     for direction in (pair.link.a_to_b, pair.link.b_to_a):
@@ -2524,6 +2530,72 @@ def _cap_pair(cap_side: str, answer: bytes = b"", *, debug: int | None = None) -
     assert run(pair.setup(), RUN_LIMIT_S) is True
     (pair.responder if cap_side == "responder" else pair.initiator)._max_transfer_bytes = 2 * PAYLOAD_SIZE
     return pair
+
+
+@_on_poll_rounds
+def test_a_refused_piece_at_a_received_set_ends_in_the_listen_loops_catch_after_the_command_ack() -> None:
+    # Today's path (J.8): the pieces are built after the command frame's ACK and not caught there, so the raise ends in
+    # the listen loop's broad catch (UNEXPECTED) with no resync, and the stray data chunk is read after the backoff as an
+    # invalid frame. The peer sees one ACK, then none for its data chunk.
+    pair = run(build_pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(b""), set_callback=accept_set()), RUN_LIMIT_S)
+
+    async def exchange() -> "tuple[bool, list[bytes], bool, bool]":
+        task = pair.responder.start_asy_listen()
+        try:
+            asy_uart_comm.PieceBuffer = _UnbuildablePieceBuffer  # type: ignore[misc]
+            try:
+                refused = await pair.initiator.uart_set(0x22, b"payload")
+            finally:
+                _real_pieces()
+            answered = frames(pair.wire_from_responder(), _FRAME)
+            alive = not task.done()
+            return refused, answered, alive, await pair.initiator.uart_set(0x22, b"payload")
+        finally:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:  # expected; anything else is a real failure
+                pass
+
+    refused, answered, alive, recovered = run(exchange(), _RUN_BOUND_S)
+    assert refused is False
+    assert [frame[1] for frame in answered] == [_CMD_ACK], answered
+    assert alive is True
+    assert recovered is True
+    assert persisted(pair.responder) == [_e("UNEXPECTED"), _e("UART_FRAME_INVALID")], persisted(pair.responder)
+    assert persisted(pair.initiator) == [_e("UART_NO_ACK")], persisted(pair.initiator)
+
+
+@_on_poll_rounds
+def test_a_refused_piece_at_a_dont_care_get_raises_out_of_uart_get_before_the_header_ack() -> None:
+    # Today's path (J.8): the answer's pieces are built after its header validated and before the header's ACK, and the
+    # raise leaves uart_get(): nothing logged or resynced on this end, the bus released, the peer's header unacknowledged.
+    pair = run(build_pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(b"banner"), set_callback=accept_set()), RUN_LIMIT_S)
+
+    async def exchange() -> "tuple[str, list[bytes], tuple[bool, bool], ListenResult, bytes | None]":
+        listener = asyncio.create_task(pair.responder.uart_listen())
+        asy_uart_comm.PieceBuffer = _UnbuildablePieceBuffer  # type: ignore[misc]
+        raised = ""
+        try:
+            await pair.initiator.uart_get(0x21)
+        except MemoryError as e:
+            raised = str(e)
+        finally:
+            _real_pieces()
+        sent = frames(pair.wire_from_initiator(), _FRAME)
+        state = (pair.initiator._busy, pair.initiator._holdoff_active)
+        listened = await asyncio.wait_for(listener, _STEP_BOUND_S)
+        again = await pair.with_listener(pair.initiator.uart_get(0x21))
+        return raised, sent, state, listened, copied_out(again)
+
+    raised, sent, state, listened, again = run(exchange(), _RUN_BOUND_S)
+    assert raised == "simulated allocation failure"
+    assert [frame[1] for frame in sent] == [_CMD_GET], sent
+    assert state == (False, False)
+    assert persisted(pair.initiator) == [], persisted(pair.initiator)
+    assert (listened.cmd_id, listened.cmd) == (None, _CMD_GET), listened
+    assert persisted(pair.responder) == [_e("UART_NO_ACK")], persisted(pair.responder)
+    assert again == b"banner"
 
 
 def test_the_default_chunk_bytes_is_the_reasoned_one() -> None:

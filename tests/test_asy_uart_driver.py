@@ -1327,6 +1327,36 @@ def test_a_line_split_across_the_ring_end_reads_whole() -> None:
     assert fake(uart).rx_api_calls == 0
 
 
+class _UnbuildablePieceBuffer(asy_base_classes.PieceBuffer):
+    # Rebound as the module's PieceBuffer: built as on a heap with no room left for one piece.
+    def __init__(self, size: int, piece_bytes: int) -> None:
+        raise MemoryError("simulated allocation failure")
+
+
+def test_a_refused_line_piece_raises_out_of_readline_until_complete_and_consumes_nothing() -> None:
+    # Today's path (J.8): the line's pieces are built before its first byte is read and are not caught, so the raise
+    # leaves the call and the line stays in the ring for the next read.
+    uart = _make_uart()
+    fake(uart).feed_rx(b"line\n")
+
+    async def scenario() -> "tuple[str, int, PieceBuffer | None]":
+        raised = ""
+        async with uart:
+            asy_uart_driver.PieceBuffer = _UnbuildablePieceBuffer  # type: ignore[misc]
+            try:
+                await read_line(uart)
+            except MemoryError as e:
+                raised = str(e)
+            finally:
+                asy_uart_driver.PieceBuffer = asy_base_classes.PieceBuffer  # type: ignore[misc]
+            return raised, uart.discarded_bytes, await read_line(uart)
+
+    raised, discarded, line = run(scenario(), _RUN_BOUND_S)
+    assert raised == "simulated allocation failure"
+    assert discarded == 0
+    assert line_bytes(line) == b"line\n"
+
+
 def test_a_line_over_the_cap_is_discarded_and_logged_once() -> None:
     # Read to its end round by round, its pieces dropped, counted and logged once; the next line is intact.
     uart = _make_uart()
