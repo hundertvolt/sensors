@@ -21,7 +21,7 @@ except ImportError:  # typing has no runtime presence on MicroPython
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from _shared.bus_reader_loops import Record, Stop, read_loop, report_errors
+    from _shared.bus_reader_loops import Record, Stop, overlapped, read_loop, report_errors
     from _shared.facts import done, fact
     from _shared.watchdog import arm
     from bench_facts import BenchFacts
@@ -87,15 +87,9 @@ async def _main() -> None:
     fact("isl_windows", write_rec.windows)
     fact("scd_reads", scd_rec.reads)
     fact("sgp_reads", sgp_rec.reads)
-    fact("overlapped_reads", _overlapped(write_rec, [scd_rec, sgp_rec]))
+    fact("overlapped_reads", overlapped(write_rec, [scd_rec, sgp_rec]))
     report_errors([scd_rec, sgp_rec, write_rec])
     done()
-
-
-def _overlapped(writes: "Record", readers: "list[Record]") -> int:
-    # Sibling reads whose window shares time with a write's: one that ended before a write began, or began after it
-    # ended, raced nothing. Ticks wrap, so every comparison goes through ticks_diff().
-    return sum(1 for r in readers for start, end in r.windows or [] if any(time.ticks_diff(w_end, start) > 0 and time.ticks_diff(end, w_start) > 0 for w_start, w_end in writes.windows or []))
 
 
 asyncio.run(_main())

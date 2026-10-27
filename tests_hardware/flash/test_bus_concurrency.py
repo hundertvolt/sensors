@@ -219,8 +219,10 @@ def test_scd30_config_write_does_not_disturb_concurrent_sibling_reads(board: Boa
     assert isinstance(facts.get("write_done"), int), f"the SCD30 offset write never completed: {facts}"
     assert "restore_error" not in facts, f"the offset restore failed: {facts['restore_error']}"
     assert facts["restored"] == facts["prior_offset"], f"offset after the restore {facts['restored']}, before the run {facts['prior_offset']}"
-    assert _count(facts, "isl_windows") > 0, "the ISL29125 completed no read"
+    assert _count(facts, "isl_reads") > 0, "the ISL29125 completed no read"
     assert _count(facts, "sgp_reads") > 0, "the SGP40 completed no read"
+    assert _count(facts, "overlapped_reads") > 0, "no sibling read overlapped the SCD30 offset write's window - the write raced nothing"
+    assert facts.get("write_in_sgp_round") is True, f"the SCD30 offset write began outside an SGP40 round (write_in_sgp_round={facts.get('write_in_sgp_round')!r}) - its wait for a round's head met the deadline, or it never waited"
     _no_errors(facts, "SCD30 write among sibling reads")
 
 

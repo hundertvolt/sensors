@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import _load
 import pytest
 from error_log_helpers import assert_module_logged_one_code, assert_no_task_ended, code, reset_all_error_logs
-from harness import Board, boot_lines, crash_lines, kick_then_reset, recover_by_reset
+from harness import Board, boot_lines, crash_lines, kick_then_reset, recover_by_reset, wait_until
 
 if TYPE_CHECKING:
     from bench_control import BenchBridge
@@ -34,6 +34,9 @@ _RECONNECT_TIMEOUT_S = 60.0
 _ASSOCIATION_ATTEMPTS = 2
 # @tunable l4.wifi_networking_probe_timeout_s = 10.0
 _PROBE_TIMEOUT_S = 10.0
+# @tunable l4.wifi_networking_ntp_resync_margin_s = 10.0
+_NTP_RESYNC_MARGIN_S = 10.0
+_NTP = "asy_ntp_client.py"
 _RTC_SET_LINE = "RTC set to:"  # src/asy_ntp_client.py, the line a completed sync prints
 
 
@@ -110,6 +113,11 @@ def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board:
     # NTP sync failure must not block the rest of build_system(): the boot still completes.
     assert boot_lines(lines), f"system did not finish booting with NTP blocked: {lines[-20:]}"
     recover_by_reset(board, bench, ready=lambda: _load.serving(dut_ip), first_wait_s=_RECONNECT_TIMEOUT_S, retry_wait_s=_RECONNECT_TIMEOUT_S, skipped="the passive reconnect after the forced resync", note=result_note, description="the reconnect after the NTP-blocked boot")
+    # A request sent in the block's last fetch timeout logs its NO_REPLY after the unblock; attempts are serial, so none
+    # is in flight once the client's own backoff has resynced.
+    started = time.monotonic()
+    wait_until(lambda: _load.ntp_synced(dut_ip), timeout_s=_resync_after_block_s() + _NTP_RESYNC_MARGIN_S, description="NTP resynced by its own backoff after the block")
+    result_note(f"NTP resynced {time.monotonic() - started:.1f}s after the block lifted")
     # A blocked port is handled in place by NTP (SPECIFICATION.md Part C.7.2): NTP_NO_REPLY is logged
     # and the task backs off; an ended task would cost the supervisor's reboot budget.
     assert_module_logged_one_code(dut_ip, "NTP", "E", code("E", "NTP_NO_REPLY"), events=None)  # the attempts the block met
@@ -121,3 +129,16 @@ def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board:
 
 def _networking(dut_ip: str) -> "JSONObject":
     return _load.as_object(_load.get_object(dut_ip, "/status", _PROBE_TIMEOUT_S).get("networking"), "GET /status networking")
+
+
+def _resync_after_block_s() -> float:
+    # The unsynced client's longest wait once the block lifts: each failed attempt doubles its step from the retry period,
+    # up to the cap (src/asy_ntp_client.py _sync_loop()), so attempts from the block's start leave pending the step after
+    # the last one inside it; the attempt that then syncs runs on top.
+    mult, cap = _load.src_number(_NTP, "_NTP_BACKOFF_MULT"), _load.ntp_retry_max_s()
+    at, step = 0.0, _load.ntp_retry_period_s()
+    while True:
+        step = min(step * mult, cap)
+        if at + step > _ROGUE_TAIL_S:
+            return step + _load.ntp_attempt_s()
+        at += step

@@ -169,3 +169,11 @@ source.
   per re-boot) is cut. The last real waits in those files are tagged and measured. The files are slower (NTP up to
   62 s at 32768), mostly from the twin's 1 ms poll artefact: recommended as a twin-fidelity follow-up, the owner's
   call.
+- CI red on 4753a394 (lead, 19:14): a test-isolation defect in the twin tier, not a flake. Parallel test processes
+  shared the twin's captive DNS address (127.0.0.1:53, SO_REUSEADDR), so one process's 6-query burst landed in
+  another's listener (36 wake-ups instead of 30), and a "the rebuilt socket answered" check could have passed on
+  another process's answer. Fixed by N15 (per-process loopback address, real port 53 kept); outcome to be filled in.
+- CRr2b12 follow-up (lead, 19:27): the SCD30 write-vs-siblings flash test now also proves its write began inside an
+  SGP40 round (a write the deadline sent outside one fails, bitten through the twin); the bench NTP backoff bounds read
+  the bench device's own retry pair as the build does (no value change today; a TOML stating the keys would have left
+  them wrong). A lane command that read its own background-job output file was refused and not worked around.

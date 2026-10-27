@@ -136,3 +136,6 @@ Append-only; each line names its source hand-back in S/u35r/handbacks_redo/ or t
   lever (the Unix test build's select path) is the owner's call, not this unit's.
 - (lead) E.2.1: the clock-jump, NTP, SCD30, SGP40, launcher and runner twin tests run once per distinct wiring they
   reach (CMr1k), and the supervised-death test runs on the driven clock (CMr1l finding 4).
+- (lead) CLAUDE.md's "Two suites that both bind real ports" bullet: its "overlap safely" covers the port-53 bind, not
+  datagram delivery between processes sharing it; corrected text from N15's hand-back, plus digital_twin/README.md's
+  shim section (the per-process loopback address).
