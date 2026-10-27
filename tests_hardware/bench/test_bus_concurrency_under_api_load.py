@@ -81,7 +81,6 @@ _REBOOT_READY_TIMEOUT_S = 60.0
 _NTP_BLOCK_MARGIN_S = 10.0
 # @tunable l4.bus_concurrency_under_api_load_command_after_answered = 3
 _COMMAND_AFTER_ANSWERED = 3
-_NTP = "asy_ntp_client.py"
 _SYSTEM = "asy_system_service.py"
 # The read paths' new codes, named so a load arm that provokes one says which (catalog names, checked at run time).
 _LOAD_CODES = (("W", "BMP_CHIP_RESET"), ("E", "READ_RANGE"), ("W", "ISL_DIVERGED"))
@@ -169,7 +168,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
     reset_all_error_logs(dut_ip, request.node.name)
     context = " during the NTP outage"
     load = _load.Load(context)
-    block_s = _ntp_retry_period_s() + _NTP_BLOCK_MARGIN_S
+    block_s = _load.ntp_retry_period_s() + _NTP_BLOCK_MARGIN_S
     bench.block_udp_ports([123])
     try:
         _load.reset_and_wait(board, bench, dut_ip, timeout_s=_REBOOT_READY_TIMEOUT_S)
@@ -503,11 +502,6 @@ def _noted_ceiling_retries(note: "_load.Note") -> "Iterator[None]":
     counts = _take_ceiling_retries()
     if counts:
         note(f"CEILING_RETRIES rest of the test: {counts}")
-
-
-def _ntp_retry_period_s() -> float:
-    # The unsynced client's first retry step: its default interval, rounded up to the check tick it is counted on.
-    return max(_load.src_number(_NTP, "_DEFAULT_RETRY_S"), _load.src_number(_NTP, "_NTP_CHECK_INTERV"))
 
 
 def _offset_values(original: float) -> "list[float]":

@@ -173,15 +173,6 @@ def _model(device: "str | None" = None) -> "DeviceModel":
     return build_model(harness.device_toml(device), harness.SRC_DIR)
 
 
-def _ntp_attempt_s() -> float:
-    # One sync attempt's longest run (src/asy_ntp_client.py _run_ntp_sync_attempt()): a send and a reply wait per lookup
-    # try on each server, the DHCP one and up to _DNS_FALLBACK_MAX more (asy_dns_client.py resolve_ipv4()), then the NTP
-    # request's send and reply wait (_fetch_ntp_reply()), each bounded by its timeout in buildgen/codegen.py.
-    servers = 1 + src_number(_NTP, "_DNS_FALLBACK_MAX")
-    lookup_s = servers * buildgen_number("codegen.py", "_DNS_TRIES") * 2 * buildgen_number("codegen.py", "_DNS_TIMEOUT_MS") / 1000
-    return lookup_s + 2 * ntp_fetch_timeout_s()
-
-
 def _ntp_error_log_contains(dut_ip: str, errno: int) -> bool:
     # Whether the NTP logger's history holds error `errno` (a code() read, never a number restated here).
     return any(h.get("num") == errno and h.get("type") == "E" for h in errcount_entry(get_errcount(dut_ip), "NTP")["history"])
@@ -190,7 +181,7 @@ def _ntp_error_log_contains(dut_ip: str, errno: int) -> bool:
 def _ntp_retry_chain_s() -> float:
     # A synced client's failed attempt arms up to _NTP_SYNC_RETRIES one-shot retries, each _NTP_RETRY_INTERV after the
     # failure before it (src/asy_ntp_client.py _handle_ntp_sync_failure()); a retry finding no network ends it silently.
-    return src_number(_NTP, "_NTP_SYNC_RETRIES") * (src_number(_NTP, "_NTP_RETRY_INTERV") + _ntp_attempt_s())
+    return src_number(_NTP, "_NTP_SYNC_RETRIES") * (src_number(_NTP, "_NTP_RETRY_INTERV") + ntp_attempt_s())
 
 
 def _ntp_view(dut_ip: str) -> "tuple[int, bool, object] | None":
@@ -344,9 +335,23 @@ def mode(host: str) -> object:
     return as_object(get_object(host, "/status").get("networking"), "GET /status networking").get("Mode")
 
 
+def ntp_attempt_s() -> float:
+    # One sync attempt's longest run (src/asy_ntp_client.py _run_ntp_sync_attempt()): a send and a reply wait per lookup
+    # try on each server, the DHCP one and up to _DNS_FALLBACK_MAX more (asy_dns_client.py resolve_ipv4()), then the NTP
+    # request's send and reply wait (_fetch_ntp_reply()), each bounded by its timeout in buildgen/codegen.py.
+    servers = 1 + src_number(_NTP, "_DNS_FALLBACK_MAX")
+    lookup_s = servers * buildgen_number("codegen.py", "_DNS_TRIES") * 2 * buildgen_number("codegen.py", "_DNS_TIMEOUT_MS") / 1000
+    return lookup_s + 2 * ntp_fetch_timeout_s()
+
+
 def ntp_fetch_timeout_s() -> float:
     # The client's reply timeout: NtpTiming.fetch_timeout_ms, which buildgen/codegen.py writes into the device module.
     return buildgen_number("codegen.py", "_NTP_FETCH_TIMEOUT_MS") / 1000
+
+
+def ntp_retry_period_s() -> float:
+    # The unsynced client's first retry step: its default interval, rounded up to the check tick it is counted on.
+    return max(src_number(_NTP, "_DEFAULT_RETRY_S"), src_number(_NTP, "_NTP_CHECK_INTERV"))
 
 
 def ntp_synced(dut_ip: str) -> bool:

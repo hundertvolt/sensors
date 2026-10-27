@@ -265,7 +265,7 @@ def test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage(board: Boa
     word = _load.as_object(res.json().get("result"), "result").get("NTPHost")
     assert res.status_code == 200 and word == "Unchanged", f"an NTPHost PUT of its current value answered {word!r}: something was written"
     reset_all_error_logs(dut_ip, request.node.name)
-    block_s = _ntp_retry_period_s() + _NTP_BLOCK_MARGIN_S
+    block_s = _load.ntp_retry_period_s() + _NTP_BLOCK_MARGIN_S
     bench.block_udp_ports([123])
     try:
         _load.reset_and_wait(board, bench, dut_ip, timeout_s=_RECONNECT_TIMEOUT_S)
@@ -365,8 +365,8 @@ def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: B
 
 # ---------------------------------------------------------------------------
 # A config-level NTP fault rather than a network-level one (owner, 2026-09-02): PUT a garbage NTPHost on a live link,
-# watch the DNS failure degrade cleanly, restore, confirm recovery. Starting synced reaches
-# _handle_ntp_sync_failure()'s ntp_issynced() branch, which nothing else does.
+# watch the DNS failure degrade cleanly, restore, confirm recovery. The PUT's post function, ntp_force_sync(), clears
+# Synced before the attempt, so the failure takes the unsynced backoff and arms no retry timer.
 # ---------------------------------------------------------------------------
 
 # RFC 2606 reserves .invalid so it can never resolve: a genuine, permanent DNS-resolution failure.
@@ -1206,11 +1206,6 @@ def _mem_free(dut_ip: str) -> int:
     free = _load.as_object(_load.get_object(dut_ip, "/status", _PROBE_TIMEOUT_S).get("system"), "GET /status system").get("MemFree")
     assert isinstance(free, int), f"GET /status carries no MemFree: {free!r}"
     return free
-
-
-def _ntp_retry_period_s() -> float:
-    # The unsynced client's first retry step: its default interval, rounded up to the check tick it is counted on.
-    return max(_load.src_number(_NTP, "_DEFAULT_RETRY_S"), _load.src_number(_NTP, "_NTP_CHECK_INTERV"))
 
 
 def _openhab_client(dut_ip: str, paths: "list[str]", interval_s: float, stop: threading.Event, latencies: "dict[str, list[float]]", failures: "list[str]") -> None:
