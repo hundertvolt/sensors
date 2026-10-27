@@ -15,6 +15,7 @@ from _async_harness import cancel, run
 from _cancel_sweep import assert_unlocked, cancel_at_each_await
 from _error_codes import code
 from _fake_time import DrivenTime
+from _fast_sleep import FastAsyncSleep
 from _generated_tree import devices
 from _src_const import src_bytes, src_int
 from _uart_comm_harness import POLL_WAIT_MS, RUN_LIMIT_S, TIMEOUT_MS, PollRoundClock, awaited_with_listener, copied_out, transfer_limits
@@ -631,6 +632,27 @@ def test_an_initiation_that_raises_is_logged_and_reads_as_no_verdict() -> None:
 def _expected_sweep(fields: "tuple[tuple[str, int, tuple[int, ...]], ...]") -> "list[object]":
     # The field sweep's verdicts J.3/J.4 give: each value ACKed exactly when legal, then one clean exchange per field.
     return [[name, [_LEGAL[name](value) for value in values], True] for name, _offset, values in fields]
+
+
+def test_each_recovery_try_first_waits_one_window() -> None:
+    # The peer's backoff, timeout and resync pass before every try: each uart_set() follows one more window-long sleep,
+    # and an unanswered link gives up after its last try.
+    link = UARTLinkDriver(UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS), ROLE_INITIATOR)
+    fast = FastAsyncSleep()
+    owner: list[object] = []
+    seen: list[int] = []
+
+    async def unanswered(set_id: int, payload: object = None) -> bool:
+        owner.append(asyncio.current_task())
+        seen.append(len(fast.ms_of(owner[0])))
+        return False
+
+    link._comm.uart_set = unanswered  # type: ignore[method-assign]
+    with fast:
+        attempts, recovered = run(link._recover(), RUN_LIMIT_S)
+    assert (attempts, recovered) == (_HAZARD_RECOVERY_ATTEMPTS, False), (attempts, recovered)
+    assert seen == list(range(1, _HAZARD_RECOVERY_ATTEMPTS + 1)), f"window sleeps before each try: {seen}"
+    assert fast.ms_of(owner[0]) == [link._window_ms] * _HAZARD_RECOVERY_ATTEMPTS, fast.ms_of(owner[0])
 
 
 def test_a_hazard_run_is_requested_only_on_a_ready_initiator_and_one_at_a_time() -> None:

@@ -105,7 +105,8 @@ PLANTS = [
     app("gate.flash", "gate.flash-caught", PL, 'print("planted: memory allocation failed, allocating 64 bytes")\n', [host("tests_hardware/flash/test_unretrieved_task_exception_handler.py", "--twin")]),
     app("gate.flash", "gate.flash-class", PL, 'print("MemoryError: ")\n', [host("tests_hardware/flash/test_unretrieved_task_exception_handler.py", "--twin")]),
     # Seeded picks that are complex measurement tests (never-block yields, memory, accumulation, timing bounds, log gates)
-    sub("seed", "asy_fram_manager.erase_yield", FM, r"^                    await asyncio\.sleep\(0\)$", "await asyncio.sleep(0)", "pass", T_FM, why="never-block: the chip erase's per-unit yield (timing)"),
+    sub("seed", "asy_fram_manager.erase_yield", FM, r"^            await asyncio\.sleep\(0\)$", "await asyncio.sleep(0)", "pass", T_FM, why="never-block: the chip erase's per-unit yield (timing)"),
+    sub("seed", "asy_fram_manager.read_yield", FM, r"^                    await asyncio\.sleep\(0\)$", "await asyncio.sleep(0)", "pass", T_FM, why="never-block: the read loop's per-slice yield (timing)"),
     sub("seed", "asy_fram_manager.status_yield", FM, r"await asyncio\.sleep\(0\)  # after the status-byte pair", "await asyncio.sleep(0)", "pass", T_FM, why="never-block: the yield after the status-byte pair (timing)", count=3, nth=0),
     sub("seed", "asy_framing_codecs.decode_yield", "src/asy_framing_codecs.py", r"^\s*await asyncio\.sleep\(0\)$", "await asyncio.sleep(0)", "pass", [mp("test_asy_framing_codecs.py")], why="never-block: the decode loop's yield (timing)"),
     sub("seed", "asy_uart_driver.idle_poll", UD, r"wait_ms = self\.poll_wait_ms if timeout_ms > 0 else self\.poll_idle_ms", " if timeout_ms > 0 else self.poll_idle_ms", "", T_UD, why="F.5.9: an open-ended wait polls at the idle rate (timing)"),

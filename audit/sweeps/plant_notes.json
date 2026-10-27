@@ -1,5 +1,5 @@
 {
- "header": "# Fault planting (A.U35.04, A.U35.05)\n\nRequirement: one fault-planting pass per module in a throwaway worktree through `audit/sweeps/plant.py` (absent at `f3fff0e`: the campaign writes it), nothing kept (A.U35.04); two plants per memory gate, each message worded clear of both memory markers, and every check-style test triggered (A.U35.05); A.U21.13's one-time unpatched modlwip control run (M.PROC.027 (1)). Completion: every plant caught, or its survivor turned into an action. A defect any file records goes the OR12.a path (fixed with a regression test seen failing first, or an owner question), never a note alone, and passes A-C as a delta before it is applied (OR106.a). The file is complete when every row is terminal: biting, fixed, or justified with its reason. Opened by A.U35.01 / M.PROC.022 (agent, 2026-10-22); deleted with `audit/` at phase D.\n\nMethod (agent, 2026-10-27): `audit/sweeps/plant.py` copies a frozen snapshot of the tree once, then per plant copies it to `/dev/shm/cfr_plant/<id>`, applies one fault from `plant_set.py` (a regex that must match its stated line count), regenerates the device modules when the fault is in `src/`, `buildgen/` or `devices/`, runs the named test files (MicroPython files with build-standard at -1 and through `tests/_threshold_runner.py` at 32768; host files with pytest; JS with vitest), records red/green and the failing tests, removes the copy and checks it removed, and checks the planted file's snapshot hash unchanged (the whole snapshot at the run's end); every target file ran green unplanted first. Scope is the owner's ruling (owner, 2026-10-23): \"Planting faults is a good measure for complex measurement tests (e.g. memory exhaustion, leaks, long running accumulating processes, multi layered or external dependencies, and similar), but not required for the straightforward tests (which I would assume to be the majority by far). Planting errors for those straightforward tests would be complete overkill.\" Planted: A.U35.04's named requests, the boot entry's five decisions, A.U35.35's K rows (the cap's comparison flipped, the check dropped), two plants per memory gate with an unplanted control, and the seeded picks whose tests are complex measurement tests, each with its reason; A.U35.05 (4)'s timing and soak checks are the named rows (allocation budget, leak rate, UART latency, Run 11). Every other module decision is one row per module: \"not planted: straightforward logic\". No widening (agent, 2026-10-27). A plant green on its module's direct tests is read: equivalent (its reason), or a gap given a direct test and re-planted red (CF1b's method, kept). Records: `S/u35/laneC/cfr/results.jsonl` (first pass, base c3866e12), `replant.jsonl` (the fixed tree); logs in `plant_logs/`. Counts: {COUNTS}.\n\n| module | fault | site (file:line) | catching tests | survivor \u2192 action |\n|---|---|---|---|---|\n",
+ "header": "# Fault planting (A.U35.04, A.U35.05)\n\nRequirement: one fault-planting pass per module in a throwaway worktree through `audit/sweeps/plant.py` (absent at `f3fff0e`: the campaign writes it), nothing kept (A.U35.04); two plants per memory gate, each message worded clear of both memory markers, and every check-style test triggered (A.U35.05); A.U21.13's one-time unpatched modlwip control run (M.PROC.027 (1)). Completion: every plant caught, or its survivor turned into an action. A defect any file records goes the OR12.a path (fixed with a regression test seen failing first, or an owner question), never a note alone, and passes A-C as a delta before it is applied (OR106.a). The file is complete when every row is terminal: biting, fixed, or justified with its reason. Opened by A.U35.01 / M.PROC.022 (agent, 2026-10-22); deleted with `audit/` at phase D.\n\nMethod (agent, 2026-10-27): `audit/sweeps/plant.py` copies a frozen snapshot of the tree once, then per plant copies it to `/dev/shm/cfr_plant/<id>`, applies one fault from `plant_set.py` (a regex that must match its stated line count), regenerates the device modules when the fault is in `src/`, `buildgen/` or `devices/`, runs the named test files (MicroPython files with build-standard at -1 and through `tests/_threshold_runner.py` at 32768; host files with pytest; JS with vitest), records red/green and the failing tests, removes the copy and checks it removed, and checks the planted file's snapshot hash unchanged (the whole snapshot at the run's end); every target file ran green unplanted first. Scope is the owner's ruling (owner, 2026-10-23): \"Planting faults is a good measure for complex measurement tests (e.g. memory exhaustion, leaks, long running accumulating processes, multi layered or external dependencies, and similar), but not required for the straightforward tests (which I would assume to be the majority by far). Planting errors for those straightforward tests would be complete overkill.\" Planted: A.U35.04's named requests, the boot entry's five decisions, A.U35.35's K rows (the cap's comparison flipped, the check dropped), two plants per memory gate with an unplanted control, and the seeded picks whose tests are complex measurement tests, each with its reason; A.U35.05 (4)'s timing and soak checks are the named rows (allocation budget, leak rate, UART latency, Run 11). Every other module decision is one row per module: \"not planted: straightforward logic\". No widening (agent, 2026-10-27). A plant green on its module's direct tests is read: equivalent (its reason), or a gap given a direct test and re-planted red (CF1b's method, kept). Records: `S/u35/laneC/cfr/results.jsonl` (first pass, base c3866e12), `replant.jsonl` (the fixed tree), `S/u35/laneC/cfr2/replant.jsonl` (the open rows' re-plants, base 12ba7203); logs in each one's `plant_logs/`. Counts: {COUNTS}.\n\n| module | fault | site (file:line) | catching tests | survivor \u2192 action |\n|---|---|---|---|---|\n",
  "plants": {
   "K.bins-total-flip": {
    "verdict": "equivalent",
@@ -62,34 +62,38 @@
    "action": "fixed: test_asy_fram_manager.py::test_get_timestamped_chunk_allocation_succeeds_at_exact_remaining_capacity_boundary (replant.jsonl)"
   },
   "K.25-mask-drop": {
-   "verdict": "open",
-   "action": "open: no test crosses the request sequence's wrap; proposed: _cancel_req and _cancel_ack at COUNTER_CAP, the next cancel wraps to 0 and must still wait for its acknowledgement"
+   "verdict": "fixed",
+   "action": "fixed: test_asy_uart_driver.py::test_a_cancel_at_the_counter_cap_wraps_and_is_acknowledged now reads `_cancel_ack` at the cancel's return (0, the wrapped request's own acknowledgement), red on the re-plant at -1 and 32768 (S/u35/laneC/cfr2/replant.jsonl)"
   },
   "named.fram_alloc": {
    "verdict": "open",
-   "action": "open: red at -1 (test_asy_fram_allocation_budget.py), green at 32768: the budget's measurement misses a 16-byte per-call allocation at the threshold stage; to root-cause in the test (the lead's call)"
+   "action": "open, the lead's ruling: at 32768 a collection runs inside the priced window and frees the window's own garbage (blank 9,952-12,160 B against 28,544 B at -1; the same window pinned to -1 reads 28,544 at both stages: S/u35/laneC/cfr2/probe_fram_budget.t32768.log), so +16 B per call is invisible there; the `allocated == consumed` check cannot see it, gc.mem_alloc() + gc.mem_free() being constant in every window measured. Proposed: price the window at MicroPython's own -1, the stage's threshold restored after, and drop the vacuous check"
   },
   "asy_fram_manager.erase_yield": {
-   "verdict": "open",
-   "action": "open: proposed test_erase_chip_lets_another_task_run_between_every_two_units"
+   "verdict": "fixed",
+   "action": "fixed: test_asy_fram_manager.py::test_erase_chip_lets_another_task_run_between_every_two_units, red on the re-plant (S/u35/laneC/cfr2/replant.jsonl); the first pass's regex had matched the read loop's yield (:316), not the erase's (:795): retargeted, and the read loop's yield is its own row (agent, 2026-10-27)"
   },
   "asy_framing_codecs.decode_yield": {
-   "verdict": "open",
-   "action": "open: proposed test_cobs_decode_lets_another_task_run_after_every_code_block"
+   "verdict": "fixed",
+   "action": "fixed: test_asy_framing_codecs.py::test_cobs_decode_lets_another_task_run_after_every_code_block, red on the re-plant (S/u35/laneC/cfr2/replant.jsonl)"
   },
   "asy_uart_link_driver.recovery_window": {
-   "verdict": "open",
-   "action": "open: proposed test_each_recovery_try_first_waits_one_window"
+   "verdict": "fixed",
+   "action": "fixed: test_asy_uart_link_driver.py::test_each_recovery_try_first_waits_one_window, red on the re-plant (S/u35/laneC/cfr2/replant.jsonl)"
   },
   "asy_isl29125_driver.cal_hold": {
-   "verdict": "open",
-   "action": "open (exact-bound survivor): proposed driven-clock test, DrivenTime(asy_isl29125_driver): _publish_candidate() at T, _measured_ratio() still the value at T + _CAL_HOLD_MS - 1 and None at T + _CAL_HOLD_MS"
+   "verdict": "fixed",
+   "action": "fixed (exact bound, driven clock): test_asy_isl29125_driver.py::test_a_published_candidate_still_reads_one_tick_before_its_hold_ends_and_is_gone_at_it, red on the re-plant (S/u35/laneC/cfr2/replant.jsonl)"
   },
   "asy_neopixel_driver.signal_deadline": {
    "action": "found landed: the exact bound is caught (test_request_signal_gives_up_at_its_deadline_when_the_signal_task_never_runs, tests/test_asy_neopixel_driver.py:619)"
   },
   "asy_notification_service.sample_age": {
    "action": "found landed (the exact-age test in tests/test_asy_notification_service.py)"
+  },
+  "asy_fram_manager.read_yield": {
+   "verdict": "fixed",
+   "action": "fixed: test_asy_fram_manager.py::test_a_read_lets_another_task_run_after_every_slice_it_compares, red on the re-plant (S/u35/laneC/cfr2/replant.jsonl); this is the plant the first pass ran under the erase_yield name (results.jsonl)"
   }
  },
  "rows": [
@@ -113,9 +117,9 @@
    "module": "named.modlwip_control",
    "fault": "A.U21.13's one-time unpatched modlwip control",
    "site": "`tests/lwip_host/test_modlwip_eagain.py`",
-   "catching": "\u2014",
-   "action": "open: not run in this block; S/u35/laneC/cfr/modlwip_control.sh prep/build/test/clean is ready (one private compile in a tc-int copy, make -n checked first)",
-   "verdict": "open"
+   "catching": "7 of its 9 tests (each write() held 10,000 ms against the 250 ms bound); the 2 spin-window self-checks pass",
+   "action": "done: red as the control must be, on an unpatched build-lwip compiled once in a private tc-int copy (make -n: every output under its own BUILD; upstream extmod/modlwip.c compiled), the copy removed after (S/u35/laneC/cfr2/modlwip_control_test.log, modlwip_make_n.txt)",
+   "verdict": "biting"
   },
   {
    "module": "gate.bench",
@@ -193,9 +197,9 @@
    "module": "src/asy_system_service.py",
    "fault": "the shutdown sequence's `return  # not proven stopped` after a cancel of the shutdown task (F1: reachable by a cancel)",
    "site": "`src/asy_system_service.py:453-454`",
-   "catching": "\u2014",
-   "action": "open: the drafted direct test (supervise=False, a stubborn supervisor, the shutdown task cancelled in its supervisor wait) hung under its own run bound (S/u35/laneC/cfr/probe_test_a_cancel_of_the_shutdown_task_before_the_supervisor_stops_ends_the_sequence_there.log, rc 124 at 60 s), so it is not committed and the reading is not settled by a test here",
-   "verdict": "open"
+   "catching": "\u2014 (no test can reach it)",
+   "action": "justified, unreachable: a cancel of a task awaiting a task is forwarded to the awaited one (extmod/asyncio/task.py:164-166, extmod/modasyncio.c:208-211, v1.29.0), so the sequence's `await task` (:450) ends only once the supervisor has, and `task is None` needs the park set with no supervisor task, which only the supervisor (:551, assigned at :805 first) sets. Probe: S/u35/laneC/cfr2/probe_cancel_evidence.log; the drafted test hung because its stubborn supervisor swallowed the forwarded cancel and the run bound's own cancel was forwarded to it too (agent, 2026-10-27)",
+   "not_planted": true
   }
  ]
 }

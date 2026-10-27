@@ -2912,6 +2912,46 @@ def test_every_block_operation_yields_even_when_it_returns_early() -> None:
     assert cleared >= 2
 
 
+def test_a_read_lets_another_task_run_after_every_slice_it_compares() -> None:
+    # A read checks the other block one check buffer at a time and yields after each slice: a competing task runs
+    # between every two slice reads, however many slices the chunk needs.
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
+    chunk = manager.get_chunk(32, crc=CRCPass(), check_length=4, owner="T1")
+    assert chunk is not None
+    assert run(chunk.write(b"0123456789abcdef0123456789abcdef")) is True
+    passes = [0]
+    marks: list[int] = []
+    original_sync = manager.fram.get_values_sync
+
+    def recording(buf: bytearray | memoryview, addr_start: int = 0) -> int:
+        if len(buf) == 4:
+            marks.append(passes[0])
+        return original_sync(buf, addr_start)
+
+    async def competitor() -> None:
+        while True:
+            passes[0] += 1
+            await asyncio.sleep(0)
+
+    async def scenario() -> "bytearray | None":
+        other = asyncio.create_task(competitor())
+        await asyncio.sleep(0)
+        data = await chunk.read()
+        other.cancel()
+        try:
+            await other
+        except asyncio.CancelledError:
+            pass
+        return data
+
+    manager.fram.get_values_sync = recording  # type: ignore[method-assign]
+    assert run(scenario()) is not None
+    assert len(marks) >= 32 // 4, len(marks)
+    stalls = [n for n in range(1, len(marks)) if marks[n] == marks[n - 1]]
+    assert not stalls, f"no other task ran before the slice reads {stalls[:4]}"
+
+
 def test_the_compare_with_scratch_buffer_belongs_to_the_chunk_not_the_call() -> None:
     # Was a bytearray(check_length) plus two memoryviews on every _compare_with() call - and
     # _compare_with() runs on every read and on every verified write. The size is fixed for the
@@ -3311,6 +3351,41 @@ def test_erase_chip_zeroes_every_byte_in_ascending_units() -> None:
         assert (in_order, next_unit) == (1, chip_class.SIZE)  # 256-byte units from 0 upward, every one of them
         assert 0 <= last_status < first_unit  # every chunk blanked before the first byte is zeroed
         assert steps == len(_LOGGERS) + chip_class.SIZE // 256
+
+
+def test_erase_chip_lets_another_task_run_between_every_two_units() -> None:
+    # The zeroing loop yields after each 256-byte unit: a competing task gets a turn between every two unit writes.
+    manager, _chip, _stores = _filled_system(FakeMB85RS64V)
+    passes = [0]
+    marks: list[int] = []
+    original_sync = manager.fram.set_values_sync
+
+    def recording(buf: bytes | bytearray | memoryview, addr_start: int) -> int:
+        if len(buf) == 256:
+            marks.append(passes[0])
+        return original_sync(buf, addr_start)
+
+    async def competitor() -> None:
+        while True:
+            passes[0] += 1
+            await asyncio.sleep(0)
+
+    async def scenario() -> bool:
+        other = asyncio.create_task(competitor())
+        await asyncio.sleep(0)
+        erased = await manager.erase_chip(lambda: None)
+        other.cancel()
+        try:
+            await other
+        except asyncio.CancelledError:
+            pass
+        return erased
+
+    manager.fram.set_values_sync = recording  # type: ignore[method-assign]
+    assert run(scenario()) is True
+    assert len(marks) == FakeMB85RS64V.SIZE // 256, len(marks)
+    stalls = [n for n in range(1, len(marks)) if marks[n] == marks[n - 1]]
+    assert not stalls, f"no other task ran before the unit writes {stalls[:4]}"
 
 
 def test_an_erased_chip_boots_like_a_new_one() -> None:
