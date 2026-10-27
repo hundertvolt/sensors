@@ -149,6 +149,7 @@ def test_an_incomplete_command_is_attributed(board: "Board", bench: "BenchBridge
         _evidence(board, bench, dut_ip, "reset-reason-command-incomplete")
         facts = parse_facts(board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "reset_code_command_incomplete.py", timeout_s=_SCRIPT_TIMEOUT_S), allow_missing_done=True)
         assert facts.get("answer") == "Valid" and isinstance(facts.get("raised_at"), int), f"the erase never reached its failing unit: {facts}"
+        assert "no_reset_after_ms" not in facts, f"the board outlived the cut erase: {facts}"
         _attributed(dut_ip, _RR["COMMAND_INCOMPLETE"], result_note, "erase cut by an EIO")
         save_fram_raw(board, "reset-reason-command-incomplete-after")
         after = get_errcount(dut_ip)
@@ -179,6 +180,7 @@ def test_a_c_stack_exhaustion_is_attributed(board: "Board", bench: "BenchBridge"
     try:
         _evidence(board, bench, dut_ip, "reset-reason-stack-exhausted")
         facts = parse_facts(board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "reset_code_stack_exhausted.py", timeout_s=_SCRIPT_TIMEOUT_S), allow_missing_done=True)
+        assert "no_reset_after_ms" not in facts, f"the board outlived the stack exhaustion: {facts}"
         reset = facts.get("reset")
         assert isinstance(reset, dict) and reset.get("code") == _RR["STACK_EXHAUSTED"] and reset.get("deaths"), f"the exhaustion did not end in the stack code's reboot: {facts}"
         bits = _attributed(dut_ip, _RR["STACK_EXHAUSTED"], result_note, f"stack exhaustion in {facts.get('reader')} (depths {reset.get('deaths')})")

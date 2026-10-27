@@ -123,10 +123,12 @@ def test_cross_device_concurrent_sessions_genuinely_interleave(board: Board, scd
     assert _count(facts, "scd_reads") > 0, "the SCD30 completed no read - its loop never progressed"
     assert _count(facts, "interleaved_total") >= _count(facts, "sgp_cycles"), f"only {facts['interleaved_total']} SCD30 reads inside {facts['sgp_cycles']} SGP40 windows - the bus lock is held too broadly"
     assert facts["reset_sibling_errors"] == 0, f"{facts['reset_sibling_errors']} sibling read failure(s) around the SCD30 soft reset"
+    assert _count(facts, "reset_sibling_reads") > 0, "no sibling read completed around the SCD30 soft reset - the rung raced nothing"
     resumed = facts["scd30_resumed"]
     assert isinstance(resumed, int), f"the SCD30 reported no measurement after its soft reset: {facts}"
     assert resumed <= _count(facts, "scd30_resume_bound_ms"), f"the SCD30 measured again {resumed} ms after its reset, bound {facts['scd30_resume_bound_ms']} ms"
     assert facts["heater_off_sibling_errors"] == 0, f"{facts['heater_off_sibling_errors']} sibling read failure(s) around the SGP40 heater-off"
+    assert _count(facts, "heater_off_sibling_reads") > 0, "no sibling read completed around the SGP40 heater-off - the rung raced nothing"
     assert facts["sgp_after_heater_off"] is not None, "the SGP40 gave no reading after its heater-off"
     _no_errors(facts, "SCD30 x SGP40 interleave")
 
@@ -148,6 +150,7 @@ def test_bmp3xx_same_device_read_write_concurrency(board: Board) -> None:
     facts = _run(board, "bmp3xx_same_device_rw_concurrency.py", _SCRIPT_TIMEOUT_S, bounds=True)
     assert facts["reads"] == facts["reads_planned"], f"reader: {facts['reads']} of {facts['reads_planned']}"
     assert facts["writes_ok"] == facts["writes_planned"], f"writer: {facts['writes_ok']} of {facts['writes_planned']}"
+    assert _count(facts, "reset_window_reads") > 0, "no read round ran inside the reset rung's window - the rung raced nothing"
     assert facts["post_reset_valid"] is True, "no valid reading after the reset rung"
     assert facts["osr_after"] == facts["osr_configured"], f"OSR after the reset rung x{facts['osr_after']}, configured x{facts['osr_configured']}"
     _no_errors(facts, "BMP3xx read-vs-write and reset rung")
@@ -282,6 +285,7 @@ def test_fram_same_device_read_write_concurrency(board: Board) -> None:
     # FRAM has no write wear (10^13 operations per byte); the reads are of production bytes, after the evidence save.
     facts = _run(board, "fram_same_device_rw_concurrency.py", _SCRIPT_TIMEOUT_S)
     assert facts["initialized"] is True, "the FRAM did not set up"
+    assert facts["baseline_read"] is True, "the baseline read failed, so the reads were compared against no real bytes"
     assert facts["reads_ok"] == facts["reads_planned"], f"{facts['reads_ok']} of {facts['reads_planned']} reads matched the baseline"
     assert facts["write_ok"] is True and facts["write_readback_ok"] is True, f"the scratch write did not land intact: {facts}"
     _no_errors(facts, "FRAM read-vs-write")
@@ -301,7 +305,7 @@ def test_fram_cs_pin_hijack_fault_injection_and_recovery(board: Board) -> None:
     assert write["recovered"] and read["recovered"], f"the driver did not recover: {write}, {read}"
     assert wren["readback_ok"] is True, f"the write after a dropped WREN did not land (the driver's one WREN retry): {wren}"
     assert lost["initialized_after"] is False, f"CS held inactive across two writes: the chip was never declared lost: {lost}"
-    assert _ERR_FRAM_CHIP_LOST in lost["errnos"], f"no chip-lost entry (errno {_ERR_FRAM_CHIP_LOST}) in the driver's log: {lost['errnos']}"
+    assert lost["errnos"].count(_ERR_FRAM_CHIP_LOST) == 1, f"not exactly one chip-lost entry (errno {_ERR_FRAM_CHIP_LOST}) in the driver's log: {lost['errnos']}"
     assert lost["setup_after_release"] is True and lost["recovered"] is True, f"CS released, setup() did not bring the chip back: {lost}"
     assert facts["system_task_exceptions"] == [], f"a task ended with an exception under the fault: {facts['system_task_exceptions']}"
 

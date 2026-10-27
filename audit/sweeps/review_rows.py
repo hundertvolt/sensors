@@ -30,8 +30,9 @@ def load_redflags() -> "object":
 
 
 def row_verdict(record: "dict[str, object]", verdicts: "dict[str, dict[str, list[str]]]") -> "tuple[str, list[tuple[str, str, str]]]":
-    if record["level"] == "device script":
-        return "CRr2", []
+    if record["level"] == "device script":  # its facts row: CRr2 until a ds_facts verdict names how the host reads them
+        given = verdicts.get(str(record["key"]), {}).get("ds_facts")
+        return (given[0], [("ds_facts", *given)]) if given else ("CRr2", [])
     per = [(f[0], *verdicts.get(str(record["key"]), {}).get(f[0], ["open", "no verdict yet"])) for f in record["flags"]]  # type: ignore[index]
     per += [(flag, *v) for flag, v in verdicts.get(str(record["key"]), {}).items() if flag.startswith("was:")]  # a fixed row's former flag
     if not per:
@@ -78,7 +79,7 @@ def render(records: "list[dict[str, object]]", verdicts: "dict[str, dict[str, li
 
 def problems(records: "list[dict[str, object]]", verdicts: "dict[str, dict[str, list[str]]]") -> "list[str]":
     have = {str(r["key"]): {f[0] for f in r["flags"]} for r in records}  # type: ignore[index]
-    out = [f"stale verdict: {key} {flag}" for key, per in verdicts.items() for flag in per if flag not in have.get(key, set()) and not (flag.startswith("was:") and key in have)]
+    out = [f"stale verdict: {key} {flag}" for key, per in verdicts.items() for flag in per if flag not in have.get(key, set()) and not (flag.startswith("was:") and key in have) and not (flag == "ds_facts" and key.startswith("tests_hardware/device_scripts/"))]
     out += [f"no verdict: {r['key']} {f[0]}" for r in records for f in r["flags"] if f[0] not in verdicts.get(str(r["key"]), {})]  # type: ignore[index]
     return out
 

@@ -26,6 +26,7 @@ __all__ = [
     "assert_module_error_log_clean",
     "assert_module_error_log_contains",
     "assert_module_error_log_empty",
+    "assert_module_logged_one_code",
     "assert_no_module_logged_a_new_error",
     "assert_no_new_task_raised",
     "assert_no_task_ended",
@@ -92,6 +93,15 @@ def assert_module_error_log_contains(dut_ip: str, module_name: str, num: int, ki
 def assert_module_error_log_empty(dut_ip: str, module_name: str) -> None:
     entry = errcount_entry(get_errcount(dut_ip), module_name)
     assert entry["counter"] == 0, f"{module_name!r} error log was not empty as expected (counter={entry['counter']}): {entry!r}"
+
+
+def assert_module_logged_one_code(dut_ip: str, module_name: str, kind: str, num: int, events: "int | None") -> None:
+    # A provoked fault's exact record: one used slot holding kind+num and nothing else, counted `events` times; None
+    # where the count is the attempts a fault window met, a repeat spending no new slot (SPECIFICATION.md C.7.1).
+    entry = errcount_entry(get_errcount(dut_ip), module_name)
+    used = [(h.get("type"), h.get("num")) for h in entry["history"] if h.get("type") != "N"]
+    counted = entry["counter"] == events if events is not None else entry["counter"] >= 1
+    assert used == [(kind, num)] and counted, f"{module_name!r} should hold exactly {kind}{num}, counted {events if events is not None else 'at least once'}: {entry!r}"
 
 
 def assert_no_module_logged_a_new_error(dut_ip: str, before: "dict[str, ErrcountEntry]", context: str) -> None:

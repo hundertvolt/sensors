@@ -18,7 +18,7 @@ import pytest
 import tomllib
 import website_identity
 from bench_control import ROLE_REVERSAL_CLIENT_CONN, BenchBridge
-from error_log_helpers import assert_module_error_log_clean, assert_module_error_log_empty, assert_no_task_ended, code, errcount_entry, get_errcount, reset_all_error_logs
+from error_log_helpers import assert_module_error_log_empty, assert_module_logged_one_code, assert_no_task_ended, code, errcount_entry, get_errcount, reset_all_error_logs
 from harness import REPO_ROOT, Board, HardwareTestFailureError, device_toml, get_routes, hotspot_password, recover_by_reset, wait_until
 from soak_durations import SOAK_DURATION_SECONDS
 
@@ -330,7 +330,7 @@ def test_malformed_http_request_over_real_wireless_degrades_cleanly(joined_hotsp
             answer = b""
     assert answer == b"" or answer.startswith((b"HTTP/1.0 4", b"HTTP/1.1 4")), f"a malformed request got neither a 400-class status line nor a close: {answer[:80]!r}"
     assert _load.serving(joined_hotspot), "webserver unresponsive after a malformed request over real wireless"
-    assert_module_error_log_clean(joined_hotspot, "WEBSERVER", allowed_warnings=(code("W", "HTTP_BAD_HEAD"),))
+    assert_module_logged_one_code(joined_hotspot, "WEBSERVER", "W", code("W", "HTTP_BAD_HEAD"), events=1)
     dropped = _load.as_object(_load.get_object(joined_hotspot, "/status", _PROBE_TIMEOUT_S).get("networking"), "GET /status networking").get("HTTPDropped")
     assert isinstance(dropped, int) and dropped >= 1, f"the refused head is not counted in HTTPDropped: {dropped!r}"
 

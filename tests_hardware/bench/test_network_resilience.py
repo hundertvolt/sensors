@@ -21,6 +21,7 @@ from error_log_helpers import (
     assert_module_error_log_clean,
     assert_module_error_log_contains,
     assert_module_error_log_empty,
+    assert_module_logged_one_code,
     assert_no_module_logged_a_new_error,
     assert_no_task_ended,
     code,
@@ -255,7 +256,8 @@ def test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage(board: Boa
     wait_until(lambda: _load.ntp_synced(dut_ip), timeout_s=_NTP_RESYNC_TIMEOUT_S + block_s, poll_interval_s=_QUICK_POLL_S, description="NTP resynced by its own retry timer after the block, with no further reset")
     result_note(f"NTP resynced {time.monotonic() - started:.1f}s after the block lifted")
     assert_no_task_ended(dut_ip, "transient NTP outage")
-    reset_all_error_logs(dut_ip, request.node.name)  # the provoked failed attempt legitimately logged
+    assert_module_logged_one_code(dut_ip, "NTP", "E", code("E", "NTP_NO_REPLY"), events=None)  # the attempts the block met
+    reset_all_error_logs(dut_ip, request.node.name)  # after the provoked entry was read exactly
 
 
 # ---------------------------------------------------------------------------
@@ -581,7 +583,8 @@ def test_an_oversized_body_is_refused_before_it_is_read(dut_ip: str, request: py
     free_after = _mem_free(dut_ip)
     result_note(f"MemFree {free_before} -> {free_after} B; the at-cap connection closed after {closed_after:.1f}s")
     assert abs(free_before - free_after) < cap, f"MemFree moved by {free_before - free_after} B across a refused body, as much as the cap {cap} B"
-    assert_module_error_log_clean(dut_ip, "WEBSERVER", allowed_warnings=(code("W", "HTTP_CALL_TIMEOUT"), code("W", "HTTP_BAD_HEAD")))
+    # The 413 logs nothing (Microdot answers it before any handler); the at-cap wait is the one read-phase timeout.
+    assert_module_logged_one_code(dut_ip, "WEBSERVER", "W", code("W", "HTTP_CALL_TIMEOUT"), events=1)
     assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
