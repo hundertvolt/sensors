@@ -4,7 +4,7 @@ Requirement: every test in `tests/`, `tests_scripts/`, `tests_js/` and `tests_ha
 
 ## Counts
 
-Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_verdicts.json`: 8569 rows, 336 flagged. A flag is a candidate; the verdict is the reviewer's.
+Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_verdicts.json`: 8570 rows, 336 flagged. A flag is a candidate; the verdict is the reviewer's.
 
 | level | rows | flagged |
 |---|---|---|
@@ -13,7 +13,7 @@ Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_
 | flash (hardware) | 88 | 65 |
 | host (pytest) | 2925 | 67 |
 | manual (hardware) | 21 | 2 |
-| twin (MicroPython) | 683 | 24 |
+| twin (MicroPython) | 684 | 24 |
 | twin scenario | 176 | 10 |
 | unit (MicroPython) | 3973 | 140 |
 | web (vitest) | 492 | 6 |
@@ -23,7 +23,7 @@ Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_
 | CRr2 | 83 |
 | fixed | 46 |
 | justified | 129 |
-| biting | 8311 |
+| biting | 8312 |
 
 | red flag | rows | verdicts |
 |---|---|---|
@@ -4215,20 +4215,21 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests/test_digital_twin_machine_uart.py:139 | test_the_link_and_uart_counters_saturate_at_the_counter_cap | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_machine_uart.py:150 | test_settle_refuses_to_block_a_running_loop | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_machine_uart.py:164 | test_settle_waits_out_the_wire_time_in_a_bounded_number_of_steps | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine_uart.py:184 | test_a_real_poll_over_a_uart_is_counted_and_fails_the_test | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine_uart.py:227 | test_a_planted_framing_or_break_error_fails_the_frame_and_the_next_reads_whole | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine_uart.py:240 | test_delivery_takes_real_wire_time | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine_uart.py:259 | test_faster_baud_delivers_faster | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine_uart.py:274 | test_reads_pump_the_wire_without_settle | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine_uart.py:288 | test_twin_poller_requeries_ioctl | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine_uart.py:297 | test_twin_poller_is_not_a_real_select_poll | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine_uart.py:302 | test_the_finaliser_aborts_the_channel | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine_uart.py:318 | test_reset_peripherals_frees_every_dma_channel | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine_uart.py:326 | test_a_poller_asks_only_for_its_mask | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine_uart.py:344 | test_the_largest_config_flush_at_the_maxima_is_the_hold_the_ring_floor_assumes | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine_uart.py:350 | test_a_config_flush_through_the_installed_open_stalls_once_for_its_pages | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine_uart.py:371 | test_the_dma_keeps_filling_the_ring_through_a_flash_stall | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine_uart.py:396 | test_a_set_mask_overflows_the_fifo_inside_a_flash_stall | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine_uart.py:184 | test_settle_still_delivers_when_its_deadline_passes_before_its_first_check | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine_uart.py:203 | test_a_real_poll_over_a_uart_is_counted_and_fails_the_test | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine_uart.py:246 | test_a_planted_framing_or_break_error_fails_the_frame_and_the_next_reads_whole | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine_uart.py:259 | test_delivery_takes_real_wire_time | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine_uart.py:278 | test_faster_baud_delivers_faster | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine_uart.py:293 | test_reads_pump_the_wire_without_settle | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine_uart.py:307 | test_twin_poller_requeries_ioctl | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine_uart.py:316 | test_twin_poller_is_not_a_real_select_poll | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine_uart.py:321 | test_the_finaliser_aborts_the_channel | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine_uart.py:337 | test_reset_peripherals_frees_every_dma_channel | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine_uart.py:345 | test_a_poller_asks_only_for_its_mask | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine_uart.py:363 | test_the_largest_config_flush_at_the_maxima_is_the_hold_the_ring_floor_assumes | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine_uart.py:369 | test_a_config_flush_through_the_installed_open_stalls_once_for_its_pages | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine_uart.py:390 | test_the_dma_keeps_filling_the_ring_through_a_flash_stall | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine_uart.py:415 | test_a_set_mask_overflows_the_fifo_inside_a_flash_stall | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_network_neopixel.py:163 | test_one_connect_phase_fits_the_services_poll_budget | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_network_neopixel.py:169 | test_wlan_starts_disconnected | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_network_neopixel.py:175 | test_wlan_deinit_sets_the_deinit_called_flag | twin (MicroPython) | biting | — | biting as is |
