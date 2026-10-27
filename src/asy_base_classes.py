@@ -4,8 +4,8 @@ method awaits, so no lock), elapsed seconds (TickSeconds) and the UTC timestamp.
 
 The sensor-driver base (SensorReader, SensorReaderConfig) with error bookkeeping and optional JSON config storage.
 
-Every method returns a well-defined value, never raises; PieceBuffer's construction alone may raise, its caller's checks
-bounding size and piece_bytes.
+Every method returns a well-defined value, never raises; PieceBuffer's construction alone may raise MemoryError, after
+its caller's checks bounded size and piece_bytes, and each caller catches it into its own failure result.
 """
 # __init__ never calls self.pr.setup() (sync vs. async): setup() does it first (SensorReader), then the
 # store's (SensorReaderConfig) - both inside the one-time boot batch, never lazily in a task (Part A.7).
@@ -177,7 +177,7 @@ class PieceBuffer:
     def __init__(self, size: int, piece_bytes: int) -> None:
         self._size = size
         self._piece_bytes = piece_bytes
-        # Every piece allocated here, after the caller's cap admitted size; a MemoryError is not caught.
+        # Every piece allocated here, after the caller's cap admitted size; a MemoryError goes to the caller, which catches it.
         self._pieces = [bytearray(min(piece_bytes, size - start)) for start in range(0, size, piece_bytes)]
 
     def __len__(self) -> int:

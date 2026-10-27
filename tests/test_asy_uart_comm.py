@@ -2533,11 +2533,11 @@ def _cap_pair(cap_side: str, answer: bytes = b"", *, debug: int | None = None) -
 
 
 @_on_poll_rounds
-def test_a_refused_piece_at_a_received_set_ends_in_the_listen_loops_catch_after_the_command_ack() -> None:
-    # Today's path (J.8): the pieces are built after the command frame's ACK and not caught there, so the raise ends in
-    # the listen loop's broad catch (UNEXPECTED) with no resync, and the stray data chunk is read after the backoff as an
-    # invalid frame. The peer sees one ACK, then none for its data chunk.
-    pair = run(build_pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(b""), set_callback=accept_set()), RUN_LIMIT_S)
+def test_a_refused_piece_at_a_received_set_faults_as_alloc_and_the_responder_re_listens_at_once() -> None:
+    # The pieces are built after the command frame's ACK: a heap too short for them is J.8's fault like any other, one
+    # ALLOC entry printing the caught text and a resync that drains the stray data chunk, then an immediate re-listen
+    # (A15). The peer sees one ACK, then none for its data chunk.
+    pair = run(build_pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(b""), set_callback=accept_set(), debug=ERROR_LEVEL), RUN_LIMIT_S)
 
     async def exchange() -> "tuple[bool, list[bytes], bool, bool]":
         task = pair.responder.start_asy_listen()
@@ -2557,45 +2557,46 @@ def test_a_refused_piece_at_a_received_set_ends_in_the_listen_loops_catch_after_
             except asyncio.CancelledError:  # expected; anything else is a real failure
                 pass
 
-    refused, answered, alive, recovered = run(exchange(), _RUN_BOUND_S)
+    with record_prints() as rec:
+        refused, answered, alive, recovered = run(exchange(), _RUN_BOUND_S)
     assert refused is False
     assert [frame[1] for frame in answered] == [_CMD_ACK], answered
     assert alive is True
     assert recovered is True
-    assert persisted(pair.responder) == [_e("UNEXPECTED"), _e("UART_FRAME_INVALID")], persisted(pair.responder)
+    assert persisted(pair.responder) == [_e("ALLOC")], persisted(pair.responder)
     assert persisted(pair.initiator) == [_e("UART_NO_ACK")], persisted(pair.initiator)
+    assert "bytes for the incoming train: simulated allocation failure" in rec.text(), rec.text()
 
 
 @_on_poll_rounds
-def test_a_refused_piece_at_a_dont_care_get_raises_out_of_uart_get_before_the_header_ack() -> None:
-    # Today's path (J.8): the answer's pieces are built after its header validated and before the header's ACK, and the
-    # raise leaves uart_get(): nothing logged or resynced on this end, the bus released, the peer's header unacknowledged.
-    pair = run(build_pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(b"banner"), set_callback=accept_set()), RUN_LIMIT_S)
+def test_a_refused_piece_at_a_dont_care_get_faults_as_alloc_and_uart_get_answers_none() -> None:
+    # The answer's pieces are built after its header validated and before the header's ACK: J.8's fault like any other,
+    # one ALLOC entry printing the caught text, a resync and the hold-off; uart_get() answers None and the bus is free.
+    pair = run(build_pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(b"banner"), set_callback=accept_set(), debug=ERROR_LEVEL), RUN_LIMIT_S)
 
-    async def exchange() -> "tuple[str, list[bytes], tuple[bool, bool], ListenResult, bytes | None]":
+    async def exchange() -> "tuple[PieceBuffer | None, list[bytes], tuple[bool, bool], ListenResult, bytes | None]":
         listener = asyncio.create_task(pair.responder.uart_listen())
         asy_uart_comm.PieceBuffer = _UnbuildablePieceBuffer  # type: ignore[misc]
-        raised = ""
         try:
-            await pair.initiator.uart_get(0x21)
-        except MemoryError as e:
-            raised = str(e)
+            answer = await pair.initiator.uart_get(0x21)
         finally:
             _real_pieces()
         sent = frames(pair.wire_from_initiator(), _FRAME)
         state = (pair.initiator._busy, pair.initiator._holdoff_active)
         listened = await asyncio.wait_for(listener, _STEP_BOUND_S)
         again = await pair.with_listener(pair.initiator.uart_get(0x21))
-        return raised, sent, state, listened, copied_out(again)
+        return answer, sent, state, listened, copied_out(again)
 
-    raised, sent, state, listened, again = run(exchange(), _RUN_BOUND_S)
-    assert raised == "simulated allocation failure"
+    with record_prints() as rec:
+        answer, sent, state, listened, again = run(exchange(), _RUN_BOUND_S)
+    assert answer is None
     assert [frame[1] for frame in sent] == [_CMD_GET], sent
-    assert state == (False, False)
-    assert persisted(pair.initiator) == [], persisted(pair.initiator)
+    assert state == (False, True)
+    assert persisted(pair.initiator) == [_e("ALLOC")], persisted(pair.initiator)
     assert (listened.cmd_id, listened.cmd) == (None, _CMD_GET), listened
     assert persisted(pair.responder) == [_e("UART_NO_ACK")], persisted(pair.responder)
     assert again == b"banner"
+    assert "bytes for the answer: simulated allocation failure" in rec.text(), rec.text()
 
 
 def test_the_default_chunk_bytes_is_the_reasoned_one() -> None:

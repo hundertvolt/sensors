@@ -1333,28 +1333,28 @@ class _UnbuildablePieceBuffer(asy_base_classes.PieceBuffer):
         raise MemoryError("simulated allocation failure")
 
 
-def test_a_refused_line_piece_raises_out_of_readline_until_complete_and_consumes_nothing() -> None:
-    # Today's path (J.8): the line's pieces are built before its first byte is read and are not caught, so the raise
-    # leaves the call and the line stays in the ring for the next read.
+def test_a_refused_line_piece_answers_none_prints_its_text_and_consumes_nothing() -> None:
+    # The line's pieces are built before its first byte is read: a heap too short for them answers None with the caught
+    # text through console(), as readline()'s own buffer does, and the line stays in the ring for the next read.
     uart = _make_uart()
     fake(uart).feed_rx(b"line\n")
 
-    async def scenario() -> "tuple[str, int, PieceBuffer | None]":
-        raised = ""
+    async def scenario() -> "tuple[PieceBuffer | None, int, PieceBuffer | None]":
         async with uart:
             asy_uart_driver.PieceBuffer = _UnbuildablePieceBuffer  # type: ignore[misc]
             try:
-                await read_line(uart)
-            except MemoryError as e:
-                raised = str(e)
+                refused = await read_line(uart)
             finally:
                 asy_uart_driver.PieceBuffer = asy_base_classes.PieceBuffer  # type: ignore[misc]
-            return raised, uart.discarded_bytes, await read_line(uart)
+            return refused, uart.discarded_bytes, await read_line(uart)
 
-    raised, discarded, line = run(scenario(), _RUN_BOUND_S)
-    assert raised == "simulated allocation failure"
+    with record_prints() as rec:
+        refused, discarded, line = run(scenario(), _RUN_BOUND_S)
+    assert refused is None
     assert discarded == 0
     assert line_bytes(line) == b"line\n"
+    assert [entry[:2] for entry in rec.lines] == [("UART", "line pieces allocation failed:")], rec.lines
+    assert str(rec.lines[0][2]) == "simulated allocation failure"
 
 
 def test_a_line_over_the_cap_is_discarded_and_logged_once() -> None:

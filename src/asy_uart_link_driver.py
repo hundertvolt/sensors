@@ -129,9 +129,9 @@ class UARTLinkDriver:
         return [wrote, crossed, attempts, recovered]
 
     async def _exercise_loop(self) -> None:
-        # Drives one real GET across the jumper per period, so the link carries traffic on a live system instead of only
-        # under a device script. Never raises out (uart_get() answers None); ends, like the responder's listen loop, when
-        # setup() failed: the supervisor's restart escalation is the path to a reboot for a link that cannot come up (C.7.2).
+        # Drives one real GET across the jumper per period: link traffic on a live system, not only under a device script.
+        # A failed transfer never raises out (uart_get() answers None, a failed piece allocation included); ends, like the
+        # listen loop, when setup() failed: the supervisor's restart escalation reboots a link that cannot come up (C.7.2).
         while self.initialized:
             if self._hazard_pending:
                 await self._run_hazards()  # one bounded run in place of a round, then the echo resumes at once

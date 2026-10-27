@@ -3139,7 +3139,8 @@ concurrent `deinit()` is seen at the next `ready()` exit, which re-checks the bu
 yield; `discarded_bytes` counts the bytes a failed `*_until_complete()` read consumed and dropped
 (masked to 2**30 − 1). `readline_until_complete()` takes the same receive cap as a transfer
 (`max_bytes`) and never grows by concatenation: the line lands in pieces of `chunk_bytes`, allocated
-when the call starts (a `MemoryError` there is the caller's, J.8), and a line over the cap is read
+when the call starts (a `MemoryError` there answers `None` with its text through `console()`, the
+line left in the ring; owner, 2026-10-27), and a line over the cap is read
 to its end, discarded and counted, the call returns `None` and the case is logged (J.8). This layer
 keeps no logger of its own, so the caller passes its `log` and the driver writes the one
 `UART_TRANSFER_CAP` entry through it: only the read knows the line ran over (agent, 2026-10-07).
@@ -3161,7 +3162,7 @@ fails and the sender's transaction fails with it (owner, 2026-10-06, for the ove
 and breaks the same way, agent, 2026-10-06). Parity is not tested while no link configures it. A
 re-init restarts the ring's stream and fails the next read as an overrun, so the caller resyncs
 rather than reading a frame with a byte the handler took before the interrupts were masked. Every
-method returns a sentinel (`readline_until_complete()`'s piece allocation aside, above) — a third
+method returns a sentinel, `readline_until_complete()`'s piece allocation included — a third
 position distinct from I2C (raises) and SPI (writes cannot raise; 32+ byte reads can, since 1.29 —
 F.5.2).
 
@@ -7705,7 +7706,8 @@ backend-only or frontend-only validation/coercion policy change in this project.
 - **Bounded piece assembly** — `asy_base_classes.py`'s `PieceBuffer` (the webserver's streaming
   `_PieceWriter` is its model): a payload whose size the caller did not fix is held as pieces of at
   most `chunk_bytes`, every piece allocated at construction once the caller's cap has admitted the
-  size (a `MemoryError` there is not caught), with its length (`len()`), iteration (`pieces()`), a
+  size (a `MemoryError` there goes to the caller, which catches it into its own failure result: J.8,
+  C.3.2; owner, 2026-10-27), with its length (`len()`), iteration (`pieces()`), a
   write at an offset (`write_at()`) and a copy-out (`copy_into(dest, start)`, never a partial copy:
   a short destination gets nothing), so no single allocation exceeds `chunk_bytes`; `trim(length)`
   shortens a short train's result without allocating. It is never joined into one buffer: no
@@ -8925,8 +8927,9 @@ scratch, the zero padding and the command-id scratch (`_allocate()`), so no fram
 them — zero bytes retained per transaction, pinned by `tests/test_uart_comm_hazard.py`.
 Client-controlled by the UART peer and bounded before allocation: a train with no caller destination
 is assembled in pieces of at most `chunk_bytes` (G.2's piece primitive), a declared size above
-`max_transfer_bytes` is refused through the withheld ACK before anything is allocated, and no caught
-`MemoryError` stands at these sites (owner, 2026-10-05; J.8). Per listen: one `ListenResult`, transient.
+`max_transfer_bytes` is refused through the withheld ACK before anything is allocated, and a heap
+still too short for the pieces is J.8's `ALLOC` fault, caught into the call's own failure result
+(owner, 2026-10-27). Per listen: one `ListenResult`, transient.
 
 **`asy_uart_driver.py`** — construction, long-lived, fixed: its CRC and framing objects, and the
 `machine.UART` that `init()` constructs from `__init__`, a static object whose construction allocates
@@ -8938,7 +8941,8 @@ driver-default 512-byte ring (Part N `dev.uart_rx_ring`), hold 2 × 1,024 B, and
 test asserts where they land (I.4(f.1)). A larger ring costs twice its size, which is why a ring for
 the bench's continuous-sender window is sized on the bench with its heap cost measured (J.6).
 `readline_until_complete()` is capped by `max_transfer_bytes` and assembles a `PieceBuffer`, never
-growing by concatenation; `read_until_complete()` is bounded by its `n`.
+growing by concatenation, a heap too short for its pieces answering `None` with the caught text
+through `console()` (owner, 2026-10-27); `read_until_complete()` is bounded by its `n`.
 
 **`asy_uart_link_driver.py`** — construction, long-lived, fixed: the role's `UARTComm`, its callbacks
 and the bench payload buffer. Per GET served: the echo's one copy-out, bounded by the receive cap.
@@ -10087,11 +10091,15 @@ The module therefore follows Part G.2's buffer-ownership primitive, in the same 
   peer logs `UART_TRANSFER_CAP`: J.4 has no NAK to carry the cause. `readline_until_complete()`
   takes the same cap (C.3.2). A caller that declares its size caps it — the form to prefer in a new
   responder (agent, 2026-09-11).
-- **A failed construction allocation degrades to the module's normal failure sentinel** — the frame
-  buffers and scratch refuse construction (J.1). The receive allocations above are bounded before
-  they happen, so no caught `MemoryError` stands at them (owner, 2026-10-05; I.2, I.4(a)): a heap
-  too short for one piece raises to the listen loop's broad catch on a responder or to the caller on
-  an initiator, and the task supervisor is the backstop (I.4).
+- **A failed allocation degrades to the module's normal failure sentinel** — the frame buffers and
+  scratch refuse construction (J.1). The receive allocations above are bounded before they happen,
+  and a heap still too short for one piece is a fault like any other (owner, 2026-10-27; I.2,
+  I.4(a)): `ALLOC` (`errno` 20) persisted, the caught text printed for the memory gates, the resync,
+  and the call's own failure result — a received SET's `ListenResult(None, CMD_SET, None)`, after
+  which the responder re-listens at once (J.5's backoff rule), and `uart_get()`'s `None` on an
+  initiator, held off like after any fault. The bytes on the wire are those of any refused train:
+  the data chunk or the answer header goes unacknowledged. `readline_until_complete()` answers
+  `None` the same way, the line left in the ring (C.3.2).
 
 One consequence is worth stating because it is counterintuitive: a received frame is read whole into
 the instance's RX frame buffer and its payload region then slice-assigned into the destination, and

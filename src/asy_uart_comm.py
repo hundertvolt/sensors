@@ -275,7 +275,11 @@ class UARTComm:
             if dest is None:
                 # In pieces of at most chunk_bytes, before the first data chunk is acknowledged; the cap
                 # above bounds the whole, so no receive allocation is peer-sized (J.8).
-                own_dest = PieceBuffer(room, self._chunk_bytes)
+                try:
+                    own_dest = PieceBuffer(room, self._chunk_bytes)
+                except MemoryError as e:  # a fault like any other (J.8): resync and hold-off, the header unacknowledged
+                    await self._fault(device, _ERR_ALLOC, "could not allocate", room, "bytes for the answer:", e)
+                    return None
             elif len(dest) < room:
                 await self._fault(device, _ERR_UART_SIZE_MISMATCH, "destination holds", len(dest), "of", room)
                 return None
@@ -310,7 +314,11 @@ class UARTComm:
         if room is None:
             await self._fault(device, _ERR_UART_SIZE_MISMATCH, "expected", want, "bytes, train can carry at most", (chunks - 1) * self._payload_size)
             return ListenResult(None, CMD_SET, None)
-        dest = PieceBuffer(room, self._chunk_bytes)  # in pieces, before any data chunk is acknowledged
+        try:
+            dest = PieceBuffer(room, self._chunk_bytes)  # in pieces, before any data chunk is acknowledged
+        except MemoryError as e:  # a fault like any other (J.8): the resync drains the stranded chunk, cmd set re-listens (A15)
+            await self._fault(device, _ERR_ALLOC, "could not allocate", room, "bytes for the incoming train:", e)
+            return ListenResult(None, CMD_SET, None)
         written = await self._recv_train(device, dest, want, None, chunks, uid)
         if written is None or not dest.trim(written):
             return ListenResult(None, CMD_SET, None)
