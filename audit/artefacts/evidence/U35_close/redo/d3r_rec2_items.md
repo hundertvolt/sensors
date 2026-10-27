@@ -130,3 +130,9 @@ Append-only; each line names its source hand-back in S/u35r/handbacks_redo/ or t
   clock on the twin (UM4's text). BACKLOG.md candidate: twin fidelity of the poll step against rp2, for a later unit.
 - Hardware-round reading: a CRC16 frame-and-ACK round trip on the dev bench under API load, against the 1000 ms ACK
   timeout (the per-byte yield's real cost on rp2).
+- (lead, 2026-10-27T18:35) BACKLOG twin-fidelity candidate, add CMr1k's figure: 85 % of a silent-fetch twin boot is
+  the Unix-port 1 ms poll per scheduler step while a ThreadSafeFlag and a socket both wait (rp2 polls once); the
+  NTP and clock-jump files grew to 55.7-61.8 s and 31.0-34.6 s from the widening's added boots. A toolchain-level
+  lever (the Unix test build's select path) is the owner's call, not this unit's.
+- (lead) E.2.1: the clock-jump, NTP, SCD30, SGP40, launcher and runner twin tests run once per distinct wiring they
+  reach (CMr1k), and the supervised-death test runs on the driven clock (CMr1l finding 4).

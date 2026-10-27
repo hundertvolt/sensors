@@ -18,7 +18,10 @@ Worktree and base: in your launch message. Logs in `S/u35/laneC/n11e/`.
     device uses. Option (B), a larger bound, would leave the cost where it is.
   - The bound `l1.uart_comm_harness_run_limit_s` (10 s) stays.
 - Sites in files another lane is changing are not yours:
-  - test_digital_twin_ntp.py and test_digital_twin_clock_jump.py belong to lane CMr1k (its item 6).
+  - test_digital_twin_ntp.py and test_digital_twin_clock_jump.py belong to lane CMr1k. It is merged in your base:
+    its item 6 tagged their real waits, and you leave them.
+  - The UART lane (UM4) is changing digital_twin/run_generic_integration.py, so rgi's `_WIRE_LOG_CLEAR_INTERVAL_MS`
+    (:445) and `range(3)` (:702) are held for it, unless UM4's merge is in your base.
   - The UART lane (UM4) owns test_digital_twin_uart_link.py and test_digital_twin_generated_boot.py, plus every
     twin UART test it moves onto the driven clock. Check whether UM4's merge is in your base (`git log --oneline
     --grep 'merge lane.*UM'`). If it is, class the UART sites on your base. If it is not, leave twin machine_uart's
@@ -39,10 +42,8 @@ Worktree and base: in your launch message. Logs in `S/u35/laneC/n11e/`.
    - Formal pair for the file.
 2. Item 2's remainder: every R and B site in N11d's "Left to tag" list that is still real-time on your base, tagged
    with a measured row at both stages, the way batch 1 was.
-   - These include test_asy_system_service's `_real_time` literals, `_HANG_WATCH_MS` and `_SETTLE_MS`; rgi's
-     `_WIRE_LOG_CLEAR_INTERVAL_MS` (:445) and `range(3)` (:702); and the twin bus_hazard's :104 and :393.
-   - Lane CMr1k also edits digital_twin/run_generic_integration.py, at other sites, so touch only your two lines
-     there.
+   - These include test_asy_system_service's `_real_time` literals, `_HANG_WATCH_MS` and `_SETTLE_MS`, and the twin
+     bus_hazard's :104 and :393. rgi's two sites are held, as above.
    - Where a site could leave the real clock by efficiency at no loss of strictness, do that instead of tagging,
      with its bite. Say which you chose and why.
    - AST identical after substitution, and the register bite red, per commit.

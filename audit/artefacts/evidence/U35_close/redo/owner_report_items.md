@@ -164,3 +164,8 @@ source.
 - The FRAM read-back now covers the four widened Wi-Fi scenarios, and both bites fail 12/12.
 - Merge note: N11d had tagged a real sleep that CMr1j had already moved to the driven clock. The lead dropped the tag
   in the merge, and CMr1k got the ntp/clock_jump sites by message so that cannot happen again.
+- CMr1k (lead, 18:35): the clock-jump, NTP, SCD30, SGP40, launcher and runner twin tests now run once per distinct
+  wiring they reach, each with a bite. The NTP tests' boot-to-boot link that kept every earlier boot alive (147 KB
+  per re-boot) is cut. The last real waits in those files are tagged and measured. The files are slower (NTP up to
+  62 s at 32768), mostly from the twin's 1 ms poll artefact: recommended as a twin-fidelity follow-up, the owner's
+  call.

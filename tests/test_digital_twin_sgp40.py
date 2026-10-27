@@ -15,7 +15,7 @@ from _fast_sleep import FastAsyncSleep
 from _sgp40_chip import SGP40Chip
 from _tmp_scratch import TmpScratch
 from _twin_common import Walk
-from _twin_devices import device_with, wiring_plan
+from _twin_devices import distinct_wirings, wiring_plan
 from _twin_random import FixedRandom
 
 import asy_i2c_driver
@@ -227,48 +227,9 @@ def test_heater_off_clears_the_pending_measure_reply_and_the_next_measure_answer
     assert (chip.heater_offs, chip._measuring) == (1, True)
 
 
-def _chip_on(bus_name: str) -> SGP40Chip:
-    bus = machine.peripheral(bus_name)
-    assert isinstance(bus, machine.I2C)
-    chip = bus.devices[_SGP40_ADDRESS]
-    assert isinstance(chip, SGP40Chip)
-    return chip
-
-
-def _sgp40_bus() -> "tuple[asy_i2c_driver.I2C, str]":
-    # The bus a generated device wires its SGP40 on, built as that device's own plan describes it.
-    plan = wiring_plan(device_with("sgp40"))
-    machine.reset_peripherals()
-    machine.configure_wiring(plan)
-    bus = next(name for name, attached in plan["buses"].items() if any(a["driver"] == "sgp40" for a in attached))
-    pins = plan["pins"][bus]
-    scl, sda = pins.get("scl"), pins.get("sda")
-    assert isinstance(scl, int)
-    assert isinstance(sda, int)
-    return asy_i2c_driver.I2C(int(bus[3:]), scl_pin=scl, sda_pin=sda), bus
-
-
-def test_the_driver_recovers_from_a_crc_failure_with_the_next_initialize() -> None:
-    i2c, bus_name = _sgp40_bus()
-    sgp = SGP40_I2C(i2c)
-
-    async def scenario() -> None:
-        assert await sgp.setup() is True
-        chip = _chip_on(bus_name)
-        chip.corrupt_next()
-        try:
-            await sgp.measure_raw()
-            raise AssertionError("expected the driver's CRC error")
-        except RuntimeError as e:
-            assert "CRC" in str(e), e
-        await sgp.initialize()  # the serial reply passes its CRC again
-
-    with FastAsyncSleep():
-        run(scenario())
-
-
-def test_the_real_reader_publishes_vocstate_0_through_the_blackout_then_1() -> None:
-    i2c, _bus_name = _sgp40_bus()
+def _blackout_on(device: str) -> None:
+    # The test below on one device.
+    i2c, _bus_name = _sgp40_bus(device)
     reader = SGP40_Reader(i2c, ValueRef(_DefaultTemperatureSource(), "value"), ValueRef(_DefaultHumiditySource(), "value"), cfg_path=_scratch.dir())
 
     async def scenario() -> "list[int | None]":
@@ -288,19 +249,58 @@ def test_the_real_reader_publishes_vocstate_0_through_the_blackout_then_1() -> N
     assert states[first_learning:] == [1] * (len(states) - first_learning)
 
 
-class _BlankableSource:
-    # A compensation producer the test can blank: a value of None is a producer with no sample (a failing SCD30).
-    def __init__(self, value: "float | None") -> None:
-        self.value = value
+def _chip_on(bus_name: str) -> SGP40Chip:
+    bus = machine.peripheral(bus_name)
+    assert isinstance(bus, machine.I2C)
+    chip = bus.devices[_SGP40_ADDRESS]
+    assert isinstance(chip, SGP40Chip)
+    return chip
 
-    async def get_data(self) -> "_BlankableSource":
-        return self
+
+def _crc_recovery_on(device: str) -> None:
+    # The test below on one device.
+    i2c, bus_name = _sgp40_bus(device)
+    sgp = SGP40_I2C(i2c)
+
+    async def scenario() -> None:
+        assert await sgp.setup() is True
+        chip = _chip_on(bus_name)
+        chip.corrupt_next()
+        try:
+            await sgp.measure_raw()
+            raise AssertionError("expected the driver's CRC error")
+        except RuntimeError as e:
+            assert "CRC" in str(e), e
+        await sgp.initialize()  # the serial reply passes its CRC again
+
+    with FastAsyncSleep():
+        run(scenario())
 
 
-def test_a_cycle_without_compensation_sends_no_measurement_and_steps_no_streak_or_entry() -> None:
-    # The real reader's read loop on the twin bus: with its temperature producer blanked, each triggered cycle sends
-    # no measure command (0x260F), steps no streak and logs nothing, and the loop runs on; restored, it measures again.
-    i2c, bus_name = _sgp40_bus()
+def _sgp40_bus(device: str) -> "tuple[asy_i2c_driver.I2C, str]":
+    # The bus the device wires its SGP40 on, built as its own plan describes it, every neighbour on it; each
+    # neighbour's measurement Timer is stopped, as no test here reads one.
+    plan = wiring_plan(device)
+    machine.reset_peripherals()
+    machine.configure_wiring(plan)
+    bus = next(name for name, attached in plan["buses"].items() if any(a["driver"] == "sgp40" for a in attached))
+    pins = plan["pins"][bus]
+    scl, sda = pins.get("scl"), pins.get("sda")
+    assert isinstance(scl, int)
+    assert isinstance(sda, int)
+    i2c = asy_i2c_driver.I2C(int(bus[3:]), scl_pin=scl, sda_pin=sda)
+    found = machine.peripheral(bus)
+    assert isinstance(found, machine.I2C)
+    for neighbour in found.devices.values():
+        timer = getattr(neighbour, "_timer", None)  # its own clock: its task would outlive the test
+        if timer is not None:
+            timer.deinit()
+    return i2c, bus
+
+
+def _uncompensated_cycle_on(device: str) -> None:
+    # The test below on one device.
+    i2c, bus_name = _sgp40_bus(device)
     temperature = _BlankableSource(25.0)
     reader = SGP40_Reader(i2c, ValueRef(temperature, "value"), ValueRef(_DefaultHumiditySource(), "value"), cfg_path=_scratch.dir())
     cycles = [0]
@@ -356,6 +356,35 @@ def test_a_cycle_without_compensation_sends_no_measurement_and_steps_no_streak_o
     assert measured == 3, f"three compensated cycles sent {measured} measure command(s)"
     assert (skipped, streak, logged, ended) == (0, 0, 0, False), f"uncompensated cycles: {skipped} measure(s), streak {streak}, {logged} entr(ies), loop ended={ended}"
     assert again == 1, f"the restored cycle sent {again} measure command(s)"
+
+
+def test_the_driver_recovers_from_a_crc_failure_with_the_next_initialize() -> None:
+    for device in distinct_wirings("sgp40"):
+        machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
+        _crc_recovery_on(device)
+
+
+def test_the_real_reader_publishes_vocstate_0_through_the_blackout_then_1() -> None:
+    for device in distinct_wirings("sgp40"):
+        machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
+        _blackout_on(device)
+
+
+class _BlankableSource:
+    # A compensation producer the test can blank: a value of None is a producer with no sample (a failing SCD30).
+    def __init__(self, value: "float | None") -> None:
+        self.value = value
+
+    async def get_data(self) -> "_BlankableSource":
+        return self
+
+
+def test_a_cycle_without_compensation_sends_no_measurement_and_steps_no_streak_or_entry() -> None:
+    # The real reader's read loop on the twin bus: with its temperature producer blanked, each triggered cycle sends
+    # no measure command (0x260F), steps no streak and logs nothing, and the loop runs on; restored, it measures again.
+    for device in distinct_wirings("sgp40"):
+        machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
+        _uncompensated_cycle_on(device)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 """Tests for digital_twin/launch.py: the shared --fault/--hang vocabulary and parsers, parse_args(), the shared chip
-lookup and fault plumbing (pure, synchronous), and short end-to-end runs of main() over a fixture plan - a
-"does it work at all" check, not a precise-behaviour assertion."""
+lookup and fault plumbing (pure, synchronous), and short driven end-to-end runs of main() over each distinct wiring
+of the chips it reads - a "does it work at all" check, not a precise-behaviour assertion."""
 
 import asyncio
 import errno
@@ -27,9 +27,10 @@ import machine
 import microtest
 import network
 from _async_harness import run
+from _fake_time import DrivenTime
 from _src_const import src_const
 from _twin_common import Injections, StatePaths
-from _twin_devices import device_with
+from _twin_devices import distinct_wirings
 
 microtest.after_each(machine.reset_test_state)
 microtest.after_each(network.reset_test_state)
@@ -47,9 +48,7 @@ _LONG_MAIN_BOUND_S = 15
 # @tunable l2.launch_long_min_readings = 5
 _LONG_MIN_READINGS = 5
 
-# A generated device that wires the BMP3xx, so every read the launcher makes has its chip.
-_DEVICE = device_with("bmp3xx")
-_PLAN_PATH = f"build/generated_src/sensortask_{_DEVICE}_wiring_plan.json"
+_READ = ("bmp3xx", "scd30", "sgp40")  # the chips main()'s sensor loop reads: each main() run takes a device wiring all three
 
 
 def _chips(**chips: "_FakeChip") -> "dict[str, object]":
@@ -58,8 +57,18 @@ def _chips(**chips: "_FakeChip") -> "dict[str, object]":
     return wired
 
 
-def _config(seed: int, faults: "list[launch.FaultSpec]", wifi: "list[int]", *, no_wdt_feed: bool, duration: float) -> "launch.LaunchConfig":
-    return launch.LaunchConfig(_in_memory(), Injections(seed, faults, [], wifi), wiring_plan_path=_PLAN_PATH, no_wdt_feed=no_wdt_feed, duration=duration)
+def _config(device: str, seed: int, faults: "list[launch.FaultSpec]", wifi: "list[int]", *, no_wdt_feed: bool, duration: float) -> "launch.LaunchConfig":
+    plan = f"build/generated_src/sensortask_{device}_wiring_plan.json"
+    return launch.LaunchConfig(_in_memory(), Injections(seed, faults, [], wifi), wiring_plan_path=plan, no_wdt_feed=no_wdt_feed, duration=duration)
+
+
+async def _driven_main(config: "launch.LaunchConfig", bound_s: float) -> "dict[str, int | None]":
+    # main() with the launcher's, the twin machine's and network's sleeps on one driven clock (the chips' Timers and the
+    # watchdog's ticks among them), run until it returns within bound_s of driven time (agent, 2026-10-27).
+    with DrivenTime(launch, machine, network, sleeps=True) as clock:
+        task = asyncio.get_event_loop().create_task(launch.main(config))
+        await clock.run_until(task.done, int(bound_s * 1000))
+        return await task
 
 
 def _in_memory() -> "StatePaths":
@@ -319,39 +328,53 @@ def test_require_wired_names_the_entry_point_it_was_given() -> None:
 
 
 def test_main_runs_end_to_end_and_returns_a_summary() -> None:
-    summary = run(asyncio.wait_for(launch.main(_config(1234, [], [], no_wdt_feed=True, duration=_SHORT_DURATION_S)), _MAIN_BOUND_S))
-    readings = summary["readings"]
-    assert readings is not None and readings >= 1  # at least one real bus-level read happened
-    assert summary["wifi_status"] is not None
-    assert summary["would_have_triggered_count"] == 0  # only 0.5s, well under wdt.timeout_ms (8000 ms)
+    for device in distinct_wirings(*_READ):
+        machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
+        network.reset_test_state()
+        summary = run(asyncio.wait_for(_driven_main(_config(device, 1234, [], [], no_wdt_feed=True, duration=_SHORT_DURATION_S), _MAIN_BOUND_S), _MAIN_BOUND_S))
+        readings = summary["readings"]
+        assert readings is not None and readings >= 1, (device, summary)  # at least one real bus-level read happened
+        assert summary["wifi_status"] is not None, (device, summary)
+        assert summary["would_have_triggered_count"] == 0, (device, summary)  # only 0.5s, well under wdt.timeout_ms (8000 ms)
 
 
 def test_main_with_scripted_faults_and_wifi_outcome_still_completes() -> None:
     # The duration clears network.py's connect delay for the scripted outcome to settle, and one poll interval past
     # the first round: both one-shot faults fire on that first round, which then yields no reading at all.
     faults: list[launch.FaultSpec] = [("sgp40", "writeto", 1, None, "oserror"), ("bmp3xx", "readfrom_mem", 1, None, "oserror")]
-    summary = run(asyncio.wait_for(launch.main(_config(99, faults, [network.STAT_NO_AP_FOUND], no_wdt_feed=True, duration=_FAULT_DURATION_S)), _MAIN_BOUND_S))
-    assert summary["wifi_status"] == network.STAT_NO_AP_FOUND
-    readings = summary["readings"]
-    assert readings is not None and readings >= 1  # the second round's readings, after both faults were spent
+    for device in distinct_wirings(*_READ):
+        machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
+        network.reset_test_state()
+        config = _config(device, 99, faults, [network.STAT_NO_AP_FOUND], no_wdt_feed=True, duration=_FAULT_DURATION_S)
+        summary = run(asyncio.wait_for(_driven_main(config, _MAIN_BOUND_S), _MAIN_BOUND_S))
+        assert summary["wifi_status"] == network.STAT_NO_AP_FOUND, (device, summary)
+        readings = summary["readings"]
+        assert readings is not None and readings >= 1, (device, summary)  # the second round's readings, after both faults were spent
 
 
 def test_main_a_wlan_fault_is_isolated_and_still_returns_a_summary() -> None:
     # WLAN.active()/connect() at startup and WLAN.status() in the cleanup and the watcher are each isolated, so a
     # --fault wlan:... leaves the feed and read loops running.
-    config = _config(7, [("wlan", "connect", 1, None, "oserror")], [], no_wdt_feed=True, duration=_SHORT_DURATION_S)
-    summary = run(asyncio.wait_for(launch.main(config), _MAIN_BOUND_S))
-    readings = summary["readings"]
-    assert readings is not None and readings >= 1  # sensor loop still ran despite the WLAN fault
+    for device in distinct_wirings(*_READ):
+        machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
+        network.reset_test_state()
+        config = _config(device, 7, [("wlan", "connect", 1, None, "oserror")], [], no_wdt_feed=True, duration=_SHORT_DURATION_S)
+        summary = run(asyncio.wait_for(_driven_main(config, _MAIN_BOUND_S), _MAIN_BOUND_S))
+        readings = summary["readings"]
+        assert readings is not None and readings >= 1, (device, summary)  # sensor loop still ran despite the WLAN fault
 
 
 def test_main_long_enough_duration_reaches_a_real_wdt_feed_and_scd30s_timer_driven_reading() -> None:
     # _SENSOR_POLL_INTERVAL_S and SCD30's default measurement interval are both 2.0s, so only a longer run lets the
     # SCD30's Timer produce a ready reading; no_wdt_feed=False exercises a real watchdog.feed() too.
-    summary = run(asyncio.wait_for(launch.main(_config(55, [], [], no_wdt_feed=False, duration=_LONG_DURATION_S)), _LONG_MAIN_BOUND_S))
-    readings = summary["readings"]
-    assert readings is not None and readings >= _LONG_MIN_READINGS  # several rounds across 4.5s, past SCD30's 2s cadence
-    assert summary["would_have_triggered_count"] == 0  # fed for real, well under wdt.timeout_ms (8000 ms)
+    for device in distinct_wirings(*_READ):
+        machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
+        network.reset_test_state()
+        config = _config(device, 55, [], [], no_wdt_feed=False, duration=_LONG_DURATION_S)
+        summary = run(asyncio.wait_for(_driven_main(config, _LONG_MAIN_BOUND_S), _LONG_MAIN_BOUND_S))
+        readings = summary["readings"]
+        assert readings is not None and readings >= _LONG_MIN_READINGS, (device, summary)  # several rounds across 4.5s, past SCD30's 2s cadence
+        assert summary["would_have_triggered_count"] == 0, (device, summary)  # fed for real, well under wdt.timeout_ms (8000 ms)
 
 
 if __name__ == "__main__":
