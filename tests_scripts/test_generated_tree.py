@@ -1,6 +1,6 @@
 """tests/_generated_tree.py's require_fresh(), run under the real Unix port over a stand-in repo the generator wrote: a
-fresh tree passes; an input edited after generation (a TOML, the generator itself, even within the same second), a TOML
-added or a missing stamp is refused naming the generator, and regenerating clears it. A zz_test_ fixture is none."""
+fresh tree passes; an input edited after generation (a TOML, the generator, even within the same second), a TOML added
+or removed or a missing stamp is refused naming the generator; regenerating clears it. A zz_test_ fixture is none."""
 
 import ast
 import json
@@ -71,6 +71,12 @@ def test_a_toml_added_after_the_generation_is_refused(generator: ModuleType, mic
     assert generator.main() == 0
     shutil.copy(tmp_path / "devices" / f"{DEVICE_NAMES[0]}.toml", tmp_path / "devices" / "added.toml")
     os.utime(tmp_path / "devices" / "added.toml", (0, 0))  # older than the generation: only the input set differs
+    assert _require_fresh(micropython_bin, tmp_path) == _STALE
+
+
+def test_a_toml_removed_after_the_generation_is_refused(generator: ModuleType, micropython_bin: Path, tmp_path: Path) -> None:
+    assert generator.main() == 0
+    (tmp_path / "devices" / f"{DEVICE_NAMES[0]}.toml").unlink()  # every input left is as stamped: only the set's size differs
     assert _require_fresh(micropython_bin, tmp_path) == _STALE
 
 

@@ -17,7 +17,7 @@ VERDICTS = HERE / "review_verdicts.json"
 ORDER = ["blank", "weak", "open", "lead", "CRr2", "fixed", "justified", "biting"]
 TERMINAL = {"fixed", "justified", "biting"}
 SUITE_ROWS = [
-    ("scripts/_digital_twin_ci_suite.py:790", "_restore_is_all_or_nothing", "dead suite code", "no run calls it: Run 5b (:1339) asserts Run 5's exact ring since its restore cannot be cut, and the cut-write case it judged is tests/test_digital_twin_fram_crash_points.py's; its one caller is its reader tests_scripts/test_digital_twin_ci_suite_errcount.py:105-128. The library rule keeps a module's real features; this is a private predicate of the suite runner with no run left to serve. Unchanged here (scripts/ is not this lane's): removal with its reader is the lead's"),
+    ("scripts/_digital_twin_ci_suite.py:790", "_restore_is_all_or_nothing", "removed", "dead suite code: no run called it (Run 5b asserts Run 5's exact ring; the cut-write case is tests/test_digital_twin_fram_crash_points.py's), its one caller its reader tests_scripts/test_digital_twin_ci_suite_errcount.py; removed with the four tests that exercised only it (git grep, getattr strings and the run table: nothing else reached it). _non_empty_slots and _counter stay: Run 5b, Run 5c's loss sweep and other runs call them"),
 ]
 
 

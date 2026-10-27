@@ -143,13 +143,17 @@ _FLUSH_RECOVERY_TRIES = 5
 _HOLD_OFF_LOOK_MS = 30
 
 
-def persisted(comm: UARTComm) -> "list[str]":
-    # ErrNum holds errnos and wrnnos in one ring and they share the number space, so ErrType is
-    # what tells them apart; "N" is an unused slot. Indexed rather than zip()ed - MicroPython's
-    # zip() has no strict= parameter to satisfy B905.
+def logged(comm: UARTComm) -> "tuple[int, list[str]]":
+    # (ErrCount, the ring's used slots): one entry per event, a repeat counts with no new slot. ErrNum holds errnos and
+    # wrnnos in one number space, so ErrType tells them apart; "N" is an unused slot. Indexed: MicroPython's zip() has
+    # no strict= for B905.
     entry = run(comm.get_error_counter(), RUN_LIMIT_S)[comm.name]
     nums, kinds = entry["ErrNum"], entry["ErrType"]
-    return [f"{kinds[i]}{nums[i]}" for i in range(len(nums)) if kinds[i] != "N"]
+    return int(entry["ErrCount"]), [f"{kinds[i]}{nums[i]}" for i in range(len(nums)) if kinds[i] != "N"]
+
+
+def persisted(comm: UARTComm) -> "list[str]":
+    return logged(comm)[1]
 
 
 def _crc16_pair_dropping(*, from_initiator: bool, frame: int) -> Pair:
@@ -560,11 +564,11 @@ def test_reset_errors_keeps_the_valid_frame_count() -> None:
     assert worked.initiator._valid_frames == 1
     assert worked.initiator._blind_resyncs == 0
     _noisy_resyncs(worked)
-    assert _e("UART_LINK_UNINTELLIGIBLE") not in persisted(worked.initiator), persisted(worked.initiator)
+    assert logged(worked.initiator) == (0, []), logged(worked.initiator)
 
     fresh = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()), RUN_LIMIT_S)
     _noisy_resyncs(fresh)
-    assert _e("UART_LINK_UNINTELLIGIBLE") in persisted(fresh.initiator), persisted(fresh.initiator)
+    assert logged(fresh.initiator) == (1, [_e("UART_LINK_UNINTELLIGIBLE")]), logged(fresh.initiator)
 
 
 def test_a_repeated_identical_fault_spends_one_slot_and_counts_every_time() -> None:
@@ -613,7 +617,7 @@ def test_the_blind_resync_streak_saturates() -> None:
 
     run(blind_resync(), _RUN_BOUND_S)
     assert comm._blind_resyncs == _DIAG_RESYNC_STREAK
-    assert _e("UART_LINK_UNINTELLIGIBLE") in persisted(comm), persisted(comm)
+    assert logged(comm) == (1, [_e("UART_LINK_UNINTELLIGIBLE")]), logged(comm)
 
 
 @_on_poll_rounds
@@ -631,9 +635,9 @@ def test_bytes_a_failed_frame_read_dropped_count_toward_the_link_diagnostic() ->
                 await pair.initiator._resync(device)
 
     run(resyncs(0), _RUN_BOUND_S)
-    assert _e("UART_LINK_UNINTELLIGIBLE") not in persisted(pair.initiator), persisted(pair.initiator)
+    assert logged(pair.initiator) == (0, []), logged(pair.initiator)
     run(resyncs(_FRAME - 1), _RUN_BOUND_S)  # each a frame cut short and dropped inside the read
-    assert _e("UART_LINK_UNINTELLIGIBLE") in persisted(pair.initiator), persisted(pair.initiator)
+    assert logged(pair.initiator) == (1, [_e("UART_LINK_UNINTELLIGIBLE")]), logged(pair.initiator)
 
 
 def test_the_discard_count_is_read_across_its_wrap() -> None:
@@ -2263,9 +2267,7 @@ def test_an_immutable_destination_is_refused_before_the_train_starts() -> None:
 def test_a_refused_argument_is_logged_with_its_own_errno() -> None:
     pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()), RUN_LIMIT_S)
     assert run(pair.initiator.uart_set(0x101, b"x"), RUN_LIMIT_S) is False
-    log = run(pair.initiator.get_error_counter(), RUN_LIMIT_S)["UART_A"]
-    assert "E" in log["ErrType"], log
-    assert code("E", "BAD_ARG") in log["ErrNum"], log
+    assert logged(pair.initiator) == (1, [_e("BAD_ARG")]), logged(pair.initiator)
 
 
 # ---- caller-supplied arguments, second pass -------------------------------------------------------
@@ -2851,7 +2853,7 @@ def test_an_answer_the_train_could_never_carry_is_refused_at_its_header() -> Non
     # data chunk is acknowledged, not after the whole transfer has run to completion.
     pair = run(build_pair(get_callback=echo_get(b"ab"), set_callback=accept_set()), RUN_LIMIT_S)
     assert run(pair.with_listener(pair.initiator.uart_get(1, exp_size=PAYLOAD_SIZE + 1)), _RUN_BOUND_S) is None
-    assert _e("UART_SIZE_MISMATCH") in persisted(pair.initiator), persisted(pair.initiator)
+    assert logged(pair.initiator) == (1, [_e("UART_SIZE_MISMATCH")]), logged(pair.initiator)
     # "Early" is the whole claim, and the wire is what proves it: the GET request went out and
     # nothing else did. Refused later, the initiator would have acknowledged the answer header
     # first and only then discovered the train it had just committed to could not satisfy it.
@@ -2952,7 +2954,7 @@ def test_a_write_failing_at_each_point_of_a_get_reports_and_resyncs() -> None:
     # Every writefrom() in the module is checked, and one GET passes through six: the request, its ACK, the
     # answer's header frame, the initiator's ACK for that, a mid-train ACK and the final one. All six report
     # UART_WRITE_FAILED and resync - a silent no-op write is what desynchronises the two sides.
-    def get_with_a_failed_write(side: str, successes: int, answer: bytes) -> "tuple[PieceBuffer | None, list[str], bool]":
+    def get_with_a_failed_write(side: str, successes: int, answer: bytes) -> "tuple[PieceBuffer | None, tuple[int, list[str]], bool]":
         pair = Pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(answer), set_callback=accept_set())
         assert run(pair.setup(), RUN_LIMIT_S) is True
         initiating = side == "initiator"
@@ -2960,7 +2962,7 @@ def test_a_write_failing_at_each_point_of_a_get_reports_and_resyncs() -> None:
         # A write cut at any point can leave the responder's round unfinished; that is the case under test.
         got = run(pair.with_listener(pair.initiator.uart_get(1), listener_may_stall=True), _LISTENER_RUN_BOUND_S)
         failing = pair.initiator if initiating else pair.responder
-        return got, persisted(failing), failing._holdoff_active
+        return got, logged(failing), failing._holdoff_active
 
     long_answer = bytes(PAYLOAD_SIZE + 1)  # three chunks, so there is a mid-train ACK to lose
     cases = (
@@ -2974,7 +2976,7 @@ def test_a_write_failing_at_each_point_of_a_get_reports_and_resyncs() -> None:
     for side, successes, answer, what in cases:
         got, log, resynced = get_with_a_failed_write(side, successes, answer)
         assert got is None, what
-        assert _e("UART_WRITE_FAILED") in log, (what, log)
+        assert log == (1, [_e("UART_WRITE_FAILED")]), (what, log)  # the failing side's one entry
         assert resynced is True, what  # every fault also resyncs, without exception
 
 
