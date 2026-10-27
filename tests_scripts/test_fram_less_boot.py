@@ -1,4 +1,4 @@
-"""A device that declares no FRAM boots: the first derived device's TOML copied without its FRAM, generated into
+"""A device that declares no FRAM boots: each derived device's TOML copied without its FRAM, generated into
 tmp_path and booted under the Unix-port binary with the unit fakes. Every log stays in RAM, no store is handed to
 the system service, and "Erase FRAM" is refused with no reset armed. FRAM wiring is optional (its @wiring tag)."""
 
@@ -7,6 +7,7 @@ import re
 import subprocess
 from pathlib import Path
 
+import pytest
 import tomllib
 from _devices import DEVICE_NAMES, device_toml
 
@@ -88,12 +89,14 @@ def _boot(repo_root: Path, micropython_bin: Path, tmp_path: Path, toml_text: str
     return facts
 
 
-def test_the_fixture_declares_no_fram_at_all() -> None:
-    doc = tomllib.loads(_without_fram(device_toml(DEVICE_NAMES[0]).read_text(encoding="utf-8")))
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_the_fixture_declares_no_fram_at_all(device: str) -> None:
+    doc = tomllib.loads(_without_fram(device_toml(device).read_text(encoding="utf-8")))
     assert [i["driver"] for i in doc["instance"] if i["driver"] == "fram"] == []
     assert "fram_target" not in json.dumps(doc), "a fram_target wiring survived"
 
 
-def test_a_device_without_fram_boots_with_every_log_in_ram_and_refuses_erase_fram(repo_root: Path, micropython_bin: Path, tmp_path: Path) -> None:
-    facts = _boot(repo_root, micropython_bin, tmp_path, _without_fram(device_toml(DEVICE_NAMES[0]).read_text(encoding="utf-8")))
+@pytest.mark.parametrize("device", DEVICE_NAMES)  # each device's own chips, its FRAM taken out
+def test_a_device_without_fram_boots_with_every_log_in_ram_and_refuses_erase_fram(repo_root: Path, micropython_bin: Path, tmp_path: Path, device: str) -> None:
+    facts = _boot(repo_root, micropython_bin, tmp_path, _without_fram(device_toml(device).read_text(encoding="utf-8")))
     assert facts == {"fram": False, "storage": False, "stored": [], "erasefram": {"SystemCmd": "Failed"}, "armed": False, "resets": 0}, facts
