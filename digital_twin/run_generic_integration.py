@@ -118,6 +118,7 @@ if TYPE_CHECKING:
 if "digital_twin/unixport" not in sys.path:
     sys.path.insert(0, "digital_twin/unixport")  # the fake-free directory: the UDP shim, the NTP config writer and responder
 
+import _driven_clock
 import _flash_stall
 import _unix_port_udp_addr_shim
 import _wall_clock
@@ -182,6 +183,7 @@ _DROP_TIMER_SITES = ("reset", "sequencer")  # the product one-shots --test-drop-
 # MICROPY_BYTES_PER_GC_BLOCK, 4 x the object word (py/mpconfig.h:251, v1.29.0): the unit of mem_info()'s max free sz.
 _GC_BLOCK_BYTES = 4 * struct.calcsize("P")
 _TEST_TRAIN_CMD_ID = 0x02  # the exerciser's ECHO (asy_uart_link_driver.py), the one SET its responder takes
+_UART_CLOCK_MODULES = ("asy_crc_checks", "asy_uart_driver", "asy_uart_comm", "asy_uart_link_driver")  # the link's clock and its CRC's turns
 _SIGINT = 2  # Linux's signal number (signal(7)): MicroPython has no signal module
 _WATCHDOG_FAULT_KINDS = ("supervisor-raise", "main-exit", "block")
 _HOLD_CUT = "cut"  # --test-hold-system-entry's unreleased mode: the held entry's write cut inside its first block
@@ -216,6 +218,7 @@ if TYPE_CHECKING:
         watchdog_fault: str | None
         defer_faults: bool
         pin_send_buffer: bool
+        uart_driven_clock: bool
 
     class RunEnvironment(NamedTuple):
         # The product's config directory, whether NTP may go online instead of the local responder, the test flags, and
@@ -229,12 +232,12 @@ else:
     RunLimits = namedtuple("RunLimits", ("duration", "gc_threshold", "mem_sample_interval_ms", "stop_file"))
     TestFlags = namedtuple(
         "TestFlags",
-        ("hold_closing_slot", "stall_loop_ms", "conn_status_interval_ms", "fault_status_interval_ms", "shutdown_hang", "flash_stall_max", "uart_over_cap", "hold_system_entry", "kbd_traceback", "loop_lag_ms", "drop_timer_fire", "watchdog_fault", "defer_faults", "pin_send_buffer"),
+        ("hold_closing_slot", "stall_loop_ms", "conn_status_interval_ms", "fault_status_interval_ms", "shutdown_hang", "flash_stall_max", "uart_over_cap", "hold_system_entry", "kbd_traceback", "loop_lag_ms", "drop_timer_fire", "watchdog_fault", "defer_faults", "pin_send_buffer", "uart_driven_clock"),
     )
     RunEnvironment = namedtuple("RunEnvironment", ("config_dir", "online_ntp", "instrumentation", "debug_level"))
 
 
-_NO_TEST_FLAGS = TestFlags(False, None, None, None, None, False, False, None, False, None, None, None, False, False)
+_NO_TEST_FLAGS = TestFlags(False, None, None, None, None, False, False, None, False, None, None, None, False, False, False)
 _DEFAULT_ENVIRONMENT = RunEnvironment(_CONFIG_DIR_DEFAULT, False, _NO_TEST_FLAGS, None)
 _PERSISTENT_STATE = StatePaths(_FRAM_STATE_DEFAULT, _SCD30_STATE_DEFAULT, _MEM_BACKUP_STATE_DEFAULT)
 
@@ -293,6 +296,8 @@ _USAGE = f"""Usage: micropython digital_twin/run_generic_integration.py --module
   --test-defer-faults (every --fault waits for a FAULT_ARM line, then is queued at once; FAULTS_ARMED)
   --test-pin-send-buffer (the send buffer of each socket the server accepts pinned at the kernel's floor, as rp2's lwIP one is small
         and fixed; SNDBUF_PINNED bytes=<n> accepted_bytes=<n>)
+  --test-uart-driven-clock (the UART link's modules on one driven clock: no task's compute or turn on the loop spends a
+        protocol deadline, a flash hold still does; UART_CLOCK driven modules=<n>, at the end UART_CLOCK released ...)
   -h, --help               print this and exit 0"""
 
 
@@ -453,7 +458,7 @@ async def _mem_sampler(interval_ms: int) -> None:
 
 def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "TestFlags | None":
     # `flags` with one --test-* flag set; None for an argument that is no test flag.
-    hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd, lag, drop, wdt_fault, defer, pin = flags
+    hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd, lag, drop, wdt_fault, defer, pin, uart_clock = flags
     if arg == "--test-hold-closing-slot":
         hold = True
     elif arg == "--test-stall-loop-ms":
@@ -491,9 +496,11 @@ def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "T
         defer = True
     elif arg == "--test-pin-send-buffer":
         pin = True
+    elif arg == "--test-uart-driven-clock":
+        uart_clock = True
     else:
         return None
-    return TestFlags(hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd, lag, drop, wdt_fault, defer, pin)
+    return TestFlags(hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd, lag, drop, wdt_fault, defer, pin, uart_clock)
 
 
 def _print_boot_phases(device: str) -> None:
@@ -957,6 +964,8 @@ def _test_start(
         tasks.append(loop.create_task(_test_drop_timer_fire(module, flags.drop_timer_fire)))
     if flags.watchdog_fault:
         tasks.append(loop.create_task(_test_watchdog_fault(module, flags.watchdog_fault, main_task, watchdog)))
+    if flags.uart_driven_clock:
+        tasks.append(loop.create_task(_test_uart_driven_clock()))
     return tasks
 
 
@@ -983,6 +992,16 @@ async def _test_swallow_cancel() -> None:
             await asyncio.sleep(3600)
         except asyncio.CancelledError:
             continue
+
+
+async def _test_uart_driven_clock(say: "Callable[[str], None]" = print) -> None:
+    # The UART link's loaded modules on one driven clock (digital_twin/_driven_clock.py) until the run ends, then released.
+    clock = _driven_clock.DrivenClock()
+    say(f"UART_CLOCK driven modules={clock.install([sys.modules[name] for name in _UART_CLOCK_MODULES if name in sys.modules])}")
+    try:
+        await clock.drive()
+    finally:
+        say(f"UART_CLOCK released virtual_ms={clock.elapsed}")
 
 
 async def _test_uart_over_cap(links: "list[tuple[str, _ExercisedLink, _RxCounts]]", say: "Callable[[str], None]" = print) -> None:
