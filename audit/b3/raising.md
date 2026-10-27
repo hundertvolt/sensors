@@ -4,7 +4,7 @@ Requirement: per never-raise module an `ast` walk lists every call outside a `tr
 
 ## Walk summary
 
-Walked over the `src/` tree `d2fa9fbbbdcd` (git's tree id, from the working tree) by `audit/b3/raising_walk.py` (agent, 2026-10-22). Re-run it on the integration head: lanes P
+Walked over the `src/` tree `66a0deb68a86` (git's tree id, from the working tree) by `audit/b3/raising_walk.py` (agent, 2026-10-22). Re-run it on the integration head: lanes P
 and Y edit four of these modules in U35. A row left "open" needs its per-site proof from the pinned source in the B3 campaign.
 
 Sites per module (call or raise) by the `try` enclosing them: inside one catching `Exception` (broad), inside one
