@@ -5016,7 +5016,7 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests_hardware/bench/test_uart_link_under_api_load.py:68 | test_real_transfers_complete_while_the_api_is_hammered | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_uart_link_under_api_load.py:77 | test_an_api_overload_does_not_corrupt_the_link_or_the_reverse | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_uart_link_under_api_load.py:81 | test_a_multi_chunk_set_echoes_intact_under_serving_load | bench (hardware) | fixed | hw_no_log; was:same_callee | hw_no_log: fixed: the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it; was:same_callee: fixed: total is an int above 0 and intact == total. Bitten on synthetic output (both facts missing: old passes, new fails) |
-| tests_hardware/bench/test_uart_link_under_api_load.py:127 | test_a_hazard_run_under_the_readers_load_reports_every_verdict | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_uart_link_under_api_load.py:126 | test_a_hazard_run_under_the_readers_load_reports_every_verdict | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_wifi_networking.py:40 | test_real_sta_connect_reaches_established_after_a_hard_reset | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_wifi_networking.py:64 | test_real_ntp_sync_succeeds_over_genuine_udp | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_wifi_networking.py:85 | test_real_dns_resolution_succeeds_over_genuine_udp | bench (hardware) | biting | — | biting as is |

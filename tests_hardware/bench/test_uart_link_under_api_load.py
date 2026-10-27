@@ -120,7 +120,6 @@ def test_a_multi_chunk_set_echoes_intact_under_serving_load(board: "Board", benc
     ("UART_resp", "E", "UART_PEER_INITIATED"),
     ("UART_resp", "E", "TIMEOUT"),
     ("UART_resp", "E", "UART_REENTRANT"),
-    ("UART_resp", "E", "UART_SIZE_MISMATCH"),
     ("UART_resp", "E", "UART_TRANSFER_CAP"),
     ("UART_resp", "W", "UART_CMD_DECLINED"),
 )
