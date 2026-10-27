@@ -21,6 +21,7 @@ MARKERS: dict[str, str] = {
     "neopixel_sweep": "needs the NeoPixel-to-ISL29125 rig; skipped unless --allow-neopixel-sweep",
     "toolchain_reverify": "full toolchain re-verification; skipped unless --allow-toolchain-reverify",
     "destructive_last": "informational: runs after every other test of its module",
+    "provokes_log": "informational: the E or W entries the test leaves are its purpose, its one argument the reason why; the bench log check skips it",
     "role_reversal": "informational: the bench radio stops hosting br0-wifi-ap to join the DUT's own hotspot",
     "over_provisioned_image": "informational: meaningful only on a deliberately over-provisioned build (HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7R.2, image B)",
 }

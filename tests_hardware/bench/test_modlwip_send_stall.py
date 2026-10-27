@@ -90,6 +90,7 @@ def test_no_send_stall_with_the_override(board: "Board", dut_ip: str, result_not
 
 
 @pytest.mark.flash_cycle
+@pytest.mark.provokes_log("the control image stalls its sends by design: the stalled calls' timeouts stay in WEBSERVER's log")
 def test_send_stall_on_the_unpatched_image(board: "Board", bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # The control image the round built (--lwip-control-image) must stall where the normal image does not; both flash
     # cycles are this test's, and the FRAM evidence is saved first (a reflash is a clearing path).

@@ -82,6 +82,7 @@ def test_real_reboot_sequencing_via_rest_completes_cleanly(board: Board, bench: 
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.provokes_log("twice the ceiling at once: each connection refused above it logs HTTP_REFUSED")
 def test_real_concurrent_client_burst_does_not_crash_the_webserver(dut_ip: str, board: Board) -> None:
     # Twice the build's own ceiling, concurrently, against its reject-when-full policy - so some
     # subset legitimately gets a silent close rather than a crash. The property under test is that

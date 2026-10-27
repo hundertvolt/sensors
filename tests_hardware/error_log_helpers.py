@@ -13,7 +13,7 @@ import http_client
 # The one catalog lookup every tier shares, re-exported for the bench modules. The repo root is
 # appended, so tests/ resolves as this repository's namespace package and no tests/ fake shadows a host module.
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from tests._error_codes import code
+from tests._error_codes import code, name
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -30,9 +30,13 @@ __all__ = [
     "assert_no_module_logged_a_new_error",
     "assert_no_new_task_raised",
     "assert_no_task_ended",
+    "assert_no_unprovoked_entry",
+    "clears_made",
     "code",
     "errcount_entry",
+    "gained_entries",
     "get_errcount",
+    "new_logged_entries",
     "new_task_raised",
     "read_live_system_log",
     "reset_all_error_logs",
@@ -60,6 +64,14 @@ _READ_SYSTEM_LOG = (
     "m = [v for k, v in sys.modules.items() if k.startswith('sensortask_') and getattr(v, 'sysfunct', None) is not None]\n"
     "print('SYSLOG', json.dumps(asyncio.run(m[0].sysfunct.get_error_counter())['SYSTEM'] if m else None))\n"
 )
+# The ResetErrors clears reset_all_error_logs() made this session: the bench log check's sign of a clear the two
+# reads around a test cannot show (a clear, then the very history it erased).
+_CLEARS = [0]
+
+
+def _slots(entry: ErrcountEntry) -> "list[tuple[str, int]]":
+    # A history's (type, num) slots, oldest first, "N" for an unused one.
+    return [(str(h.get("type")), int(str(h.get("num", 0)))) for h in entry["history"]]
 
 
 def _status(dut_ip: str) -> "tuple[bytes, JSONObject]":
@@ -129,6 +141,17 @@ def assert_no_task_ended(dut_ip: str, context: str) -> None:
     assert entry["counter"] == 0, f"{context}: a task ended and was restarted (or the budget rebooted the board) - SYSTEM log: {entry!r}"
 
 
+def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, cleared: bool) -> None:
+    # The bench log check's verdict: no logger gained an E or W entry between two reads around a test (SPECIFICATION.md
+    # C.7: a normal operation logs neither); each one found is named with its code, catalog name and the test.
+    found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in new_logged_entries(before, after, cleared=cleared)]
+    assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose carries provokes_log(\"<why>\")"
+
+
+def clears_made() -> int:
+    return _CLEARS[0]
+
+
 def errcount_entry(counts: "Mapping[str, object]", name: str) -> ErrcountEntry:
     # One logger's entry, never a default: a missing name or a malformed entry fails naming what is there.
     entry: object = counts.get(name)
@@ -139,6 +162,35 @@ def errcount_entry(counts: "Mapping[str, object]", name: str) -> ErrcountEntry:
     shape = f"{name!r}'s errcount entry {entry!r} lacks an int counter or a history list - a changed /status shape"
     assert isinstance(counter, int) and not isinstance(counter, bool) and isinstance(history, list) and all(isinstance(h, dict) for h in history), shape
     return ErrcountEntry(counter=counter, history=history)
+
+
+def gained_entries(before: ErrcountEntry, after: ErrcountEntry) -> "list[tuple[str, int]] | None":
+    # The (type, num) slots a fixed-length history gained between two reads: each new code shifts it one slot (a repeat
+    # of the newest spends none), so the gain is the smallest shift within the counter's growth that lines the reads
+    # up; None where none does, a clear or a reboot in between.
+    old, new = _slots(before), _slots(after)
+    for shift in range(min(after["counter"] - before["counter"], len(new)) + 1):
+        if new[: len(new) - shift] == old[shift:]:
+            return new[len(new) - shift :]
+    return None
+
+
+def new_logged_entries(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", *, cleared: bool) -> "list[tuple[str, str, int]]":
+    # (logger, type, num) of each E or W entry every logger gained between two reads. After a clear (`cleared`, or a
+    # history the later read does not continue) all of a log is newer; a counter that grew with no slot gained is a
+    # repeat of the newest. A logger on one side only is a /status shape change.
+    appeared, vanished = sorted(set(after) - set(before)), sorted(set(before) - set(after))
+    assert not appeared and not vanished, f"/status errcount changed shape between the reads: appeared {appeared!r}, vanished {vanished!r}"
+    found: list[tuple[str, str, int]] = []
+    for module in sorted(after):
+        old, new = before[module], after[module]
+        gained = None if cleared else gained_entries(old, new)
+        if gained is None:
+            gained = _slots(new)
+        elif not gained and new["counter"] > old["counter"]:
+            gained = _slots(new)[-1:]
+        found += [(module, kind, num) for kind, num in gained if kind in ("E", "W")]
+    return found
 
 
 def new_task_raised(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]") -> int:
@@ -175,6 +227,7 @@ def reset_all_error_logs(dut_ip: str, reason: str) -> None:
     result = answer.get("result")
     # "Failed": a store's cleared state was not written, or a pending reboot refused it - nothing is clear (A.8).
     assert answer.get("res") == "OK" and isinstance(result, dict) and result.get("ResetErrors") == "Valid", f"PUT /status ResetErrors did not clear the logs: {res.status_code} {res.body!r}"
+    _CLEARS[0] += 1
 
 
 def save_errcount(dut_ip: str, reason: str) -> Path:
