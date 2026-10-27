@@ -64,6 +64,36 @@ build-standard run (skips included). No failure, so (3) had nothing to fix. A co
 cut a resume while it waited in the gate, with no run in flight; the results file held only whole records and the
 resume skipped them. Logs: `S/u35/laneT/t4r3/l1/logs/`, records `S/u35/laneT/t4r3/l1/results.jsonl`.
 
+**M.PROC.024 (2), the twin suite per derived device on build-ticks30** (agent, 2026-10-27). `audit/sweeps/ticks30_twin.py`
+runs `scripts/run_digital_twin_ci.sh <device> --gc-threshold <stage> --part suite` with `PICO_TOOLCHAIN_DIR` on a private
+copy (`S/tc-t4r3`, `cp -a S/tc-int`, whose record names this tree's three `toolchain/` inputs) whose
+`build-standard/micropython` is the build-ticks30 binary (sha256 `7c241764...`; the flavour probe reads it as
+`standard`, so `unix_port_ensure` keeps it), after removing `frozen_modules/` and `build/generated_html/` as CI's checkout
+lacks them. Placement: per device one Run 11 alone (`--only 11`) at -1 with the counter 10**8 ms from its wrap, so
+each `MEM_SAMPLE` tick reads ms since the process's first read; the wrap goes at the middle of Run 11's cycle window
+(the suite's own sample count, from the log's tail) and serves both stages. Proof before the long runs, on
+arzi: Run 11 alone with the wrap placed (168406 ms) exited 0, crossed 1 wrap at 0.491 of
+the window with a 106 ms step across it (1073741763 -> 45: the 2**30 period, read from inside the
+run, against a 100 ms sample interval), the binary's hash was build-ticks30's before and after, the suite launched the
+copy's path, and no "rebuilding the Unix ports" line. The window position counts from the suite's own sample count, so the
+few samples taken during shutdown shift it by at most their share of the window. Every twin process the suite starts
+gets the same `TICKS30_WRAP_IN_MS`, so each run longer than the wrap point crosses it too.
+
+| device | stage | wrap (ms) | Run 11 window (ms after first read, place run) | suite | wrap position in the window | memory markers | ran build-ticks30, unrebuilt | wall |
+|---|---|---|---|---|---|---|---|---|
+| arzi | -1 | 168406 | 120774-216038 | rc 0, Result: PASS, 289 OK, 0 FAIL | 0.511 (1 wrap, step 101 ms) | none | yes | 558.8 s |
+| arzi | 32768 | 168406 | 120774-216038 | rc 0, Result: PASS, 289 OK, 0 FAIL | 0.809 (1 wrap, step 102 ms) | none | yes | 532.5 s |
+
+The first proof run read the suite's own passing marker check (`OK: ... log carries none of ('MemoryError', 'memory
+allocation failed')`) as a hit and stopped the sweep before any long run; the scan now skips only that gate's own OK
+lines (a planted hit and the same gate's FAIL line still count, checked against the logged proof), and the proof ran again.
+With the -1 placement, Run 11's shorter 32768 run (fewer samples) puts the wrap later in its window.
+
+State (partial, at the tool-call valve): arzi done; the other derived devices not run yet. Resume, one device per
+invocation: `S/u35/laneT/t4r3/tools/run.sh twin_<device> "python3 -I audit/sweeps/ticks30_twin.py S/u35/laneT/t4r3/twin S/tc-t4r3 $BIN <device>"`.
+
+Logs and kept stage directories: `S/u35/laneT/t4r3/twin/logs/`, records `S/u35/laneT/t4r3/twin/results.jsonl`.
+
 | file | build-standard -1 | wrap points (ms) | -1 on build-ticks30 | 32768 on build-ticks30 | time on build-ticks30 |
 |---|---|---|---|---|---|
 | `tests/test_asy_api_response.py` | 0.26 s, 25/25 passed, 0 failed, 0 skipped | 65, 130, 195 | 3/3 PASS 25/25 passed, 0 failed, 0 skipped | 3/3 PASS 25/25 passed, 0 failed, 0 skipped | 0.21-0.26 s |

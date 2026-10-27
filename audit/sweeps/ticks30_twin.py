@@ -16,6 +16,7 @@ REPO = Path(__file__).resolve().parents[2]
 PERIOD = 1 << 30
 FAR_MS = 10**8  # the place run's counter starts this far from its wrap: no wrap inside it, every tick an offset from the first read
 MARKERS = re.compile(r"MemoryError|memory allocation failed")
+OWN_GATE = re.compile(r"^OK: .*carries none of \('MemoryError', 'memory allocation failed'\)$")  # the suite's own passing marker check names both
 SAMPLE = re.compile(r"^MEM_SAMPLE (\d+) (\d+)$", re.MULTILINE)
 WINDOW = re.compile(r"Run 11 memory trend: .* samples=(\d+)")
 STAGE_DIRS = {"-1": "gc_threshold_neg1", "32768": "gc_threshold_32768"}
@@ -95,7 +96,7 @@ def _evidence(binary: Path, ticks30: Path, sha_before: str, suite_log: str, logs
     hits = sorted(str(p) for p in logs if p.is_file() and MARKERS.search(p.read_text(encoding="utf-8", errors="replace")))
     return {
         "rebuilt": "rebuilding the Unix ports" in suite_log, "binary_is_ticks30": sha_before == _sha(binary) == _sha(ticks30), "launches_copy": str(binary) in suite_log,
-        "markers_in": hits + (["suite log"] if MARKERS.search(suite_log) else []),
+        "markers_in": hits + [f"suite log: {line}" for line in suite_log.splitlines() if MARKERS.search(line) and not OWN_GATE.match(line)],
     }
 
 
