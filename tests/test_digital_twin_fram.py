@@ -176,6 +176,12 @@ def _silent_fram_on(device: str) -> None:
     run(scenario())
 
 
+def _slots(manager: FRAMManager) -> "tuple[int, list[tuple[str, int]]]":
+    # (ErrCount, the used ring slots oldest first) of the manager's log.
+    entry = run(manager.get_error_counter())["FRAM"]
+    return entry["ErrCount"], [(kind, n) for kind, n in zip(entry["ErrType"], entry["ErrNum"]) if kind != "N"]
+
+
 def _status_bytes(chip: FRAMChip, chunk: "FRAMChunk | FRAMTimestampedChunk") -> list[int]:
     # Both status bytes of both copies; the layout is [data][crc][status 1][status 2] per copy.
     out = []
@@ -281,6 +287,33 @@ def test_drop_next_wren_drops_that_many_wrens_and_no_more() -> None:
     assert _rdsr(chip) & 0x02
     _write_mem(chip, 0x0010, b"\xaa")
     assert _read_mem(chip, 0x0010, 1) == b"\xaa"
+
+
+def test_stick_next_wrdi_leaves_wel_set_for_that_many_wrdis_and_no_more() -> None:
+    chip = FRAMChip(0x2000, _MB85RS64V_RDID)
+    chip.stick_next_wrdi = 2
+    seen = []
+    for _ in range(3):
+        _wren(chip)
+        chip.write(bytes([_OPCODE_WRDI]))
+        seen.append(bool(_rdsr(chip) & 0x02))
+    assert seen == [True, True, False], f"WEL after each WRDI: {seen}"
+    assert chip.stick_next_wrdi == 0
+
+
+def test_corrupt_next_write_flips_bit_0_of_that_many_payload_writes_and_no_more() -> None:
+    # A one-byte write (a status byte) is no payload: it is stored as sent and leaves the count alone.
+    chip = FRAMChip(0x2000, _MB85RS64V_RDID)
+    chip.corrupt_next_write = 1
+    _wren(chip)
+    _write_mem(chip, 0x0010, b"\xaa")
+    _wren(chip)
+    _write_mem(chip, 0x0020, b"\xaa\xbb")
+    _wren(chip)
+    _write_mem(chip, 0x0030, b"\xaa\xbb")
+    stored = (_read_mem(chip, 0x0010, 1), _read_mem(chip, 0x0020, 2), _read_mem(chip, 0x0030, 2))
+    assert stored == (b"\xaa", b"\xab\xbb", b"\xaa\xbb"), f"stored {stored}"
+    assert chip.corrupt_next_write == 0
 
 
 def test_a_silent_chip_reads_zeros_and_ignores_every_write() -> None:
@@ -994,6 +1027,51 @@ def test_a_paused_twin_fram_refuses_every_chunk_operation_with_one_slot_and_resu
     assert untouched, "a paused operation reached the chip"
     assert errnums.count(code("W", "FRAM_PAUSED")) == 1, f"the refusals logged {errnums}"
     assert resumed is True and bytes(buf.get_data_buf() or b"") == _PAYLOAD, "the resumed chunk lost its data"
+
+
+def test_a_latch_one_wrdi_leaves_set_clears_on_the_retry_and_a_stuck_one_warns_once_per_event_with_the_payload_landed() -> None:
+    # The driver's WRDI epilogue against the twin chip: a latch the first WRDI leaves set clears on its one retry and logs
+    # nothing; one both leave set is one W FRAM_WEL_STUCK, the payload landing all the same; a latch stuck through a
+    # whole write warns at each operation, the repeats sharing that slot. The chip answers its ID: no loss is declared.
+    manager, _bus, chip = _twin_manager()
+    chunk, _ts_chunk = _chunks(manager)
+    chip.stick_next_wrdi = 1
+    retried = (run(chunk.write(_PAYLOAD)), chip.stick_next_wrdi, _slots(manager))
+    chip.stick_next_wrdi = 2
+    stuck = (run(chunk.write(bytes(reversed(_PAYLOAD)))), _slots(manager))
+    chip.stick_next_wrdi = 64  # more WRDIs than one chunk write sends
+    held = run(chunk.write(_PAYLOAD))
+    chip.stick_next_wrdi = 0
+    count, slots = _slots(manager)
+    buf = chunk.get_buffer()
+    landed = run(chunk.read_into(buf))
+    assert retried == (True, 0, (0, [])), f"one WRDI left set: write, knob left, log = {retried}"
+    assert stuck == (True, (1, [("W", code("W", "FRAM_WEL_STUCK"))])), f"two WRDIs left set: write and log = {stuck}"
+    assert held is True and count > 2 and slots == [("W", code("W", "FRAM_WEL_STUCK"))], f"a stuck write: {held}, {count}, {slots}"
+    assert landed is True and bytes(buf.get_data_buf() or b"") == _PAYLOAD, "a stuck latch lost the payload"
+    assert not manager.fram.lost.is_set(), "a stuck latch on an answering chip declared it lost"
+
+
+def test_a_verified_write_the_chip_stored_wrong_fails_once_rewrites_nothing_and_the_next_write_heals() -> None:
+    # A bit error on SI: the verification pass reads the copy back, its CRC fails (E FRAM_DATA_CRC) and so the write
+    # (one E FRAM_VERIFY), as tests/test_asy_fram_manager.py pins; nothing is rewritten at once (the caller's next
+    # write is the rung), and that next write lands both copies verified, adding no entry.
+    manager, _bus, chip = _twin_manager()
+    chunk = manager.get_chunk(len(_PAYLOAD), crc=CRC8(), verify=1, owner="T1")
+    assert chunk is not None
+    assert run(chunk.write(_PAYLOAD)) is True
+    writes = chip.write_count
+    chip.corrupt_next_write = 1
+    failed = run(chunk.write(bytes(reversed(_PAYLOAD))))
+    spent = chip.write_count - writes
+    log = _slots(manager)
+    healed = run(chunk.write(bytes(reversed(_PAYLOAD))))
+    buf = chunk.get_buffer()
+    read = run(chunk.read_into(buf))
+    assert (failed, spent) == (False, 2), f"the mismatched write answered {failed} after {spent} payload writes"
+    assert log == (2, [("E", code("E", "FRAM_DATA_CRC")), ("E", code("E", "FRAM_VERIFY"))]), f"one mismatch logged {log}"
+    assert healed is True and _slots(manager) == log, "the next write did not verify clean"
+    assert read is True and bytes(buf.get_data_buf() or b"") == bytes(reversed(_PAYLOAD)), "the healed chunk reads wrong"
 
 
 def test_counting_writes_at_new_addresses_allocates_nothing() -> None:
