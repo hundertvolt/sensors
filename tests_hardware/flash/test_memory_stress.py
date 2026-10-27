@@ -170,13 +170,14 @@ def test_loop_lag_under_combined_load_stays_under_the_uart_reply_budget(board: "
         stop.set()
         load.join(2 * _LOOP_LAG_SCRIPT_TIMEOUT_S)
     bound_us = smallest_hard_consumer(load_device(device_toml()), SRC_DIR).ms * 1000  # the build rule's and the twin scenario's one source
-    lag_max, lag_p99 = facts.get("lag_max_us"), facts.get("lag_p99_us")
+    lag_max, lag_p99, samples = facts.get("lag_max_us"), facts.get("lag_p99_us"), facts.get("samples")
     result_note(f"loop lag under combined load: max {lag_max} us, p99 {lag_p99} us over {facts.get('samples')} samples (bound {bound_us} us); answers per route {served}")
     assert not load.is_alive() and not failures, f"the HTTP load did not end cleanly: {failures}"
     assert served and all(served.values()), f"GET routes never served under the load: {sorted(route for route, count in served.items() if not count)} of {len(served)} routes"
     assert facts.get("main_running") is True, f"the shipped main() ended inside the window: {facts}"
     writes = facts.get("fram_writes")
     assert facts.get("fram_write_failures") == 0 and isinstance(writes, int) and writes > 0, f"the FRAM load did not run cleanly: {facts}"
+    assert isinstance(samples, int) and samples > 0, f"the lag probe recorded no sample, so the {bound_us} us bound was checked against nothing: {facts}"
     assert isinstance(lag_max, int) and lag_max <= bound_us, f"the loop lagged {lag_max} us, past the {bound_us} us smallest hard consumer: {facts}"
 
 

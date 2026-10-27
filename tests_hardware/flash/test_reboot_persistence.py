@@ -34,6 +34,7 @@ def test_config_value_survives_a_genuine_hard_reset(board: "Board") -> None:
         read = True
         facts = parse_facts(board.run_isolated(DEVICE_SCRIPTS_DIR / "reboot_persist_read.py"))
         assert facts.get("valid") is True and facts.get("marker") == facts.get("expected"), f"the marker did not survive the reset: {facts}"
+        assert "remove_errno" not in facts, f"the test-only file could not be removed after the read: {facts}"
     finally:
         if not read:
             board.exec(_REMOVE_MARKER_FILE)
