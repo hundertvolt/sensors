@@ -7,7 +7,7 @@ import asyncio.core as _core  # type: ignore[import-not-found]  # the run queue;
 import time
 
 from _fast_sleep import check_sleep_ms
-from _ticks30 import Ticks30Time  # every 2**30 clock here is tests/_ticks30.py's Ticks30Time
+from _ticks30 import TICKS_PERIOD, Ticks30Time  # every 2**30 clock here is tests/_ticks30.py's Ticks30Time
 
 import asy_base_classes
 
@@ -19,6 +19,8 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from typing import TypeVar
+
+    from _mpy_shed.time_mp import _TicksMs, _TicksUs
 
     T = TypeVar("T")
 
@@ -70,6 +72,7 @@ class DrivenTime(Ticks30Time):
         self._sleepers: list[_Wake] = []
         self._shim = _DrivenAsyncio(self) if sleeps else None
         self._strict = strict
+        self._real: tuple[_TicksMs, _TicksUs] | None = None  # the real ticks_ms() and ticks_us() at release(); None while driven
 
     def __enter__(self) -> "DrivenTime":
         # With sleeps, a module that reads no clock (no `time`, saved as None) is lent none; without, it is refused.
@@ -96,8 +99,13 @@ class DrivenTime(Ticks30Time):
             raise AssertionError("the wall clock was read: time." + name)
         return getattr(time, name)
 
+    def _driving(self) -> None:
+        if self._real is not None:
+            raise AssertionError(f"the driven clock was used after release() at virtual t={self.now} ms")
+
     def _park(self, ms: int) -> _Wake:
         # Lists a wake at now + ms after every one due no later, so equal times wake in the order they slept.
+        self._driving()
         if len(self._sleepers) >= self.SLEEPERS:
             raise AssertionError(f"more than {self.SLEEPERS} driven sleepers parked at virtual t={self.now} ms")
         wake = _Wake(self.now + ms)
@@ -116,6 +124,7 @@ class DrivenTime(Ticks30Time):
     async def _settle(self) -> None:
         # Yields until no task is due on the run queue: one parked on a real timed sleep (run()'s own bound) is not
         # runnable at this instant, so the queue's head is read against the real clock, as the loop itself reads it.
+        self._driving()
         for _ in range(self.ROUNDS):
             await _core.sleep_ms(0)
             head = _core._task_queue.peek()
@@ -176,6 +185,7 @@ class DrivenTime(Ticks30Time):
 
     def advance(self, ms: int) -> None:
         # Ticks30Time's move; a driven sleeper whose wake it passes is released, to run late at the caller's next yield.
+        self._driving()
         self.now += ms
         self._release_due()
 
@@ -211,6 +221,30 @@ class DrivenTime(Ticks30Time):
             self._release_due()
             await self._settle()
         return self.now - start
+
+    def release(self) -> None:
+        # Real time from the instant reached: `now` runs on at the real rate, each module's asyncio is the real one again,
+        # and each parked sleep or wait_for() bound ends on the real clock after the time it had left (a bound still
+        # awaiting its task). The modules' `time` stays this clock until the block's exit, so no stamp steps.
+        self._real = (time.ticks_ms(), time.ticks_us())
+        if self._shim is not None:
+            count = len(self._modules)
+            for index, module in enumerate(self._modules):
+                module.asyncio = self._saved[count + index]  # type: ignore[attr-defined]
+        wakes, self._sleepers = self._sleepers, []
+        for wake in wakes:
+            wake.listed = False
+        self._wakers = [asyncio.create_task(_wake_after(wake, wake.at - self.now)) for wake in wakes]  # each ends by itself
+
+    def ticks_ms(self) -> int:
+        if self._real is None:
+            return super().ticks_ms()
+        return (self.now + time.ticks_diff(time.ticks_ms(), self._real[0])) & (TICKS_PERIOD - 1)
+
+    def ticks_us(self) -> int:
+        if self._real is None:
+            return super().ticks_us()
+        return (self.now * 1000 + time.ticks_diff(time.ticks_us(), self._real[1])) & (TICKS_PERIOD - 1)
 
     def wakes(self) -> "list[int]":
         # The virtual wake time of every parked driven sleep, earliest first.
@@ -257,6 +291,12 @@ async def _run(waiter: "asyncio.Task[object]", task: "asyncio.Task[object]", wak
     data = waiter.data  # the wake's event queue while parked (event.py:33), None once released (a push resets it, modasyncio.c:118)
     if not wake.resumed and (data is None or data is wake.event.waiting) and waiter.cancel():  # type: ignore[attr-defined]  # Event's queue (event.py:11), in no stub
         waiter.data = asyncio.CancelledError(status, result)  # the field funcs.py sets
+
+
+async def _wake_after(wake: _Wake, ms: int) -> None:
+    # A wake parked at release(), set on the real clock once the time it had left has passed.
+    await asyncio.sleep_ms(max(0, ms))
+    wake.event.set()
 
 
 async def tick(flag: "asyncio.ThreadSafeFlag", times: int = 1, clock: "DrivenTime | None" = None, step_ms: int = 1000) -> None:
