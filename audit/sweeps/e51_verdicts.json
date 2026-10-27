@@ -1,0 +1,380 @@
+{
+ "src/asy_bmp3xx_driver.py::BMP3XX_I2C.reset::`err is None or event is None` true::raise OSError(\"I2C bus not initialized\")": {
+  "action": "tests/test_asy_bmp3xx_driver.py: the fake bus deinitialised during the settle sleep; reset() raises OSError; the test's call under its own run bound (wait_for), CE3's lost test (CRr2a item 3)",
+  "class": "a",
+  "proof": "reached when the bus goes down between reset()'s two sessions: the second session's register reads answer None",
+  "verdict": "owed: direct test"
+ },
+ "src/asy_config_manager.py::ConfigManager.reset_error_counter::`not await self.pr.reset()` true::return False": {
+  "action": "tests/test_asy_config_manager.py: a logger whose reset() answers False; reset_error_counter() answers False",
+  "class": "a",
+  "proof": "reached when the log history clear fails: `self.pr.reset()` answers False (its FRAM chunk clear refused)",
+  "verdict": "owed: direct test"
+ },
+ "src/asy_config_manager.py::ConfigManager.setup::`default_val is None` true::await self.pr.err_s(self._config_file, \"- Default Key\", key, \"Error or None, config is not valid!\", errno=_ERR_CFG_BAD_DEFAULT)": {
+  "action": "tests/test_asy_config_manager.py: a schema with such a field; setup() logs E CFG_BAD_DEFAULT, stays invalid and writes no file",
+  "class": "b",
+  "proof": "reached when a schema field has no default or only a special-alone value: check_cfg_get_default() answers None",
+  "verdict": "kept: guard of an overridable extension point (each module's schema supplies its defaults)"
+ },
+ "src/asy_config_manager.py::ConfigManager.write_config::`except MemoryError` catches::except MemoryError as e:  # the compare exhausting the heap - no file I/O happens in this method": {
+  "action": "tests/test_asy_config_manager.py: compare_before_write substituted to raise a MemoryError worded clear of both gate markers; write_config() answers (False, {}), E ALLOC logged, no file I/O",
+  "class": "b",
+  "proof": "reached only when compare_before_write() raises MemoryError",
+  "verdict": "kept: guard of a documented runtime failure (the compare exhausting the heap)"
+ },
+ "src/asy_crc_checks.py::CRCBase.add_into::`init is None` true::return None": {
+  "action": "tests/test_asy_crc_checks.py: add_into(buf, size, init=-1) and init=all_set+1 answer None and leave buf unchanged",
+  "class": "a",
+  "proof": "reached when add_into() is given an init outside 0..all-bits-set (`_validate_init()` answers None)",
+  "verdict": "owed: direct test"
+ },
+ "src/asy_fram_manager.py::FRAMChunk.read::`dbuf is None` true::return None": {
+  "action": "none (comment in place; E.5.1's FRAM-manager line)",
+  "class": "c",
+  "proof": "read_into() already failed on a missing buffer and a RegionBuffer's buffer is fixed at construction",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_fram_manager.py::FRAMTimestampedChunk.read::`dbuf is None` true::return None, None, None": {
+  "action": "none (comment in place; E.5.1's FRAM-manager line)",
+  "class": "c",
+  "proof": "as :487",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_fram_manager.py::FRAMTimestampedChunk.read_into::`tbuf is None` true::return None, None, None": {
+  "action": "none (comment in place; E.5.1's FRAM-manager line)",
+  "class": "c",
+  "proof": "as :487",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_fram_manager.py::FRAMTimestampedChunk.write_into::`bbuf is None` true::return False, False, None": {
+  "action": "none (comment in place; E.5.1's FRAM-manager line)",
+  "class": "c",
+  "proof": "as :487 (get_ts_buf() above found the buffer)",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_fram_manager.py::_FRAMBaseChunk._clear_chunk::`except Exception` catches::except Exception as e:": {
+  "action": "tests/test_asy_fram_manager.py: set_values_sync() raising OSError; E UNEXPECTED logged, _clear_chunk() answers False; report_if_fatal()'s re-raise bitten by a C-stack overflow (CE3)",
+  "class": "b",
+  "proof": "reached only when fram.set_values_sync() raises",
+  "verdict": "kept: guard of a documented runtime failure (an unexpected raise in the chip write)"
+ },
+ "src/asy_fram_manager.py::_FRAMBaseChunk._write_chunk::`except Exception` catches::report_if_fatal(e)": {
+  "action": "tests/test_asy_fram_manager.py: set_values_sync() raising OSError during a write; E UNEXPECTED logged, the write answers False; report_if_fatal() bitten as above (CE3)",
+  "class": "b",
+  "proof": "reached only when a write step inside _write_chunk() raises",
+  "verdict": "kept: guard of a documented runtime failure (an unexpected raise in the chip write)"
+ },
+ "src/asy_i2c_driver.py::_clear_bus::`not _scl_released_sync(scl, timeout_us)` true::return status | _REC_SCL_HELD": {
+  "action": "tests/test_asy_i2c_driver.py: an SCL pin double that never reads released; _clear_bus() answers status | _REC_SCL_HELD",
+  "class": "b",
+  "proof": "reached when SCL is not released within timeout_us after a pulse (a stretching or stuck device)",
+  "verdict": "kept: guard of a documented runtime failure (SCL held low during the clearing pulses)"
+ },
+ "src/asy_i2c_driver.py::_clear_bus::`not _scl_released_sync(scl, timeout_us)` true::sda.value(1)  # with SCL low this is no bus condition, only the line let go": {
+  "action": "tests/test_asy_i2c_driver.py: an SCL double released for the pulses and held at the STOP; SDA let go, _REC_SCL_HELD in the status",
+  "class": "b",
+  "proof": "reached when the pulses passed but SCL is held at the STOP",
+  "verdict": "kept: guard of a documented runtime failure (SCL held low at the STOP)"
+ },
+ "src/asy_i2c_driver.py::_clear_bus_awaiting::`not await _scl_released(scl, timeout_us)` true::return status | _REC_SCL_HELD": {
+  "action": "tests/test_asy_i2c_driver.py: the same double through _clear_bus_awaiting()",
+  "class": "b",
+  "proof": "as :52",
+  "verdict": "kept: guard of a documented runtime failure (as :52, the awaiting form)"
+ },
+ "src/asy_i2c_driver.py::_clear_bus_awaiting::`not await _scl_released(scl, timeout_us)` true::sda.value(1)": {
+  "action": "tests/test_asy_i2c_driver.py: the same double through _clear_bus_awaiting()",
+  "class": "b",
+  "proof": "as :63-64",
+  "verdict": "kept: guard of a documented runtime failure (as :63-64, the awaiting form)"
+ },
+ "src/asy_isl29125_driver.py::ISL29125_I2C.read_counts::`counts is None` true::raise OSError(\"unexpected RGB data burst read result\")": {
+  "action": "none (comment in place)",
+  "class": "c",
+  "proof": "a fixed 6-byte burst buffer always decodes",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_isl29125_driver.py::ISL29125_I2C.reset::`not await i2c.set_register_struct(_REGISTER_DEVICE_ID, 'B', _CMD_RESET)` true::raise OSError(\"I2C bus not initialized\")": {
+  "action": "tests/test_asy_isl29125_driver.py: a bus double refusing the reset write while up (a down bus alone cannot bite: :1521-1522 then raise the same error, CE3); reset() raises OSError, no CONFIG read",
+  "class": "a",
+  "proof": "reached when the reset write is refused: set_register_struct() answers False (a down bus, or a write the bus refuses while up)",
+  "verdict": "owed: direct test"
+ },
+ "src/asy_isl29125_driver.py::ISL29125_Reader._rearm_interrupt::`except Exception` catches::except Exception as e:": {
+  "action": "tests/test_asy_isl29125_driver.py: configure() raising on re-arm; E CHIP_SET logged; report_if_fatal() bitten as above (CE3)",
+  "class": "b",
+  "proof": "reached only when configure(force=True) raises",
+  "verdict": "kept: guard of a documented runtime failure (the re-arm write failing)"
+ },
+ "src/asy_isl29125_driver.py::ISL29125_Reader._set_int_armed::`except Exception` catches::except Exception as e:": {
+  "action": "tests/test_asy_isl29125_driver.py: configure() raising OSError on arm; E CHIP_SET logged, the method returns; report_if_fatal() bitten by a C-stack overflow (CE3)",
+  "class": "b",
+  "proof": "reached only when ISL29125_I2C.configure() raises",
+  "verdict": "kept: guard of a documented runtime failure (the interrupt-select write failing)"
+ },
+ "src/asy_scd30_driver.py::SCD30_I2C._read_dev_register::`not await i2c.readinto(self._buffer, end=3)` true::raise OSError(\"I2C bus not initialized\")  # before the CRC check: a stale buffer would pass it": {
+  "action": "tests/test_asy_scd30_driver.py: an I2C session double whose readinto() answers False after a good write; OSError raised before the CRC check",
+  "class": "b",
+  "proof": "unreachable in the product: the write and readinto() share one session under bus_lock (asy_i2c_driver.py:453) and the only product path that clears the bus, init() under recover(), takes the same lock (CE3's proof, re-read on this base)",
+  "verdict": "kept: guard of the session-shared read (lead; F1's reading), a documented runtime failure"
+ },
+ "src/asy_scd30_driver.py::SCD30_I2C._send_dev_command::`not await i2c.write(self._buffer, end=end_byte)` true::raise OSError(\"I2C bus not initialized\")": {
+  "action": "tests/test_asy_scd30_driver.py: a stop command with the fake bus down; OSError (CE3)",
+  "class": "a",
+  "proof": "reached when a command write is refused: a stop command on a down bus",
+  "verdict": "owed: direct test"
+ },
+ "src/asy_scd30_driver.py::SCD30_Reader._set_mgr_cfg::`await self.stop_continuous_measurement(value=False)` false::results[\"ContMeas\"] = FAILED": {
+  "action": "tests/test_asy_scd30_driver.py: through _set_mgr_cfg() (through _set_dict_cfg() the key still came back Failed with the line planted, CE3) on a down bus; ContMeas Failed",
+  "class": "a",
+  "proof": "reached when ContMeas False is set and the stop command fails (stop_continuous_measurement() answers False: a down bus)",
+  "verdict": "owed: direct test"
+ },
+ "src/asy_scd30_driver.py::SCD30_Reader._set_mgr_cfg::`outcome is None` true::return False, {}": {
+  "action": "none (comment in place)",
+  "class": "c",
+  "proof": "rest is a dict and compare_before_write() answers None only for a non-dict",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_sgp40_driver.py::SGP40_Reader._read_sgp::`serialized` false::await self.pr.err_s(\"Error serializing!\", errno=_ERR_SGP_ALGO_STATE)": {
+  "action": "tests/test_asy_sgp40_driver.py: pack_into substituted to answer False with serialize due; E SGP_ALGO_STATE logged, no backup written",
+  "class": "b",
+  "proof": "reached when a backup is due and params.pack_into() answers False (its OverflowError/TypeError/ValueError)",
+  "verdict": "kept: guard of a documented runtime failure (the VOC state not packing)"
+ },
+ "src/asy_system_service.py::SystemService._shutdown_sequence::`task is None or not task.done()` true::return  # not proven stopped: nothing feeds from here, the watchdog resets the unit": {
+  "action": "E.5.1 line (the not-proven-stopped fallback: nothing feeds, the watchdog resets)",
+  "class": "b",
+  "proof": "no input reaches it: a cancel of the awaited supervisor is forwarded to it (extmod/asyncio/task.py:164-166, extmod/modasyncio.c:208-211), so after `await task` the task is done; `task is None` needs the park flag with no supervisor, but only the supervisor sets it and is assigned first; nothing cancels _shutdown_task (CFr2 item 1)",
+  "verdict": "kept: safety guard, registered untestable in E.5.1 (lead)"
+ },
+ "src/asy_uart_comm.py::UARTComm._listen_loop::`except Exception` catches::report_if_fatal(e)": {
+  "action": "tests/test_asy_uart_comm.py: uart_listen() substituted to raise; logged, the loop backs off and keeps listening; report_if_fatal() bitten by a C-stack overflow (CE3)",
+  "class": "b",
+  "proof": "reached only when uart_listen() raises",
+  "verdict": "kept: guard of the uart_listen() never-raise contract"
+ },
+ "src/asy_uart_comm.py::UARTComm._listen_unlocked::`rx is None` true::return _LISTEN_FAILED": {
+  "action": "none (comment in place; E.5.1's UART-comm line)",
+  "class": "c",
+  "proof": "_read_frame() already failed on a missing RX buffer",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_uart_comm.py::UARTComm._min_rx_ring::`bus is None` true::return 0": {
+  "action": "comment in place owed (src, the next block): 'Unreachable: ... - kept to narrow the Optional for the type checker'",
+  "class": "c",
+  "proof": "_min_rx_ring() is called only from _validate_receive(self._uart), after setup's `self._uart is None` refusal (:934)",
+  "verdict": "kept: type narrowing; its comment is owed"
+ },
+ "src/asy_uart_comm.py::UARTComm._recv_train::`not fits` true::await self._fault(device, _ERR_UART_SIZE_MISMATCH, \"destination too small at chunk\", cur)": {
+  "action": "tests/test_asy_uart_comm.py: a PieceBuffer double whose write_at() refuses; E UART_SIZE_MISMATCH and the transfer fails (E.5.1 moves it out of its narrowing list)",
+  "class": "b",
+  "proof": "unreachable through the header check: _get_unlocked() refuses a short destination and _accept_set() allocates exactly room",
+  "verdict": "kept: guard of the copy into a caller-supplied destination (its comment says so)"
+ },
+ "src/asy_uart_comm.py::UARTComm._take_discarded::`bus is None` true::return 0": {
+  "action": "comment in place owed (src, the next block)",
+  "class": "c",
+  "proof": "_take_discarded() runs only inside _resync() during a transaction, and no transaction runs without the bus setup refused at :934",
+  "verdict": "kept: type narrowing; its comment is owed"
+ },
+ "src/asy_uart_comm.py::UARTComm._write_frame_with_ack::`buf is None` true::await self._err(_ERR_ALLOC, \"no TX buffer\")": {
+  "action": "none (comment in place; E.5.1's UART-comm line)",
+  "class": "c",
+  "proof": "_prepare_tx() returned False if the TX buffer were missing",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_uart_comm.py::UARTComm.uart_get::`own is None` true::return PieceBuffer(0, self._chunk_bytes)": {
+  "action": "none (comment in place; E.5.1's UART-comm line)",
+  "class": "c",
+  "proof": "_run_get() returns a buffer whenever neither dest nor push was given",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_uart_driver.py::UART._arm_rx::`data is None or reload is None or ring is None` true::return": {
+  "action": "none (comment in place)",
+  "class": "c",
+  "proof": "both callers run with the ring and both channels set",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_uart_driver.py::UART._buffered::`except (OSError, ValueError)` catches::except (OSError, ValueError):  # a closed channel: nothing left to drop": {
+  "action": "tests/test_asy_uart_driver.py: a DMA double whose access raises OSError after close; the overrun still reports -1, nothing escapes (CE3)",
+  "class": "b",
+  "proof": "reached only when dropping the overrun's bytes raises on a closed channel",
+  "verdict": "kept: guard of a documented runtime failure (a closed DMA channel)"
+ },
+ "src/asy_uart_driver.py::UART._line_failed::`_line_failed` is called::if line is not None:": {
+  "action": "tests/test_asy_uart_driver.py: the three readline failure tests below assert the partial line counted discarded (CE3)",
+  "class": "a",
+  "proof": "reached by every readline_until_complete() failure with a line started (:665-666, :669-670, :680-681)",
+  "verdict": "owed: direct test (through the readline failures)"
+ },
+ "src/asy_uart_driver.py::UART._read_delimited::`got < 0` true::self._count_discarded(consumed)": {
+  "action": "tests/test_asy_uart_driver.py: a receive overrun (the ring lapped, `_rx_level()` -1) through the overrun double: the read returns None, the bytes it had consumed are counted discarded (CE3)",
+  "class": "b",
+  "proof": "reached when the ring laps while a delimited frame is read",
+  "verdict": "kept: guard of a documented runtime failure (receive overrun)"
+ },
+ "src/asy_uart_driver.py::UART._read_delimited::`self._rx_copy(buf, size, 1) < 0` true::self._count_discarded(consumed)": {
+  "action": "tests/test_asy_uart_driver.py: a lap during the copy through a DMA double whose count moves past the read position mid-copy (`_LapOnCopy`): the read fails, no phantom byte reaches the next read (CE3)",
+  "class": "b",
+  "proof": "reached when the DMA laps the read position during the copy",
+  "verdict": "kept: guard of a documented runtime failure (a lap during the copy)"
+ },
+ "src/asy_uart_driver.py::UART._rx_copy::`except (OSError, ValueError)` catches::except (OSError, ValueError):  # a closed channel: nothing copied can be trusted": {
+  "action": "tests/test_asy_uart_driver.py: a DMA double whose count raises after close; the copy answers -1, a raw ValueError never escapes (CE3)",
+  "class": "b",
+  "proof": "reached only when reading the channel's count raises after a close",
+  "verdict": "kept: guard of a documented runtime failure (a closed DMA channel)"
+ },
+ "src/asy_uart_driver.py::UART._rx_copy::`ring is None or data is None` true::return -1": {
+  "action": "none (comment in place)",
+  "class": "c",
+  "proof": "every caller follows a positive _buffered(), which needs the ring and its channel",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_uart_driver.py::UART._rx_copy_line::`self._rx_copy(piece, offset - base, k) < 0` true::self._count_discarded(n - left)  # this round's pieces already consumed": {
+  "action": "tests/test_asy_uart_driver.py: a lap during the copy through a DMA double whose count moves past the read position mid-copy (`_LapOnCopy`): the read fails, no phantom byte reaches the next read (CE3)",
+  "class": "b",
+  "proof": "reached when a piece's copy laps",
+  "verdict": "kept: guard of a documented runtime failure (a lap during a line copy)"
+ },
+ "src/asy_uart_driver.py::UART._rx_level::`ring is None or data is None or self._uart is None` true::return 0": {
+  "action": "tests/test_asy_uart_driver.py: a UART with no ring; ready() never answers POLLIN, a read answers None (CE3)",
+  "class": "a",
+  "proof": "reached when the UART has no RX ring (before setup_rx_ring(), or after it was released) and ready()/a read asks the level",
+  "verdict": "owed: direct test"
+ },
+ "src/asy_uart_driver.py::UART._rx_line_len::`ring is None` true::return 0": {
+  "action": "none (comment in place)",
+  "class": "c",
+  "proof": "called after a positive _buffered()",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_uart_driver.py::UART._rx_peek::`ring is None` true::return -1": {
+  "action": "none (comment in place)",
+  "class": "c",
+  "proof": "called after a positive _buffered()",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_uart_driver.py::UART.read::`self._rx_copy(out, 0, want) < 0` true::return None": {
+  "action": "tests/test_asy_uart_driver.py: a lap during the copy through a DMA double whose count moves past the read position mid-copy (`_LapOnCopy`): the read fails, no phantom byte reaches the next read (CE3)",
+  "class": "b",
+  "proof": "reached when the DMA laps during read()'s copy",
+  "verdict": "kept: guard of a documented runtime failure (a lap during read())"
+ },
+ "src/asy_uart_driver.py::UART.read_until_complete::`not want` true::await asyncio.sleep_ms(self.poll_wait_ms)": {
+  "action": "tests/test_asy_uart_driver.py: `_rx_level` substituted to read 1 for ready() and 0 for _buffered() once; the read yields (sleep_ms) and completes, never spins",
+  "class": "b",
+  "proof": "unreachable in the product: ready() answers POLLIN only for a non-zero `_rx_level()` and returns with no await, so `_buffered(n)` with n > 0 sees the same level (the DMA only adds bytes; a lap is -1, the overrun branch); kept as the never-block guard (lead; F1r's reading)",
+  "verdict": "kept: the never-block guard (F.5.8)"
+ },
+ "src/asy_uart_driver.py::UART.read_until_complete::`self._rx_copy(msg, size, want) < 0` true::self._count_discarded(size)": {
+  "action": "tests/test_asy_uart_driver.py: a lap during the copy through a DMA double whose count moves past the read position mid-copy (`_LapOnCopy`): the read fails, no phantom byte reaches the next read (CE3)",
+  "class": "b",
+  "proof": "reached when the DMA laps during read_until_complete()'s copy",
+  "verdict": "kept: guard of a documented runtime failure (a lap during the copy)"
+ },
+ "src/asy_uart_driver.py::UART.read_until_complete::`want < 0` true::self._count_discarded(size)": {
+  "action": "tests/test_asy_uart_driver.py: a receive overrun (the ring lapped, `_rx_level()` -1) through the overrun double: the read returns None, the bytes it had consumed are counted discarded (CE3)",
+  "class": "b",
+  "proof": "reached when the ring laps during read_until_complete()",
+  "verdict": "kept: guard of a documented runtime failure (receive overrun)"
+ },
+ "src/asy_uart_driver.py::UART.readinto_until_complete::`not want` true::await asyncio.sleep_ms(self.poll_wait_ms)": {
+  "action": "tests/test_asy_uart_driver.py: as :564-565, through readinto_until_complete()",
+  "class": "b",
+  "proof": "unreachable in the product: ready() answers POLLIN only for a non-zero `_rx_level()` and returns with no await, so `_buffered(n)` with n > 0 sees the same level (the DMA only adds bytes; a lap is -1, the overrun branch); kept as the never-block guard (lead; F1r's reading)",
+  "verdict": "kept: the never-block guard (F.5.8)"
+ },
+ "src/asy_uart_driver.py::UART.readinto_until_complete::`self._rx_copy(buf, size, want) < 0` true::self._count_discarded(size)": {
+  "action": "tests/test_asy_uart_driver.py: a lap during the copy through a DMA double whose count moves past the read position mid-copy (`_LapOnCopy`): the read fails, no phantom byte reaches the next read (CE3)",
+  "class": "b",
+  "proof": "reached when the DMA laps during readinto_until_complete()'s copy",
+  "verdict": "kept: guard of a documented runtime failure (a lap during the copy)"
+ },
+ "src/asy_uart_driver.py::UART.readline::`self._rx_copy(out, 0, n) < 0` true::return None": {
+  "action": "tests/test_asy_uart_driver.py: a lap during the copy through a DMA double whose count moves past the read position mid-copy (`_LapOnCopy`): the read fails, no phantom byte reaches the next read (CE3)",
+  "class": "b",
+  "proof": "reached when the DMA laps during readline()'s copy",
+  "verdict": "kept: guard of a documented runtime failure (a lap during readline())"
+ },
+ "src/asy_uart_driver.py::UART.readline::`want <= 0` true::return None": {
+  "action": "tests/test_asy_uart_driver.py: a receive overrun (the ring lapped, `_rx_level()` -1) through the overrun double: the read returns None, the bytes it had consumed are counted discarded; the line shows only through its console line, so the test asserts there is none (CE3)",
+  "class": "b",
+  "proof": "reached when readline() meets an overrun after ready() (a 0 here is the never-block proof's unreachable case)",
+  "verdict": "kept: guard of a documented runtime failure (receive overrun)"
+ },
+ "src/asy_uart_driver.py::UART.readline_until_complete::`not await self.ready(select.POLLIN, timeout_ms=timeout)` true::self._line_failed(line, size)  # ready() timed out or was cancelled": {
+  "action": "tests/test_asy_uart_driver.py: a partial line then silence; readline_until_complete() answers None, the partial counted discarded (CE3)",
+  "class": "a",
+  "proof": "reached when the peer stops mid-line: ready() times out with a line started",
+  "verdict": "owed: direct test"
+ },
+ "src/asy_uart_driver.py::UART.readline_until_complete::`not want` true::await asyncio.sleep_ms(self.poll_wait_ms)": {
+  "action": "tests/test_asy_uart_driver.py: as :564-565, through readline_until_complete()",
+  "class": "b",
+  "proof": "unreachable in the product: ready() answers POLLIN only for a non-zero `_rx_level()` and returns with no await, so `_buffered(n)` with n > 0 sees the same level (the DMA only adds bytes; a lap is -1, the overrun branch); kept as the never-block guard (lead; F1r's reading)",
+  "verdict": "kept: the never-block guard (F.5.8)"
+ },
+ "src/asy_uart_driver.py::UART.readline_until_complete::`self._rx_copy_line(line, size, n) < 0` true::self._line_failed(line, size)": {
+  "action": "tests/test_asy_uart_driver.py: a lap during the copy through a DMA double whose count moves past the read position mid-copy (`_LapOnCopy`): the read fails, no phantom byte reaches the next read (CE3)",
+  "class": "b",
+  "proof": "reached when the DMA laps during readline_until_complete()'s copy",
+  "verdict": "kept: guard of a documented runtime failure (a lap during the line copy)"
+ },
+ "src/asy_uart_driver.py::UART.readline_until_complete::`want < 0` true::self._line_failed(line, size)  # a receive overrun fails the line": {
+  "action": "tests/test_asy_uart_driver.py: a receive overrun (the ring lapped, `_rx_level()` -1) through the overrun double: the read returns None, the bytes it had consumed are counted discarded (CE3)",
+  "class": "b",
+  "proof": "reached when the ring laps during readline_until_complete()",
+  "verdict": "kept: guard of a documented runtime failure (receive overrun mid-line)"
+ },
+ "src/asy_uart_driver.py::UART.writefrom::`crcsize is None` true::return False": {
+  "action": "none (comment in place)",
+  "class": "c",
+  "proof": "with CRCBase.add_into() the size guard above leaves no None case",
+  "verdict": "kept: type narrowing, stated in place"
+ },
+ "src/asy_uart_link_driver.py::UARTLinkDriver._get_callback::`stored is None` true::return True, b\"\"": {
+  "action": "tests/test_asy_uart_link_driver.py: _get_callback(_CMD_ECHO) on a fresh driver answers (True, b\"\")",
+  "class": "a",
+  "proof": "reached when the peer GETs the echo command before any echo SET",
+  "verdict": "owed: direct test"
+ },
+ "src/asy_uart_link_driver.py::UARTLinkDriver._read_raw::`bus is None` true::return None": {
+  "action": "none (comment in place)",
+  "class": "c",
+  "proof": "_read_raw() is called only from _run_hazards(), which returns first without a bus",
+  "verdict": "kept: type narrowing, stated in place (\"_run_hazards() runs nothing without one\")"
+ },
+ "src/asy_uart_link_driver.py::UARTLinkDriver._run_hazards::`bus is None` true::return": {
+  "action": "comment in place owed (src, the next block)",
+  "class": "c",
+  "proof": "_run_hazards() runs only from _exercise_loop() while initialized, and setup() refuses a None bus (asy_uart_comm.py:934)",
+  "verdict": "kept: type narrowing; its comment is owed"
+ },
+ "src/asy_uart_link_driver.py::UARTLinkDriver._two_initiations::the `finally` body runs::for task in (first, second):": {
+  "action": "tests/test_asy_uart_link_driver.py: _two_initiations() cancelled mid-way; the unfinished task is cancelled and no transaction is left behind (CE3)",
+  "class": "a",
+  "proof": "reached when the double initiation is cancelled while the first initiation awaits (a supervisor restart mid-run)",
+  "verdict": "owed: direct test"
+ },
+ "src/asy_uart_link_driver.py::UARTLinkDriver._write_raw::`bus is None` true::return False": {
+  "action": "none (comment in place)",
+  "class": "c",
+  "proof": "as :166",
+  "verdict": "kept: type narrowing, stated in place (\"as _read_raw()\")"
+ },
+ "src/asy_webserver_service.py::WebserverService._run_system_cmd::`self._system_cmd is None` true::return INVALID": {
+  "action": "tests/test_asy_webserver_service.py: routes without system_cmd; PUT /status {\"SystemCmd\": ...} answers SystemCmd Invalid, nothing else runs",
+  "class": "d",
+  "proof": "reached when WebserverRoutes carries no system_cmd and a PUT names a SystemCmd",
+  "verdict": "kept: a real feature (F1): a webserver built without a system-command handler answers Invalid"
+ },
+ "src/asy_webserver_service.py::_cfg_values::`for inner in values.values():` falls through::return {}  # Unreachable for every module here (each answers make_dict()'s {name: {...}}) - kept so every path returns for the type checker": {
+  "action": "none (comment in place)",
+  "class": "c",
+  "proof": "every module answers make_dict()'s {name: {...}}",
+  "verdict": "kept: type narrowing, stated in place"
+ }
+}
