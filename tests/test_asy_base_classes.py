@@ -1438,6 +1438,62 @@ def test_two_readers_failing_on_one_bus_clear_it_once_and_rebuild_it_once() -> N
     assert a.pr._err_count + b.pr._err_count == 8 + 2 * 1 + 2  # 8 streak steps, 2 participant warnings, 2 bus warnings
 
 
+class _EntryRecordingBus(I2C):
+    # The real bus, recording each entry into its two rungs: a reader parked on the bus lock has entered.
+    def __init__(self) -> None:
+        super().__init__(1, scl_pin=19, sda_pin=18, frequency=50000)
+        self.entries: list[str] = []
+
+    async def clear(self) -> int:
+        self.entries.append("clear")
+        return await I2C.clear(self)
+
+    async def recover(self) -> int:
+        self.entries.append("recover")
+        return await I2C.recover(self)
+
+
+async def _until(done: "Callable[[], bool]", what: str) -> None:
+    # A bounded wait for a state the test forced, never a count of passes standing in for it.
+    for _ in range(1000):
+        if done():
+            return
+        await asyncio.sleep(0)
+    raise AssertionError(what)
+
+
+def test_a_bus_rung_parked_behind_a_sibling_session_is_spent_for_every_reader_on_the_bus() -> None:
+    # A sibling session holds the bus lock, so the first reader's rung parks on it; the second reader fails meanwhile
+    # and must find that rung taken: each bus rung runs once and logs one BUS_RECOVERY however the two interleave.
+    bus = _EntryRecordingBus()
+    a = _LadderReader(outcome=None)
+    b = _LadderReader(outcome=None)
+    a._recovery_bus = b._recovery_bus = bus
+    fail = Meas(None, 50)
+
+    async def body() -> int:
+        for _ in range(2):  # both readers through the retry and the participant rung
+            await a._error_check(fail)
+            await b._error_check(fail)
+        mark = bus.recoveries
+        for _rung in ("clear", "controller"):
+            await bus.bus_lock.acquire()  # the sibling session
+            seen = len(bus.entries)
+            first = asyncio.create_task(a._error_check(fail))
+            await _until(lambda: first.done() or len(bus.entries) > seen, "the first reader neither entered a rung nor ended")  # noqa: B023 - read before the next pass rebinds it
+            seen = len(bus.entries)
+            second = asyncio.create_task(b._error_check(fail))
+            await _until(lambda: second.done() or len(bus.entries) > seen, "the second reader neither entered a rung nor ended")  # noqa: B023 - as above
+            bus.bus_lock.release()
+            await first
+            await second
+        return bus.recoveries - mark
+
+    steps = run(body())
+    assert (bus.entries, steps) == (["clear", "recover"], 2), f"a rung parked on the lock was run again by the second reader: {bus.entries}, {steps} recoveries"
+    assert _entries(a, "W", "BUS_RECOVERY") + _entries(b, "W", "BUS_RECOVERY") == 2
+
+
 def test_a_hook_returning_none_logs_nothing() -> None:
     reader = _LadderReader(outcome=None)
     _fail(reader)
