@@ -1748,7 +1748,10 @@ only same-device write-vs-own-read (`bus_concurrency_same_device_scd30.py`,
   `@pytest.mark.scd30_extra_write`, which need `--allow-persistence-write` and
   `--allow-scd30-extra-write` together ("Persistence-write gating" below), it spends two NVM writes
   (the offset and its restore) per invocation, never folded into the routine group's at most one
-  (`scd30_measuring`'s start command; SPECIFICATION.md Part C.8's write-budget rule).
+  (`scd30_measuring`'s start command; SPECIFICATION.md Part C.8's write-budget rule). The offset
+  write starts at the head of an SGP40 round, inside that sibling's session and ahead of its command,
+  and the test credits "not disturbed" only once a sibling read's window overlapped the write's
+  (`overlapped_reads`), as the ISL29125 test does.
 
 **Honesty note - neither test has been run against real hardware yet.** Both were written and typed
 during a session with no real-hardware go-ahead (CLAUDE.md's own standing gate) and no ability to
@@ -1774,9 +1777,9 @@ cycles through a deliberately varied, explicit set of pre-write delays
 (`_WRITE_DELAYS_MS = (5, 15, 40, 80, 120)`, each exercised twice) instead of one fixed 30ms cadence -
 a designed spread of relative timings against the siblings' own read loops, not merely hoping
 uncontrolled jitter happens to cover a range. `bus_concurrency_scd30_write_vs_siblings.py` still fires
-at exactly ONE fixed offset (0.3s in) - the one-write budget makes a real multi-offset sweep
-structurally impossible there, not a design choice to skip it; its own docstring now says so
-explicitly rather than silently reading like an oversight. Real hardware still has no literal
+once, at one chosen point (an SGP40 round's head, once both siblings have read) - the one-write
+budget makes a real multi-offset sweep structurally impossible there, not a design choice to skip
+it. Real hardware still has no literal
 equivalent of the mock tier's `asyncio.sleep(0)`-count offset (a yield count means nothing against a
 real preemptible interpreter and real bus timing) - a real elapsed-time delay is the honest,
 tier-appropriate substitute.
