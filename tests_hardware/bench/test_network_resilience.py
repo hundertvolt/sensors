@@ -539,6 +539,7 @@ def test_put_the_band_that_used_to_be_accepted_is_now_rejected_over_the_normal_n
     assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
+@pytest.mark.provokes_log("its over-bound NTPHost is answered Invalid, and a refused value logs BAD_ARG")
 def test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap(dut_ip: str, request: pytest.FixtureRequest) -> None:
     # Lowering a cap risks refusing something legitimate: the largest body the bench build's own schemas can produce
     # (derived from its definitions, as tests_scripts/test_request_body_cap_headroom.py derives it) is still served.
@@ -605,6 +606,7 @@ def test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits(dut_
     assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
+@pytest.mark.provokes_log("the storm overloads admission: each refusal traces HTTP_REFUSED (_assert_ceiling_traced)")
 def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # max_connections bodies can be in flight at once, so the simultaneous contiguous demand is that many buffers - the
     # multi-buffer shape that motivated Part I.6, asserted on what the body cap owns.
@@ -730,6 +732,7 @@ def test_abrupt_disconnect_mid_response_does_not_hang_the_server(dut_ip: str, re
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.provokes_log("the ceiling walk ends on its one refusal, HTTP_REFUSED (_assert_ceiling_traced)")
 def test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures(dut_ip: str, request: pytest.FixtureRequest) -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     discovered = discover_max_connections(dut_ip)

@@ -69,6 +69,7 @@ def test_real_transfers_complete_while_the_api_is_hammered(board: "Board", dut_i
     check_transfers_under_load(dut_ip)
 
 
+@pytest.mark.provokes_log("a deliberate burst at the ceiling right after its own PUT: a refusal, HTTP_REFUSED, is an accepted outcome (_burst_get)")
 def test_an_api_overload_does_not_corrupt_the_link_or_the_reverse(board: "Board", dut_ip: str, request: pytest.FixtureRequest) -> None:
     check_overload_does_not_corrupt(dut_ip, request.node.name)
 
@@ -98,6 +99,7 @@ def test_a_multi_chunk_set_echoes_intact_under_serving_load(board: "Board", benc
     assert not load.findings, f"torn reads during the echoes: {load.findings[:10]}"
 
 
+@pytest.mark.provokes_log("the hazard run's illegal first chunks are refused by the responder, which logs its UART frame codes")
 def test_a_hazard_run_under_the_readers_load_reports_every_verdict(board: "Board", dut_ip: str, request: pytest.FixtureRequest) -> None:
     check_hazard_run_under_load(dut_ip, request.node.name)
 

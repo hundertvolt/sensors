@@ -425,6 +425,17 @@ the image record (`--image-record`, default beside the `.uf2`) and compares it w
 that fixes it; a record from a dirty tree is reported as a local-only image to revert after the
 round. A test that reflashes mid-session runs the same comparison (`check_image()`).
 
+## The bench log check
+
+Every bench test runs inside `bench/conftest.py`'s autouse `no_unprovoked_log_entry`: one `GET /status` before the
+test and one after, clearing and writing nothing. A new E or W entry in any logger between the two fails the test,
+naming the logger, the code, its catalog name and the test - a normal operation logs neither. A test whose entries are
+its purpose carries `@pytest.mark.provokes_log("<why>")` (`markers.py`) and is not read at all; the marker without its
+one reason fails the test. A clear made through `reset_all_error_logs()` makes all of the later log new, so a test
+that clears at its end is checked only for what follows that clear. A board that cannot answer `/status` at a test's
+bound - unreachable, or still booting - fails that test by name after one read under the helpers' own timeout: a test
+leaves the board serving. The hotspot module reads through the DUT's gateway while the bench radio is its client.
+
 ## The NeoPixel sweep rig
 
 Two flash-tier tests are gated on physical geometry rather than on wear or wall clock -

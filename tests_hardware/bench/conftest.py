@@ -113,7 +113,17 @@ def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Cal
             pytest.fail(f"{request.node.nodeid}: provokes_log takes one non-empty reason, why the test leaves its entries: {marker!r}")
         yield
         return
-    before, clears = error_log_helpers.get_errcount(log_check_host()), error_log_helpers.clears_made()
+    before, clears = _read_logs(log_check_host, request.node.nodeid, "before"), error_log_helpers.clears_made()
     yield
-    after = error_log_helpers.get_errcount(log_check_host())
+    after = _read_logs(log_check_host, request.node.nodeid, "after")
     error_log_helpers.assert_no_unprovoked_entry(before, after, request.node.nodeid, cleared=error_log_helpers.clears_made() != clears)
+
+
+def _read_logs(log_check_host: "Callable[[], str]", test: str, when: str) -> "dict[str, error_log_helpers.ErrcountEntry]":
+    # One GET /status under the helpers' own read timeout; a board unreachable or still booting at a test's bound fails
+    # that test by name, with no traceback, rather than hanging or raising a transport error out of the fixture.
+    host = log_check_host()
+    try:
+        return error_log_helpers.get_errcount(host)
+    except (OSError, http_client.HTTP_ERROR, AssertionError, ValueError, TypeError) as exc:
+        pytest.fail(f"{test}: the log check cannot read the loggers {when} the test - GET /status on {host}: {exc!r}; a test must leave the board serving", pytrace=False)

@@ -80,6 +80,7 @@ class _Verdicts:
         return failed
 
 
+@pytest.mark.provokes_log("its dead clients are reclaimed at the per-call timeout (HTTP_CALL_TIMEOUT), and one the ceiling refuses traces HTTP_REFUSED")
 def test_no_send_stall_with_the_override(board: "Board", dut_ip: str, result_note: "_load.Note") -> None:
     # A failed bound goes to the owner as an override change (a short POLLOUT back-off), never a larger bound.
     verdicts = _measure(board, dut_ip)

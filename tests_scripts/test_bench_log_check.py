@@ -63,13 +63,30 @@ class _Board:
         return http_client.HttpResponse(200, {}, json.dumps({"errcount": self.reads.pop(0)}).encode())
 
 
+class _UnreadableBoard(_Board):
+    # Read number `fail_at` fails as a board unreachable or still booting does: a transport error, or a non-200.
+    def __init__(self, reads: "Sequence[Mapping[str, object]]", fail_at: int, failure: "OSError | int") -> None:
+        super().__init__(reads)
+        self.fail_at, self.failure = fail_at, failure
+        self.timeouts: list[object] = []
+
+    def fetch(self, host: str, _port: int, method: str, path: str, *_a: object, **_k: object) -> http_client.HttpResponse:
+        if method == "GET" and len(self.hosts) == self.fail_at:
+            self.hosts.append(host)
+            self.timeouts.append(_k.get("timeout_s"))
+            if isinstance(self.failure, int):
+                return http_client.HttpResponse(self.failure, {}, b"booting")
+            raise self.failure
+        return super().fetch(host, _port, method, path, *_a, **_k)
+
+
 def _bench_conftest() -> ModuleType:
     return load_script_module(_TESTS_HARDWARE / "bench" / "conftest.py", "bench_conftest_log_check")
 
 
-def _drive(monkeypatch: pytest.MonkeyPatch, reads: "Sequence[Mapping[str, object]]", *, mark: "pytest.Mark | None" = None, during: "Callable[[], None]" = lambda: None, host: str = _DUT_IP) -> _Board:
+def _drive(monkeypatch: pytest.MonkeyPatch, reads: "Sequence[Mapping[str, object]]", *, mark: "pytest.Mark | None" = None, during: "Callable[[], None]" = lambda: None, host: str = _DUT_IP, board: "_Board | None" = None) -> _Board:
     # The fixture's setup, the test body (`during`), then its teardown, against a board answering `reads` in turn.
-    board = _Board(reads)
+    board = board if board is not None else _Board(reads)
     monkeypatch.setattr(http_client, "fetch", board.fetch)
     monkeypatch.setattr(evidence, "save_text", lambda *_a: Path("unused"))
     gen: Generator[None, None, None] = _bench_conftest().no_unprovoked_log_entry.__wrapped__(_Request(mark), lambda: host)
@@ -143,6 +160,19 @@ def test_a_marked_test_is_exempt_and_never_read(monkeypatch: pytest.MonkeyPatch)
 def test_a_marker_without_its_one_reason_is_refused(monkeypatch: pytest.MonkeyPatch, mark: "pytest.Mark") -> None:
     with pytest.raises(pytest.fail.Exception, match="provokes_log takes one non-empty reason"):
         _drive(monkeypatch, [], mark=mark)
+
+
+@pytest.mark.parametrize(("fail_at", "failure", "when"), [(0, TimeoutError("timed out"), "before"), (1, ConnectionRefusedError(111, "refused"), "after"), (1, 503, "after")])
+def test_a_board_that_cannot_answer_fails_the_test_plainly_and_bounded(monkeypatch: pytest.MonkeyPatch, fail_at: int, failure: "OSError | int", when: str) -> None:
+    # A board unreachable or still booting at a test's bounds: one read under the helpers' own timeout, then a failure
+    # naming the test and the read, with no traceback - never a hang or a bare transport error from the fixture.
+    board = _UnreadableBoard([{"WIFI": _entry(0)}], fail_at, failure)
+    with pytest.raises(pytest.fail.Exception) as caught:
+        _drive(monkeypatch, [], board=board)
+    text = str(caught.value)
+    assert "test_x.py::test_case" in text and f"cannot read the loggers {when} the test" in text and _DUT_IP in text, text
+    assert caught.value.pytrace is False, "the failure carries a traceback"
+    assert board.timeouts == [error_log_helpers._ERRCOUNT_TIMEOUT_S], board.timeouts
 
 
 def test_provokes_log_is_in_the_one_marker_table() -> None:
