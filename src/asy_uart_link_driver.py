@@ -106,8 +106,10 @@ class UARTLinkDriver:
             return True, _BANNER
         if cmd_id == _CMD_ECHO:
             stored = self._last_echo
+            if stored is None:
+                return True, b""
             # The stored echo is a PieceBuffer, answered from its pieces: no copy-out, no peer-sized allocation (J.8).
-            return True, b"" if stored is None else stored
+            return True, stored
         return False, None
 
     def _set_callback(self, cmd_id: int) -> tuple[bool, int | None]:

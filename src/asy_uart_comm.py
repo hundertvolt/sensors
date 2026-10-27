@@ -897,16 +897,12 @@ class UARTComm:
                     return False
                 sent += written
                 continue
+            data = view[sent : sent + size] if (view is not None and size) else None
             if pieces is not None:  # copied by index into the TX data region, which data=None then leaves in place
                 region = self._tx.get_data_buf()
                 if region is None or not pieces.read_at(sent, region[0:size]):  # Unreachable: a refused TX buffer refuses construction, and size stays within the answer - kept to narrow the Optional
                     await self._fault(device, _ERR_ALLOC, "no TX data region")
                     return False
-                if not await self._write_frame_with_ack(device, CMD_SET, chunks, cur, None, size):
-                    return False
-                sent += size
-                continue
-            data = view[sent : sent + size] if (view is not None and size) else None
             if not await self._write_frame_with_ack(device, CMD_SET, chunks, cur, data, size):
                 return False
             sent += size

@@ -164,7 +164,7 @@
  "src/asy_uart_comm.py::UARTComm._min_rx_ring::`bus is None` true::return 0": {
   "action": "comment in place owed (src, the next block): 'Unreachable: ... - kept to narrow the Optional for the type checker'",
   "class": "c",
-  "proof": "_min_rx_ring() is called only from _validate_receive(self._uart), after setup's `self._uart is None` refusal (:934)",
+  "proof": "_min_rx_ring() is called only from _validate_receive(self._uart), after setup's `self._uart is None` refusal (:948)",
   "verdict": "kept: type narrowing; its comment is owed"
  },
  "src/asy_uart_comm.py::UARTComm._recv_train::`not fits` true::await self._fault(device, _ERR_UART_SIZE_MISMATCH, \"destination too small at chunk\", cur)": {
@@ -173,10 +173,16 @@
   "proof": "unreachable through the header check: _get_unlocked() refuses a short destination and _accept_set() allocates exactly room",
   "verdict": "covered; kept: guard of the copy into a caller-supplied destination (its comment says so)"
  },
+ "src/asy_uart_comm.py::UARTComm._send_train::`region is None or not pieces.read_at(sent, region[0:size])` true::await self._fault(device, _ERR_ALLOC, \"no TX data region\")": {
+  "action": "none (comment in place)",
+  "class": "c",
+  "proof": "a missing TX buffer refuses construction (_buffers_ready()), so no answer is ever sent without one; read_at() cannot refuse, sent + size never passing total, the PieceBuffer's own length",
+  "verdict": "kept: type narrowing, stated in place (agent, 2026-10-27)"
+ },
  "src/asy_uart_comm.py::UARTComm._take_discarded::`bus is None` true::return 0": {
   "action": "comment in place owed (src, the next block)",
   "class": "c",
-  "proof": "_take_discarded() runs only inside _resync() during a transaction, and no transaction runs without the bus setup refused at :934",
+  "proof": "_take_discarded() runs only inside _resync() during a transaction, and no transaction runs without the bus setup refused at :948",
   "verdict": "kept: type narrowing; its comment is owed"
  },
  "src/asy_uart_comm.py::UARTComm._write_frame_with_ack::`buf is None` true::await self._err(_ERR_ALLOC, \"no TX buffer\")": {
@@ -206,7 +212,7 @@
  "src/asy_uart_driver.py::UART._line_failed::`_line_failed` is called::if line is not None:": {
   "action": "tests/test_asy_uart_driver.py::test_a_receive_overrun_mid_read_fails_each_multi_round_read_and_counts_what_it_had_taken; tests/test_asy_uart_driver.py::test_a_lap_during_the_copy_fails_every_read_path_and_no_phantom_byte_reaches_the_next_read; tests/test_asy_uart_driver.py::test_a_line_the_peer_stops_mid_way_times_out_and_counts_its_partial_discarded (agent, 2026-10-27)",
   "class": "a",
-  "proof": "reached by every readline_until_complete() failure with a line started (:665-666, :669-670, :680-681)",
+  "proof": "reached by every readline_until_complete() failure with a line started (:669-666, :673-670, :684-681)",
   "verdict": "covered: direct test"
  },
  "src/asy_uart_driver.py::UART._read_delimited::`got < 0` true::self._count_discarded(consumed)": {
@@ -350,7 +356,7 @@
  "src/asy_uart_link_driver.py::UARTLinkDriver._run_hazards::`bus is None` true::return": {
   "action": "comment in place owed (src, the next block)",
   "class": "c",
-  "proof": "_run_hazards() runs only from _exercise_loop() while initialized, and setup() refuses a None bus (asy_uart_comm.py:934)",
+  "proof": "_run_hazards() runs only from _exercise_loop() while initialized, and setup() refuses a None bus (asy_uart_comm.py:948)",
   "verdict": "kept: type narrowing; its comment is owed"
  },
  "src/asy_uart_link_driver.py::UARTLinkDriver._two_initiations::the `finally` body runs::for task in (first, second):": {
@@ -362,7 +368,7 @@
  "src/asy_uart_link_driver.py::UARTLinkDriver._write_raw::`bus is None` true::return False": {
   "action": "none (comment in place)",
   "class": "c",
-  "proof": "as :166",
+  "proof": "as :164",
   "verdict": "kept: type narrowing, stated in place (\"as _read_raw()\")"
  },
  "src/asy_webserver_service.py::WebserverService._run_system_cmd::`self._system_cmd is None` true::return INVALID": {

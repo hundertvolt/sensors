@@ -201,6 +201,21 @@ class PieceBuffer:
     def pieces(self) -> "Iterator[bytearray]":
         return iter(self._pieces)
 
+    def read_at(self, offset: int, dest: bytearray | memoryview) -> bool:
+        # write_at()'s mirror: exactly len(dest) bytes from offset into dest; out of range copies nothing.
+        if offset < 0 or offset + len(dest) > self._size:
+            return False
+        index, at = divmod(offset, self._piece_bytes)
+        done = 0
+        while done < len(dest):
+            piece = self._pieces[index]
+            n = min(len(piece) - at, len(dest) - done)
+            dest[done : done + n] = memoryview(piece)[at : at + n]
+            done += n
+            index += 1
+            at = 0
+        return True
+
     def trim(self, length: int) -> bool:
         # A short train's length: trailing pieces dropped and the last one shortened in place, nothing allocated.
         if length < 0 or length > self._size:
@@ -223,21 +238,6 @@ class PieceBuffer:
             piece = self._pieces[index]
             n = min(len(piece) - at, len(view) - done)
             piece[at : at + n] = view[done : done + n]
-            done += n
-            index += 1
-            at = 0
-        return True
-
-    def read_at(self, offset: int, dest: bytearray | memoryview) -> bool:
-        # write_at()'s mirror: exactly len(dest) bytes from offset into dest; out of range copies nothing.
-        if offset < 0 or offset + len(dest) > self._size:
-            return False
-        index, at = divmod(offset, self._piece_bytes)
-        done = 0
-        while done < len(dest):
-            piece = self._pieces[index]
-            n = min(len(piece) - at, len(dest) - done)
-            dest[done : done + n] = memoryview(piece)[at : at + n]
             done += n
             index += 1
             at = 0
