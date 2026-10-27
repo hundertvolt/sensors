@@ -1147,8 +1147,8 @@
  },
  "tests_hardware/bench/test_end_to_end_timing.py::test_cold_boot_to_first_http_response_latency_is_sane": {
   "hw_no_log": [
-   "CRr2",
-   "the bench log fixture and marker / the flash tier's logs fact"
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
   ],
   "no_assertion": [
    "justified",
@@ -1157,12 +1157,30 @@
  },
  "tests_hardware/bench/test_end_to_end_timing.py::test_real_concurrent_client_burst_does_not_crash_the_webserver": {
   "hw_no_log": [
-   "CRr2",
-   "the bench log fixture and marker / the flash tier's logs fact"
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails any E or W entry outside its provokes_log set: WEBSERVER W HTTP_REFUSED, W HTTP_PEER_RESET"
   ],
   "ns_seed_text": [
    "biting",
    "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests_hardware/bench/test_heap_under_connection_ceiling.py::test_report_the_boards_own_connection_wall": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails any E or W entry outside its provokes_log set: WEBSERVER W HTTP_REFUSED, W HTTP_PEER_RESET"
+  ]
+ },
+ "tests_hardware/bench/test_serving_heap_at_default_gc.py::test_every_source_and_route_fits_a_small_free_run": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails any E or W entry outside its provokes_log set: WEBSERVER E CALLBACK, E LOG_RAM_ONLY, SYSTEM W CONFIG_LOST, E CHIP_GET for BMP3XX/ISL29125/SCD30, E CFG_GET_RAISED for seven modules, E CFG_CALLBACK_RAISED for three"
+  ]
+ },
+ "tests_hardware/bench/test_serving_heap_at_default_gc.py::test_serving_sweep_at_the_reactive_default": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails any E or W entry outside its provokes_log set: WEBSERVER W HTTP_REFUSED, W HTTP_PEER_RESET; it ends_unreachable, so an unanswered end carries its window to the next read"
   ]
  },
  "tests_hardware/bench/test_end_to_end_timing.py::test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly": {
@@ -1171,34 +1189,28 @@
    "(c) the tolerated torn-write codes carry the owner's quoted ruling in place (:138)"
   ]
  },
- "tests_hardware/bench/test_heap_under_connection_ceiling.py::test_report_the_boards_own_connection_wall": {
-  "hw_no_log": [
-   "CRr2",
-   "the bench log fixture and marker / the flash tier's logs fact"
-  ]
- },
  "tests_hardware/bench/test_hotspot_role_reversal.py::test_bench_radio_associates_within_bounded_window": {
   "hw_no_log": [
-   "CRr2",
-   "the bench log fixture and marker / the flash tier's logs fact"
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
   ]
  },
  "tests_hardware/bench/test_hotspot_role_reversal.py::test_bench_radio_receives_a_valid_dhcp_lease": {
   "hw_no_log": [
-   "CRr2",
-   "the bench log fixture and marker / the flash tier's logs fact"
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
   ]
  },
  "tests_hardware/bench/test_hotspot_role_reversal.py::test_hotspot_ssid_matches_configured_hostname": {
   "hw_no_log": [
-   "CRr2",
-   "the bench log fixture and marker / the flash tier's logs fact"
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
   ]
  },
  "tests_hardware/bench/test_hotspot_role_reversal.py::test_leased_ip_falls_within_the_aps_own_subnet": {
   "hw_no_log": [
-   "CRr2",
-   "the bench log fixture and marker / the flash tier's logs fact"
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
   ]
  },
  "tests_hardware/bench/test_hotspot_role_reversal.py::test_malformed_http_request_over_real_wireless_degrades_cleanly": {
@@ -1209,14 +1221,14 @@
  },
  "tests_hardware/bench/test_hotspot_role_reversal.py::test_rapid_associate_disassociate_churn_doesnt_wedge_station_management": {
   "hw_no_log": [
-   "CRr2",
-   "the bench log fixture and marker / the flash tier's logs fact"
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
   ]
  },
  "tests_hardware/bench/test_hotspot_role_reversal.py::test_repeated_associate_disassociate_cycles_dont_wedge_the_dhcp_server": {
   "hw_no_log": [
-   "CRr2",
-   "the bench log fixture and marker / the flash tier's logs fact"
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
   ],
   "setup_credit_only": [
    "justified",
@@ -1225,26 +1237,20 @@
  },
  "tests_hardware/bench/test_hotspot_role_reversal.py::test_the_dut_accepts_the_toml_hotspot_password": {
   "hw_no_log": [
-   "CRr2",
-   "the bench log fixture and marker / the flash tier's logs fact"
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
   ]
  },
  "tests_hardware/bench/test_hotspot_role_reversal.py::test_the_uart_link_across_the_mode_switch_is_recorded": {
   "hw_no_log": [
-   "CRr2",
-   "the bench log fixture and marker / the flash tier's logs fact"
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
   ]
  },
  "tests_hardware/bench/test_network_resilience.py::test_an_oversized_body_is_refused_before_it_is_read": {
   "was:ns_allow_list": [
    "fixed",
    "(b) exact: W HTTP_CALL_TIMEOUT alone, counted once - the 413 logs nothing (tests/test_asy_webserver_connections.py:790-803) and a body that never arrives is one read-phase timeout (tests/test_asy_webserver_service.py:4338-4346). Bitten on synthetic errcount (a bad-head beside it)"
-  ]
- },
- "tests_hardware/bench/test_network_resilience.py::test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog": {
-  "hw_no_log": [
-   "CRr2",
-   "the bench log fixture and marker / the flash tier's logs fact"
   ]
  },
  "tests_hardware/bench/test_network_resilience.py::test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage": {
@@ -1255,26 +1261,26 @@
  },
  "tests_hardware/bench/test_rest_endpoints_over_sta.py::test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value": {
   "hw_no_log": [
-   "CRr2",
-   "the bench log fixture and marker / the flash tier's logs fact"
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
   ]
  },
  "tests_hardware/bench/test_rest_endpoints_over_sta.py::test_measurements_endpoint_returns_plausible_values_for_every_real_sensor": {
   "hw_no_log": [
-   "CRr2",
-   "the bench log fixture and marker / the flash tier's logs fact"
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
   ]
  },
  "tests_hardware/bench/test_rest_endpoints_over_sta.py::test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot": {
   "hw_no_log": [
-   "CRr2",
-   "the bench log fixture and marker / the flash tier's logs fact"
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
   ]
  },
  "tests_hardware/bench/test_scd30_frc_readiness_baseline.py::test_scd30_frc_readiness_baseline": {
   "hw_no_log": [
-   "CRr2",
-   "the bench log fixture and marker / the flash tier's logs fact"
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
   ]
  },
  "tests_hardware/bench/test_sensor_config_push_over_real_hardware.py::test_isl29125_calibrate_command_push_over_real_rest": {
@@ -1283,22 +1289,10 @@
    "the seed word is about an input, a value, a lock or a typo, not a logged code"
   ]
  },
- "tests_hardware/bench/test_serving_heap_at_default_gc.py::test_every_source_and_route_fits_a_small_free_run": {
-  "hw_no_log": [
-   "CRr2",
-   "the bench log fixture and marker / the flash tier's logs fact"
-  ]
- },
- "tests_hardware/bench/test_serving_heap_at_default_gc.py::test_serving_sweep_at_the_reactive_default": {
-  "hw_no_log": [
-   "CRr2",
-   "the bench log fixture and marker / the flash tier's logs fact"
-  ]
- },
  "tests_hardware/bench/test_uart_link_under_api_load.py::test_a_multi_chunk_set_echoes_intact_under_serving_load": {
   "hw_no_log": [
-   "CRr2",
-   "the bench log fixture and marker / the flash tier's logs fact"
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
   ],
   "was:same_callee": [
    "fixed",
@@ -1313,8 +1307,8 @@
  },
  "tests_hardware/bench/test_wifi_radio_reinit.py::test_the_radio_reinit_rung_restores_the_link": {
   "hw_no_log": [
-   "CRr2",
-   "the bench log fixture and marker / the flash tier's logs fact"
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it"
   ]
  },
  "tests_hardware/flash/test_bus_concurrency.py::test_a_held_sda_line_is_cleared_and_every_device_answers": {
@@ -2453,6 +2447,12 @@
    "no unread fact it emits: errors is the included bus_reader_loops.py's report_errors() key, which this script never calls (i2c_held_sda_recovery.py:18); its own facts are asserted by test_a_held_sda_line_is_cleared_and_every_device_answers"
   ]
  },
+ "tests_hardware/device_scripts/setup_resets_each_chip_once.py::setup_resets_each_chip_once": {
+  "ds_facts": [
+   "biting",
+   "its one fact, setups, is read whole by test_every_chip_setup_resets_it_once_after_a_read_identified_it (test_bus_concurrency.py:279-295): each chip's driver, address, transfer record and read after setup asserted; no included helper's key is emitted (errors: report_errors() is never called); bitten under --twin on three plants (a setup without its reset, a reset before the identity read, a second reset) (agent, 2026-10-27)"
+  ]
+ },
  "tests_hardware/device_scripts/isl29125_cross_device_concurrency.py::isl29125_cross_device_concurrency": {
   "ds_facts": [
    "justified",
@@ -2677,8 +2677,8 @@
  },
  "tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py::system_service_restarts_a_real_dead_task": {
   "ds_facts": [
-   "biting",
-   "round_<n> is read by prefix and asserted (test_reset_reasons.py:114); the restart mode's facts are asserted in test_task_supervisor.py"
+   "fixed",
+   "round_<n> is read by prefix, and its system value now carries the escalation's evidence: the script logs RAM-only (LogConfig(None, ...), :54), so test_the_supervisor_escalation_reboot_is_attributed asserts a round before the reset holds SYSTEM's E TASK_BUDGET_REBOOT (_round_holds_the_budget_entry) instead of production's FRAM history, which could pass only on a stale entry and failed on a cleared board. Bites: synthetic output with a stale board entry and no round holding it passes HEAD's test and fails the new one; rounds holding it pass the new test on a cleared board, where HEAD's fails; through TwinBoard the real script passes at both GC stages, 5 of 11 rounds holding it (S/u35/laneC/crr2b6/bites_escalation.log). The restart mode's facts are asserted in test_task_supervisor.py (agent, 2026-10-27)"
   ]
  },
  "tests_hardware/device_scripts/timer_alarm_pool_exhaustion.py::timer_alarm_pool_exhaustion": {
@@ -2789,6 +2789,12 @@
    "a false flag from the per-device split: the test loops distinct_wirings() and calls _restore_through_the_outage_on(device) (:340-387), whose own assertions carry the claim: no restore while the boot's sync attempt fails (:385), the restore after the sync takes the backup's stamp (:386) and SGP40 logs nothing (:387)"
   ]
  },
+ "tests/test_digital_twin_ntp.py::test_a_product_socket_failing_its_setup_or_connect_is_torn_down_and_the_next_fetch_builds_one_that_syncs": {
+  "setup_credit_only": [
+   "biting",
+   "a false flag from the per-step split: the test loops the two steps and calls _a_socket_failing_at(step) (:481-502), whose own assertions carry the claim: the fault fired once (:498), one E NTP_NOT_SENT and no request (:499), the attempt that synced added nothing (:500) and every socket made was closed (:502); bitten on a plant: a failed setup raising instead of self-healing failed it at its first wait (agent, 2026-10-27)"
+  ]
+ },
  "tests/test_digital_twin_ntp.py::test_a_lost_sync_keeps_the_local_time_and_the_alert_flashing": {
   "setup_credit_only": [
    "biting",
@@ -2799,6 +2805,30 @@
   "same_callee": [
    "biting",
    "two distinct paths, objects or runs compared: their agreement is the claim (two planted devices, a and c, with identical SCD30 wiring read equal, :413; distinct_wirings() then keeps the first of each, :414-416)"
+  ]
+ },
+ "tests_hardware/bench/test_network_resilience.py::test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails any E or W entry outside its provokes_log set: WEBSERVER W HTTP_REQUEST_CAP, W HTTP_CALL_TIMEOUT, W HTTP_BAD_HEAD, W HTTP_PEER_RESET, W HTTP_REFUSED"
+  ]
+ },
+ "tests_scripts/test_bench_log_check.py::test_a_marked_tests_entry_before_its_clear_inside_the_set_passes": {
+  "setup_credit_only": [
+   "biting",
+   "the claim is that the fixture raises nothing over an in-set entry before the test's own clear, and _drive() runs its setup and teardown to StopIteration and asserts every scripted read was made; S/u35/laneC/crr2b5/plants_i1.log turns it red (the pre-clear read not kept, a second read taken for the check)"
+  ]
+ },
+ "tests_scripts/test_bench_log_check.py::test_an_entry_a_marked_test_names_need_not_appear": {
+  "setup_credit_only": [
+   "biting",
+   "the claim is that the fixture raises nothing, and _drive() runs its setup and teardown to StopIteration and asserts every scripted read was made; plants_i1.out turns it red (2d73a934's fixture, the set admitting nothing, ends_unreachable ignored)"
+  ]
+ },
+ "tests_scripts/test_bench_log_check.py::test_a_test_that_ends_unreachable_hands_its_first_read_to_the_next_read": {
+  "setup_credit_only": [
+   "biting",
+   "the claim is that the fixture raises nothing, and _drive() runs its setup and teardown to StopIteration and asserts every scripted read was made; plants_i1.out turns it red (2d73a934's fixture, the set admitting nothing, ends_unreachable ignored)"
   ]
  }
 }

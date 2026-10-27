@@ -1,7 +1,7 @@
 # M.PROC.025: walks every call and raise in the seven never-raise modules and writes raising.md's rows below its header.
 # Usage: python3 -I audit/b3/raising_walk.py <tree> audit/b3/raising.md [--check] (re-run on the integration head). Audit only.
 # Hand verdicts: raising_verdicts/<module>.json, one file per module (raises by function, calls by "function::callee").
-import ast, collections, json, subprocess, sys
+import ast, collections, hashlib, json, os, subprocess, sys
 from pathlib import Path
 MODULES = ["asy_base_classes.py", "asy_config_manager.py", "asy_print_log.py", "asy_system_service.py", "asy_fram_manager.py", "asy_fram_driver.py", "math_helpers.py"]
 BROAD = {"Exception", "BaseException", "*"}
@@ -97,6 +97,32 @@ def e51_section(unreachable):  # the e51.md block for every hand "unreachable" v
     return "\n".join(out + ["", E51_END, ""])
 
 
+def src_tree_id(tree):  # git's tree id of the working tree's src/ (tracked and untracked, ignored left out), so the commit
+    # carrying a render records the id that render names: `git rev-parse <commit>:src` prints it (agent, 2026-10-27).
+    rels = subprocess.run(["git", "-C", str(tree), "ls-files", "-z", "-co", "--exclude-standard", "--", "src"], capture_output=True, check=True).stdout.decode().split("\0")
+    root = {}
+    for rel in rels:
+        if rel and os.path.lexists(tree / rel):
+            *dirs, name = rel.split("/")
+            node = root
+            for d in dirs:
+                node = node.setdefault(d, {})
+            node[name] = tree / rel
+    def obj(kind, body):
+        return hashlib.sha1(kind + b" %d\0" % len(body) + body).digest()
+    def tree_obj(node):  # entries sorted as git sorts them: a subtree's name compares with a trailing "/"
+        items = []
+        for name, v in node.items():
+            if isinstance(v, dict):
+                items.append((name + "/", b"40000", name, tree_obj(v)))
+            elif v.is_symlink():
+                items.append((name, b"120000", name, obj(b"blob", os.readlink(v).encode())))
+            else:
+                items.append((name, b"100755" if v.stat().st_mode & 0o100 else b"100644", name, obj(b"blob", v.read_bytes())))
+        return obj(b"tree", b"".join(mode + b" " + name.encode() + b"\0" + sha for _, mode, name, sha in sorted(items)))
+    return tree_obj(root.get("src", {})).hex()
+
+
 def splice_e51(text, section):  # replaces (or inserts) the block inside e51.md's header, which e51_sweep.py's render keeps
     header, sep, rest = text.partition("\n| file:line range")
     if E51_START in header:
@@ -176,8 +202,8 @@ def main():
     raises = [r for r in rows if r["kind"] == "raise"]
     text = out.read_text(encoding="utf-8").split("\n## Walk summary")[0].split("\n| module:line")[0].rstrip() + "\n"  # the header alone: re-runs stay idempotent
     summary = collections.Counter((r["mod"], r["kind"], "broad" if r["broad"] else ("narrow" if r["caught"] else "none")) for r in rows)
-    head = subprocess.run(["git", "-C", str(tree), "log", "-1", "--format=%h", "--", "src"], capture_output=True, text=True, check=False).stdout.strip() or "unknown"
-    body = [text, "## Walk summary", "", f"Walked over `src/` as of `{head}` by `audit/b3/raising_walk.py` (agent, 2026-10-22). Re-run it on the integration head: lanes P",
+    head = src_tree_id(tree)[:12]
+    body = [text, "## Walk summary", "", f"Walked over the `src/` tree `{head}` (git's tree id, from the working tree) by `audit/b3/raising_walk.py` (agent, 2026-10-22). Re-run it on the integration head: lanes P",
             "and Y edit four of these modules in U35. A row left \"open\" needs its per-site proof from the pinned source in the B3 campaign.", "", "Sites per module (call or raise) by the `try` enclosing them: inside one catching `Exception` (broad), inside one",
             "catching named classes only (narrow), or none. Broad sites are handled by construction; the rows below are the rest.", "",
             "| module | calls broad | calls narrow | calls none | raises |", "|---|---|---|---|---|"]

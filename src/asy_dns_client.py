@@ -146,7 +146,7 @@ async def resolve_ipv4(
         return host, DNS_RESOLVED
     try:
         tries_range = range(tries)
-    except (OverflowError, TypeError):  # a malformed tries: a non-int, or an int past a machine word
+    except OverflowError:  # a tries past a machine word; a non-int is a typing breakage mypy refuses (D.2)
         return None, DNS_NOT_SENT
     try:
         query = _build_query(host.lower().encode(), os.urandom(2))  # DNS names are case-insensitive (RFC 1035 SS2.3.3)

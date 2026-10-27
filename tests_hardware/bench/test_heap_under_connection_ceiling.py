@@ -63,6 +63,13 @@ _STAGGER_MARGIN_S = 2.0
 _SAMPLE_STEP_S = 0.25
 
 
+@pytest.mark.provokes_log(
+    "the full ceiling held and recycled: a recycle that beats its predecessor's slot release is refused, tracing HTTP_REFUSED",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+    ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
+    ("WEBSERVER", "W", "HTTP_REQUEST_CAP"),
+)
 def test_heap_at_peak_while_a_full_ceiling_is_held(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "_load.Note") -> None:
     ceiling = configured_max_connections()
     held_out: list[int] = []
@@ -113,6 +120,11 @@ def test_heap_at_peak_while_a_full_ceiling_is_held(board: "Board", bench: "Bench
 
 
 @pytest.mark.over_provisioned_image
+@pytest.mark.provokes_log(
+    "the connection walk ends on a refusal, which traces HTTP_REFUSED",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
 def test_report_the_boards_own_connection_wall(dut_ip: str, result_note: "_load.Note") -> None:
     # Row 5 of the decision table, and the reason §5 needs only two images: this walks connections
     # upward at RUNTIME, so ONE deliberately over-provisioned build reports the board's real

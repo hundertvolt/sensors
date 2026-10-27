@@ -83,24 +83,6 @@
   "proof": "a fixed 6-byte burst buffer always decodes",
   "verdict": "kept: type narrowing, stated in place"
  },
- "src/asy_isl29125_driver.py::ISL29125_I2C.reset::`not await i2c.set_register_struct(_REGISTER_DEVICE_ID, 'B', _CMD_RESET)` true::raise OSError(\"I2C bus not initialized\")": {
-  "action": "tests/test_asy_isl29125_driver.py::test_a_reset_write_the_bus_refuses_while_up_raises_with_no_config_read (agent, 2026-10-27)",
-  "class": "a",
-  "proof": "reached when the reset write is refused: set_register_struct() answers False (a down bus, or a write the bus refuses while up)",
-  "verdict": "covered: direct test"
- },
- "src/asy_isl29125_driver.py::ISL29125_Reader._rearm_interrupt::`except Exception` catches::except Exception as e:": {
-  "action": "tests/test_asy_isl29125_driver.py::test_a_re_arm_write_that_raises_is_logged_and_writes_no_thresholds (agent, 2026-10-27)",
-  "class": "b",
-  "proof": "reached only when configure(force=True) raises",
-  "verdict": "covered; kept: guard of a documented runtime failure (the re-arm write failing)"
- },
- "src/asy_isl29125_driver.py::ISL29125_Reader._set_int_armed::`except Exception` catches::except Exception as e:": {
-  "action": "tests/test_asy_isl29125_driver.py::test_an_interrupt_select_write_that_raises_is_logged_and_leaves_the_hold_state (agent, 2026-10-27)",
-  "class": "b",
-  "proof": "reached only when ISL29125_I2C.configure() raises",
-  "verdict": "covered; kept: guard of a documented runtime failure (the interrupt-select write failing)"
- },
  "src/asy_scd30_driver.py::SCD30_I2C._read_dev_register::`not await i2c.readinto(self._buffer, end=3)` true::raise OSError(\"I2C bus not initialized\")  # before the CRC check: a stale buffer would pass it": {
   "action": "tests/test_asy_scd30_driver.py::test_a_register_read_the_session_refuses_raises_before_the_crc_check (agent, 2026-10-27)",
   "class": "b",
@@ -146,7 +128,7 @@
  "src/asy_uart_comm.py::UARTComm._min_rx_ring::`bus is None` true::return 0": {
   "action": "comment in place owed (src, the next block): 'Unreachable: ... - kept to narrow the Optional for the type checker'",
   "class": "c",
-  "proof": "_min_rx_ring() is called only from _validate_receive(self._uart), after setup's `self._uart is None` refusal (:948)",
+  "proof": "_min_rx_ring() is called only from _validate_receive(self._uart), after setup's `self._uart is None` refusal (:941)",
   "verdict": "kept: type narrowing; its comment is owed"
  },
  "src/asy_uart_comm.py::UARTComm._send_train::`region is None or not pieces.read_at(sent, region[0:size])` true::await self._fault(device, _ERR_ALLOC, \"no TX data region\")": {
@@ -158,7 +140,7 @@
  "src/asy_uart_comm.py::UARTComm._take_discarded::`bus is None` true::return 0": {
   "action": "comment in place owed (src, the next block)",
   "class": "c",
-  "proof": "_take_discarded() runs only inside _resync() during a transaction, and no transaction runs without the bus setup refused at :948",
+  "proof": "_take_discarded() runs only inside _resync() during a transaction, and no transaction runs without the bus setup refused at :941",
   "verdict": "kept: type narrowing; its comment is owed"
  },
  "src/asy_uart_comm.py::UARTComm._write_frame_with_ack::`buf is None` true::await self._err(_ERR_ALLOC, \"no TX buffer\")": {
@@ -212,7 +194,7 @@
  "src/asy_uart_link_driver.py::UARTLinkDriver._run_hazards::`bus is None` true::return": {
   "action": "comment in place owed (src, the next block)",
   "class": "c",
-  "proof": "_run_hazards() runs only from _exercise_loop() while initialized, and setup() refuses a None bus (asy_uart_comm.py:948)",
+  "proof": "_run_hazards() runs only from _exercise_loop() while initialized, and setup() refuses a None bus (asy_uart_comm.py:941)",
   "verdict": "kept: type narrowing; its comment is owed"
  },
  "src/asy_uart_link_driver.py::UARTLinkDriver._write_raw::`bus is None` true::return False": {

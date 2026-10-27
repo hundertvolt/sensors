@@ -136,6 +136,7 @@ _PROMPT_HOLD_MS = 5
 _RECORDER_POLL_MS = 1  # the test's own real look at the sleep recorder's delays
 # @tunable l1.asy_uart_comm_gate_look_ms = 5
 _GATE_LOOK_MS = 5  # a real sleep in which the write gate takes its looks, its clock held
+# @tunable l1.asy_uart_comm_past_cancel_ack_hold_ms = 1300
 _PAST_CANCEL_ACK_HOLD_MS = 1300
 # @tunable l1.asy_uart_comm_cap_refusals = 50
 _REFUSALS = 50
@@ -2252,22 +2253,6 @@ def test_a_negative_expected_size_is_refused_not_read_as_dont_care() -> None:
     assert run(pair.with_listener(pair.initiator.uart_get(1, -5), listener_may_stall=True), _RUN_BOUND_S) is None
     # The contrast case: None really does mean don't care, and still works.
     assert copied_out(run(pair.with_listener(pair.initiator.uart_get(1)), _RUN_BOUND_S)) == b"hello"
-
-
-def test_a_non_buffer_payload_returns_a_sentinel_instead_of_raising() -> None:
-    # len(5) and "abc"[0:n] both raise TypeError; the responder's own get_callback payload was
-    # already type-checked, the initiator's was not.
-    pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()), RUN_LIMIT_S)
-    assert run(pair.initiator.uart_set(1, 5), RUN_LIMIT_S) is False  # type: ignore[arg-type]
-    assert run(pair.initiator.uart_set(1, "abc"), RUN_LIMIT_S) is False  # type: ignore[arg-type]
-
-
-def test_an_immutable_destination_is_refused_before_the_train_starts() -> None:
-    # bytes has no slice assignment, so this failed mid-train with a TypeError after the peer had
-    # already been acknowledged - the worst possible moment to discover it.
-    pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()), RUN_LIMIT_S)
-    assert run(pair.initiator.uart_get_into(1, b"\x00\x00"), RUN_LIMIT_S) is None  # type: ignore[arg-type]
-    assert pair.wire_from_initiator() == b""
 
 
 def test_a_refused_argument_is_logged_with_its_own_errno() -> None:

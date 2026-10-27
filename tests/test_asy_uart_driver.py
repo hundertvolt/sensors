@@ -590,14 +590,6 @@ def test_ready_survives_a_concurrent_deinit_mid_loop() -> None:
     assert run(scenario(), _RUN_BOUND_S) is False  # must not raise
 
 
-def test_ready_returns_false_on_a_malformed_mask() -> None:
-    # A non-int mask makes `event & mask` inside ready()'s own loop raise TypeError - not caught by
-    # any caller's own except clause (those only wrap the real UART call, not this await) - so
-    # ready() must catch it itself and degrade to False rather than propagating.
-    uart = _make_uart()
-    assert run(uart.ready("not-a-mask"), _RUN_BOUND_S) is False  # type: ignore[arg-type]
-
-
 def test_cancel_read_timeout_returns_false_if_not_locked() -> None:
     uart = _make_uart()
     assert run(uart.cancel_read_timeout(), _RUN_BOUND_S) is False
@@ -2458,7 +2450,7 @@ def test_a_deinit_during_the_delimited_reads_periodic_yield_ends_the_read() -> N
 
 def test_an_idle_wait_beyond_the_ticks_range_returns_false() -> None:
     # asyncio.sleep_ms() raises OverflowError for a delta of half the ticks period or more; ready()
-    # degrades that to False like a malformed mask. 2**61 is the 64-bit Unix port's half-period.
+    # degrades that to False. 2**61 is the 64-bit Unix port's half-period.
     try:
         time.ticks_add(time.ticks_ms(), 2**61)
         raised = False

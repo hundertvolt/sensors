@@ -30,13 +30,14 @@ import network  # noqa: E402 - imported after the prewarm and the UDP shim
 import run_generic_integration  # noqa: E402 - imported after the prewarm and the UDP shim
 from _async_harness import cancel, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim
+from _fake_time import DrivenTime  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import ERROR_LEVEL, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _port_bands import PortAllocator  # noqa: E402 - imported after the prewarm and the UDP shim
 from _src_const import src_int  # noqa: E402 - imported after the prewarm and the UDP shim
 from _strict_json import strict_loads  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
-from _twin_devices import generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
+from _twin_devices import distinct_wirings, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
 
 try:
     from typing import TYPE_CHECKING
@@ -79,9 +80,10 @@ class _BootTimeoutError(BaseException):
 
 class _Plant:
     # The device module as the boot entry sees it: main() runs the real one under the test's config and port, beside a
-    # watcher that plants `kind` once the boot-phase mark reaches `phase` (the loop core's next wait, or the watcher).
-    def __init__(self, module: "ModuleType", cfg_path: str, kind: str, phase: int) -> None:
-        self.module, self.cfg_path, self.kind, self.phase = module, cfg_path, kind, phase
+    # watcher that drives the clock until the boot-phase mark reaches `phase`, then plants `kind` (the loop core's next
+    # wait, or the watcher).
+    def __init__(self, module: "ModuleType", cfg_path: str, kind: str, phase: int, clock: DrivenTime) -> None:
+        self.module, self.cfg_path, self.kind, self.phase, self.clock = module, cfg_path, kind, phase, clock
         self.watchdog: machine.WDT | None = None
         self.interrupt = KeyboardInterrupt()
         self.raised_in_phase = 0
@@ -98,7 +100,7 @@ class _Plant:
         for _ in range(_BOOT_LIMIT_MS // _POLL_MS):
             if self.phase <= phase[1] <= _BOOT_DONE and (self.phase == _BOOT_DONE) == (phase[1] == _BOOT_DONE):
                 break
-            await asyncio.sleep_ms(_POLL_MS)
+            await self.clock.elapse(_POLL_MS)
         else:
             raise _BootTimeoutError
         self.raised_in_phase = phase[1]
@@ -196,14 +198,22 @@ async def _status(port: int) -> "dict[str, object]":
 
 
 def _next_boot_reads(cfg_path: str) -> "dict[str, object]":
-    # The boot after the watchdog's reset, on a new board: its /status system block once it serves.
-    async def scenario() -> "dict[str, object]":
+    # The boot after the watchdog's reset, on a new board: driven to its last phase, then on the real clock (the request,
+    # its server and the teardown on the loop's own), its /status system block once it serves.
+    async def scenario(clock: DrivenTime) -> "dict[str, object]":
         module = _fresh_board()
         module.__dict__["webserver"] = None  # the global the runner's wait reads: this boot's, not the ended one's
         port = _ports.next()
         main_task = asyncio.create_task(module.main(watchdog=machine.WDT(timeout=8000), cfg_path=cfg_path, debug=ERROR_LEVEL, web_host="127.0.0.1", web_port=port))
         try:
             await _wired(module)
+            phase = machine.mem_backup(1)
+            try:
+                await clock.run_until(lambda: phase[1] == _BOOT_DONE, _BOOT_LIMIT_MS)
+            except AssertionError as e:
+                raise AssertionError(f"the next boot never reached its last phase - {e}") from None
+            finally:
+                clock.release()
             for _ in range(_BOOT_LIMIT_MS // _POLL_MS):
                 try:
                     return await _status(port)
@@ -213,7 +223,8 @@ def _next_boot_reads(cfg_path: str) -> "dict[str, object]":
         finally:
             await cancel(main_task)
 
-    return run_timed(scenario(), timeout_s=_RUN_TIMEOUT_S)
+    with DrivenTime(*_driven_modules(), sleeps=True) as clock:
+        return run_timed(scenario(clock), timeout_s=_RUN_TIMEOUT_S)
 
 
 def _case(kind: str, phase: int, reset: str = "watchdog") -> "tuple[_Plant, BaseException | None, dict[str, object]]":
@@ -221,8 +232,10 @@ def _case(kind: str, phase: int, reset: str = "watchdog") -> "tuple[_Plant, Base
     # console soft reset (no hard reset: the power-on's cause and both regions kept) or after a power cycle (both cleared).
     machine.power_on()
     cfg_path = _cfg_dir(kind + str(phase) + reset)
-    plant = _Plant(_fresh_board(), cfg_path, kind, phase)
-    escaped = _run_entry(plant)
+    module = _fresh_board()
+    with DrivenTime(*_driven_modules(), sleeps=True) as clock:  # the boot's waits, on the clock the watcher drives
+        plant = _Plant(module, cfg_path, kind, phase, clock)
+        escaped = _run_entry(plant)
     assert plant.raised_in_phase, f"the boot never reached phase {phase}"
     assert plant.watchdog is not None and plant.watchdog.timeout == 8000, plant.watchdog
     if reset == "watchdog":
@@ -233,11 +246,17 @@ def _case(kind: str, phase: int, reset: str = "watchdog") -> "tuple[_Plant, Base
     return plant, escaped, _next_boot_reads(cfg_path)
 
 
-def _first_device_only() -> None:
-    # The entry and its record rule are the same on every device: the remaining classes run on the first one.
-    first = generated_devices()[0]
-    if device != first:
-        raise microtest.Skip(f"runs on {first}, the first generated device: every device runs the same entry")
+def _driven_modules() -> "list[object]":
+    # Every src module holding asyncio and the twin's machine and network: one clock for each sleep and tick read.
+    return [m for name, m in sorted(sys.modules.items()) if (name.startswith("asy_") or name in ("machine", "network")) and getattr(m, "asyncio", None) is asyncio]
+
+
+def _per_distinct_wiring() -> None:
+    # The record is written and read beside the device's whole booted graph: a class runs once per distinct wiring of
+    # every instance a device wires (SPECIFICATION.md E.2.1), devices wired identically sharing the first one's run.
+    chosen = distinct_wirings()
+    if device not in chosen:
+        raise microtest.Skip(f"runs on {chosen}, one device per distinct wiring of every instance")
 
 
 def _watchdog_bits(system: "dict[str, object]") -> int:
@@ -260,7 +279,7 @@ def test_a_loop_core_failure_after_boot_reads_22_at_the_next_boot() -> None:
 
 
 def test_a_non_exception_raised_in_a_task_after_boot_reads_22() -> None:
-    _first_device_only()
+    _per_distinct_wiring()
     _plant, escaped, system = _case("task", _BOOT_DONE)
     assert escaped is None, escaped  # a SystemExit too, which rp2 would turn into a soft reset
     assert system.get("ResetReason") == 22, system
@@ -268,7 +287,7 @@ def test_a_non_exception_raised_in_a_task_after_boot_reads_22() -> None:
 
 
 def test_a_loop_ended_during_boot_reads_10_plus_its_phase() -> None:
-    _first_device_only()
+    _per_distinct_wiring()
     plant, escaped, system = _case("core", _BOOT_SETUP)
     assert escaped is None, escaped
     assert _BOOT_SETUP <= plant.raised_in_phase < _BOOT_DONE, plant.raised_in_phase
@@ -277,7 +296,7 @@ def test_a_loop_ended_during_boot_reads_10_plus_its_phase() -> None:
 
 
 def test_a_console_interrupt_after_boot_still_reads_21() -> None:
-    _first_device_only()
+    _per_distinct_wiring()
     plant, escaped, system = _case("interrupt", _BOOT_DONE)
     assert escaped is plant.interrupt, escaped  # recorded with its own code and re-raised to the REPL
     assert system.get("ResetReason") == src_int(_SRC, "RR_INTERRUPTED"), system
@@ -286,7 +305,7 @@ def test_a_console_interrupt_after_boot_still_reads_21() -> None:
 
 def test_a_console_soft_reset_after_ctrl_c_reads_21() -> None:
     # Ctrl-D at the REPL inside the watchdog window re-runs main.py after a power-on boot: the recorded 21 is read.
-    _first_device_only()
+    _per_distinct_wiring()
     plant, escaped, system = _case("interrupt", _BOOT_DONE, "soft")
     assert escaped is plant.interrupt, escaped
     assert system.get("ResetReason") == src_int(_SRC, "RR_INTERRUPTED"), system
@@ -294,7 +313,7 @@ def test_a_console_soft_reset_after_ctrl_c_reads_21() -> None:
 
 
 def test_a_console_soft_reset_after_a_loop_end_reads_22() -> None:
-    _first_device_only()
+    _per_distinct_wiring()
     _plant, escaped, system = _case("core", _BOOT_DONE, "soft")
     assert escaped is None, escaped
     assert system.get("ResetReason") == 22, system
@@ -303,7 +322,7 @@ def test_a_console_soft_reset_after_a_loop_end_reads_22() -> None:
 
 def test_a_console_soft_reset_after_a_loop_ended_during_boot_reads_10_plus_its_phase() -> None:
     # No record during boot: the soft reset's boot reads the phase marker it kept, though the cause is the power-on's.
-    _first_device_only()
+    _per_distinct_wiring()
     plant, escaped, system = _case("core", _BOOT_SETUP, "soft")
     assert escaped is None, escaped
     assert _BOOT_SETUP <= plant.raised_in_phase < _BOOT_DONE, plant.raised_in_phase
@@ -312,7 +331,7 @@ def test_a_console_soft_reset_after_a_loop_ended_during_boot_reads_10_plus_its_p
 
 
 def test_a_power_cycle_after_ctrl_c_reads_1() -> None:
-    _first_device_only()
+    _per_distinct_wiring()
     plant, escaped, system = _case("interrupt", _BOOT_DONE, "power")
     assert escaped is plant.interrupt, escaped
     assert system.get("ResetReason") == src_int(_SRC, "_RR_POWER_ON"), system

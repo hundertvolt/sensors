@@ -651,14 +651,12 @@ def test_resolve_ipv4_overlong_dns_label_returns_none_not_an_exception() -> None
         assert redirect.constructed == 0, host
 
 
-def test_resolve_ipv4_a_malformed_tries_answers_not_sent_not_an_exception() -> None:
-    # tries is caller input like the name: range() refuses a non-int (TypeError) and an int past a machine word
-    # (OverflowError), and resolve_ipv4() answers either before any socket.
-    for bad_tries in (None, "3", [1], 1.5, 2**70):
-        with redirect_udp_port(asy_dns_client, _DNS_PORT, _make_port()) as redirect:
-            result = run(resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=50, tries=bad_tries, pr=_make_pr()))  # type: ignore[arg-type]  # the malformed value under test
-        assert result == (None, DNS_NOT_SENT), bad_tries
-        assert redirect.constructed == 0, bad_tries
+def test_resolve_ipv4_a_tries_past_a_machine_word_answers_not_sent_not_an_exception() -> None:
+    # range() refuses an int past a machine word with OverflowError, and resolve_ipv4() answers it before any socket.
+    with redirect_udp_port(asy_dns_client, _DNS_PORT, _make_port()) as redirect:
+        result = run(resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=50, tries=2**70, pr=_make_pr()))
+    assert result == (None, DNS_NOT_SENT)
+    assert redirect.constructed == 0
 
 
 def test_resolve_ipv4_parse_response_raising_bounds_error_returns_none() -> None:

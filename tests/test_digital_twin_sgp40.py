@@ -311,7 +311,7 @@ def test_a_cycle_without_compensation_sends_no_measurement_and_steps_no_streak_o
         cycles[0] += 1
         return result
 
-    reader._read_sgp = counted  # type: ignore[assignment,method-assign]
+    reader._read_sgp = counted  # type: ignore[assignment, method-assign]
 
     def measures() -> int:
         bus = machine.peripheral(bus_name)

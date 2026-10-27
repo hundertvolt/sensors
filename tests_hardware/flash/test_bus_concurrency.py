@@ -18,7 +18,7 @@ class _ResultNote(Protocol):
     def __call__(self, text: str, *, recovery: bool = False) -> None: ...
 
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("bus_hazard_concurrency", "bmp3xx", "fram")
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("bus_hazard_concurrency", "bmp3xx", "fram", "setup_resets")
 
 # @tunable l3.bus_concurrency_long_script_timeout_s = 120.0
 _LONG_SCRIPT_TIMEOUT_S = 120.0
@@ -41,6 +41,13 @@ _REC_SDA_STUCK = module_int_const(SRC_DIR, "asy_i2c_driver.py", "_REC_SDA_STUCK"
 _ERR_FRAM_CHIP_LOST = module_int_const(SRC_DIR, "asy_fram_driver.py", "_ERR_FRAM_CHIP_LOST")
 _RR_REBOOT = module_int_const(SRC_DIR, "asy_system_service.py", "_RR_REBOOT")
 _RR_FRAM_ERASED = module_int_const(SRC_DIR, "asy_system_service.py", "_RR_FRAM_ERASED")
+# Each chip driver's soft reset as its setup writes it: (to the chip's own address, else the general call), the bytes.
+_SETUP_RESETS = {
+    "scd30": (True, "d304"),  # soft reset 0xD304, SCD30 Interface Description 1.4.10
+    "bmp3xx": (True, "7eb6"),  # CMD register 0x7E, softreset 0xB6, BMP3xx DS001 4.3.22
+    "isl29125": (True, "0046"),  # 0x46 written to register 0x00 resets every register, ISL29125 FN8424 p9
+    "sgp40": (False, "06"),  # the general call reset to address 0x00, SGP40 datasheet Table 17
+}
 _TEST_BAND = frozenset(code("E", name) for name in ("TEST_SEED_A", "TEST_SEED_B", "TEST_SEED_C"))  # the command scripts' writes
 # The command scripts' scratch config directory: their reset ends them before their own cleanup.
 _REMOVE_COMMAND_SCRATCH = "import os\nif 'hwtest-scratch' in os.listdir():\n    for n in os.listdir('hwtest-scratch/'):\n        os.remove('hwtest-scratch/' + n)\n    os.rmdir('hwtest-scratch/')\nprint('SCRATCH_REMOVED')\n"
@@ -266,6 +273,26 @@ def test_a_held_sda_line_is_cleared_and_every_device_answers(board: Board, resul
     assert boot["held"] is True and boot["sda_high"] is True, f"the boot-time clear did not release SDA: {boot}"
     assert boot["status"] == _REC_SDA_LOW, f"the boot-time clear returned {boot['status']}, expected {_REC_SDA_LOW}"
     assert all(answer is None for answer in boot["answered"].values()), f"after the boot-time clear: {boot['answered']}"
+
+
+# Bench counterpart: none, E.6.6 row `flash-only-bus-checks`
+def test_every_chip_setup_resets_it_once_after_a_read_identified_it(board: Board, result_note: _ResultNote) -> None:
+    # Each I2C chip's driver setup() with its transfers recorded: one soft reset, after the chip's first read, then a
+    # valid read. Volatile writes only, so no wear.
+    setups = _table(_run(board, "setup_resets_each_chip_once.py", _SHORT_SCRIPT_TIMEOUT_S, bounds=True), "setups")
+    assert setups, "the script set up no I2C chip"
+    result_note(f"set up {sorted(setups)}")
+    for label, setup in sorted(setups.items()):
+        assert isinstance(setup, dict) and setup["driver"] in _SETUP_RESETS, f"{label}: no reset known for {setup}"
+        own, reset = _SETUP_RESETS[str(setup["driver"])]
+        address, log = setup["address"], setup["log"]
+        assert isinstance(address, int) and isinstance(log, list), f"{label}: {setup}"
+        target = address if own else 0x00
+        resets = [i for i, (op, to, data) in enumerate(log) if op == "w" and to == target and data == reset]
+        assert len(resets) == 1, f"{label}: {len(resets)} reset write(s) {reset} to {target:#04x} in its setup, expected one: {log}"
+        reads = [i for i, (op, to, _data) in enumerate(log) if op == "r" and to == address]
+        assert reads and reads[0] < resets[0], f"{label}: reset before any read identified it (reads at {reads[:3]}, reset at {resets[0]})"
+        assert setup["answer"] is None, f"{label}: the read after its setup failed: {setup['answer']}"
 
 
 # Bench counterpart: none, E.6.6 row `flash-only-bus-checks`

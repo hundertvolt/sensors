@@ -453,6 +453,70 @@ def test_a_driven_sleep_or_bound_refuses_a_delay_rp2s_ticks_cannot_hold() -> Non
     assert said == [[(1 << 29) - 1], "ticks interval overflow", "ticks interval overflow", []], said
 
 
+def test_release_runs_the_clock_on_at_the_real_rate_and_wakes_each_parked_sleep_after_its_time_left() -> None:
+    # Released at 100 ms, a sleeper parked until 300 ms wakes after 200 real ms, its stamp on the same clock; the module's
+    # asyncio is the real one again, and the driven clock refuses to move once released.
+    module = _Module()
+    woke: list[tuple[str, int]] = []
+
+    async def scenario(clock: DrivenTime) -> "tuple[int, bool, str]":
+        task = asyncio.create_task(_sleeper(module, 300, "parked", woke))
+        await clock.elapse(100)
+        clock.release()
+        start = time.ticks_ms()
+        await task
+        real_ms = time.ticks_diff(time.ticks_ms(), start)
+        try:
+            await clock.elapse(1)
+        except AssertionError as e:
+            return real_ms, module.asyncio is asyncio, str(e)
+        return real_ms, module.asyncio is asyncio, "moved after release"
+
+    with DrivenTime(module, sleeps=True) as clock:
+        real_ms, restored, refused = run(scenario(clock), 5)
+        assert clock.wakes() == [], clock.wakes()
+    assert 199 <= real_ms < 2000, f"the parked sleep ended {real_ms} real ms after release, not after the 200 it had left"
+    assert len(woke) == 1 and 300 <= woke[0][1] < 300 + real_ms, woke
+    assert restored, "the module's asyncio is still the driven one after release()"
+    assert "after release()" in refused, refused
+
+
+def test_a_bound_parked_at_release_keeps_awaiting_its_task_and_ends_on_the_real_clock() -> None:
+    # Released at 100 ms: a 300 ms bound around a 150 ms sleep hands back the result; a 200 ms bound around a 5 s sleep
+    # times out after the 100 ms it had left, and the sleep it awaited ends with it.
+    module = _Module()
+    ended: list[str] = []
+
+    async def inner(ms: int) -> str:
+        try:
+            await module.asyncio.sleep_ms(ms)
+            return f"slept {ms}"
+        finally:
+            ended.append(f"inner {ms} ended")
+
+    async def bounded(ms: int, bound_ms: int) -> str:
+        try:
+            result: str = await module.asyncio.wait_for_ms(inner(ms), bound_ms)
+        except asyncio.TimeoutError:
+            return f"timed out at {module.time.ticks_ms()}"
+        return result
+
+    async def scenario(clock: DrivenTime) -> "list[str]":
+        tasks = [asyncio.create_task(bounded(150, 300)), asyncio.create_task(bounded(5000, 200))]
+        await clock.elapse(100)
+        clock.release()
+        results = []
+        for task in tasks:  # no await inside a comprehension: MicroPython compiles one as its own function
+            results.append(await task)
+        return results
+
+    with DrivenTime(module, sleeps=True) as clock:
+        outcome = run(scenario(clock), 5)
+    assert outcome[0] == "slept 150", outcome
+    assert outcome[1].startswith("timed out at ") and 200 <= int(outcome[1].split()[-1]) < 2000, outcome
+    assert sorted(ended) == ["inner 150 ended", "inner 5000 ended"], ended
+
+
 if __name__ == "__main__":
     import microtest
 
