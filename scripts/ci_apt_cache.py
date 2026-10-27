@@ -16,6 +16,7 @@ import json
 import re
 import shutil
 import ssl
+import sys
 import time
 import urllib.parse
 from dataclasses import asdict, dataclass
@@ -30,8 +31,8 @@ if TYPE_CHECKING:
     class Fetcher(Protocol):
         def __call__(self, url: str, *, cap_s: float, budget: int) -> "Probe": ...
 
-# The cap on one mirror's probe, and the rate it must reach: healthy nodes serve 30 MB/s or more, the slow ones 45-130
-# kB/s (actions/runner-images#14823). The probe reads at most cap x rate bytes, so "healthy" is "that much inside the cap".
+# One mirror probe's cap and the rate it must reach: healthy nodes serve 30 MB/s or more, slow ones 45-130 kB/s
+# (actions/runner-images#14823). The probe reads at most cap x rate bytes: "healthy" is "that much inside the cap".
 # @tunable ci.apt_mirror_probe_cap_s = 10
 PROBE_CAP_S = 10
 # @tunable ci.apt_mirror_min_bytes_per_s = 1000000
@@ -358,7 +359,8 @@ def _cli_plan(args: argparse.Namespace) -> int:
 def _cli_dry_run_packages(args: argparse.Namespace) -> int:
     names = dry_run_packages(args.dry_run.read_text(encoding="utf-8"))
     if names is None:
-        warn(f"{args.dry_run}: Playwright's dry-run output is in a form this reader does not know")
+        # stdout carries only the names, so the caller's $(...) never takes a message for one.
+        print(f"{args.dry_run}: Playwright's dry-run output is in a form this reader does not know", file=sys.stderr)
         return 1
     print(" ".join(names), flush=True)
     return 0

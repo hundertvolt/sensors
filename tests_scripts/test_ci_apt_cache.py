@@ -341,3 +341,9 @@ def test_the_commands_chain_as_the_ci_steps_run_them(mirrors: Callable[[Serve], 
     assert (tmp_path / "copy-in").read_bytes() == str(cache / _FILE).encode() + b"\0"
     done = _run("check", manifest=manifest, have=tmp_path / "copy-in", mirror_list=list_path, out=tmp_path / "hit.txt")
     assert done.returncode == 0 and "no mirror check" in done.stdout and not (tmp_path / "hit.txt").exists(), done.stdout + done.stderr
+    (tmp_path / "dry-run.txt").write_text("Missing system dependencies (2):\n  libnss3\n  xvfb\n", encoding="utf-8")
+    done = _run("dry-run-packages", dry_run=tmp_path / "dry-run.txt")
+    assert (done.returncode, done.stdout) == (0, "libnss3 xvfb\n"), done.stderr
+    (tmp_path / "dry-run.txt").write_text("Installing dependencies...\n", encoding="utf-8")
+    done = _run("dry-run-packages", dry_run=tmp_path / "dry-run.txt")
+    assert (done.returncode, done.stdout) == (1, "") and "does not know" in done.stderr, "an unread form exits 1 and leaves stdout, which the step captures, empty"
