@@ -342,11 +342,10 @@ def _with_struct(exc: BaseException, call: "Callable[[], bool]") -> bool:
 
 
 def test_a_buffer_or_offset_struct_refuses_is_a_false_answer() -> None:
-    # A read-only or absent buffer (TypeError) and an offset past a machine word (OverflowError), as struct raises them.
+    # A read-only buffer (TypeError) and an offset past a machine word (OverflowError), as struct raises them.
     params = VOCAlgorithm().params
-    assert params.pack_into(bytes(VOCAlgorithm.get_params_memsize())) is False  # type: ignore[arg-type]  # read-only on purpose
+    assert params.pack_into(memoryview(bytes(VOCAlgorithm.get_params_memsize()))) is False  # a read-only memoryview
     assert params.pack_into(bytearray(VOCAlgorithm.get_params_memsize()), offset=1 << 70) is False
-    assert params.unpack_from(None) is False  # type: ignore[arg-type]  # no buffer on purpose
     assert params.unpack_from(bytearray(VOCAlgorithm.get_params_memsize()), offset=1 << 70) is False
 
 

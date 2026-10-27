@@ -4885,34 +4885,34 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests/test_voc_algorithm.py:310 | test_pack_into_buffer_too_small_returns_false_not_raise | unit (MicroPython) | biting | — | biting as is |
 | tests/test_voc_algorithm.py:317 | test_unpack_from_buffer_too_small_returns_false_not_raise | unit (MicroPython) | biting | — | biting as is |
 | tests/test_voc_algorithm.py:344 | test_a_buffer_or_offset_struct_refuses_is_a_false_answer | unit (MicroPython) | biting | — | biting as is |
-| tests/test_voc_algorithm.py:353 | test_a_stack_overflow_or_an_allocation_failure_in_the_state_codec_propagates | unit (MicroPython) | biting | loop_vacuous | loop_vacuous: biting: the iterable is a fixed non-empty table, vector list, constant or the shipped device list |
-| tests/test_voc_algorithm.py:372 | test_deserialize_with_malformed_buffer_leaves_algorithm_usable | unit (MicroPython) | biting | — | biting as is |
-| tests/test_voc_algorithm.py:381 | test_unpack_from_refuses_a_field_outside_int32 | unit (MicroPython) | biting | — | biting as is |
-| tests/test_voc_algorithm.py:397 | test_a_restored_uptime_above_the_small_int_limit_is_clamped | unit (MicroPython) | biting | — | biting as is |
-| tests/test_voc_algorithm.py:411 | test_pack_into_writes_little_endian | unit (MicroPython) | biting | — | biting as is |
-| tests/test_voc_algorithm.py:423 | test_the_ports_own_state_always_restores | unit (MicroPython) | justified | loop_vacuous; wide_tolerance | loop_vacuous: biting: the iterable is a fixed non-empty table, vector list, constant or the shipped device list; wide_tolerance: justified: int32 is the state codec's stored width; the claim is representability |
-| tests/test_voc_algorithm.py:432 | test_the_lowered_uptime_limit_leaves_the_output_unchanged | unit (MicroPython) | biting | same_callee | same_callee: biting: two distinct paths, objects or runs compared: their agreement is the claim |
-| tests/test_voc_algorithm.py:462 | test_fix16_mul_and_div_are_approximate_inverses | unit (MicroPython) | biting | — | biting as is |
-| tests/test_voc_algorithm.py:472 | test_fix16_mul_with_a_negative_operand_takes_the_masking_branches | unit (MicroPython) | biting | — | biting as is |
-| tests/test_voc_algorithm.py:496 | test_fix16_div_by_zero_returns_minimum_sentinel | unit (MicroPython) | biting | — | biting as is |
-| tests/test_voc_algorithm.py:501 | test_fix16_mul_overflow_returns_overflow_sentinel | unit (MicroPython) | biting | — | biting as is |
-| tests/test_voc_algorithm.py:509 | test_fix16_sqrt_matches_integer_square_root | unit (MicroPython) | biting | — | biting as is |
-| tests/test_voc_algorithm.py:516 | test_fix16_exp_saturates_at_documented_bounds | unit (MicroPython) | biting | — | biting as is |
-| tests/test_voc_algorithm.py:525 | test_fix16_div_dividing_the_minimum_value_takes_the_shifted_quotient_branch | unit (MicroPython) | biting | — | biting as is |
-| tests/test_voc_algorithm.py:531 | test_fix16_div_result_equal_to_minimum_returns_overflow_sentinel | unit (MicroPython) | biting | — | biting as is |
-| tests/test_voc_algorithm.py:539 | test_fix16_div_overflow_returns_the_overflow_sentinel | unit (MicroPython) | biting | — | biting as is |
-| tests/test_voc_algorithm.py:546 | test_fix16_div_by_a_multiple_of_two_to_the_32_returns_at_once | unit (MicroPython) | biting | — | biting as is |
-| tests/test_voc_algorithm.py:557 | test_fix16_helpers_match_the_c_reference_vectors | unit (MicroPython) | biting | loop_vacuous | loop_vacuous: biting: the iterable is a fixed non-empty table, vector list, constant or the shipped device list |
-| tests/test_voc_algorithm.py:569 | test_the_index_sequence_matches_the_c_reference | unit (MicroPython) | biting | — | biting as is |
-| tests/test_voc_algorithm.py:577 | test_no_sample_converts_a_constant | unit (MicroPython) | biting | — | biting as is |
-| tests/test_voc_algorithm.py:589 | test_the_sample_constants_are_converted_by_f16_at_construction | unit (MicroPython) | biting | — | biting as is |
-| tests/test_voc_algorithm.py:606 | test_voc_state_round_trips_through_a_real_fram_chunk_across_a_simulated_reboot | unit (MicroPython) | biting | — | biting as is |
-| tests/test_voc_algorithm.py:654 | test_voc_state_restore_from_a_hard_fram_read_failure_leaves_algorithm_state_untouched | unit (MicroPython) | biting | — | biting as is |
-| tests/test_voc_algorithm.py:698 | test_voc_state_self_heals_from_a_single_corrupted_copy_through_real_fram | unit (MicroPython) | biting | — | biting as is |
-| tests/test_voc_algorithm.py:743 | test_pack_into_negative_offset_returns_false_not_raise | unit (MicroPython) | biting | — | biting as is |
-| tests/test_voc_algorithm.py:752 | test_unpack_from_negative_offset_returns_false_not_raise | unit (MicroPython) | biting | — | biting as is |
-| tests/test_voc_algorithm.py:758 | test_set_tuning_parameters_smoke_test_normal_values | unit (MicroPython) | biting | — | biting as is |
-| tests/test_voc_algorithm.py:777 | test_both_estimator_uptimes_stop_at_the_uptime_limit | unit (MicroPython) | biting | — | biting as is |
+| tests/test_voc_algorithm.py:352 | test_a_stack_overflow_or_an_allocation_failure_in_the_state_codec_propagates | unit (MicroPython) | biting | loop_vacuous | loop_vacuous: biting: the iterable is a fixed non-empty table, vector list, constant or the shipped device list |
+| tests/test_voc_algorithm.py:371 | test_deserialize_with_malformed_buffer_leaves_algorithm_usable | unit (MicroPython) | biting | — | biting as is |
+| tests/test_voc_algorithm.py:380 | test_unpack_from_refuses_a_field_outside_int32 | unit (MicroPython) | biting | — | biting as is |
+| tests/test_voc_algorithm.py:396 | test_a_restored_uptime_above_the_small_int_limit_is_clamped | unit (MicroPython) | biting | — | biting as is |
+| tests/test_voc_algorithm.py:410 | test_pack_into_writes_little_endian | unit (MicroPython) | biting | — | biting as is |
+| tests/test_voc_algorithm.py:422 | test_the_ports_own_state_always_restores | unit (MicroPython) | justified | loop_vacuous; wide_tolerance | loop_vacuous: biting: the iterable is a fixed non-empty table, vector list, constant or the shipped device list; wide_tolerance: justified: int32 is the state codec's stored width; the claim is representability |
+| tests/test_voc_algorithm.py:431 | test_the_lowered_uptime_limit_leaves_the_output_unchanged | unit (MicroPython) | biting | same_callee | same_callee: biting: two distinct paths, objects or runs compared: their agreement is the claim |
+| tests/test_voc_algorithm.py:461 | test_fix16_mul_and_div_are_approximate_inverses | unit (MicroPython) | biting | — | biting as is |
+| tests/test_voc_algorithm.py:471 | test_fix16_mul_with_a_negative_operand_takes_the_masking_branches | unit (MicroPython) | biting | — | biting as is |
+| tests/test_voc_algorithm.py:495 | test_fix16_div_by_zero_returns_minimum_sentinel | unit (MicroPython) | biting | — | biting as is |
+| tests/test_voc_algorithm.py:500 | test_fix16_mul_overflow_returns_overflow_sentinel | unit (MicroPython) | biting | — | biting as is |
+| tests/test_voc_algorithm.py:508 | test_fix16_sqrt_matches_integer_square_root | unit (MicroPython) | biting | — | biting as is |
+| tests/test_voc_algorithm.py:515 | test_fix16_exp_saturates_at_documented_bounds | unit (MicroPython) | biting | — | biting as is |
+| tests/test_voc_algorithm.py:524 | test_fix16_div_dividing_the_minimum_value_takes_the_shifted_quotient_branch | unit (MicroPython) | biting | — | biting as is |
+| tests/test_voc_algorithm.py:530 | test_fix16_div_result_equal_to_minimum_returns_overflow_sentinel | unit (MicroPython) | biting | — | biting as is |
+| tests/test_voc_algorithm.py:538 | test_fix16_div_overflow_returns_the_overflow_sentinel | unit (MicroPython) | biting | — | biting as is |
+| tests/test_voc_algorithm.py:545 | test_fix16_div_by_a_multiple_of_two_to_the_32_returns_at_once | unit (MicroPython) | biting | — | biting as is |
+| tests/test_voc_algorithm.py:556 | test_fix16_helpers_match_the_c_reference_vectors | unit (MicroPython) | biting | loop_vacuous | loop_vacuous: biting: the iterable is a fixed non-empty table, vector list, constant or the shipped device list |
+| tests/test_voc_algorithm.py:568 | test_the_index_sequence_matches_the_c_reference | unit (MicroPython) | biting | — | biting as is |
+| tests/test_voc_algorithm.py:576 | test_no_sample_converts_a_constant | unit (MicroPython) | biting | — | biting as is |
+| tests/test_voc_algorithm.py:588 | test_the_sample_constants_are_converted_by_f16_at_construction | unit (MicroPython) | biting | — | biting as is |
+| tests/test_voc_algorithm.py:605 | test_voc_state_round_trips_through_a_real_fram_chunk_across_a_simulated_reboot | unit (MicroPython) | biting | — | biting as is |
+| tests/test_voc_algorithm.py:653 | test_voc_state_restore_from_a_hard_fram_read_failure_leaves_algorithm_state_untouched | unit (MicroPython) | biting | — | biting as is |
+| tests/test_voc_algorithm.py:697 | test_voc_state_self_heals_from_a_single_corrupted_copy_through_real_fram | unit (MicroPython) | biting | — | biting as is |
+| tests/test_voc_algorithm.py:742 | test_pack_into_negative_offset_returns_false_not_raise | unit (MicroPython) | biting | — | biting as is |
+| tests/test_voc_algorithm.py:751 | test_unpack_from_negative_offset_returns_false_not_raise | unit (MicroPython) | biting | — | biting as is |
+| tests/test_voc_algorithm.py:757 | test_set_tuning_parameters_smoke_test_normal_values | unit (MicroPython) | biting | — | biting as is |
+| tests/test_voc_algorithm.py:776 | test_both_estimator_uptimes_stop_at_the_uptime_limit | unit (MicroPython) | biting | — | biting as is |
 | tests/test_website_build_integration.py:94 | test_root_serves_the_real_index_html | unit (MicroPython) | biting | — | biting as is |
 | tests/test_website_build_integration.py:103 | test_style_css_and_definitions_json_are_not_served_as_separate_files | unit (MicroPython) | biting | — | biting as is |
 | tests/test_website_build_integration.py:113 | test_inlined_definitions_and_stylesheet_replace_the_two_separately_staged_files | unit (MicroPython) | biting | — | biting as is |

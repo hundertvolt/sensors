@@ -7658,7 +7658,8 @@ backend-only or frontend-only validation/coercion policy change in this project.
   - **Serialisation writes into a caller-supplied buffer at an offset, never into a returned tuple
     or bytes** — `voc_algorithm.py`'s `pack_into(buf, offset)`/`unpack_from(buf, offset)` replacing
     the legacy `get_states()`/`set_states()` tuple pack. Each answers `False` for what `struct` raises
-    for a bad buffer or offset (`OverflowError`, `TypeError`, `ValueError`, `py/modstruct.c`); a
+    for a bad buffer or offset (`OverflowError`, `ValueError`, and `pack_into()`'s `TypeError` for a
+    read-only memoryview, `py/modstruct.c`); a buffer's type is the signature's (D.2); a
     `MemoryError` propagates to the SGP40 read path, which fails that whole read: the sample is
     dropped, `"Read failed:"` is logged with the error's text under `_ERR_READ` and counts toward
     the reader's give-up streak (C.7's `_error_check()`); an interrupted restore is retried on the
