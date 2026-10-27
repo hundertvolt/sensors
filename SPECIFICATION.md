@@ -5158,10 +5158,14 @@ collapsed: that collapse removed six hardcoded *copies* of every scenario. Every
 exactly once and stays device-generic; the per-device run adds no logic.
 
 `tests/test_digital_twin_sensortask_integration.py` runs its driver-specific scenarios only on the
-device `tests/_twin_devices.py` picks for them, and a scenario of a mechanism every device shares (the
+devices `tests/_twin_devices.py` picks for them, and a scenario of a mechanism every device shares (the
 radio's re-selection after failed joins) only on the first generated device, skipping each elsewhere
 with its reason: each drives seconds of real wall clock through a mechanism that is
-device-independent, so running it on every device would buy nothing.
+device-independent, so running it on every device would buy nothing. The pick is one device per
+distinct wiring of the scenario's drivers, the first of each in device order, and a wiring is what
+the scenario reads of a device: each driver's generated construction and the module constants it
+names, and for each bus, SPI bus or UART pair one sits on, that bus's own generated construction
+(its frequency, timeout or poll rates), its pins and its occupants.
 `tests/test_digital_twin_wifi_modes.py` boots one device for the same reason, the first generated
 plan wiring the neopixel and the FRAM the scenario reads, never a named one: one boot walks the Wi-Fi
 modes after a hotspot ran (the stations rule, a reconnecting settings change landing in the
