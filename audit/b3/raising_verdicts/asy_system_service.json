@@ -1,0 +1,501 @@
+{
+ "conventions": "Read on audit/u35-braise2 after its three fixes, against v1.29.0 (agent, 2026-10-27). Shared with asy_config_manager.json's conventions (the C-stack class, the small fixed allocations F.2 sends to I.4(a)), and here, by caller: __init__, begin_boot(), setup(), run_setups(), start_tasks(), start_timers() and supervise_tasks() run from build_system() or main() inside asyncio.run(main()), under the generated entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867), which records the loop end after BOOT_DONE (record_loop_end()) and leaves the armed watchdog to reset; _status_loop() is a supervised task, whose end :326's except Exception in _log_dead_task() persists before the restart (I.4(c)); the four system commands and pause_permanent_storage() are called only from the generated _system_cmd_callback(), which asy_webserver_service.py's _run_system_cmd() awaits in its try catching Exception (except :908, answer \"Failed\"); _set_dict_cfg() and get_dict_cfg() run on REST routes, under Microdot's except Exception (ext/microdot.py:1533) and the webserver's errorhandler (asy_webserver_service.py:791); _reboot()'s two callers sit in a try catching Exception (:498, :618). The unsupervised task tops (_reset_when_due, _shutdown_sequence, the supervisor) catch Exception themselves; their handlers' logging rows are asy_print_log.py's. Three raise paths left lasting state behind and are fixed with their tests: a raising erase preflight wedged the command gate (:394-396 now restore it), a raising unpause spent the mempause deadline (:532 and :714 now spend it after the unpause), and a raising signature line let the restarted loop draw a second boot signature (:538, :544 set the flag with the value); the third's trigger is pr.one(), asy_print_log.py's row.",
+ "raises": {
+  "SystemService._request_shutdown": {
+   "verdict": "handled",
+   "proof": "cleanup then re-raise (:394-396): a raising erase preflight first reopens the gate, then the raise reaches the four command methods' one caller chain, the generated _system_cmd_callback() under asy_webserver_service.py _run_system_cmd()'s except Exception (:908, answer \"Failed\", persisted); a CancelledError propagates as a cancellation must (test_a_raising_preflight_leaves_the_gate_as_a_refusal_does)"
+  }
+ },
+ "calls": {
+  "<module>::const": {
+   "can_raise": "nothing at run time: the parser folds `_X = const(v)` (py/parse.c:832-866); a non-constant value is a SyntaxError at compile time (:842)",
+   "verdict": "unreachable",
+   "proof": "no call is left at run time: each const() is replaced by its value while parsing (py/parse.c:864, MICROPY_COMP_CONST) and the underscore names are dropped from the module (:855-858); the frozen build parses them in mpy-cross, so a bad value fails the build, never a boot; the public names (RR_INTERRUPTED, BOOT_*) keep a module attribute holding the folded value, and _VAL_DEBUG_LEVEL's tuple folds under MICROPY_COMP_CONST_TUPLE (py/parse.c:296-332)"
+  },
+  "SystemService.__init__::ConfigManager": {
+   "can_raise": "what ConfigManager.__init__ raises: its logger, Lock and Event (asy_config_manager.py:316-343)",
+   "verdict": "handled",
+   "proof": "small fixed, at boot: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
+  },
+  "SystemService.__init__::LockedValue": {
+   "can_raise": "MemoryError for the object, and what LockedValue.__init__ raises (asy_base_classes.py's rows)",
+   "verdict": "handled",
+   "proof": "small fixed, at boot: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
+  },
+  "SystemService.__init__::TickSeconds": {
+   "can_raise": "MemoryError for the object, and what TickSeconds.__init__ raises (asy_base_classes.py's rows)",
+   "verdict": "handled",
+   "proof": "small fixed, at boot: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
+  },
+  "SystemService.__init__::Timer": {
+   "can_raise": "MemoryError for the object (ports/rp2/machine_timer.c:116); ValueError only for an id other than -1 (:121-128), and none is passed",
+   "verdict": "handled",
+   "proof": "small fixed, at boot: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
+  },
+  "SystemService.__init__::asyncio.Event": {
+   "can_raise": "MemoryError for the Event and its TaskQueue (extmod/asyncio/event.py:9-11)",
+   "verdict": "handled",
+   "proof": "small fixed, at boot: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
+  },
+  "SystemService.__init__::asyncio.Lock": {
+   "can_raise": "MemoryError for the Lock and its TaskQueue (extmod/asyncio/lock.py:9-16)",
+   "verdict": "handled",
+   "proof": "small fixed, at boot: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
+  },
+  "SystemService.__init__::asyncio.ThreadSafeFlag": {
+   "can_raise": "MemoryError for the flag (extmod/asyncio/event.py:45-47)",
+   "verdict": "handled",
+   "proof": "small fixed, at boot: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
+  },
+  "SystemService.__init__::config_filename": {
+   "can_raise": "MemoryError for the joined str (asy_config_manager.py:235-238)",
+   "verdict": "handled",
+   "proof": "small fixed, at boot: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
+  },
+  "SystemService.__init__::instance_name": {
+   "can_raise": "nothing for an empty name_ext: it returns base_name (asy_config_manager.py:245-246)",
+   "verdict": "unreachable",
+   "proof": "name_ext is the literal \"\""
+  },
+  "SystemService._flush_config_stores::step_done": {
+   "can_raise": "what the step callback raises",
+   "verdict": "unreachable",
+   "proof": "the one caller passing it, _shutdown_sequence() (:461), passes self._own_feed, whose one row (WDT.feed()) cannot raise; _reboot() (:358) and _reset_when_due() (:427) pass none"
+  },
+  "SystemService._flush_config_stores::store.close_writes": {
+   "can_raise": "nothing: ConfigManager.close_writes() is one attribute store (asy_config_manager.py:470-473)",
+   "verdict": "unreachable",
+   "proof": "every store is a ConfigManager, the provider's list resolved in setup() (:755)"
+  },
+  "SystemService._own_feed::self._watchdog.feed": {
+   "can_raise": "nothing: rp2's feed is watchdog_update() (ports/rp2/machine_wdt.c:64-67)",
+   "verdict": "unreachable",
+   "proof": "watchdog is a machine.WDT or None, tested before the call"
+  },
+  "SystemService._reboot::asyncio.create_task": {
+   "can_raise": "MemoryError for the Task (extmod/modasyncio.c:176-178)",
+   "verdict": "handled",
+   "proof": "caught at :370: the starve fallback with record 6"
+  },
+  "SystemService._reboot::self._flush_config_stores": {
+   "can_raise": "MemoryError for its coroutine; each flush inside it sits in a try catching Exception (:307)",
+   "verdict": "handled",
+   "proof": "_reboot()'s two callers' except Exception (:498, :618): with _reset_armed set, each ends unfed and the watchdog resets with the record written at :357"
+  },
+  "SystemService._reboot::self._own_feed": {
+   "can_raise": "nothing: its one row, WDT.feed() (ports/rp2/machine_wdt.c:64-67)",
+   "verdict": "unreachable",
+   "proof": ""
+  },
+  "SystemService._reboot.<lambda>::self._reset_due.set": {
+   "can_raise": "nothing: ThreadSafeFlag.set() stores one existing member (extmod/asyncio/event.py:54-55)",
+   "verdict": "unreachable",
+   "proof": "the lambda runs later, outside the try around the arm: a soft Timer callback goes through mp_sched_schedule (ports/rp2/machine_timer.c:53, shared/runtime/mpirq.c:105) and the scheduler calls it in mp_call_function_1_protected (py/scheduler.c:115, py/runtime_utils.c:30-40), where the store allocates nothing"
+  },
+  "SystemService._reboot::self._reset_task.cancel": {
+   "can_raise": "RuntimeError for cancelling the running task (extmod/modasyncio.c:203-207); it allocates nothing",
+   "verdict": "unreachable",
+   "proof": "_reset_task is the task :364 just created (None before it, tested on :371), never the running one"
+  },
+  "SystemService._reboot::self._reset_timer.init": {
+   "can_raise": "OSError(ENOMEM) when the alarm pool is full (ports/rp2/machine_timer.c:107-110); MemoryError for the lambda's closure",
+   "verdict": "handled",
+   "proof": "every keyword is an int or the callable (:76-83), so no TypeError; caught at :370"
+  },
+  "SystemService._reboot::self._reset_when_due": {
+   "can_raise": "MemoryError for its coroutine (py/objgenerator.c:53-62)",
+   "verdict": "handled",
+   "proof": "caught at :370 as create_task at :364"
+  },
+  "SystemService._reboot::self._storage_pause": {
+   "can_raise": "what FRAMManager.set_pause() raises (asy_fram_manager.py:775-778, its own rows): its pr.evt()'s small fixed allocation, before its store",
+   "verdict": "handled",
+   "proof": "as _flush_config_stores at :358: the callers' except Exception (:498, :618), ending unfed with the record written at :357"
+  },
+  "SystemService._reboot::write_reset_record": {
+   "can_raise": "what _write_region() raises: nothing (mem_backup() of 0 or 1, three word stores)",
+   "verdict": "unreachable",
+   "proof": "write_reset_record()'s one row (:185): its words stay below 2**30 (:80-81), so no store allocates, into indices 0-2 of a 3- or 4-word region"
+  },
+  "SystemService._request_shutdown::_purpose_name": {
+   "can_raise": "nothing: int comparisons returning a literal str (:126-134)",
+   "verdict": "unreachable",
+   "proof": ""
+  },
+  "SystemService._request_shutdown::asyncio.create_task": {
+   "can_raise": "MemoryError for the Task (extmod/modasyncio.c:176-178)",
+   "verdict": "handled",
+   "proof": "caught at :405: the gate reopens and the command answers False"
+  },
+  "SystemService._request_shutdown::self._shutdown_sequence": {
+   "can_raise": "MemoryError for its coroutine (py/objgenerator.c:53-62)",
+   "verdict": "handled",
+   "proof": "caught at :405 as create_task at :404"
+  },
+  "SystemService._request_shutdown::store.close_writes": {
+   "can_raise": "nothing: ConfigManager.close_writes() is one attribute store (asy_config_manager.py:470-473)",
+   "verdict": "unreachable",
+   "proof": "every store is a ConfigManager, the provider's list resolved in setup() (:755)"
+  },
+  "SystemService._request_shutdown::write_reset_record": {
+   "can_raise": "what _write_region() raises: nothing (mem_backup() of 0 or 1, three word stores)",
+   "verdict": "unreachable",
+   "proof": "write_reset_record()'s one row (:185): its words stay below 2**30 (:80-81), so no store allocates, into indices 0-2 of a 3- or 4-word region"
+  },
+  "SystemService._set_dict_cfg::dict.fromkeys": {
+   "can_raise": "MemoryError for the dict sized to data (py/objdict.c:279-300)",
+   "verdict": "handled",
+   "proof": "data is the request's subset of the system group's fields (asy_webserver_service.py:678), at most the DebugLevel key: small fixed; a REST route's call: Microdot's except Exception (ext/microdot.py:1533) and the webserver's errorhandler (asy_webserver_service.py:791) (conventions)"
+  },
+  "SystemService._set_dict_cfg::name_cfg": {
+   "can_raise": "what name_cfg() raises: schema_names()' one-item list (asy_config_manager.py:266)",
+   "verdict": "handled",
+   "proof": "a REST route's call: Microdot's except Exception (ext/microdot.py:1533) and the webserver's errorhandler (asy_webserver_service.py:791) (conventions)"
+  },
+  "SystemService._set_dict_cfg::results.get": {
+   "can_raise": "nothing: dict.get() of a str key allocates nothing (py/objdict.c:309-340)",
+   "verdict": "unreachable",
+   "proof": "results is write_config()'s dict and the key name_cfg()'s str"
+  },
+  "SystemService._set_dict_cfg::self._apply_level": {
+   "can_raise": "MemoryError for its coroutine; each setter call inside it sits in a try catching Exception (:283)",
+   "verdict": "handled",
+   "proof": "a REST route's call: Microdot's except Exception (ext/microdot.py:1533) and the webserver's errorhandler (asy_webserver_service.py:791) (conventions)"
+  },
+  "SystemService._set_dict_cfg::self.cfgmgr.get_int_values": {
+   "can_raise": "what ConfigManager.get_int_values() raises: its small fixed allocations (asy_config_manager.json)",
+   "verdict": "handled",
+   "proof": "a REST route's call: Microdot's except Exception (ext/microdot.py:1533) and the webserver's errorhandler (asy_webserver_service.py:791) (conventions)"
+  },
+  "SystemService._set_dict_cfg::self.cfgmgr.write_config": {
+   "can_raise": "what ConfigManager.write_config() raises (asy_config_manager.json: small fixed outside its own catches)",
+   "verdict": "handled",
+   "proof": "called only from handle_set_cmd() (asy_api_response.py:64) on a REST PUT of the system group: a REST route's call: Microdot's except Exception (ext/microdot.py:1533) and the webserver's errorhandler (asy_webserver_service.py:791) (conventions)"
+  },
+  "SystemService._status_loop::asyncio.sleep_ms": {
+   "can_raise": "nothing: sleep_ms() reuses one SingletonGenerator (extmod/asyncio/core.py:55-58); its assert is compiled out (the frozen asyncio is built at opt=3, extmod/asyncio/manifest.py)",
+   "verdict": "unreachable",
+   "proof": "t is 1000; max() and ticks_add() of small ints"
+  },
+  "SystemService._status_loop::random.getrandbits": {
+   "can_raise": "MemoryError for a result of 2**30 or more, a big int (mp_obj_new_int_from_uint, extmod/modrandom.c:88-99); ValueError only past 32 bits",
+   "verdict": "handled",
+   "proof": "n is 32; the signature is stored only by set_value() after it, so the restarted loop draws again: small fixed, in the supervised status task: :326's except Exception in _log_dead_task(), then the restart (conventions)"
+  },
+  "SystemService._status_loop::self._ntp_boot_signature": {
+   "can_raise": "MemoryError for its coroutine; the callback inside it sits in a try catching Exception (:337), and utc_now() is asy_base_classes.py's row",
+   "verdict": "handled",
+   "proof": "small fixed, in the supervised status task: :326's except Exception in _log_dead_task(), then the restart (conventions)"
+  },
+  "SystemService._status_loop::self._storage_pause": {
+   "can_raise": "what FRAMManager.set_pause() raises: its pr.evt()'s small fixed allocation, before its store",
+   "verdict": "defect",
+   "proof": "fixed in this lane: the deadline was spent before the unpause, so a raise there left FRAM paused for the boot; it is now spent after it (:532) and the raise ends the supervised task (:326), whose restart unpauses (test_an_auto_unpause_that_raises_keeps_its_deadline_for_the_restarted_loop)"
+  },
+  "SystemService._status_loop::self._uptime_event.wait": {
+   "can_raise": "MemoryError for its generator and its IOQueue entry (extmod/asyncio/event.py:60-63; core.py:75-88: a list, a map entry, a poll registration)",
+   "verdict": "handled",
+   "proof": "small fixed, in the supervised status task: :326's except Exception in _log_dead_task(), then the restart (conventions)"
+  },
+  "SystemService._status_loop::time.ticks_diff": {
+   "can_raise": "nothing for small ints: ticks_ms() returns one, ticks_diff() takes two (extmod/modtime.c:150-176)",
+   "verdict": "unreachable",
+   "proof": ""
+  },
+  "SystemService._status_loop::time.ticks_ms": {
+   "can_raise": "nothing for small ints: ticks_ms() returns one, ticks_diff() takes two (extmod/modtime.c:150-176)",
+   "verdict": "unreachable",
+   "proof": ""
+  },
+  "SystemService.boot_phase::_write_region": {
+   "can_raise": "what _write_region() raises: nothing (mem_backup() of 0 or 1, three word stores)",
+   "verdict": "unreachable",
+   "proof": "its words stay below 2**30 (:80-81), so no store allocates, into indices 0-2 of a 3- or 4-word region"
+  },
+  "SystemService.erase_fram::self._request_shutdown": {
+   "can_raise": "MemoryError for its coroutine, and what _request_shutdown() raises: its log lines' small fixed allocations and the erase preflight, which now reopens the gate before it propagates (:394-396)",
+   "verdict": "handled",
+   "proof": "the generated _system_cmd_callback()'s caller, _run_system_cmd()'s except Exception (asy_webserver_service.py:908) (conventions)"
+  },
+  "SystemService.feed_watchdog::self._watchdog.feed": {
+   "can_raise": "nothing: rp2's feed is watchdog_update() (ports/rp2/machine_wdt.c:64-67)",
+   "verdict": "unreachable",
+   "proof": "watchdog is a machine.WDT or None, tested before the call"
+  },
+  "SystemService.get_dict_cfg::schema_names": {
+   "can_raise": "MemoryError for the one-item list (asy_config_manager.py:277)",
+   "verdict": "handled",
+   "proof": "a REST route's call: Microdot's except Exception (ext/microdot.py:1533) and the webserver's errorhandler (asy_webserver_service.py:791) (conventions)"
+  },
+  "SystemService.get_dict_cfg::self.cfgmgr.get_dict": {
+   "can_raise": "what ConfigManager.get_dict() raises: its dict of the one field (asy_config_manager.json)",
+   "verdict": "handled",
+   "proof": "called from the REST GET handlers (asy_webserver_service.py:648, :654): a REST route's call: Microdot's except Exception (ext/microdot.py:1533) and the webserver's errorhandler (asy_webserver_service.py:791) (conventions)"
+  },
+  "SystemService.pause_permanent_storage::max": {
+   "can_raise": "TypeError when the arguments do not compare (py/modbuiltins.c:274-285)",
+   "verdict": "unreachable",
+   "proof": "two ints; it returns one of them"
+  },
+  "SystemService.pause_permanent_storage::min": {
+   "can_raise": "TypeError when the arguments do not compare (py/modbuiltins.c:274-285)",
+   "verdict": "unreachable",
+   "proof": "two ints, the int duration and an int constant; it returns one of them"
+  },
+  "SystemService.pause_permanent_storage::self._storage_pause": {
+   "can_raise": "what FRAMManager.set_pause() raises: its pr.evt()'s small fixed allocation, before its store",
+   "verdict": "defect",
+   "proof": "fixed in this lane: pause_permanent_storage(0) cleared the pending deadline before its unpause; it now clears it after (:714), so a raise leaves the pending pause to end; the raise reaches the generated _system_cmd_callback()'s caller, _run_system_cmd()'s except Exception (asy_webserver_service.py:908) (conventions) (test_an_immediate_unpause_that_raises_keeps_the_pending_deadline)"
+  },
+  "SystemService.pause_permanent_storage::time.ticks_add": {
+   "can_raise": "OverflowError for a delta outside +-TICKS_PERIOD/2 (extmod/modtime.c:178-196)",
+   "verdict": "unreachable",
+   "proof": "duration is clamped to 0..3600 (:710), so the delta is at most 3,600,000 ms, far inside 2**29"
+  },
+  "SystemService.pause_permanent_storage::time.ticks_ms": {
+   "can_raise": "nothing for small ints: ticks_ms() returns one, ticks_diff() takes two (extmod/modtime.c:150-176)",
+   "verdict": "unreachable",
+   "proof": ""
+  },
+  "SystemService.reboot_bootloader::self._request_shutdown": {
+   "can_raise": "MemoryError for its coroutine, and what _request_shutdown() raises: its log lines' small fixed allocations",
+   "verdict": "handled",
+   "proof": "the generated _system_cmd_callback()'s caller, _run_system_cmd()'s except Exception (asy_webserver_service.py:908) (conventions)"
+  },
+  "SystemService.reboot_system::self._request_shutdown": {
+   "can_raise": "MemoryError for its coroutine, and what _request_shutdown() raises: its log lines' small fixed allocations",
+   "verdict": "handled",
+   "proof": "the generated _system_cmd_callback()'s caller, _run_system_cmd()'s except Exception (asy_webserver_service.py:908) (conventions)"
+  },
+  "SystemService.reset_to_defaults::self._request_shutdown": {
+   "can_raise": "MemoryError for its coroutine, and what _request_shutdown() raises: its log lines' small fixed allocations",
+   "verdict": "handled",
+   "proof": "the generated _system_cmd_callback()'s caller, _run_system_cmd()'s except Exception (asy_webserver_service.py:908) (conventions)"
+  },
+  "SystemService.run_setups::gc.collect": {
+   "can_raise": "nothing: gc_collect() and a small-int or None result (py/modgc.c:34-41)",
+   "verdict": "unreachable",
+   "proof": ""
+  },
+  "SystemService.run_setups::self.feed_watchdog": {
+   "can_raise": "nothing: its one row, WDT.feed() (ports/rp2/machine_wdt.c:64-67)",
+   "verdict": "unreachable",
+   "proof": ""
+  },
+  "SystemService.run_setups::setup": {
+   "can_raise": "what each module's setup() raises, each contracted not to",
+   "verdict": "handled",
+   "proof": "run_setups() catches nothing by design (:738-740): a raise ends asyncio.run(main()) in phase BOOT_SETUP, where the generated entry's except BaseException records nothing (record_loop_end(), during boot) and the watchdog's reset reads 12 at the next boot (test_a_raising_setup_propagates_and_nothing_after_it_runs)"
+  },
+  "SystemService.setup::self._apply_level": {
+   "can_raise": "MemoryError for its coroutine; each setter call inside it sits in a try catching Exception (:283)",
+   "verdict": "handled",
+   "proof": "small fixed, at boot: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
+  },
+  "SystemService.setup::self._config_stores_provider": {
+   "can_raise": "what the generated provider raises: the list of every config store, sized by the device's module count",
+   "verdict": "handled",
+   "proof": "as _level_setters_provider at :753: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
+  },
+  "SystemService.setup::self._level_setters_provider": {
+   "can_raise": "what the generated provider raises: the list of every logger's set_level(), sized by the device's module count",
+   "verdict": "handled",
+   "proof": "a one-time boot setup allocation: SystemService.setup() runs only from run_setups(); construction or a setup() at boot: the generated entry's except BaseException (conventions)"
+  },
+  "SystemService.setup::self.cfgmgr.get_int_values": {
+   "can_raise": "what ConfigManager.get_int_values() raises: its small fixed allocations",
+   "verdict": "handled",
+   "proof": "small fixed, at boot: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
+  },
+  "SystemService.setup::self.cfgmgr.setup": {
+   "can_raise": "what ConfigManager.setup() raises: its file and JSON errors are caught at :531, :538 and :596 (asy_config_manager.json); the rest is small fixed",
+   "verdict": "handled",
+   "proof": "small fixed, at boot: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
+  },
+  "SystemService.start_asy_status::asyncio.get_event_loop": {
+   "can_raise": "nothing: it returns the Loop class (extmod/asyncio/core.py:304-305)",
+   "verdict": "unreachable",
+   "proof": ""
+  },
+  "SystemService.start_asy_status::evtloop.create_task": {
+   "can_raise": "MemoryError for the Task (extmod/asyncio/core.py:143-147, :266-267; extmod/modasyncio.c:176-178)",
+   "verdict": "handled",
+   "proof": "start_asy_status() is a task starter: _start_task()'s try catching Exception (:506) holds it, at boot and at every restart"
+  },
+  "SystemService.start_asy_status::self._status_loop": {
+   "can_raise": "MemoryError for its coroutine (py/objgenerator.c:53-62)",
+   "verdict": "handled",
+   "proof": "as evtloop.create_task at :631: _start_task()'s except Exception (:506)"
+  },
+  "SystemService.start_tasks::asyncio.get_event_loop": {
+   "can_raise": "nothing: it returns the Loop class (extmod/asyncio/core.py:304-305)",
+   "verdict": "unreachable",
+   "proof": ""
+  },
+  "SystemService.start_tasks::asyncio.sleep_ms": {
+   "can_raise": "nothing: sleep_ms() reuses one SingletonGenerator (extmod/asyncio/core.py:55-58)",
+   "verdict": "unreachable",
+   "proof": "t is 1000 // len(task_starters), inside the loop over a non-empty list"
+  },
+  "SystemService.start_tasks::enumerate": {
+   "can_raise": "MemoryError for the enumerate object (py/objenumerate.c:42-50)",
+   "verdict": "handled",
+   "proof": "small fixed, at boot: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
+  },
+  "SystemService.start_tasks::gc.collect": {
+   "can_raise": "nothing: gc_collect() and a small-int or None result (py/modgc.c:34-41)",
+   "verdict": "unreachable",
+   "proof": ""
+  },
+  "SystemService.start_tasks::len": {
+   "can_raise": "nothing for a list",
+   "verdict": "unreachable",
+   "proof": "task_starters is the generated list"
+  },
+  "SystemService.start_tasks::loop.get_exception_handler": {
+   "can_raise": "nothing: it returns a class attribute (extmod/asyncio/core.py:291-292)",
+   "verdict": "unreachable",
+   "proof": ""
+  },
+  "SystemService.start_tasks::loop.set_exception_handler": {
+   "can_raise": "nothing: it stores Loop._exc_handler, which the class body already holds (extmod/asyncio/core.py:264, :288-289), so no map grows",
+   "verdict": "unreachable",
+   "proof": ""
+  },
+  "SystemService.start_tasks::self._start_task": {
+   "can_raise": "MemoryError for its coroutine; the starter inside it sits in a try catching Exception (:506)",
+   "verdict": "handled",
+   "proof": "small fixed, at boot: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
+  },
+  "SystemService.start_timers::asyncio.sleep_ms": {
+   "can_raise": "nothing: sleep_ms() reuses one SingletonGenerator (extmod/asyncio/core.py:55-58)",
+   "verdict": "unreachable",
+   "proof": "wait is 1..slot ms (:794, slot below 1000)"
+  },
+  "SystemService.start_timers::enumerate": {
+   "can_raise": "MemoryError for the enumerate object (py/objenumerate.c:42-50)",
+   "verdict": "handled",
+   "proof": "small fixed, at boot: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
+  },
+  "SystemService.start_timers::len": {
+   "can_raise": "nothing for a list",
+   "verdict": "unreachable",
+   "proof": "timers and triggers are the generated lists"
+  },
+  "SystemService.start_timers::self._run_timer_starter": {
+   "can_raise": "MemoryError for its coroutine; the starter inside it sits in a try catching Exception (:436)",
+   "verdict": "handled",
+   "proof": "small fixed, at boot: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
+  },
+  "SystemService.start_timers.<lambda>::self._sequencer_flag.set": {
+   "can_raise": "nothing: ThreadSafeFlag.set() stores one existing member (extmod/asyncio/event.py:54-55)",
+   "verdict": "unreachable",
+   "proof": "the lambda runs later, outside the try around the arm: a soft Timer callback goes through mp_sched_schedule (ports/rp2/machine_timer.c:53, shared/runtime/mpirq.c:105) and the scheduler calls it in mp_call_function_1_protected (py/scheduler.c:115, py/runtime_utils.c:30-40), where the store allocates nothing"
+  },
+  "SystemService.start_timers::self._sequencer_flag.wait": {
+   "can_raise": "MemoryError for its generator and its IOQueue entry (extmod/asyncio/event.py:60-63; core.py:75-88)",
+   "verdict": "handled",
+   "proof": "small fixed, at boot: construction or a setup() at boot: the generated entry's except BaseException (conventions)"
+  },
+  "SystemService.start_timers::self._sequencer_timer.init": {
+   "can_raise": "OSError(ENOMEM) when the alarm pool is full (ports/rp2/machine_timer.c:107-110); MemoryError for the lambda's closure",
+   "verdict": "handled",
+   "proof": "every keyword is an int or the callable, so no TypeError; caught at :798 (the sleep fallback)"
+  },
+  "SystemService.start_timers::time.ticks_add": {
+   "can_raise": "OverflowError for a delta outside +-TICKS_PERIOD/2 (extmod/modtime.c:178-196)",
+   "verdict": "unreachable",
+   "proof": "k * slot stays below _TIMER_BASE_PERIOD (1000 ms)"
+  },
+  "SystemService.start_timers::time.ticks_diff": {
+   "can_raise": "nothing for small ints: ticks_ms() returns one, ticks_diff() takes two (extmod/modtime.c:150-176)",
+   "verdict": "unreachable",
+   "proof": ""
+  },
+  "SystemService.start_timers::time.ticks_ms": {
+   "can_raise": "nothing for small ints: ticks_ms() returns one, ticks_diff() takes two (extmod/modtime.c:150-176)",
+   "verdict": "unreachable",
+   "proof": ""
+  },
+  "SystemService.start_uptime_timer::self._uptime_event.set": {
+   "can_raise": "nothing: ThreadSafeFlag.set() stores one existing member (extmod/asyncio/event.py:54-55)",
+   "verdict": "unreachable",
+   "proof": "a timer starter, reached through _run_timer_starter()'s try catching Exception (:436)"
+  },
+  "SystemService.supervise_tasks::asyncio.create_task": {
+   "can_raise": "MemoryError for the Task (extmod/modasyncio.c:176-178)",
+   "verdict": "handled",
+   "proof": "in phase BOOT_DONE: the generated entry's except BaseException, where record_loop_end() writes 22 (conventions)"
+  },
+  "SystemService.supervise_tasks::self._never.wait": {
+   "can_raise": "MemoryError for its generator (extmod/asyncio/event.py:28-35, a plain generator function)",
+   "verdict": "handled",
+   "proof": "as create_task at :809"
+  },
+  "SystemService.supervise_tasks::self._supervise": {
+   "can_raise": "MemoryError for its coroutine (py/objgenerator.c:53-62)",
+   "verdict": "handled",
+   "proof": "as create_task at :809"
+  },
+  "SystemService.supervise_tasks::self._supervisor_task.cancel": {
+   "can_raise": "RuntimeError only for cancelling the running task (extmod/modasyncio.c:203-207); it allocates nothing",
+   "verdict": "unreachable",
+   "proof": "the supervisor runs as its own task (:809); this finally runs in the caller's"
+  },
+  "_write_region::mem_backup": {
+   "can_raise": "ValueError for a region outside the port's table (extmod/machine_mem.c:135-150); it returns a static memoryview and allocates nothing",
+   "verdict": "unreachable",
+   "proof": "region is the literal 0 or 1 at every call, and rp2's table holds both RP2040 regions (ports/rp2/machine_mem_backup.c:38-44)"
+  },
+  "begin_boot::_write_region": {
+   "can_raise": "what _write_region() raises: nothing (mem_backup() of 0 or 1, three word stores)",
+   "verdict": "unreachable",
+   "proof": "its words stay below 2**30 (:80-81), so no store allocates, into indices 0-2 of a 3- or 4-word region"
+  },
+  "begin_boot::len": {
+   "can_raise": "nothing for a memoryview",
+   "verdict": "unreachable",
+   "proof": "record is mem_backup(0)'s memoryview"
+  },
+  "begin_boot::mem_backup": {
+   "can_raise": "ValueError for a region outside the port's table (extmod/machine_mem.c:135-150); it returns a static memoryview and allocates nothing",
+   "verdict": "unreachable",
+   "proof": "region is the literal 0 or 1 at every call, and rp2's table holds both RP2040 regions (ports/rp2/machine_mem_backup.c:38-44)"
+  },
+  "begin_boot::range": {
+   "can_raise": "nothing: `for i in range(n)` compiles to a counted loop with no range object (py/compile.c:1430, :1519-1563)",
+   "verdict": "unreachable",
+   "proof": "len(record), an int"
+  },
+  "begin_boot::reset_cause": {
+   "can_raise": "nothing: rp2's mp_machine_reset_cause() reads watchdog_caused_reboot() into a small int (ports/rp2/modmachine.c:80-88)",
+   "verdict": "unreachable",
+   "proof": ""
+  },
+  "record_loop_end::mem_backup": {
+   "can_raise": "ValueError for a region outside the port's table (extmod/machine_mem.c:135-150); it returns a static memoryview and allocates nothing",
+   "verdict": "unreachable",
+   "proof": "region is the literal 0 or 1 at every call, and rp2's table holds both RP2040 regions (ports/rp2/machine_mem_backup.c:38-44)"
+  },
+  "record_loop_end::write_reset_record": {
+   "can_raise": "what _write_region() raises: nothing (mem_backup() of 0 or 1, three word stores)",
+   "verdict": "unreachable",
+   "proof": "write_reset_record()'s one row (:185): its words stay below 2**30 (:80-81), so no store allocates, into indices 0-2 of a 3- or 4-word region"
+  },
+  "write_reset_record::_write_region": {
+   "can_raise": "what _write_region() raises: nothing (mem_backup() of 0 or 1, three word stores)",
+   "verdict": "unreachable",
+   "proof": "its words stay below 2**30 (:80-81), so no store allocates, into indices 0-2 of a 3- or 4-word region"
+  },
+  "SystemService.get_error_counter::self.pr.get_log": {
+   "can_raise": "what PrintLogHistory.get_log() raises (asy_print_log.py's rows): MemoryError growing its two lists to the configured history_length, and a small fixed allocation",
+   "verdict": "handled",
+   "proof": "get_error_counter() runs only inside WebserverService._write_errcount_entry() (handed over at asy_webserver_service.py:720, awaited at :1004), whose except Exception at :1005 logs the failure and writes this module's entry as unavailable"
+  },
+  "SystemService.reset_error_counter::self.pr.reset": {
+   "can_raise": "what PrintLogHistory.reset() or PrintLogHistoryStore.reset() raises (asy_print_log.py's rows): small fixed allocations",
+   "verdict": "handled",
+   "proof": "reset_error_counter() is called only by the ResetErrors fan-out, asyncio.gather(..., return_exceptions=True) at asy_webserver_service.py:871, which returns the raise as this store's outcome (extmod/asyncio/funcs.py:131-133); :876-880 log it and answer the key Failed"
+  }
+ }
+}

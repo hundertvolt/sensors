@@ -1,0 +1,61 @@
+{
+ "conventions": "Read at 36bee227 against v1.29.0 (agent, 2026-10-27). Two classes every row shares are not repeated per row: RuntimeError from a C-stack overflow (MP_STACK_CHECK) is I.4(d.1)'s design defect, recorded by the handler that catches it and rebooted on by the supervisor, never a per-site raise; and MemoryError from boxing a float result (rp2 sets no MICROPY_OBJ_REPR, so the default REPR_A holds, py/mpconfig.h:162-163, and mp_obj_new_float takes one GC block) is a small fixed run-time allocation, which F.2 sends to I.4(a): a function doomed without memory does not catch, its task ends, asy_system_service.py:326's except Exception in _log_dead_task() persists it and the supervisor restarts the task (I.4(c)). Parameter types are the mypy-checked `float | None` of each signature; D.2 forbids defending against out-of-contract types at run time.",
+ "raises": {},
+ "calls": {
+  "<module>::const": {
+   "can_raise": "nothing at run time: the parser folds `_X = const(v)` (py/parse.c:832-866); a non-constant value is a SyntaxError at compile time (:842)",
+   "verdict": "unreachable",
+   "proof": "no call is left at run time: each const() is replaced by its value while parsing (py/parse.c:864, MICROPY_COMP_CONST) and the underscore names are dropped from the module (:855-858); the frozen build parses them in mpy-cross, so a bad value fails the build, never a boot"
+  },
+  "abs_humidity::math.pow": {
+   "can_raise": "ValueError when finite arguments give a non-finite result (math_generic_2, py/modmath.c:53-60, math_error :40-42); TypeError for a non-number (py/obj.c:414)",
+   "verdict": "handled",
+   "proof": "the ValueError (and an OverflowError, an ArithmeticError) is caught by math_helpers.py:71's except (ArithmeticError, ValueError), which returns None: the never-raise residual E.5.1 keeps on rp2's single-precision float; TypeError cannot occur: both arguments are float arithmetic on `temperature`, a `float | None` the gate at :61 has compared"
+  },
+  "cct_mccamy::abs": {
+   "can_raise": "TypeError for an operand with no abs (mp_unary_op, py/modbuiltins.c:91-93)",
+   "verdict": "unreachable",
+   "proof": "`denominator` is `0.1858 - chroma_y`, a float: chroma_y is the `float | None` the gate at :81 compared, None excluded at :79; abs() of a float is a float"
+  },
+  "dew_point::math.log": {
+   "can_raise": "ValueError for an argument <= 0 or a non-finite result (mp_math_log, py/modmath.c:261-272); TypeError for a non-number (py/obj.c:414)",
+   "verdict": "handled",
+   "proof": "caught by math_helpers.py:123's except (ArithmeticError, ValueError), which returns None; the gate at :111 bounds humidity to 0.1-100, so the argument is 0.001-1 and the catch stays as the residual guard E.5.1 keeps; TypeError cannot occur (humidity is the compared `float | None`)"
+  },
+  "ema_step::math.isfinite": {
+   "can_raise": "TypeError for a non-number (MATH_FUN_1_TO_BOOL calls mp_obj_get_float, py/modmath.c:69-71, py/obj.c:414); it returns a bool, so it allocates nothing",
+   "verdict": "unreachable",
+   "proof": ":131's argument is `sample` after its `is None` test on the same line and :135's is `previous` after its own: both the `float | None` of the signature, so mp_obj_get_float always converts"
+  },
+  "pressure_at_height::math.exp": {
+   "can_raise": "ValueError when a finite argument gives an infinite result (math_generic_1, py/modmath.c:44-51, math_error :40-42); TypeError for a non-number (py/obj.c:414)",
+   "verdict": "handled",
+   "proof": "caught by math_helpers.py:150's except (ArithmeticError, ValueError), which returns None (the residual E.5.1 keeps); TypeError cannot occur: the argument is float arithmetic on dh and tmean, compared by the gate at :145"
+  },
+  "rel_humidity::math.pow": {
+   "can_raise": "ValueError when finite arguments give a non-finite result (py/modmath.c:53-60); TypeError for a non-number (py/obj.c:414)",
+   "verdict": "handled",
+   "proof": "caught by math_helpers.py:170's except (ArithmeticError, ValueError), which returns None (the residual E.5.1 keeps); TypeError cannot occur: the arguments are float arithmetic on `temperature`, compared by the gate at :160"
+  },
+  "rgb_to_hsb::max": {
+   "can_raise": "TypeError when two arguments do not compare (mp_builtin_min_max's many-args arm, py/modbuiltins.c:274-285); with three positional arguments the empty-sequence ValueError (:266) is the one-argument arm's only",
+   "verdict": "unreachable",
+   "proof": "the three arguments are the `float | None` triple the gate at :183 compared (None excluded at :181), and float compares with float; it returns one of its arguments, so it allocates nothing"
+  },
+  "rgb_to_hsb::min": {
+   "can_raise": "TypeError when two arguments do not compare (py/modbuiltins.c:274-285)",
+   "verdict": "unreachable",
+   "proof": "as max at :185: the same compared float triple; it returns one of its arguments"
+  },
+  "wet_bulb_temperature::math.atan": {
+   "can_raise": "ValueError only for a non-finite result from a finite argument (py/modmath.c:44-51), which atan never gives; TypeError for a non-number (py/obj.c:414)",
+   "verdict": "handled",
+   "proof": "all four calls sit in the try whose except (ArithmeticError, ValueError) at math_helpers.py:230 returns None; atan of a finite float is finite and every argument is float arithmetic on the compared temperature and humidity (gate :218)"
+  },
+  "wet_bulb_temperature::math.sqrt": {
+   "can_raise": "ValueError for a negative argument (a NaN result from a finite argument, py/modmath.c:44-51); TypeError for a non-number (py/obj.c:414)",
+   "verdict": "handled",
+   "proof": "both calls sit in the try whose except (ArithmeticError, ValueError) at math_helpers.py:230 returns None; the gate at :218 bounds humidity to 5-99, so both arguments (humidity + 8.313659 and humidity) are positive"
+  }
+ }
+}

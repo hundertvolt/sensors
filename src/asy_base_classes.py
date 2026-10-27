@@ -378,14 +378,6 @@ class TickSeconds:
         self._last = time.ticks_ms()
 
 
-def _checked_write_results(results: "WriteValidity") -> "WriteValidity":
-    # Lives out here so the raise isn't inside _set_dict_cfg's own try block: an overriding
-    # _set_mgr_cfg could return a malformed shape, which has to surface as that try's logged failure.
-    if not isinstance(results, dict):
-        raise TypeError("_set_mgr_cfg returned a non-dict result")
-    return results
-
-
 _utc_valid = False  # one writer (the NTP client's sync success), no await between read and use
 
 
@@ -522,11 +514,9 @@ class SensorReader:
             if old_values is None:
                 old_values = {}
 
-            try:  # _set_mgr_cfg is an overridable extension point - the call itself could misbehave on a
-                # subclass override (mirrors _get_dict_cfg's own _get_mgr_cfg handling); the isinstance
-                # check below extends that defense to a malformed return shape, not just a raise.
+            try:  # _set_mgr_cfg is an overridable extension point - the call itself could raise on a subclass
+                # override (mirrors _get_dict_cfg's own _get_mgr_cfg handling); its return shape is mypy's (D.2).
                 persisted, results = await self._set_mgr_cfg(data, cfg_vals)
-                results = _checked_write_results(results)
             except Exception as e:
                 report_if_fatal(e)
                 await self.pr.err_s("Error writing config dict:", e, errno=_ERR_CFG_SET_RAISED)
@@ -708,7 +698,6 @@ class SensorReader:
 
         try:
             persisted, res = await self._set_mgr_cfg({key: recovered}, cfg_vals)
-            res = _checked_write_results(res)
         except Exception as e:
             report_if_fatal(e)
             await self.pr.err_s("Error correcting", key, "after failed push:", e, errno=_ERR_RECOVERY_WRITE_RAISED)

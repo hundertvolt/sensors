@@ -398,49 +398,49 @@
  "tests/test_asy_system_service.py::test_a_chunk_that_cannot_be_blanked_stops_the_erase_before_any_overwrite": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_a_command_accepted_while_the_escalation_logs_keeps_its_own_reset": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_a_command_accepted_while_the_stack_escalation_logs_keeps_its_own_reset": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_a_command_before_the_supervisor_runs_waits_for_its_first_pass": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_a_command_in_its_preflight_refuses_a_mempause_and_another_word_and_the_same_word_waits": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_a_command_that_hangs_before_its_arm_reads_command_incomplete_at_the_next_boot": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_a_commands_acceptance_decides_the_reset_before_the_sequence_runs": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_a_config_put_mid_write_when_a_command_starts_is_flushed_before_the_arm": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_a_console_soft_reset_after_a_boot_phase_failure_reads_10_plus_the_phase": {
@@ -458,37 +458,37 @@
  "tests/test_asy_system_service.py::test_a_deadline_crossed_after_an_accepted_command_leaves_storage_paused": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_a_fault_in_a_shutdown_step_is_logged_and_the_watchdog_still_resets": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_a_file_that_cannot_be_deleted_ends_the_reset_in_code_9": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_a_fram_write_in_flight_completes_both_blocks_and_a_later_one_is_refused": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_a_hang_in_any_step_is_never_fed": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_a_healthy_sequence_feeds_once_per_step_and_last_right_before_the_arm": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_a_loop_ended_during_boot_writes_nothing_so_the_next_boot_reads_its_phase": {
@@ -500,103 +500,103 @@
  "tests/test_asy_system_service.py::test_a_power_cut_while_config_files_are_deleted_leaves_a_bootable_state": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_a_raising_flush_reaches_the_reset_and_reads_9_unless_a_config_reset_deletes_it": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_a_refused_command_never_stops_the_supervisor_feeding": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_a_refused_preflight_answers_the_same_word_waiting_on_it_with_its_own_outcome": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_a_staged_write_the_shutdown_cannot_put_on_flash_reads_9_unless_a_config_reset_deletes_it": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_a_store_running_on_config_the_flash_lacks_reads_9_unless_a_config_reset_deletes_it": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_a_supervisor_that_already_ended_lets_the_sequence_proceed_without_a_park": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_a_task_cancelled_inside_a_bus_session_frees_the_bus": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_after_the_takeover_no_other_site_feeds": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_an_arm_failure_in_the_sequence_starves_and_records_code_6": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_an_erase_under_an_active_mempause_completes": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_an_erase_whose_writes_stop_ends_in_code_9_with_every_block_marked_blank": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_an_erase_without_its_unit_buffer_blanks_the_chunks_and_ends_in_code_9": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_an_erased_chip_boots_like_a_new_one": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_an_escalation_armed_during_the_erase_preflight_refuses_the_command": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_an_escalation_whose_entry_write_waits_on_a_held_lock_still_records_code_20_in_budget": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_bootloader_takes_over_closes_quiesces_stops_then_enters_the_bootloader_with_code_4": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ],
   "setup_credit_only": [
    "biting",
@@ -606,7 +606,7 @@
  "tests/test_asy_system_service.py::test_erase_fram_zeroes_every_byte_and_reboots_with_code_8": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ],
   "setup_credit_only": [
    "biting",
@@ -616,19 +616,19 @@
  "tests/test_asy_system_service.py::test_every_command_over_rest_reaches_its_arm_without_an_owner_lock_deadlock": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_every_refusal_answers_false_and_changes_nothing": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_reboot_takes_over_closes_quiesces_stops_then_resets_with_code_3": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ],
   "setup_credit_only": [
    "biting",
@@ -638,7 +638,7 @@
  "tests/test_asy_system_service.py::test_reset_to_defaults_closes_flushes_quiesces_stops_deletes_then_reboots_with_code_7": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ],
   "setup_credit_only": [
    "biting",
@@ -648,7 +648,7 @@
  "tests/test_asy_system_service.py::test_reset_to_defaults_deletes_every_config_file_whatever_its_state": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_start_task_returns_the_real_task_on_success": {
@@ -666,31 +666,31 @@
  "tests/test_asy_system_service.py::test_tasks_dying_while_a_command_runs_never_escalate": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_the_escalation_decides_the_reset_before_its_entry_write": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_the_same_command_again_answers_true_and_any_other_answers_false": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_the_systems_own_log_reset_is_refused_from_the_reset_decision_on": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_system_service.py::test_two_commands_at_once_start_one_sequence_and_one_reset": {
   "helper_swallows": [
    "justified",
-   "_retire() (tests/test_asy_system_service.py:1128-1136) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1135)"
+   "_retire() (tests/test_asy_system_service.py:1130-1137) only cleans up a task the scenario leaves behind; its end is not the claim (stated at :1137)"
   ]
  },
  "tests/test_asy_uart_comm.py::test_both_halves_of_each_pair_move_identical_bytes": {
@@ -2757,6 +2757,48 @@
   "setup_credit_only": [
    "biting",
    "a false flag from the per-device split: the test loops devices_with() and calls _restart_ends_dark(device), whose nested scenario() (driven by run()) asserts the restart's frames are black then the overlay grey, the one remaining wake, a live restarted task and SYSTEM's one persisted TASK_RAISED entry; the scanner does not descend into a nested async def (agent, 2026-10-27)"
+  ]
+ },
+ "tests/test_asy_system_service.py::test_a_raising_preflight_leaves_the_gate_as_a_refusal_does": {
+  "helper_swallows": [
+   "justified",
+   "the test never calls _retire() itself: the scan reaches it through the teardown rig.stop(sup) (_Rig.stop, :1252-1258), which retires the tasks a scenario leaves behind (tests/test_asy_system_service.py:1130-1137, its end not the claim, stated at :1137); the claim is asserted before it, at :1589-1593: the injected MemoryError reaches the caller, the gate is reopened ((_shutdown, _shutdown_task) == (0, None)), a mempause is accepted and the next erase runs its preflight afresh"
+  ]
+ },
+ "tests/test_digital_twin_clock_jump.py::test_a_reader_stamps_each_sample_with_the_clock_as_stepped": {
+  "setup_credit_only": [
+   "biting",
+   "a false flag from the per-device split: the test loops distinct_wirings() and calls _stepped_stamps_on(device) (:237-264), whose own assertions carry the claim: for each step (0, -3600, 86400 s) a fresh BMP3XX sample is awaited (:257) and its TS must be within 1 s of the stepped clock (:264)"
+  ]
+ },
+ "tests/test_digital_twin_clock_jump.py::test_a_backup_dated_after_a_backward_step_is_expired_under_a_max_age_and_kept_under_none": {
+  "setup_credit_only": [
+   "biting",
+   "a false flag from the per-device split: the test loops distinct_wirings() and calls _backup_after_a_backward_step_on(device) (:75-139), whose own assertions carry the claim: after the two-hour step back, BackupMaxAge 60 refuses the backup with exactly one W SGP_BACKUP_AGE (:137) and 0 restores its stamp (:139)"
+  ]
+ },
+ "tests/test_digital_twin_hot_replug.py::test_a_power_cycled_bmp3xx_is_reconfigured_without_a_ladder_step": {
+  "setup_credit_only": [
+   "biting",
+   "a false flag from the per-device split: the test loops distinct_wirings() and calls _power_cycled_bmp3xx_on(device) (:113-142), whose own assertions carry the claim: after the power cycle the only warning is W BMP_CHIP_RESET (:135), OSR/CONFIG are restored (:136), no task ended (:137) and the watchdog never would have fired (:138)"
+  ]
+ },
+ "tests/test_digital_twin_ntp.py::test_an_sgp40_restore_waits_out_the_outage_and_follows_the_sync": {
+  "setup_credit_only": [
+   "biting",
+   "a false flag from the per-device split: the test loops distinct_wirings() and calls _restore_through_the_outage_on(device) (:340-387), whose own assertions carry the claim: no restore while the boot's sync attempt fails (:385), the restore after the sync takes the backup's stamp (:386) and SGP40 logs nothing (:387)"
+  ]
+ },
+ "tests/test_digital_twin_ntp.py::test_a_lost_sync_keeps_the_local_time_and_the_alert_flashing": {
+  "setup_credit_only": [
+   "biting",
+   "a false flag from the per-device split: the test loops distinct_wirings() and calls _lost_sync_on(device) (:258-293), whose own assertions carry the claim: once the sync is lost both flags read False (:291), the local time is kept (:292) and the alert flashes (:293)"
+  ]
+ },
+ "tests_scripts/test_twin_wiring_contract.py::test_identical_devices_share_one_run_on_the_first_of_them": {
+  "same_callee": [
+   "biting",
+   "two distinct paths, objects or runs compared: their agreement is the claim (two planted devices, a and c, with identical SCD30 wiring read equal, :413; distinct_wirings() then keeps the first of each, :414-416)"
   ]
  }
 }

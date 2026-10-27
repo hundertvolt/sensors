@@ -343,6 +343,20 @@ def test_setup_accepts_bmp384_since_it_shares_bmp388s_chip_id() -> None:
     _accepts_and_refuses_the_next_id(0x50)
 
 
+def test_setup_soft_resets_the_chip_once_after_its_id_check() -> None:
+    # The chip's own reset inside setup(): one 0xB6 to CMD (DS001 §4.3.22) after the CHIP_ID read, so each task
+    # restart that re-runs setup() resets the chip once and an unknown chip is never reset.
+    i2c, bmp = ready_bmp()
+    seed_chip_id(i2c, _BMP388_CHIP_ID)
+    seed_calibration(i2c)
+    assert run(bmp.setup()) is True
+    log = fake(i2c).log
+    resets = _writes_to(i2c, _REGISTER_CMD)
+    id_read = [i for i, entry in enumerate(log) if entry[0] == "writeto" and entry[3] is False and entry[2] == bytes([_REGISTER_CHIPID])]
+    assert [log[i][2] for i in resets] == [bytes([_REGISTER_CMD, 0xB6])], f"setup() sent CMD writes {[log[i][2] for i in resets]}"
+    assert id_read and id_read[0] < resets[0], "setup() reset the chip before identifying it"
+
+
 def test_setup_rejects_unknown_chip_id() -> None:
     i2c, bmp = ready_bmp()
     seed_chip_id(i2c, 0x99)

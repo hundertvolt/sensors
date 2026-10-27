@@ -26,7 +26,7 @@
       "2": {"owner": "base", "name": "GIVE_UP", "text": "the consecutive-failure streak exceeded max_module_error; the task gives up"},
       "3": {"owner": "base", "name": "CFG_GET_RAISED", "text": "the _get_mgr_cfg() extension point raised"},
       "4": {"owner": "base", "name": "CFG_CALLBACK_RAISED", "text": "a config-read callback raised"},
-      "5": {"owner": "base", "name": "CFG_SET_RAISED", "text": "the _set_mgr_cfg() extension point raised or returned a malformed result"},
+      "5": {"owner": "base", "name": "CFG_SET_RAISED", "text": "the _set_mgr_cfg() extension point raised"},
       "6": {"owner": "base", "name": "PUSH_RAISED", "text": "a live-push callback raised"},
       "7": {"owner": "base", "name": "CFG_SNAPSHOT_RAISED", "text": "reading the pre-write values for recovery raised"},
       "8": {"owner": "base", "name": "RECOVERY_READ_RAISED", "text": "the recovery read-back raised"},

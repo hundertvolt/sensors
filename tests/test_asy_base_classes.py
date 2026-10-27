@@ -1622,6 +1622,33 @@ def test_a_failure_the_loop_persisted_is_not_persisted_again_by_the_restarts_re_
     assert (_timer_count(reader), len(reader._trigger_timer.arms)) == (1, 1)
 
 
+def test_two_wakes_finding_one_failed_arm_persist_it_once_however_they_interleave() -> None:
+    # The trigger loop and a driver's read loop (SCD30, SGP40) both wake on one failed arm: the first parks in its log
+    # write, the second must find the failure taken. One TIMER entry, and both still end their task.
+    reader = _DividingReader(1)
+    with RaiseOnArm(OSError), record_prints():
+        reader.start_timer()
+    gate, parked, real = asyncio.Event(), [], reader.pr.err_s
+
+    async def held(*args: object, errno: int) -> None:  # a log write held open until both wakes ran
+        parked.append(errno)
+        await gate.wait()
+        await real(*args, errno=errno)
+
+    setattr(reader.pr, "err_s", held)  # noqa: B010 - an instance attribute shadowing the logger's method
+
+    async def body() -> "tuple[bool, bool]":
+        first = asyncio.create_task(reader._timer_fault())
+        await _until(lambda: bool(parked), "the first wake never reached its log write")
+        second = asyncio.create_task(reader._timer_fault())
+        await _until(lambda: second.done() or len(parked) > 1, "the second wake neither ended nor wrote")
+        gate.set()
+        return await first, await second
+
+    assert run(body()) == (True, True)
+    assert (_timer_count(reader), len(parked)) == (1, 1), f"a failed arm two wakes found was persisted {len(parked)} times"
+
+
 def test_a_failed_re_arm_persists_the_stored_failure_then_its_own_and_ends_the_loop() -> None:
     for exc in (OSError, MemoryError):
         reader = _DividingReader(1)
@@ -3290,30 +3317,8 @@ def test_set_dict_cfg_set_mgr_cfg_override_raising_marks_every_field_failed() ->
         _remove(path_prefix + "config_raisingmgr.cfg")
 
 
-def test_set_dict_cfg_set_mgr_cfg_override_malformed_result_marks_every_field_failed() -> None:
-    # Same defensive posture as the raising-override test above, for the other way a misbehaving override
-    # can fail: returning successfully but with a "results" that is not the WriteValidity dict the rest of
-    # _set_dict_cfg assumes - results.get(key) would otherwise raise AttributeError, uncaught.
-    class MalformedSetMgrCfgReader(SensorReaderConfig):
-        async def _set_mgr_cfg(
-            self, _data: "JsonMapping", _cfg_vals: "cm.ConfigSchema",
-        ) -> "tuple[bool, cm.WriteValidity]":
-            return True, "not a dict"  # type: ignore[return-value]  # deliberately malformed, simulating a misbehaving override
-
-    path_prefix = _SHARED_CFG_DIR
-    _remove(path_prefix + "config_malformedmgr.cfg")
-    try:
-        reader = MalformedSetMgrCfgReader(Meas(20.0, 50), "malformedmgr", _TEST_SCHEMA_SI, max_module_error=3, cfg_path=path_prefix)
-        run(reader.cfgmgr.setup())
-        results = run(reader._set_dict_cfg({"SampleInterval": 42}, _TEST_SCHEMA_SI))
-        assert results == {"SampleInterval": "Failed"}
-        assert reader.pr._err_count == 1
-    finally:
-        _remove(path_prefix + "config_malformedmgr.cfg")
-
-
 def test_set_dict_cfg_set_mgr_cfg_override_missing_key_marks_it_failed() -> None:
-    # A third malformed-override shape, after raising and returning a non-dict: the override reports
+    # A second misbehaving-override shape, after the raising one: the override reports
     # persisted=True with a real dict that is simply missing a key the caller asked about. The real
     # ConfigManager-backed _set_mgr_cfg never does this, but a subclass override could.
     #

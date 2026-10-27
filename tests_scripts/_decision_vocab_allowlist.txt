@@ -166,7 +166,6 @@ tests/machine.py	test-only: caps bytes accepted per write() call - see write()
 tests/test_asy_api_response.py	Both hooks supplied at once, with the synchronous one raising: post_fct() fires
 tests/test_asy_base_classes.py	Deliberately sync, unlike _get_mgr_cfg/_get_dict_cfg: the schema is static, fixe
 tests/test_asy_base_classes.py	Deliberately the inverse of what this test asserted under the old shared-instanc
-tests/test_asy_base_classes.py	type: ignore[return-value] # deliberately malformed, simulating a misbehaving ov
 tests/test_asy_bmp3xx_driver.py	type: ignore[method-assign] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_captive_dns.py	Many consecutive failures must never grow the pause past the configured ceiling
 tests/test_asy_config_manager.py	-0.0 == 0.0 in IEEE-754 float comparison, and int(-0.0) is the plain int 0 (no n

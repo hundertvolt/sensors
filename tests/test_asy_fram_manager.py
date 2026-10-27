@@ -2604,6 +2604,27 @@ def test_rx_overrun_on_block_0s_payload_read_is_absorbed_by_the_dual_copy_recove
     assert not [w for w in warnings if w.startswith("Invalid data in block 0")]  # a fault, not corruption
 
 
+def test_one_rx_overrun_logs_the_fault_and_the_fall_through_once_each_and_the_repair_nothing() -> None:
+    # Once per event: one failed payload read adds one E UNEXPECTED (the fault, _read_chunk) and one W
+    # FRAM_BLOCK_INVALID (the fall-through to block 1, "fault" not "invalid"); block 0's rewrite adds nothing.
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
+    chunk = manager.get_chunk(40, crc=CRC8(), owner="T1")  # 41 bytes with CRC - over the 32-byte DMA threshold
+    assert chunk is not None
+    run(chunk.write(bytes(range(40))))
+    before = run(manager.get_error_counter())
+    assert _entries(before) == [], f"the setup and the write logged {_entries(before)}"
+    chip.rx_overrun_remaining = 1
+    warnings = _recorded_warnings(manager)
+    assert run(chunk.read_into(chunk.get_buffer())) is True
+    after = run(manager.get_error_counter())
+    assert chip.rx_overrun_remaining == 0  # the overrun really did fire
+    assert _entries(after) == [(code("E", "UNEXPECTED"), "E"), (code("W", "FRAM_BLOCK_INVALID"), "W")], f"one overrun logged {_entries(after)}"
+    rose = after["FRAM"]["ErrCount"] - before["FRAM"]["ErrCount"]
+    assert rose == 2, f"the count rose by {rose}"
+    assert warnings == ["Read fault in block 0, reading block 1"], f"the read and its repair warned {warnings}"
+
+
 def test_rx_overrun_on_every_payload_read_fails_cleanly_instead_of_killing_the_caller() -> None:
     # Both copies unreadable is the genuinely unrecoverable case - it must still degrade to a
     # None result rather than propagate, since an escaping OSError would take the reader task
@@ -2998,6 +3019,39 @@ def test_a_failed_check_buffer_allocation_prints_its_own_text_once() -> None:
     with record_prints() as rec:
         assert run(chunk.read()) == bytearray(b"data")
     assert rec.lines == []  # the read's own entry is persisted, not a second console line
+
+
+def test_a_failed_read_copy_returns_the_sentinel_on_both_chunk_classes() -> None:
+    # read()'s copy-out is chunk-sized, so it degrades as the buffer it copies from does: the not-read sentinel, the
+    # failure's own text on the console (the memory gates read it) and one persisted ALLOC entry, never a raise.
+    err = MemoryError("injected for the read copy")  # worded clear of the memory gates' markers
+    real = bytearray
+
+    def failing(*args: object) -> bytearray:
+        if args and isinstance(args[0], memoryview):  # the copy of the data region: no other bytearray() takes a view
+            raise err
+        return real(*args)
+
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
+    plain = manager.get_chunk(4, crc=CRC8(), owner="T1")
+    stamped = manager.get_timestamped_chunk(4, _synced, crc=CRC8(), owner="T2")
+    assert plain is not None and stamped is not None
+    assert run(plain.write(b"data")) is True
+    assert run(stamped.write(b"stmp"))[0] is True
+    asy_fram_manager.bytearray = failing  # type: ignore[attr-defined]
+    try:
+        with record_prints() as rec:
+            assert run(plain.read()) is None
+            assert run(stamped.read()) == (None, None, None)
+    finally:
+        del asy_fram_manager.bytearray  # type: ignore[attr-defined]
+    assert rec.lines == [("FRAM", "chunk read: no buffer for the data copy:", err)] * 2
+    log = run(manager.get_error_counter())
+    assert log["FRAM"]["ErrNum"][-1] == code("E", "ALLOC")
+    assert log["FRAM"]["ErrCount"] == 2
+    assert run(plain.read()) == bytearray(b"data")  # nothing stored was touched: the next read copies again
+    assert run(stamped.read())[2] == bytearray(b"stmp")
 
 
 # ---------------------------------------------------------------------------
