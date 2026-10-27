@@ -34,7 +34,10 @@ _TIMEOUT_MS = 30
 _QUIET_WINDOW_MS = 45
 # @tunable l2.uart_field_sweep_run_limit_s = 120
 _RUN_LIMIT_S = 120
+# @tunable l2.uart_field_sweep_settle_ms = 5
 _SETTLE_MS = 5  # the responder's last read after the clean exchange's call returned
+# @tunable l2.uart_field_sweep_return_poll_ms = 1
+_RETURN_POLL_MS = 1  # a real look at whether the responder's call has returned
 
 
 def _uart_const(name: str) -> int:
@@ -115,7 +118,7 @@ def _sweep(field: str, crc: "CrcMaker") -> None:
                 pair.fake_a.write(frame)
                 await asyncio.sleep_ms(_QUIET_WINDOW_MS)
                 while returned[0] == seen:  # bounded by the run's own limit
-                    await asyncio.sleep_ms(1)
+                    await asyncio.sleep_ms(_RETURN_POLL_MS)
                 pair.link._advance()  # every byte whose wire time has passed delivered: nothing reads the initiator's end
                 acked = len(pair.wire_from_responder()) > 0
                 if acked != legal(value):
