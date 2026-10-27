@@ -9,7 +9,7 @@ import _load
 import evidence
 import http_client
 import pytest
-from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
+from error_log_helpers import assert_module_error_log_empty, assert_module_logged_one_code, code, errcount_entry, get_errcount, reset_all_error_logs
 from harness import schema_default
 
 if TYPE_CHECKING:
@@ -53,6 +53,12 @@ _ALTITUDE_STEP_M = 1000
 _SETTLE_INTERVALS = 3
 # @tunable l4.sensor_config_push_altitude_observe_intervals = 5
 _OBSERVE_INTERVALS = 5
+# A Calibrate run ends converged, or at the first read cycle past its window logging ISL_CAL_TIMEOUT: the wait for its
+# end allows that cycle this margin, polling the history at this pace once the window has closed.
+# @tunable l4.sensor_config_push_calibration_end_margin_s = 10.0
+_CAL_END_MARGIN_S = 10.0
+# @tunable l4.sensor_config_push_calibration_poll_s = 2.0
+_CAL_POLL_S = 2.0
 
 
 @pytest.mark.persistence_write
@@ -162,15 +168,22 @@ def test_sgp40_reset_voc_command_push_over_real_rest(board: "Board", dut_ip: str
     assert_module_error_log_empty(dut_ip, "SGP40")
 
 
-def test_isl29125_calibrate_command_push_over_real_rest(board: "Board", dut_ip: str, request: pytest.FixtureRequest) -> None:
+@pytest.mark.provokes_log(
+    "a Calibrate run the bench's unarranged light never lets converge closes its window with a warning",
+    ("ISL29125", "W", "ISL_CAL_TIMEOUT"),
+)
+def test_isl29125_calibrate_command_push_over_real_rest(board: "Board", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # The one ISL29125 field the test above excludes, for the reason that earns it its own:
     # Calibrate is command-only, so no readback can show it took effect. What can be pinned is
     # the pair of invariants a run must respect, reachable only from the real REST stack.
     reset_all_error_logs(dut_ip, request.node.name)
-    applied = _isl29125(dut_ip, "/sensors").get("GainRatio")
+    config = _isl29125(dut_ip, "/sensors")
+    applied, interval = config.get("GainRatio"), config.get("SampleInterval")
     assert applied is not None, "GainRatio is a schema field with a default - it can never be absent"
+    assert isinstance(interval, int) and not isinstance(interval, bool), f"GET /sensors ISL29125 lacks an int SampleInterval: {config!r}"
 
     put_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"Calibrate": True}}, timeout_s=_PROBE_TIMEOUT_S)
+    started = time.monotonic()  # taken after the answer, so the board's window has opened by then
     assert put_res.status_code == 200, f"PUT /sensors Calibrate failed: {put_res.status_code} {put_res.body!r}"
     result = _load.as_object(_load.as_object(put_res.json().get("result"), "result").get("ISL29125"), "result.ISL29125")
     assert result.get("Calibrate") == "Valid", f"real start_calibration() push was rejected: {result!r}"
@@ -187,9 +200,15 @@ def test_isl29125_calibrate_command_push_over_real_rest(board: "Board", dut_ip: 
     meas = _isl29125(dut_ip, "/measurements")
     assert "GainMeas" in meas, f"GET /measurements lost GainMeas: {meas!r}"
 
-    # An empty log, not an allowlist: a run that finds no usable scene reports that by leaving
-    # GainMeas null, never by warning.
-    assert_module_error_log_empty(dut_ip, "ISL29125")
+    # The run ends inside this test, so its warning never lands in the next test's log window; a run that finds no
+    # usable scene leaves GainMeas null and, at its window's close, ISL_CAL_TIMEOUT - the one entry it may leave.
+    ended = _calibration_end(dut_ip, started, interval)
+    assert ended is not None, f"no ISL_CAL_TIMEOUT and no GainMeas {_CAL_END_MARGIN_S} s past the window and one {interval} s read cycle: the run never ended"
+    result_note(f"the Calibrate run {ended} {time.monotonic() - started:.0f} s after its PUT")
+    if ended == "timed out":
+        assert_module_logged_one_code(dut_ip, "ISL29125", "W", code("W", "ISL_CAL_TIMEOUT"), events=1)
+    else:
+        assert_module_error_log_empty(dut_ip, "ISL29125")
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +248,21 @@ def test_scd30_altitude_takes_effect_while_ambient_pressure_is_zero(dut_ip: str,
         result_note(f"SCD30 Altitude {altitude} -> {stepped} m at AmbPres 0: CO2 before {[s.get('CO2') for s in _objects(record.get('before'))]}, after {[s.get('CO2') for s in _objects(record.get('after'))]} ({path.name})")
     assert words["Altitude restore"] in ("Valid", "Unchanged") and words["AmbPres restore"] in ("Valid", "Unchanged"), f"a restore was refused: {words}"
     assert_module_error_log_empty(dut_ip, "CFGMGR_SCD30")
+
+
+def _calibration_end(dut_ip: str, started: float, interval_s: int) -> "str | None":
+    # From the window's close: "timed out" once ISL_CAL_TIMEOUT is in the history; past one read cycle and the margin,
+    # "converged" if GainMeas holds a candidate, else None. A candidate alone ends no wait: every stable pair republishes.
+    closes = started + _load.src_number(_ISL29125_SRC, "_CAL_WINDOW_MS") / 1000
+    deadline, timeout = closes + interval_s + _CAL_END_MARGIN_S, code("W", "ISL_CAL_TIMEOUT")
+    time.sleep(max(0.0, closes - time.monotonic()))
+    while True:
+        history = errcount_entry(get_errcount(dut_ip), "ISL29125")["history"]
+        if any(h.get("type") == "W" and h.get("num") == timeout for h in history):
+            return "timed out"
+        if time.monotonic() >= deadline:
+            return "converged" if _isl29125(dut_ip, "/measurements").get("GainMeas") is not None else None
+        time.sleep(_CAL_POLL_S)
 
 
 def _co2_samples(dut_ip: str, intervals: int, interval_s: int) -> "list[JSONObject]":
