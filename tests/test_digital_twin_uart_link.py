@@ -28,11 +28,10 @@ import microtest  # noqa: E402 - imported after the prewarm and the UDP shim
 import network  # noqa: E402 - imported after the prewarm and the UDP shim
 import rp2  # noqa: E402 - imported after the prewarm and the UDP shim
 import run_generic_integration  # noqa: E402 - imported after the prewarm and the UDP shim
-from _async_harness import cancel_all, run  # noqa: E402 - imported after the prewarm and the UDP shim
+from _async_harness import cancel, cancel_all, run  # noqa: E402 - imported after the prewarm and the UDP shim
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
 from _fake_time import DrivenTime  # noqa: E402 - imported after the prewarm and the UDP shim
-from _fast_sleep import check_sleep_ms  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import ERROR_LEVEL, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _http_client import build_request, parse_status_line  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -84,6 +83,8 @@ _BUSES = wiring_plan(_DEVICE)["uart"]  # the two bus globals the plan names: "in
 assert _BUSES is not None, f"{_DEVICE}'s plan wires no uart pair"
 _ends: "dict[str, UARTLinkDriver]" = {}
 _watchdog: "list[WDT]" = []  # the latest build's watchdog, as its boot entry arms it
+_LINK_MODULES = (asy_uart_driver, asy_uart_comm, asy_uart_link_driver)  # every module holding the link's clock
+_virtual_now = [0]  # where the last driven run left the clock: a deadline one run stores stays comparable in the next
 # Each end's (port, tx, rx, bus, role, limits), read once off the latest build for the CRC16 pairs.
 _specs: "list[tuple[int, int, int, asy_uart_driver.UART, str, TransferLimits]]" = []
 _BANNER: bytes = src_bytes("src/asy_uart_link_driver.py", "_BANNER")
@@ -106,9 +107,9 @@ _PAUSE_ROUNDS = 6
 _WORST_GC_PAUSE_MS = 21
 # @tunable l2.uart_link_max_train_limit_s = 240
 _MAX_TRAIN_LIMIT_S = 240
-# A host stall past the link's 1000 ms reply timeout, after this many UART sleeps (mid-train: about 4350 in all)
+# A host stall past the link's 1000 ms reply timeout, after this many ticker rounds (mid-train: about 1550 in all)
 _MAX_TRAIN_STALL_MS = 1100
-_MAX_TRAIN_STALL_AFTER = 2000
+_MAX_TRAIN_STALL_AFTER = 750
 # @tunable l2.uart_link_hammer_limit_s = 300
 _HAMMER_LIMIT_S = 300
 # @tunable l2.uart_link_leak_rounds = 300
@@ -204,7 +205,7 @@ def test_a_raw_write_that_fails_in_the_sweep_reads_as_no_verdict() -> None:
     swept = asy_uart_link_driver._HAZARD_FIELDS
     asy_uart_link_driver._HAZARD_FIELDS = fields  # type: ignore[assignment]  # one illegal value, then the legal one
     try:
-        with DrivenTime(asy_uart_driver, asy_uart_comm, asy_uart_link_driver, sleeps=True) as clock:
+        with DrivenTime(*_LINK_MODULES, sleeps=True) as clock:
             _wire_on(link, clock)
             try:
                 run(go(clock), _RUN_LIMIT_S)
@@ -257,16 +258,6 @@ def _claim_every_free_channel() -> "list[rp2.DMA]":
             return claimed
 
 
-class _BackToBack:
-    # asy_uart_link_driver's asyncio with every sleep a bare yield: what the exerciser uses of it, nothing more.
-    get_event_loop = staticmethod(asyncio.get_event_loop)
-
-    @staticmethod
-    async def sleep_ms(ms: int) -> None:
-        check_sleep_ms(ms)
-        await asyncio.sleep_ms(0)
-
-
 def _crc16_pair() -> "tuple[UARTLinkDriver, UARTLinkDriver, TwinLink]":
     # The device's two link ends rebuilt over CRC16 buses on a new board, every bus and link parameter read off its
     # build, joined as the jumper joins them with bounded pollers; set up at synchronous scope (CLAUDE.md, asyncio.run()).
@@ -296,6 +287,18 @@ def _crc16_pair() -> "tuple[UARTLinkDriver, UARTLinkDriver, TwinLink]":
     return initiator, responder, link
 
 
+def _driven(link: "TwinLink", work: "Callable[[DrivenTime], Coroutine[object, object, T]]", limit: int = _RUN_LIMIT_S) -> "T":
+    # `work` on one driven clock over the link's modules and wire, on from the last run's instant, ended when it ends:
+    # a reply budget counts the link's own waits, never the host's load or speed, and no wait costs wall time (J.7).
+    with DrivenTime(*_LINK_MODULES, now=_virtual_now[0], sleeps=True) as clock:
+        _wire_on(link, clock)
+        try:
+            return run(_until_done(clock, work(clock), limit * 1000), limit)
+        finally:
+            del link._now_us  # the class's own wire clock again
+            _virtual_now[0] = clock.now
+
+
 def _errnos(comm: UARTComm) -> "list[int]":
     # Errors only: ErrNum holds both kinds and ErrType tells them apart. Indexed, not zip()ed: MicroPython has no strict=.
     entry = _run(comm.get_error_counter())[comm.name]
@@ -303,12 +306,12 @@ def _errnos(comm: UARTComm) -> "list[int]":
     return [nums[i] for i in range(len(nums)) if kinds[i] == "E"]
 
 
-async def _exercised(initiator: UARTLinkDriver, responder: UARTLinkDriver, done: "Callable[[], bool]") -> None:
+async def _exercised(clock: DrivenTime, initiator: UARTLinkDriver, responder: UARTLinkDriver, done: "Callable[[], bool]") -> None:
     # The pair's own loops, started as a boot starts them (the responder's listen, the initiator's exercise), until `done`.
     tasks = [start() for start in responder.get_task_starters() + initiator.get_task_starters()]
     try:
         while not done():
-            await asyncio.sleep_ms(_TICKER_STEP_MS)
+            await clock._sleep_ms(_TICKER_STEP_MS)
     finally:
         await cancel_all(tasks)
 
@@ -341,12 +344,12 @@ def _hammer_with_the_graph_running() -> None:
         link.direction_from(fake_a).wire_log.clear()
         link.direction_from(fake_b).wire_log.clear()
 
-    async def hammered(rounds: int) -> int:
-        noise = [asyncio.create_task(_uptime_noise()) for _ in range(_HAMMER_NOISE_CONSUMERS)]
+    async def hammered(clock: DrivenTime, rounds: int) -> int:
+        noise = [asyncio.create_task(_uptime_noise(clock)) for _ in range(_HAMMER_NOISE_CONSUMERS)]
         try:
             ok = 0
             for i in range(rounds):
-                if await exchange(initiator.uart_get(0x01)) is not None:
+                if await exchange(clock, initiator.uart_get(0x01)) is not None:
                     ok += 1
                 if not i % 20:
                     clear_wire_logs()
@@ -354,14 +357,14 @@ def _hammer_with_the_graph_running() -> None:
         finally:
             for task in noise:
                 task.cancel()
-            await asyncio.sleep_ms(_CANCEL_SETTLE_MS)
+            await clock._sleep_ms(_CANCEL_SETTLE_MS)
 
     # The warm-up absorbs one-time cost; the window is its own run, so the heap is read with no run's task record held.
-    _run(hammered(_HAMMER_WARMUP_ROUNDS), limit=_HAMMER_LIMIT_S)
+    _driven(link, lambda clock: hammered(clock, _HAMMER_WARMUP_ROUNDS), limit=_HAMMER_LIMIT_S)
     clear_wire_logs()
     gc.collect()
     free_n1 = gc.mem_free()
-    ok = _run(hammered(_HAMMER_ROUNDS), limit=_HAMMER_LIMIT_S)
+    ok = _driven(link, lambda clock: hammered(clock, _HAMMER_ROUNDS), limit=_HAMMER_LIMIT_S)
     clear_wire_logs()
     gc.collect()
     rate = (free_n1 - gc.mem_free()) / _HAMMER_ROUNDS
@@ -416,10 +419,9 @@ async def _read_status_repeatedly(readers: _Readers, clock: DrivenTime) -> None:
             readers.saw_pending += 1
 
 
-def _run(coro: "Coroutine[object, object, T]", limit: int = _RUN_LIMIT_S, clock: "PollRoundClock | None" = None) -> "T":
-    # Every run on the poll-round clock (SPECIFICATION.md J.7): both ends share this interpreter, so on the wall
-    # clock a host stall would spend the peer's reply budget and fail a correct link.
-    with clock if clock is not None else PollRoundClock():
+def _run(coro: "Coroutine[object, object, T]", limit: int = _RUN_LIMIT_S) -> "T":
+    # A run with no exchange in it (a boot, a setup, a log read) on the poll-round clock (SPECIFICATION.md J.7).
+    with PollRoundClock():
         return run(coro, limit)
 
 
@@ -465,9 +467,9 @@ class _Conn:
         return parse_status_line(raw[: raw.find(b"\r\n")]), body
 
 
-async def _settle_listener(listener: "asyncio.Task[object]") -> None:
+async def _settle_listener(clock: DrivenTime, listener: "asyncio.Task[object]") -> None:
     try:
-        await asyncio.wait_for(listener, _LISTENER_SETTLE_S)
+        await clock._wait_ms(listener, _LISTENER_SETTLE_S * 1000)
     except asyncio.TimeoutError:
         listener.cancel()
         try:
@@ -487,17 +489,28 @@ def _traces(comm: UARTComm) -> "set[tuple[str, int]]":
     return {(kinds[i], nums[i]) for i in range(len(nums)) if kinds[i] != "N"}
 
 
-async def _uptime_noise() -> None:
+async def _until_done(clock: DrivenTime, work: "Coroutine[object, object, T]", limit_ms: int) -> "T":
+    # `work` as a task, the clock driven until it ends: its result, its failure, or run_until()'s past limit_ms.
+    task = asyncio.create_task(work)
+    try:
+        await clock.run_until(task.done, limit_ms)
+    except BaseException:
+        await cancel(task)
+        raise
+    return await task
+
+
+async def _uptime_noise(clock: DrivenTime) -> None:
     # A co-running consumer of the same event loop, so the hammer is never the only thing scheduled.
     while True:
         await module.sysfunct.get_uptime()
-        await asyncio.sleep_ms(_NOISE_STEP_MS)
+        await clock._sleep_ms(_NOISE_STEP_MS)
 
 
 def _wire_on(link: "TwinLink", clock: DrivenTime) -> None:
-    # The twin wire's byte times on the driven clock too, continuing from its real offset: a frame then takes its wire
-    # time on the clock its reader's timeout runs on.
-    base_us, base_ms = link._now_us(), clock.now
+    # The twin wire's byte times on the driven clock too, from its real offset or the end of the last transmission an
+    # earlier driven run scheduled, whichever is later: a frame then takes its wire time on its reader's clock.
+    base_us, base_ms = max(link._now_us(), *link._next_free_us), clock.now
     link._now_us = lambda: base_us + (clock.now - base_ms) * 1000  # type: ignore[method-assign]
 
 
@@ -513,9 +526,9 @@ def build_linked_system() -> "TwinLink":
     return link
 
 
-async def exchange(work: "Coroutine[object, object, T]") -> "T":
+async def exchange(clock: DrivenTime, work: "Coroutine[object, object, T]") -> "T":
     # The initiator's call returning does not mean the responder is finished: it still has its last
-    # read to complete, and the twin delivers by real wire time. Cutting the listener off would
+    # read to complete, and the twin delivers by wire time. Cutting the listener off would
     # strand a frame for the next exchange - a harness artefact, so the harness waits it out.
     #
     # Drives the responder's own UARTComm.uart_listen() directly rather than UARTLinkDriver's real
@@ -528,7 +541,7 @@ async def exchange(work: "Coroutine[object, object, T]") -> "T":
     try:
         return await work
     finally:
-        await _settle_listener(listener)
+        await _settle_listener(clock, listener)
 
 
 def fakes() -> "tuple[TwinUART, TwinUART]":
@@ -561,7 +574,7 @@ def test_the_generic_runner_joins_the_two_buses_its_wiring_plan_names() -> None:
     link = run_generic_integration._wire_uart_crossover(module, plan)
     assert link is not None, "the runner wired no link for the device's uart_link pair"
     assert link.endpoints == fakes(), "the runner joined other UARTs than the device's two buses"
-    answer = _run(exchange(_link(ROLE_INITIATOR)._comm.uart_get(0x01)))
+    answer = _driven(link, lambda clock: exchange(clock, _link(ROLE_INITIATOR)._comm.uart_get(0x01)))
     assert copied_out(answer) == _BANNER, "the runner's jumper carried no banner"
 
 
@@ -628,13 +641,13 @@ def test_both_ends_get_their_own_real_fram_chunk() -> None:
 
 
 def test_a_get_and_a_set_both_complete_with_no_errors_counted() -> None:
-    build_linked_system()
+    link = build_linked_system()
     initiator, responder = _link(ROLE_INITIATOR)._comm, _link(ROLE_RESPONDER)._comm
 
-    answer = _run(exchange(initiator.uart_get(0x01)))
+    answer = _driven(link, lambda clock: exchange(clock, initiator.uart_get(0x01)))
     assert copied_out(answer) == _BANNER
 
-    assert _run(exchange(initiator.uart_set(0x02, b"round trip"))) is True
+    assert _driven(link, lambda clock: exchange(clock, initiator.uart_set(0x02, b"round trip"))) is True
 
     for comm in (initiator, responder):
         counts = _run(comm.get_error_counter())
@@ -642,9 +655,9 @@ def test_a_get_and_a_set_both_complete_with_no_errors_counted() -> None:
 
 
 def test_a_payload_larger_than_one_chunk_crosses_the_jumper_intact() -> None:
-    build_linked_system()
+    link = build_linked_system()
     payload = bytes((i * 5) & 0xFF for i in range(140))  # spans three data chunks at payload_size 48
-    assert _run(exchange(_link(ROLE_INITIATOR)._comm.uart_set(0x02, payload))) is True
+    assert _driven(link, lambda clock: exchange(clock, _link(ROLE_INITIATOR)._comm.uart_set(0x02, payload))) is True
     # The responder's _last_echo is only ever written by _message_callback, which exchange()'s harness-
     # controlled uart_listen() round does not invoke - so it stays unset here, the same "the callback stores
     # nothing itself" fact the original test recorded, now checked against the real storage location.
@@ -657,32 +670,32 @@ def test_one_sided_silence_forces_a_resync_and_both_sides_recover() -> None:
     initiator, responder = _link(ROLE_INITIATOR)._comm, _link(ROLE_RESPONDER)._comm
     direction = link.direction_from(fakes()[1])
     direction.silent = True
-    assert _run(exchange(initiator.uart_set(0x02, b"lost")), limit=_EXCHANGE_LIMIT_S) is False
+    assert _driven(link, lambda clock: exchange(clock, initiator.uart_set(0x02, b"lost")), limit=_EXCHANGE_LIMIT_S) is False
     assert initiator._holdoff_active is True
 
     direction.silent = False
-    _run(responder.clear(), limit=_EXCHANGE_LIMIT_S)
-    assert _run(exchange(initiator.uart_set(0x02, b"back")), limit=_EXCHANGE_LIMIT_S) is True
+    _driven(link, lambda _clock: responder.clear(), limit=_EXCHANGE_LIMIT_S)
+    assert _driven(link, lambda clock: exchange(clock, initiator.uart_set(0x02, b"back")), limit=_EXCHANGE_LIMIT_S) is True
 
 
 def test_a_payload_size_mismatch_is_diagnosed_as_unintelligible() -> None:
-    # A responder whose payload_size is 8 over its peer's, on the device's own jumpered buses at real wire time: each frame dies
+    # A responder whose payload_size is 8 over its peer's, on the device's own jumpered buses at wire time: each frame dies
     # inside its failing read, so only the bytes that read dropped can raise the mismatch diagnostic (J.6).
-    build_linked_system()
+    link = build_linked_system()
     initiator = _link(ROLE_INITIATOR)._comm
     limits = transfer_limits(payload_size=initiator._payload_size + 8, timeout=initiator._timeout)
     callbacks = ResponderCallbacks(echo_get(b"v"), accept_set(), None)
     responder = UARTComm(_bus("responder_bus"), ROLE_RESPONDER, limits=limits, callbacks=callbacks, name="UART_MISMATCH", log=_ERROR_LOG)
     assert _run(responder.setup()) is True
 
-    async def scenario() -> None:
+    async def scenario(clock: DrivenTime) -> None:
         for _ in range(4):  # the diagnostic waits for a streak of resyncs, so one failed exchange must not trip it
             listener = asyncio.create_task(responder.uart_listen())
             await initiator.uart_set(0x02, b"nonsense")
             await responder.clear()
-            await _settle_listener(listener)
+            await _settle_listener(clock, listener)
 
-    _run(scenario(), limit=_EXCHANGE_LIMIT_S)
+    _driven(link, scenario, limit=_EXCHANGE_LIMIT_S)
     unintelligible = code("E", "UART_LINK_UNINTELLIGIBLE")
     responder_codes, initiator_codes = _errnos(responder), _errnos(initiator)
     assert unintelligible in responder_codes, f"the mismatched responder never reported the link unintelligible: {responder_codes}"
@@ -692,13 +705,9 @@ def test_a_payload_size_mismatch_is_diagnosed_as_unintelligible() -> None:
 
 def test_a_crc16_exerciser_pair_completes_its_rounds() -> None:
     # The device's own link parameters with CRC16 on both buses: the exerciser's rounds land, none fails, nothing logged.
-    # Its period sleep a bare yield, the rounds back to back: the period is not under test.
-    initiator, responder, _link_pair = _crc16_pair()
-    asy_uart_link_driver.asyncio = _BackToBack()  # type: ignore[assignment, attr-defined]
-    try:
-        _run(_exercised(initiator, responder, lambda: initiator._transfers + initiator._failures >= _CRC16_ROUNDS), limit=_EXCHANGE_LIMIT_S)
-    finally:
-        asy_uart_link_driver.asyncio = asyncio  # type: ignore[attr-defined]
+    # Its period sleeps on the driven clock, so the rounds take no wall time: the period is not under test.
+    initiator, responder, link = _crc16_pair()
+    _driven(link, lambda clock: _exercised(clock, initiator, responder, lambda: initiator._transfers + initiator._failures >= _CRC16_ROUNDS), limit=_EXCHANGE_LIMIT_S)
     assert initiator._failures == 0, f"{initiator._failures} CRC16 exercise rounds failed on a clean link"
     for end in (initiator, responder):
         assert _traces(end._comm) == set(), f"{end.name} logged {_traces(end._comm)} on a clean CRC16 link"
@@ -710,7 +719,7 @@ def test_a_crc16_exerciser_pair_catches_a_corrupted_byte() -> None:
     initiator, responder, link = _crc16_pair()
     request = link.direction_from(link.endpoints[0])
     request.corrupt_indices[request.offered + initiator._comm._frame_size // 2] = 0xFF
-    _run(_exercised(initiator, responder, lambda: initiator._transfers + initiator._failures >= 2), limit=_EXCHANGE_LIMIT_S)
+    _driven(link, lambda clock: _exercised(clock, initiator, responder, lambda: initiator._transfers + initiator._failures >= 2), limit=_EXCHANGE_LIMIT_S)
     assert (initiator._failures, initiator._transfers) == (1, 1), f"{initiator._failures} of two rounds failed for one corrupted byte"
     bus = responder._comm._uart
     assert bus is not None and bus.discarded_bytes >= initiator._comm._frame_size, "the responder's CRC check dropped no frame"
@@ -727,44 +736,44 @@ def test_a_crc16_exerciser_pair_catches_a_corrupted_byte() -> None:
 def test_a_transfer_does_not_starve_other_tasks() -> None:
     # Every wait in the protocol yields, so a maximum-length transfer must not stall the
     # Neopixel animation or a sensor trigger. A plain co-running ticker is the cheapest proof.
-    build_linked_system()
+    link = build_linked_system()
     initiator = _link(ROLE_INITIATOR)._comm
     ticks = []
 
-    async def ticker() -> None:
+    async def ticker(clock: DrivenTime) -> None:
         while True:
             ticks.append(time.ticks_ms())
-            await asyncio.sleep_ms(_TICKER_STEP_MS)
+            await clock._sleep_ms(_TICKER_STEP_MS)
 
-    async def scenario() -> bool:
-        background = asyncio.create_task(ticker())
+    async def scenario(clock: DrivenTime) -> bool:
+        background = asyncio.create_task(ticker(clock))
         try:
-            return await exchange(initiator.uart_set(0x02, bytes(240)))
+            return await exchange(clock, initiator.uart_set(0x02, bytes(240)))
         finally:
             background.cancel()
 
-    assert _run(scenario(), limit=_EXCHANGE_LIMIT_S) is True
+    assert _driven(link, scenario, limit=_EXCHANGE_LIMIT_S) is True
     assert len(ticks) > 5, "other tasks made no progress during the transfer"
 
 
 def test_the_link_keeps_working_while_the_rest_of_the_graph_runs() -> None:
     # The link and the rest of the system have to coexist, not merely each work alone.
-    build_linked_system()
+    link = build_linked_system()
     assert module.sysfunct is not None
     initiator = _link(ROLE_INITIATOR)._comm
     payload = bytes((i * 5) & 0xFF for i in range(140))  # spans three data chunks at payload_size 48
 
-    async def scenario() -> "tuple[PieceBuffer | None, bool, list[bool]]":
+    async def scenario(clock: DrivenTime) -> "tuple[PieceBuffer | None, bool, list[bool]]":
         # The noise consumers run through both exchanges, the banner GET and a multi-chunk SET, and are ended after.
-        noise = [asyncio.create_task(_uptime_noise()) for _ in range(_COEXIST_NOISE_TASKS)]
+        noise = [asyncio.create_task(_uptime_noise(clock)) for _ in range(_COEXIST_NOISE_TASKS)]
         try:
-            answer = await exchange(initiator.uart_get(0x01))
-            sent = await exchange(initiator.uart_set(0x02, payload))
+            answer = await exchange(clock, initiator.uart_get(0x01))
+            sent = await exchange(clock, initiator.uart_set(0x02, payload))
             return answer, sent, [task.done() for task in noise]
         finally:
             await cancel_all(noise)
 
-    answer, sent, ended = _run(scenario(), limit=_EXCHANGE_LIMIT_S)
+    answer, sent, ended = _driven(link, scenario, limit=_EXCHANGE_LIMIT_S)
     assert copied_out(answer) == _BANNER
     assert sent is True, "the 140-byte SET failed while the noise tasks ran"
     assert not any(ended), f"a noise task ended before both exchanges did: {ended}"
@@ -773,51 +782,51 @@ def test_the_link_keeps_working_while_the_rest_of_the_graph_runs() -> None:
 def test_a_collection_length_pause_mid_transfer_does_not_break_the_link() -> None:
     # A synchronous stop-the-world pause the length of the worst measured collection (Part I): the tested
     # property - a pause mid-frame is not an inter-part timeout - without depending on today's heap.
-    build_linked_system()
+    link = build_linked_system()
     initiator = _link(ROLE_INITIATOR)._comm
 
-    async def scenario() -> bool:
+    async def scenario(clock: DrivenTime) -> bool:
         async def pauser() -> None:
             for _ in range(_PAUSE_ROUNDS):
-                time.sleep_ms(_WORST_GC_PAUSE_MS)  # no task runs, as in a collection; the wire keeps delivering
-                for _ in range(_WORST_GC_PAUSE_MS):  # and the deadlines see it: the run's clock reads 1 ms per call
-                    asy_uart_comm.time.ticks_ms()  # type: ignore[attr-defined]
-                await asyncio.sleep_ms(_PAUSE_STEP_MS)
+                clock.advance(_WORST_GC_PAUSE_MS)  # no task runs, as in a collection; the wire keeps delivering
+                await clock._sleep_ms(_PAUSE_STEP_MS)
 
         background = asyncio.create_task(pauser())
         try:
-            return await exchange(initiator.uart_set(0x02, bytes(120)))
+            return await exchange(clock, initiator.uart_set(0x02, bytes(120)))
         finally:
             background.cancel()
 
-    assert _run(scenario(), limit=_EXCHANGE_LIMIT_S) is True
+    assert _driven(link, scenario, limit=_EXCHANGE_LIMIT_S) is True
 
 
 def test_a_maximum_length_train_completes_and_still_yields() -> None:
     # The massive singular load: the longest transaction this protocol can express, 254 data chunks at payload_size 48,
     # where one non-yielding step in the read or write path would be most visible. A host stall past the 1000 ms reply
-    # timeout lands mid-train: the deadlines count poll rounds.
-    build_linked_system()
+    # timeout lands mid-train: the deadlines count the driven clock.
+    link = build_linked_system()
     initiator = _link(ROLE_INITIATOR)._comm
     payload = bytes((i * 7) & 0xFF for i in range(48 * 254))
     ticks = []  # unannotated, like the sibling ticker above: ticks_ms() is an opaque _TicksMs
+    stalled: list[bool] = []
 
-    async def ticker() -> None:
+    async def ticker(clock: DrivenTime) -> None:
         while True:
             ticks.append(time.ticks_ms())
-            await asyncio.sleep_ms(_TICKER_STEP_MS)
+            if len(ticks) == _MAX_TRAIN_STALL_AFTER:
+                time.sleep_ms(_MAX_TRAIN_STALL_MS)  # the whole interpreter blocked: a host deschedule
+                stalled.append(True)
+            await clock._sleep_ms(_TICKER_STEP_MS)
 
-    async def scenario() -> bool:
-        background = asyncio.create_task(ticker())
+    async def scenario(clock: DrivenTime) -> bool:
+        background = asyncio.create_task(ticker(clock))
         try:
-            return await exchange(initiator.uart_set(0x02, payload))
+            return await exchange(clock, initiator.uart_set(0x02, payload))
         finally:
             background.cancel()
 
-    clock = PollRoundClock(stall_after=_MAX_TRAIN_STALL_AFTER, stall_ms=_MAX_TRAIN_STALL_MS)
-    clock.arm()
-    completed = _run(scenario(), limit=_MAX_TRAIN_LIMIT_S, clock=clock)
-    assert clock.disarm(), "the planted host stall never fired: the train did not reach it"
+    completed = _driven(link, scenario, limit=_MAX_TRAIN_LIMIT_S)
+    assert stalled, "the planted host stall never fired: the train did not reach it"
     assert completed is True, "the maximum-length train did not complete"
     # Progress, not a rate: the ticker must have been scheduled throughout, which it cannot be if
     # any step held the loop for the whole transfer.
@@ -842,21 +851,21 @@ def test_many_back_to_back_transfers_do_not_degrade_or_leak() -> None:
         link.direction_from(fake_a).wire_log.clear()
         link.direction_from(fake_b).wire_log.clear()
 
-    async def transfers(count: int) -> int:
+    async def transfers(clock: DrivenTime, count: int) -> int:
         ok = 0
         for i in range(count):
-            if await exchange(initiator.uart_get(0x01)) is not None:
+            if await exchange(clock, initiator.uart_get(0x01)) is not None:
                 ok += 1
             if not i % 20:
                 _clear_wire_logs()
         return ok
 
     # The heap is read outside a run, so the record of the tasks a run made is gone by then: after the warm-up and at the end.
-    ok = _run(transfers(_LEAK_WARMUP_ROUNDS), limit=_HAMMER_LIMIT_S)
+    ok = _driven(link, lambda clock: transfers(clock, _LEAK_WARMUP_ROUNDS), limit=_HAMMER_LIMIT_S)
     _clear_wire_logs()
     gc.collect()
     free_n1 = gc.mem_free()
-    ok += _run(transfers(rounds - _LEAK_WARMUP_ROUNDS), limit=_HAMMER_LIMIT_S)
+    ok += _driven(link, lambda clock: transfers(clock, rounds - _LEAK_WARMUP_ROUNDS), limit=_HAMMER_LIMIT_S)
     _clear_wire_logs()
     gc.collect()
     rate = (free_n1 - gc.mem_free()) / (rounds - _LEAK_WARMUP_ROUNDS)
@@ -871,36 +880,36 @@ def test_many_back_to_back_transfers_do_not_degrade_or_leak() -> None:
 def test_every_train_crosses_intact_while_the_heap_churns() -> None:
     # Heap churn beside the link, 1 KB blocks allocated and dropped, so at gc.threshold(32768) collections land
     # mid-transfer. Every train arrives intact with nothing logged, and a failed allocation fails the test.
-    build_linked_system()
+    link = build_linked_system()
     initiator, responder = _link(ROLE_INITIATOR)._comm, _link(ROLE_RESPONDER)._comm
     stop: list[bool] = []
     churned = [0]
 
-    async def churn() -> None:
+    async def churn(clock: DrivenTime) -> None:
         held: list[bytearray] = []
         while not stop:
             held.append(bytearray(1024))
             churned[0] += 1024
             if len(held) > 32:
                 held = held[16:]
-            await asyncio.sleep_ms(_CHURN_STEP_MS)
+            await clock._sleep_ms(_CHURN_STEP_MS)
 
-    async def scenario() -> "list[bool]":
-        background = asyncio.create_task(churn())
+    async def scenario(clock: DrivenTime) -> "list[bool]":
+        background = asyncio.create_task(churn(clock))
         try:
             out = []
             for i in range(_CHURN_TRANSFERS):
                 payload = bytes((i + j) & 0xFF for j in range(200))
                 listener = asyncio.create_task(responder.uart_listen())
                 sent = await initiator.uart_set(0x02, payload)
-                heard = await asyncio.wait_for(listener, _LISTENER_SETTLE_S)
+                heard = await clock._wait_ms(listener, _LISTENER_SETTLE_S * 1000)
                 out.append(sent is True and heard.cmd_id == 0x02 and heard.payload is not None and copied_out(heard.payload) == payload)
             return out
         finally:
             stop.append(True)
             await background  # ends at its next step; an exception it raised surfaces here
 
-    results = _run(scenario(), limit=_CHURN_LIMIT_S)
+    results = _driven(link, scenario, limit=_CHURN_LIMIT_S)
     assert len(results) == _CHURN_TRANSFERS and all(results), f"a train failed or arrived altered under heap churn: {results}"
     for comm in (initiator, responder):
         assert _run(comm.get_error_counter())[comm.name]["ErrCount"] == 0, f"{comm.name} logged an error under heap churn"
@@ -939,7 +948,7 @@ def test_a_hazard_run_put_through_the_api_while_readers_hammer_it_reports_every_
             await clock.run_until(lambda: all(task.done() for task in loops), 0)
         return put, start, elapsed, final
 
-    with DrivenTime(asy_uart_driver, asy_uart_comm, asy_uart_link_driver, sleeps=True) as clock:
+    with DrivenTime(*_LINK_MODULES, sleeps=True) as clock:
         _wire_on(link, clock)
         try:
             put, start, elapsed, final = run(go(clock), _HAMMER_LIMIT_S)
