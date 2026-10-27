@@ -242,6 +242,7 @@ def test_rest_stays_reachable_under_duplicated_and_reordered_packets(board: Boar
     reset_all_error_logs(dut_ip, request.node.name)
 
 
+@pytest.mark.provokes_log("the blocked NTP port's attempts, which the test asserts as NTP_NO_REPLY", ("NTP", "E", "NTP_NO_REPLY"))
 def test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # A synced client attempts nothing for hours and an unchanged NTPHost PUT fires no post function
     # (src/asy_api_response.py): the reset under the block makes the boot's sync fail, and the client's own retry timer,
@@ -276,10 +277,11 @@ def test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage(board: Boa
 # ---------------------------------------------------------------------------
 
 # 48 bytes, the NTP packet the client receives into (src/asy_ntp_client.py _NTP_PACKET_LEN), and still no valid NTP
-# header: its first byte's mode is 7 (private), never the server mode 4 the parser accepts.
+# header: its first byte 0xff is leap indicator 3, which _parse_ntp_reply() rejects as unsynchronised before any time.
 _GARBAGE_PAYLOAD = b"\xff" + b"not an NTP or DNS wire-format packet, on purpose"[:47]
 
 
+@pytest.mark.provokes_log("every garbage reply is rejected as unsynchronised (leap indicator 3)", ("NTP", "W", "NTP_UNSYNC_REPLY"))
 def test_ntp_server_sends_garbage_instead_of_a_valid_response(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     lines, answered = _garbage_window(board, bench, dut_ip, 123)
@@ -287,13 +289,13 @@ def test_ntp_server_sends_garbage_instead_of_a_valid_response(board: Board, benc
     assert not crash_lines(lines), f"a garbage NTP response crashed the system instead of being rejected cleanly: {crash_lines(lines)}"
     assert boot_lines(lines), f"the board did not finish booting with a garbage-answering NTP server: {lines[-20:]}"
     _reconnected_after_forced_resync(board, bench, dut_ip, result_note)
-    rejected = (code("E", "NTP_MALFORMED"), code("E", "NTP_IMPLAUSIBLE"))
-    entry = errcount_entry(get_errcount(dut_ip), "NTP")
-    assert any(h.get("type") == "E" and h.get("num") in rejected for h in entry["history"]) or "Invalid NTP time received!" in "\n".join(lines), f"no rejected NTP reply (NTP_MALFORMED/NTP_IMPLAUSIBLE) after {answered} garbage answers: {entry!r}"
+    # The reply's own rejection, never the console's "Invalid NTP time received!": every failed sync prints that line.
+    assert_module_error_log_contains(dut_ip, "NTP", code("W", "NTP_UNSYNC_REPLY"), "W")
     assert_no_task_ended(dut_ip, f"{_ROGUE_TAIL_S:g}s of garbage NTP replies")
     reset_all_error_logs(dut_ip, request.node.name)
 
 
+@pytest.mark.provokes_log("a garbage DNS reply fails the lookup as silence would, which NTP logs as NTP_DNS", ("NTP", "E", "NTP_DNS"))
 def test_dns_server_sends_garbage_instead_of_a_valid_response(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     lines, answered = _garbage_window(board, bench, dut_ip, 53)
@@ -320,6 +322,7 @@ _NTP_SPOOF_INJECTED_UNIX_TIME = 2524608000  # 2050-01-01T00:00:00Z - inside _par
 _SPOOF_YEAR = time.gmtime(_NTP_SPOOF_INJECTED_UNIX_TIME).tm_year
 
 
+@pytest.mark.provokes_log("the real reply is held back and the spoof refused, so the attempt ends without a reply", ("NTP", "E", "NTP_NO_REPLY"))
 def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # A connect()'d client socket takes datagrams from its true peer only: a spoof it took would set the RTC to its
     # Transmit Timestamp (2050-01-01), readable as GET /status's UTCTime.
@@ -358,6 +361,7 @@ _GARBAGE_NTP_HOST = "this-host-will-never-resolve.invalid"
 
 
 @pytest.mark.persistence_write
+@pytest.mark.provokes_log("the .invalid host's lookup answers NXDOMAIN, which the test waits for", ("NTP", "E", "NTP_DNS_NXDOMAIN"))
 def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     original_host = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("NTPHost")
     if original_host == _GARBAGE_NTP_HOST:
@@ -398,6 +402,13 @@ _GARBAGE_SSID = "bench-test-net-does-not-exist"
 
 
 @pytest.mark.persistence_write
+@pytest.mark.provokes_log(
+    "the unreachable SSID's failed streak opens the hotspot; the restore's reconnect can fail once more and go silent",
+    ("WIFI", "W", "WLAN_NO_AP"),
+    ("WIFI", "W", "WLAN_AUTH_FAILED"),
+    ("WIFI", "W", "WLAN_TO_HOTSPOT"),
+    ("WIFI", "W", "WLAN_SILENT"),
+)
 def test_garbage_ssid_via_rest_config_is_handled_gracefully(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     ssid_bound = _load.field_schema(_WIFI, "SSID")[3]
     assert isinstance(ssid_bound, int) and len(_GARBAGE_SSID.encode()) <= ssid_bound, f"{_GARBAGE_SSID!r} exceeds _VAL_SSID's {ssid_bound}-byte bound: it would be refused, not stored"
@@ -664,6 +675,11 @@ def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(du
     result_note(f"{len(answered)} answered, {len(refused)} refused at the connection ceiling, 0 answered wrongly")
 
 
+@pytest.mark.provokes_log(
+    "each refused field logs BAD_ARG: the BMP3XX pair on its config manager, the radio's byte-bound refusals on WIFI",
+    ("CFGMGR_BMP3XX", "E", "BAD_ARG"),
+    ("WIFI", "E", "BAD_ARG"),
+)
 def test_put_nonsense_field_values_are_marked_invalid_not_crashed(board: Board, dut_ip: str, request: pytest.FixtureRequest) -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     # Wrong type, out of range and an unknown sensor key in one REST call: _VAL_PRES_OVERS accepts only _OSR_SETTINGS.
@@ -705,6 +721,7 @@ def test_put_nonsense_field_values_are_marked_invalid_not_crashed(board: Board, 
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.provokes_log("the trickled request is reclaimed by the outer cap, which the test asserts", ("WEBSERVER", "W", "HTTP_REQUEST_CAP"))
 def test_slowloris_style_partial_request_is_reclaimed_by_the_outer_timeout(dut_ip: str, request: pytest.FixtureRequest) -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -732,6 +749,11 @@ def test_slowloris_style_partial_request_is_reclaimed_by_the_outer_timeout(dut_i
         reset_all_error_logs(dut_ip, request.node.name)
 
 
+@pytest.mark.provokes_log(
+    "the client vanishes mid-response: a muted reset or the write's socket error, whichever the race gives",
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+    ("WEBSERVER", "W", "HTTP_SOCKET_ERROR"),
+)
 def test_abrupt_disconnect_mid_response_does_not_hang_the_server(dut_ip: str, request: pytest.FixtureRequest) -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:

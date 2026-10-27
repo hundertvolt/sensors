@@ -104,7 +104,8 @@ def test_a_multi_chunk_set_echoes_intact_under_serving_load(board: "Board", benc
 
 
 @pytest.mark.provokes_log(
-    "the hazard run's illegal first chunks are refused by the responder, which logs its UART frame codes",
+    "the hazard run's illegal first chunks are refused by the responder, which logs its UART frame codes, and its legal"
+    " ones are ACKed, then declined: their command id 0x07 is no command the exerciser serves",
     ("UART_init", "E", "UART_FRAME_INVALID"),
     ("UART_init", "E", "UART_WRONG_KIND"),
     ("UART_init", "E", "UART_NO_ACK"),
@@ -121,6 +122,7 @@ def test_a_multi_chunk_set_echoes_intact_under_serving_load(board: "Board", benc
     ("UART_resp", "E", "UART_REENTRANT"),
     ("UART_resp", "E", "UART_SIZE_MISMATCH"),
     ("UART_resp", "E", "UART_TRANSFER_CAP"),
+    ("UART_resp", "W", "UART_CMD_DECLINED"),
 )
 def test_a_hazard_run_under_the_readers_load_reports_every_verdict(board: "Board", dut_ip: str, request: pytest.FixtureRequest) -> None:
     check_hazard_run_under_load(dut_ip, request.node.name)

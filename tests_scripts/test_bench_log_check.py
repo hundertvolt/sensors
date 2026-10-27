@@ -184,6 +184,83 @@ def test_an_entry_a_marked_test_names_need_not_appear(monkeypatch: pytest.Monkey
     _drive(monkeypatch, [quiet, quiet], mark=_MARK)
 
 
+def _clear() -> None:
+    error_log_helpers.reset_all_error_logs(_DUT_IP, "case")
+
+
+def _clear_twice() -> None:
+    _clear()
+    _clear()
+
+
+def test_an_entry_logged_then_cleared_inside_an_unmarked_test_fails_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Reads: before, the clear's own read before its PUT, after - the entry lives only in the middle one.
+    garbage = code("E", "NTP_MALFORMED")
+    with pytest.raises(AssertionError, match=f"NTP E{garbage} NTP_MALFORMED"):
+        _drive(monkeypatch, [{"NTP": _entry(0)}, {"NTP": _entry(1, ("E", garbage))}, {"NTP": _entry(0)}], during=_clear)
+
+
+def test_a_clear_with_nothing_before_it_passes(monkeypatch: pytest.MonkeyPatch) -> None:
+    old = {"WIFI": _entry(1, ("W", code("W", "WLAN_TO_HOTSPOT")))}
+    board = _drive(monkeypatch, [old, old, {"WIFI": _entry(0)}], during=_clear)
+    assert board.hosts == [_DUT_IP] * 3, board.hosts
+
+
+def test_a_marked_tests_entry_before_its_clear_inside_the_set_passes(monkeypatch: pytest.MonkeyPatch) -> None:
+    refused = code("W", "HTTP_REFUSED")
+    _drive(monkeypatch, [{"WEBSERVER": _entry(0)}, {"WEBSERVER": _entry(1, ("W", refused))}, {"WEBSERVER": _entry(0)}], mark=_MARK, during=_clear)
+
+
+def test_an_entry_before_a_clear_outside_a_marked_tests_set_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    refused, timeout = code("W", "HTTP_REFUSED"), code("W", "HTTP_CALL_TIMEOUT")
+    with pytest.raises(AssertionError) as caught:
+        _drive(monkeypatch, [{"WEBSERVER": _entry(0)}, {"WEBSERVER": _entry(2, ("W", refused), ("W", timeout))}, {"WEBSERVER": _entry(0)}], mark=_MARK, during=_clear)
+    text = str(caught.value)
+    assert f"WEBSERVER W{timeout} HTTP_CALL_TIMEOUT" in text and f"W{refused} " not in text, text
+
+
+def test_every_segment_between_two_clears_is_checked_and_each_entry_named_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    # before -> 1st clear's read (continues), -> 2nd clear's read (all newer), -> after (all newer). WIFI's entry lives
+    # in the first clear's read alone: the first clear erased it, so only that segment shows it.
+    raised, no_reply, to_hotspot = code("E", "TASK_RAISED"), code("E", "NTP_NO_REPLY"), code("W", "WLAN_TO_HOTSPOT")
+    reads = [
+        {"SYSTEM": _entry(0), "NTP": _entry(0), "WIFI": _entry(0)},
+        {"SYSTEM": _entry(0), "NTP": _entry(1, ("E", no_reply)), "WIFI": _entry(1, ("W", to_hotspot))},
+        {"SYSTEM": _entry(1, ("E", raised)), "NTP": _entry(1, ("E", no_reply)), "WIFI": _entry(0)},
+        {"SYSTEM": _entry(0), "NTP": _entry(0), "WIFI": _entry(0)},
+    ]
+    with pytest.raises(AssertionError) as caught:
+        _drive(monkeypatch, reads, during=_clear_twice)
+    text = str(caught.value)
+    assert f"SYSTEM E{raised} TASK_RAISED" in text and text.count(f"NTP E{no_reply} NTP_NO_REPLY") == 1 and f"WIFI W{to_hotspot} WLAN_TO_HOTSPOT" in text, text
+
+
+def test_a_clear_keeps_the_read_it_takes_before_its_put_and_adds_no_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    # One GET (saved to the evidence, then kept parsed for the check) and the one PUT: no extra read, no extra write.
+    seen = {"NTP": _entry(1, ("E", code("E", "NTP_NO_REPLY")))}
+    calls: list[str] = []
+    board = _Board([seen])
+
+    def fetch(host: str, port: int, method: str, path: str, *a: object, **k: object) -> http_client.HttpResponse:
+        calls.append(f"{method} {path}")
+        return board.fetch(host, port, method, path, *a, **k)
+
+    saved: list[str] = []
+
+    def save_text(name: str, text: str) -> Path:
+        saved.append(f"{name}:{text}")
+        return Path(name)
+
+    monkeypatch.setattr(http_client, "fetch", fetch)
+    monkeypatch.setattr(evidence, "save_text", save_text)
+    made = error_log_helpers.clears_made()
+    _clear()
+    assert calls == ["GET /status", "PUT /status"] and error_log_helpers.clears_made() == made + 1, calls
+    kept = error_log_helpers.reads_before_clears(made)
+    assert kept == [seen], kept
+    assert len(saved) == 1 and saved[0].startswith("errcount-case.json:") and '"errcount"' in saved[0], saved
+
+
 _MALFORMED = [
     pytest.mark.provokes_log.mark,
     pytest.mark.provokes_log("  ", _REFUSED).mark,

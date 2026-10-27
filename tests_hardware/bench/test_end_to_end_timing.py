@@ -141,6 +141,11 @@ def test_cold_boot_to_first_http_response_latency_is_sane(board: Board, bench: "
 
 
 @pytest.mark.persistence_write
+@pytest.mark.provokes_log(
+    "the resets tear some SPI writes: the status byte and block-invalid entries this test's own allow-list names",
+    ("FRAM", "W", "FRAM_BLOCK_INVALID"),
+    ("FRAM", "E", "FRAM_STATUS_BYTE"),
+)
 def test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     sgp40 = _load.as_object(_load.get_object(dut_ip, "/sensors", _PROBE_TIMEOUT_S).get("SGP40"), "GET /sensors SGP40")

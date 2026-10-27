@@ -433,8 +433,10 @@ naming the logger, the code, its catalog name and the test - a normal operation 
 its purpose carries `@pytest.mark.provokes_log("<why>", (logger, kind, catalog name), ...)` (`markers.py`), naming
 every entry the source can leave on its path, and is read like any other: an entry outside that set fails it, and an
 entry in it need not appear (the test asserts its own). Collection refuses a marker with a reason alone, a malformed
-entry or a name with no live catalog row. A clear made through `reset_all_error_logs()` makes all of the later log
-new, so a test that clears at its end is checked only for what follows that clear. A board that cannot answer
+entry or a name with no live catalog row. A clear made through `reset_all_error_logs()` hides nothing: the `GET
+/status` it already takes before its `PUT` (saved to the evidence first) is kept, so the check reads each segment - the
+test's first read to its first clear's, each clear to the next one's, the last to the after-read, all of a segment
+after a clear new - against the same set, adding no read and no write. A board that cannot answer
 `/status` at a test's bound - unreachable, or still booting - fails that test by name after one read under the
 helpers' own timeout: a test leaves the board serving. The exception is a test marked `ends_unreachable` (the hotspot
 credential stage, the isolated-board heap module): its unanswered end leaves its window open, and the next read that

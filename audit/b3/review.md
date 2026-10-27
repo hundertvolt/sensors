@@ -4,14 +4,14 @@ Requirement: every test in `tests/`, `tests_scripts/`, `tests_js/` and `tests_ha
 
 ## Counts
 
-Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_verdicts.json`: 8506 rows, 329 flagged. A flag is a candidate; the verdict is the reviewer's.
+Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_verdicts.json`: 8512 rows, 330 flagged. A flag is a candidate; the verdict is the reviewer's.
 
 | level | rows | flagged |
 |---|---|---|
 | bench (hardware) | 121 | 20 |
 | device script | 90 | 0 |
 | flash (hardware) | 88 | 65 |
-| host (pytest) | 2925 | 68 |
+| host (pytest) | 2931 | 69 |
 | manual (hardware) | 21 | 2 |
 | twin (MicroPython) | 664 | 19 |
 | twin scenario | 176 | 10 |
@@ -23,7 +23,7 @@ Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_
 | CRr2 | 63 |
 | fixed | 61 |
 | justified | 128 |
-| biting | 8254 |
+| biting | 8260 |
 
 | red flag | rows | verdicts |
 |---|---|---|
@@ -37,7 +37,7 @@ Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_
 | same_callee | 35 | biting 35 |
 | ns_seed_text | 39 | biting 39 |
 | ns_allow_list | 2 | justified 2 |
-| setup_credit_only | 39 | justified 4, biting 35 |
+| setup_credit_only | 40 | justified 4, biting 36 |
 | hw_no_log | 78 | CRr2 63, fixed 15 |
 
 Detectors with no row at this base: weak_only, cannot_fail, canned_return, ns_count_bound, ns_code_in_set.
@@ -90,14 +90,14 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 - tests/test_tmp_scratch.py:125 `test_construction_and_teardown_tolerate_a_missing_key_directory_entirely`: ns_seed_text → biting: the seed word is about an input, a value, a lock or a typo, not a logged code
 - tests/test_tmp_scratch.py:234 `test_an_existing_directory_and_an_absent_file_are_no_failure`: ns_seed_text → biting: the seed word is about an input, a value, a lock or a typo, not a logged code
 - tests_hardware/bench/test_end_to_end_timing.py:90 `test_real_concurrent_client_burst_does_not_crash_the_webserver`: ns_seed_text → biting: the seed word is about an input, a value, a lock or a typo, not a logged code
-- tests_hardware/bench/test_end_to_end_timing.py:144 `test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly`: ns_allow_list → justified: (c) the tolerated torn-write codes carry the owner's quoted ruling in place (:138); ns_allow_list → justified: (c) the tolerated torn-write codes carry the owner's quoted ruling in place (:138)
+- tests_hardware/bench/test_end_to_end_timing.py:149 `test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly`: ns_allow_list → justified: (c) the tolerated torn-write codes carry the owner's quoted ruling in place (:138); ns_allow_list → justified: (c) the tolerated torn-write codes carry the owner's quoted ruling in place (:138)
 - tests_hardware/bench/test_hotspot_role_reversal.py:323 `test_malformed_http_request_over_real_wireless_degrades_cleanly`: was:ns_allow_list → fixed: (b) exact: WEBSERVER holds W HTTP_BAD_HEAD alone, counted once (error_log_helpers.assert_module_logged_one_code). Bitten on synthetic errcount: nothing logged, and the code counted three times, pass the old allow-list and fail the new check
 - tests_hardware/bench/test_network_resilience.py:159 `test_real_wifi_outage_and_recovery_while_in_normal_sta_mode`: ns_seed_text → biting: the seed word is in its provokes_log reason, naming the _assert_wifi_log_has_only_benign_outage_warnings helper, not a tolerance in the test
 - tests_hardware/bench/test_network_resilience.py:178 `test_real_wifi_flaps_repeatedly_without_wedging_the_system`: ns_seed_text → biting: the seed word is in its provokes_log reason, naming the _assert_wifi_log_has_only_benign_outage_warnings helper, not a tolerance in the test
-- tests_hardware/bench/test_network_resilience.py:245 `test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage`: was:ns_seed_text → fixed: (b) the provoked entry read exactly before the clear: NTP holds E NTP_NO_REPLY alone, counted once per attempt the block met. Bitten on synthetic errcount (the old test read nothing before its clear)
-- tests_hardware/bench/test_network_resilience.py:585 `test_an_oversized_body_is_refused_before_it_is_read`: was:ns_allow_list → fixed: (b) exact: W HTTP_CALL_TIMEOUT alone, counted once - the 413 logs nothing (tests/test_asy_webserver_connections.py:790-803) and a body that never arrives is one read-phase timeout (tests/test_asy_webserver_service.py:4338-4346). Bitten on synthetic errcount (a bad-head beside it)
+- tests_hardware/bench/test_network_resilience.py:246 `test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage`: was:ns_seed_text → fixed: (b) the provoked entry read exactly before the clear: NTP holds E NTP_NO_REPLY alone, counted once per attempt the block met. Bitten on synthetic errcount (the old test read nothing before its clear)
+- tests_hardware/bench/test_network_resilience.py:596 `test_an_oversized_body_is_refused_before_it_is_read`: was:ns_allow_list → fixed: (b) exact: W HTTP_CALL_TIMEOUT alone, counted once - the 413 logs nothing (tests/test_asy_webserver_connections.py:790-803) and a body that never arrives is one read-phase timeout (tests/test_asy_webserver_service.py:4338-4346). Bitten on synthetic errcount (a bad-head beside it)
 - tests_hardware/bench/test_sensor_config_push_over_real_hardware.py:165 `test_isl29125_calibrate_command_push_over_real_rest`: ns_seed_text → biting: the seed word is about an input, a value, a lock or a typo, not a logged code
-- tests_hardware/bench/test_wifi_networking.py:97 `test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing`: was:ns_seed_text → fixed: (b) contains became exact before the clear: NTP holds E NTP_NO_REPLY alone. Bitten on synthetic errcount (a teardown warning beside it passes contains, fails the new check)
+- tests_hardware/bench/test_wifi_networking.py:98 `test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing`: was:ns_seed_text → fixed: (b) contains became exact before the clear: NTP holds E NTP_NO_REPLY alone. Bitten on synthetic errcount (a teardown warning beside it passes contains, fails the new check)
 - tests_scripts/test_buildgen_tag_comments.py:423 `test_check_for_near_miss_tags_typo_tolerance_narrows_for_a_short_tag_name`: ns_seed_text → biting: the seed word is about an input, a value, a lock or a typo, not a logged code
 - tests_scripts/test_buildgen_web_tag.py:591 `test_parse_web_tags_edit_distance_just_outside_tolerance_stays_silent`: ns_seed_text → biting: the seed word is about an input, a value, a lock or a typo, not a logged code
 - tests_scripts/test_digital_twin_boot_contiguity.py:250 `test_the_live_arm_places_strictly_deeper_than_the_suppressed_one`: ns_seed_text → biting: the seed word is about an input, a value, a lock or a typo, not a logged code
@@ -4903,19 +4903,19 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests/test_write_counters.py:144 | test_the_fram_fake_counts_every_write_command_that_reaches_its_data_phase | unit (MicroPython) | biting | — | biting as is |
 | tests_hardware/bench/test_boot_order_and_triggers.py:53 | test_webserver_answers_before_the_first_ntp_sync_completes | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_boot_order_and_triggers.py:86 | test_bus_triggers_keep_their_minimum_spacing | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_bus_concurrency_under_api_load.py:90 | test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_crashes | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_bus_concurrency_under_api_load.py:115 | test_concurrent_get_sensors_under_real_multi_client_load_survives_light_network_degradation | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_bus_concurrency_under_api_load.py:143 | test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_bus_concurrency_under_api_load.py:184 | test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_real_wifi_flapping | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_bus_concurrency_under_api_load.py:226 | test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_bus_concurrency_under_api_load.py:273 | test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_bus_concurrency_under_api_load.py:323 | test_scd30_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_bus_concurrency_under_api_load.py:365 | test_fram_erase_under_api_load | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_bus_concurrency_under_api_load.py:380 | test_reboot_under_api_load | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_bus_concurrency_under_api_load.py:95 | test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_crashes | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_bus_concurrency_under_api_load.py:127 | test_concurrent_get_sensors_under_real_multi_client_load_survives_light_network_degradation | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_bus_concurrency_under_api_load.py:161 | test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_bus_concurrency_under_api_load.py:217 | test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_real_wifi_flapping | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_bus_concurrency_under_api_load.py:264 | test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_bus_concurrency_under_api_load.py:316 | test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_bus_concurrency_under_api_load.py:371 | test_scd30_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_bus_concurrency_under_api_load.py:413 | test_fram_erase_under_api_load | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_bus_concurrency_under_api_load.py:428 | test_reboot_under_api_load | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_end_to_end_timing.py:55 | test_real_reboot_sequencing_via_rest_completes_cleanly | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_end_to_end_timing.py:90 | test_real_concurrent_client_burst_does_not_crash_the_webserver | bench (hardware) | biting | ns_seed_text | ns_seed_text: biting: the seed word is about an input, a value, a lock or a typo, not a logged code |
 | tests_hardware/bench/test_end_to_end_timing.py:128 | test_cold_boot_to_first_http_response_latency_is_sane | bench (hardware) | fixed | no_assertion; hw_no_log | no_assertion: justified: boot latency is evidence, never a metric (CLAUDE.md boot-latency rule, stated in place); wait_until()'s ceiling fails a dead boot; hw_no_log: fixed: the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it |
-| tests_hardware/bench/test_end_to_end_timing.py:144 | test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly | bench (hardware) | justified | ns_allow_list; ns_allow_list | ns_allow_list: justified: (c) the tolerated torn-write codes carry the owner's quoted ruling in place (:138); ns_allow_list: justified: (c) the tolerated torn-write codes carry the owner's quoted ruling in place (:138) |
+| tests_hardware/bench/test_end_to_end_timing.py:149 | test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly | bench (hardware) | justified | ns_allow_list; ns_allow_list | ns_allow_list: justified: (c) the tolerated torn-write codes carry the owner's quoted ruling in place (:138); ns_allow_list: justified: (c) the tolerated torn-write codes carry the owner's quoted ruling in place (:138) |
 | tests_hardware/bench/test_heap_under_connection_ceiling.py:73 | test_heap_at_peak_while_a_full_ceiling_is_held | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_heap_under_connection_ceiling.py:128 | test_report_the_boards_own_connection_wall | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_hotspot_role_reversal.py:112 | test_dut_enters_hotspot_mode_after_ssid_cleared | bench (hardware) | biting | — | biting as is |
@@ -4945,10 +4945,10 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests_hardware/bench/test_hotspot_role_reversal.py:435 | test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_hotspot_role_reversal.py:490 | test_the_role_flips_back_and_the_board_is_sta_connected_on_the_bridge | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_hotspot_role_reversal.py:502 | test_the_uart_link_across_the_mode_switch_is_recorded | bench (hardware) | fixed | hw_no_log | hw_no_log: fixed: the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it |
-| tests_hardware/bench/test_memory_stress_bench.py:65 | test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_memory_stress_bench.py:79 | test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_memory_stress_bench.py:101 | test_http_soak_stays_live | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_memory_stress_bench.py:144 | test_loop_lag_under_http_load_on_every_route_stays_under_the_smallest_hard_consumer | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_memory_stress_bench.py:70 | test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_memory_stress_bench.py:84 | test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_memory_stress_bench.py:106 | test_http_soak_stays_live | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_memory_stress_bench.py:149 | test_loop_lag_under_http_load_on_every_route_stays_under_the_smallest_hard_consumer | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_modlwip_send_stall.py:90 | test_no_send_stall_with_the_override | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_modlwip_send_stall.py:107 | test_send_stall_on_the_unpatched_image | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_network_resilience.py:159 | test_real_wifi_outage_and_recovery_while_in_normal_sta_mode | bench (hardware) | biting | ns_seed_text | ns_seed_text: biting: the seed word is in its provokes_log reason, naming the _assert_wifi_log_has_only_benign_outage_warnings helper, not a tolerance in the test |
@@ -4957,31 +4957,31 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests_hardware/bench/test_network_resilience.py:208 | test_rest_answers_first_try_under_light_realistic_wifi_congestion | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_network_resilience.py:228 | test_rest_stays_reachable_and_recovers_under_real_packet_corruption | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_network_resilience.py:237 | test_rest_stays_reachable_under_duplicated_and_reordered_packets | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_network_resilience.py:245 | test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage | bench (hardware) | fixed | was:ns_seed_text | was:ns_seed_text: fixed: (b) the provoked entry read exactly before the clear: NTP holds E NTP_NO_REPLY alone, counted once per attempt the block met. Bitten on synthetic errcount (the old test read nothing before its clear) |
-| tests_hardware/bench/test_network_resilience.py:283 | test_ntp_server_sends_garbage_instead_of_a_valid_response | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_network_resilience.py:297 | test_dns_server_sends_garbage_instead_of_a_valid_response | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_network_resilience.py:323 | test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_network_resilience.py:361 | test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_network_resilience.py:401 | test_garbage_ssid_via_rest_config_is_handled_gracefully | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_network_resilience.py:444 | test_connections_at_and_above_the_real_socket_limit_degrade_cleanly | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_network_resilience.py:483 | test_get_nonsense_path_is_shaped_404_over_the_normal_network | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_network_resilience.py:494 | test_put_malformed_raw_request_is_rejected_cleanly_over_the_normal_network | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_network_resilience.py:512 | test_put_oversized_body_is_rejected_with_413_over_the_normal_network | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_network_resilience.py:533 | test_put_body_cap_boundary_is_exact_over_the_normal_network | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_network_resilience.py:544 | test_put_the_band_that_used_to_be_accepted_is_now_rejected_over_the_normal_network | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_network_resilience.py:558 | test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_network_resilience.py:585 | test_an_oversized_body_is_refused_before_it_is_read | bench (hardware) | fixed | was:ns_allow_list | was:ns_allow_list: fixed: (b) exact: W HTTP_CALL_TIMEOUT alone, counted once - the 413 logs nothing (tests/test_asy_webserver_connections.py:790-803) and a body that never arrives is one read-phase timeout (tests/test_asy_webserver_service.py:4338-4346). Bitten on synthetic errcount (a bad-head beside it) |
-| tests_hardware/bench/test_network_resilience.py:614 | test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_network_resilience.py:632 | test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_network_resilience.py:667 | test_put_nonsense_field_values_are_marked_invalid_not_crashed | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_network_resilience.py:708 | test_slowloris_style_partial_request_is_reclaimed_by_the_outer_timeout | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_network_resilience.py:735 | test_abrupt_disconnect_mid_response_does_not_hang_the_server | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_network_resilience.py:762 | test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_network_resilience.py:780 | test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_network_resilience.py:810 | test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_network_resilience.py:845 | test_openhab_case_two_pollers_and_an_open_website_are_all_served | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_network_resilience.py:901 | test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_network_resilience.py:962 | test_a_flash_write_holding_interrupts_off_keeps_the_wifi_link | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_network_resilience.py:246 | test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage | bench (hardware) | fixed | was:ns_seed_text | was:ns_seed_text: fixed: (b) the provoked entry read exactly before the clear: NTP holds E NTP_NO_REPLY alone, counted once per attempt the block met. Bitten on synthetic errcount (the old test read nothing before its clear) |
+| tests_hardware/bench/test_network_resilience.py:285 | test_ntp_server_sends_garbage_instead_of_a_valid_response | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_network_resilience.py:299 | test_dns_server_sends_garbage_instead_of_a_valid_response | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_network_resilience.py:326 | test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_network_resilience.py:365 | test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_network_resilience.py:412 | test_garbage_ssid_via_rest_config_is_handled_gracefully | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_network_resilience.py:455 | test_connections_at_and_above_the_real_socket_limit_degrade_cleanly | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_network_resilience.py:494 | test_get_nonsense_path_is_shaped_404_over_the_normal_network | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_network_resilience.py:505 | test_put_malformed_raw_request_is_rejected_cleanly_over_the_normal_network | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_network_resilience.py:523 | test_put_oversized_body_is_rejected_with_413_over_the_normal_network | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_network_resilience.py:544 | test_put_body_cap_boundary_is_exact_over_the_normal_network | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_network_resilience.py:555 | test_put_the_band_that_used_to_be_accepted_is_now_rejected_over_the_normal_network | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_network_resilience.py:569 | test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_network_resilience.py:596 | test_an_oversized_body_is_refused_before_it_is_read | bench (hardware) | fixed | was:ns_allow_list | was:ns_allow_list: fixed: (b) exact: W HTTP_CALL_TIMEOUT alone, counted once - the 413 logs nothing (tests/test_asy_webserver_connections.py:790-803) and a body that never arrives is one read-phase timeout (tests/test_asy_webserver_service.py:4338-4346). Bitten on synthetic errcount (a bad-head beside it) |
+| tests_hardware/bench/test_network_resilience.py:625 | test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_network_resilience.py:643 | test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_network_resilience.py:683 | test_put_nonsense_field_values_are_marked_invalid_not_crashed | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_network_resilience.py:725 | test_slowloris_style_partial_request_is_reclaimed_by_the_outer_timeout | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_network_resilience.py:757 | test_abrupt_disconnect_mid_response_does_not_hang_the_server | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_network_resilience.py:784 | test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_network_resilience.py:802 | test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_network_resilience.py:832 | test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_network_resilience.py:867 | test_openhab_case_two_pollers_and_an_open_website_are_all_served | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_network_resilience.py:923 | test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_network_resilience.py:984 | test_a_flash_write_holding_interrupts_off_keeps_the_wifi_link | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_reset_reasons.py:73 | test_a_harness_hard_reset_reads_as_watchdog_without_a_record | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_reset_reasons.py:83 | test_a_bootloader_reboot_is_attributed | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_reset_reasons.py:111 | test_the_supervisor_escalation_reboot_is_attributed | bench (hardware) | biting | — | biting as is |
@@ -5016,11 +5016,11 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests_hardware/bench/test_uart_link_under_api_load.py:68 | test_real_transfers_complete_while_the_api_is_hammered | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_uart_link_under_api_load.py:77 | test_an_api_overload_does_not_corrupt_the_link_or_the_reverse | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_uart_link_under_api_load.py:81 | test_a_multi_chunk_set_echoes_intact_under_serving_load | bench (hardware) | fixed | hw_no_log; was:same_callee | hw_no_log: fixed: the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it; was:same_callee: fixed: total is an int above 0 and intact == total. Bitten on synthetic output (both facts missing: old passes, new fails) |
-| tests_hardware/bench/test_uart_link_under_api_load.py:125 | test_a_hazard_run_under_the_readers_load_reports_every_verdict | bench (hardware) | biting | — | biting as is |
+| tests_hardware/bench/test_uart_link_under_api_load.py:127 | test_a_hazard_run_under_the_readers_load_reports_every_verdict | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_wifi_networking.py:40 | test_real_sta_connect_reaches_established_after_a_hard_reset | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_wifi_networking.py:64 | test_real_ntp_sync_succeeds_over_genuine_udp | bench (hardware) | biting | — | biting as is |
 | tests_hardware/bench/test_wifi_networking.py:85 | test_real_dns_resolution_succeeds_over_genuine_udp | bench (hardware) | biting | — | biting as is |
-| tests_hardware/bench/test_wifi_networking.py:97 | test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing | bench (hardware) | fixed | was:ns_seed_text | was:ns_seed_text: fixed: (b) contains became exact before the clear: NTP holds E NTP_NO_REPLY alone. Bitten on synthetic errcount (a teardown warning beside it passes contains, fails the new check) |
+| tests_hardware/bench/test_wifi_networking.py:98 | test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing | bench (hardware) | fixed | was:ns_seed_text | was:ns_seed_text: fixed: (b) contains became exact before the clear: NTP holds E NTP_NO_REPLY alone. Bitten on synthetic errcount (a teardown warning beside it passes contains, fails the new check) |
 | tests_hardware/bench/test_wifi_radio_reinit.py:21 | test_the_radio_reinit_rung_restores_the_link | bench (hardware) | fixed | hw_no_log | hw_no_log: fixed: the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails a new E or W entry in any logger around it |
 | tests_hardware/flash/test_bus_concurrency.py:99 | test_scd30_same_device_read_write_concurrency | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
 | tests_hardware/flash/test_bus_concurrency.py:110 | test_same_device_concurrent_sessions_never_corrupt_each_other | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
@@ -5271,19 +5271,25 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests_scripts/test_bench_log_check.py:164 | test_a_marked_test_is_read_and_the_entries_it_names_pass | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_bench_log_check.py:170 | test_an_entry_a_marked_test_does_not_name_fails_naming_it | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_bench_log_check.py:182 | test_an_entry_a_marked_test_names_need_not_appear | host (pytest) | biting | setup_credit_only | setup_credit_only: biting: the claim is that the fixture raises nothing, and _drive() runs its setup and teardown to StopIteration and asserts every scripted read was made; plants_i1.out turns it red (2d73a934's fixture, the set admitting nothing, ends_unreachable ignored) |
-| tests_scripts/test_bench_log_check.py:204 | test_a_marker_without_its_reason_and_live_entries_fails_the_test | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_bench_log_check.py:217 | test_collection_refuses_a_malformed_marker_naming_each_test | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_bench_log_check.py:229 | test_a_test_that_ends_unreachable_hands_its_first_read_to_the_next_read | host (pytest) | biting | setup_credit_only | setup_credit_only: biting: the claim is that the fixture raises nothing, and _drive() runs its setup and teardown to StopIteration and asserts every scripted read was made; plants_i1.out turns it red (2d73a934's fixture, the set admitting nothing, ends_unreachable ignored) |
-| tests_scripts/test_bench_log_check.py:239 | test_an_entry_outside_the_carried_set_fails_naming_the_carried_test | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_bench_log_check.py:248 | test_a_next_test_that_cannot_read_either_extends_the_carried_window | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_bench_log_check.py:262 | test_a_window_still_carried_at_the_session_end_is_checked_then | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_bench_log_check.py:275 | test_an_unreadable_end_without_ends_unreachable_still_fails_plainly | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_bench_log_check.py:281 | test_a_board_that_cannot_answer_fails_the_test_plainly_and_bounded | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_bench_log_check.py:293 | test_provokes_log_and_ends_unreachable_are_in_the_one_marker_table | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_bench_log_check.py:298 | test_the_catalog_name_of_a_code_and_of_none | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_bench_log_check.py:303 | test_gained_entries_lines_the_reads_up_and_refuses_a_history_it_does_not_continue | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_bench_log_check.py:327 | test_the_hotspot_module_reads_through_its_gateway_until_the_radio_leaves_it | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_bench_log_check.py:335 | test_the_hotspot_modules_gain_raises_where_the_history_does_not_continue | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_bench_log_check.py:196 | test_an_entry_logged_then_cleared_inside_an_unmarked_test_fails_it | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_bench_log_check.py:203 | test_a_clear_with_nothing_before_it_passes | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_bench_log_check.py:209 | test_a_marked_tests_entry_before_its_clear_inside_the_set_passes | host (pytest) | biting | setup_credit_only | setup_credit_only: biting: the claim is that the fixture raises nothing over an in-set entry before the test's own clear, and _drive() runs its setup and teardown to StopIteration and asserts every scripted read was made; S/u35/laneC/crr2b5/plants_i1.log turns it red (the pre-clear read not kept, a second read taken for the check) |
+| tests_scripts/test_bench_log_check.py:214 | test_an_entry_before_a_clear_outside_a_marked_tests_set_fails | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_bench_log_check.py:222 | test_every_segment_between_two_clears_is_checked_and_each_entry_named_once | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_bench_log_check.py:238 | test_a_clear_keeps_the_read_it_takes_before_its_put_and_adds_no_request | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_bench_log_check.py:281 | test_a_marker_without_its_reason_and_live_entries_fails_the_test | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_bench_log_check.py:294 | test_collection_refuses_a_malformed_marker_naming_each_test | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_bench_log_check.py:306 | test_a_test_that_ends_unreachable_hands_its_first_read_to_the_next_read | host (pytest) | biting | setup_credit_only | setup_credit_only: biting: the claim is that the fixture raises nothing, and _drive() runs its setup and teardown to StopIteration and asserts every scripted read was made; plants_i1.out turns it red (2d73a934's fixture, the set admitting nothing, ends_unreachable ignored) |
+| tests_scripts/test_bench_log_check.py:316 | test_an_entry_outside_the_carried_set_fails_naming_the_carried_test | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_bench_log_check.py:325 | test_a_next_test_that_cannot_read_either_extends_the_carried_window | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_bench_log_check.py:339 | test_a_window_still_carried_at_the_session_end_is_checked_then | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_bench_log_check.py:352 | test_an_unreadable_end_without_ends_unreachable_still_fails_plainly | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_bench_log_check.py:358 | test_a_board_that_cannot_answer_fails_the_test_plainly_and_bounded | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_bench_log_check.py:370 | test_provokes_log_and_ends_unreachable_are_in_the_one_marker_table | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_bench_log_check.py:375 | test_the_catalog_name_of_a_code_and_of_none | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_bench_log_check.py:380 | test_gained_entries_lines_the_reads_up_and_refuses_a_history_it_does_not_continue | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_bench_log_check.py:404 | test_the_hotspot_module_reads_through_its_gateway_until_the_radio_leaves_it | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_bench_log_check.py:412 | test_the_hotspot_modules_gain_raises_where_the_history_does_not_continue | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_bench_no_task_ended_completeness.py:135 | test_the_scan_reaches_every_injector_call_site | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_bench_no_task_ended_completeness.py:143 | test_every_fault_injecting_test_asserts_no_task_ended | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_bench_no_task_ended_completeness.py:150 | test_every_exemption_still_names_a_real_fault_test | host (pytest) | biting | — | biting as is |

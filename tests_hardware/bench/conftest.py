@@ -117,8 +117,8 @@ def log_check_host(dut_ip: str) -> "Callable[[], str]":
 
 @pytest.fixture(autouse=True)
 def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Callable[[], str]") -> "Iterator[None]":
-    # GET /status before and after each bench test, clearing and writing nothing: an E or W entry in any logger beyond
-    # the test's provokes_log set fails it. An unanswered end of an ends_unreachable test carries its window on.
+    # GET /status before and after each bench test, clearing and writing nothing: an E or W entry in any logger beyond the
+    # test's provokes_log set fails it, before any clear it made too. An unanswered ends_unreachable end carries its window.
     test, expected = request.node.nodeid, _expected_entries(request.node)
     window = _Carry({}, error_log_helpers.clears_made(), expected, (test,))
     if _CARRIED:
@@ -160,7 +160,7 @@ def pytest_collection_modifyitems(config: "pytest.Config | None", items: "list[p
 
 
 def _check(window: _Carry, after: "dict[str, error_log_helpers.ErrcountEntry]") -> None:
-    error_log_helpers.assert_no_unprovoked_entry(window.before, after, " + ".join(window.tests), cleared=error_log_helpers.clears_made() != window.clears, expected=window.expected)
+    error_log_helpers.assert_no_unprovoked_entry(window.before, after, " + ".join(window.tests), pre_clear=error_log_helpers.reads_before_clears(window.clears), expected=window.expected)
 
 
 def _expected_entries(node: "pytest.Item") -> "frozenset[tuple[str, str, int]]":

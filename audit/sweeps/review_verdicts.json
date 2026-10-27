@@ -2743,6 +2743,12 @@
    "the seed word is in its provokes_log reason, naming the _assert_wifi_log_has_only_benign_outage_warnings helper, not a tolerance in the test"
   ]
  },
+ "tests_scripts/test_bench_log_check.py::test_a_marked_tests_entry_before_its_clear_inside_the_set_passes": {
+  "setup_credit_only": [
+   "biting",
+   "the claim is that the fixture raises nothing over an in-set entry before the test's own clear, and _drive() runs its setup and teardown to StopIteration and asserts every scripted read was made; S/u35/laneC/crr2b5/plants_i1.log turns it red (the pre-clear read not kept, a second read taken for the check)"
+  ]
+ },
  "tests_scripts/test_bench_log_check.py::test_an_entry_a_marked_test_names_need_not_appear": {
   "setup_credit_only": [
    "biting",

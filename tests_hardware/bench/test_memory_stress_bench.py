@@ -62,6 +62,11 @@ class _Hammer:
         self.lock = threading.Lock()
 
 
+@pytest.mark.provokes_log(
+    "one reader per connection slot plus the VOC writer: the ceiling's reject-when-full",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
 def test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot(board: "Board", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     save_errcount(dut_ip, request.node.name)  # what the board logged before this test is evidence (CLAUDE.md)
     reset_all_error_logs(dut_ip, request.node.name)
