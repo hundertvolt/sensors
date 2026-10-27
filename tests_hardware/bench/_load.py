@@ -19,7 +19,7 @@ from plausibility_bounds import BOUNDS
 
 from buildgen.definitions import definitions_for_toml
 from buildgen.schema_ast import extract_field_schemas
-from buildgen.validate import build_model
+from buildgen.validate import build_model, ntp_backoff
 from tests._src_const import py_value, src_const
 
 if TYPE_CHECKING:
@@ -171,6 +171,17 @@ def _members_bytes(fields: "list[JsonDict]") -> int:
 @functools.cache
 def _model(device: "str | None" = None) -> "DeviceModel":
     return build_model(harness.device_toml(device), harness.SRC_DIR)
+
+
+@functools.cache
+def _ntp_backoff() -> "tuple[float, float]":
+    # The bench device's unsynced backoff as its NTPClient runs it: buildgen's effective pair (the generated NtpTiming's,
+    # validate.ntp_backoff()), the interval at least one check tick and the cap at least the interval (asy_ntp_client.py).
+    table = _model().doc.get("device")
+    assert isinstance(table, dict), f"{harness.device_toml()} has no [device] table"
+    retry_s, retry_max_s = ntp_backoff(table, harness.SRC_DIR)
+    period = max(retry_s, src_number(_NTP, "_NTP_CHECK_INTERV"))
+    return period, max(retry_max_s, period)
 
 
 def _ntp_error_log_contains(dut_ip: str, errno: int) -> bool:
@@ -349,9 +360,14 @@ def ntp_fetch_timeout_s() -> float:
     return buildgen_number("codegen.py", "_NTP_FETCH_TIMEOUT_MS") / 1000
 
 
+def ntp_retry_max_s() -> float:
+    # The cap the unsynced client's doubling backoff stops at (_ntp_backoff()).
+    return _ntp_backoff()[1]
+
+
 def ntp_retry_period_s() -> float:
-    # The unsynced client's first retry step: its default interval, rounded up to the check tick it is counted on.
-    return max(src_number(_NTP, "_DEFAULT_RETRY_S"), src_number(_NTP, "_NTP_CHECK_INTERV"))
+    # The unsynced client's first retry step, rounded up to the check tick it is counted on (_ntp_backoff()).
+    return _ntp_backoff()[0]
 
 
 def ntp_synced(dut_ip: str) -> bool:

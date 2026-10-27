@@ -135,7 +135,7 @@ def _resync_after_block_s() -> float:
     # The unsynced client's longest wait once the block lifts: each failed attempt doubles its step from the retry period,
     # up to the cap (src/asy_ntp_client.py _sync_loop()), so attempts from the block's start leave pending the step after
     # the last one inside it; the attempt that then syncs runs on top.
-    mult, cap = _load.src_number(_NTP, "_NTP_BACKOFF_MULT"), _load.src_number(_NTP, "_DEFAULT_RETRY_MAX_S")
+    mult, cap = _load.src_number(_NTP, "_NTP_BACKOFF_MULT"), _load.ntp_retry_max_s()
     at, step = 0.0, _load.ntp_retry_period_s()
     while True:
         step = min(step * mult, cap)
