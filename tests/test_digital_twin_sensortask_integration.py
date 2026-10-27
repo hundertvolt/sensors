@@ -383,7 +383,8 @@ async def _heap_floor(watchdog: "machine.WDT") -> int:
 
 async def _hotspot_boot(clock: DrivenTime) -> "tuple[WifiService, NeopixelDriver, list[asyncio.Task[None]]]":
     # SSID written, every connect scripted to fail: the boot streak fails for real until the hotspot opens, on the driven
-    # clock. Returns the WiFi service, its LED's pixel driver and the tasks started (the overlay, the connect loop).
+    # clock, its to-hotspot W slot in WIFI's RAM ring and FRAM chunk. Returns the WiFi service, its LED's pixel driver
+    # and the tasks started (the overlay, the connect loop).
     await _driven(clock, "the boot", _boot())
     conn, pixel = module.conn, module.neopixel
     persisted, _results = await conn.cfgmgr.write_config({"SSID": "TestNet"})
@@ -398,6 +399,10 @@ async def _hotspot_boot(clock: DrivenTime) -> "tuple[WifiService, NeopixelDriver
         assert started, "real hotspot activation never started the real DNSServer task"
         bound = await _wait_until(lambda: conn._dns_server._udps.connected, timeout_s=_WAIT_TIMEOUT_S, interval_s=_BIND_POLL_S, clock=clock)
         assert bound, "the real DNSServer never bound its port 53 socket"
+        entry = (await conn.get_error_counter())["WIFI"]
+        slots = [entry["ErrNum"][i] for i in range(len(entry["ErrNum"])) if entry["ErrType"][i] == "W"]
+        assert slots.count(code("W", "WLAN_TO_HOTSPOT")) == 1, f"the streak persisted no single to-hotspot slot: {entry}"
+        await _ring_in_fram(clock, conn)
     finally:
         asy_wifi_service.asyncio = held  # type: ignore[attr-defined]
         network._CONNECT_DELAY_S = join_s
@@ -463,6 +468,14 @@ async def _restore(sgp: "SGP40_Reader", what: str) -> None:
     finally:
         _step_sensor_waits(on=False)
         await cancel(task)
+
+
+async def _ring_in_fram(clock: DrivenTime, conn: "WifiService") -> None:
+    # WIFI's ring as its FRAM chunk holds it, read back through the store's own chunk read as the next boot's setup()
+    # restores it: a write that never landed leaves the chip's older image, a RAM-only logger holds no chunk at all.
+    ring = tuple(conn.pr.history)
+    stored = await _driven(clock, "the WIFI chunk's read", conn.pr._read())
+    assert isinstance(stored, tuple) and stored[1] == ring, f"WIFI's FRAM copy {stored} is not its RAM ring {ring}"
 
 
 async def _seed_compensation() -> None:
@@ -781,7 +794,7 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
 def test_a_dhcp_server_that_never_answers_leaves_a_persisted_trace() -> None:
     # Every join reaches the access point and never gets an address: each attempt ends with no verdict, persisted as one
     # W slot (the newest-entry rule, SPECIFICATION.md C.7.1), and the streak's end opens the hotspot with its own W. The
-    # slots are read from RAM, but each one is written to WIFI's FRAM chunk: one run per distinct FRAM wiring (measured).
+    # slots are read from RAM and back from WIFI's FRAM chunk: one run per distinct FRAM wiring (measured).
     _driver_specific("fram")
 
     async def scenario(clock: DrivenTime) -> None:
@@ -815,6 +828,7 @@ def test_a_dhcp_server_that_never_answers_leaves_a_persisted_trace() -> None:
         slots = [entry["ErrNum"][i] for i in range(len(entry["ErrNum"])) if entry["ErrType"][i] == "W"]
         counts = (slots.count(code("W", "WLAN_NO_VERDICT")), slots.count(code("W", "WLAN_TO_HOTSPOT")))
         assert counts == (1, 1), f"the streak persisted {counts} no-verdict and to-hotspot slots, not one each: {entry}"
+        await _ring_in_fram(clock, conn)
 
     run(_on_driven_clock(scenario))
 
@@ -914,7 +928,7 @@ def test_a_failing_wlan_status_keeps_the_link_and_warns_once_per_unreadable_tick
 def test_two_failed_joins_re_select_the_radio_once_and_the_link_comes_back() -> None:
     # A linked station loses its link and each next join raises EIO, a failed hardware call, up to the rung's threshold:
     # the radio is re-selected once (one deinit, one new STA interface, one W), then the link comes back. Its W and E
-    # slots are written to WIFI's FRAM chunk: one run per distinct FRAM wiring (measured).
+    # slots are read from RAM and back from WIFI's FRAM chunk: one run per distinct FRAM wiring (measured).
     _driver_specific("fram")
 
     async def scenario(clock: DrivenTime) -> None:
@@ -947,6 +961,7 @@ def test_two_failed_joins_re_select_the_radio_once_and_the_link_comes_back() -> 
             entry = (await conn.get_error_counter())["WIFI"]
             recovered = [i for i in range(len(entry["ErrNum"])) if entry["ErrType"][i] == "W" and entry["ErrNum"][i] == code("W", "DEVICE_RECOVERY")]
             assert len(recovered) == 1, f"the re-selection persisted {len(recovered)} W DEVICE_RECOVERY slots, not one: {entry}"
+            await _ring_in_fram(clock, conn)
         finally:
             for task in tasks:
                 await cancel(task)
