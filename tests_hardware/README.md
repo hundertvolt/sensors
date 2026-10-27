@@ -1719,8 +1719,10 @@ only same-device write-vs-own-read (`bus_concurrency_same_device_scd30.py`,
 - **`test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads`**
   (`device_scripts/bus_concurrency_isl29125_write_vs_siblings.py`) - ISL29125's own `configure()` is
   the writer (a volatile config register, no NVM-write-budget concern per FN8424 p7), repeated
-  `WRITE_CYCLES=8` times over a real multi-second window with SCD30 and SGP40 both reading
-  concurrently. Part of the routine group, no opt-in needed.
+  ten times (`_WRITE_DELAYS_MS` x `_DELAY_REPEATS`) with SCD30 and SGP40 both reading concurrently.
+  The script records every sibling read's window, and the test credits "not disturbed" only once
+  at least one of those reads overlapped a write's window (`overlapped_reads`). Part of the
+  routine group, no opt-in needed.
 - **`test_scd30_config_write_does_not_disturb_concurrent_sibling_reads`**
   (`device_scripts/bus_concurrency_scd30_write_vs_siblings.py`) - the SCD30-as-writer half of the
   same gap. SCD30's own `set_temperature_offset()` is a real NVM write, so this is deliberately

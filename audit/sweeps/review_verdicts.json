@@ -2275,8 +2275,8 @@
  },
  "tests_hardware/device_scripts/bus_concurrency_isl29125_write_vs_siblings.py::bus_concurrency_isl29125_write_vs_siblings": {
   "ds_facts": [
-   "justified",
-   "isl_windows is the raw write timeline, a diagnostic: test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads asserts write_count == planned, both sibling read counts > 0 and no errors (test_bus_concurrency.py:142). The extractor first counted it read because another test in the file asserts a key of that name"
+   "fixed",
+   "the sibling reads now record their windows and the script reports overlapped_reads (sibling reads whose window intersects a write's, through ticks_diff); test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads asserts it > 0 before _no_errors, so reads that never met a write no longer pass. Bites: synthetic no-overlap output passes HEAD's test and fails the new one, an overlap passes both; through TwinBoard the healthy script passes and a plant stopping the siblings before the first write passes HEAD's test and fails the new one (S/u35/laneC/crr2b/bites_isl.out, twin_isl.log, plant_*.log). isl_windows stays the raw write timeline, a diagnostic (agent, 2026-10-27)"
   ]
  },
  "tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py::bus_concurrency_same_device_scd30": {
@@ -2751,6 +2751,12 @@
   "ds_facts": [
    "justified",
    "recover_returned is in the result_note (test_wifi_radio_reinit.py:30) beside the asserted reconnected and elapsed bound"
+  ]
+ },
+ "tests/test_digital_twin_network_neopixel.py::test_a_restarted_signal_task_ends_dark_with_the_overlay_restored": {
+  "setup_credit_only": [
+   "biting",
+   "a false flag from the per-device split: the test loops devices_with() and calls _restart_ends_dark(device), whose nested scenario() (driven by run()) asserts the restart's frames are black then the overlay grey, the one remaining wake, a live restarted task and SYSTEM's one persisted TASK_RAISED entry; the scanner does not descend into a nested async def (agent, 2026-10-27)"
   ]
  }
 }

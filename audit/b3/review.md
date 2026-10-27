@@ -4,16 +4,16 @@ Requirement: every test in `tests/`, `tests_scripts/`, `tests_js/` and `tests_ha
 
 ## Counts
 
-Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_verdicts.json`: 8479 rows, 328 flagged. A flag is a candidate; the verdict is the reviewer's.
+Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_verdicts.json`: 8482 rows, 329 flagged. A flag is a candidate; the verdict is the reviewer's.
 
 | level | rows | flagged |
 |---|---|---|
 | bench (hardware) | 121 | 22 |
 | device script | 90 | 0 |
 | flash (hardware) | 88 | 65 |
-| host (pytest) | 2898 | 66 |
+| host (pytest) | 2901 | 66 |
 | manual (hardware) | 21 | 2 |
-| twin (MicroPython) | 664 | 18 |
+| twin (MicroPython) | 664 | 19 |
 | twin scenario | 176 | 10 |
 | unit (MicroPython) | 3929 | 139 |
 | web (vitest) | 492 | 6 |
@@ -21,9 +21,9 @@ Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_
 | verdict (per row) | rows |
 |---|---|
 | CRr2 | 83 |
-| fixed | 45 |
-| justified | 129 |
-| biting | 8222 |
+| fixed | 46 |
+| justified | 128 |
+| biting | 8225 |
 
 | red flag | rows | verdicts |
 |---|---|---|
@@ -37,7 +37,7 @@ Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_
 | same_callee | 35 | biting 35 |
 | ns_seed_text | 37 | biting 37 |
 | ns_allow_list | 2 | justified 2 |
-| setup_credit_only | 36 | justified 4, biting 32 |
+| setup_credit_only | 37 | justified 4, biting 33 |
 | hw_no_log | 83 | CRr2 83 |
 
 Detectors with no row at this base: weak_only, cannot_fail, canned_return, ns_count_bound, ns_code_in_set.
@@ -4177,50 +4177,50 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests/test_digital_twin_machine_uart.py:350 | test_a_config_flush_through_the_installed_open_stalls_once_for_its_pages | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_machine_uart.py:371 | test_the_dma_keeps_filling_the_ring_through_a_flash_stall | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_machine_uart.py:396 | test_a_set_mask_overflows_the_fifo_inside_a_flash_stall | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:112 | test_one_connect_phase_fits_the_services_poll_budget | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:118 | test_wlan_starts_disconnected | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:124 | test_wlan_deinit_sets_the_deinit_called_flag | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:131 | test_wlan_status_rssi_and_stations_read_the_underlying_fields | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:145 | test_status_answers_by_cyw43s_interface_rules | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:153 | test_the_access_point_comes_up_with_its_address_and_the_shared_dns | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:163 | test_deinit_powers_the_one_radio_down | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:177 | test_config_truncates_as_cyw43_and_reads_the_essid_back | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:186 | test_wlan_config_calls_stays_bounded_across_many_calls | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:194 | test_country_and_hostname_set_then_get_round_trip | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:203 | test_wlan_connect_shows_a_real_connecting_phase_before_got_ip | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:218 | test_a_connected_sta_reports_a_test_net_address | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:230 | test_wlan_disconnect_resets_state | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:243 | test_wlan_disconnect_before_connecting_finishes_cancels_the_pending_connection | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:254 | test_wlan_fault_injection | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:273 | test_one_wlan_object_per_interface_any_other_id_the_access_point | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:281 | test_reset_interfaces_forgets_both_objects_and_their_counts | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:288 | test_the_construction_count_saturates_at_the_counter_cap | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:294 | test_raise_on_with_a_count_raises_that_many_fresh_exceptions | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:305 | test_raise_on_without_a_count_raises_until_cleared | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:313 | test_a_status_entry_with_a_parameter_filter_fails_only_those_queries | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:320 | test_a_joined_link_with_no_address_holds_status_two | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:335 | test_reset_test_state_restores_every_network_knob | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:345 | test_wlan_script_connect_outcomes_defaults_to_always_succeeding | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:357 | test_wlan_scripted_failure_outcome_sets_status_and_stays_disconnected | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:370 | test_wlan_scripted_outcomes_are_consumed_in_order_one_per_completed_attempt | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:391 | test_wlan_exhausted_scripted_queue_falls_back_to_always_succeeding | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:408 | test_wlan_a_successful_reconnect_after_an_earlier_scripted_failure_reports_a_real_address | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:423 | test_wlan_disconnect_of_a_pending_attempt_does_not_consume_a_scripted_outcome | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:440 | test_wlan_a_second_connect_that_cancels_the_first_pending_attempt_does_not_consume_an_outcome | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:453 | test_wlan_connect_calls_stays_bounded_across_many_calls | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:465 | test_a_downed_access_point_fails_the_station_until_switched_back | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:497 | test_a_chip_down_stations_answer_is_32_unfilled_entries | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:520 | test_neopixel_records_committed_frames | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:532 | test_neopixel_stores_bytes_in_grb_order_as_the_library_does | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:548 | test_a_power_dip_blanks_what_the_pixel_shows_until_the_next_write | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:559 | test_the_driver_rewrites_a_dipped_pixel_at_its_next_overlay_refresh | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:626 | test_a_restarted_signal_task_ends_dark_with_the_overlay_restored | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:681 | test_neopixel_writes_stays_bounded_across_many_writes | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:690 | test_neopixel_fault_injection | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:700 | test_country_and_hostname_enforce_the_real_byte_bounds | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:721 | test_connect_on_an_inactive_station_raises_eperm | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:736 | test_deactivating_the_station_drops_its_link_its_address_and_a_pending_connect | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_network_neopixel.py:753 | test_connect_refuses_what_the_real_driver_cannot_take | twin (MicroPython) | biting | except_pass | except_pass: biting: the expect-raise idiom: the handler is the refusal path and the statement after the try raises AssertionError |
+| tests/test_digital_twin_network_neopixel.py:163 | test_one_connect_phase_fits_the_services_poll_budget | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:169 | test_wlan_starts_disconnected | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:175 | test_wlan_deinit_sets_the_deinit_called_flag | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:182 | test_wlan_status_rssi_and_stations_read_the_underlying_fields | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:196 | test_status_answers_by_cyw43s_interface_rules | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:204 | test_the_access_point_comes_up_with_its_address_and_the_shared_dns | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:214 | test_deinit_powers_the_one_radio_down | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:228 | test_config_truncates_as_cyw43_and_reads_the_essid_back | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:237 | test_wlan_config_calls_stays_bounded_across_many_calls | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:245 | test_country_and_hostname_set_then_get_round_trip | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:254 | test_wlan_connect_shows_a_real_connecting_phase_before_got_ip | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:269 | test_a_connected_sta_reports_a_test_net_address | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:281 | test_wlan_disconnect_resets_state | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:294 | test_wlan_disconnect_before_connecting_finishes_cancels_the_pending_connection | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:305 | test_wlan_fault_injection | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:324 | test_one_wlan_object_per_interface_any_other_id_the_access_point | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:332 | test_reset_interfaces_forgets_both_objects_and_their_counts | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:339 | test_the_construction_count_saturates_at_the_counter_cap | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:345 | test_raise_on_with_a_count_raises_that_many_fresh_exceptions | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:356 | test_raise_on_without_a_count_raises_until_cleared | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:364 | test_a_status_entry_with_a_parameter_filter_fails_only_those_queries | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:371 | test_a_joined_link_with_no_address_holds_status_two | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:386 | test_reset_test_state_restores_every_network_knob | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:396 | test_wlan_script_connect_outcomes_defaults_to_always_succeeding | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:408 | test_wlan_scripted_failure_outcome_sets_status_and_stays_disconnected | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:421 | test_wlan_scripted_outcomes_are_consumed_in_order_one_per_completed_attempt | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:442 | test_wlan_exhausted_scripted_queue_falls_back_to_always_succeeding | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:459 | test_wlan_a_successful_reconnect_after_an_earlier_scripted_failure_reports_a_real_address | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:474 | test_wlan_disconnect_of_a_pending_attempt_does_not_consume_a_scripted_outcome | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:491 | test_wlan_a_second_connect_that_cancels_the_first_pending_attempt_does_not_consume_an_outcome | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:504 | test_wlan_connect_calls_stays_bounded_across_many_calls | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:516 | test_a_downed_access_point_fails_the_station_until_switched_back | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:548 | test_a_chip_down_stations_answer_is_32_unfilled_entries | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:571 | test_neopixel_records_committed_frames | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:583 | test_neopixel_stores_bytes_in_grb_order_as_the_library_does | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:599 | test_a_power_dip_blanks_what_the_pixel_shows_until_the_next_write | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:610 | test_the_driver_rewrites_a_dipped_pixel_at_its_next_overlay_refresh | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:677 | test_a_restarted_signal_task_ends_dark_with_the_overlay_restored | twin (MicroPython) | biting | setup_credit_only | setup_credit_only: biting: a false flag from the per-device split: the test loops devices_with() and calls _restart_ends_dark(device), whose nested scenario() (driven by run()) asserts the restart's frames are black then the overlay grey, the one remaining wake, a live restarted task and SYSTEM's one persisted TASK_RAISED entry; the scanner does not descend into a nested async def (agent, 2026-10-27) |
+| tests/test_digital_twin_network_neopixel.py:685 | test_neopixel_writes_stays_bounded_across_many_writes | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:694 | test_neopixel_fault_injection | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:704 | test_country_and_hostname_enforce_the_real_byte_bounds | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:725 | test_connect_on_an_inactive_station_raises_eperm | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:740 | test_deactivating_the_station_drops_its_link_its_address_and_a_pending_connect | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_network_neopixel.py:757 | test_connect_refuses_what_the_real_driver_cannot_take | twin (MicroPython) | biting | except_pass | except_pass: biting: the expect-raise idiom: the handler is the refusal path and the statement after the try raises AssertionError |
 | tests/test_digital_twin_ntp.py:133 | test_a_request_gets_a_synchronised_server_reply_at_the_hosts_utc | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_ntp.py:140 | test_offset_s_shifts_the_served_time_exactly | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_ntp.py:148 | test_each_failure_mode_answers_as_its_name_says | twin (MicroPython) | biting | — | biting as is |
@@ -4353,24 +4353,24 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests/test_digital_twin_scd30.py:785 | test_missing_state_file_starts_from_factory_fresh_settings_without_raising | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_scd30.py:797 | test_an_unloadable_state_file_says_why_and_leaves_factory_fresh_settings | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_scd30.py:814 | test_state_path_none_never_touches_disk | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:548 | test_sgp40_reading_before_scd30_has_measured_yet_logs_no_bogus_error | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:569 | test_watchdog_is_never_starved_while_the_real_supervisor_runs | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:620 | test_the_supervisor_restarts_a_real_dead_task | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:666 | test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0 | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:745 | test_a_dhcp_server_that_never_answers_leaves_a_persisted_trace | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:784 | test_a_failed_config_snapshot_is_the_unavailable_marker | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:805 | test_a_factory_state_unit_returns_to_the_hotspot_after_every_window | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:837 | test_a_failing_wlan_status_keeps_the_link_and_warns_once_per_unreadable_tick | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:875 | test_two_failed_joins_re_select_the_radio_once_and_the_link_comes_back | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:920 | test_hotspot_fallback_drives_the_status_led_and_binds_the_dns_server | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:938 | test_the_captive_dns_listener_idles_at_its_idle_rate | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:1016 | test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chunk | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:1040 | test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanly_to_the_last_flushed_state | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:1074 | test_a_restored_backup_reports_its_timestamp_without_ntp | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:1104 | test_a_restarted_sgp40_task_keeps_its_live_voc_state | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:1156 | test_the_notification_window_spanning_midnight_flashes_red | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:1213 | test_a_stopped_scd30_ends_its_alerts_and_sgp40_compensation | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:1277 | test_a_boot_without_ntp_reports_no_local_time | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:559 | test_sgp40_reading_before_scd30_has_measured_yet_logs_no_bogus_error | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:580 | test_watchdog_is_never_starved_while_the_real_supervisor_runs | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:631 | test_the_supervisor_restarts_a_real_dead_task | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:677 | test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0 | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:756 | test_a_dhcp_server_that_never_answers_leaves_a_persisted_trace | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:795 | test_a_failed_config_snapshot_is_the_unavailable_marker | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:816 | test_a_factory_state_unit_returns_to_the_hotspot_after_every_window | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:848 | test_a_failing_wlan_status_keeps_the_link_and_warns_once_per_unreadable_tick | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:886 | test_two_failed_joins_re_select_the_radio_once_and_the_link_comes_back | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:931 | test_hotspot_fallback_drives_the_status_led_and_binds_the_dns_server | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:949 | test_the_captive_dns_listener_idles_at_its_idle_rate | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:1027 | test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chunk | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:1051 | test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanly_to_the_last_flushed_state | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:1085 | test_a_restored_backup_reports_its_timestamp_without_ntp | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:1115 | test_a_restarted_sgp40_task_keeps_its_live_voc_state | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:1167 | test_the_notification_window_spanning_midnight_flashes_red | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:1224 | test_a_stopped_scd30_ends_its_alerts_and_sgp40_compensation | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:1288 | test_a_boot_without_ntp_reports_no_local_time | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_sgp40.py:31 | test_crc8_matches_datasheet_worked_example | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_sgp40.py:35 | test_word_appends_correct_crc_trailer | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_sgp40.py:41 | test_get_serial_number_command_replies_with_word0_zero | twin (MicroPython) | biting | — | biting as is |
@@ -4642,13 +4642,13 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests/test_microtest_hooks.py:103 | test_the_pre_sync_timestamp_flag_is_back_to_its_boot_value_after_each_test | unit (MicroPython) | biting | — | biting as is |
 | tests/test_microtest_hooks.py:113 | test_a_test_leaving_the_fatal_report_flag_set_fails_and_the_next_test_finds_it_clear | unit (MicroPython) | biting | — | biting as is |
 | tests/test_neopixel_wifi_integration.py:43 | test_real_neopixel_driver_on_off_toggle_through_wifi_service_ext_led | unit (MicroPython) | biting | — | biting as is |
-| tests/test_neopixel_wifi_integration.py:166 | test_the_hotspot_pattern_blinks_a_real_neopixel_driver_through_the_flash_task | unit (MicroPython) | biting | — | biting as is |
-| tests/test_neopixel_wifi_integration.py:190 | test_a_station_on_the_hotspot_swaps_the_real_pixels_pattern_and_its_leaving_restores_it | unit (MicroPython) | biting | same_callee | same_callee: biting: two distinct paths, objects or runs compared: their agreement is the claim |
-| tests/test_neopixel_wifi_integration.py:223 | test_with_the_wifi_led_off_both_hotspot_patterns_leave_the_real_pixel_dark | unit (MicroPython) | biting | — | biting as is |
-| tests/test_neopixel_wifi_integration.py:244 | test_the_silent_mode_leaves_a_real_neopixel_driver_dark_until_a_link | unit (MicroPython) | biting | — | biting as is |
-| tests/test_neopixel_wifi_integration.py:285 | test_the_no_configuration_pattern_blinks_a_real_neopixel_driver_and_obeys_led_wifi_on | unit (MicroPython) | biting | — | biting as is |
-| tests/test_neopixel_wifi_integration.py:335 | test_a_neopixel_driver_is_an_error_source_of_the_webserver | unit (MicroPython) | biting | — | biting as is |
-| tests/test_neopixel_wifi_integration.py:370 | test_the_drivers_empty_timer_list_reaches_a_generated_device | unit (MicroPython) | biting | — | biting as is |
+| tests/test_neopixel_wifi_integration.py:168 | test_the_hotspot_pattern_blinks_a_real_neopixel_driver_through_the_flash_task | unit (MicroPython) | biting | — | biting as is |
+| tests/test_neopixel_wifi_integration.py:192 | test_a_station_on_the_hotspot_swaps_the_real_pixels_pattern_and_its_leaving_restores_it | unit (MicroPython) | biting | same_callee | same_callee: biting: two distinct paths, objects or runs compared: their agreement is the claim |
+| tests/test_neopixel_wifi_integration.py:225 | test_with_the_wifi_led_off_both_hotspot_patterns_leave_the_real_pixel_dark | unit (MicroPython) | biting | — | biting as is |
+| tests/test_neopixel_wifi_integration.py:246 | test_the_silent_mode_leaves_a_real_neopixel_driver_dark_until_a_link | unit (MicroPython) | biting | — | biting as is |
+| tests/test_neopixel_wifi_integration.py:287 | test_the_no_configuration_pattern_blinks_a_real_neopixel_driver_and_obeys_led_wifi_on | unit (MicroPython) | biting | — | biting as is |
+| tests/test_neopixel_wifi_integration.py:337 | test_a_neopixel_driver_is_an_error_source_of_the_webserver | unit (MicroPython) | biting | — | biting as is |
+| tests/test_neopixel_wifi_integration.py:372 | test_the_drivers_empty_timer_list_reaches_every_generated_device_wiring_it | unit (MicroPython) | biting | — | biting as is |
 | tests/test_notification_fram_integration.py:71 | test_driver_and_notify_service_get_two_independent_non_overlapping_fram_chunks | unit (MicroPython) | biting | — | biting as is |
 | tests/test_notification_fram_integration.py:89 | test_driver_and_notify_service_errors_stay_in_separate_histories | unit (MicroPython) | biting | — | biting as is |
 | tests/test_notification_fram_integration.py:112 | test_both_histories_survive_a_simulated_reboot | unit (MicroPython) | biting | — | biting as is |
@@ -5029,17 +5029,17 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests_hardware/flash/test_bus_concurrency.py:170 | test_sgp40_concurrent_sessions_each_get_a_tick | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
 | tests_hardware/flash/test_bus_concurrency.py:181 | test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
 | tests_hardware/flash/test_bus_concurrency.py:192 | test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:205 | test_scd30_config_write_does_not_disturb_concurrent_sibling_reads | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:220 | test_isl29125_real_irq_edge_beats_the_periodic_fallback | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:235 | test_bus_topology_autodetect_address_and_reserved_range_sweep | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:254 | test_a_held_sda_line_is_cleared_and_every_device_answers | flash (hardware) | CRr2 | log_existence_only; hw_no_log | log_existence_only: biting: a transfer's errno, not a log: rp2's two transfer failures (ports/rp2/machine_i2c.c:152/:154, v1.29.0); the claim is the clear after; hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:271 | test_bmp3xx_alone_survives_a_general_call | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:284 | test_fram_same_device_read_write_concurrency | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:295 | test_fram_cs_pin_hijack_fault_injection_and_recovery | flash (hardware) | fixed | was:log_existence_only | was:log_existence_only: fixed: exactly one chip-lost entry: lost['errnos'].count(54) == 1, the driver's one entry per loss (src/asy_fram_driver.py _report_chip_lost). Bitten on synthetic output ([26, 54, 54]); the hijack is silicon-only (twin record) |
-| tests_hardware/flash/test_bus_concurrency.py:314 | test_fram_hard_reset_race_during_write_and_recovery | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:331 | test_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
-| tests_hardware/flash/test_bus_concurrency.py:344 | test_fram_erase_racing_a_chunk_write_leaves_no_torn_chunk | flash (hardware) | biting | — | biting as is |
-| tests_hardware/flash/test_bus_concurrency.py:363 | test_reboot_command_shuts_down_then_resets | flash (hardware) | biting | — | biting as is |
+| tests_hardware/flash/test_bus_concurrency.py:206 | test_scd30_config_write_does_not_disturb_concurrent_sibling_reads | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:221 | test_isl29125_real_irq_edge_beats_the_periodic_fallback | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:236 | test_bus_topology_autodetect_address_and_reserved_range_sweep | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:255 | test_a_held_sda_line_is_cleared_and_every_device_answers | flash (hardware) | CRr2 | log_existence_only; hw_no_log | log_existence_only: biting: a transfer's errno, not a log: rp2's two transfer failures (ports/rp2/machine_i2c.c:152/:154, v1.29.0); the claim is the clear after; hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:272 | test_bmp3xx_alone_survives_a_general_call | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:285 | test_fram_same_device_read_write_concurrency | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:296 | test_fram_cs_pin_hijack_fault_injection_and_recovery | flash (hardware) | fixed | was:log_existence_only | was:log_existence_only: fixed: exactly one chip-lost entry: lost['errnos'].count(54) == 1, the driver's one entry per loss (src/asy_fram_driver.py _report_chip_lost). Bitten on synthetic output ([26, 54, 54]); the hijack is silicon-only (twin record) |
+| tests_hardware/flash/test_bus_concurrency.py:315 | test_fram_hard_reset_race_during_write_and_recovery | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:332 | test_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
+| tests_hardware/flash/test_bus_concurrency.py:345 | test_fram_erase_racing_a_chunk_write_leaves_no_torn_chunk | flash (hardware) | biting | — | biting as is |
+| tests_hardware/flash/test_bus_concurrency.py:364 | test_reboot_command_shuts_down_then_resets | flash (hardware) | biting | — | biting as is |
 | tests_hardware/flash/test_bus_electrical_timing.py:30 | test_soft_timer_callback_drop_self_heals_under_scheduler_saturation | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
 | tests_hardware/flash/test_bus_electrical_timing.py:41 | test_timer_init_raises_enomem_when_real_alarm_pool_is_exhausted | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
 | tests_hardware/flash/test_bus_electrical_timing.py:49 | test_scd30_real_irq_edge_drives_a_real_read | flash (hardware) | CRr2 | hw_no_log | hw_no_log: CRr2: the bench log fixture and marker / the flash tier's logs fact |
@@ -6514,51 +6514,51 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests_scripts/test_digital_twin_generated_boot.py:546 | test_real_device_boots_its_generated_module_and_serves_over_real_http | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_digital_twin_generated_boot.py:565 | test_the_uart_link_device_boots_and_exercises_its_link_with_crc16_on_both_ends | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_digital_twin_generated_boot.py:595 | test_a_sustained_fault_resets_the_device_and_the_relaunch_reads_the_escalation | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:198 | test_every_scenario_states_its_goal_and_a_known_device_filter | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:205 | test_a_scenario_without_a_goal_is_refused_at_registration | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:211 | test_a_name_registered_twice_is_refused | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:221 | test_the_harness_imports_nothing_from_tests | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:227 | test_a_shared_port_53_deselects_the_dns_scenarios_by_reason | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:235 | test_a_device_without_a_scenarios_driver_skips_it_by_name | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:241 | test_a_device_independent_scenario_runs_on_its_first_device_with_the_property_only | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:251 | test_the_lag_bound_is_each_devices_smallest_hard_consumer_from_one_source | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:270 | test_the_loop_lag_load_spans_the_storm_at_the_longest_read_trigger_and_one_whole_window | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:197 | test_every_scenario_states_its_goal_and_a_known_device_filter | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:204 | test_a_scenario_without_a_goal_is_refused_at_registration | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:210 | test_a_name_registered_twice_is_refused | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:220 | test_the_harness_imports_nothing_from_tests | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:226 | test_a_shared_port_53_deselects_the_dns_scenarios_by_reason | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:234 | test_a_device_without_a_scenarios_driver_skips_it_by_name | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:240 | test_a_device_independent_scenario_runs_on_its_first_device_with_the_property_only | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:250 | test_the_lag_bound_is_each_devices_smallest_hard_consumer_from_one_source | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:269 | test_the_loop_lag_load_spans_the_storm_at_the_longest_read_trigger_and_one_whole_window | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_digital_twin_scenarios.py:286 | test_the_lag_under_load_is_over_the_windows_begun_after_its_start_and_the_boot_window_is_reported_apart | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:296 | test_every_window_the_load_spans_is_held_to_the_bound_the_boot_one_included | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:306 | test_the_settle_window_begins_after_the_stop_and_drops_no_led_frame | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:315 | test_the_settle_window_is_held_at_its_p99_and_its_maximum_to_the_bound | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:324 | test_a_stagger_wait_is_the_second_read_trigger_and_an_unknown_property_is_refused | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:339 | test_only_selects_by_name_and_refuses_an_unknown_one | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:346 | test_an_unknown_device_is_a_usage_error | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:351 | test_exclusive_port_53_needs_the_callers_lock | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:358 | test_each_device_draws_from_its_own_block_of_the_harness_band | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:363 | test_the_run_record_names_each_scenarios_outcome | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:382 | test_a_scenario_whose_premise_this_host_cannot_give_skips_with_its_reason | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:395 | test_a_run_that_passed_nothing_is_no_pass | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:428 | test_every_boot_ends_cleanly_or_by_a_claimed_exit | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:434 | test_a_boot_whose_feed_gap_came_near_the_watchdog_fails_unless_it_starves_it_by_design | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:451 | test_a_held_port_53_fails_the_run_at_once_naming_it_and_boots_nothing | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:470 | test_every_boot_logs_at_error_level_from_its_build_and_its_stored_level | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:479 | test_a_stored_level_is_kept_and_a_boot_not_logged_plants_nothing | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:488 | test_only_the_scenario_reading_the_device_defaults_boots_unlogged | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:500 | test_a_reset_errors_under_a_held_reset_must_answer_failed_and_lower_nothing | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:512 | test_the_routes_come_from_the_service_table | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:518 | test_the_reset_takes_the_largest_body_and_skips_when_none_outgrows_both_buffers | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:525 | test_the_site_paths_are_the_staged_modules_files_as_a_client_requests_them | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:541 | test_the_sharing_scenarios_that_run_go_first_each_part_in_registry_order | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:546 | test_consecutive_sharing_scenarios_that_run_form_one_group | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:552 | test_a_sharing_scenario_boots_once_with_no_arguments_but_the_slot_lines | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:575 | test_moved_error_sources_on_an_own_boot_are_refused_at_registration | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:584 | test_sharing_scenarios_run_on_one_twin_until_the_group_ends | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:595 | test_an_idle_check_failure_names_the_scenario_and_the_next_boots_fresh | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:608 | test_a_held_slot_or_a_queued_connection_fails_the_idle_check | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:621 | test_a_sharing_scenario_asking_for_its_own_arguments_is_refused | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:630 | test_a_group_reaching_the_sgp40_backup_deadline_goes_on_on_a_fresh_boot | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:645 | test_a_count_moved_past_the_sgp40_backup_deadline_fails_as_the_boots_overrun | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:660 | test_the_shared_boot_deadline_is_sgp40s_first_untimestamped_backup | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:674 | test_the_accept_queue_is_read_from_the_listening_row | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:683 | test_every_scenario_names_its_family_as_a_literal | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_digital_twin_scenarios.py:691 | test_a_scenario_without_a_family_is_refused_at_registration | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:297 | test_every_window_the_load_spans_is_held_to_the_bound_the_boot_one_included | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:308 | test_the_settle_window_begins_after_the_stop_and_drops_no_led_frame | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:318 | test_the_settle_window_is_held_at_its_p99_and_its_maximum_to_the_bound | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:327 | test_a_stagger_wait_is_the_second_read_trigger_and_an_unknown_property_is_refused | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:342 | test_only_selects_by_name_and_refuses_an_unknown_one | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:349 | test_an_unknown_device_is_a_usage_error | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:354 | test_exclusive_port_53_needs_the_callers_lock | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:361 | test_each_device_draws_from_its_own_block_of_the_harness_band | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:366 | test_the_run_record_names_each_scenarios_outcome | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:385 | test_a_scenario_whose_premise_this_host_cannot_give_skips_with_its_reason | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:398 | test_a_run_that_passed_nothing_is_no_pass | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:431 | test_every_boot_ends_cleanly_or_by_a_claimed_exit | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:437 | test_a_boot_whose_feed_gap_came_near_the_watchdog_fails_unless_it_starves_it_by_design | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:454 | test_a_held_port_53_fails_the_run_at_once_naming_it_and_boots_nothing | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:473 | test_every_boot_logs_at_error_level_from_its_build_and_its_stored_level | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:482 | test_a_stored_level_is_kept_and_a_boot_not_logged_plants_nothing | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:491 | test_only_the_scenario_reading_the_device_defaults_boots_unlogged | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:503 | test_a_reset_errors_under_a_held_reset_must_answer_failed_and_lower_nothing | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:515 | test_the_routes_come_from_the_service_table | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:521 | test_the_reset_takes_the_largest_body_and_skips_when_none_outgrows_both_buffers | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:528 | test_the_site_paths_are_the_staged_modules_files_as_a_client_requests_them | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:544 | test_the_sharing_scenarios_that_run_go_first_each_part_in_registry_order | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:549 | test_consecutive_sharing_scenarios_that_run_form_one_group | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:555 | test_a_sharing_scenario_boots_once_with_no_arguments_but_the_slot_lines | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:578 | test_moved_error_sources_on_an_own_boot_are_refused_at_registration | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:587 | test_sharing_scenarios_run_on_one_twin_until_the_group_ends | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:598 | test_an_idle_check_failure_names_the_scenario_and_the_next_boots_fresh | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:611 | test_a_held_slot_or_a_queued_connection_fails_the_idle_check | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:624 | test_a_sharing_scenario_asking_for_its_own_arguments_is_refused | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:633 | test_a_group_reaching_the_sgp40_backup_deadline_goes_on_on_a_fresh_boot | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:648 | test_a_count_moved_past_the_sgp40_backup_deadline_fails_as_the_boots_overrun | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:663 | test_the_shared_boot_deadline_is_sgp40s_first_untimestamped_backup | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:677 | test_the_accept_queue_is_read_from_the_listening_row | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:686 | test_every_scenario_names_its_family_as_a_literal | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_digital_twin_scenarios.py:694 | test_a_scenario_without_a_family_is_refused_at_registration | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_dns_probe.py:17 | test_build_query_packs_the_asked_qtype_and_qclass_in | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_dns_probe.py:25 | test_build_query_asks_for_an_a_record_by_default | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_dns_probe.py:31 | test_answer_count_reads_ancount_and_is_none_on_a_short_packet | host (pytest) | biting | — | biting as is |
@@ -6654,8 +6654,8 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests_scripts/test_fram_chunk_owner_sites.py:201 | test_the_owner_check_bites | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_fram_chunk_owner_sites.py:215 | test_the_generated_construction_check_bites | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_fram_chunk_owner_sites.py:219 | test_the_seed_check_bites_on_a_planted_collision | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_fram_less_boot.py:91 | test_the_fixture_declares_no_fram_at_all | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_fram_less_boot.py:97 | test_a_device_without_fram_boots_with_every_log_in_ram_and_refuses_erase_fram | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_fram_less_boot.py:93 | test_the_fixture_declares_no_fram_at_all | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_fram_less_boot.py:100 | test_a_device_without_fram_boots_with_every_log_in_ram_and_refuses_erase_fram | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_frozen_first_shadowing.py:38 | test_without_the_path_lines_a_planted_asyncio_shadows_the_frozen_one | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_frozen_first_shadowing.py:44 | test_the_boot_entrys_path_lines_load_the_frozen_asyncio | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_frozen_inputs_reproducible.py:75 | test_two_hash_seeds_stage_byte_identical_inputs | host (pytest) | biting | — | biting as is |
@@ -7916,18 +7916,21 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests_scripts/test_twin_runner_test_flags.py:92 | test_every_instrumentation_call_and_private_rebind_sits_under_its_flag | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_twin_runner_test_flags.py:98 | test_nothing_the_firmware_freezes_names_a_test_flag_the_runner_or_a_twin_module | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_twin_runner_test_flags.py:113 | test_a_flag_defaulting_on_or_an_unguarded_call_is_caught | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_twin_wiring_contract.py:130 | test_every_plan_matches_the_declared_shape | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_twin_wiring_contract.py:136 | test_the_uart_pair_names_two_uart_buses_the_device_declares | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_twin_wiring_contract.py:233 | test_every_key_a_consumer_reads_off_a_plan_is_declared | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_twin_wiring_contract.py:242 | test_each_bus_s_pins_name_exactly_its_kind_s_roles | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_twin_wiring_contract.py:250 | test_a_read_of_an_undeclared_pin_role_is_found | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_twin_wiring_contract.py:263 | test_the_twin_device_helper_restates_the_plan_shape_as_buildgen_declares_it | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_twin_wiring_contract.py:287 | test_the_generated_devices_are_the_plan_stems_sorted | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_twin_wiring_contract.py:296 | test_an_empty_generated_tree_fails_naming_the_generator | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_twin_wiring_contract.py:301 | test_device_with_picks_the_first_device_wiring_every_named_driver | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_twin_wiring_contract.py:310 | test_the_shared_buses_are_every_device_s_buses_with_two_occupants | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_twin_wiring_contract.py:320 | test_no_shared_bus_anywhere_fails_naming_the_devices | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_twin_wiring_contract.py:327 | test_the_runner_and_the_boot_entry_call_the_generated_main_as_declared | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_twin_wiring_contract.py:131 | test_every_plan_matches_the_declared_shape | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_twin_wiring_contract.py:137 | test_the_uart_pair_names_two_uart_buses_the_device_declares | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_twin_wiring_contract.py:242 | test_every_key_a_consumer_reads_off_a_plan_is_declared | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_twin_wiring_contract.py:251 | test_each_bus_s_pins_name_exactly_its_kind_s_roles | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_twin_wiring_contract.py:259 | test_a_read_of_an_undeclared_pin_role_is_found | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_twin_wiring_contract.py:266 | test_each_comprehension_reads_its_own_names | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_twin_wiring_contract.py:273 | test_a_name_unpacked_from_a_comprehension_is_followed | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_twin_wiring_contract.py:287 | test_the_twin_device_helper_restates_the_plan_shape_as_buildgen_declares_it | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_twin_wiring_contract.py:311 | test_the_generated_devices_are_the_plan_stems_sorted | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_twin_wiring_contract.py:320 | test_an_empty_generated_tree_fails_naming_the_generator | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_twin_wiring_contract.py:325 | test_device_with_picks_the_first_device_wiring_every_named_driver | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_twin_wiring_contract.py:334 | test_devices_with_lists_every_device_wiring_every_named_driver | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_twin_wiring_contract.py:344 | test_the_shared_buses_are_every_device_s_buses_with_two_occupants | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_twin_wiring_contract.py:354 | test_no_shared_bus_anywhere_fails_naming_the_devices | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_twin_wiring_contract.py:361 | test_the_runner_and_the_boot_entry_call_the_generated_main_as_declared | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_typecheck_sh.py:72 | test_a_clean_run_counts_every_stage_and_run_and_exits_0 | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_typecheck_sh.py:90 | test_a_failing_run_is_named_and_fails_the_script_after_every_run | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_typecheck_sh.py:99 | test_extra_paths_narrow_only_the_main_pass | host (pytest) | biting | — | biting as is |
@@ -8108,24 +8111,24 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests_js/generated-definitions-render.test.js:66 | load through the inlined element a device build serves | web (vitest) | biting | — | biting as is |
 | tests_js/generated-definitions-render.test.js:73 | render the %s section's every group, field and errcount row, with no error | web (vitest) | biting | — | biting as is |
 | tests_js/lint-ceilings.test.js:23 | ${rule} sits at its measured maximum | web (vitest) | biting | — | biting as is |
-| tests_js/live-backend-put-matrix.test.js:273 | drives every action of every device's definitions, or lists it as not driven with its reason | web (vitest) | biting | — | biting as is |
-| tests_js/live-backend-put-matrix.test.js:280 | names an action a device gains that no probe drives | web (vitest) | biting | — | biting as is |
-| tests_js/live-backend-put-matrix.test.js:288 | lists as not driven only actions some device's definitions still declare | web (vitest) | biting | — | biting as is |
-| tests_js/live-backend-put-matrix.test.js:292 | names a NOT_DRIVEN row whose action no device declares | web (vitest) | biting | — | biting as is |
-| tests_js/live-backend-put-matrix.test.js:378 | resubmitting the field's own current value renders it, answered Unchanged | web (vitest) | biting | — | biting as is |
-| tests_js/live-backend-put-matrix.test.js:388 | resubmitting the field's own current value is sparse-omitted (nothing to submit, no round trip) | web (vitest) | biting | — | biting as is |
-| tests_js/live-backend-put-matrix.test.js:438 | rejects %s (out of range): real render stays at the field's own current value | web (vitest) | biting | — | biting as is |
-| tests_js/live-backend-put-matrix.test.js:443 | accepts a fractional literal for this float-typed field, rendered correctly | web (vitest) | biting | — | biting as is |
-| tests_js/live-backend-put-matrix.test.js:451 | rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated | web (vitest) | biting | — | biting as is |
-| tests_js/live-backend-put-matrix.test.js:460 | accepts %s (a valid value distributed across the range), rendered correctly | web (vitest) | biting | — | biting as is |
-| tests_js/live-backend-put-matrix.test.js:465 | accepts the declared special value ${special.value} ("${special.meaning}"), rendered correctly | web (vitest) | biting | — | biting as is |
-| tests_js/live-backend-put-matrix.test.js:481 | rejects a too-short string: real render stays at the field's own current value | web (vitest) | biting | — | biting as is |
-| tests_js/live-backend-put-matrix.test.js:489 | rejects a too-long string: real render stays at the field's own current value | web (vitest) | biting | — | biting as is |
-| tests_js/live-backend-put-matrix.test.js:500 | accepts a %s-char string (a valid value distributed across the length range), rendered correctly | web (vitest) | biting | — | biting as is |
-| tests_js/live-backend-put-matrix.test.js:510 | flipping to the opposite state renders Valid with the new state actually shown | web (vitest) | biting | — | biting as is |
-| tests_js/live-backend-put-matrix.test.js:522 | selecting option %s renders Valid with that option actually shown selected | web (vitest) | biting | — | biting as is |
-| tests_js/live-backend-put-matrix.test.js:531 | two identical valid sends both answer Valid | web (vitest) | biting | — | biting as is |
-| tests_js/live-backend-put-matrix.test.js:545 | answers each send with its exact word through the page, its confirmation accepted | web (vitest) | biting | no_assertion | no_assertion: biting: dispatched through ACTION_PROBES (:54), whose methods carry the expects; the JS scan follows no subscript |
+| tests_js/live-backend-put-matrix.test.js:333 | drives every action of every device's definitions, or lists it as not driven with its reason | web (vitest) | biting | — | biting as is |
+| tests_js/live-backend-put-matrix.test.js:340 | names an action a device gains that no probe drives | web (vitest) | biting | — | biting as is |
+| tests_js/live-backend-put-matrix.test.js:348 | lists as not driven only actions some device's definitions still declare | web (vitest) | biting | — | biting as is |
+| tests_js/live-backend-put-matrix.test.js:352 | names a NOT_DRIVEN row whose action no device declares | web (vitest) | biting | — | biting as is |
+| tests_js/live-backend-put-matrix.test.js:438 | resubmitting the field's own current value renders it, answered Unchanged | web (vitest) | biting | — | biting as is |
+| tests_js/live-backend-put-matrix.test.js:448 | resubmitting the field's own current value is sparse-omitted (nothing to submit, no round trip) | web (vitest) | biting | — | biting as is |
+| tests_js/live-backend-put-matrix.test.js:498 | rejects %s (out of range): real render stays at the field's own current value | web (vitest) | biting | — | biting as is |
+| tests_js/live-backend-put-matrix.test.js:503 | accepts a fractional literal for this float-typed field, rendered correctly | web (vitest) | biting | — | biting as is |
+| tests_js/live-backend-put-matrix.test.js:511 | rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated | web (vitest) | biting | — | biting as is |
+| tests_js/live-backend-put-matrix.test.js:520 | accepts %s (a valid value distributed across the range), rendered correctly | web (vitest) | biting | — | biting as is |
+| tests_js/live-backend-put-matrix.test.js:525 | accepts the declared special value ${special.value} ("${special.meaning}"), rendered correctly | web (vitest) | biting | — | biting as is |
+| tests_js/live-backend-put-matrix.test.js:541 | rejects a too-short string: real render stays at the field's own current value | web (vitest) | biting | — | biting as is |
+| tests_js/live-backend-put-matrix.test.js:549 | rejects a too-long string: real render stays at the field's own current value | web (vitest) | biting | — | biting as is |
+| tests_js/live-backend-put-matrix.test.js:560 | accepts a %s-char string (a valid value distributed across the length range), rendered correctly | web (vitest) | biting | — | biting as is |
+| tests_js/live-backend-put-matrix.test.js:570 | flipping to the opposite state renders Valid with the new state actually shown | web (vitest) | biting | — | biting as is |
+| tests_js/live-backend-put-matrix.test.js:582 | selecting option %s renders Valid with that option actually shown selected | web (vitest) | biting | — | biting as is |
+| tests_js/live-backend-put-matrix.test.js:591 | two identical valid sends both answer Valid | web (vitest) | biting | — | biting as is |
+| tests_js/live-backend-put-matrix.test.js:605 | answers each send with its exact word through the page, its confirmation accepted | web (vitest) | biting | no_assertion | no_assertion: biting: dispatched through ACTION_PROBES (:54), whose methods carry the expects; the JS scan follows no subscript |
 | tests_js/live-backend.test.js:30 | the real website, driven by a real browser, round-trips a real PUT against a live twin | web (vitest) | biting | — | biting as is |
 | tests_js/live-backend.test.js:45 | a full ceiling of browser tabs against one live twin all load, directly or on one reload | web (vitest) | biting | — | biting as is |
 | tests_js/live-backend.test.js:62 | the page recovers from a device restart without reloading | web (vitest) | biting | — | biting as is |
@@ -8525,7 +8528,7 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests_hardware/device_scripts/bmp3xx_plausibility_read.py:1 | bmp3xx_plausibility_read | device script | justified | ds_facts | ds_facts: justified: polls is the count shown in the no-reading assertion's message (test_sensor_accuracy.py:139), a diagnostic |
 | tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py:1 | bmp3xx_same_device_rw_concurrency | device script | fixed | ds_facts | ds_facts: fixed: test_bmp3xx_same_device_read_write_concurrency asserts reset_window_reads > 0 (a rung no read raced passed); reset_window_failures is the script's stated diagnostic (a read the reset lands in may fail cleanly). Bitten on synthetic output and passing on the twin |
 | tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py:1 | bus_concurrency_cross_device_scd30_sgp40 | device script | fixed | ds_facts | ds_facts: fixed: flash test_bus_concurrency.py test_cross_device_concurrent_sessions_genuinely_interleave now asserts reset_sibling_reads > 0 and heater_off_sibling_reads > 0: the zero-failure checks around both rungs passed when nothing was read. Bitten on synthetic output (each count 0: old passes, new fails; healthy passes both) and passing on the twin; windows_with_interleaving is a diagnostic beside the asserted interleaved_total >= sgp_cycles (test_bus_concurrency.py:124) |
-| tests_hardware/device_scripts/bus_concurrency_isl29125_write_vs_siblings.py:1 | bus_concurrency_isl29125_write_vs_siblings | device script | justified | ds_facts | ds_facts: justified: isl_windows is the raw write timeline, a diagnostic: test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads asserts write_count == planned, both sibling read counts > 0 and no errors (test_bus_concurrency.py:142). The extractor first counted it read because another test in the file asserts a key of that name |
+| tests_hardware/device_scripts/bus_concurrency_isl29125_write_vs_siblings.py:1 | bus_concurrency_isl29125_write_vs_siblings | device script | fixed | ds_facts | ds_facts: fixed: the sibling reads now record their windows and the script reports overlapped_reads (sibling reads whose window intersects a write's, through ticks_diff); test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads asserts it > 0 before _no_errors, so reads that never met a write no longer pass. Bites: synthetic no-overlap output passes HEAD's test and fails the new one, an overlap passes both; through TwinBoard the healthy script passes and a plant stopping the siblings before the first write passes HEAD's test and fails the new one (S/u35/laneC/crr2b/bites_isl.out, twin_isl.log, plant_*.log). isl_windows stays the raw write timeline, a diagnostic (agent, 2026-10-27) |
 | tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py:1 | bus_concurrency_same_device_scd30 | device script | justified | ds_facts | ds_facts: justified: settle_failures counts the reads consumed to clear setup()'s first unsettled conversion, stated in the script (bus_concurrency_same_device_scd30.py:32); the measured phase is asserted (completed == planned, no errors) |
 | tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py:1 | bus_concurrency_scd30_write_vs_siblings | device script | biting | ds_facts | ds_facts: biting: every fact it emits is read by key in the test that runs it: test_bus_concurrency.py::test_scd30_config_write_does_not_disturb_concurrent_sibling_reads |
 | tests_hardware/device_scripts/bus_deinit_is_a_noop_on_real_hardware.py:1 | bus_deinit_is_a_noop_on_real_hardware | device script | justified | ds_facts | ds_facts: justified: fram_setup, chunk, chunk_cleared_after_setup, baseline_write and raw_spi_present are the preconditions of the asserted spi_singleton and spi_read_after_deinit: no chunk or no raw SPI leaves both absent, so the test's facts[...] raises (test_bus_concurrency.py:338), and a failed setup or baseline write makes the read compare unequal to the pattern; chunk_cleared is asserted |
