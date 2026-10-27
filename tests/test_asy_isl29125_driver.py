@@ -3938,6 +3938,23 @@ def test_a_published_candidate_expires_and_stays_expired_across_a_week() -> None
     assert reader._cal_meas is None
 
 
+def test_a_published_candidate_still_reads_one_tick_before_its_hold_ends_and_is_gone_at_it() -> None:
+    # The hold's exact bound on the driven clock: the candidate _CAL_HOLD_MS - 1 ms after publishing, None at _CAL_HOLD_MS.
+    hold = src_int("src/asy_isl29125_driver.py", "_CAL_HOLD_MS")
+    _i2c, reader = ready_reader("cal_edge")
+    clock = Ticks30Time(7000)
+    asy_isl29125_driver.time = clock  # type: ignore[assignment]
+    try:
+        reader._publish_candidate(25.9)
+        clock.advance(hold - 1)
+        before = reader._measured_ratio()
+        clock.advance(1)
+        at = reader._measured_ratio()
+    finally:
+        asy_isl29125_driver.time = time
+    assert (before, at) == (25.9, None), (before, at)
+
+
 def test_the_measured_candidate_travels_with_every_reading() -> None:
     # GainMeas is a MEASUREMENT, so it rides the same tuple as Lux and RGB rather than sitting in
     # config or in the maintenance group - which is what lets the user read it and copy it across.

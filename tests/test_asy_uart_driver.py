@@ -2973,15 +2973,16 @@ def test_a_cancel_at_the_counter_cap_wraps_and_is_acknowledged() -> None:
     uart._cancel_ack = COUNTER_CAP
     release = asyncio.Event()
 
-    async def scenario() -> bool:
+    async def scenario() -> "tuple[bool, int]":
         task = asyncio.create_task(_holder(uart, release, reads=True))
         await asyncio.sleep_ms(_TASK_INSIDE_MS)
         result = await asyncio.wait_for(uart.cancel_read_timeout(), _STEP_BOUND_S)
+        acked = uart._cancel_ack  # at the return: the wrapped request (0) waited for its own acknowledgement
         release.set()
         await asyncio.wait_for(task, _STEP_BOUND_S)
-        return result
+        return result, acked
 
-    assert run(scenario(), _RUN_BOUND_S) is True
+    assert run(scenario(), _RUN_BOUND_S) == (True, 0)
     assert (uart._cancel_req, uart._cancel_ack) == (0, 0), (uart._cancel_req, uart._cancel_ack)
     assert uart.cancel_unacknowledged == 0
 
