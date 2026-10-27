@@ -1156,9 +1156,31 @@
   ]
  },
  "tests_hardware/bench/test_end_to_end_timing.py::test_real_concurrent_client_burst_does_not_crash_the_webserver": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails any E or W entry outside its provokes_log set: WEBSERVER W HTTP_REFUSED, W HTTP_PEER_RESET"
+  ],
   "ns_seed_text": [
    "biting",
    "the seed word is about an input, a value, a lock or a typo, not a logged code"
+  ]
+ },
+ "tests_hardware/bench/test_heap_under_connection_ceiling.py::test_report_the_boards_own_connection_wall": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails any E or W entry outside its provokes_log set: WEBSERVER W HTTP_REFUSED, W HTTP_PEER_RESET"
+  ]
+ },
+ "tests_hardware/bench/test_serving_heap_at_default_gc.py::test_every_source_and_route_fits_a_small_free_run": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails any E or W entry outside its provokes_log set: WEBSERVER E CALLBACK, E LOG_RAM_ONLY, SYSTEM W CONFIG_LOST, E CHIP_GET for BMP3XX/ISL29125/SCD30, E CFG_GET_RAISED for seven modules, E CFG_CALLBACK_RAISED for three"
+  ]
+ },
+ "tests_hardware/bench/test_serving_heap_at_default_gc.py::test_serving_sweep_at_the_reactive_default": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails any E or W entry outside its provokes_log set: WEBSERVER W HTTP_REFUSED, W HTTP_PEER_RESET; it ends_unreachable, so an unanswered end carries its window to the next read"
   ]
  },
  "tests_hardware/bench/test_end_to_end_timing.py::test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly": {
@@ -2731,16 +2753,10 @@
    "a false flag from the per-device split: the test loops devices_with() and calls _restart_ends_dark(device), whose nested scenario() (driven by run()) asserts the restart's frames are black then the overlay grey, the one remaining wake, a live restarted task and SYSTEM's one persisted TASK_RAISED entry; the scanner does not descend into a nested async def (agent, 2026-10-27)"
   ]
  },
- "tests_hardware/bench/test_network_resilience.py::test_real_wifi_flaps_repeatedly_without_wedging_the_system": {
-  "ns_seed_text": [
-   "biting",
-   "the seed word is in its provokes_log reason, naming the _assert_wifi_log_has_only_benign_outage_warnings helper, not a tolerance in the test"
-  ]
- },
- "tests_hardware/bench/test_network_resilience.py::test_real_wifi_outage_and_recovery_while_in_normal_sta_mode": {
-  "ns_seed_text": [
-   "biting",
-   "the seed word is in its provokes_log reason, naming the _assert_wifi_log_has_only_benign_outage_warnings helper, not a tolerance in the test"
+ "tests_hardware/bench/test_network_resilience.py::test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog": {
+  "hw_no_log": [
+   "fixed",
+   "the autouse bench log check (bench/conftest.py no_unprovoked_log_entry) fails any E or W entry outside its provokes_log set: WEBSERVER W HTTP_REQUEST_CAP, W HTTP_CALL_TIMEOUT, W HTTP_BAD_HEAD, W HTTP_PEER_RESET, W HTTP_REFUSED"
   ]
  },
  "tests_scripts/test_bench_log_check.py::test_a_marked_tests_entry_before_its_clear_inside_the_set_passes": {

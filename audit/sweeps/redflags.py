@@ -155,6 +155,12 @@ def is_helper(path: str) -> bool:
     return any(d == pd and ok(n) for pd, ok in HELPER_PATTERNS)
 
 
+def walk_own(node: ast.AST) -> "list[ast.AST]":
+    # ast.walk(node) in its own order, never a decorator's nodes: a marker's reason or arguments are no part of what it runs.
+    skip = {id(n) for d in getattr(node, "decorator_list", []) for n in ast.walk(d)}
+    return [n for n in ast.walk(node) if id(n) not in skip]
+
+
 class Scan:
     # One test body's credits, callees and flags.
     def __init__(self, uni: Universe, mod: Mod, node: ast.AST, cls: str | None) -> None:
@@ -244,8 +250,8 @@ class Scan:
 
     def _walk_credit(self, mod: Mod, node: ast.AST, cls: str | None, depth: int, top: bool) -> bool:
         found = False
-        local = {n.name for n in ast.walk(node) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)) and n is not node and hasattr(n, "name")}
-        for n in ast.walk(node):
+        local = {n.name for n in walk_own(node) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)) and n is not node and hasattr(n, "name")}
+        for n in walk_own(node):
             kind = credit_kind(mod, n)
             if kind:
                 found = True
@@ -254,10 +260,10 @@ class Scan:
         if depth >= DEPTH:
             return found
         loops: dict[str, list[tuple[Mod, ast.AST, str | None]]] = {}
-        for n in ast.walk(node):
+        for n in walk_own(node):
             if isinstance(n, (ast.For, ast.AsyncFor)) and isinstance(n.target, ast.Name):
                 loops[n.target.id] = self._resolve(mod, n.iter, cls, set())
-        calls = [n for n in ast.walk(node) if isinstance(n, ast.Call)]
+        calls = [n for n in walk_own(node) if isinstance(n, ast.Call)]
         if top:
             for n in calls:
                 for tmod, fn, _tcls in self._resolve(mod, n.func, cls, local):
@@ -336,10 +342,10 @@ def broad_handler(h: ast.ExceptHandler) -> bool:
     return broad and inert
 
 
-def py_flags(uni: Universe, mod: Mod, node: ast.AST, cls: str | None, name: str, level: str, start: int) -> "tuple[list[list[object]], str]":
+def py_flags(uni: Universe, mod: Mod, node: ast.AST, cls: str | None, name: str, level: str) -> "tuple[list[list[object]], str]":
     sc = Scan(uni, mod, node, cls)
     flags: list[list[object]] = []
-    seg = "\n".join(mod.lines[start - 1 : node.end_lineno])
+    seg = "\n".join(mod.lines[node.lineno - 1 : node.end_lineno])  # from the def line: a decorator's text is not the body's
     asserts = [n for n in ast.walk(node) if isinstance(n, ast.Assert)]
     credit = "direct" if sc.direct else "helper" if sc.via else "none"
     if credit == "none":
@@ -388,7 +394,7 @@ def py_flags(uni: Universe, mod: Mod, node: ast.AST, cls: str | None, name: str,
             lf, rf = dotted(t.left.func).rsplit(".", 1)[-1], dotted(t.comparators[0].func).rsplit(".", 1)[-1]
             if lf == rf and lf not in ("len", "list", "sorted", "set", "tuple", "dict", "str", "int", "bytes", "float", "repr", "type", "bytearray", "frozenset"):
                 flags.append(["same_callee", a.lineno, ast.unparse(t)[:80]])
-    flags += ns_flags(node, seg, start)
+    flags += ns_flags(node, seg, node.lineno)
     if level.startswith(("flash", "bench")) and not HW_LOG.search(seg) and not any(HW_LOG.search(h.name) for _m, h, _c in sc.helpers):
         flags.append(["hw_no_log", node.lineno, ""])
     return dedupe(flags), credit if credit != "helper" else "helper:" + ",".join(v.split("@")[0] for v in sc.via[:4])
@@ -520,7 +526,7 @@ def ns_flags(node: ast.AST, seg: str, start: int) -> "list[list[object]]":
     m = SEED.search(seg)
     if m:
         out.append(["ns_seed_text", start + seg[: m.start()].count("\n"), m.group(0)])
-    for n in ast.walk(node):
+    for n in walk_own(node):
         if isinstance(n, ast.Compare):
             text = ast.unparse(n)
             sides = [n.left] + list(n.comparators)
@@ -583,8 +589,7 @@ def py_tests(uni: Universe, path: str) -> "list[dict[str, object]]":
                     found.append((ast.unparse(n.targets[0].slice), inner[n.value.id], None, level))
     out = []
     for name, node, cls, level in found:
-        start = min([d.lineno for d in getattr(node, "decorator_list", [])] + [node.lineno])
-        flags, credit = py_flags(uni, mod, node, cls, name, level, start)
+        flags, credit = py_flags(uni, mod, node, cls, name, level)
         out.append({"file": path, "line": node.lineno, "test": name, "level": level, "flags": flags, "credit": credit})
     return out
 
@@ -857,6 +862,17 @@ def test_accepted_code():
     assert validate.errno in (5, 10)
 """,
     "tests/asy_under_test.py": "def validate(x):\n    assert x\n    raise ValueError(x)\n",
+    "tests_hardware/bench/test_hw_shapes.py": """
+import pytest
+
+@pytest.mark.provokes_log("the burst is refused, logged in errcount", ("WEBSERVER", "W", "HTTP_REFUSED"))
+def test_a_decorator_naming_the_log_is_no_log_read():
+    assert fetch() == 200
+
+@pytest.mark.provokes_log("a retry may legitimately appear", ("WEBSERVER", "W", "HTTP_REFUSED"))
+def test_seed_words_in_a_decorator_are_not_the_bodys():
+    assert errcount_entry(read(), "WEBSERVER")["counter"] == 0
+""",
     "tests_js/a.test.js": "function check(v) { expect(v).toBe(1); }\nit('direct', () => { expect(f()).toBe(2); });\nit('via helper', () => { check(1); });\nit('none // tricky', () => { const s = \"expect(x)\"; f(s); });\nit.each([1, 2])('each %s', (v) => { expect(v).toBeDefined(); });\n",
 }
 
@@ -879,6 +895,8 @@ _EXPECT = {
     "test_two_calls_compared_are_no_tautology": set(),
     "test_one_name_compared_with_itself_is": {"cannot_fail"},
     "test_accepted_code": {"ns_code_in_set", "log_existence_only"},
+    "test_a_decorator_naming_the_log_is_no_log_read": {"hw_no_log"},
+    "test_seed_words_in_a_decorator_are_not_the_bodys": set(),
     "direct": set(),
     "via helper": set(),
     "none // tricky": {"no_assertion"},
