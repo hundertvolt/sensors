@@ -2742,5 +2742,17 @@
    "biting",
    "the seed word is in its provokes_log reason, naming the _assert_wifi_log_has_only_benign_outage_warnings helper, not a tolerance in the test"
   ]
+ },
+ "tests_scripts/test_bench_log_check.py::test_an_entry_a_marked_test_names_need_not_appear": {
+  "setup_credit_only": [
+   "biting",
+   "the claim is that the fixture raises nothing, and _drive() runs its setup and teardown to StopIteration and asserts every scripted read was made; plants_i1.out turns it red (2d73a934's fixture, the set admitting nothing, ends_unreachable ignored)"
+  ]
+ },
+ "tests_scripts/test_bench_log_check.py::test_a_test_that_ends_unreachable_hands_its_first_read_to_the_next_read": {
+  "setup_credit_only": [
+   "biting",
+   "the claim is that the fixture raises nothing, and _drive() runs its setup and teardown to StopIteration and asserts every scripted read was made; plants_i1.out turns it red (2d73a934's fixture, the set admitting nothing, ends_unreachable ignored)"
+  ]
  }
 }
