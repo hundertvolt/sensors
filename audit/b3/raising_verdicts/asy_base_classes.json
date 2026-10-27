@@ -2,7 +2,7 @@
  "raises": {
   "_checked_write_results": {
    "verdict": "handled",
-   "proof": "both callers sit in a try catching Exception: asy_base_classes.py:507 (except :508) and :689 (except :690); the raise is that try's logged failure, as its comment says"
+   "proof": "both callers sit in a try catching Exception: asy_base_classes.py:514 (except :515) and :696 (except :697); the raise is that try's logged failure, as its comment says"
   }
  },
  "calls": {}

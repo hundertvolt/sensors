@@ -26,7 +26,7 @@ Rows outside a broad `try`, by verdict: handled 77, inherently safe 12, open 342
 
 | module:line | function | call or raise | can raise (pinned source) | verdict | proof or action |
 |---|---|---|---|---|---|
-| asy_base_classes.py:370 | _checked_write_results | `raise TypeError('_set_mgr_cfg returned a non-dict result')` | the raise itself | handled | both callers sit in a try catching Exception: asy_base_classes.py:507 (except :508) and :689 (except :690); the raise is that try's logged failure, as its comment says |
+| asy_base_classes.py:370 | _checked_write_results | `raise TypeError('_set_mgr_cfg returned a non-dict result')` | the raise itself | handled | both callers sit in a try catching Exception: asy_base_classes.py:514 (except :515) and :696 (except :697); the raise is that try's logged failure, as its comment says |
 | asy_fram_driver.py:162 | FRAM_SPI.__aenter__ | `raise` | the raise itself | inherently safe | cleanup then re-raise: a BaseException (a cancel) while waiting for the bus lock releases the session lock first; a cancellation must propagate |
 | asy_fram_driver.py:207 | FRAM_SPI._check_device_id | `raise ValueError(f"FRAM max_size {self._max_size:#x} has no known product ID to verify against -` | the raise itself | exempt (setup) | one-time identification error, outside M.PROC.025's scope; reached from FRAM_SPI.setup(), whose one caller asy_fram_manager.py:795 sits in a try catching Exception (except :796) |
 | asy_fram_driver.py:455 | FRAM_SPI.setup | `raise OSError('SPI bus not initialized')` | the raise itself | exempt (setup) | one-time setup error, outside M.PROC.025's scope; the one caller asy_fram_manager.py:795 sits in a try catching Exception (except :796) |
