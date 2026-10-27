@@ -657,6 +657,37 @@ def _bus_fault_degrades(ctx: Context) -> None:
         _expect(_counter(_errcount(twin.port, "SGP40")) >= 1, "SGP40's error count holds no entry")
 
 
+@scenario("client_gone_mid_response_is_counted", family="webserver_requests", needs_site=True)
+def _client_gone_mid_response(ctx: Context) -> None:
+    """A client resetting its connection while the largest GET body is mid-write adds one to HTTPDropped, logged as a peer reset."""
+    with ctx.boot(*_CONN, "--test-pin-send-buffer") as twin:
+        sizes = {path: _request(twin.port, "GET", path) for path in (*_get_routes(), *_site_paths(ctx.device))}
+        _expect(all(a.status == HTTPStatus.OK for a in sizes.values()), f"a GET answered other than 200: { {p: a.status for p, a in sizes.items()} }")
+        floor = _send_buffer_floor()
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1)  # before the connect, so the window it offers starts there
+            buffered = floor + sock.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF)
+            path = _largest_past({p: len(a.body) for p, a in sizes.items()}, buffered)
+            _expect(twin.drained(), "a size read's slot never came back")
+            before = _group(_status(twin.port), "networking").get("HTTPDropped")
+            _expect(twin.drained(), "the HTTPDropped read's slot never came back")
+            mark = twin.mark()
+            sock.settimeout(_REQUEST_TIMEOUT_S)
+            sock.connect((HOST, twin.port))
+            sock.sendall(f"GET {path} HTTP/1.0\r\n\r\n".encode())
+            status = _status_line(sock)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))  # the close below is a reset
+        _expect(status.startswith(b"HTTP/1.") and b" 200 " in status, f"GET {path} began {status!r}")
+        _expect(twin.drained(), "the reset connection's slot never came back")
+        reset_pinned = _pinned(twin, mark)  # the reset connection's own line, before the reads below add theirs
+        after = _group(_status(twin.port), "networking").get("HTTPDropped")  # served: the reset left the server serving
+        _expect(isinstance(before, int) and after == before + 1, f"HTTPDropped {before!r} -> {after!r} after one reset mid-{path}")  # exact, as the refusal's
+        newest = _newest_entries(_errcount(twin.port, "WEBSERVER"), 1)
+        _expect(newest == [["W", _src_int(_WEBSERVER, "_WRN_HTTP_PEER_RESET")]], f"WEBSERVER's newest entry is {newest}, not the peer reset")
+        pinned = _pinned(twin, 0)
+        _expect(len(reset_pinned) == 1 and all(n == floor < accepted for n, accepted in pinned), f"the server's sockets read send buffers {pinned}, not the kernel's floor {floor} below their size at accept()")
+
+
 @scenario("a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response", family="webserver_concurrency")
 def _closing_connection_holds_its_slot(ctx: Context) -> None:
     """With every close held, a ceiling of clients holding whole responses still counts every slot and refuses one more."""
@@ -1142,6 +1173,14 @@ def _lag_windows(text: str) -> "list[dict[str, int]]":
     return [{key: int(value) for key, value in (part.split("=", 1) for part in line.split()[1:])} for line in text.splitlines() if line.startswith("LOOP_LAG ")]
 
 
+def _largest_past(sizes: "dict[str, int]", buffered: int) -> str:
+    # The path of the largest body; past what both ends' buffers hold, its write is still going when the client resets.
+    path = max(sizes, key=lambda p: sizes[p])
+    if sizes[path] <= buffered:
+        raise UnmetPremiseError(f"no GET body exceeds the {buffered} B the two pinned buffers hold (largest: {path}, {sizes[path]} B)")
+    return path
+
+
 def _link_roles(device: str) -> "dict[str, str]":
     # Each uart_link instance's role by its key, as its TOML states it.
     model = load_device(REPO_ROOT / "devices" / f"{device}.toml")
@@ -1438,6 +1477,12 @@ def _pending_faults(twin: Twin, token: str) -> int:
     if line is None:
         raise AssertionError("the twin printed no FAULT_PENDING line - boot it with --test-fault-status-interval-ms")
     return next((int(t.split("=", 1)[1]) for t in line.split()[1:] if t.startswith(token)), 0)
+
+
+def _pinned(twin: Twin, since: int) -> "list[tuple[int, int]]":
+    # Each SNDBUF_PINNED line printed after `since`: (the pinned size, its socket's size at accept()).
+    lines = [line.split() for line in log_from(twin.run.log_path, since).splitlines() if line.startswith("SNDBUF_PINNED ")]
+    return [(int(f[1].split("=")[1]), int(f[2].split("=")[1])) for f in lines]
 
 
 @scenario("realistic_mixed_polling_and_a_concurrent_real_config_write", family="webserver_concurrency")
@@ -1757,6 +1802,13 @@ def _save_fram_evidence(ctx: Context, twin: Twin, label: str) -> None:
         shutil.copy2(fram, evidence / fram.name)
 
 
+def _send_buffer_floor() -> int:
+    # The kernel's SO_SNDBUF floor, read back after a one-byte request (socket(7): doubled, then clamped to it).
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1)
+        return probe.getsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF)
+
+
 @scenario("sensors_put_round_trips_a_real_scd30_field_over_real_http", family="sensortask_integration", drivers=("scd30",))
 def _sensors_put_scd30(ctx: Context) -> None:
     """PUT /sensors SCD30 MeasInterval answers Valid through the SCD30 reader's own schema."""
@@ -1901,6 +1953,15 @@ def _site_never_shadows(ctx: Context) -> None:
         _expect(set(blocks) == ctx.sensors, f"/measurements carries {sorted(blocks)}, the device's sensors are {sorted(ctx.sensors)}")
 
 
+def _site_paths(device: str) -> "list[str]":
+    # The staged site's files as a client requests them, from its frozen module's header lines ("# /js/app.js.gz size=N").
+    module = SITES_DIR / device / "frozen_html.py"
+    paths = [line.split()[1].removesuffix(".gz") for line in module.read_text(encoding="utf-8").splitlines() if line.startswith("# /") and " size=" in line]
+    if not paths:
+        raise RuntimeError(f"{module} lists no file in its header lines - has its format changed?")
+    return paths
+
+
 @scenario("real_website_root_serves_the_actual_production_index_html", family="real_website_integration", needs_site=True, shared=True)
 def _site_root(ctx: Context) -> None:
     """GET / serves the device's real production index.html, gzip-encoded."""
@@ -1963,6 +2024,14 @@ def _status(port: int) -> JSONObject:
     if answer.status != HTTPStatus.OK:
         raise AssertionError(f"GET /status answered {answer.status}")
     return _object(answer)
+
+
+def _status_line(sock: socket.socket, limit: int = 64) -> bytes:
+    # The response's first line, read a byte at a time so nothing past it leaves the client's receive buffer.
+    line = b""
+    while not line.endswith(b"\r\n") and len(line) < limit and (byte := sock.recv(1)):
+        line += byte
+    return line
 
 
 def _status_of(port: int, path: str, timeout_s: float = _REQUEST_TIMEOUT_S) -> "int | str":

@@ -515,6 +515,23 @@ def test_the_routes_come_from_the_service_table(harness: ModuleType) -> None:
     assert "/" not in routes
 
 
+def test_the_reset_takes_the_largest_body_and_skips_when_none_outgrows_both_buffers(harness: ModuleType) -> None:
+    sizes = {"/status": 900, "/js/app.js": 28782, "/index.html": 16797}
+    assert harness._largest_past(sizes, 6912) == "/js/app.js"
+    with pytest.raises(harness.UnmetPremiseError, match=re.escape("no GET body exceeds the 28782 B the two pinned buffers hold (largest: /js/app.js, 28782 B)")):
+        harness._largest_past(sizes, 28782)
+
+
+def test_the_site_paths_are_the_staged_modules_files_as_a_client_requests_them(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / "fixture-device").mkdir()
+    (tmp_path / "fixture-device" / "frozen_html.py").write_text("# /index.html.gz size=10\n_f0 = const(b'# /x.gz size=1')\n# /js/app.js.gz size=20\n", encoding="utf-8")
+    monkeypatch.setattr(harness, "SITES_DIR", tmp_path)
+    assert harness._site_paths("fixture-device") == ["/index.html", "/js/app.js"]
+    (tmp_path / "fixture-device" / "frozen_html.py").write_text("_f0 = const(b'')\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="lists no file"):  # a changed module format, never a site with nothing to send
+        harness._site_paths("fixture-device")
+
+
 @pytest.fixture(scope="module")
 def port_bands() -> ModuleType:
     sys.path.insert(0, str(_REPO_ROOT / "tests"))

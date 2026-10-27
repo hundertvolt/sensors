@@ -9,6 +9,7 @@ import json
 import os
 import random
 import select
+import socket
 import struct
 import sys
 import time
@@ -98,6 +99,15 @@ if TYPE_CHECKING:
         @property
         def wire_log(self) -> _Clearable: ...
 
+    class _Sock(Protocol):
+        # A socket from accept() as the Unix port gives it (ports/unix/modsocket.c:192, :384, v1.29.0); the rp2 stub has no fileno().
+        def close(self) -> None: ...
+        def fileno(self) -> int: ...
+        def setsockopt(self, level: int, optname: int, value: int) -> None: ...
+
+    class _Accepted(Protocol):
+        s: _Sock  # the asyncio Stream's own socket (extmod/asyncio/stream.py:9, v1.29.0)
+
     class _Link(Protocol):
         # The two directions of a UART crossover link, each with its bounded wire log.
         @property
@@ -111,7 +121,7 @@ if "digital_twin/unixport" not in sys.path:
 import _flash_stall
 import _unix_port_udp_addr_shim
 import _wall_clock
-import ffi  # type: ignore[import-not-found]  # the Unix port's own module, no stub: --test-kbd-traceback's self-SIGINT
+import ffi  # type: ignore[import-not-found]  # the Unix port's own module, no stub: --test-kbd-traceback's self-SIGINT, the send buffer's read-back
 import machine
 import network
 from _ntp_responder import NtpResponder
@@ -175,6 +185,7 @@ _TEST_TRAIN_CMD_ID = 0x02  # the exerciser's ECHO (asy_uart_link_driver.py), the
 _SIGINT = 2  # Linux's signal number (signal(7)): MicroPython has no signal module
 _WATCHDOG_FAULT_KINDS = ("supervisor-raise", "main-exit", "block")
 _HOLD_CUT = "cut"  # --test-hold-system-entry's unreleased mode: the held entry's write cut inside its first block
+_SO_SNDBUF = 7  # Linux's (include/uapi/asm-generic/socket.h): the Unix port's socket module exports none (modsocket.c:722-727, v1.29.0)
 _FRAM_STATUS_BUSY = 0x02  # asy_fram_manager.py's _STATUS_BUSY, a const() and so no attribute: a block mid-write
 _WDT_FAULT_BLOCK_MS = _WDT_TIMEOUT_MS + 1000  # past the armed timeout: the starved countdown fires once the loop resumes
 
@@ -204,6 +215,7 @@ if TYPE_CHECKING:
         drop_timer_fire: str | None
         watchdog_fault: str | None
         defer_faults: bool
+        pin_send_buffer: bool
 
     class RunEnvironment(NamedTuple):
         # The product's config directory, whether NTP may go online instead of the local responder, the test flags, and
@@ -217,12 +229,12 @@ else:
     RunLimits = namedtuple("RunLimits", ("duration", "gc_threshold", "mem_sample_interval_ms", "stop_file"))
     TestFlags = namedtuple(
         "TestFlags",
-        ("hold_closing_slot", "stall_loop_ms", "conn_status_interval_ms", "fault_status_interval_ms", "shutdown_hang", "flash_stall_max", "uart_over_cap", "hold_system_entry", "kbd_traceback", "loop_lag_ms", "drop_timer_fire", "watchdog_fault", "defer_faults"),
+        ("hold_closing_slot", "stall_loop_ms", "conn_status_interval_ms", "fault_status_interval_ms", "shutdown_hang", "flash_stall_max", "uart_over_cap", "hold_system_entry", "kbd_traceback", "loop_lag_ms", "drop_timer_fire", "watchdog_fault", "defer_faults", "pin_send_buffer"),
     )
     RunEnvironment = namedtuple("RunEnvironment", ("config_dir", "online_ntp", "instrumentation", "debug_level"))
 
 
-_NO_TEST_FLAGS = TestFlags(False, None, None, None, None, False, False, None, False, None, None, None, False)
+_NO_TEST_FLAGS = TestFlags(False, None, None, None, None, False, False, None, False, None, None, None, False, False)
 _DEFAULT_ENVIRONMENT = RunEnvironment(_CONFIG_DIR_DEFAULT, False, _NO_TEST_FLAGS, None)
 _PERSISTENT_STATE = StatePaths(_FRAM_STATE_DEFAULT, _SCD30_STATE_DEFAULT, _MEM_BACKUP_STATE_DEFAULT)
 
@@ -279,6 +291,8 @@ _USAGE = f"""Usage: micropython digital_twin/run_generic_integration.py --module
   --test-watchdog-fault supervisor-raise|main-exit|block (after the supervisor's first feed, one fault that ends the
     feeding; WDT_AT_FAULT <feed_count>)
   --test-defer-faults (every --fault waits for a FAULT_ARM line, then is queued at once; FAULTS_ARMED)
+  --test-pin-send-buffer (the send buffer of each socket the server accepts pinned at the kernel's floor, as rp2's lwIP one is small
+        and fixed; SNDBUF_PINNED bytes=<n> accepted_bytes=<n>)
   -h, --help               print this and exit 0"""
 
 
@@ -439,7 +453,7 @@ async def _mem_sampler(interval_ms: int) -> None:
 
 def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "TestFlags | None":
     # `flags` with one --test-* flag set; None for an argument that is no test flag.
-    hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd, lag, drop, wdt_fault, defer = flags
+    hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd, lag, drop, wdt_fault, defer, pin = flags
     if arg == "--test-hold-closing-slot":
         hold = True
     elif arg == "--test-stall-loop-ms":
@@ -475,9 +489,11 @@ def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "T
             raise ValueError(f"--test-watchdog-fault {wdt_fault!r} not recognized - expected one of {_WATCHDOG_FAULT_KINDS}")
     elif arg == "--test-defer-faults":
         defer = True
+    elif arg == "--test-pin-send-buffer":
+        pin = True
     else:
         return None
-    return TestFlags(hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd, lag, drop, wdt_fault, defer)
+    return TestFlags(hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd, lag, drop, wdt_fault, defer, pin)
 
 
 def _print_boot_phases(device: str) -> None:
@@ -810,6 +826,22 @@ def _test_p99_us(bins: "list[int]", samples: int, worst: int) -> int:
     return worst
 
 
+def _test_pin_send_buffer(module: "ModuleType", say: "Callable[[str], None]" = print) -> None:
+    # WebserverService._serve() gets each stream start_server() accepts; rebound while the setup batch still runs, it
+    # pins each socket's send buffer at the kernel's floor first, as rp2's is small and fixed (TCP_SND_BUF 6,400 B,
+    # extmod/lwip-include/lwipopts_common.h:94, v1.29.0), so a large body is mid-write at a client's reset on any host.
+    service = module.webserver
+    real_serve = service._serve
+
+    async def serve(reader: object, writer: "_Accepted") -> None:
+        accepted = _test_send_buffer(writer.s)
+        writer.s.setsockopt(socket.SOL_SOCKET, _SO_SNDBUF, 1)  # Linux doubles a request and clamps it to its floor (socket(7))
+        say(f"SNDBUF_PINNED bytes={_test_send_buffer(writer.s)} accepted_bytes={accepted}")
+        await real_serve(reader, writer)
+
+    service._serve = serve
+
+
 async def _test_raising_report(_task: object, _n: int) -> None:
     raise RuntimeError("the supervisor's dead-task report raised (a test-only watchdog fault)")
 
@@ -826,6 +858,14 @@ def _test_report_then_hang(line: str, say: "Callable[[str], None]" = print) -> "
         await asyncio.Event().wait()
 
     return report
+
+
+def _test_send_buffer(sock: "_Sock") -> int:
+    # SO_SNDBUF as the kernel reads it back, through libc: the Unix port's socket has no getsockopt().
+    value, size = bytearray(4), bytearray(struct.pack("I", 4))
+    if ffi.open("libc.so.6").func("i", "getsockopt", "iiipp")(sock.fileno(), socket.SOL_SOCKET, _SO_SNDBUF, value, size) != 0:
+        raise OSError(f"getsockopt(SO_SNDBUF) failed on fd {sock.fileno()}")
+    return int(struct.unpack("i", value)[0])
 
 
 def _test_shutdown_hang(module: "ModuleType", chips: "dict[str, object]", step: str) -> "list[asyncio.Task[None]]":
@@ -897,6 +937,8 @@ def _test_start(
         triggers["KBD_TRACEBACK"] = _test_kbd_traceback()
     if flags.defer_faults:
         triggers["FAULT_ARM"] = _test_arm_faults(arm)
+    if flags.pin_send_buffer:
+        _test_pin_send_buffer(module)
     if flags.hold_closing_slot or flags.stall_loop_ms or flags.hold_system_entry or flags.kbd_traceback or flags.defer_faults:
         tasks.append(loop.create_task(_test_stdin_lines(triggers)))
     if flags.conn_status_interval_ms:
