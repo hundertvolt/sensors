@@ -53,18 +53,6 @@
   "proof": "as :497 (get_ts_buf() above found the buffer)",
   "verdict": "kept: type narrowing, stated in place"
  },
- "src/asy_fram_manager.py::_FRAMBaseChunk._clear_chunk::`except Exception` catches::except Exception as e:": {
-  "action": "tests/test_asy_fram_manager.py::test_an_unexpected_raise_in_the_chip_write_fails_the_clear_and_the_write_and_is_logged (agent, 2026-10-27)",
-  "class": "b",
-  "proof": "reached only when fram.set_values_sync() raises",
-  "verdict": "covered; kept: guard of a documented runtime failure (an unexpected raise in the chip write)"
- },
- "src/asy_fram_manager.py::_FRAMBaseChunk._write_chunk::`except Exception` catches::report_if_fatal(e)": {
-  "action": "tests/test_asy_fram_manager.py::test_an_unexpected_raise_in_the_chip_write_fails_the_clear_and_the_write_and_is_logged (agent, 2026-10-27)",
-  "class": "b",
-  "proof": "reached only when a write step inside _write_chunk() raises",
-  "verdict": "covered; kept: guard of a documented runtime failure (an unexpected raise in the chip write)"
- },
  "src/asy_i2c_driver.py::_clear_bus::`not _scl_released_sync(scl, timeout_us)` true::return status | _REC_SCL_HELD": {
   "action": "tests/test_asy_i2c_driver.py::test_a_clear_whose_scl_is_held_after_a_pulse_reports_it_and_sends_no_stop (agent, 2026-10-27)",
   "class": "b",
