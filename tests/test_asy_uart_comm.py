@@ -2499,6 +2499,12 @@ def _real_pieces() -> None:
     asy_uart_comm.PieceBuffer = PieceBuffer  # type: ignore[misc]
 
 
+class _UnbuildablePieceBuffer(PieceBuffer):
+    # Rebound as the module's PieceBuffer: built as on a heap with no room left for one piece.
+    def __init__(self, size: int, piece_bytes: int) -> None:
+        raise MemoryError("simulated allocation failure")
+
+
 def _scrub(pair: Pair) -> None:
     # The fakes' call and wire logs are scaffolding a test reads back, not something the protocol retains.
     for direction in (pair.link.a_to_b, pair.link.b_to_a):
@@ -2513,6 +2519,98 @@ def _cap_pair(cap_side: str, answer: bytes = b"", *, debug: int | None = None) -
     assert run(pair.setup(), RUN_LIMIT_S) is True
     (pair.responder if cap_side == "responder" else pair.initiator)._max_transfer_bytes = 2 * PAYLOAD_SIZE
     return pair
+
+
+@_on_poll_rounds
+def test_a_refused_piece_at_a_received_set_faults_as_alloc_and_the_responder_re_listens_at_once() -> None:
+    # The pieces are built after the command frame's ACK: a heap too short for them is J.8's fault like any other, one
+    # ALLOC entry printing the caught text and a resync that drains the stray data chunk, then an immediate re-listen
+    # (A15). The peer sees one ACK, then none for its data chunk.
+    pair = run(build_pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(b""), set_callback=accept_set(), debug=ERROR_LEVEL), RUN_LIMIT_S)
+
+    async def exchange() -> "tuple[bool, list[bytes], bool, bool]":
+        task = pair.responder.start_asy_listen()
+        try:
+            asy_uart_comm.PieceBuffer = _UnbuildablePieceBuffer  # type: ignore[misc]
+            try:
+                refused = await pair.initiator.uart_set(0x22, b"payload")
+            finally:
+                _real_pieces()
+            answered = frames(pair.wire_from_responder(), _FRAME)
+            alive = not task.done()
+            return refused, answered, alive, await pair.initiator.uart_set(0x22, b"payload")
+        finally:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:  # expected; anything else is a real failure
+                pass
+
+    with record_prints() as rec:
+        refused, answered, alive, recovered = run(exchange(), _RUN_BOUND_S)
+    assert refused is False
+    assert [frame[1] for frame in answered] == [_CMD_ACK], answered
+    assert alive is True
+    assert recovered is True
+    assert persisted(pair.responder) == [_e("ALLOC")], persisted(pair.responder)
+    assert persisted(pair.initiator) == [_e("UART_NO_ACK")], persisted(pair.initiator)
+    assert "bytes for the incoming train: simulated allocation failure" in rec.text(), rec.text()
+
+
+@_on_poll_rounds
+def test_a_refused_piece_at_a_dont_care_get_faults_as_alloc_and_uart_get_answers_none() -> None:
+    # The answer's pieces are built after its header validated and before the header's ACK: J.8's fault like any other,
+    # one ALLOC entry printing the caught text, a resync and the hold-off; uart_get() answers None and the bus is free.
+    pair = run(build_pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(b"banner"), set_callback=accept_set(), debug=ERROR_LEVEL), RUN_LIMIT_S)
+
+    async def exchange() -> "tuple[PieceBuffer | None, list[bytes], tuple[bool, bool], ListenResult, bytes | None]":
+        listener = asyncio.create_task(pair.responder.uart_listen())
+        asy_uart_comm.PieceBuffer = _UnbuildablePieceBuffer  # type: ignore[misc]
+        try:
+            answer = await pair.initiator.uart_get(0x21)
+        finally:
+            _real_pieces()
+        sent = frames(pair.wire_from_initiator(), _FRAME)
+        state = (pair.initiator._busy, pair.initiator._holdoff_active)
+        listened = await asyncio.wait_for(listener, _STEP_BOUND_S)
+        again = await pair.with_listener(pair.initiator.uart_get(0x21))
+        return answer, sent, state, listened, copied_out(again)
+
+    with record_prints() as rec:
+        answer, sent, state, listened, again = run(exchange(), _RUN_BOUND_S)
+    assert answer is None
+    assert [frame[1] for frame in sent] == [_CMD_GET], sent
+    assert state == (False, True)
+    assert persisted(pair.initiator) == [_e("ALLOC")], persisted(pair.initiator)
+    assert (listened.cmd_id, listened.cmd) == (None, _CMD_GET), listened
+    assert persisted(pair.responder) == [_e("UART_NO_ACK")], persisted(pair.responder)
+    assert again == b"banner"
+    assert "bytes for the answer: simulated allocation failure" in rec.text(), rec.text()
+
+
+@_on_poll_rounds
+def test_a_get_answered_with_a_piece_buffer_is_sent_from_its_pieces() -> None:
+    # A responder may answer with a PieceBuffer: each chunk is copied by index from the pieces, whose ends fall inside
+    # chunks, into the TX region, so the answer arrives whole and the comm allocates no bytearray to send it (J.8).
+    payload = bytes((i * 7) & 0xFF for i in range(1000))
+    answer = PieceBuffer(len(payload), 256)
+    assert answer.write_at(0, payload)
+    pair = run(build_pair(get_callback=lambda _cmd_id: (True, answer), set_callback=accept_set()), RUN_LIMIT_S)
+    sizes: list[int] = []
+
+    def recording(*args: object) -> bytearray:
+        made = bytearray(*args)
+        sizes.append(len(made))
+        return made
+
+    asy_uart_comm.bytearray = recording  # type: ignore[attr-defined]
+    try:
+        received = run(pair.with_listener(pair.initiator.uart_get(0x21)), _RUN_BOUND_S)
+    finally:
+        del asy_uart_comm.bytearray  # type: ignore[attr-defined]
+    assert copied_out(received) == payload
+    assert sizes == [], sizes
+    assert persisted(pair.responder) == [] and persisted(pair.initiator) == []
 
 
 def test_the_default_chunk_bytes_is_the_reasoned_one() -> None:
@@ -3003,7 +3101,7 @@ def test_a_peer_answering_a_different_question_is_refused() -> None:
     real_send_train = pair.responder._send_train
 
     async def answers_the_wrong_question(
-        device: UART, cmd_id: int, payload: "bytes | bytearray | memoryview | None", total: int, pull: "_PullCallback | None",
+        device: UART, cmd_id: int, payload: "bytes | bytearray | memoryview | PieceBuffer | None", total: int, pull: "_PullCallback | None",
     ) -> bool:
         return await real_send_train(device, (cmd_id + 1) & 0xFF, payload, total, pull)
 

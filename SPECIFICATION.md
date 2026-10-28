@@ -3217,7 +3217,8 @@ concurrent `deinit()` is seen at the next `ready()` exit, which re-checks the bu
 yield; `discarded_bytes` counts the bytes a failed `*_until_complete()` read consumed and dropped
 (masked to 2**30 − 1). `readline_until_complete()` takes the same receive cap as a transfer
 (`max_bytes`) and never grows by concatenation: the line lands in pieces of `chunk_bytes`, allocated
-when the call starts (a `MemoryError` there is the caller's, J.8), and a line over the cap is read
+when the call starts (a `MemoryError` there answers `None` with its text through `console()`, the
+line left in the ring; owner, 2026-10-27), and a line over the cap is read
 to its end, discarded and counted, the call returns `None` and the case is logged (J.8). This layer
 keeps no logger of its own, so the caller passes its `log` and the driver writes the one
 `UART_TRANSFER_CAP` entry through it: only the read knows the line ran over (agent, 2026-10-07).
@@ -3239,7 +3240,7 @@ fails and the sender's transaction fails with it (owner, 2026-10-06, for the ove
 and breaks the same way, agent, 2026-10-06). Parity is not tested while no link configures it. A
 re-init restarts the ring's stream and fails the next read as an overrun, so the caller resyncs
 rather than reading a frame with a byte the handler took before the interrupts were masked. Every
-method returns a sentinel (`readline_until_complete()`'s piece allocation aside, above) — a third
+method returns a sentinel, `readline_until_complete()`'s piece allocation included — a third
 position distinct from I2C (raises) and SPI (writes cannot raise; 32+ byte reads can, since 1.29 —
 F.5.2).
 
@@ -5862,6 +5863,7 @@ and `scd30_extra_write`.
 | `twin-instrument` | `test_digital_twin_run_generic_integration` | L3, L4 | it tests the twin's own instrument, which has no silicon counterpart | (agent, 2026-10-06) | — |
 | `twin-instrument` | `test_digital_twin_unix_port_unretrieved_report` | L3, L4 | it tests the PC tiers' own exception handler, which never runs on silicon; the firmware's report has its own L3 test (`flash/test_unretrieved_task_exception_handler.py`) | (agent, 2026-10-07) | — |
 | `twin-instrument` | `test_digital_twin_unix_port_idle_poll` | L3, L4 | it tests the PC tiers' own skip of the Unix port's 1 ms idle poll wait, a branch rp2 compiles out (`extmod/modselect.c`, v1.29.0), so silicon has no such round to skip | (agent, 2026-10-27) | — |
+| `twin-instrument` | `test_digital_twin_driven_clock` | L3, L4 | it tests the PC tiers' own driven clock for the UART link's modules (`digital_twin/_driven_clock.py`), which keeps the Unix port's 1 ms poll wait per scheduler step out of the link's deadlines; rp2 polls once a step (`extmod/modselect.c`, v1.29.0), so silicon runs the link on its own clock and has no such clock to test | (agent, 2026-10-27) | — |
 | `twin-instrument` | `test_digital_twin_rp2_constants` | L3, L4 | it pins the twin's own model constants to the pinned rp2 source lines they cite; silicon has nothing to compare with but that source | (agent, 2026-10-14) | — |
 | `hotspot-multi-client` | multi-client load on the DUT's own hotspot | L4 | the bench has one radio, which joins the hotspot as its only client; no second radio will be bought (owner, 2026-09-22) | (owner, 2026-09-22) | — |
 | `off-subnet-spoof` | `test_spoofed_off_subnet_source_address_is_ignored` (`bench/test_hotspot_role_reversal.py`), a DNS query forged from an off-subnet source | L4 until its first bench run | the test no longer skips: it forges the query from an RFC 5737 address with `tests_hardware/spoof_udp.py` and runs, so the attempt the owner asked for is written (owner, 2026-09-28: 'let's at least try it'); this row leaves once a bench run passes it, and the skip returns with its recorded reason only if that run shows unreasonable effort or covers nothing an L1-L3 test cannot | (owner, 2026-09-28) | — |
@@ -7789,8 +7791,10 @@ backend-only or frontend-only validation/coercion policy change in this project.
 - **Bounded piece assembly** — `asy_base_classes.py`'s `PieceBuffer` (the webserver's streaming
   `_PieceWriter` is its model): a payload whose size the caller did not fix is held as pieces of at
   most `chunk_bytes`, every piece allocated at construction once the caller's cap has admitted the
-  size (a `MemoryError` there is not caught), with its length (`len()`), iteration (`pieces()`), a
-  write at an offset (`write_at()`) and a copy-out (`copy_into(dest, start)`, never a partial copy:
+  size (a `MemoryError` there goes to the caller, which catches it into its own failure result: J.8,
+  C.3.2; owner, 2026-10-27), with its length (`len()`), iteration (`pieces()`), a
+  write at an offset (`write_at()`), its mirror (`read_at(offset, dest)`, exactly `len(dest)` bytes)
+  and a copy-out (`copy_into(dest, start)`, never a partial copy:
   a short destination gets nothing), so no single allocation exceeds `chunk_bytes`; `trim(length)`
   shortens a short train's result without allocating. It is never joined into one buffer: no
   `__eq__`, no buffer protocol. `UARTComm` assembles every train without a caller destination in it
@@ -8868,8 +8872,8 @@ locks and lists, `SensorReaderConfig`'s `ConfigManager`, and the **hourly window
 A.8). `RegionBuffer` (per FRAM chunk operation, transient, fixed by its owner's size; allocated per
 operation by decision, agent, 2026-09-18): its bytearray; a failed allocation prints its text
 through `console()` and the buffer reads as `None`. `PieceBuffer` (G.2): every piece of at most
-`piece_bytes` allocated at construction, after the caller's cap admitted the size; its copy-out
-and write slice views, transient. `_get_dict_cfg()`/`_set_dict_cfg()`: the result and staging dicts,
+`piece_bytes` allocated at construction, after the caller's cap admitted the size; its copy-out,
+read and write slice views, transient. `_get_dict_cfg()`/`_set_dict_cfg()`: the result and staging dicts,
 per config GET/PUT, transient, bounded by the schema, `schema_dict()` built once per PUT; `_republish()`:
 the changed sample, per republish, replacing the last. `arm_tick_timer()`: one closure per arm, boot list.
 
@@ -9009,8 +9013,9 @@ scratch, the zero padding and the command-id scratch (`_allocate()`), so no fram
 them — zero bytes retained per transaction, pinned by `tests/test_uart_comm_hazard.py`.
 Client-controlled by the UART peer and bounded before allocation: a train with no caller destination
 is assembled in pieces of at most `chunk_bytes` (G.2's piece primitive), a declared size above
-`max_transfer_bytes` is refused through the withheld ACK before anything is allocated, and no caught
-`MemoryError` stands at these sites (owner, 2026-10-05; J.8). Per listen: one `ListenResult`, transient.
+`max_transfer_bytes` is refused through the withheld ACK before anything is allocated, and a heap
+still too short for the pieces is J.8's `ALLOC` fault, caught into the call's own failure result
+(owner, 2026-10-27). Per listen: one `ListenResult`, transient.
 
 **`asy_uart_driver.py`** — construction, long-lived, fixed: its CRC and framing objects, and the
 `machine.UART` that `init()` constructs from `__init__`, a static object whose construction allocates
@@ -9022,10 +9027,12 @@ driver-default 512-byte ring (Part N `dev.uart_rx_ring`), hold 2 × 1,024 B, and
 test asserts where they land (I.4(f.1)). A larger ring costs twice its size, which is why a ring for
 the bench's continuous-sender window is sized on the bench with its heap cost measured (J.6).
 `readline_until_complete()` is capped by `max_transfer_bytes` and assembles a `PieceBuffer`, never
-growing by concatenation; `read_until_complete()` is bounded by its `n`.
+growing by concatenation, a heap too short for its pieces answering `None` with the caught text
+through `console()` (owner, 2026-10-27); `read_until_complete()` is bounded by its `n`.
 
 **`asy_uart_link_driver.py`** — construction, long-lived, fixed: the role's `UARTComm`, its callbacks
-and the bench payload buffer. Per GET served: the echo's one copy-out, bounded by the receive cap.
+and the bench payload buffer. Per GET served: no copy — the stored echo is answered from its own
+pieces (J.8; agent, 2026-10-27).
 Run phase, on demand (dev's initiator, `PUT /status`'s `UartHazards`): per hazard run its two
 initiation tasks and its raw frame and ACK buffers, transient; `_run_hazards()` stores
 `_hazard_facts`, one small dict of three lists (the two initiations' verdicts, the crossed exchange's
@@ -10149,7 +10156,10 @@ The module therefore follows Part G.2's buffer-ownership primitive, in the same 
 - **Paired transfer APIs.** `uart_set(id, data)`/`uart_get(id)` keep the convenience form for small
   payloads, `uart_get()` handing back the answer it assembled in pieces (J.9); `_into`/`_from`
   counterparts take a caller-owned buffer, and a callback form drives a chunk at a time so a large
-  transfer can stream to or from FRAM/flash without ever existing in RAM as a whole.
+  transfer can stream to or from FRAM/flash without ever existing in RAM as a whole. A responder's
+  `get_callback` answers with a buffer or with a `PieceBuffer` (a received train answered back, as
+  `dev`'s bench echo does), sent from its pieces chunk by chunk through `read_at()` into the TX
+  frame, never joined (agent, 2026-10-27).
 - **Preallocate from `CHUNKS`, never grow.** The total upper bound `(CHUNKS − 1) × payload_size`
   (chunk 1 carries only the command id) is known the moment the first frame of a train arrives, and
   the exact size is known whenever the caller passed `exp_size` — neither case justifies an
@@ -10171,11 +10181,15 @@ The module therefore follows Part G.2's buffer-ownership primitive, in the same 
   peer logs `UART_TRANSFER_CAP`: J.4 has no NAK to carry the cause. `readline_until_complete()`
   takes the same cap (C.3.2). A caller that declares its size caps it — the form to prefer in a new
   responder (agent, 2026-09-11).
-- **A failed construction allocation degrades to the module's normal failure sentinel** — the frame
-  buffers and scratch refuse construction (J.1). The receive allocations above are bounded before
-  they happen, so no caught `MemoryError` stands at them (owner, 2026-10-05; I.2, I.4(a)): a heap
-  too short for one piece raises to the listen loop's broad catch on a responder or to the caller on
-  an initiator, and the task supervisor is the backstop (I.4).
+- **A failed allocation degrades to the module's normal failure sentinel** — the frame buffers and
+  scratch refuse construction (J.1). The receive allocations above are bounded before they happen,
+  and a heap still too short for one piece is a fault like any other (owner, 2026-10-27; I.2,
+  I.4(a)): `ALLOC` (`errno` 20) persisted, the caught text printed for the memory gates, the resync,
+  and the call's own failure result — a received SET's `ListenResult(None, CMD_SET, None)`, after
+  which the responder re-listens at once (J.5's backoff rule), and `uart_get()`'s `None` on an
+  initiator, held off like after any fault. The bytes on the wire are those of any refused train:
+  the data chunk or the answer header goes unacknowledged. `readline_until_complete()` answers
+  `None` the same way, the line left in the ring (C.3.2).
 
 One consequence is worth stating because it is counterintuitive: a received frame is read whole into
 the instance's RX frame buffer and its payload region then slice-assigned into the destination, and
@@ -12564,6 +12578,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l2.twin_stop_file_poll_ms` | 100 ms | `digital_twin/run_generic_integration.py` — `100` | how soon a run ends once its caller writes the stop file | estimated (agent, 2026-10-08) — measurement owed: the stop-to-exit latency against the generated-boot test's elapsed, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.twin_test_stdin_poll_ms` | 50 ms | `digital_twin/run_generic_integration.py` — `50` | how soon a `--test-*` trigger line on stdin is acted on | estimated (agent, 2026-10-14) — measurement owed: a trigger's latency against the scenario waits that read it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.twin_feed_gap_fold_ms` | 5000 ms | `digital_twin/run_generic_integration.py` — `5000` | how often the WDT's newest 200 feed times are folded into the longest feed gap: a span dropped between two folds lasts under one fold period, well below a gap worth flagging | estimated (agent, 2026-10-14) — measurement owed: the feed rate against the 200-entry log, L2 | against that measurement, once taken | the WDT's feed log size or the feed cadence changes |
+| `l2.twin_uart_clock_recheck_ms` | 10 ms | `digital_twin/_driven_clock.py` — `10` | how long the twin's driven UART clock waits before looking again at a compute still taking turns; virtual time is unaffected, only how soon it moves on | measured 2026-10-27, Unix-port `build-standard`, `dev`'s CRC16-derived boot (tests_scripts/test_digital_twin_generated_boot.py's flow) at 32768: looking at every turn doubled a CRC16 frame's twin rounds (the link's transfers rose by 1 in the 3 s window, a busy host failing it "no rise" in 3 of 20); at 10 ms they rose by 2 on an idle host and 75 of 75 runs held with 3 busy loops on its CPU, 39 of 39 with 8 | the busy-host loop green | a twin scheduler round's cost or the CRC's turns per byte change |
 | `twin.ntp_responder_poll_ms` | 10 ms | `digital_twin/unixport/_ntp_responder.py` — `10` | the local NTP responder's poll step; a reply on loopback arrives within one poll (`l2.ntp_reply_wait_ms` only ends a lost one) | estimated (agent, 2026-10-14) — measurement owed: the responder's reply latency, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `twin.ntp_responder_take_rounds` | 20 | `digital_twin/unixport/_ntp_responder.py` — `20` | a responder waiting for a held port 123 tries it again every 20 polls (200 ms) | estimated (agent, 2026-10-14) — measurement owed: how long a freed port takes to become bindable, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.twin_readiness_poll_ms` | 10 ms | `tests/_twin_readiness.py` — `10` | `wait_for_value()`'s poll step; its limit counts poll rounds, not the wall clock | estimated (agent, 2026-10-14) — measurement owed: the in-process waits' rounds, L2 | against that measurement, once taken | the code under test or the host class changes |
@@ -12624,6 +12639,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l2.machine_uart_frame_timeout_ms` | 50 ms | `tests/test_digital_twin_machine_uart.py` — `50` | a frame read's timeout in the UART fake's cases | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.machine_uart_stall_baud` | 38400 | `tests/test_digital_twin_machine_uart.py` — `38400` | the flash-stall cases' slow wire, 260 µs a byte: a 32-page stall (12.8 ms) still spans more than the FIFO's 32 bytes when the code before it takes up to 8 ms of the 64-byte burst's 16.7 ms | estimated (agent, 2026-10-14) — measurement owed: the code run before the stall on the slowest host that runs it, L2 | against that measurement, once taken | the stall's page count or the FIFO depth changes |
 | `l2.machine_uart_stall_pages` | 32 | `tests/test_digital_twin_machine_uart.py` — `32` | the flash-stall cases' stall length in pages (12.8 ms), with `l2.machine_uart_stall_baud` | estimated (agent, 2026-10-14) — measurement owed: as `l2.machine_uart_stall_baud`, L2 | against that measurement, once taken | the twin's flash timing model changes |
+| `l2.driven_clock_run_limit_s` | 10 s | `tests/test_digital_twin_driven_clock.py` — `10` | — | measured 2026-10-27, Unix-port `build-standard`, both GC stages: the whole file, every run in it, 0.65 s at -1 and 0.66 s at 32768 on an idle host | the bound only ends a hung run, about 15× the whole file | the code under test or the host class changes |
 | `l2.run_generic_integration_run_bound_s` | 5.0 s | `tests/test_digital_twin_run_generic_integration.py` — `5.0` | — | estimated (agent, `fcc5339`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.run_generic_integration_main_run_bound_s` | 15.0 s | `tests/test_digital_twin_run_generic_integration.py` — `15.0` | — | estimated (agent, `dde4b31`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.run_generic_integration_prompt_bound_ms` | 100 ms | `tests/test_digital_twin_run_generic_integration.py` — `100` | the hang bound on an entry the held-entry cases write past the hold (3 sites), on a released held entry and on a released closing slot; each stand-in answers at once, so a hang fails here, not at `l2.run_generic_integration_run_bound_s` | measured 2026-10-27, `build-standard`, 2 runs per stage (an instrumented scratch copy): the 5 bounded calls of a run finish in at most 0.08 ms at the reactive default and 1.06 ms at 32768, on the shared x86 host | about 94× the slowest call; the bench Pi4, the slowest host that runs it, is not measured | the code under test or the host class changes |

@@ -313,9 +313,12 @@ class Context:
         port = next(self.ports)
         state = state_dir or self.logs_dir / f"state_{self.boots:02d}"
         level = _log_at_error_level(state) if logged else ()
+        # A UART pair's link on the runner's driven clock: a twin scheduler round costs about 1 ms, so a reply deadline on
+        # the host's clock would judge the host's load, not the link (SPECIFICATION.md J.7; agent, 2026-10-27).
+        clock = ("--test-uart-driven-clock",) if "uart_link" in self.drivers else ()
         launch = TwinLaunch(self.micropython_bin, f"sensortask_{self.device}", GENERATED_SRC_DIR / f"sensortask_{self.device}_wiring_plan.json", self.device, HOST, port, self.gc_threshold, _micropypath(self.device))
         # Armed on every boot, so a shutdown() meeting an ignored SIGINT can print where that interrupt was raised.
-        run = spawn(launch, state_dir=state, log_path=self.logs_dir / f"twin_{self.boots:02d}.log", args=(*level, "--test-kbd-traceback", *args))
+        run = spawn(launch, state_dir=state, log_path=self.logs_dir / f"twin_{self.boots:02d}.log", args=(*level, "--test-kbd-traceback", *clock, *args))
         twin = Twin(run, port)
         try:
             wait_until_serving(run, HOST, port, _SERVING_TIMEOUT_S)

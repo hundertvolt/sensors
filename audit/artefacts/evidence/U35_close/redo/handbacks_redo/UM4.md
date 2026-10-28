@@ -167,4 +167,54 @@ The merged head's whole tier found four reds that came from my item-1 files sinc
 - **Process note.** Before the summary, the first runner edit was made with a Python heredoc and the uart_link draft was copied in with cp. Every later edit used Edit or Write.
 - **Cleanup.** The coverage dumps are deleted, and S/wt-u35um4base is removed. Logs are in S/u35/laneB/um4/ (runs.txt, crc/, scen/, merge/).
 
+## Item 5: merge of d25d3cc2 (written 2026-10-28 01:51 UTC)
+**The merge commit is 1ac8ecaf**, a merge commit onto 5f1cccb6; its second parent is d25d3cc2. Not pushed.
+
+**Conflicts.** There was one: audit/b3/review.md, which both sides had rendered. I took int's version, then re-rendered it with review_rows.py on the merged tree: 8641 rows, each with its verdict.
+
+**Auto-merged files.** Every other file merged with each side's hunks apart. I checked that each keeps both sides' intent:
+- **SPECIFICATION.md.** Part N holds 1327 rows: int's 1325 plus my two, `l2.twin_uart_clock_recheck_ms` (:12569) and `l2.driven_clock_run_limit_s` (:12630). Each is in its own table at its place. No row from either side is missing, and none is doubled. My E.6.6 row sits beside int's text.
+- **tests/test_ticks_rollover.py.** My `_KNOWN_TICKS_USERS` entry, and N11e's neopixel-frame tag.
+- **tests/test_digital_twin_run_generic_integration.py.** My clock-lend test and its imports, and CMr1k's per-wiring launcher and boot runs.
+- **The UART L1 files** (test_asy_uart_comm.py, test_asy_uart_driver.py, test_asy_uart_link_driver.py) **and test_asy_base_classes.py.** This branch's PieceBuffer, readline and `read_at()` tests sit beside N11e's stall drains, shipped hazard rates and tags, and N11d's bound tags.
+- **tests/test_digital_twin_machine_uart.py.** UM3's settle() test, and WR1's comment.
+
+Int changed no src/ file, so raising.md, e51.md and e51_hits.json stand. The rebuild is done.
+
+**Where the driven clock meets N11e's rates and drains.** In no test.
+- N11e's `drain_s` is used only by test_asy_uart_comm.py, through the harness. Its `_SHIPPED_RATES` is used only by test_asy_uart_link_driver.py's hazard checks. Neither file uses a driven clock.
+- None of my driven-clock tests passes `drain_s` or a rate: the twin uart_link file, the clock's own file, the CRC16 boot and the scenario harness.
+- So each merged test keeps its own side's form unchanged.
+- The merge does reach my uart_link file in one place. Its exchanges run on `DrivenTime`, and N11d changed that class to "a driven sleep is its listed wake". Every method the file uses is still there: `_sleep_ms`, `_wait_ms`, `run_until`, `advance`, `now`. The file is green at both stages (below).
+
+**Bites, re-checked on 1ac8ecaf at -1 and at 32768.**
+- **N11e's two hazard bites.** These are plants in a copy of asy_uart_comm.py, put first on MICROPYPATH, running test_asy_uart_link_driver.py.
+  - uid 0xFF accepted: the three hazard tests fail with "['uid', [True, True, True], True]". 48/51 at each stage.
+  - The ACK for uid 0xFE withheld: the same three fail at "virtual t=22500 ms, 22440 ms after". 48/51 at each stage.
+- **N11e's two stall-drain bites.** These are plants in a copy of the harness, placed beside copies of test_asy_uart_comm.py and the threshold runner.
+  - A timed-out drain reported True: test_a_responder_that_never_finishes_its_rounds_fails_the_exchange fails. 204/205.
+  - may_stall ignored: the declared stall and the four other declared stalls fail. 200/205.
+- **My 11 planted clock faults.** Each is caught at both stages; b4 fails a second test at 32768.
+- **The uart_link file's two plants.**
+  - Every ACK past the timeout on the module clock: 10 of the first 15 tests fail before run_bites' 300 s per-file timeout ends the run, at each stage.
+  - A host stall past the timeout before the first ACK: 22/22 pass.
+- **A correction to the items 1-4 bite runs above.** Those clock and link bites were run at -1 only.
+  - This time the first 32768 pass ran with tests/_threshold_runner.py from tests/. That runner's directory comes first on sys.path, so it imported the real modules, not the plants, and every plant read green.
+  - I re-ran each 32768 bite with the runner copied beside the plant, as N11e does. The 32768 results above come from that re-run.
+- **The CRC16 probe**, on an idle host at 32768:
+  - virtual ACK delay under the timeout: 0/5 red;
+  - virtual delay past it: 5/5 red;
+  - host stall past it: 0/3 red with the clock, 3/3 red without;
+  - no plant: 0/3 red.
+  - The probe file was placed for these runs and removed after.
+
+**Checks on 1ac8ecaf.**
+- **The UART files, the harness importers, the twin UART files and the runner test, at -1 then 32768:** 14 files, 28 jobs, all rc 0, zero memory markers. The files are test_asy_crc_checks, test_asy_uart_comm, test_asy_uart_driver, test_asy_uart_link_driver, test_machine_uart_link, test_uart_comm_cancel_sweep, test_uart_comm_hazard, and the twin's driven_clock, machine_uart, run_generic_integration, uart_comm_hazard, uart_field_sweep and uart_link, plus test_ticks_rollover.
+- **The dev scenario harness, with N15's shim in the tree:** PASS at -1 (11m26s) and at 32768 (11m40s). The flag reached 61 of 61 twins at each stage.
+- **The whole tests_scripts tier:** 7101 passed, 2 failed. Both are test_twin_record, the same two that wait for your re-record.
+- **lint_direct** rc 0. **The six mypy passes** on a cold cache: rc 0.
+- **Audit checks:** the walk, e51 (--check and --self-test) and review_rows --check are all green, with 8641 rows.
+
+The tree is clean except the linked node_modules.
+
 nothing of mine is running

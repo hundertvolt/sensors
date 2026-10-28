@@ -5,7 +5,7 @@ Optional per-instance CRC framing (asy_crc_checks.py) plus a pluggable frame cod
 # W datasheet (p.8) hands GPIO23/24/25/29 to the wireless chip, so each pair has a taken half.
 #
 # A receive overrun, framing error or break fails the read in progress (C.3.2). Every method returns a sentinel,
-# but readline_until_complete() lets its pieces' MemoryError through: its cap bounds them (J.8).
+# readline_until_complete() included: a heap too short for its pieces answers None (J.8).
 
 import asyncio
 import select
@@ -657,7 +657,11 @@ class UART(Lockable):
         uart = self._active_uart()
         if uart is None or max_bytes < 1 or chunk_bytes < 1:
             return None
-        line: PieceBuffer | None = PieceBuffer(max_bytes, chunk_bytes)
+        try:
+            line: PieceBuffer | None = PieceBuffer(max_bytes, chunk_bytes)
+        except MemoryError as e:  # before any byte is read: the line stays in the ring, as readline()'s own catch
+            console(_NAME, "line pieces allocation failed:", e)
+            return None
         timeout = start_timeout_ms  # wait time for the first message part
         size = 0  # the line's length so far, saturated at COUNTER_CAP once it is being dropped
         while True:

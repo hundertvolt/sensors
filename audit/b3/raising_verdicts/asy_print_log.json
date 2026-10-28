@@ -430,7 +430,7 @@
   "make_logger::PrintLogHistory": {
    "can_raise": "what PrintLogHistory.__init__ raises (rows :145-155)",
    "verdict": "handled",
-   "proof": "make_logger() is called only from constructors (asy_base_classes.py:411 and six services' __init__), all inside build_system(): the boot entry's except BaseException (conventions)"
+   "proof": "make_logger() is called only from constructors (asy_base_classes.py:426 and six services' __init__), all inside build_system(): the boot entry's except BaseException (conventions)"
   },
   "make_logger::pr.one": {
    "can_raise": "MemoryError from one()'s *args tuple",

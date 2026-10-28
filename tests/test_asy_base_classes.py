@@ -593,6 +593,22 @@ def test_piecebuffer_trim_drops_trailing_bytes_and_pieces() -> None:
     assert list(buf.pieces()) == []
 
 
+def test_piecebuffer_read_at_copies_exactly_its_range_across_piece_ends() -> None:
+    # write_at()'s mirror: len(dest) bytes from an offset, across piece ends; out of range copies nothing.
+    buf = PieceBuffer(10, 4)
+    assert buf.write_at(0, b"0123456789")
+    dest = bytearray(5)
+    assert buf.read_at(3, dest)
+    assert bytes(dest) == b"34567"
+    assert buf.read_at(8, memoryview(dest)[0:2])
+    assert bytes(dest) == b"89567"
+    untouched = bytearray(b"xyz")
+    assert not buf.read_at(8, untouched)
+    assert not buf.read_at(-1, bytearray(1))
+    assert untouched == b"xyz"
+    assert buf.read_at(10, bytearray(0))
+
+
 # @tunable l1.asy_base_classes_piece_rounds = 50
 _PIECE_ROUNDS = 50
 _ROUNDS_BUF = PieceBuffer(40, 16)

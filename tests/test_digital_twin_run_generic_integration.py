@@ -63,8 +63,12 @@ from _twin_devices import distinct_wirings, generated_devices, wiring_plan  # no
 from _untraced import untraced  # noqa: E402 - imported after the prewarm and the UDP shim
 
 import asy_config_manager  # noqa: E402 - imported after the prewarm and the UDP shim
+import asy_crc_checks  # noqa: E402 - imported after the prewarm and the UDP shim
 import asy_ntp_client  # noqa: E402 - imported after the prewarm and the UDP shim
 import asy_system_service  # noqa: E402 - imported after the prewarm and the UDP shim
+import asy_uart_comm  # noqa: E402 - imported after the prewarm and the UDP shim
+import asy_uart_driver  # noqa: E402 - imported after the prewarm and the UDP shim
+import asy_uart_link_driver  # noqa: E402 - imported after the prewarm and the UDP shim
 import asy_wifi_service  # noqa: E402 - imported after the prewarm and the UDP shim
 
 require_fresh()  # the smoke boot loads a generated module and its plan
@@ -228,14 +232,14 @@ def test_the_cut_system_entry_is_held_after_its_first_blocks_busy_mark_and_only_
 
 
 def test_every_test_only_flag_is_off_by_default_and_parses_when_named() -> None:
-    assert runner.TestFlags(False, None, None, None, None, False, False, None, False, None, None, None, False, False) == runner._NO_TEST_FLAGS
+    assert runner.TestFlags(False, None, None, None, None, False, False, None, False, None, None, None, False, False, False) == runner._NO_TEST_FLAGS
     config = _parse(
         "--test-hold-closing-slot", "--test-stall-loop-ms", "40", "--test-conn-status-interval-ms", "50",
         "--test-fault-status-interval-ms", "60", "--test-shutdown-hang", "S5erase", "--test-flash-stall-max", "--test-uart-over-cap",
         "--test-hold-system-entry", "25", "--test-kbd-traceback", "--test-loop-lag-ms", "10", "--test-drop-timer-fire", "sequencer", "--test-watchdog-fault", "block",
-        "--test-defer-faults", "--test-pin-send-buffer",
+        "--test-defer-faults", "--test-pin-send-buffer", "--test-uart-driven-clock",
     )
-    assert config.instrumentation == runner.TestFlags(True, 40, 50, 60, "S5erase", True, True, (25, False), True, 10, "sequencer", "block", True, True)
+    assert config.instrumentation == runner.TestFlags(True, 40, 50, 60, "S5erase", True, True, (25, False), True, 10, "sequencer", "block", True, True, True)
     assert _parse("--test-hold-system-entry", "25:cut").instrumentation.hold_system_entry == (25, True)
     refused = (("--test-shutdown-hang", "S7"), ("--test-stall-loop-ms", "0"), ("--test-conn-status-interval-ms", "x"), ("--test-hold-system-entry", "0"), ("--test-hold-system-entry", "25:never"), ("--test-hold-system-entry", "0:cut"), ("--test-loop-lag-ms", "0"), ("--test-drop-timer-fire", "ntp"), ("--test-watchdog-fault", "reboot"))
     for flags in refused:
@@ -740,6 +744,32 @@ class _ExercisedLink(_CountedLink):
     def __init__(self, role: str) -> None:
         super().__init__(0, 0)
         self._role, self._comm = role, _OverCapComm()
+
+
+def test_the_uart_driven_clock_lends_the_links_three_modules_one_clock_until_the_run_ends() -> None:
+    # Each module's asyncio is the clock's while the instrumentation runs and the real one after; its ticks stay lent.
+    said: list[str] = []
+    modules = (asy_crc_checks, asy_uart_driver, asy_uart_comm, asy_uart_link_driver)
+    saved = [(module.asyncio, getattr(module, "time", None)) for module in modules]
+
+    async def scenario() -> "list[bool]":
+        task = asyncio.create_task(runner._test_uart_driven_clock(said.append))
+        await asyncio.sleep_ms(0)
+        lent = [module.asyncio is not real for module, (real, _own) in zip(modules, saved)]
+        await cancel(task)
+        return lent
+
+    try:
+        lent = run_timed(scenario(), _RUN_BOUND_S)
+        handed_back = [module.asyncio is real for module, (real, _own) in zip(modules, saved)]
+    finally:
+        for module, (real, own) in zip(modules, saved):
+            module.asyncio = real  # type: ignore[attr-defined]
+            if own is not None:
+                module.time = own  # type: ignore[attr-defined]
+    assert lent == [True, True, True, True], f"not every link module's asyncio was lent: {lent}"
+    assert handed_back == [True, True, True, True], f"the run's end did not hand every real asyncio back: {handed_back}"
+    assert said[:1] == ["UART_CLOCK driven modules=4"] and len(said) == 2 and said[1].startswith("UART_CLOCK released virtual_ms="), said
 
 
 def test_the_over_cap_offer_waits_for_each_initiators_next_transfer_then_offers_one_train_past_its_cap() -> None:

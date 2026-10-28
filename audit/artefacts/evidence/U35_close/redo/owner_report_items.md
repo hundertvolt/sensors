@@ -220,3 +220,7 @@ source.
   focused checks before the merge), all fixed; one edit by heredoc and one by cp before it switched to the edit tools.
 - Lead deviation (00:47): six lead-log entries (LEAD NOTES 336-341) were timestamped by estimate instead of from
   `date -u`, one of them ahead of the real time; corrected in a following entry, content unchanged.
+- CI red on 235e4f7f (lead, 01:06): a twin Timer test bounded its call count by the requested 18 ms window, so a late
+  wake on a loaded runner gave a legitimate fourth call. Reproduced under CPU contention (4 in 300, each at 21-23 ms
+  elapsed); the test now bounds by the time that really passed, and a planted second timer loop still fails it. The
+  lead's call (test-only).
