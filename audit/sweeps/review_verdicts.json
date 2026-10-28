@@ -2830,5 +2830,83 @@
    "biting",
    "the claim is that the fixture raises nothing, and _drive() runs its setup and teardown to StopIteration and asserts every scripted read was made; plants_i1.out turns it red (2d73a934's fixture, the set admitting nothing, ends_unreachable ignored)"
   ]
+ },
+ "tests/test_digital_twin_sgp40.py::test_the_real_reader_publishes_vocstate_0_through_the_blackout_then_1": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; (lead, 2026-10-27: CMr1k's shared-bus bite fails all three _sgp40_bus() callers on dev)"
+  ]
+ },
+ "tests/test_digital_twin_sgp40.py::test_a_cycle_without_compensation_sends_no_measurement_and_steps_no_streak_or_entry": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; (lead, 2026-10-27: CMr1k's shared-bus bite fails all three _sgp40_bus() callers on dev)"
+  ]
+ },
+ "tests/test_digital_twin_clock_jump.py::test_a_year_forward_then_two_back_leave_sync_and_its_age_on_the_ticks": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; (lead, 2026-10-27: CMr1k's c1 bite, the driven wait never elapsing, fails all three clock_jump sites, and its swapped-I2C-pin wiring bite fails all seven widened clock_jump and ntp sites on wozi)"
+  ]
+ },
+ "tests/test_digital_twin_clock_jump.py::test_an_ntp_offset_change_clears_synced_and_the_next_sync_applies_it": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; (lead, 2026-10-27: CMr1k's c1 bite, the driven wait never elapsing, fails all three clock_jump sites, and its swapped-I2C-pin wiring bite fails all seven widened clock_jump and ntp sites on wozi)"
+  ]
+ },
+ "tests/test_digital_twin_ntp.py::test_an_outage_from_boot_backs_off_and_a_returning_responder_syncs_within_the_step": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; (lead, 2026-10-27: CMr1k's swapped-I2C-pin wiring bite fails all seven widened clock_jump and ntp sites on wozi)"
+  ]
+ },
+ "tests/test_digital_twin_ntp.py::test_each_failing_reply_leaves_synced_false_with_its_catalog_code": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; (lead, 2026-10-27: CMr1k's swapped-I2C-pin wiring bite fails all seven widened clock_jump and ntp sites on wozi)"
+  ]
+ },
+ "tests/test_digital_twin_run_generic_integration.py::test_main_boots_at_the_stored_error_level_arms_a_fault_writes_the_responder_ntp_config_and_shuts_down_cleanly": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; (lead, 2026-10-27: CMr1k's generated FRAM max_size=0x40 bite fails it on grkizi)"
+  ]
+ },
+ "tests/test_digital_twin_scd30.py::test_two_identical_puts_write_the_chip_nvm_only_for_the_always_sent_commands": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; (lead, 2026-10-27: CMr1k's shared-bus bite, the first read byte garbled on a bus with two or more chips, fails it on dev)"
+  ]
+ },
+ "tests/test_digital_twin_scd30.py::test_a_failed_deferred_flush_is_healed_by_the_next_accepted_put": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; its six assertions are the pre-widening body's, unchanged (lead, 2026-10-27: an AST compare against 111129f4), whose row read biting with no flag; the shared-bus bite passes it, its path reading nothing that bite garbles"
+  ]
+ },
+ "tests/test_digital_twin_scd30.py::test_the_real_reader_accepts_a_reading_at_the_largest_temperature_offset": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; (lead, 2026-10-27: CMr1k's shared-bus bite, the first read byte garbled on a bus with two or more chips, fails it on dev)"
+  ]
+ },
+ "tests/test_digital_twin_scd30.py::test_a_booted_reader_on_a_constant_co2_twin_reaches_frc_ready_and_keeps_its_frc_settings": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; (lead, 2026-10-27: CMr1k's shared-bus bite, the first read byte garbled on a bus with two or more chips, fails it on dev)"
+  ]
+ },
+ "tests/test_digital_twin_scd30.py::test_a_stuck_high_rdy_line_warns_once_after_five_empty_reads_and_new_data_ends_it": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; (lead, 2026-10-27: CMr1k's shared-bus bite, the first read byte garbled on a bus with two or more chips, fails it on dev)"
+  ]
+ },
+ "tests/test_digital_twin_sgp40.py::test_the_driver_recovers_from_a_crc_failure_with_the_next_initialize": {
+  "setup_credit_only": [
+   "biting",
+   "the body is a per-wiring loop over a case helper whose own assertions carry the claim; (lead, 2026-10-27: CMr1k's shared-bus bite fails all three _sgp40_bus() callers on dev)"
+  ]
  }
 }

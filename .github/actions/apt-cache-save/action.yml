@@ -1,0 +1,39 @@
+# Keeps the archives apt fetched in GitHub's cache under apt-cache-restore's key. Every step warns and carries on, so
+# nothing here fails a job (SPECIFICATION.md B.10.1).
+name: apt cache save
+description: >
+  Copies each planned archive apt fetched, checked against the index, into the cache folder, drops what the set no
+  longer holds, and saves the folder under apt-cache-restore's key when it holds the whole set and that key was not
+  already a hit. Called with `if: !cancelled()` right after the install, so no later step's failure costs the save.
+  Used by firmware-build-verify and, through playwright-chromium, by web-unit-tests, web-put-matrix, web-coverage and
+  web-cross-browser-smoke.
+
+inputs:
+  family:
+    required: true
+    description: The family apt-cache-restore planned under
+  key:
+    required: true
+    description: apt-cache-restore's key output
+  cache-hit:
+    required: true
+    description: apt-cache-restore's cache-hit output
+
+runs:
+  using: composite
+  steps:
+    - name: Copy the fetched archives out of apt's archive
+      id: copy-out
+      if: inputs.key != '' && inputs.cache-hit != 'true'
+      shell: bash
+      continue-on-error: true
+      env:
+        FAMILY: ${{ inputs.family }}
+      run: python3 -I scripts/ci_apt_cache.py copy-out --manifest "$RUNNER_TEMP/apt-cache-$FAMILY/manifest.json" --archives /var/cache/apt/archives --cache-dir "$HOME/.cache/apt-archives/$FAMILY" --github-output "$GITHUB_OUTPUT"
+    - name: Save the apt archives to the cache
+      if: steps.copy-out.outputs.complete == 'true'
+      continue-on-error: true
+      uses: actions/cache/save@v6
+      with:
+        path: ~/.cache/apt-archives/${{ inputs.family }}
+        key: ${{ inputs.key }}

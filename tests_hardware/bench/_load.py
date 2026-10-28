@@ -1,11 +1,12 @@
 """The bench modules' shared parts: one /sensors reader worker counting the requests it got answered and range-checking
 each body against the drivers' own schemas, the per-driver measurement checks against the sourced plausibility bounds,
-and the bench board's facts and readiness probes several modules read (SPECIFICATION.md C.8)."""
+and the bench board's facts, readiness probes and NTP end wait several modules read (SPECIFICATION.md C.8)."""
 
 import contextlib
 import functools
 import json
 import threading
+import time
 import types
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
@@ -18,7 +19,7 @@ from plausibility_bounds import BOUNDS
 
 from buildgen.definitions import definitions_for_toml
 from buildgen.schema_ast import extract_field_schemas
-from buildgen.validate import build_model
+from buildgen.validate import build_model, ntp_backoff
 from tests._src_const import py_value, src_const
 
 if TYPE_CHECKING:
@@ -32,8 +33,17 @@ if TYPE_CHECKING:
 
 # @tunable l4.bench_load_probe_timeout_s = 10.0
 _PROBE_TIMEOUT_S = 10.0
+# @tunable l4.network_resilience_ntp_resync_after_reset_timeout_s = 120.0
+_NTP_RESYNC_AFTER_RESET_TIMEOUT_S = 120.0
+# @tunable l4.network_resilience_ntp_retry_chain_margin_s = 10.0
+_NTP_RETRY_CHAIN_MARGIN_S = 10.0
+# @tunable l4.network_resilience_sync_age_slack_s = 2.0
+_SYNC_AGE_SLACK_S = 2.0
+# @tunable l4.network_resilience_wait_poll_s = 2.0
+_WAIT_POLL_S = 2.0
 _ISL29125_DRIVER = "asy_isl29125_driver.py"
 _MATH_HELPERS = "math_helpers.py"
+_NTP = "asy_ntp_client.py"
 _HUE_SPAN = (0.0, 360.0)  # source: src/math_helpers.py rgb_to_hsb(), "hue in [0, 360)"
 # The widest JSON number a double round-trips to: no numeric field a client sends can be longer.
 _MAX_JSON_NUMBER = len("-1.2345678901234567e+308")
@@ -163,9 +173,37 @@ def _model(device: "str | None" = None) -> "DeviceModel":
     return build_model(harness.device_toml(device), harness.SRC_DIR)
 
 
+@functools.cache
+def _ntp_backoff() -> "tuple[float, float]":
+    # The bench device's unsynced backoff as its NTPClient runs it: buildgen's effective pair (the generated NtpTiming's,
+    # validate.ntp_backoff()), the interval at least one check tick and the cap at least the interval (asy_ntp_client.py).
+    table = _model().doc.get("device")
+    assert isinstance(table, dict), f"{harness.device_toml()} has no [device] table"
+    retry_s, retry_max_s = ntp_backoff(table, harness.SRC_DIR)
+    period = max(retry_s, src_number(_NTP, "_NTP_CHECK_INTERV"))
+    return period, max(retry_max_s, period)
+
+
 def _ntp_error_log_contains(dut_ip: str, errno: int) -> bool:
     # Whether the NTP logger's history holds error `errno` (a code() read, never a number restated here).
     return any(h.get("num") == errno and h.get("type") == "E" for h in errcount_entry(get_errcount(dut_ip), "NTP")["history"])
+
+
+def _ntp_retry_chain_s() -> float:
+    # A synced client's failed attempt arms up to _NTP_SYNC_RETRIES one-shot retries, each _NTP_RETRY_INTERV after the
+    # failure before it (src/asy_ntp_client.py _handle_ntp_sync_failure()); a retry finding no network ends it silently.
+    return src_number(_NTP, "_NTP_SYNC_RETRIES") * (src_number(_NTP, "_NTP_RETRY_INTERV") + ntp_attempt_s())
+
+
+def _ntp_view(dut_ip: str) -> "tuple[int, bool, object] | None":
+    # NTP's logged count, NTPSynced and NTPLastSyncAge from one GET /status, None while the board does not answer.
+    try:
+        status = get_object(dut_ip, "/status")
+        networking = as_object(status.get("networking"), "GET /status networking")
+        counter = errcount_entry(as_object(status.get("errcount"), "GET /status errcount"), "NTP")["counter"]
+    except (OSError, http_client.HTTP_ERROR, ValueError, TypeError, AssertionError):
+        return None
+    return counter, networking.get("NTPSynced") is True, networking.get("NTPLastSyncAge")
 
 
 def _objects(value: "JsonValue") -> "list[JsonDict]":
@@ -308,6 +346,30 @@ def mode(host: str) -> object:
     return as_object(get_object(host, "/status").get("networking"), "GET /status networking").get("Mode")
 
 
+def ntp_attempt_s() -> float:
+    # One sync attempt's longest run (src/asy_ntp_client.py _run_ntp_sync_attempt()): a send and a reply wait per lookup
+    # try on each server, the DHCP one and up to _DNS_FALLBACK_MAX more (asy_dns_client.py resolve_ipv4()), then the NTP
+    # request's send and reply wait (_fetch_ntp_reply()), each bounded by its timeout in buildgen/codegen.py.
+    servers = 1 + src_number(_NTP, "_DNS_FALLBACK_MAX")
+    lookup_s = servers * buildgen_number("codegen.py", "_DNS_TRIES") * 2 * buildgen_number("codegen.py", "_DNS_TIMEOUT_MS") / 1000
+    return lookup_s + 2 * ntp_fetch_timeout_s()
+
+
+def ntp_fetch_timeout_s() -> float:
+    # The client's reply timeout: NtpTiming.fetch_timeout_ms, which buildgen/codegen.py writes into the device module.
+    return buildgen_number("codegen.py", "_NTP_FETCH_TIMEOUT_MS") / 1000
+
+
+def ntp_retry_max_s() -> float:
+    # The cap the unsynced client's doubling backoff stops at (_ntp_backoff()).
+    return _ntp_backoff()[1]
+
+
+def ntp_retry_period_s() -> float:
+    # The unsynced client's first retry step, rounded up to the check tick it is counted on (_ntp_backoff()).
+    return _ntp_backoff()[0]
+
+
 def ntp_synced(dut_ip: str) -> bool:
     # GET /status's networking.NTPSynced, False while the board does not answer.
     try:
@@ -414,3 +476,29 @@ def sta_mode(dut_ip: str) -> bool:
         return mode(dut_ip) == "STA"
     except (OSError, http_client.HTTP_ERROR, ValueError, TypeError, AssertionError):
         return False
+
+
+def wait_for_ntp_quiet(dut_ip: str, served_at: float, result_note: Note) -> None:
+    # What NTP still does after an outage logs into this window: the reset path's boot sync, after serving, and the
+    # retries a failure here arms. Synced is required; a logged failure then waits for a newer sync, or for the chain's
+    # longest run since serving: an attempt holds wifi_mode_lock, which the reconnect takes (_sync_loop()).
+    synced_by = served_at + _NTP_RESYNC_AFTER_RESET_TIMEOUT_S
+    chain_by = served_at + _ntp_retry_chain_s() + _NTP_RETRY_CHAIN_MARGIN_S
+    counted, counted_at, view = -1, served_at, None
+    while True:
+        asked = time.monotonic()
+        view = _ntp_view(dut_ip)
+        answered = time.monotonic()
+        if view is not None:
+            counter, synced, age = view
+            if counter != counted:
+                counted, counted_at = counter, answered  # every failure counted so far lies before this answer
+            # LastSyncAge is whole seconds, refreshed on a 1 s tick (asy_base_classes.py arm_tick_timer(), TickSeconds.read()).
+            fresh = isinstance(age, (int, float)) and not isinstance(age, bool) and asked - age - _SYNC_AGE_SLACK_S > counted_at
+            if synced and (counter == 0 or fresh or answered >= chain_by):
+                ended = "nothing logged" if counter == 0 else "a sync newer than its last failure" if fresh else "the retry chain's bound"
+                result_note(f"NTP quiet {answered - served_at:.0f}s after serving: {ended}")
+                return
+        if answered >= synced_by:
+            raise TimeoutError(f"NTP not synced within {_NTP_RESYNC_AFTER_RESET_TIMEOUT_S}s of serving after the outage, so its sync would log into the next test's window: last view (counter, synced, age) {view!r}")
+        time.sleep(_WAIT_POLL_S)

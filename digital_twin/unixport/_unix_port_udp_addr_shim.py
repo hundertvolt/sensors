@@ -1,9 +1,10 @@
 """Twin-side fix for the Unix port's sockaddr quirks (micropython#6924: bind/connect/sendto take a packed sockaddr,
 recvfrom returns one), so src/ only ever sees (host, port) tuples; it also refuses any UDP destination outside loopback
-and TEST-NET-1, and binds a server's wildcard on the loopback.
+and TEST-NET-1, and binds a server's wildcard on this process's own loopback address, twin_host.
 
 Applied once, before any UDPSocket exists (digital_twin/README.md "_unix_port_udp_addr_shim.py")."""
 
+import os
 import socket
 import struct
 
@@ -34,7 +35,10 @@ _ALLOWED_HOSTS = ("0.0.0.0",)  # the wildcard a server binds
 # Every twin interface lives on the host loopback, so a server's wildcard is bound there: the host's wildcard would also
 # claim its other interfaces, and fails beside any resolver holding one loopback address without SO_REUSEADDR.
 _WILDCARD = "0.0.0.0"
-_TWIN_HOST = "127.0.0.1"
+# One loopback address per process, the runner's TEST_TWIN_HOST: two SO_REUSEADDR sockets sharing an address and port
+# hand every datagram to the one bound last, another process's included (agent, 2026-10-27). Unset, it is 127.0.0.1.
+_TWIN_HOST_ENV = "TEST_TWIN_HOST"
+_DEFAULT_TWIN_HOST = "127.0.0.1"  # where every host-side talker (the CI suite, the scenario harness) reaches a twin
 # A 4-byte AF_INET sockaddr: the host kernel's connect()/bind()/sendto() reject it with EINVAL inside src/'s own try,
 # so a refusal takes the product's handled failure path (backoff included) and nothing leaves the host
 _REFUSED_SOCKADDR = struct.pack("<H", socket.AF_INET) + bytes(2)
@@ -42,6 +46,7 @@ _REFUSED_SOCKADDR = struct.pack("<H", socket.AF_INET) + bytes(2)
 _COUNTER_CAP = 0x3FFFFFFF
 public_destinations_refused = 0  # twin-only test knob: refusals, saturating at _COUNTER_CAP
 last_refused: "tuple[str, int] | None" = None  # twin-only test knob: the destination of the latest refusal
+twin_host = _DEFAULT_TWIN_HOST  # read-only for in-process peers: the address this process's server wildcards are bound on
 TEST_API = ("public_destinations_refused", "last_refused")
 
 
@@ -83,7 +88,7 @@ async def _patched_connect(self: "asy_udp_socket.UDPSocket") -> None:
         self._addr = cast("tuple[str, int]", _REFUSED_SOCKADDR)
     else:
         if self._mode == "server" and self._addr[0] == _WILDCARD:
-            self._addr = (_TWIN_HOST, self._addr[1])
+            self._addr = (twin_host, self._addr[1])
         self._addr = _resolve_plain_addr(self._addr)
     await _real_connect(self)
 
@@ -98,6 +103,16 @@ async def _patched_sendto(self: "asy_udp_socket.UDPSocket", msg: "bytes | bytear
         _count(addr)
         return await _real_sendto(self, msg, cast("tuple[str, int]", _REFUSED_SOCKADDR), timeout_ms=timeout_ms)
     return await _real_sendto(self, msg, _resolve_plain_addr(addr), timeout_ms=timeout_ms)
+
+
+def _read_twin_host() -> str:
+    # TEST_TWIN_HOST as the runner set it, or the default; anything but an IPv4 loopback literal fails the patch, named.
+    host = os.getenv(_TWIN_HOST_ENV)
+    if host is None:
+        return _DEFAULT_TWIN_HOST
+    if not (_ipv4_literal(host) and host.startswith("127.")):
+        raise ValueError(f"{_TWIN_HOST_ENV}={host!r} is no IPv4 loopback address (127.0.0.0/8)")
+    return host
 
 
 def _refused(addr: object) -> bool:
@@ -118,9 +133,10 @@ def _resolve_plain_addr(addr: "T") -> "T | tuple[str, int]":
 
 
 def patch_asy_udp_socket_for_unix_port() -> None:
-    global _patched
+    global _patched, twin_host
     if _patched:
         return
+    twin_host = _read_twin_host()
     asy_udp_socket.UDPSocket._connect = _patched_connect  # type: ignore[method-assign]
     asy_udp_socket.UDPSocket.sendto = _patched_sendto  # type: ignore[method-assign]
     asy_udp_socket.UDPSocket.recvfrom = _patched_recvfrom  # type: ignore[method-assign]

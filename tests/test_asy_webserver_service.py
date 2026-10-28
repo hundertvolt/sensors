@@ -172,6 +172,10 @@ _SERVE_LONG_BOUND_S = 3.0  # one _serve() under a headroom timeout
 _RUN_LONG_BOUND_S = 10.0  # a scenario of many connections
 # @tunable l1.asy_webserver_service_rewedge_run_bound_s = 15.0
 _REWEDGE_RUN_BOUND_S = 15.0  # the repeated-rewedging scenario
+# @tunable l1.asy_webserver_service_proxy_timeout_ms = 50
+_PROXY_TIMEOUT_MS = 50  # a stream proxy's per-call bound that a hung wait_closed() waits out
+# @tunable l1.asy_webserver_service_proxy_bound_ms = 1000
+_PROXY_BOUND_MS = 1000  # a stream proxy's per-call bound on forwards that return at once
 # @tunable l1.asy_webserver_service_tiny_per_call_s = 0.01
 _TINY_PER_CALL_S = 0.01
 # @tunable l1.asy_webserver_service_fast_per_call_s = 0.02
@@ -2788,7 +2792,7 @@ def test_a_read_timeout_then_a_capped_400_write_logs_the_request_cap_code() -> N
 
 def test_a_timed_out_proxy_call_sets_the_shared_timed_out_flag() -> None:
     timed_out = [False]
-    proxy = _TimeoutStreamProxy(_ScriptedWriter(hang_close=True), 50, _FakeLogger("X"), [False], timed_out)  # type: ignore[arg-type]
+    proxy = _TimeoutStreamProxy(_ScriptedWriter(hang_close=True), _PROXY_TIMEOUT_MS, _FakeLogger("X"), [False], timed_out)  # type: ignore[arg-type]
     try:
         run_timed(proxy.wait_closed(), _RUN_BOUND_S)
     except asyncio.TimeoutError:
@@ -2838,7 +2842,7 @@ def test_timeout_stream_proxy_close_and_wait_closed_forward_to_the_wrapped_strea
     # F's scenarios (close() is sync; wait_closed() only ever reaches the raw writer, via
     # WebserverService._close_writer()) - still real forwards that must work correctly.
     writer = _ScriptedWriter()
-    proxy = _TimeoutStreamProxy(writer, 1000, _FakeLogger("X"), [False], [False])  # type: ignore[arg-type]
+    proxy = _TimeoutStreamProxy(writer, _PROXY_BOUND_MS, _FakeLogger("X"), [False], [False])  # type: ignore[arg-type]
     proxy.close()
     assert writer.close_called is True
     run_timed(proxy.wait_closed(), _RUN_BOUND_S)

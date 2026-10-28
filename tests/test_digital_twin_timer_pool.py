@@ -78,6 +78,7 @@ _RR_MAGIC = src_const("src/asy_system_service.py", "_RR_MAGIC")
 _WAIT_S = 20.0
 # @tunable l2.timer_pool_run_bound_s = 60.0
 _RUN_BOUND_S = 60.0
+# @tunable l2.timer_pool_poll_s = 0.1
 _POLL_S = 0.1  # how often a real-time wait below looks again
 # The reading field that proves a driver read (as the bus-hazard tier's _I2C_DRIVER_HEALTH_FIELD).
 _HEALTH_FIELD = {"scd30": "CO2", "sgp40": "VOC", "bmp3xx": "Pres", "isl29125": "Lux"}
