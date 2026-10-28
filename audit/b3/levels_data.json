@@ -836,12 +836,212 @@
  "picking_files": [
   "tests/test_digital_twin_sensortask_integration.py"
  ],
- "dash_reasons": [],
- "curated_cells": {},
+ "dash_reasons": [
+  {
+   "match": "^buildgen/__init__\\.py$",
+   "levels": [
+    "L0",
+    "L1",
+    "L2",
+    "L3",
+    "L4"
+   ],
+   "reason": "the package's docstring alone: no behaviour to test"
+  },
+  {
+   "match": "^buildgen/",
+   "levels": [
+    "L1",
+    "L2",
+    "L3",
+    "L4"
+   ],
+   "reason": "host build tooling (CPython) that runs before any MicroPython level: those levels test its output, the generated modules' rows; L0 is its level (E.6.1)"
+  },
+  {
+   "match": "^toolchain/micropython_overrides\\.py$",
+   "levels": [
+    "L1",
+    "L2"
+   ],
+   "reason": "build-time overrides of the Unix port: every L1/L2 file runs on the binary they shaped, none names them; L0 checks each override's anchor"
+  },
+  {
+   "match": "^toolchain/",
+   "levels": [
+    "L1",
+    "L2",
+    "L4"
+   ],
+   "reason": "the host toolchain builder: L0 tests it and L3 boots the firmware it builds; no MicroPython level runs it"
+  },
+  {
+   "match": "^scripts/",
+   "levels": [
+    "L1",
+    "L2",
+    "L3",
+    "L4"
+   ],
+   "reason": "host scripts: L0 is their level (E.6.1); the runners among them are how L1-L4 execute, not code those levels test"
+  },
+  {
+   "match": "^js/",
+   "levels": [
+    "L1",
+    "L2",
+    "L3",
+    "L4"
+   ],
+   "reason": "website JavaScript: L0 (vitest) is its level; L2's real-website scenarios serve the built bundle on every device without naming each file"
+  },
+  {
+   "match": "^\\.github/",
+   "levels": [
+    "L1",
+    "L2",
+    "L3",
+    "L4"
+   ],
+   "reason": "CI configuration: GitHub Actions runs it and L0 checks it statically; no MicroPython or board level executes it"
+  },
+  {
+   "match": "^digital_twin/run_device_script\\.py$",
+   "levels": [
+    "L1",
+    "L2"
+   ],
+   "reason": "runs a device script on the twin for tests_hardware's twin mode; L0 tests it (test_twin_board.py)"
+  },
+  {
+   "match": "^digital_twin/",
+   "levels": [
+    "L3",
+    "L4"
+   ],
+   "reason": "the twin is L2's stand-in for the hardware; L3 and L4 run the real board in its place"
+  },
+  {
+   "match": "^digital_twin/",
+   "levels": [
+    "L0"
+   ],
+   "reason": "MicroPython twin code: L0 reads a twin file only where a static check needs it; the L2 files that run it are its level"
+  },
+  {
+   "match": "^digital_twin/",
+   "levels": [
+    "L1"
+   ],
+   "reason": "twin code: L2 is its level; L1 runs on tests/'s own fakes"
+  },
+  {
+   "match": "^src/asy_framing_codecs\\.py$",
+   "levels": [
+    "L0"
+   ],
+   "reason": "pure MicroPython codec logic with no tag, schema or constant a host check reads"
+  },
+  {
+   "match": "^src/(asy_api_response|asy_framing_codecs|math_helpers|voc_algorithm|asy_crc_checks|asy_notification_service)\\.py$",
+   "levels": [
+    "L3",
+    "L4"
+   ],
+   "reason": "pure computation, the same on silicon: L1 proves it and L2 runs it in the booted graph; silicon adds no path of its own"
+  },
+  {
+   "match": "^src/(asy_base_classes|asy_config_manager|asy_fram_driver|asy_fram_manager|asy_i2c_driver|asy_spi_driver|asy_neopixel_driver|asy_print_log|asy_uart_driver)\\.py$",
+   "levels": [
+    "L4"
+   ],
+   "reason": "no network-facing behaviour: L4 is L3 plus the WiFi bridge, and this module's silicon behaviour is its L3 cell's"
+  },
+  {
+   "match": "^src/(asy_captive_dns|asy_dns_client|asy_udp_socket)\\.py$",
+   "levels": [
+    "L3"
+   ],
+   "reason": "network-facing: L3 has no radio peer (no bridge), so its silicon behaviour is its L4 cell's"
+  },
+  {
+   "match": "^build/generated_src/sensortask_<device>_main_noautostart\\.py$",
+   "levels": [
+    "L2"
+   ],
+   "reason": "the no-autostart entry starts nothing: L1 proves it; the twin boots the autostart graph"
+  },
+  {
+   "match": "^build/generated_src/sensortask_<device>_main_noautostart\\.py$",
+   "levels": [
+    "L3",
+    "L4"
+   ],
+   "reason": "the flash and bench tiers flash the autostart image; the no-autostart image (build_firmware.py --no-autostart) only starts nothing, proven at L1 and at L0, and a silicon check would cost an extra flash cycle"
+  }
+ ],
+ "curated_cells": {
+  "src/asy_captive_dns.py": {
+   "L4": [
+    "tests_hardware/bench/test_hotspot_role_reversal.py::test_arbitrary_hostname_resolves_to_the_aps_own_ip",
+    "tests_hardware/bench/test_hotspot_role_reversal.py::test_genuine_root_domain_query_is_answered_correctly",
+    "tests_hardware/bench/test_hotspot_role_reversal.py::test_dns_flood_leaves_captive_dns_serving_and_it_recovers"
+   ]
+  },
+  "src/asy_dns_client.py": {
+   "L4": [
+    "tests_hardware/bench/test_wifi_networking.py::test_real_dns_resolution_succeeds_over_genuine_udp"
+   ]
+  },
+  "src/asy_udp_socket.py": {
+   "L4": [
+    "tests_hardware/bench/test_wifi_networking.py::test_real_ntp_sync_succeeds_over_genuine_udp",
+    "tests_hardware/bench/test_wifi_networking.py::test_real_dns_resolution_succeeds_over_genuine_udp"
+   ]
+  },
+  "generated_main": {
+   "L3": [
+    "tests_hardware/flash/test_reboot_persistence.py::test_boot_import_mechanism_actually_boots_the_real_system",
+    "tests_hardware/flash/test_watchdog_starvation.py::test_watchdog_starvation_triggers_a_real_hardware_reset"
+   ],
+   "L4": [
+    "tests_hardware/bench/test_reset_reasons.py::test_a_console_interrupt_is_attributed",
+    "tests_hardware/bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed"
+   ]
+  }
+ },
  "ladder": [],
- "narrowings": [],
+ "narrowings": [
+  {
+   "test": "the real-website checks (A.U25.48's file, since moved into the twin CI's `real_website_*` scenarios)",
+   "narrowed_to": "no device any more: each scenario serves the booted device's own built site (`build/generated_html/<device>`)",
+   "covering_row": "the generated module's L2 cell (every device)",
+   "covering_tests": [
+    "scripts/_digital_twin_scenarios.py::real_website_root_serves_the_actual_production_index_html",
+    "scripts/_digital_twin_scenarios.py::real_website_inlined_definitions_matches_the_booted_devices_own"
+   ]
+  },
+  {
+   "test": "tests/test_website_build_integration.py (L1)",
+   "narrowed_to": "the site `scripts/test.sh` built into `frozen_modules/frozen_html.py`, for the first derived device",
+   "covering_row": "js/ and scripts/build_device_websites.sh rows; the generated module's L2 cell",
+   "covering_tests": [
+    "scripts/_digital_twin_scenarios.py::static_site_is_served_over_real_http",
+    "scripts/_digital_twin_scenarios.py::real_website_production_js_entry_is_served_not_the_prototype"
+   ]
+  },
+  {
+   "test": "digital_twin/launch.py's raw-bus demo (tests/test_digital_twin_launch.py)",
+   "narrowed_to": "a device wiring bmp3xx, scd30 and sgp40, read with no `src/` import",
+   "covering_row": "the generated module's L2 cell (every device boots its own graph and reads each wired chip)",
+   "covering_tests": [
+    "scripts/_digital_twin_scenarios.py::api_burst_at_the_ceiling_during_bus_load",
+    "tests/_digital_twin_construction_scenarios.py::build_system_boots_against_the_real_twin_buses_without_exception"
+   ]
+  }
+ ],
  "functional_intro": "Derived by the walk, one row per `src/` module: its real consumers in the generated graph (the `src/` modules a generated device reaches that import it, and the generated module where that imports it directly), and the L2 functions that drive it in a generated device's graph: a function of its matrix row's L2 cell that is also in the generated module's L2 cell, else the same for its first consumer that has one (named \"through\"). The devices are those the biting ones run on: a twin CI scenario on every device wiring its drivers, a construction scenario or a `PER_DEVICE` file on every device, any other twin test on the device its file picks (SPECIFICATION.md E.2.1). A row bites when such a function is verdicted biting and the module is booted (agent, 2026-10-28).",
  "system_intro": "First one row per REST route of the generated API reference (`build/generated_src/api/<device>.json`), derived: the L2 functions whose code, or a helper of their file, names the route's method and path, and the devices they run on (as above). Then one row per top-level feature of SPECIFICATION.md A.2 and per item of A.4's \"functional behaviors confirmed intentional\" list, with its tests named by hand (`levels_data.json` `system_rows`); a module-internal item names the lowest level that proves it. Recovery paths are `conformance.md`'s rows (A.U35.52's rungs), cited there, not repeated here (agent, 2026-10-28).",
  "ladder_intro": "Open.",
- "narrowings_intro": "Open."
+ "narrowings_intro": "Each test that deliberately runs on one device, the device it takes, and the row whose tests cover the other devices (agent, 2026-10-28)."
 }
