@@ -224,6 +224,34 @@ def test_parse_limits_real_scd30_driver(src_dir: Path) -> None:
     assert parse_limits(src_dir / "asy_scd30_driver.py", "fixture", "scd30") == (LimitField("trigger_s", None, 1, 1800),)
 
 
+def _init_defaults(path: Path) -> "dict[str, list[ast.expr]]":
+    # Each parameter's default expressions over every __init__ a module defines, by parameter name.
+    defaults: dict[str, list[ast.expr]] = {}
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.FunctionDef) and node.name == "__init__":
+            positional = node.args.posonlyargs + node.args.args
+            pairs = list(zip(positional[len(positional) - len(node.args.defaults) :], node.args.defaults, strict=True))
+            pairs += [(arg, default) for arg, default in zip(node.args.kwonlyargs, node.args.kw_defaults, strict=True) if default is not None]
+            for arg, default in pairs:
+                defaults.setdefault(arg.arg, []).append(default)
+    return defaults
+
+
+def test_every_limited_field_defaults_inside_its_own_domain(src_dir: Path) -> None:
+    # TOML has no null: a device leaving a limited field out renders no keyword, so the constructor default stands in.
+    checked = []
+    for path in sorted(src_dir.glob("*.py")):
+        for limit in parse_limits(path, "fixture", "x"):
+            defaults = _init_defaults(path).get(limit.toml_field, [])
+            assert defaults, f"{path.name}: no __init__ defaults the limited field {limit.toml_field}"
+            for expr in defaults:
+                value = ast.literal_eval(expr)
+                in_range = (limit.min is None or value >= limit.min) and (limit.max is None or value <= limit.max)
+                assert value in limit.choices if limit.choices is not None else in_range, f"{path.name}: {limit.toml_field} defaults to {value!r}, outside its @limits domain"
+                checked.append((path.name, limit.toml_field))
+    assert {name for name, _field in checked} == {"asy_bmp3xx_driver.py", "asy_fram_manager.py", "asy_isl29125_driver.py", "asy_scd30_driver.py"}
+
+
 def _known_fram_sizes(driver: Path) -> "frozenset[int]":
     # _KNOWN_PRODUCT_IDS' keys, read without importing the MicroPython-only driver.
     for node in ast.walk(ast.parse(driver.read_text(encoding="utf-8"))):

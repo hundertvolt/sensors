@@ -12,6 +12,7 @@ from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep
 from _fram_builders import make_fram_manager
 from _recording_print import record_prints
+from _schema_cases import declared_fields, domain_cases
 from _src_const import src_int
 from _src_schema import src_schema
 from _stack_overflow import stack_overflow
@@ -22,6 +23,7 @@ from machine import Timer as FakeTimer
 
 import asy_print_log
 from asy_bmp3xx_driver import BMP3XX, BMP3XX_I2C, BMP3XX_Reader
+from asy_config_manager import schema_names
 from asy_i2c_driver import I2C
 from asy_print_log import LogConfig, PrintLogHistoryStore, fatal_reported
 
@@ -1284,6 +1286,27 @@ def test_config_write_wrong_type_rejected_for_int_field_but_coerced_for_float_fi
         assert stored is not None
         assert stored[name] == 1.0
         assert type(stored[name]) is float
+
+
+def test_a_put_takes_each_declared_field_inside_its_domain_and_refuses_it_outside() -> None:
+    # Every declared field's edges through the PUT path (tests/_schema_cases.py): "Invalid" and nothing stored outside
+    # the declared domain, "Valid" or "Unchanged" inside it.
+    i2c, reader = _make_clean_reader("put_domain")
+    seed_status(i2c, 0x10 | 0x60)
+    seed_err(i2c, 0x00)
+    fields = declared_fields("src/asy_bmp3xx_driver.py")
+    assert sorted(schema_names(reader.get_cfg_schema())) == sorted(field[0] for field in fields)
+    wrong: list[str] = []  # every case that answered against its declared domain, so one failure names them all
+    for field in fields:
+        name = field[0]
+        for label, value, inside in domain_cases(field):
+            before = run(reader.cfgmgr.get_dict([name]))
+            word = run(_put(reader, {name: value}))[name]
+            if word not in (("Valid", "Unchanged") if inside else ("Invalid",)):
+                wrong.append(f"{name}: {label} -> {word}")
+            elif not inside and run(reader.cfgmgr.get_dict([name])) != before:
+                wrong.append(f"{name}: {label} -> stored")
+    assert wrong == [], wrong
 
 
 def test_config_write_rejects_a_bool_for_an_int_field_on_both_runtimes() -> None:

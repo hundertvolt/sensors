@@ -42,11 +42,11 @@ def _wrong_type(path: str, name: str, value: object, kind: str) -> TypeError:
 
 
 def py_value(path: str, name: str) -> object:
-    # The literal of a module-level `NAME = <literal>` line of a host file, e.g. the watchdog timeout buildgen emits.
+    # The literal of a module-level `NAME = <literal>` (or `NAME: "T" = <literal>`) line, e.g. the watchdog timeout buildgen emits.
     with open(path) as f:
         for line in f:
             head, mark, rest = line.partition(" = ")
-            if mark and head == name:
+            if mark and head.split(":", 1)[0] == name:
                 return eval(rest, {})
     raise KeyError(f"{name} is not a module-level binding in {path}")
 
