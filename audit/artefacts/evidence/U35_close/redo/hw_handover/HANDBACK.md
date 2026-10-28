@@ -17,7 +17,40 @@ Rebuilt by `handback.py` after every step; the newest day is complete up to its 
 ## Day 20261028
 
 <!-- day 20261028 -->
+### build_20261028
 
+```
+[ 93%] Building C object CMakeFiles/firmware.dir/home/nico/pico-toolchain/micropython/lib/tinyusb/src/class/audio/audio_device.c.o
+[ 93%] Building C object CMakeFiles/firmware.dir/home/nico/pico-toolchain/micropython/lib/tinyusb/src/class/cdc/cdc_device.c.o
+[ 94%] Building C object CMakeFiles/firmware.dir/home/nico/pico-toolchain/micropython/lib/tinyusb/src/class/dfu/dfu_device.c.o
+[ 94%] Building C object CMakeFiles/firmware.dir/home/nico/pico-toolchain/micropython/lib/tinyusb/src/class/dfu/dfu_rt_device.c.o
+[ 94%] Building C object CMakeFiles/firmware.dir/home/nico/pico-toolchain/micropython/lib/tinyusb/src/class/hid/hid_device.c.o
+[ 94%] Building C object CMakeFiles/firmware.dir/home/nico/pico-toolchain/micropython/lib/tinyusb/src/class/midi/midi_device.c.o
+[ 94%] Building C object CMakeFiles/firmware.dir/home/nico/pico-toolchain/micropython/lib/tinyusb/src/class/midi/midi2_device.c.o
+[ 94%] Building C object CMakeFiles/firmware.dir/home/nico/pico-toolchain/micropython/lib/tinyusb/src/class/msc/msc_device.c.o
+[ 95%] Building C object CMakeFiles/firmware.dir/home/nico/pico-toolchain/micropython/lib/tinyusb/src/class/mtp/mtp_device.c.o
+[ 95%] Building C object CMakeFiles/firmware.dir/home/nico/pico-toolchain/micropython/lib/tinyusb/src/class/net/ecm_rndis_device.c.o
+[ 95%] Building C object CMakeFiles/firmware.dir/home/nico/pico-toolchain/micropython/lib/tinyusb/src/class/net/ncm_device.c.o
+[ 95%] Building C object CMakeFiles/firmware.dir/home/nico/pico-toolchain/micropython/lib/tinyusb/src/class/printer/printer_device.c.o
+[ 95%] Building C object CMakeFiles/firmware.dir/home/nico/pico-toolchain/micropython/lib/tinyusb/src/class/usbtmc/usbtmc_device.c.o
+[ 95%] Building C object CMakeFiles/firmware.dir/home/nico/pico-toolchain/micropython/lib/tinyusb/src/class/vendor/vendor_device.c.o
+[ 96%] Building C object CMakeFiles/firmware.dir/home/nico/pico-toolchain/micropython/lib/tinyusb/src/class/video/video_device.c.o
+[ 96%] Building C object CMakeFiles/firmware.dir/home/nico/pico-toolchain/micropython/lib/pico-sdk/src/rp2_common/pico_fix/rp2040_usb_device_enumeration/rp2040_usb_device_enumeration.c.o
+[ 96%] Building C object CMakeFiles/firmware.dir/home/nico/pico-toolchain/micropython/lib/pico-sdk/src/rp2_common/cmsis/stub/CMSIS/Device/RP2040/Source/system_RP2040.c.o
+[ 96%] Linking CXX executable firmware.elf
+Memory region         Used Size  Region Size  %age Used
+           FLASH:      909012 B      1200 KB     73.98%
+     FLASH_ROMFS:           0 B          0 B
+        FLASH_FS:           0 B       848 KB      0.00%
+         XIP_RAM:           0 B        16 KB      0.00%
+             RAM:       71832 B       256 KB     27.40%
+       SCRATCH_X:           0 B          0 B
+       SCRATCH_Y:          8 KB         8 KB    100.00%
+[100%] Built target firmware
+make[1]: Leaving directory '/home/nico/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+/home/nico/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/firmware.uf2
+build rc=0 -rw-rw-r-- 1 nico nico 1818112 Oct 28 17:49 /home/nico/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/firmware.uf2
+```
 <!-- end day -->
 
 ## FRAM raw dump (before the flash)
