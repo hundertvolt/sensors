@@ -359,6 +359,26 @@ DONE=1
 rc=0 18:00:04
 ```
 
+### probe_fram_conformance_probe_20261028
+
+```
+== probe_fram_conformance_probe 18:00:08
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.63ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+A01_miso_idle_byte=00
+A02_rdid=047f4803
+B01_status=02
+B02_wel_after_wren=1
+B03_wel_after_wrdi=0
+C01_round_trip=yes
+C02_wel_after_write=1
+C03_write_without_wel_ignored=yes
+C04_found_bytes_restored=yes
+DONE=1
+rc=0 18:00:09
+```
+
 ### reset_bootloader_20261028
 
 ```
