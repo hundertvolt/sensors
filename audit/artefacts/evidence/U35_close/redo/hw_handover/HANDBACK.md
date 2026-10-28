@@ -5,21 +5,21 @@ Rebuilt by `handback.py` after every step; the newest day is complete up to its 
 ## Aggregate over every day's long runs
 
 ```
-fram runs=1 scratch_restored=1
-fram op=rdid runs=1 n=155918 oserrors=0 bad=0 worst_us=10244 bad_rate<1.9e-05 oserrors_rate<1.9e-05
-fram op=read256 runs=1 n=155918 oserrors=0 bad=0 worst_us=12692 bad_rate<1.9e-05 oserrors_rate<1.9e-05
-fram op=write1 runs=1 n=155918 oserrors=0 bad=0 worst_us=10466 bad_rate<1.9e-05 oserrors_rate<1.9e-05
-i2c chip=bmp phase=data runs=1 n=146272 eio=0 etimedout=0 other=0 bad=0 worst_us=545 eio_rate<2.1e-05 etimedout_rate<2.1e-05 other_rate<2.1e-05 bad_rate<2.1e-05
-i2c chip=bmp phase=reg runs=1 n=146272 eio=0 etimedout=0 other=0 bad=0 worst_us=560 eio_rate<2.1e-05 etimedout_rate<2.1e-05 other_rate<2.1e-05 bad_rate<2.1e-05
-i2c chip=bmp phase=write runs=1 n=14627 eio=0 etimedout=0 other=0 bad=0 worst_us=754 eio_rate<2.1e-04 etimedout_rate<2.1e-04 other_rate<2.1e-04 bad_rate<2.1e-04
-i2c chip=isl phase=data runs=1 n=146272 eio=0 etimedout=0 other=0 bad=0 worst_us=503 eio_rate<2.1e-05 etimedout_rate<2.1e-05 other_rate<2.1e-05 bad_rate<2.1e-05
-i2c chip=isl phase=reg runs=1 n=146272 eio=0 etimedout=0 other=0 bad=0 worst_us=467 eio_rate<2.1e-05 etimedout_rate<2.1e-05 other_rate<2.1e-05 bad_rate<2.1e-05
-i2c chip=isl phase=write runs=1 n=14627 eio=0 etimedout=0 other=0 bad=0 worst_us=4979 eio_rate<2.1e-04 etimedout_rate<2.1e-04 other_rate<2.1e-04 bad_rate<2.1e-04
-i2c chip=scd30 phase=cmd runs=1 n=10522 eio=0 etimedout=0 other=0 bad=0 worst_us=834 eio_rate<2.9e-04 etimedout_rate<2.9e-04 other_rate<2.9e-04 bad_rate<2.9e-04
-i2c chip=scd30 phase=data runs=1 n=10522 eio=0 etimedout=0 other=0 bad=0 worst_us=5374 eio_rate<2.9e-04 etimedout_rate<2.9e-04 other_rate<2.9e-04 bad_rate<2.9e-04
-i2c chip=sgp40 phase=cmd runs=1 n=540 eio=0 etimedout=0 other=0 bad=0 worst_us=1825 eio_rate<5.6e-03 etimedout_rate<5.6e-03 other_rate<5.6e-03 bad_rate<5.6e-03
-i2c chip=sgp40 phase=data runs=1 n=540 eio=0 etimedout=0 other=0 bad=0 worst_us=1068 eio_rate<5.6e-03 etimedout_rate<5.6e-03 other_rate<5.6e-03 bad_rate<5.6e-03
-i2c chip=sgp40 phase=first runs=1 n=0 eio=0 etimedout=0 other=0 bad=0 worst_us=0
+fram runs=2 scratch_restored=2
+fram op=rdid runs=2 n=311792 oserrors=0 bad=0 worst_us=10244 bad_rate<9.6e-06 oserrors_rate<9.6e-06
+fram op=read256 runs=2 n=311792 oserrors=0 bad=0 worst_us=12698 bad_rate<9.6e-06 oserrors_rate<9.6e-06
+fram op=write1 runs=2 n=311792 oserrors=0 bad=0 worst_us=10476 bad_rate<9.6e-06 oserrors_rate<9.6e-06
+i2c chip=bmp phase=data runs=2 n=292459 eio=0 etimedout=0 other=0 bad=0 worst_us=545 eio_rate<1.0e-05 etimedout_rate<1.0e-05 other_rate<1.0e-05 bad_rate<1.0e-05
+i2c chip=bmp phase=reg runs=2 n=292459 eio=0 etimedout=0 other=0 bad=0 worst_us=560 eio_rate<1.0e-05 etimedout_rate<1.0e-05 other_rate<1.0e-05 bad_rate<1.0e-05
+i2c chip=bmp phase=write runs=2 n=29245 eio=0 etimedout=0 other=0 bad=0 worst_us=5021 eio_rate<1.0e-04 etimedout_rate<1.0e-04 other_rate<1.0e-04 bad_rate<1.0e-04
+i2c chip=isl phase=data runs=2 n=292459 eio=0 etimedout=0 other=0 bad=0 worst_us=503 eio_rate<1.0e-05 etimedout_rate<1.0e-05 other_rate<1.0e-05 bad_rate<1.0e-05
+i2c chip=isl phase=reg runs=2 n=292459 eio=0 etimedout=0 other=0 bad=0 worst_us=468 eio_rate<1.0e-05 etimedout_rate<1.0e-05 other_rate<1.0e-05 bad_rate<1.0e-05
+i2c chip=isl phase=write runs=2 n=29245 eio=0 etimedout=0 other=0 bad=0 worst_us=4979 eio_rate<1.0e-04 etimedout_rate<1.0e-04 other_rate<1.0e-04 bad_rate<1.0e-04
+i2c chip=scd30 phase=cmd runs=2 n=21045 eio=0 etimedout=0 other=0 bad=0 worst_us=834 eio_rate<1.4e-04 etimedout_rate<1.4e-04 other_rate<1.4e-04 bad_rate<1.4e-04
+i2c chip=scd30 phase=data runs=2 n=21045 eio=0 etimedout=0 other=0 bad=0 worst_us=5374 eio_rate<1.4e-04 etimedout_rate<1.4e-04 other_rate<1.4e-04 bad_rate<1.4e-04
+i2c chip=sgp40 phase=cmd runs=2 n=1080 eio=0 etimedout=0 other=0 bad=0 worst_us=1825 eio_rate<2.8e-03 etimedout_rate<2.8e-03 other_rate<2.8e-03 bad_rate<2.8e-03
+i2c chip=sgp40 phase=data runs=2 n=1080 eio=0 etimedout=0 other=0 bad=0 worst_us=1073 eio_rate<2.8e-03 etimedout_rate<2.8e-03 other_rate<2.8e-03 bad_rate<2.8e-03
+i2c chip=sgp40 phase=first runs=2 n=0 eio=0 etimedout=0 other=0 bad=0 worst_us=0
 lagbins threshold=-1 runs=1 lt500=29664 lt1000=10246 lt2000=319 lt5000=18 lt10000=7100 lt20000=28 lt50000=0 ge50000=0
 loop threshold=-1 runs=1 probes=47375 worst_lag_us=10388 memoryerrors=0
 neopixel runs=1 blind_windows=0 persistent_windows=0 no_wifi=0 samples_in_burst=3318 dev_in_burst=0 pkts=66360 samples_outside=4088 dev_outside=0 windows=1 send_errors=0 dev_in_burst_rate<9.0e-04 dev_outside_rate<7.3e-04
@@ -27,7 +27,9 @@ net runs=1 dns=9 dns_worst_ms=37 connects=1 connect_fail=0 connect_worst_ms=2708
 timer threshold=-1 period_ms=100 runs=1 fires=5400 expected=5400 worst_jitter_us=9028 dropped=0
 timer threshold=-1 period_ms=1000 runs=1 fires=540 expected=540 worst_jitter_us=8597 dropped=0
 uart dir=0to1 threshold=-1 runs=1 bytes_ok=3959104 mismatches=0 max_backlog=78 worst_reader_gap_us=14883 mismatches_rate<7.6e-07
+uart dir=0to1 threshold=32768 runs=1 bytes_ok=3634624 mismatches=0 max_backlog=83 worst_reader_gap_us=12676 mismatches_rate<8.3e-07
 uart dir=1to0 threshold=-1 runs=1 bytes_ok=3959104 mismatches=0 max_backlog=79 worst_reader_gap_us=14768 mismatches_rate<7.6e-07
+uart dir=1to0 threshold=32768 runs=1 bytes_ok=3634560 mismatches=0 max_backlog=85 worst_reader_gap_us=12734 mismatches_rate<8.3e-07
 ```
 
 ## Short runs (every day)
@@ -358,6 +360,16 @@ SUM L fram op=write1 n=155918 oserrors=0 bad=0 worst_us=10466
 SUM L fram scratch_restored=1
 DONE=1
 rc=0 18:19:13
+== long_fram 19:04:37
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L fram op=rdid n=155874 oserrors=0 bad=0 worst_us=10244
+SUM L fram op=read256 n=155874 oserrors=0 bad=0 worst_us=12698
+SUM L fram op=write1 n=155874 oserrors=0 bad=0 worst_us=10476
+SUM L fram scratch_restored=1
+DONE=1
+rc=0 19:13:38
 ```
 
 ### long_i2c_20261028
@@ -381,6 +393,24 @@ SUM L i2c chip=bmp phase=data n=146272 eio=0 etimedout=0 other=0 bad=0 worst_us=
 SUM L i2c chip=sgp40 phase=first n=0 eio=0 etimedout=0 other=0 bad=0 worst_us=0
 DONE=1
 rc=0 18:10:11
+== long_i2c 18:55:35
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+REF {'bmp_id': 80, 'isl_id': 125, 'isl_c1': 5, 'bmp_osr': 0}
+SUM L i2c chip=isl phase=data n=146187 eio=0 etimedout=0 other=0 bad=0 worst_us=503
+SUM L i2c chip=sgp40 phase=cmd n=540 eio=0 etimedout=0 other=0 bad=0 worst_us=1825
+SUM L i2c chip=sgp40 phase=data n=540 eio=0 etimedout=0 other=0 bad=0 worst_us=1073
+SUM L i2c chip=isl phase=write n=14618 eio=0 etimedout=0 other=0 bad=0 worst_us=707
+SUM L i2c chip=isl phase=reg n=146187 eio=0 etimedout=0 other=0 bad=0 worst_us=468
+SUM L i2c chip=scd30 phase=data n=10523 eio=0 etimedout=0 other=0 bad=0 worst_us=5370
+SUM L i2c chip=bmp phase=reg n=146187 eio=0 etimedout=0 other=0 bad=0 worst_us=558
+SUM L i2c chip=scd30 phase=cmd n=10523 eio=0 etimedout=0 other=0 bad=0 worst_us=833
+SUM L i2c chip=bmp phase=write n=14618 eio=0 etimedout=0 other=0 bad=0 worst_us=5021
+SUM L i2c chip=bmp phase=data n=146187 eio=0 etimedout=0 other=0 bad=0 worst_us=545
+SUM L i2c chip=sgp40 phase=first n=0 eio=0 etimedout=0 other=0 bad=0 worst_us=0
+DONE=1
+rc=0 19:04:36
 ```
 
 ### long_neopixel_20261028
@@ -433,6 +463,14 @@ SUM L uart dir=0to1 threshold=-1 bytes_ok=3959104 mismatches=0 max_backlog=78 wo
 SUM L uart dir=1to0 threshold=-1 bytes_ok=3959104 mismatches=0 max_backlog=79 worst_reader_gap_us=14768
 DONE=1
 rc=0 18:28:15
+== long_uart 19:13:38
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L uart dir=1to0 threshold=32768 bytes_ok=3634560 mismatches=0 max_backlog=85 worst_reader_gap_us=12734
+SUM L uart dir=0to1 threshold=32768 bytes_ok=3634624 mismatches=0 max_backlog=83 worst_reader_gap_us=12676
+DONE=1
+rc=0 19:22:40
 ```
 
 ### net_20261028
