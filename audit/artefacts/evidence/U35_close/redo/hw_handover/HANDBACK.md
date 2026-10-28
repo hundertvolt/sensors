@@ -436,6 +436,26 @@ DONE=1
 rc=0 18:00:27
 ```
 
+### probe_scd30_conformance_probe_20261028
+
+```
+== probe_scd30_conformance_probe 18:00:31
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.65ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+A01_firmware_version_word=0342f3
+A02_interval_word=0002e3
+B01_data_ready_word=0001b0
+B02_data_ready_within_interval=yes
+B03_measurement=448eeeb2b9fe419cb888d1a0427bc376fab9
+B04_data_ready_after_read=000081
+C01_soft_reset_acked=yes
+C02_soft_reset_recovery_ms=50
+C03_read_before_a_command=dddddd
+DONE=1
+rc=0 18:00:35
+```
+
 ### reset_bootloader_20261028
 
 ```
