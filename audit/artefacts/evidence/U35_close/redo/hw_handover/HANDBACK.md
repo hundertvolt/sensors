@@ -504,6 +504,22 @@ DONE
 rc=0 18:00:47
 ```
 
+### probe_wifi_country_code_reaction_20261028
+
+```
+== probe_wifi_country_code_reaction 18:00:56
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FACT country_before="XX"
+FACT value_0={"radio_on": true, "value": "ZZ", "readback": "ZZ", "set": true, "scan_count": 5}
+FACT value_1={"radio_on": true, "value": "12", "readback": "12", "set": true, "scan_count": 7}
+FACT value_2={"radio_on": true, "value": "\u0001\u0002", "readback": "\u0001\u0002", "set": true, "scan_count": 6}
+FACT restored="ok"
+DONE
+rc=0 18:01:02
+```
+
 ### reset_bootloader_20261028
 
 ```
