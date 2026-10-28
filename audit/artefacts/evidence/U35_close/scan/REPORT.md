@@ -8,6 +8,7 @@ Detail files, next to this one:
 - **Firmware parts:** A.md (core and storage), B.md (network and UART), C.md (drivers and LED) and D.md (buildgen and
   generated code), with one row per change, its evidence, class, triage, scheme check and minimal change.
 - **Other parts:** E.md (tests, tooling, website), F.md (docs and repo), G.md (the audit's course).
+- **The drift analysis:** DRIFT.md, how the audit drifted, what it caused and how it could have been prevented.
 - **Measurements and reproductions:** L_flash.md (bytecode sizes); `repro/` holds the reproduction scripts and their
   logs. The pre-audit source they ran against was extracted with `git archive 25caf528` and is not copied here.
 
@@ -64,9 +65,10 @@ Detail files, next to this one:
 - **Your assessment is right.** The pre-audit firmware was solid. No scan found a single observed failure of the
   pre-audit firmware on the bench or in the field. What the audit added is mostly owner-decided features plus a large
   layer of hardening built on hypothetical findings, and of cascades built on that hardening.
-- **The firmware still fits, but the audit spent about half of the free flash.** The dev image of 2026-10-26 uses
-  about 1,158 KB of the 1,200 KB firmware region, leaving about 43 KB. The audit's own `src/` growth is about 47 KB of
-  bytecode (+29 %).
+- **The firmware still fits, but the audit spent about 61 % of the free flash.** The dev image of 2026-10-26 uses
+  about 1,158 KB of the 1,200 KB firmware region, leaving about 43 KB; the audit's own U0 baseline left 107 KB. The
+  audit's own `src/` growth is about 47 KB of bytecode (+29 %). (Corrected 2026-10-28 from "about half", which was
+  estimated from bytecode before the baseline's image sizes were found; `DRIFT.md` 2.8.)
 - **Real gaps in the pre-audit code exist, and they are small.** The scans confirmed 17 of them, most closable in 1
   to 14 lines (section 3). Four of them can happen in normal operation.
 - **In doubt is roughly 40 % of the changed firmware lines**: about 1,640 of about 3,900, classed hypothetical,
@@ -83,7 +85,7 @@ Detail files, next to this one:
 | | before the audit | now |
 |---|---|---|
 | `src/` bytecode (pinned mpy-cross, per module) | 164,566 B | 211,648 B (+47,082 B, +29 %) |
-| dev image (UF2 of 2026-10-26, lane build) | not measured | about 1,158 KB of 1,200 KB, about 43 KB free |
+| dev image payload (UF2) | about 1,093 KB, 107 KB free (U0 baseline, 2,238,464 B UF2) | about 1,158 KB, about 43 KB free (2,371,072 B UF2, lane build of 2026-10-26) |
 
 - **Largest growth:** system service +5.6 KB, base classes +5.3 KB, webserver +4.5 KB, UART driver +4.0 KB, SCD30
   +3.7 KB, print log +2.7 KB, config manager +2.4 KB, NTP +2.2 KB, SGP40 +2.1 KB, UART link +2.0 KB, FRAM manager
@@ -91,8 +93,8 @@ Detail files, next to this one:
 - **Smaller than before:** NeoPixel, notification service and UDP socket.
 - **Also frozen into every image:** the website's `js/` grew 94 % in lines; no before/after size was measured.
 - **Not measured:**
-  - The image size before the audit. Bytecode is a proxy; building the pre-audit image would settle it, but I didn't
-    build anything without your go-ahead.
+  - (Was listed here: the image size before the audit. It was measured after all, by the audit's own baseline at U0,
+    `audit/artefacts/ENV/baseline.md`, and no later unit compared against it.)
   - The generated device modules' pre-audit size. They are 6.8-7.8 KB per device now.
 
 ## 2. Firmware: what each change is

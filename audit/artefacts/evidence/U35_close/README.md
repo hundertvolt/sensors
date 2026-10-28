@@ -28,3 +28,11 @@ seven parts it is built from (`A.md`-`D.md` firmware and buildgen, one row per c
 (the pre-audit source they ran against came from `git archive 25caf528` and is not copied). `redo/paused/` holds the
 three paused lanes' unmerged work as patches against their bases, committed and uncommitted together, so nothing is
 lost; none of it is in the tree, merged or verified. Scanned before the push like `redo/`.
+
+## Fourteenth snapshot (2026-10-28): `scan/DRIFT.md`
+
+The owner asked how the drift evolved ("learn and understand how the drift evolved ... which effects it caused, and
+how it could have been prevented.") and then for it to be pushed ("Push the analysis"). `scan/DRIFT.md` holds that
+analysis: the course in numbers per unit, the mechanisms, why the first units stayed lean, the effects, where it
+could have been caught, and the rules that would have prevented it. `scan/REPORT.md` carries one correction from it:
+the flash share the audit used is about 61 % of the free space at the audit's own baseline, not "about half".
