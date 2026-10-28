@@ -289,3 +289,17 @@ their context). From now on every owner word is appended here as it is given.
   remaining 1...2% weekly budget for low token, longer duration measurements, which will yield you much knowledge for
   the upcoming work already." Go-ahead for the push (snapshot 19) after F3/F4 and their follow-up, then for writing a
   handover; the handover is prepared, not run (no real-hardware go-ahead for this session).
+- (2026-10-28 16:35 UTC, the hardware handover; CI watching) "Using the current firmware in the tests is allowed, for
+  sure.  As long as upcoming changes won't make another result, this is fine. As I said, for simpler parts, minimal
+  test scripts are an option as well.
+  By the way, with the remaining budget and the changes upcoming, pause watching Github CI for now" Recorded as: the
+  handover may use the current firmware wherever R1 leaves the result unchanged, minimal scripts for the simpler
+  parts; the PR's CI is no longer watched until the owner resumes it.
+- (2026-10-28 16:38 UTC, the hardware handover) "We have several days (aka 12h stretches) we can use with the bench, so
+  actually think of maximising the outcome of the few percent" Recorded as: the handover is redesigned for several
+  unattended 12 h bench stretches, maximising the knowledge per token.
+- (2026-10-28 16:46 UTC, the bench campaign; push go-ahead) "The sessions shall push regularly and dump all details into
+  a single hand back file. When you are done with this, push.
+  The sessions shall be interruptible anytime without losses (max 10 minutes wait time)" Recorded as: the bench
+  sessions write one hand-back file with every detail and push it regularly; any step lasts at most 10 minutes, so a
+  stop loses nothing beyond waiting for the current step; go-ahead to push the finished handover (snapshot 20).

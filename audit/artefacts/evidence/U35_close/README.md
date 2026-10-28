@@ -98,3 +98,14 @@ accordingly."), then for a push. `redo/plan/PLAN.md` is the checked plan. `redo/
 does, how big it is), `CHANGES.md` (every change and its kind), the four falsification hand-backs under `falsify/`
 (297 claims tried by agents that had the repository but not the lead's evidence: 5 refuted, 78 partly), the edit
 scripts and the plan's backups before each step. Nothing ran on the product; nothing in the plan has started.
+
+## Twentieth snapshot (2026-10-28): `redo/hw_handover/`
+
+The owner asked for a hardware handover that uses the bench's free days with few tokens ("We have several days (aka 12h
+stretches) we can use with the bench, so actually think of maximising the outcome of the few percent"; "The sessions
+shall push regularly and dump all details into a single hand back file ... interruptible anytime without losses (max
+10 minutes wait time)"). `redo/hw_handover/HANDOVER.md` is the run sheet, and `run_all.sh` the one runner. Day 1 saves
+the FRAM on the current firmware, flashes a bare pinned MicroPython image, then runs short timing scripts, the chip
+probes and hours of long runs that count rare events. Later days add long runs. `mp/` holds the board-side scripts,
+`aggregate.py` and `handback.py` the host side. Every step lasts at most about 10 minutes, and the runner pushes
+`HANDBACK.md` to its own bench branch. Nothing has run.

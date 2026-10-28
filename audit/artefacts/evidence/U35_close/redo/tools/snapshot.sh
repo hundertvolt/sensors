@@ -17,6 +17,7 @@ cp $S/u35/lead/snap2/README.md "$X/README.md"
 [ -d $S/u35r/paused_pub ] && cp -r $S/u35r/paused_pub "$R/paused"
 [ -d $S/u35r/plan ] && cp -r $S/u35r/plan "$R/plan"
 [ -d $S/u35r/plancheck ] && (cd $S/u35r && tar --exclude=plancheck/falsify/f1work -cf - plancheck) | tar -xf - -C "$R"
+[ -d $S/u35r/hw_handover ] && (cd $S/u35r && tar --exclude=hw_handover/logs --exclude=__pycache__ -cf - hw_handover) | tar -xf - -C "$R"
 [ -f $S/u35r/int_history.txt ] && gzip -c $S/u35r/int_history.txt > "$R/int_history.txt.gz"
 PAT="1234567[8]|192\.168\.[0-9]+\.[0-9]+|10\.[0-9]+\.[0-9]+\.[0-9]+|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]+\.[0-9]+|ghp_[A-Za-z0-9]{10}|github_pa[t]_|sk-[A-Za-z0-9]{20}|AKIA[0-9A-Z]{12}|BEGIN [A-Z ]*PRIVATE KEY"
 if grep -rlE "$PAT" "$X" --include='*.md' --include='*.sh' --include='*.py' --include='*.tsv' --include='*.log' --include='*.json'; then echo "scan hit: not committed" >&2; exit 2; fi
