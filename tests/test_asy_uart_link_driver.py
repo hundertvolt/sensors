@@ -18,7 +18,7 @@ from _fake_time import DrivenTime
 from _fast_sleep import FastAsyncSleep
 from _generated_tree import devices, require_fresh
 from _src_const import src_bytes, src_int
-from _twin_devices import device_with, wiring_plan
+from _twin_devices import bus_keywords, device_with, wiring_plan
 from _uart_comm_harness import POLL_WAIT_MS, RUN_LIMIT_S, TIMEOUT_MS, PollRoundClock, awaited_with_listener, copied_out, transfer_limits
 from _uart_comm_hazard_common import register_both_crc_modes
 from _write_counters import WriteCountingOpen
@@ -622,17 +622,14 @@ def _shipped_rates() -> "tuple[PollRates, PollRates]":
     device = device_with("uart_link")
     pair = wiring_plan(device)["uart"]
     assert pair is not None, f"{device} wires uart_link but its plan names no UART pair"
-    with open(f"build/generated_src/sensortask_{device}.py") as f:
-        built = {line.split(" = ", 1)[0]: line for line in (raw.strip() for raw in f) if " = asy_uart_driver.UART(" in line}
     found: list[PollRates] = []
     for bus in (pair["initiator_bus"], pair["responder_bus"]):
-        assert bus in built, f"no generated construction of {bus} in {device}'s module: {sorted(built)}"
-        passed = {key: value for key, _, value in (part.partition("=") for part in built[bus].split("(", 1)[1].rstrip(")").split(", "))}
+        passed = bus_keywords(device, bus)
         rates: PollRates = {}
         if "poll_wait_ms" in passed:
-            rates["poll_wait_ms"] = int(passed["poll_wait_ms"])
+            rates["poll_wait_ms"] = passed["poll_wait_ms"]
         if "poll_idle_ms" in passed:
-            rates["poll_idle_ms"] = int(passed["poll_idle_ms"])
+            rates["poll_idle_ms"] = passed["poll_idle_ms"]
         found.append(rates)
     return found[0], found[1]
 

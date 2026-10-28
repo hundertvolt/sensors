@@ -70,7 +70,7 @@ ERROR_LEVEL = 1  # pins src/asy_print_log.py _LOG_ERR
 
 class Pair:
     # One initiator and one responder across a crossover link, plus the link itself so a test can
-    # reach its fault knobs and its wire log.
+    # reach its fault knobs and its wire log: harness buses at the protocol tests' own poll rate, not a device's.
     def __init__(self, **options: "Unpack[PairOptions]") -> None:
         # crc_a/crc_b are per-bus, not per-Comm: the CRC sits on the UART object below the protocol
         # and is invisible to it (SPECIFICATION.md Part J). Both ends must agree, so a test that
