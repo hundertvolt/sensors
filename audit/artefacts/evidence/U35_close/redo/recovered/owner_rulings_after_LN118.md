@@ -123,3 +123,21 @@ BACKLOG.md entry of upstream findings to report later as one bundle, if at all):
 
 ## 2026-10-27, about 16:48 (CI)
 "Don't care about proven external issues so far."
+
+## 2026-10-28: the scan, the drift and the picture
+- Pause: "Pause all tasks for now". Scan: "Now start a full scan what you find and report back to me once you
+  finish." Push: "For now, document these findings in detail and push together with the current state." and "Push
+  the analysis".
+- Validity: "Decisions I really took are still valid. Verified bugs and gaps are still valid. Knowledge shall be
+  preserved. But for the actual code, much might become obsolete when cleaning up."
+- The picture: "Every decision and request I take is a puzzle piece of the big project picture and should fit. If it
+  doesn't fit, we need to clarify."
+- On the picture's questions (2026-10-28 08:53 UTC): "The OK in the review stay valid. WiFi stays valid." Recorded by the lead as:
+  every "ok" on the review page stands as an owner decision; the Wi-Fi behaviour as built stays (a unit with no
+  network configured returns to its hotspot after every window; OR151's silent mode applies to a configured unit
+  whose network is absent). The FRAM question is open: the owner asked what it means.
+- (2026-10-28 08:57 UTC) "We thoroughly discussed the WiFi issues and I decided everything already." and "The FRAM idea of yours is
+  good, keep it!" The Wi-Fi decisions stand as recorded and are not re-asked; the per-owner CRC seed on FRAM chunks
+  stays (owner, 2026-10-28).
+- (2026-10-28 09:03 UTC) "document and push". Applied as the fifteenth preliminary snapshot: `scan/PICTURE.md` and the
+  answers recorded in `scan/REPORT.md`.

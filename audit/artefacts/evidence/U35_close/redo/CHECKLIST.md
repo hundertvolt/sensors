@@ -88,3 +88,8 @@ Commit hash; steps by verdict (applied / partly / already landed with line / not
 seen-failing-first, one line each; red checks with their exact line and who they wait on; scan findings (class, mode,
 file:line, new or covered); facts owed to X, Y and the lead, one line each or "none"; after-times beyond 10 %; runs
 started and their exits. Logs, if any, in `S/u24/lane<L>/`; only logs that prove a claim or show a failure.
+
+- A topic the owner has decided is never put to the owner again. Before any question, read the owner rows, the rulings
+  file (`S/u35r/recovered/owner_rulings_after_LN118.md`) and the review answers; a question goes to the owner only if
+  the record leaves it open (owner, 2026-10-28: "We thoroughly discussed the WiFi issues and I decided everything
+  already.").

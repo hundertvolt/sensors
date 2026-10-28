@@ -9,6 +9,8 @@ Detail files, next to this one:
   generated code), with one row per change, its evidence, class, triage, scheme check and minimal change.
 - **Other parts:** E.md (tests, tooling, website), F.md (docs and repo), G.md (the audit's course).
 - **The drift analysis:** DRIFT.md, how the audit drifted, what it caused and how it could have been prevented.
+- **The project picture:** PICTURE.md, the owner's decisions read as one picture, where the audit's results do not
+  fit it, and the owner's answers to its three questions (2026-10-28).
 - **Measurements and reproductions:** L_flash.md (bytecode sizes); `repro/` holds the reproduction scripts and their
   logs. The pre-audit source they ran against was extracted with `git archive 25caf528` and is not copied here.
 
@@ -74,7 +76,8 @@ Detail files, next to this one:
 - **In doubt is roughly 40 % of the changed firmware lines**: about 1,640 of about 3,900, classed hypothetical,
   excessive or cascade (section 2). "Built on a hypothetical" is the most-violated rule in every firmware group.
 - **Many "owner decisions" are ticks on an agent-written review page.** That page holds 69 answered items, 45 of them
-  "ok". Several rest on hypothetical premises, the C-stack reboot among them (section 6).
+  "ok". Several rest on hypothetical premises, the C-stack reboot among them (section 6). Answered 2026-10-28: the
+  "ok" ticks stand as your decisions.
 - **Outside the firmware, growth ran far ahead of the product.**
   - Tests and tooling went from 106 k to 233 k lines, about 20 lines per product line.
   - SPECIFICATION.md tripled in bytes; one register of mostly test values is 47 % of all doc growth.
@@ -155,7 +158,7 @@ pre-audit code, which in most cases is smaller than what landed.
 | NTP zero timestamp | a stratum-2 reply with a zero transmit timestamp sets the clock to 2036-02-07 (legacy too) | 3 lines |
 | config write cut part-way | a `json.dump()` failing mid-write leaves an unparseable config file | 4 lines (serialise first) |
 | log store after a failed read | the log store's setup overwrites the FRAM history after any failed read | ~12 lines |
-| FRAM layout shift | after a reflash that drops one of two equal-size chunks, a module reads its neighbour's history as its own | ~14 lines |
+| FRAM layout shift | after a reflash that drops one of two equal-size chunks, a module reads its neighbour's history as its own (the fix stays, your decision of 2026-10-28) | ~14 lines |
 | captive DNS flood | the DNS loop never yields while datagrams keep arriving (watchdog consequence not reproduced) | 1 line |
 | captive DNS 4 KB per query | `recvfrom(4096)` allocates 4 KB per query in hotspot mode (consequence unverified) | 1 line |
 | config staged before its task | a MemoryError creating the flush task leaves a config served but never stored | ~3 lines |
@@ -252,16 +255,20 @@ Most R rows are "as landed". The scans named smaller forms for some:
      broad handler can swallow it". Behind it are the ~120 `report_if_fatal()` call sites.
    - Do the 45 "ok" ticks stand as decisions, or are they re-opened under your no-hypotheticals rule? This decides how
      much of section 4 can go.
+   - **Answered 2026-10-28:** "The OK in the review stay valid." Every "ok" stands, the C-stack reboot included; the
+     cleanup reduces their form, never their decision.
 2. **Wi-Fi for a unit nobody configures.**
    - Before the audit, as in legacy, such a unit switches Wi-Fi off after its first hotspot window, until a power
-     cycle. An agent changed that.
+     cycle. The audit changed that.
    - Your OR151 ("Entering the hotspot mode only through a reboot, as is.") reads as keeping the old behaviour.
+   - **Answered 2026-10-28:** "WiFi stays valid." and "We thoroughly discussed the WiFi issues and I decided
+     everything already." The Wi-Fi behaviour as built stands; the question was mine and is not re-asked.
 3. **The NeoPixel overlay.** The revert to the pre-audit wait is the minimal change.
 4. **Website features with no recorded agreement.** The page that reloads itself after a reflash, in-place updates
    and bounded polling do have your "ok" (review item "A website left open for days stays healthy and reloads itself
    after a reflash"). With no agreement found:
-   - the `#section` Back history;
-   - the Device Clock row, with `UnixTime` added to every `/status`;
+   - the `#section` Back history (corrected: your review note asks for it, `PICTURE.md` 5);
+   - the Device Clock row, with `UnixTime` added to every `/status` (corrected: your answer "15 a", `PICTURE.md` 5);
    - code-button tones;
    - the section-switch wait;
    - the non-object banner.
@@ -421,7 +428,8 @@ SPECIFICATION.md went from 514 to 1,573 KB.
 **Corrections and deviations:**
 - **The C-stack escalation.** Group A classed it hypothetical; it has your review-page "ok" (2026-10-01). Group A did
   not consult the review answers, so other group A rows may carry an "ok" too.
-- **Website features.** Group E listed the auto-reload among those with no owner agreement; it has your "ok".
+- **Website features.** Group E listed the auto-reload among those with no owner agreement; it has your "ok". The
+  Back history, the per-value decimals and `UnixTime` trace to you too (`PICTURE.md` 5).
 - **Group A's K class** holds its confirmed hypotheticals, not the brief's meaning. They are listed in section 3.
 - **One runs-ledger gap.** Two of group A's reproductions share one start line, so "one run at a time" isn't shown for
   that pair; each log holds its three runs.

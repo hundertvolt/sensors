@@ -36,3 +36,12 @@ how it could have been prevented.") and then for it to be pushed ("Push the anal
 analysis: the course in numbers per unit, the mechanisms, why the first units stayed lean, the effects, where it
 could have been caught, and the rules that would have prevented it. `scan/REPORT.md` carries one correction from it:
 the flash share the audit used is about 61 % of the free space at the audit's own baseline, not "about half".
+
+## Fifteenth snapshot (2026-10-28): `scan/PICTURE.md`
+
+The owner asked for the project picture to be refined from the decisions taken together ("Every decision and request
+I take is a puzzle piece of the big project picture and should fit. If it doesn't fit, we need to clarify."), answered
+its three questions, and asked for it to be pushed ("document and push"). `scan/PICTURE.md` holds the picture: the
+lines the owner's decisions draw, where the audit's results do not fit them, and the answers (the review page's "ok"
+ticks stand; the Wi-Fi behaviour stands as decided; the FRAM per-owner seed stays). `scan/REPORT.md` records the same
+answers in its sections 1, 3 and 6, with two website items corrected as the owner's own requests.
