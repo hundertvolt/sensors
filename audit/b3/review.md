@@ -4,7 +4,7 @@ Requirement: every test in `tests/`, `tests_scripts/`, `tests_js/` and `tests_ha
 
 ## Counts
 
-Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_verdicts.json`: 8667 rows, 353 flagged. A flag is a candidate; the verdict is the reviewer's.
+Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_verdicts.json`: 8673 rows, 353 flagged. A flag is a candidate; the verdict is the reviewer's.
 
 | level | rows | flagged |
 |---|---|---|
@@ -13,9 +13,9 @@ Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_
 | flash (hardware) | 89 | 65 |
 | host (pytest) | 2997 | 70 |
 | manual (hardware) | 21 | 2 |
-| twin (MicroPython) | 703 | 38 |
+| twin (MicroPython) | 706 | 38 |
 | twin scenario | 176 | 10 |
-| unit (MicroPython) | 3977 | 140 |
+| unit (MicroPython) | 3980 | 140 |
 | web (vitest) | 492 | 6 |
 
 | verdict (per row) | rows |
@@ -23,11 +23,11 @@ Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_
 | CRr2 | 63 |
 | fixed | 67 |
 | justified | 129 |
-| biting | 8408 |
+| biting | 8414 |
 
 | red flag | rows | verdicts |
 |---|---|---|
-| no_assertion | 21 | justified 19, biting 2 |
+| no_assertion | 20 | justified 18, biting 2 |
 | except_pass | 7 | biting 7 |
 | log_existence_only | 5 | biting 5 |
 | loop_vacuous | 60 | justified 4, biting 56 |
@@ -37,7 +37,7 @@ Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_
 | same_callee | 36 | biting 36 |
 | ns_seed_text | 37 | biting 37 |
 | ns_allow_list | 2 | justified 2 |
-| setup_credit_only | 59 | justified 4, biting 55 |
+| setup_credit_only | 60 | justified 5, biting 55 |
 | hw_no_log | 83 | CRr2 63, fixed 20 |
 
 Detectors with no row at this base: weak_only, cannot_fail, canned_return, ns_count_bound, ns_code_in_set.
@@ -86,7 +86,7 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 - tests/test_digital_twin_bus_hazard_concurrency.py:599 `test_the_system_survives_concurrent_bus_load_and_a_real_established_wifi_disconnect`: ns_seed_text → biting: the seed word is about an input, a value, a lock or a typo, not a logged code
 - tests/test_digital_twin_http_client.py:293 `test_read_exact_retries_a_spurious_none_read_instead_of_treating_it_as_eof`: ns_seed_text → biting: the seed word is about an input, a value, a lock or a typo, not a logged code
 - tests/test_digital_twin_isl29125.py:516 `test_a_zero_length_write_is_ignored_rather_than_indexing_into_nothing`: ns_seed_text → biting: the seed word is about an input, a value, a lock or a typo, not a logged code
-- tests/test_digital_twin_machine.py:380 `test_i2c_general_call_address_is_always_tolerated`: ns_seed_text → biting: the seed word is about an input, a value, a lock or a typo, not a logged code
+- tests/test_digital_twin_machine.py:382 `test_i2c_general_call_address_is_always_tolerated`: ns_seed_text → biting: the seed word is about an input, a value, a lock or a typo, not a logged code
 - tests/test_tmp_scratch.py:125 `test_construction_and_teardown_tolerate_a_missing_key_directory_entirely`: ns_seed_text → biting: the seed word is about an input, a value, a lock or a typo, not a logged code
 - tests/test_tmp_scratch.py:234 `test_an_existing_directory_and_an_absent_file_are_no_failure`: ns_seed_text → biting: the seed word is about an input, a value, a lock or a typo, not a logged code
 - tests_hardware/bench/test_end_to_end_timing.py:90 `test_real_concurrent_client_burst_does_not_crash_the_webserver`: ns_seed_text → biting: the seed word is about an input, a value, a lock or a typo, not a logged code
@@ -4105,119 +4105,122 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests/test_digital_twin_loop_end.py:316 | test_a_console_soft_reset_after_a_loop_end_reads_22 | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_loop_end.py:324 | test_a_console_soft_reset_after_a_loop_ended_during_boot_reads_10_plus_its_phase | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_loop_end.py:334 | test_a_power_cycle_after_ctrl_c_reads_1 | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:197 | test_the_twin_meets_the_shared_machine_contract_but_for_its_pending_checks | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:206 | test_pin_shares_identity_by_id_matching_real_hardware | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:217 | test_pin_rejects_invalid_id | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:258 | test_pin_takes_rp2s_ids_and_names_as_one_object | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:266 | test_pin_reconfigured_without_a_pull_loses_it | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:274 | test_pin_alt_takes_only_the_functions_the_pins_row_lists | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:282 | test_an_external_pin_refuses_pulls_alternate_functions_and_other_modes | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:291 | test_pin_value_setter_form_sets_and_returns_none | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:299 | test_pin_toggle_flips_the_current_value | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:308 | test_pin_simulate_edge_to_the_same_value_does_not_fire_the_irq_handler | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:317 | test_pin_irq_fires_on_simulate_edge_rising | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:328 | test_pin_irq_refuses_an_external_pin_and_a_bare_call_keeps_the_handler | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:351 | test_i2c_id0_wires_scd30_at_0x61_and_naks_everything_else | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:364 | test_configure_random_source_threads_through_to_newly_wired_chips | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:374 | test_i2c_id1_wires_sgp40_and_bmp3xx | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:380 | test_i2c_general_call_address_is_always_tolerated | twin (MicroPython) | justified | setup_credit_only; ns_seed_text | setup_credit_only: justified: the claim is the absence of a raise (stated in place); ns_seed_text: biting: the seed word is about an input, a value, a lock or a typo, not a logged code |
-| tests/test_digital_twin_machine.py:386 | test_i2c_writeto_and_readfrom_into_dispatch_to_the_wired_sgp40_device | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:395 | test_i2c_readfrom_mem_and_writeto_mem_dispatch_to_the_wired_bmp3xx_device | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:403 | test_an_isl29125_board_wires_it_on_i2c1_beside_scd30_and_sgp40 | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:414 | test_an_isl29125_board_hands_the_chip_the_same_pin_object_the_driver_constructs | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:427 | test_a_board_without_the_isl29125_wires_none | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:434 | test_configure_scd30_state_path_and_flush_scd30_round_trip_settings | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:455 | test_spi_id0_wires_the_fram_chip | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:464 | test_spi_init_updates_settings_and_rejects_lsb_first | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:477 | test_spi_is_one_object_per_id_that_each_construction_reinitialises | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:488 | test_spi_construction_takes_rp2s_ids_pins_and_bit_order | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:501 | test_spi_bit_order_numbers_are_rp2s | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:508 | test_the_fault_injector_counts_its_pending_entries | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:520 | test_spi_write_readinto_dispatches_to_the_wired_device | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:534 | test_spi_id1_wires_no_device_and_reads_back_zeroed_bytes | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:547 | test_i2c_and_spi_deinit_are_recorded | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:557 | test_i2c_log_stays_bounded_across_many_transactions | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:568 | test_pin_open_drain_reads_the_wired_and_of_its_drive_and_the_line | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:582 | test_pin_init_applies_value_before_the_mode_and_records_alt | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:593 | test_pin_external_level_callable_sees_the_value_log | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:607 | test_pin_simulate_edge_drives_the_line_a_pulled_up_input_reads | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:616 | test_i2c_is_one_object_per_id_keeping_chips_and_log_across_constructions | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:628 | test_i2c_address_prefixed_writeto_reaches_the_register_handler | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:636 | test_i2c_no_stop_address_write_then_readfrom_into_reads_that_register | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:646 | test_i2c_zero_length_write_to_a_register_chip_is_the_probe | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:656 | test_i2c_an_empty_write_to_an_absent_address_reads_enodev_a_data_write_eio | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:664 | test_i2c_a_general_call_reaches_only_the_chips_that_listen | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:676 | test_i2c_takes_rp2s_ids_and_pin_pairs_and_hands_the_pins_to_the_controller | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:692 | test_i2c_reads_fill_the_callers_buffer_whatever_its_type | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:703 | test_i2c_register_faults_keep_the_chip_keys | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:715 | test_i2c_nack_after_returns_the_short_count_and_records_the_stop | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:729 | test_spi_log_stays_bounded_across_many_transactions | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:738 | test_bounded_log_reads_oldest_first_before_and_after_it_wraps | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:761 | test_bounded_log_clear_starts_over_at_slot_zero | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:772 | test_wdt_feed_increments_count | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:780 | test_wdt_logs_count_what_they_drop_and_its_counters_saturate | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:793 | test_wdt_rejects_a_nonzero_id | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:803 | test_wdt_rejects_a_timeout_above_the_rp2040_hard_cap | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:814 | test_wdt_accepts_a_timeout_at_exactly_the_hard_cap | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:820 | test_wdt_would_have_triggered_count_and_log_start_at_zero | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:826 | test_wdt_notifies_once_after_a_feed_free_window | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:844 | test_wdt_feed_resets_the_countdown_and_prevents_a_notification | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:856 | test_wdt_keeps_monitoring_after_a_would_have_triggered_notification | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:869 | test_wdt_would_have_triggered_log_records_the_feed_count_at_each_notification | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:884 | test_wdt_on_would_trigger_callback_fires_with_the_wdt_instance | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:898 | test_reset_increments_the_module_counter_then_raises_simulated_reset | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:908 | test_bootloader_increments_the_module_counter_then_raises_simulated_bootloader_entry | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:918 | test_simulated_reset_and_bootloader_entry_are_both_simulated_reboot | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:928 | test_mem_backup_has_rp2s_two_regions_of_four_and_three_words | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:936 | test_mem_backup_returns_the_same_view_each_call_and_both_for_minus_one | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:950 | test_mem_backup_refuses_any_other_region | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:959 | test_reset_cause_reads_power_on_until_a_reset_then_watchdog | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:972 | test_bootloader_also_reads_back_as_a_watchdog_reset | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:983 | test_power_on_clears_both_regions | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:991 | test_mem32_answers_the_reset_registers_on_each_reset_path | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1021 | test_rtc_datetime_round_trips | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1033 | test_an_uninstalled_rtc_keeps_its_tuple_by_rp2s_rules | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1048 | test_the_wall_clock_answers_rp2s_eight_field_time_tuples | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1055 | test_step_moves_the_wall_clock_and_never_the_ticks | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1062 | test_install_rebinds_only_modules_on_the_builtin_time_once | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1072 | test_an_installed_clock_makes_an_rtc_set_move_the_wall_clock | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1082 | test_timer_deinit_stops_further_callbacks | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1099 | test_timer_reinit_from_within_its_own_callback_does_not_raise | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1123 | test_timer_deinit_outside_a_running_event_loop_does_not_raise | twin (MicroPython) | justified | no_assertion | no_assertion: justified: the claim is the absence of a raise (stated at :1131) |
-| tests/test_digital_twin_machine.py:1140 | test_timer_fires_for_real_on_a_short_period | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1164 | test_saturating_add_stops_at_the_shared_counter_cap | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1170 | test_bounded_log_counts_what_it_drops_and_saturates_at_the_cap | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1180 | test_fill_buffer_keeps_a_bytearrays_length_and_writes_into_a_memoryview | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1192 | test_state_paths_carries_the_mem_backup_path | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1202 | test_peripheral_answers_the_registered_bus_or_none | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1216 | test_reset_peripherals_forgets_every_bus | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1226 | test_every_configure_hook_refuses_once_a_bus_exists | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1247 | test_configure_wiring_never_replaces_the_board_it_wired | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1257 | test_a_bus_needs_an_explicit_wiring_plan | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1267 | test_reset_test_state_restores_every_machine_knob | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1299 | test_the_twin_meets_the_shared_mem_backup_contract | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1304 | test_a_flushed_mem_backup_reaches_the_next_launch_once | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1328 | test_a_bad_mem_backup_state_file_boots_as_a_power_on | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1339 | test_an_unreadable_mem_backup_state_path_raises_rather_than_booting_as_a_power_on | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1357 | test_a_reset_and_a_power_loss_are_no_exceptions_a_product_can_swallow | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1363 | test_a_timer_calling_reset_ends_the_loop_past_an_except_exception_sibling | twin (MicroPython) | biting | except_pass | except_pass: biting: the swallowing loop is the scenario's simulated product loop, its input |
-| tests/test_digital_twin_machine.py:1387 | test_the_reset_counters_saturate_at_the_counter_cap | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1402 | test_timer_refuses_any_id_but_the_soft_timer | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1410 | test_timer_period_maths_follows_rp2 | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1421 | test_the_seventeenth_alarm_raises_enomem_until_one_is_freed | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1438 | test_a_fired_one_shot_returns_its_alarm | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1454 | test_a_timer_rearming_from_its_own_callback_runs_one_schedule | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1476 | test_a_soft_callback_failure_is_printed_and_the_schedule_goes_on | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1496 | test_a_periodic_timer_fires_again_after_its_soft_callbacks_are_dropped | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1515 | test_a_dropped_one_shot_never_fires_and_frees_its_alarm_while_a_hard_callback_is_never_dropped | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1538 | test_a_hard_callback_failure_stops_the_schedule_and_frees_its_alarm | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1561 | test_spi_lose_power_after_k_fails_the_next_transaction_with_a_power_loss | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1576 | test_spi_wire_time_blocks_for_each_byte_moved | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1585 | test_an_unplugged_chip_answers_nothing_until_plugged_back_powered_up | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1613 | test_the_fram_table_names_both_chips_and_refuses_an_unknown_size | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1640 | test_a_link_keeps_its_wire_time_past_half_the_2_30_tick_period | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1654 | test_a_link_finds_a_flash_stall_past_half_the_2_30_tick_period | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_machine.py:1667 | test_a_link_misses_a_flash_stall_one_whole_2_30_tick_period_later | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:199 | test_the_twin_meets_the_shared_machine_contract_but_for_its_pending_checks | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:208 | test_pin_shares_identity_by_id_matching_real_hardware | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:219 | test_pin_rejects_invalid_id | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:260 | test_pin_takes_rp2s_ids_and_names_as_one_object | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:268 | test_pin_reconfigured_without_a_pull_loses_it | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:276 | test_pin_alt_takes_only_the_functions_the_pins_row_lists | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:284 | test_an_external_pin_refuses_pulls_alternate_functions_and_other_modes | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:293 | test_pin_value_setter_form_sets_and_returns_none | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:301 | test_pin_toggle_flips_the_current_value | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:310 | test_pin_simulate_edge_to_the_same_value_does_not_fire_the_irq_handler | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:319 | test_pin_irq_fires_on_simulate_edge_rising | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:330 | test_pin_irq_refuses_an_external_pin_and_a_bare_call_keeps_the_handler | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:353 | test_i2c_id0_wires_scd30_at_0x61_and_naks_everything_else | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:366 | test_configure_random_source_threads_through_to_newly_wired_chips | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:376 | test_i2c_id1_wires_sgp40_and_bmp3xx | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:382 | test_i2c_general_call_address_is_always_tolerated | twin (MicroPython) | justified | setup_credit_only; ns_seed_text | setup_credit_only: justified: the claim is the absence of a raise (stated in place); ns_seed_text: biting: the seed word is about an input, a value, a lock or a typo, not a logged code |
+| tests/test_digital_twin_machine.py:388 | test_i2c_writeto_and_readfrom_into_dispatch_to_the_wired_sgp40_device | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:397 | test_i2c_readfrom_mem_and_writeto_mem_dispatch_to_the_wired_bmp3xx_device | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:405 | test_an_isl29125_board_wires_it_on_i2c1_beside_scd30_and_sgp40 | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:416 | test_an_isl29125_board_hands_the_chip_the_same_pin_object_the_driver_constructs | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:429 | test_a_board_without_the_isl29125_wires_none | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:436 | test_configure_scd30_state_path_and_flush_scd30_round_trip_settings | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:457 | test_spi_id0_wires_the_fram_chip | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:466 | test_spi_init_updates_settings_and_rejects_lsb_first | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:479 | test_spi_is_one_object_per_id_that_each_construction_reinitialises | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:490 | test_spi_construction_takes_rp2s_ids_pins_and_bit_order | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:503 | test_spi_bit_order_numbers_are_rp2s | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:510 | test_the_fault_injector_counts_its_pending_entries | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:522 | test_spi_write_readinto_dispatches_to_the_wired_device | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:536 | test_spi_id1_wires_no_device_and_reads_back_zeroed_bytes | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:549 | test_i2c_and_spi_deinit_are_recorded | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:559 | test_i2c_log_stays_bounded_across_many_transactions | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:570 | test_pin_open_drain_reads_the_wired_and_of_its_drive_and_the_line | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:584 | test_pin_init_applies_value_before_the_mode_and_records_alt | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:595 | test_pin_external_level_callable_sees_the_value_log | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:609 | test_pin_simulate_edge_drives_the_line_a_pulled_up_input_reads | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:618 | test_i2c_is_one_object_per_id_keeping_chips_and_log_across_constructions | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:630 | test_i2c_address_prefixed_writeto_reaches_the_register_handler | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:638 | test_i2c_no_stop_address_write_then_readfrom_into_reads_that_register | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:648 | test_i2c_zero_length_write_to_a_register_chip_is_the_probe | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:658 | test_i2c_an_empty_write_to_an_absent_address_reads_enodev_a_data_write_eio | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:666 | test_i2c_a_general_call_reaches_only_the_chips_that_listen | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:678 | test_i2c_takes_rp2s_ids_and_pin_pairs_and_hands_the_pins_to_the_controller | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:694 | test_i2c_reads_fill_the_callers_buffer_whatever_its_type | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:705 | test_i2c_register_faults_keep_the_chip_keys | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:717 | test_i2c_nack_after_returns_the_short_count_and_records_the_stop | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:731 | test_spi_log_stays_bounded_across_many_transactions | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:740 | test_bounded_log_reads_oldest_first_before_and_after_it_wraps | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:763 | test_bounded_log_clear_starts_over_at_slot_zero | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:774 | test_wdt_feed_increments_count | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:782 | test_wdt_logs_count_what_they_drop_and_its_counters_saturate | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:795 | test_wdt_rejects_a_nonzero_id | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:805 | test_wdt_rejects_a_timeout_above_the_rp2040_hard_cap | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:816 | test_wdt_accepts_a_timeout_at_exactly_the_hard_cap | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:822 | test_wdt_would_have_triggered_count_and_log_start_at_zero | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:828 | test_wdt_notifies_once_after_a_feed_free_window | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:846 | test_wdt_feed_resets_the_countdown_and_prevents_a_notification | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:858 | test_wdt_keeps_monitoring_after_a_would_have_triggered_notification | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:871 | test_wdt_would_have_triggered_log_records_the_feed_count_at_each_notification | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:886 | test_wdt_on_would_trigger_callback_fires_with_the_wdt_instance | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:916 | test_wdt_a_feed_after_a_stall_past_the_deadline_records_that_window_itself | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:936 | test_wdt_a_stall_that_a_feeding_task_outlasts_counts_once | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:958 | test_wdt_feeds_build_no_task_and_allocate_nothing | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:981 | test_reset_increments_the_module_counter_then_raises_simulated_reset | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:991 | test_bootloader_increments_the_module_counter_then_raises_simulated_bootloader_entry | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1001 | test_simulated_reset_and_bootloader_entry_are_both_simulated_reboot | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1011 | test_mem_backup_has_rp2s_two_regions_of_four_and_three_words | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1019 | test_mem_backup_returns_the_same_view_each_call_and_both_for_minus_one | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1033 | test_mem_backup_refuses_any_other_region | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1042 | test_reset_cause_reads_power_on_until_a_reset_then_watchdog | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1055 | test_bootloader_also_reads_back_as_a_watchdog_reset | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1066 | test_power_on_clears_both_regions | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1074 | test_mem32_answers_the_reset_registers_on_each_reset_path | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1104 | test_rtc_datetime_round_trips | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1116 | test_an_uninstalled_rtc_keeps_its_tuple_by_rp2s_rules | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1131 | test_the_wall_clock_answers_rp2s_eight_field_time_tuples | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1138 | test_step_moves_the_wall_clock_and_never_the_ticks | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1145 | test_install_rebinds_only_modules_on_the_builtin_time_once | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1155 | test_an_installed_clock_makes_an_rtc_set_move_the_wall_clock | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1165 | test_timer_deinit_stops_further_callbacks | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1182 | test_timer_reinit_from_within_its_own_callback_does_not_raise | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1206 | test_timer_deinit_outside_a_running_event_loop_does_not_raise | twin (MicroPython) | justified | setup_credit_only | setup_credit_only: justified: the claim is the absence of a raise (stated at :1211); the scan's only credit is the driven clock's sleep, matched by name, which this test never calls |
+| tests/test_digital_twin_machine.py:1223 | test_timer_fires_for_real_on_a_short_period | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1247 | test_saturating_add_stops_at_the_shared_counter_cap | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1253 | test_bounded_log_counts_what_it_drops_and_saturates_at_the_cap | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1263 | test_fill_buffer_keeps_a_bytearrays_length_and_writes_into_a_memoryview | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1275 | test_state_paths_carries_the_mem_backup_path | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1285 | test_peripheral_answers_the_registered_bus_or_none | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1299 | test_reset_peripherals_forgets_every_bus | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1309 | test_every_configure_hook_refuses_once_a_bus_exists | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1330 | test_configure_wiring_never_replaces_the_board_it_wired | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1340 | test_a_bus_needs_an_explicit_wiring_plan | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1350 | test_reset_test_state_restores_every_machine_knob | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1382 | test_the_twin_meets_the_shared_mem_backup_contract | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1387 | test_a_flushed_mem_backup_reaches_the_next_launch_once | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1411 | test_a_bad_mem_backup_state_file_boots_as_a_power_on | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1422 | test_an_unreadable_mem_backup_state_path_raises_rather_than_booting_as_a_power_on | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1440 | test_a_reset_and_a_power_loss_are_no_exceptions_a_product_can_swallow | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1446 | test_a_timer_calling_reset_ends_the_loop_past_an_except_exception_sibling | twin (MicroPython) | biting | except_pass | except_pass: biting: the swallowing loop is the scenario's simulated product loop, its input |
+| tests/test_digital_twin_machine.py:1470 | test_the_reset_counters_saturate_at_the_counter_cap | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1485 | test_timer_refuses_any_id_but_the_soft_timer | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1493 | test_timer_period_maths_follows_rp2 | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1504 | test_the_seventeenth_alarm_raises_enomem_until_one_is_freed | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1521 | test_a_fired_one_shot_returns_its_alarm | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1537 | test_a_timer_rearming_from_its_own_callback_runs_one_schedule | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1559 | test_a_soft_callback_failure_is_printed_and_the_schedule_goes_on | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1579 | test_a_periodic_timer_fires_again_after_its_soft_callbacks_are_dropped | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1598 | test_a_dropped_one_shot_never_fires_and_frees_its_alarm_while_a_hard_callback_is_never_dropped | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1621 | test_a_hard_callback_failure_stops_the_schedule_and_frees_its_alarm | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1644 | test_spi_lose_power_after_k_fails_the_next_transaction_with_a_power_loss | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1659 | test_spi_wire_time_blocks_for_each_byte_moved | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1668 | test_an_unplugged_chip_answers_nothing_until_plugged_back_powered_up | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1696 | test_the_fram_table_names_both_chips_and_refuses_an_unknown_size | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1723 | test_a_link_keeps_its_wire_time_past_half_the_2_30_tick_period | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1737 | test_a_link_finds_a_flash_stall_past_half_the_2_30_tick_period | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_machine.py:1750 | test_a_link_misses_a_flash_stall_one_whole_2_30_tick_period_later | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_machine_uart.py:62 | test_twin_link_satisfies_the_shared_contract | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_machine_uart.py:67 | test_ioctl_answers_einval_to_get_fileno | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_machine_uart.py:73 | test_poll_mask_reports_what_the_link_delivered | twin (MicroPython) | biting | — | biting as is |
@@ -4426,25 +4429,25 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests/test_digital_twin_scd30.py:900 | test_missing_state_file_starts_from_factory_fresh_settings_without_raising | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_scd30.py:912 | test_an_unloadable_state_file_says_why_and_leaves_factory_fresh_settings | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_scd30.py:929 | test_state_path_none_never_touches_disk | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:596 | test_sgp40_reading_before_scd30_has_measured_yet_logs_no_bogus_error | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:617 | test_watchdog_is_never_starved_while_the_real_supervisor_runs | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:668 | test_the_supervisor_restarts_a_real_dead_task | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:714 | test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0 | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:795 | test_a_dhcp_server_that_never_answers_leaves_a_persisted_trace | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:837 | test_a_failed_config_snapshot_is_the_unavailable_marker | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:858 | test_a_factory_state_unit_returns_to_the_hotspot_after_every_window | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:893 | test_a_failing_wlan_status_keeps_the_link_and_warns_once_per_unreadable_tick | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:931 | test_two_failed_joins_re_select_the_radio_once_and_the_link_comes_back | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:979 | test_hotspot_fallback_drives_the_status_led_and_binds_the_dns_server | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:997 | test_the_captive_dns_listener_idles_at_its_idle_rate | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:1027 | test_the_captive_dns_socket_whose_bind_fails_logs_once_then_rebuilds_binds_and_answers | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:1101 | test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chunk | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:1125 | test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanly_to_the_last_flushed_state | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:1159 | test_a_restored_backup_reports_its_timestamp_without_ntp | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:1189 | test_a_restarted_sgp40_task_keeps_its_live_voc_state | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:1241 | test_the_notification_window_spanning_midnight_flashes_red | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:1298 | test_a_stopped_scd30_ends_its_alerts_and_sgp40_compensation | twin (MicroPython) | biting | — | biting as is |
-| tests/test_digital_twin_sensortask_integration.py:1362 | test_a_boot_without_ntp_reports_no_local_time | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:607 | test_sgp40_reading_before_scd30_has_measured_yet_logs_no_bogus_error | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:628 | test_watchdog_is_never_starved_while_the_real_supervisor_runs | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:679 | test_the_supervisor_restarts_a_real_dead_task | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:725 | test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0 | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:806 | test_a_dhcp_server_that_never_answers_leaves_a_persisted_trace | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:848 | test_a_failed_config_snapshot_is_the_unavailable_marker | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:869 | test_a_factory_state_unit_returns_to_the_hotspot_after_every_window | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:904 | test_a_failing_wlan_status_keeps_the_link_and_warns_once_per_unreadable_tick | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:942 | test_two_failed_joins_re_select_the_radio_once_and_the_link_comes_back | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:990 | test_hotspot_fallback_drives_the_status_led_and_binds_the_dns_server | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:1008 | test_the_captive_dns_listener_idles_at_its_idle_rate | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:1038 | test_the_captive_dns_socket_whose_bind_fails_logs_once_then_rebuilds_binds_and_answers | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:1112 | test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chunk | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:1136 | test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanly_to_the_last_flushed_state | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:1170 | test_a_restored_backup_reports_its_timestamp_without_ntp | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:1200 | test_a_restarted_sgp40_task_keeps_its_live_voc_state | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:1252 | test_the_notification_window_spanning_midnight_flashes_red | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:1309 | test_a_stopped_scd30_ends_its_alerts_and_sgp40_compensation | twin (MicroPython) | biting | — | biting as is |
+| tests/test_digital_twin_sensortask_integration.py:1373 | test_a_boot_without_ntp_reports_no_local_time | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_setup_resets.py:139 | test_every_chip_is_reset_once_by_its_setup_after_its_identity_check | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_sgp40.py:32 | test_crc8_matches_datasheet_worked_example | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_sgp40.py:36 | test_word_appends_correct_crc_trailer | twin (MicroPython) | biting | — | biting as is |
@@ -4516,29 +4519,32 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests/test_digital_twin_unix_port_unretrieved_report.py:205 | test_unretrieved_deaths_through_the_real_loop_retain_nothing | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_unix_port_unretrieved_report.py:222 | test_the_raised_helper_lets_an_interrupt_through | twin (MicroPython) | biting | — | biting as is |
 | tests/test_digital_twin_wifi_modes.py:230 | test_stations_rule_settings_change_and_silent_mode_in_one_boot | twin (MicroPython) | biting | — | biting as is |
-| tests/test_driven_time.py:58 | test_two_sleepers_wake_in_deadline_order_each_at_its_own_time | unit (MicroPython) | biting | — | biting as is |
-| tests/test_driven_time.py:73 | test_elapse_never_wakes_a_sleeper_before_its_deadline | unit (MicroPython) | biting | — | biting as is |
-| tests/test_driven_time.py:91 | test_a_ticks_diff_across_the_2_30_wrap_equals_the_elapsed_virtual_time | unit (MicroPython) | biting | — | biting as is |
-| tests/test_driven_time.py:111 | test_every_replaced_name_is_restored_when_the_block_raises | unit (MicroPython) | biting | — | biting as is |
-| tests/test_driven_time.py:125 | test_a_module_without_a_clock_gets_driven_sleeps_and_no_time | unit (MicroPython) | biting | — | biting as is |
-| tests/test_driven_time.py:146 | test_wait_for_times_out_after_its_bound_and_not_before | unit (MicroPython) | biting | — | biting as is |
-| tests/test_driven_time.py:184 | test_wait_for_hands_back_the_result_or_the_failure_that_came_first | unit (MicroPython) | biting | — | biting as is |
-| tests/test_driven_time.py:210 | test_a_cancelled_wait_for_cancels_what_it_awaits | unit (MicroPython) | biting | — | biting as is |
-| tests/test_driven_time.py:237 | test_a_cancel_landing_before_the_runner_runs_still_cancels_the_wait | unit (MicroPython) | biting | — | biting as is |
-| tests/test_driven_time.py:265 | test_a_result_ready_before_its_released_bound_has_run_still_wins | unit (MicroPython) | biting | — | biting as is |
-| tests/test_driven_time.py:287 | test_a_cancelled_sleeper_leaves_the_queue_and_never_wakes | unit (MicroPython) | biting | — | biting as is |
-| tests/test_driven_time.py:304 | test_a_driven_sleep_is_its_listed_wake_from_the_call_on | unit (MicroPython) | biting | — | biting as is |
-| tests/test_driven_time.py:323 | test_a_wake_its_awaiter_closes_or_throws_into_leaves_the_queue | unit (MicroPython) | biting | — | biting as is |
-| tests/test_driven_time.py:337 | test_run_until_stops_at_the_first_wake_that_makes_the_predicate_hold | unit (MicroPython) | biting | — | biting as is |
-| tests/test_driven_time.py:353 | test_run_until_takes_a_wake_at_its_limit_and_fails_past_it_naming_the_virtual_time | unit (MicroPython) | biting | — | biting as is |
-| tests/test_driven_time.py:372 | test_jump_wakes_each_overdue_sleeper_once_at_the_jumped_time | unit (MicroPython) | biting | — | biting as is |
-| tests/test_driven_time.py:394 | test_a_plain_advance_releases_a_due_sleeper_late_never_early | unit (MicroPython) | biting | — | biting as is |
-| tests/test_driven_time.py:415 | test_a_busy_loop_fails_at_the_round_cap_naming_the_virtual_time | unit (MicroPython) | biting | — | biting as is |
-| tests/test_driven_time.py:437 | test_the_parked_sleeper_queue_is_bounded | unit (MicroPython) | biting | — | biting as is |
-| tests/test_driven_time.py:458 | test_a_zero_sleep_is_one_real_yield_and_a_float_sleep_ms_is_refused | unit (MicroPython) | biting | — | biting as is |
-| tests/test_driven_time.py:476 | test_a_driven_sleep_or_bound_refuses_a_delay_rp2s_ticks_cannot_hold | unit (MicroPython) | biting | — | biting as is |
-| tests/test_driven_time.py:506 | test_release_runs_the_clock_on_at_the_real_rate_and_wakes_each_parked_sleep_after_its_time_left | unit (MicroPython) | biting | — | biting as is |
-| tests/test_driven_time.py:534 | test_a_bound_parked_at_release_keeps_awaiting_its_task_and_ends_on_the_real_clock | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:77 | test_two_sleepers_wake_in_deadline_order_each_at_its_own_time | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:92 | test_elapse_never_wakes_a_sleeper_before_its_deadline | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:110 | test_a_ticks_diff_across_the_2_30_wrap_equals_the_elapsed_virtual_time | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:130 | test_every_replaced_name_is_restored_when_the_block_raises | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:144 | test_a_module_without_a_clock_gets_driven_sleeps_and_no_time | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:165 | test_wait_for_times_out_after_its_bound_and_not_before | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:203 | test_wait_for_hands_back_the_result_or_the_failure_that_came_first | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:229 | test_a_cancelled_wait_for_cancels_what_it_awaits | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:256 | test_a_cancel_landing_before_the_runner_runs_still_cancels_the_wait | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:284 | test_a_result_ready_before_its_released_bound_has_run_still_wins | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:306 | test_a_cancelled_sleeper_leaves_the_queue_and_never_wakes | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:323 | test_a_task_woken_off_its_driven_sleep_ends_that_sleep_at_once | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:342 | test_a_cancel_through_the_clock_drives_the_sleep_the_cancelled_task_cleans_up_with | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:358 | test_a_cancelled_task_that_outlasts_the_bound_fails_naming_the_virtual_time | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:377 | test_a_driven_sleep_is_its_listed_wake_from_the_call_on | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:396 | test_a_wake_its_awaiter_closes_or_throws_into_leaves_the_queue | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:410 | test_run_until_stops_at_the_first_wake_that_makes_the_predicate_hold | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:426 | test_run_until_takes_a_wake_at_its_limit_and_fails_past_it_naming_the_virtual_time | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:445 | test_jump_wakes_each_overdue_sleeper_once_at_the_jumped_time | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:467 | test_a_plain_advance_releases_a_due_sleeper_late_never_early | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:488 | test_a_busy_loop_fails_at_the_round_cap_naming_the_virtual_time | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:510 | test_the_parked_sleeper_queue_is_bounded | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:531 | test_a_zero_sleep_is_one_real_yield_and_a_float_sleep_ms_is_refused | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:549 | test_a_driven_sleep_or_bound_refuses_a_delay_rp2s_ticks_cannot_hold | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:579 | test_release_runs_the_clock_on_at_the_real_rate_and_wakes_each_parked_sleep_after_its_time_left | unit (MicroPython) | biting | — | biting as is |
+| tests/test_driven_time.py:607 | test_a_bound_parked_at_release_keeps_awaiting_its_task_and_ends_on_the_real_clock | unit (MicroPython) | biting | — | biting as is |
 | tests/test_fakes.py:132 | test_the_unit_machine_fake_meets_the_shared_contract | unit (MicroPython) | biting | — | biting as is |
 | tests/test_fakes.py:140 | test_every_machine_contract_check_is_registered | unit (MicroPython) | biting | — | biting as is |
 | tests/test_fakes.py:147 | test_the_unit_machine_fake_meets_the_shared_mem_backup_contract | unit (MicroPython) | biting | — | biting as is |

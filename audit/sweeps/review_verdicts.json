@@ -962,9 +962,9 @@
   ]
  },
  "tests/test_digital_twin_machine.py::test_timer_deinit_outside_a_running_event_loop_does_not_raise": {
-  "no_assertion": [
+  "setup_credit_only": [
    "justified",
-   "the claim is the absence of a raise (stated at :1131)"
+   "the claim is the absence of a raise (stated at :1211); the scan's only credit is the driven clock's sleep, matched by name, which this test never calls"
   ]
  },
  "tests/test_digital_twin_network_neopixel.py::test_connect_refuses_what_the_real_driver_cannot_take": {

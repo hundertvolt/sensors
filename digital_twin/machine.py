@@ -69,6 +69,9 @@ _VALUE_LOG_MAXLEN = 64  # a line's value log: a chip-select toggles on every SPI
 _MEM32_LOG_MAXLEN = 64  # likewise for register accesses: a DMA reader reads UARTRSR at every fill-level read
 _WIRE_LOG_MAXLEN = 4096  # bytes of a link direction's wire log kept; its `dropped` counts the rest
 _WIRE_CHUNK = 512  # bytes per storage chunk of a wire log
+# MicroPython's asyncio.core, the run queue WDT's countdown is woken on; CPython tooling that imports this module
+# has none and never builds a WDT.
+_ASYNCIO_CORE: "Any" = sys.modules.get("asyncio.core")
 
 
 class _WireLog:
@@ -1505,27 +1508,35 @@ class WDT:
         self._on_would_trigger = on_would_trigger
         self._task: asyncio.Task[None] | None = None
         self._armed_at_ms: _TicksMs | None = None
+        self._rearmed = False  # an arm since the countdown's sleep began: that sleep's end records nothing
         self._arm()
 
     def _arm(self) -> None:
         # A feed() can arrive after a real --hang has already blown past the previous deadline (see
         # digital_twin/README.md's "WDT._arm()'s late-feed backstop") - credit that already-elapsed
-        # window before cancelling it away, since real hardware can't un-reset itself retroactively.
+        # window before restarting the countdown, since real hardware can't un-reset itself retroactively.
         now = time.ticks_ms()
         if self._armed_at_ms is not None:
             elapsed = time.ticks_diff(now, self._armed_at_ms)
             if elapsed >= self.timeout:
                 self._record_would_trigger()
-        if self._task is not None:
-            self._task.cancel()
         self._armed_at_ms = now
-        self._task = asyncio.get_event_loop().create_task(self._countdown())
+        self._rearmed = True
+        task = self._task
+        if task is None or task.done():  # one countdown for the WDT's life; one a test's reap ended starts again
+            self._task = asyncio.get_event_loop().create_task(self._countdown())
+        elif task is not _ASYNCIO_CORE.cur_task:
+            self._wake_countdown(task)
 
     async def _countdown(self) -> None:
+        # One task for the WDT's life, so a feed builds none (rp2's is one register store): a feed wakes it at the loop's
+        # next round, where its window restarts as a fresh countdown's would; a sleep no arm cut short records.
         try:
             while True:
+                self._rearmed = False
                 await asyncio.sleep_ms(self.timeout)
-                self._record_would_trigger()
+                if not self._rearmed:
+                    self._record_would_trigger()
         except asyncio.CancelledError:
             pass
 
@@ -1536,6 +1547,16 @@ class WDT:
         self.would_have_triggered_log.append(self.feed_count)
         if self._on_would_trigger is not None:
             self._on_would_trigger(self)
+
+    @staticmethod
+    def _wake_countdown(task: "asyncio.Task[None]") -> None:
+        # Task.cancel()'s move with no exception (extmod/modasyncio.c task_cancel()): a sleeping task leaves the run queue,
+        # or the queue of what it awaits, and runs at the next round, where its sleep ends early.
+        if task.data is None:
+            _ASYNCIO_CORE._task_queue.remove(task)
+        else:
+            task.data.remove(task)
+        _ASYNCIO_CORE._task_queue.push(task)
 
     def feed(self) -> None:
         self.feed_count = saturating_add(self.feed_count)

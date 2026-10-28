@@ -3,6 +3,7 @@ run_until() or advance(), sleepers wake in order and never early, wait_for() bou
 replaced name is restored."""
 
 import asyncio
+import asyncio.core as _core  # type: ignore[import-not-found]  # the run queue; no stub covers it
 import time
 
 from _async_harness import cancel, cancel_all, run
@@ -50,9 +51,27 @@ async def _periodic(module: _Module, period_ms: int, woke: "list[int]") -> None:
         woke.append(module.time.ticks_ms())
 
 
+async def _settling(module: _Module, steps: "list[str]") -> None:
+    # A cleanup that sleeps, as an I2C probe's settle in its `finally`: a cancel in the first sleep waits out the second.
+    try:
+        await module.asyncio.sleep_ms(100)
+        steps.append("written")
+    finally:
+        await module.asyncio.sleep_ms(100)
+        steps.append(f"settled at {module.time.ticks_ms()}")
+
+
 async def _sleeper(module: _Module, ms: int, tag: str, woke: "list[tuple[str, int]]") -> None:
     await module.asyncio.sleep_ms(ms)
     woke.append((tag, module.time.ticks_ms()))
+
+
+async def _swallowing(module: _Module) -> None:
+    # Takes its first cancel as no end and sleeps on, a cleanup longer than any bound; a second cancel ends it.
+    try:
+        await module.asyncio.sleep_ms(100)
+    except asyncio.CancelledError:
+        await module.asyncio.sleep_ms(1000)
 
 
 def test_two_sleepers_wake_in_deadline_order_each_at_its_own_time() -> None:
@@ -299,6 +318,60 @@ def test_a_cancelled_sleeper_leaves_the_queue_and_never_wakes() -> None:
     with DrivenTime(module, sleeps=True) as clock:
         assert run(scenario(clock), _RUN_BOUND_S) == [50]
     assert woke == []
+
+
+def test_a_task_woken_off_its_driven_sleep_ends_that_sleep_at_once() -> None:
+    # Task.cancel()'s move with no exception, as the twin WDT wakes its countdown: off the wake's queue and pushed to run,
+    # the task ends its sleep there, as a run-queue sleep woken early does, and the clock lists the wake no more.
+    module = _Module()
+    woke: list[tuple[str, int]] = []
+
+    async def scenario(clock: DrivenTime) -> "list[object]":
+        task = asyncio.create_task(_sleeper(module, 50, "early", woke))
+        await clock.elapse(10)
+        task.data.remove(task)  # the wake the task awaits (modasyncio.c task_attr)
+        _core._task_queue.push(task)
+        await asyncio.sleep(0)
+        return [task.done(), clock.wakes()]
+
+    with DrivenTime(module, sleeps=True) as clock:
+        outcome = run(scenario(clock), _RUN_BOUND_S)
+    assert (outcome, woke) == ([True, []], [("early", 10)]), (outcome, woke)
+
+
+def test_a_cancel_through_the_clock_drives_the_sleep_the_cancelled_task_cleans_up_with() -> None:
+    # A canceller that drives nothing never sees such a task end: its cleanup's wake waits on this clock alone.
+    module = _Module()
+    steps: list[str] = []
+
+    async def scenario(clock: DrivenTime) -> "list[object]":
+        task = asyncio.create_task(_settling(module, steps))
+        await clock.elapse(10)
+        await clock.cancel(task, 1000)
+        return [task.done(), clock.now, clock.wakes()]
+
+    with DrivenTime(module, sleeps=True) as clock:
+        outcome = run(scenario(clock), _RUN_BOUND_S)
+    assert (outcome, steps) == ([True, 110, []], ["settled at 110"]), (outcome, steps)
+
+
+def test_a_cancelled_task_that_outlasts_the_bound_fails_naming_the_virtual_time() -> None:
+    module = _Module()
+
+    async def scenario(clock: DrivenTime) -> str:
+        task = asyncio.create_task(_swallowing(module))
+        await clock.elapse(10)
+        try:
+            await clock.cancel(task, 500)
+            said = "ended"
+        except AssertionError as e:
+            said = str(e)
+        await cancel(task)
+        return said
+
+    with DrivenTime(module, sleeps=True) as clock:
+        said = run(scenario(clock), _RUN_BOUND_S)
+    assert said.endswith("never ended - run_until: the condition still fails at virtual t=510 ms, 500 ms after t=10"), said
 
 
 def test_a_driven_sleep_is_its_listed_wake_from_the_call_on() -> None:

@@ -3,6 +3,7 @@ test_timer_fires_for_real_on_a_short_period is the one genuine (bounded, generou
 
 import asyncio
 import errno
+import gc
 import json
 import os
 import sys
@@ -14,7 +15,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Coroutine
     from typing import TypeVar
 
     from _twin_devices import TwinWiringPlan
@@ -33,6 +34,7 @@ import machine
 import microtest
 from _async_harness import run
 from _crc8 import crc8, word
+from _fake_time import DrivenTime
 from _fault_injection import FaultInjector
 from _machine_contract import ALL_CHECKS, FAULT_CHECKS
 from _ticks30 import Ticks30Time
@@ -893,6 +895,87 @@ def test_wdt_on_would_trigger_callback_fires_with_the_wdt_instance() -> None:
 
     seen = run(scenario(), _RUN_BOUND_S)
     assert seen[0].would_have_triggered_count >= 1
+
+
+class _TaskCounting:
+    # The twin machine module's view of asyncio, counting the tasks it builds; every other name is the real asyncio's.
+    def __init__(self) -> None:
+        self.built = 0
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(asyncio, name)
+
+    def create_task(self, coro: "Coroutine[object, object, None]") -> "asyncio.Task[None]":
+        self.built += 1
+        return asyncio.get_event_loop().create_task(coro)
+
+    def get_event_loop(self) -> "_TaskCounting":
+        return self
+
+
+def test_wdt_a_feed_after_a_stall_past_the_deadline_records_that_window_itself() -> None:
+    # The late-feed backstop (digital_twin/README.md): a stall carries the clock past the deadline and the feed runs
+    # before the countdown's late wake; the feed records it, and the countdown counts on from the feed alone.
+    async def scenario(clock: DrivenTime) -> "list[object]":
+        wdt = WDT(timeout=_WDT_FED_TIMEOUT_MS)
+        await asyncio.sleep(0)  # the countdown parks on the clock
+        clock.advance(2 * _WDT_FED_TIMEOUT_MS + _WDT_FED_TIMEOUT_MS // 2)
+        wdt.feed()
+        counts = [wdt.would_have_triggered_count]
+        await clock.elapse(_WDT_FED_TIMEOUT_MS - 1)
+        counts.append(wdt.would_have_triggered_count)
+        await clock.elapse(1)
+        counts.append(wdt.would_have_triggered_count)
+        return [counts, list(wdt.would_have_triggered_log)]
+
+    with DrivenTime(machine, sleeps=True) as clock:
+        outcome = run(scenario(clock), _RUN_BOUND_S)
+    assert outcome == [[1, 1, 2], [1, 1]], outcome
+
+
+def test_wdt_a_stall_that_a_feeding_task_outlasts_counts_once() -> None:
+    # A feeder every half window, a stall of 3.5 windows that releases its wake and the countdown's together: the feed
+    # ending it records the stall once, and the countdown, restarted at each feed as a fresh one was, records nothing.
+    async def feeder(wdt: WDT) -> None:
+        while True:
+            await machine.asyncio.sleep_ms(_WDT_FED_TIMEOUT_MS // 2)  # type: ignore[attr-defined]  # the clock's, for the block
+            wdt.feed()
+
+    async def scenario(clock: DrivenTime) -> "list[object]":
+        wdt = WDT(timeout=_WDT_FED_TIMEOUT_MS)
+        task = asyncio.create_task(feeder(wdt))
+        await clock.elapse(5 * _WDT_FED_TIMEOUT_MS)
+        await clock.jump(3 * _WDT_FED_TIMEOUT_MS + _WDT_FED_TIMEOUT_MS // 2)
+        await clock.elapse(5 * _WDT_FED_TIMEOUT_MS)
+        task.cancel()
+        return [wdt.would_have_triggered_count, list(wdt.would_have_triggered_log)]
+
+    with DrivenTime(machine, sleeps=True) as clock:
+        outcome = run(scenario(clock), _RUN_BOUND_S)
+    assert outcome == [1, [11]], outcome
+
+
+def test_wdt_feeds_build_no_task_and_allocate_nothing() -> None:
+    # rp2's feed() is one register store (pico-sdk watchdog_update()); the twin's countdown is one task for the WDT's
+    # life, so once its feed log is full feeds, each with the countdown's step after it, build no task and allocate nothing.
+    async def scenario(counting: _TaskCounting) -> "tuple[int, int]":
+        wdt = WDT(timeout=8000)
+        for _ in range(LOG_MAXLEN):
+            wdt.feed()  # fills the feed log, the one container a feed grows
+            await asyncio.sleep(0)
+        built, before = counting.built, gc.mem_alloc()
+        for _ in range(LOG_MAXLEN):
+            wdt.feed()
+            await asyncio.sleep(0)
+        return counting.built - built, gc.mem_alloc() - before
+
+    counting = _TaskCounting()
+    machine.asyncio = counting  # type: ignore[assignment, attr-defined]  # restored below
+    try:
+        grown, allocated = run(scenario(counting), _RUN_BOUND_S)
+    finally:
+        machine.asyncio = asyncio  # type: ignore[attr-defined]
+    assert (grown, allocated) == (0, 0), f"{grown} tasks built and {allocated} B allocated by {LOG_MAXLEN} feeds"
 
 
 def test_reset_increments_the_module_counter_then_raises_simulated_reset() -> None:

@@ -371,8 +371,11 @@ async def _heap_floor(watchdog: "machine.WDT") -> int:
     initiators = [s for s in module._collect_error_sources() if isinstance(s, UARTComm) and s._role == ROLE_INITIATOR]
     floor = -1
     for _ in range(_FLOOR_READS):
-        idle = await _wait_until(lambda: not any(comm._busy for comm in initiators), timeout_s=_WAIT_TIMEOUT_S, interval_s=_BIND_POLL_S)
-        assert idle, "a UART link exchange never ended"
+        # An idle link builds no waiter: a finished coroutine left before the collect is kept by a stale stack word in
+        # some runs and not others, a 224 B flip of no retention (measured at 32768, 2026-10-28).
+        if _link_busy(initiators):
+            idle = await _wait_until(lambda: not _link_busy(initiators), timeout_s=_WAIT_TIMEOUT_S, interval_s=_BIND_POLL_S)
+            assert idle, "a UART link exchange never ended"
         release_finished()
         _clear_twin_logs(watchdog)
         gc.collect()
@@ -408,6 +411,14 @@ async def _hotspot_boot(clock: DrivenTime) -> "tuple[WifiService, NeopixelDriver
         asy_wifi_service.asyncio = held  # type: ignore[attr-defined]
         network._CONNECT_DELAY_S = join_s
     return conn, pixel, tasks
+
+
+def _link_busy(initiators: "list[UARTComm]") -> bool:
+    # Allocation-free, so no any() and its generator: it runs right before a heap reading.
+    busy = False
+    for comm in initiators:
+        busy = busy or comm._busy
+    return busy
 
 
 async def _measured_above(chip: "SCD30Chip", limit: int) -> bool:
@@ -776,7 +787,7 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
                 # A dead one stays: the supervisor awaited it already, and a second await of a task whose first
                 # one raced asyncio's pending handler entry raises None, a segfault (SPECIFICATION.md Part F.1).
                 if task is not None and not task.done():
-                    await cancel(task)
+                    await clock.cancel(task, _WAIT_TIMEOUT_MS)  # a reader cancelled mid-probe settles on the clock first
             if module.conn._dns_server_task is not None:
                 await cancel(module.conn._dns_server_task)
 
