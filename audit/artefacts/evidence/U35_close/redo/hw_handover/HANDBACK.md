@@ -13,6 +13,14 @@ Rebuilt by `handback.py` after every step; the newest day is complete up to its 
 ```
 image (name='micropython', version=(1, 29, 0, ''), _machine='Raspberry Pi Pico W with RP2040', _mpy=4870, _build='RPI_PICO_W', _thread='unsafe') v1.29.0 on 2026-10-28 (GNU 14.2.1 MinSizeRel)
 fs_root ['config_BMP3XX.cfg', 'config_HWTEST_DEBUGLEVEL_BACKUP.cfg', 'config_HWTEST_REBOOT.cfg', 'config_ISL29125.cfg', 'config_MQTT.cfg', 'config_NOTIFY.cfg', 'config_NTP.cfg', 'config_SCD30.cfg', 'config_SGP40.cfg', 'config_SYSTEM.cfg', 'config_WIFI.cfg']
+i2c_scan bus=0 addresses=['0x18', '0x77'] scan_us=35091
+i2c_scan bus=1 addresses=['0x44', '0x59', '0x61'] scan_us=35007
+bmp chip_id=0x50
+bmp_forced osr_p=x1 osr_t=x1 worst_us=5855 (includes the polling reads)
+bmp_forced osr_p=x2 osr_t=x1 worst_us=8381 (includes the polling reads)
+bmp_forced osr_p=x4 osr_t=x1 worst_us=11806 (includes the polling reads)
+bmp_forced osr_p=x8 osr_t=x1 worst_us=20353 (includes the polling reads)
+sgp40 measure_to_ready_worst_us=24728 (datasheet max 30 ms)
 reset armed=? cause=3 reason=0x1 chip=0x000100 r0_kept=0 r1_kept=0 elapsed_ms=-1
 reset armed=? cause=3 reason=0x1 chip=0x000100 r0_kept=0 r1_kept=0 elapsed_ms=-1
 reset armed=machine_reset cause=3 reason=0x2 chip=0x000100 r0_kept=1 r1_kept=1 elapsed_ms=0
@@ -248,6 +256,29 @@ Audited 20 packages in 0.61ms
 warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
 SUM image (name='micropython', version=(1, 29, 0, ''), _machine='Raspberry Pi Pico W with RP2040', _mpy=4870, _build='RPI_PICO_W', _thread='unsafe') v1.29.0 on 2026-10-28 (GNU 14.2.1 MinSizeRel)
 SUM fs_root ['config_BMP3XX.cfg', 'config_HWTEST_DEBUGLEVEL_BACKUP.cfg', 'config_HWTEST_REBOOT.cfg', 'config_ISL29125.cfg', 'config_MQTT.cfg', 'config_NOTIFY.cfg', 'config_NTP.cfg', 'config_SCD30.cfg', 'config_SGP40.cfg', 'config_SYSTEM.cfg', 'config_WIFI.cfg']
+```
+
+### i2c_20261028
+
+```
+== i2c 17:59:18
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM i2c_scan bus=0 addresses=['0x18', '0x77'] scan_us=35091
+SUM i2c_scan bus=1 addresses=['0x44', '0x59', '0x61'] scan_us=35007
+SUM bmp chip_id=0x50
+SUM bmp_forced osr_p=x1 osr_t=x1 worst_us=5855 (includes the polling reads)
+SUM bmp_forced osr_p=x2 osr_t=x1 worst_us=8381 (includes the polling reads)
+SUM bmp_forced osr_p=x4 osr_t=x1 worst_us=11806 (includes the polling reads)
+SUM bmp_forced osr_p=x8 osr_t=x1 worst_us=20353 (includes the polling reads)
+SUM sgp40 measure_to_ready_worst_us=24728 (datasheet max 30 ms)
+Traceback (most recent call last):
+  File "<stdin>", line 123, in <module>
+  File "<stdin>", line 102, in sgp40
+  File "<stdin>", line 80, in measure
+OSError: [Errno 110] ETIMEDOUT
+rc=1 17:59:22
 ```
 
 ### reset_bootloader_20261028
