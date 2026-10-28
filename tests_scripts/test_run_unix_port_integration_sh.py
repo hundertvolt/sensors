@@ -26,10 +26,10 @@ _LIMIT = twin_process._QSTR_MAX_BYTES
 _OVER = "x" * (_LIMIT + 1)
 
 
-def _launch(tmp_path: Path, *args: str, root_dir: str = "repo", device: str = "", layout: str = "", home: bool = True) -> tuple[subprocess.CompletedProcess[str], list[str]]:
-    # Runs the copy (under root_dir, with device's toml too and layout's entries first in the twin line) beside its
-    # libraries and a probe answering standard with a current record; returns the run and the stubs' log, one
-    # "<stub> <args>" per call.
+def _launch(tmp_path: Path, *args: str, root_dir: str = "repo", device: str = "", layout: str = "", home: bool = True, caller_env: "dict[str, str] | None" = None) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+    # Runs the copy (under root_dir, with device's toml too and layout's entries first in the twin line; caller_env over
+    # the caller's own) beside its libraries and a probe answering standard with a current record; returns the run and
+    # the stubs' log, one "<stub> <args>" per call. The interpreter writes its TEST_TWIN_HOST to tmp_path/twin_host.
     root = tmp_path / root_dir
     for rel in (*_COPIED, *(f"toolchain/{name}" for name in _INPUTS)):
         (root / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -61,10 +61,12 @@ def _launch(tmp_path: Path, *args: str, root_dir: str = "repo", device: str = ""
     for path, line in stubs.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         probe = 'if [ "${1:-}" = -c ]; then echo standard; exit 0; fi\n' if path == interpreter else ""
-        path.write_text(f'#!/usr/bin/env bash\n{probe}echo "{line} $*" >>{shlex.quote(str(log))}\n', encoding="utf-8")
+        seen = f'echo "${{TEST_TWIN_HOST-<unset>}}" >{shlex.quote(str(tmp_path / "twin_host"))}\n' if path == interpreter else ""
+        path.write_text(f'#!/usr/bin/env bash\n{probe}{seen}echo "{line} $*" >>{shlex.quote(str(log))}\n', encoding="utf-8")
         path.chmod(0o755)
     env = {name: value for name, value in os.environ.items() if not name.startswith("SENSORS_PORT_LOCK")}
     env.update({"PATH": f"{stub_bin}:{os.environ['PATH']}", "HOME": str(tmp_path), "PICO_TOOLCHAIN_DIR": str(tmp_path / "toolchain"), "XDG_RUNTIME_DIR": str(runtime), "LC_ALL": "C.UTF-8"})
+    env.update(caller_env or {})
     if not home:
         del env["HOME"]
     done = subprocess.run(["/bin/bash", str(root / _RUNNER), *args], cwd=root, env=env, capture_output=True, text=True, check=False, timeout=60)
@@ -101,6 +103,15 @@ def test_the_named_device_is_built_generated_and_booted_with_the_other_flags_for
         "uv run --no-sync scripts/_generate_sensortask_modules.py",
         f"micropython held=53 digital_twin/run_generic_integration.py --module {module} --wiring-plan {plan} --device fixture_device_b --port 9000 --fault sgp40:writeto",
     ], calls
+
+
+def test_a_callers_twin_host_never_reaches_the_twin(tmp_path: Path) -> None:
+    # TEST_TWIN_HOST is scripts/test.sh's address for each of its own jobs: a caller's would bind the twin's captive DNS
+    # there, off the 127.0.0.1 that port 53's lock and every host-side talker assume.
+    done, calls = _launch(tmp_path, "--device", "fixture_device_b", caller_env={"TEST_TWIN_HOST": "127.0.0.77"})
+    assert done.returncode == 0 and calls[-1].startswith("micropython "), (done.stderr, calls)
+    seen = (tmp_path / "twin_host").read_text(encoding="utf-8")
+    assert seen == "<unset>\n", f"the caller's TEST_TWIN_HOST reached the twin's environment: {seen!r}"
 
 
 @pytest.mark.parametrize(
