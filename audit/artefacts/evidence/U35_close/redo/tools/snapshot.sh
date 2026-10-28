@@ -15,6 +15,8 @@ cp $S/u35/lead/run.sh $S/u35/lead/mc_gen.sh $S/u35/lead/mc_files.sh $S/u35/lead/
 cp $S/u35/lead/snap2/README.md "$X/README.md"
 [ -d $S/u35r/scan_pub ] && cp -r $S/u35r/scan_pub "$X/scan"
 [ -d $S/u35r/paused_pub ] && cp -r $S/u35r/paused_pub "$R/paused"
+[ -d $S/u35r/plan ] && cp -r $S/u35r/plan "$R/plan"
+[ -f $S/u35r/int_history.txt ] && gzip -c $S/u35r/int_history.txt > "$R/int_history.txt.gz"
 PAT="1234567[8]|192\.168\.[0-9]+\.[0-9]+|10\.[0-9]+\.[0-9]+\.[0-9]+|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]+\.[0-9]+|ghp_[A-Za-z0-9]{10}|github_pa[t]_|sk-[A-Za-z0-9]{20}|AKIA[0-9A-Z]{12}|BEGIN [A-Z ]*PRIVATE KEY"
 if grep -rlE "$PAT" "$X" --include='*.md' --include='*.sh' --include='*.py' --include='*.tsv' --include='*.log' --include='*.json'; then echo "scan hit: not committed" >&2; exit 2; fi
 for z in $(find "$X" -name '*.gz'); do if zcat "$z" | grep -qE "$PAT"; then echo "scan hit in $z: not committed" >&2; exit 2; fi; done

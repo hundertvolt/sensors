@@ -208,3 +208,62 @@ their context). From now on every owner word is appended here as it is given.
 ## 2026-10-28: after the decision review
 - (2026-10-28 12:55 UTC, push of the decision review) "push the findings" Pushed as snapshot 17 (on 11b66cd8); the
   evidence folder's `scan/decrev/`.
+- (2026-10-28 13:05 UTC, plans for the rest of the audit) "Now, we have the following situation: * We encountered
+  issues with the way the audit went * we discovered the reasons and analyzed remedies * we have detailed knowledge
+  what needs to be fixed * we know how to change the way of work until the audit finishes * we have leftover work -
+  U35 mid action, and the remaining units * The U35 und future planned work still suffer from the old way of working
+  and may contain many of the identified flaws and runaway / overkill So it does not make sense to follow them for two
+  reasons - they contain wrong decisions and plans, and they follow a known unstable way of work. Nevertheless, they
+  do contain actions to be taken to finish the audit. What we need now: * a plan to do all the tidy and repair work in
+  the existing status * a plan about which items remain open from current U35 until the end - revised with the new
+  knowledge * a plan how to implement it, not drifting away but having a clear and defined end, not cutting back on
+  quality" Answered by S/u35r/plan/PLAN.md (a plan only; nothing started).
+- (2026-10-28 13:33 UTC, on PLAN.md's section 6) "lets go through the decisions one by one" Taken in order, one
+  decision per message.
+- (2026-10-28, on decision 1's effort figure) "40 to 60 hours? why?" Answered with the estimate's breakdown; PLAN.md
+  section 5 corrected.
+- (2026-10-28 13:38 UTC, PLAN.md decision 1, the plan's shape) "then take option a" Decided: the old plans retired as
+  PLAN.md 3.1 says; the order R0, R1, R2, R3, round 1, R4, R5, the last round, D.
+- (2026-10-28, on decision 2) "Why is the neopixel code to be completely rewritten?" Answered: it is not; the lead's
+  wording was wrong. PLAN.md's B7 row corrected.
+- (2026-10-28 13:43 UTC, PLAN.md decision 2, the repair method) "Option A, and keep TDD style" Decided: work from the
+  current files with the hunk-ledger gate; every change test first (the test pinning the target behaviour is written
+  or changed first and seen red, then the code), as CLAUDE.md's step-session workflow (3)-(5) has it.
+- (2026-10-28 13:47 UTC, PLAN.md decision 3, item 1, a hardware fact) "1. line level with chip missing: high impedance
+  and floating, the pull resistor is on the chip. the pin picks up any stray noise. But what for do you need to know
+  that?" Recorded as the board fact for DECREV 9 item 1 (SCAN2's V10): with the FRAM chip absent its SO line floats
+  and reads noise; there is no pull on the board.
+- (2026-10-28 13:53 UTC, PLAN.md decision 3) "explain the other topics one by one" Items 2-4 explained one per
+  message.
+- (2026-10-28 13:57 UTC, PLAN.md decision 3, item 2, the mempause auto-unpause) "okay, as recommended" Decided: the
+  deadline on the 1 s status pass stays (no one-shot timer; the pre-audit SPEC F.1/C.9 rule "every timer that must fire
+  uses PERIODIC"); its two cascade parts are judged in B2's ledger; no measurement.
+- (2026-10-28, on decision 3 item 3) "this is about firmware or about tests?" Answered: firmware
+  (src/asy_webserver_service.py); the unit tests pinning it go with it; one gated bench test exercises the premise.
+- (2026-10-28, on decision 3 item 3) "why were the extra request checks added?" Answered with A.U19.07's basis
+  (OR52.a (3), register line G6/R52) and the pinned-source facts.
+- (2026-10-28 14:08 UTC, PLAN.md decision 3, item 3, the request checks and the quiet print) "good, accepted" Decided:
+  the Content-Length check (ASCII digits, once) stays on WS-1's refusal path; the rest of WS-2 and WS-9's quiet print
+  with its merge list go; WS-1's head limits and the 3-4 line C-stack hook stay; no measurement.
+- (2026-10-28 14:12 UTC, PLAN.md decision 3, item 4, the FRAM setup's identification retry) "keep it" Decided: the
+  up-to-three RDID reads at setup with W29 stay (OR113's first rung, "retry the transaction"); round 1's FRAM log read
+  records whether W29 ever appeared, as knowledge. Decision 3 is closed.
+- (2026-10-28 14:15 UTC, PLAN.md decision 4, R3's effort) "Yes, take A" Decided: the lean form; each B3 row met on the
+  final tree, verdicts and plant results carried over only where neither the test nor its target changed, matrices and
+  maps as reading aids and working files, nothing new permanent.
+- (2026-10-28 14:18 UTC, PLAN.md decision 5, the budgets) "A" Decided: each phase's budget at the top of its
+  estimate (hours and agent runs, PLAN.md section 5), a stop with a report at 80 % of either; tokens on the owner's
+  side.
+- (2026-10-28, on decision 6) "there are links to the website which explain the errors, or am i wrong?" Answered:
+  the device's own page explains each logged code by its number (buildgen/definitions.py _errcount_codes, frozen into
+  the image; js/templates.js history buttons and describeCode); a reused number would explain an older entry wrongly.
+- (2026-10-28 14:23 UTC, PLAN.md decision 6, retired error numbers) "third option accepted" Decided: no placeholder
+  rows for numbers retired before the release (the 6 existing ones go, the codes the repair removes leave none); from
+  the release on, a removed code keeps its number unused (the rule and its catalog check stay, applied from then).
+- (2026-10-28 14:25 UTC, PLAN.md decision 7, where obsolete findings live) "C" Decided: folded into the facts as
+  OR27.a has it; a finding a future reader might rebuild gets one line at its module's Part (the condition, why the
+  code does not handle it, what covers it), platform facts in Part F, unverified ones as owed-hardware rows; trivial
+  items only in the audit evidence, which stays reachable through the final merge commit. All seven decisions taken;
+  R0 still needs its own go-ahead.
+- (2026-10-28 14:29 UTC, after all seven PLAN.md decisions, the push) "do a push so we keep everything in any case"
+  Go-ahead for a push of the plan with its decisions and the records as the next snapshot; not R0's go-ahead.

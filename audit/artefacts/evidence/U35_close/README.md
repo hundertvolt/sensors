@@ -74,3 +74,15 @@ crosswalk `DRX.md`; and `inputs/owner_words_lane_plan.md`, the owner's words tha
 lane plan (the other inputs are copies of repo files and are not copied). `redo/recovered/` gains those words and the
 morning of 2026-10-28; `redo/CHECKLIST.md` gains the rule that every owner word is recorded as it is given. Nothing
 ran in the check.
+
+## Eighteenth snapshot (2026-10-28): `redo/plan/`
+
+The owner asked for a plan to repair the existing state, for the items that remain open from U35 to the end revised
+with the new knowledge, and for how to implement it with a defined end and no cut in quality; then took its seven
+decisions one by one and asked for a push ("do a push so we keep everything in any case"). `redo/plan/PLAN.md` holds
+it: the target and the method (work from the current files, every difference from the pre-audit state mapped to a
+reason, every change test first), the phases from the settling step to the final merge with their done-criteria, the
+retired plans, what remains by phase, the way of working with its budgets, and the seven decisions with the owner's
+words. `redo/int_history.txt.gz` lists the integration history's commits (messages and changed files, no source),
+which stays local because its messages carry lane names. `redo/recovered/` and the lane plan gain the owner's words
+of the decisions. Nothing ran; nothing in the plan has started.
