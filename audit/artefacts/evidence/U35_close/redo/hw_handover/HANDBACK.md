@@ -29,6 +29,13 @@ bmp_forced osr_p=x2 osr_t=x1 worst_us=8381 (includes the polling reads)
 bmp_forced osr_p=x4 osr_t=x1 worst_us=11806 (includes the polling reads)
 bmp_forced osr_p=x8 osr_t=x1 worst_us=20353 (includes the polling reads)
 sgp40 measure_to_ready_worst_us=24728 (datasheet max 30 ms)
+wifi_connect_ms=[2708, 2707, 2707] (negative: failed with that status)
+dns host=pool.ntp.org result=ok wall_ms=13 timer_ticks=1 of 1
+dns host=nonexistent.invalid result=OSError(-2,) wall_ms=55 timer_ticks=3 of 5
+dns unreachable_server host=example.com result=OSError(-2,) wall_ms=6985 timer_ticks=699 of 698
+tcp_rebind_8080 after=served reuse=0 OSError(98,), reuse=1 ok
+udp_rebind_53 reuse=0 ok, reuse=1 ok
+ntp answers=10 of 10 median_ms=38 worst_ms=68
 reset armed=? cause=3 reason=0x1 chip=0x000100 r0_kept=0 r1_kept=0 elapsed_ms=-1
 reset armed=? cause=3 reason=0x1 chip=0x000100 r0_kept=0 r1_kept=0 elapsed_ms=-1
 reset armed=machine_reset cause=3 reason=0x2 chip=0x000100 r0_kept=1 r1_kept=1 elapsed_ms=0
@@ -306,6 +313,25 @@ Traceback (most recent call last):
   File "<stdin>", line 80, in measure
 OSError: [Errno 110] ETIMEDOUT
 rc=1 17:59:22
+```
+
+### net_20261028
+
+```
+== net 17:59:32
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM wifi_connect_ms=[2708, 2707, 2707] (negative: failed with that status)
+SUM dns host=pool.ntp.org result=ok wall_ms=13 timer_ticks=1 of 1
+SUM dns host=nonexistent.invalid result=OSError(-2,) wall_ms=55 timer_ticks=3 of 5
+SUM dns unreachable_server host=example.com result=OSError(-2,) wall_ms=6985 timer_ticks=699 of 698
+READY
+SUM tcp_rebind_8080 after=served reuse=0 OSError(98,), reuse=1 ok
+SUM udp_rebind_53 reuse=0 ok, reuse=1 ok
+SUM ntp answers=10 of 10 median_ms=38 worst_ms=68
+DONE=1
+rc=0 17:59:58
 ```
 
 ### reset_bootloader_20261028
