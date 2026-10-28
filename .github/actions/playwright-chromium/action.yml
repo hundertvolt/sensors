@@ -39,6 +39,14 @@ runs:
         timeout_s=30
         printf 'Acquire::Retries "%s";\nAcquire::http::Timeout "%s";\nAcquire::https::Timeout "%s";\n' "$((attempts - 1))" "$timeout_s" "$timeout_s" | sudo tee /etc/apt/apt.conf.d/80-bounded-downloads
         apt-config dump Acquire::Retries Acquire::http::Timeout Acquire::https::Timeout || true
+    # The install's bound, read by the install below and by the mirror check, which sizes its required rate on it.
+    - name: The install's bound
+      id: bound
+      shell: bash
+      run: |
+        # @tunable ci.playwright_install_timeout_min = 5
+        limit_min=5
+        printf 'min=%s\ns=%s\n' "$limit_min" "$((limit_min * 60))" >> "$GITHUB_OUTPUT"
     - name: Check the apt mirror and restore cached packages
       id: apt
       uses: ./.github/actions/apt-cache-restore
@@ -46,18 +54,19 @@ runs:
         family: playwright
         playwright-deps: chromium
         always-check: ${{ inputs.always-check }}
+        bound-s: ${{ steps.bound.outputs.s }}
+        bound-from: ci.playwright_install_timeout_min
     - name: Install Playwright Chromium and its OS packages
       shell: bash
       env:
         BROWSER_HIT: ${{ steps.playwright-cache.outputs.cache-hit }}
+        LIMIT_MIN: ${{ steps.bound.outputs.min }}
       run: |
         # A composite step takes no timeout-minutes, so `timeout` holds the bound.
-        # @tunable ci.playwright_install_timeout_min = 5
-        limit_min=5
         if [ "$BROWSER_HIT" = true ]; then args=(install-deps chromium); else args=(install --with-deps chromium); fi
         status=0
-        timeout "${limit_min}m" npx playwright "${args[@]}" || status=$?
-        if [ "$status" -eq 124 ]; then echo "::error::npx playwright ${args[*]} timed out after $limit_min minutes"; fi
+        timeout "${LIMIT_MIN}m" npx playwright "${args[@]}" || status=$?
+        if [ "$status" -eq 124 ]; then echo "::error::npx playwright ${args[*]} timed out after $LIMIT_MIN minutes"; fi
         exit "$status"
     - name: Keep the fetched packages
       if: ${{ !cancelled() }}

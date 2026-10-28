@@ -21,7 +21,10 @@ _SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "ci_apt_cache.py"
 # The probe's cap in these tests: each slow mirror is waited out to it.
 # @tunable l0.apt_mirror_probe_test_cap_s = 0.5
 _CAP_S = 0.5
-_MIN_RATE = 400_000.0  # the healthy rate the tests ask for: 5x the throttled mirror's 80 kB/s
+_MIN_RATE = 400_000.0  # the floor the tests ask for: 5x the throttled mirror's 80 kB/s
+_LONG_BOUND_S = 3600.0  # a fetching step's bound no test set comes near, so the floor sets the required rate
+_MEDIUM = bytes(range(250)) * 4000  # 1 MB, the medium-node tests' archive
+_MEDIUM_CHUNK = 65536  # every 50 ms: 1.3 MB/s, the azure node of job 122543124264
 _BODY = bytes(range(256)) * 1200  # 300 kB, more than the probe's 200 kB budget (cap x rate)
 _POOL = "pool/main/p/probe/probe_1.0-1_amd64.deb"
 _FILE = "probe_1.0-1_amd64.deb"
@@ -60,9 +63,9 @@ class Mirror:
         self.server.server_close()
 
 
-def _headers(handler: BaseHTTPRequestHandler, status: int = 200, **extra: str) -> None:
+def _headers(handler: BaseHTTPRequestHandler, status: int = 200, body: bytes = _BODY, **extra: str) -> None:
     handler.send_response(status)
-    handler.send_header("Content-Length", str(len(_BODY) if status == 200 else 0))
+    handler.send_header("Content-Length", str(len(body) if status == 200 else 0))
     for name, value in extra.items():
         handler.send_header(name, value)
     handler.end_headers()
@@ -74,12 +77,21 @@ def fast(handler: BaseHTTPRequestHandler, mirror: Mirror) -> None:
     handler.wfile.write(_BODY)
 
 
-def throttled(chunk: int) -> Serve:
+def quick(body: bytes) -> Serve:
+    def serve(handler: BaseHTTPRequestHandler, mirror: Mirror) -> None:
+        del mirror
+        _headers(handler, body=body)
+        handler.wfile.write(body)
+
+    return serve
+
+
+def throttled(chunk: int, body: bytes = _BODY) -> Serve:
     # chunk bytes every 50 ms: 4096 is 80 kB/s, 1024 is 20 kB/s.
     def serve(handler: BaseHTTPRequestHandler, mirror: Mirror) -> None:
-        _headers(handler)
-        for start in range(0, len(_BODY), chunk):
-            handler.wfile.write(_BODY[start : start + chunk])
+        _headers(handler, body=body)
+        for start in range(0, len(body), chunk):
+            handler.wfile.write(body[start : start + chunk])
             handler.wfile.flush()
             if mirror.stop.wait(0.05):
                 return
@@ -128,8 +140,44 @@ def _planned(apt_cache: ModuleType, list_path: Path, body: bytes = _BODY, file: 
 
 def _check(apt_cache: ModuleType, list_path: Path, **kwargs: object) -> "str | None":
     planned = kwargs.pop("planned", None) or [_planned(apt_cache, list_path)]
-    result: str | None = apt_cache.check(planned, kwargs.pop("have", set()), list_path, cap_s=_CAP_S, min_rate=_MIN_RATE, **kwargs)
+    rule = apt_cache.Rule(cap_s=_CAP_S, floor=_MIN_RATE, bound_s=kwargs.pop("bound_s", _LONG_BOUND_S), bound_from=kwargs.pop("bound_from", "tool.apt_step_timeout_s"), margin=kwargs.pop("margin", apt_cache.RATE_MARGIN))
+    result: str | None = apt_cache.check(planned, kwargs.pop("have", set()), list_path, rule, **kwargs)
     return result
+
+
+def test_a_medium_mirror_too_slow_for_the_set_inside_its_bound_is_dropped(apt_cache: ModuleType, mirrors: Callable[[Serve], Mirror], tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    # Job 122543124264's case: the node passed the 1 MB/s floor and the set still could not fit its 150 s attempt.
+    medium, fast_one = mirrors(throttled(_MEDIUM_CHUNK, _MEDIUM)), mirrors(quick(_MEDIUM))
+    list_path = _list(tmp_path, f"{medium.uri}\tpriority:1\n{fast_one.uri}\tpriority:2\n")
+    planned = [_planned(apt_cache, list_path, _MEDIUM)]
+    # 4 x 1 MB over a 2 s bound: 2 MB/s required, so the 1.3 MB/s mirror goes and the fast one stays.
+    assert _check(apt_cache, list_path, planned=planned, bound_s=2.0, margin=4.0) == f"{fast_one.uri}\tpriority:2\n"
+    out = capsys.readouterr().out
+    assert "== required rate 2000 kB/s: 4 x 1000000 bytes still to fetch over the 2 s bound (tool.apt_step_timeout_s), floor 400 kB/s" in out, out
+    # The probe reads cap x the required rate, so a mirror fast enough for the set shows it on the full budget.
+    assert f"== probe {fast_one.uri}{_POOL}: 1000000 of 1000000 bytes" in out and f"::warning::dropped {medium.uri}" in out, out
+
+
+def test_with_every_archive_under_the_budget_the_measured_rate_decides(apt_cache: ModuleType, mirrors: Callable[[Serve], Mirror], tmp_path: Path) -> None:
+    # The whole 300 kB archive arrives inside the cap, but at 1.3-1.5 MB/s against the 2.1 MB/s the set needs.
+    medium, fast_one = mirrors(throttled(_MEDIUM_CHUNK)), mirrors(fast)
+    list_path = _list(tmp_path, f"{medium.uri}\tpriority:1\n{fast_one.uri}\tpriority:2\n")
+    fillers = [apt_cache.Planned(f"mirror+file:{list_path}/pool/f/filler{n}_1_all.deb", f"filler{n}_1_all.deb", 250_000, "e" * 64) for n in range(3)]
+    planned = [_planned(apt_cache, list_path), *fillers]
+    assert _check(apt_cache, list_path, planned=planned, bound_s=2.0, margin=4.0) == f"{fast_one.uri}\tpriority:2\n"
+    assert medium.paths == fast_one.paths == [f"/ubuntu/{_POOL}"], "the largest archive under the budget is the probe"
+
+
+def test_a_set_the_medium_mirror_fits_inside_its_bound_keeps_it(apt_cache: ModuleType, mirrors: Callable[[Serve], Mirror], tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    medium, fast_one = mirrors(throttled(_MEDIUM_CHUNK, _MEDIUM)), mirrors(quick(_MEDIUM))
+    list_path = _list(tmp_path, f"{medium.uri}\tpriority:1\n{fast_one.uri}\tpriority:2\n")
+    # A 20 MB archive the cache restored is no part of what is left to fetch.
+    planned = [_planned(apt_cache, list_path, _MEDIUM), apt_cache.Planned(f"mirror+file:{list_path}/pool/r/restored_1_all.deb", "restored_1_all.deb", 20_000_000, "f" * 64)]
+    # 4 x 1 MB over a 20 s bound is 200 kB/s, under the floor: 400 kB/s required, which 1.3 MB/s meets.
+    assert _check(apt_cache, list_path, planned=planned, have={"restored_1_all.deb"}, bound_s=20.0, margin=4.0, bound_from="ci.playwright_install_timeout_min") is None
+    assert fast_one.paths == [], "the probe stops at the first mirror fast enough for the set"
+    out = capsys.readouterr().out
+    assert "== required rate 400 kB/s: 4 x 1000000 bytes still to fetch over the 20 s bound (ci.playwright_install_timeout_min), floor 400 kB/s" in out, out
 
 
 def test_a_slow_mirror_apt_tries_first_is_dropped_and_the_fast_one_kept(apt_cache: ModuleType, mirrors: Callable[[Serve], Mirror], tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -179,12 +227,14 @@ def test_the_list_is_never_emptied(apt_cache: ModuleType, mirrors: Callable[[Ser
     slower, slow = mirrors(throttled(1024)), mirrors(throttled(4096))
     # No mirror healthy: the fastest measured goes first, everything ahead of it is dropped, it and the rest stay.
     assert _check(apt_cache, _list(tmp_path, f"{slower.uri}\tpriority:1\n{slow.uri}\tpriority:2\n")) == f"{slow.uri}\tpriority:2\n"
-    assert f"the fastest measured, {slow.uri}, goes first" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert f"reached 400 kB/s (measured: {slower.uri} " in out and f"kB/s, {slow.uri} " in out and f"the fastest measured, {slow.uri}, goes first" in out, out
     # A lone slow mirror, and mirrors that never answer, leave the list as it is.
     assert _check(apt_cache, _list(tmp_path, f"{slow.uri}\tpriority:1\n")) is None
     refused = socketless_uri()
     assert _check(apt_cache, _list(tmp_path, f"{refused}\tpriority:1\n{refused}x/\tpriority:2\n")) is None
-    assert "answered the probe: left unchanged" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert f"answered the probe (measured: {refused} 0 kB/s, {refused}x/ 0 kB/s): left unchanged" in out, out
 
 
 def socketless_uri() -> str:
@@ -329,7 +379,7 @@ def test_the_commands_chain_as_the_ci_steps_run_them(mirrors: Callable[[Serve], 
     cache.mkdir()
     done = _run("copy-in", manifest=manifest, cache_dir=cache, list=tmp_path / "copy-in", github_output=copy_out)
     assert done.returncode == 0 and _outputs(copy_out) == {"restored": "0", "remaining": "1"}, done.stdout + done.stderr
-    done = _run("check", "--cap-s", str(_CAP_S), "--min-bytes-per-s", str(_MIN_RATE), manifest=manifest, have=tmp_path / "copy-in", mirror_list=list_path, out=tmp_path / "new.txt")
+    done = _run("check", "--cap-s", str(_CAP_S), "--min-bytes-per-s", str(_MIN_RATE), "--bound-s", "150", "--bound-from", "tool.apt_step_timeout_s", manifest=manifest, have=tmp_path / "copy-in", mirror_list=list_path, out=tmp_path / "new.txt")
     assert done.returncode == 0, done.stdout + done.stderr
     assert (tmp_path / "new.txt").read_text(encoding="utf-8") == f"{quick.uri}\tpriority:2\n"
     assert list_path.read_text(encoding="utf-8").startswith(slow.uri), "the script never writes the live list: the CI step copies --out over it"
@@ -339,7 +389,7 @@ def test_the_commands_chain_as_the_ci_steps_run_them(mirrors: Callable[[Serve], 
     assert done.returncode == 0 and _outputs(save_out) == {"complete": "true", "copied": "1"}, done.stdout + done.stderr
     done = _run("copy-in", manifest=manifest, cache_dir=cache, list=tmp_path / "copy-in", github_output=copy_out)
     assert (tmp_path / "copy-in").read_bytes() == str(cache / _FILE).encode() + b"\0"
-    done = _run("check", manifest=manifest, have=tmp_path / "copy-in", mirror_list=list_path, out=tmp_path / "hit.txt")
+    done = _run("check", "--bound-s", "150", "--bound-from", "tool.apt_step_timeout_s", manifest=manifest, have=tmp_path / "copy-in", mirror_list=list_path, out=tmp_path / "hit.txt")
     assert done.returncode == 0 and "no mirror check" in done.stdout and not (tmp_path / "hit.txt").exists(), done.stdout + done.stderr
     (tmp_path / "dry-run.txt").write_text("Missing system dependencies (2):\n  libnss3\n  xvfb\n", encoding="utf-8")
     done = _run("dry-run-packages", dry_run=tmp_path / "dry-run.txt")
