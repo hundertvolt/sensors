@@ -206,7 +206,11 @@ export function spawnTwin({ device, port, configDir }) {
         configDir,
     ];
     // The device's own built site in place of the unit tier's shared copy, so a twin never serves another device's site.
+    /** @type {NodeJS.ProcessEnv} */
     const env = { ...process.env, MICROPYPATH: withSite(MICROPYPATH, `build/generated_html/${device}`), TZ: "UTC" };
+    // scripts/test.sh's own address for each of its file jobs: a caller's would bind the twin's captive DNS off HOST, which
+    // the port lock below assumes (scripts/_twin_process.py's twin_env drops it too; agent, 2026-10-28).
+    delete env.TEST_TWIN_HOST;
     const refused = uninternable(args, env);
     if (refused.length > 0) {
         throw new Error(`the twin was not started: ${refused.join(", ")} - the Unix port interns each as a qstr of at most ${QSTR_MAX_BYTES} bytes and dies before the runner starts`);

@@ -36,6 +36,9 @@ fi
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 export TZ=UTC  # same reasoning as scripts/test.sh's own identical export, which has the account.
+# scripts/test.sh's own address for each of its file jobs: a caller's would bind the twin's captive DNS off the 127.0.0.1
+# that port 53's lock below and every host-side talker assume (scripts/_twin_process.py's twin_env; agent, 2026-10-28).
+unset TEST_TWIN_HOST
 
 # shellcheck source=/dev/null  # linted on its own, as one of scripts/*.sh
 source scripts/_devices.sh
