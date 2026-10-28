@@ -224,3 +224,26 @@ source.
   wake on a loaded runner gave a legitimate fourth call. Reproduced under CPU contention (4 in 300, each at 21-23 ms
   elapsed); the test now bounds by the time that really passed, and a planted second timer loop still fails it. The
   lead's call (test-only).
+- CI red on 71d51810 (lead, 02:25): an apt-cache test took its verdict from two throttled local servers whose measured
+  order swapped on a loaded runner; it now injects fixed probe rates for the ordering rule it tests (both planted faults
+  still fail it). Lead deviations on the way: an edit in the integration worktree while the lead's own check run was in
+  its MicroPython phase (no running check read the file; re-checked after), and a few direct lead runs outside the
+  logged wrapper, two of them binding loopback ports outside the network namespace.
+- Lost shutdown cancel (lead, 2026-10-28): MicroPython's wait_for() loses a cancel that arrives in the few scheduler
+  rounds after its timeout fires (pinned source read, reproduced 8/8 on the real NeoPixel driver; rp2 and upstream
+  master identical). The UDP wait now ends at its own deadline (merged). The NeoPixel overlay's patch was withdrawn
+  after the owner's challenge, in favour of a structural proposal: a rule, one shared timed-wait primitive, a scan of
+  every wait_for site, and the overlay moved onto the primitive. Origin of the 300 s rewrite: an agent's U22 choice
+  (default FlashInterval), not the owner's; whether to keep it is the owner's question.
+- Cancel/watchdog lane (merged): the hung cleanup cancel was a harness artefact (no firmware change); the twin watchdog
+  keeps one countdown task (a feed allocates nothing, as on rp2's register store); the drift transient was root-caused to
+  stale heap-pairing pointers and a stale stack word, both removed. Its concurrent arm does not yet separate reliably,
+  and the merged parked arm separates only in some heap layouts (zero margin at the 32 B bound), so a follow-up lane
+  makes both robust. One review verdict row was re-keyed by the lead (the scanner's name-matched credit).
+- Review scanner precision (lead finding): redflags credits a test through any same-named method in nearby modules.
+  Measured: no row would gain no_assertion, but 9 rows left unflagged ("biting" by default) would gain a flag. Queued
+  as a lane after the reverse-map lane.
+- Closing ledger (owner, 2026-10-28: the process must be able to finish): S/u35r/closing_ledger.md, nine items,
+  admission only for firmware defects or defects in a U35 deliverable, at most one follow-up lane per item.
+- Lead deviations: a chained `rm` on a scratch path, which also deleted the 16 green job logs of a stopped run whose
+  count survives only in the notes; the LC1 tier was stopped by pid and re-run combined with the next merge.

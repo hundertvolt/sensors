@@ -1,6 +1,6 @@
 """tests_hardware/twin_board.py keeps harness.Board's shape (ast) and runs a device script under the real Unix-port twin
 via digital_twin/run_device_script.py: output back, a raising or starving script or one it cannot intern failing, a
-reset's output kept, both GC stages, twin layout and probe binary (micropypath.toml, _unix_port.sh), conformance."""
+reset's output kept, both GC stages, twin layout, env, probe binary (micropypath.toml, _unix_port.sh), conformance."""
 
 import ast
 import os
@@ -83,7 +83,8 @@ def test_a_live_read_is_refused_on_the_twin_naming_why(monkeypatch: pytest.Monke
         twin.exec_live("print(1)")
 
 
-def test_the_twin_runs_the_probes_binary_with_the_twins_one_micropypath(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repo_root: Path) -> None:
+def _recorded_twin_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> "tuple[Path, list[str], dict[str, str]]":
+    # One TwinBoard run over a planted probe binary, the twin's own process stubbed: the binary, its argv and its env.
     binary = _plant_binary(tmp_path, reports="standard")
     seen: list[tuple[list[str], dict[str, str]]] = []
     real_run = subprocess.run
@@ -100,10 +101,24 @@ def test_the_twin_runs_the_probes_binary_with_the_twins_one_micropypath(tmp_path
     monkeypatch.setattr(twin_board, "PLAN_DIR", tmp_path / "twin")
     monkeypatch.setattr(subprocess, "run", run)
     twin_board.TwinBoard().run_isolated(_script(tmp_path, "print('ok')\n"))
+    assert len(seen) == 1, seen
     argv, env = seen[0]
+    return binary, argv, env
+
+
+def test_the_twin_runs_the_probes_binary_with_the_twins_one_micropypath(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repo_root: Path) -> None:
+    binary, argv, env = _recorded_twin_run(tmp_path, monkeypatch)
     assert argv[0] == str(binary) and twin_board.unix_port_binary() == binary
     assert env["MICROPYPATH"] == twin_board.twin_micropypath() and env["TZ"] == "UTC"
     assert [entry.removeprefix(f"{repo_root}/") for entry in env["MICROPYPATH"].split(":")] == _TWIN_LAYOUT.split(":")
+
+
+def test_a_callers_twin_host_never_reaches_the_twin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # TEST_TWIN_HOST is scripts/test.sh's address for each of its own jobs: a caller's would bind a device script's servers
+    # there, off the 127.0.0.1 where every host-side talker reaches a twin.
+    monkeypatch.setenv("TEST_TWIN_HOST", "127.0.0.77")
+    _binary, _argv, env = _recorded_twin_run(tmp_path, monkeypatch)
+    assert "TEST_TWIN_HOST" not in env, f"the caller's TEST_TWIN_HOST={env['TEST_TWIN_HOST']!r} reached the twin's environment"
 
 
 @pytest.mark.parametrize("gc_threshold", [-1, 32768])

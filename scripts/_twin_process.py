@@ -52,6 +52,9 @@ _LOG_TAIL_LINES = 20
 # MICROPYPATH entry as a qstr, and dies before the runner starts: "FATAL: uncaught NLR", exit 1 (ports/unix/main.c:412,
 # :560, :688, :768; py/qstr.c:319-321; MICROPY_QSTR_BYTES_IN_LEN 1, py/mpconfig.h:369; v1.29.0).
 _QSTR_MAX_BYTES = 255
+# scripts/test.sh's own address for each of its file jobs (the UDP shim's twin_host). A caller's would bind a host-run
+# twin's servers there, off the 127.0.0.1 every host-side talker queries: no launch passes it on (agent, 2026-10-28).
+_TWIN_HOST_ENV = "TEST_TWIN_HOST"
 
 
 def _twin_layout() -> str:
@@ -426,7 +429,7 @@ def spawn(launch: TwinLaunch, *, state_dir: Path, log_path: Path, args: "tuple[s
         raise ValueError("spawn() owns --stop-file: shutdown() ends the twin through it")
     paths = state_paths(state_dir)
     stop_file = state_dir / "stop"
-    env = dict(os.environ, MICROPYPATH=launch.micropypath, TZ="UTC")
+    env = twin_env(launch.micropypath)
     cmd = [
         launch.micropython_bin, RUNNER, "--module", launch.module, "--wiring-plan", str(launch.wiring_plan), "--device", launch.device,
         "--host", launch.host, "--port", str(launch.port), "--fram-state-path", str(paths.fram), "--scd30-state-path", str(paths.scd30),
@@ -446,6 +449,12 @@ def spawn(launch: TwinLaunch, *, state_dir: Path, log_path: Path, args: "tuple[s
 
 def state_paths(state_dir: Path) -> StatePaths:
     return StatePaths(state_dir / "fram_state.json", state_dir / "scd30_state.json", state_dir / "mem_backup_state.json", state_dir / "config")
+
+
+def twin_env(micropypath: str) -> dict[str, str]:
+    # A host-run twin's environment: the caller's, on the given MICROPYPATH and UTC, without a caller's TEST_TWIN_HOST.
+    env = {name: value for name, value in os.environ.items() if name != _TWIN_HOST_ENV}
+    return env | {"MICROPYPATH": micropypath, "TZ": "UTC"}
 
 
 def wait_exit(run: TwinRun, timeout_s: float) -> int:

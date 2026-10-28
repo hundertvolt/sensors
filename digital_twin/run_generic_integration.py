@@ -1049,6 +1049,12 @@ async def _test_watchdog_fault(module: "ModuleType", kind: str, main_task: "asyn
         time.sleep_ms(_WDT_FAULT_BLOCK_MS)  # no await: the whole loop stops, as a long synchronous call on silicon stops it
 
 
+def _twin_host_field() -> str:
+    # A TEST_TWIN_HOST moves every server's wildcard off 127.0.0.1, where the host-side talkers look: named when it does.
+    host = _unix_port_udp_addr_shim.twin_host
+    return "" if host == _unix_port_udp_addr_shim._DEFAULT_TWIN_HOST else f" twin_host={host!r}"
+
+
 def _uart_links(module_file: str) -> "list[tuple[str, str]]":
     # Each wired uart_link's instance key and bus name: the plan names the pair's buses by role only, so an instance's
     # bus is the first argument of its generated construction line.
@@ -1140,7 +1146,7 @@ async def main(config: RunConfig) -> None:
     print(
         f"{_LINE_PREFIX} starting - device={config.device!r} module={config.module!r} host={config.host!r} "
         f"port={config.port!r} state={config.state!r} config_dir={config.config_dir!r} online_ntp={config.online_ntp!r} "
-        f"debug_level={config.debug_level!r} injections={injections!r} run={run!r}",
+        f"debug_level={config.debug_level!r} injections={injections!r} run={run!r}{_twin_host_field()}",
     )
 
     booted = load_module(config.module)

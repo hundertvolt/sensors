@@ -1,6 +1,6 @@
-"""Unit tests for digital_twin/run_generic_integration.py: parse_args(), the grouped config and test flags, the reset
-and shutdown lines, the shared chip lookup and fault plumbing, and one smoke boot of a generated module through the
-generic entry point.
+"""Unit tests for digital_twin/run_generic_integration.py: parse_args(), the grouped config and test flags, the
+starting, reset and shutdown lines, the shared chip lookup and fault plumbing, and one smoke boot of a generated module
+through the generic entry point.
 
 Every device's own boot is tests_scripts/test_digital_twin_generated_boot.py's; the soak check is the CI suite's
 Run 11."""
@@ -1181,6 +1181,38 @@ def test_main_builds_the_booted_module_at_the_debug_level_asked_for() -> None:
         del sys.modules["sensortask_idle"]
         _flash_stall_installed()
     assert stand_in.boot.get("debug") == 3, stand_in.boot
+
+
+def test_the_starting_line_names_a_twin_host_off_the_default_and_only_then() -> None:
+    # A TEST_TWIN_HOST moves every server's wildcard off 127.0.0.1, where the host-side talkers look: the line names it.
+    device = generated_devices()[0]
+    kept = _unix_port_udp_addr_shim.twin_host
+    said: list[str] = []
+
+    def shadow(*args: object, **_kwargs: object) -> None:
+        said.append(" ".join(str(arg) for arg in args))
+
+    runner.print = shadow  # type: ignore[attr-defined]  # a module-global shadow of the builtin
+    try:
+        for n, host in enumerate(("127.0.0.77", _unix_port_udp_addr_shim._DEFAULT_TWIN_HOST)):
+            _unix_port_udp_addr_shim.twin_host = host
+            config = runner.RunConfig(
+                "sensortask_idle",
+                f"build/generated_src/sensortask_{device}_wiring_plan.json",
+                listen=("127.0.0.1", _PORTS.next()),
+                state=StatePaths(None, None, None),
+                run=runner.RunLimits(0.0, runner._GC_THRESHOLD_DEFAULT, None, None),
+                environment=runner.RunEnvironment(_scratch.dir(f"starting_{n}"), True, runner._NO_TEST_FLAGS, None),
+            )
+            sys.modules["sensortask_idle"] = _IdleBoot(f"build/generated_src/sensortask_{device}.py")  # type: ignore[assignment]
+            run_timed(runner.main(config), timeout_s=_MAIN_RUN_BOUND_S)
+    finally:
+        del runner.print  # type: ignore[attr-defined]
+        _unix_port_udp_addr_shim.twin_host = kept
+        sys.modules.pop("sensortask_idle", None)
+        _flash_stall_installed()
+    starting = [line for line in said if " starting - " in line]
+    assert len(starting) == 2 and starting[0].endswith(" twin_host='127.0.0.77'") and " twin_host=" not in starting[1], starting
 
 
 if __name__ == "__main__":

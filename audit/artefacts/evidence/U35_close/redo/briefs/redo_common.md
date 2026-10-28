@@ -44,6 +44,10 @@ Line numbers in the recovered briefs and hand-backs refer to the lost heads: re-
   (owner, 2026-10-27). Hand back early only for a question or decision for the lead or owner, a finding that changes
   the brief's direction, or a context so large it would be summarized. Hand-back as your brief says; last line
   "nothing of mine is running".
+- U35 must end (owner, 2026-10-28): the closing ledger `S/u35r/closing_ledger.md` is binding. Close every defect of
+  your own work before you hand back, a check of yours that does not separate included. A criterion you show to be
+  unreachable goes back once, as a measured limit. A finding outside your brief is listed in the hand-back with its
+  evidence and marked (a) firmware defect, (b) defect in a U35 deliverable, or (c) anything else; you never pursue it.
 - The "17 repo-wide scans" (S/u32/briefs/common_u32.md) and S/u24/briefs/common.md are lost with the container; no copy
   survives. Run your brief's named checks, and on your final head the whole tests_scripts tier (it holds the 17 scans
   and every reader; a chosen subset missed two reds this unit). The lead's merge check runs it too (lead, 2026-10-27).

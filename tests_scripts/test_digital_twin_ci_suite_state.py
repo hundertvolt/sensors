@@ -1,10 +1,11 @@
 """Tests scripts/_digital_twin_ci_suite.py's own state handling without a live twin: each pass keeps its state under
-its logs directory and archives it before every fresh start, never deleting it, and Run 7's port-53 capability
-check reads the interpreter's file capability (CLAUDE.md's FRAM-log rule, the twin case)."""
+its logs directory and archives it before every fresh start, never deleting it (CLAUDE.md's FRAM-log rule, the twin
+case), and Run 7's port 53: the interpreter's file capability read, no caller's TEST_TWIN_HOST in its twin."""
 
 import struct
+import subprocess
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -88,3 +89,19 @@ def test_run_7_fails_at_once_without_the_capability(ci_suite: ModuleType, tmp_pa
     monkeypatch.setattr(ci_suite, "_spawn", lambda *_a: pytest.fail("Run 7 launched a twin that cannot bind port 53"))
     ci_suite._run_7_wifi_hotspot_dns(_ctx(ci_suite, tmp_path))
     assert ci_suite._FAILURES == ["Run 7: the interpreter lacks CAP_NET_BIND_SERVICE: Run 7's DNS server cannot bind port 53 (/nonexistent)"]
+
+
+def test_a_callers_twin_host_never_moves_the_twin_off_where_run_7_queries(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Run 7 queries the captive DNS at HOST, and the twin binds it at its own TEST_TWIN_HOST: a caller's must not reach it.
+    envs: list[object] = []
+
+    def popen(_cmd: "list[str]", **kw: object) -> object:
+        envs.append(kw["env"])
+        return SimpleNamespace(pid=0)
+
+    monkeypatch.setenv("TEST_TWIN_HOST", "127.0.0.77")
+    monkeypatch.setattr(subprocess, "Popen", popen)
+    run = ci_suite._spawn(_ctx(ci_suite, tmp_path / "pass"), [], tmp_path / "run.log")
+    run.log_file.close()
+    assert len(envs) == 1 and isinstance(envs[0], dict), envs
+    assert "TEST_TWIN_HOST" not in envs[0], f"the caller's TEST_TWIN_HOST={envs[0]['TEST_TWIN_HOST']!r} reached Run 7's twin: its captive DNS binds there while Run 7 queries {ci_suite.HOST}"

@@ -3,7 +3,6 @@ under the MicroPython Unix port through digital_twin/run_device_script.py, at th
 No retry and no recovery: a twin run that fails is the instrument's own failure (digital_twin/README.md)."""
 
 import json
-import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -14,7 +13,7 @@ from harness import REPO_ROOT, HardwareNotAvailableError, HardwareTestFailureErr
 
 from buildgen.twin_wiring import compute_twin_wiring
 from buildgen.validate import build_model
-from scripts._twin_process import _QSTR_MAX_BYTES, EXIT_SIMULATED_BOOTLOADER, EXIT_SIMULATED_RESET, _uninternable
+from scripts._twin_process import _QSTR_MAX_BYTES, EXIT_SIMULATED_BOOTLOADER, EXIT_SIMULATED_RESET, _uninternable, twin_env
 
 RUNNER = "digital_twin/run_device_script.py"
 PLAN_DIR = REPO_ROOT / "build" / "twin_board"
@@ -63,7 +62,7 @@ class TwinBoard:
         # A launch the interpreter would die on before the runner starts fails first; then a missing build, or one of
         # another build flavour, raises naming the probe's own fix.
         args = [str(REPO_ROOT / RUNNER), str(_plan(self.device)), str(Path(script).resolve()), "--gc-threshold", str(self.gc_threshold), "--state-dir", self._state.name]
-        env = dict(os.environ, MICROPYPATH=twin_micropypath(), TZ="UTC")
+        env = twin_env(twin_micropypath())  # never a caller's TEST_TWIN_HOST (scripts/_twin_process.py)
         uninternable = _uninternable(args, env)
         if uninternable:
             raise HardwareTestFailureError(f"twin run of {script.name} was not started: {', '.join(uninternable)} - the Unix port interns each as a qstr of at most {_QSTR_MAX_BYTES} bytes and dies before the runner starts")

@@ -94,6 +94,7 @@ _DISCONNECT_BOUND_S = 2
 _CONNECT_BOUND_S = 3
 # @tunable l1.asy_udp_socket_enter_sleep_s = 0.1
 _ENTER_SLEEP_S = 0.1
+_DEADLINE_CANCEL_ROUNDS = 10  # the rounds after a deadline passes a cancel is tried at: its whole handling
 
 
 _HOST = "127.0.0.1"
@@ -594,10 +595,11 @@ class _RecordingAsyncio:
 
 def test_ready_with_a_deadline_polls_at_the_transaction_rate() -> None:
     # A wait with a deadline sits inside an exchange (DNS, NTP): every round sleeps _POLL_WAIT_MS, never
-    # a busy-spin of ipoll(0)+sleep_ms(0) on RP2040's single core.
+    # a busy-spin of ipoll(0)+sleep_ms(0) on RP2040's single core; the last is cut to end at the deadline.
     sleeps = _record_ready_sleeps(_READY_EMPTY_TIMEOUT_MS)
     assert len(sleeps) > 0
-    assert all(ms == _POLL_WAIT_MS for ms in sleeps), sleeps
+    assert all(ms == _POLL_WAIT_MS for ms in sleeps[:-1]), sleeps
+    assert 0 < sleeps[-1] <= _POLL_WAIT_MS, sleeps
 
 
 def test_ready_without_a_deadline_polls_at_the_idle_rate() -> None:
@@ -606,6 +608,57 @@ def test_ready_without_a_deadline_polls_at_the_idle_rate() -> None:
     sleeps = _record_ready_sleeps(-1, stop_after=2)
     assert len(sleeps) == 2, sleeps
     assert all(ms == _POLL_IDLE_MS for ms in sleeps), sleeps
+
+
+def test_a_cancel_in_any_round_after_the_deadline_passes_raises_out_of_ready() -> None:
+    # A deadline wait sits inside an exchange the shutdown cancels (NTP's sync task): a cancel delivered while it runs
+    # raises, never reads as False. wait_for_ms() took one landing after its timeout for the timeout (SPECIFICATION.md F.2).
+    sock = UDPSocket(_make_addr(), mode="server")  # bound; nothing ever reaches it
+
+    async def scenario(clock: DrivenTime, rounds: int) -> str:
+        waiter = asyncio.create_task(sock.ready(select.POLLIN, timeout_ms=_READY_EMPTY_TIMEOUT_MS))
+        await clock.elapse(_READY_EMPTY_TIMEOUT_MS - 1)
+        clock.advance(1)  # the deadline passes; what it wakes runs from the next round
+        for _ in range(rounds):
+            await asyncio.sleep_ms(0)
+        if waiter.done():
+            return f"returned {await waiter} before the cancel"
+        waiter.cancel()
+        try:
+            result = await waiter
+        except asyncio.CancelledError:
+            return "cancelled"
+        return f"returned {result} after the cancel"
+
+    outcomes: list[str] = []
+    try:
+        for k in range(_DEADLINE_CANCEL_ROUNDS):
+            with DrivenTime(asy_udp_socket, sleeps=True) as clock:
+                outcomes.append(run(scenario(clock, k)))
+    finally:
+        run(sock.disconnect())
+    lost = [k for k, outcome in enumerate(outcomes) if outcome.endswith("after the cancel")]
+    assert not lost, f"a cancel in these rounds after the deadline read as no readiness: {lost} ({outcomes})"
+
+
+def test_ready_with_a_deadline_off_the_poll_rate_ends_at_the_deadline() -> None:
+    # A deadline between two poll rounds ends at itself, as the wait_for_ms() bound did, not at the next round.
+    sock = UDPSocket(_make_addr(), mode="server")  # bound; nothing ever reaches it
+
+    async def scenario(clock: DrivenTime) -> "tuple[bool, bool, object]":
+        waiter = asyncio.create_task(sock.ready(select.POLLIN, timeout_ms=_MS_CHECK_TIMEOUT_MS))
+        await clock.elapse(_MS_CHECK_TIMEOUT_MS - 1)
+        early = waiter.done()
+        await clock.elapse(1)
+        return early, waiter.done(), await waiter if waiter.done() else None
+
+    try:
+        with DrivenTime(asy_udp_socket, sleeps=True) as clock:
+            early, ended, result = run(scenario(clock))
+    finally:
+        run(sock.disconnect())
+    assert _MS_CHECK_TIMEOUT_MS % _POLL_WAIT_MS, "the deadline must fall between two poll rounds"
+    assert (early, ended, result) == (False, True, False), (early, ended, result)
 
 
 def test_a_failed_setup_backs_off_with_one_sleep_ms_of_the_shipped_value() -> None:
@@ -680,8 +733,8 @@ class _NeverReadyPoller:
 
 
 def test_a_bounded_ready_leaves_no_poll_task_behind() -> None:
-    # The deadline is asyncio.wait_for_ms() around the poll (SPECIFICATION.md F.2): on timeout it
-    # cancels the poll, so nothing keeps polling after ready() answered False.
+    # The deadline is the poll loop's own (SPECIFICATION.md F.2): the loop ends there, in ready()'s own
+    # task, so nothing keeps polling after ready() answered False.
     addr = _make_addr()
 
     async def scenario() -> "tuple[bool, int, object]":
@@ -1247,7 +1300,8 @@ def test_ready_sleeps_milliseconds_not_seconds() -> None:
     with_deadline = _record_ready_sleeps(_MS_CHECK_TIMEOUT_MS)
     elapsed = time.ticks_diff(time.ticks_ms(), t0)
     without_deadline = _record_ready_sleeps(-1, stop_after=1)
-    assert with_deadline and all(isinstance(ms, int) and ms == _POLL_WAIT_MS for ms in with_deadline), with_deadline
+    assert with_deadline and all(isinstance(ms, int) for ms in with_deadline), with_deadline
+    assert all(ms == _POLL_WAIT_MS for ms in with_deadline[:-1]) and 0 < with_deadline[-1] <= _POLL_WAIT_MS, with_deadline  # the last ends at the deadline
     assert without_deadline == [_POLL_IDLE_MS] and isinstance(without_deadline[0], int), without_deadline
     assert elapsed < _MS_CHECK_ELAPSED_MAX_MS  # generously below the 10000ms+ the old seconds-interpretation bug would take
 

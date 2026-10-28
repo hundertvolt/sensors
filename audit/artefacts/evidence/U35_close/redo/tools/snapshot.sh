@@ -8,7 +8,7 @@ X=$S/u35/lead/snapshot_stage; R=$X/redo; P=audit/artefacts/evidence/U35_close
 rm -rf "${X:?}"; mkdir -p "$R/tools"
 cp -r $S/u35r/briefs $S/u35r/handbacks_redo $S/u35r/recovered $S/u35r/q35 "$R/"
 rm -rf "$R/q35/__pycache__"
-cp $S/u35r/REDO.md $S/u35r/owner_report_items.md $S/u35r/d3r_rec2_items.md $S/CHECKLIST.md "$R/"
+cp $S/u35r/REDO.md $S/u35r/owner_report_items.md $S/u35r/d3r_rec2_items.md $S/u35r/closing_ledger.md $S/CHECKLIST.md "$R/"
 gzip -c $S/u35/lane_plan.md > "$R/lane_plan.md.gz"; gzip -c $S/u21/RUNS.md > "$R/RUNS.md.gz"
 cp $S/u35/lead/run.sh $S/u35/lead/mc_gen.sh $S/u35/lead/mc_files.sh $S/u35/lead/lint_direct.sh $S/u35/lead/mc_tier.sh \
   $S/u35/lead/snapshot.sh $S/u23/rebuild.sh "$R/tools/"

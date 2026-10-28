@@ -142,3 +142,6 @@ Append-only; each line names its source hand-back in S/u35r/handbacks_redo/ or t
 - (lead, 2026-10-27T23:16) N15's doc text, as written in S/u35r/handbacks_redo/N15.md "Doc text for D3r":
   digital_twin/README.md's shim section (two paragraphs), CLAUDE.md "Two suites that both bind real ports" (its last
   sentence replaced), SPECIFICATION.md E.1 (the third per-job resource, and the 127.0.0.1:123/:53 sentence).
+- (lead, 2026-10-28T04:18) TH1's doc text, as written in S/u35r/handbacks_redo/TH1.md: digital_twin/README.md (host-run
+  launchers drop a caller's TEST_TWIN_HOST; the start line names a moved twin_host) and CLAUDE.md's "Two suites" bullet,
+  read together with N15's text so the two land as one account.

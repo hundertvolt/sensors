@@ -25,6 +25,7 @@ from buildgen.definitions import generate_definitions
 from buildgen.generate import generate_device
 from buildgen.twin_wiring import compute_twin_wiring
 from buildgen.validate import module_int_const
+from scripts._twin_process import twin_env
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -415,9 +416,7 @@ def _twin_launch(micropython_bin: Path, generated: "GeneratedDevice", tmp_path: 
     plan = compute_twin_wiring(generated.model)
     wiring_plan_path.write_text(json.dumps(plan), encoding="utf-8")
     (tmp_path / "config").mkdir(exist_ok=True)
-    env = dict(os.environ)
-    env["MICROPYPATH"] = _twin_micropypath(root, image=image)
-    env["TZ"] = "UTC"
+    env = twin_env(_twin_micropypath(root, image=image))  # never a caller's TEST_TWIN_HOST
     # A UART pair's link on the runner's driven clock: a twin scheduler round costs about 1 ms, so a reply deadline on
     # the host's clock would judge the host's load, not the link (SPECIFICATION.md J.7; agent, 2026-10-27).
     clock = [_UART_CLOCK_FLAG] if plan.get("uart") is not None else []
@@ -538,6 +537,15 @@ def test_a_twin_that_dies_before_serving_keeps_its_output(tmp_path: Path) -> Non
     assert "planted boot crash" in output
     assert any(f.startswith("twin session aborted: RuntimeError: digital twin subprocess exited early with code 3") for f in failures), failures
     assert any(f.startswith("subprocess exited with code 3:") and "planted boot crash" in f for f in failures), failures
+
+
+def test_a_callers_twin_host_never_reaches_the_booted_twin(src_dir: Path, ext_dir: Path, fixtures_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Every boot here is reached at _HOST, and the twin binds its servers at its own TEST_TWIN_HOST (scripts/test.sh's
+    # address for each of its jobs): a caller's must not reach it.
+    monkeypatch.setenv("TEST_TWIN_HOST", "127.0.0.77")
+    generated = generate_device(fixtures_dir / _FIXTURE_TOMLS[0], src_dir, ext_dir)
+    _cmd, env = _twin_launch(Path("/nonexistent"), generated, tmp_path, 20000)
+    assert "TEST_TWIN_HOST" not in env, f"the caller's TEST_TWIN_HOST={env['TEST_TWIN_HOST']!r} reached the twin: its servers bind there while this file reaches it at {_HOST}"
 
 
 @pytest.mark.parametrize("device_toml_name", _FIXTURE_TOMLS)

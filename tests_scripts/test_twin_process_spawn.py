@@ -1,6 +1,6 @@
-"""Tests scripts/_twin_process.py's spawn() and its check, for any runner: a string the Unix port interns before the
-runner starts and cannot (an argument, the runner's directory, a MICROPYPATH entry) is refused before anything is
-created, naming it and the limit, and the limit is the pinned interpreter's own boundary."""
+"""Tests scripts/_twin_process.py's spawn() for any runner: a string the Unix port interns before the runner starts and
+cannot (an argument, the runner's directory, a MICROPYPATH entry) is refused before anything is created, naming it and
+the limit, the pinned interpreter's own boundary; a caller's TEST_TWIN_HOST never reaches the twin (twin_env())."""
 
 import os
 import subprocess
@@ -15,12 +15,15 @@ _LIMIT = twin_process._QSTR_MAX_BYTES
 _OVER = "x" * (_LIMIT + 1)
 
 
-def _spawn(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, device: str = "fixture-device", state_dir: "Path | None" = None, args: "tuple[str, ...]" = (), micropypath: str = twin_process.TWIN_MICROPYPATH) -> "list[list[str]]":
-    # One spawn() over a recording Popen stub: the commands it would have started, its log closed again.
+def _spawn(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, device: str = "fixture-device", state_dir: "Path | None" = None, args: "tuple[str, ...]" = (), micropypath: str = twin_process.TWIN_MICROPYPATH, envs: "list[object] | None" = None) -> "list[list[str]]":
+    # One spawn() over a recording Popen stub: the commands it would have started (and into envs, each one's environment),
+    # its log closed again.
     started: list[list[str]] = []
 
-    def popen(cmd: "list[str]", **_kw: object) -> object:
+    def popen(cmd: "list[str]", **kw: object) -> object:
         started.append(cmd)
+        if envs is not None:
+            envs.append(kw["env"])
         return SimpleNamespace(pid=0)
 
     monkeypatch.setattr(subprocess, "Popen", popen)
@@ -74,6 +77,17 @@ def test_a_string_at_the_limit_or_one_the_interpreter_expands_still_starts(tmp_p
     at_limit = "x" * _LIMIT
     started = _spawn(monkeypatch, tmp_path, device=at_limit, args=("--fault", at_limit), micropypath=f"{at_limit}:~/{_OVER}:src")
     assert len(started) == 1 and started[0][started[0].index("--device") + 1] == at_limit, started
+
+
+def test_a_callers_twin_host_never_reaches_the_twin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # TEST_TWIN_HOST is scripts/test.sh's address for each of its own jobs. A caller's would bind the twin's servers there,
+    # off the 127.0.0.1 where spawn()'s callers (the CI suite's Run 7, the scenario harness) query its captive DNS.
+    monkeypatch.setenv("TEST_TWIN_HOST", "127.0.0.77")
+    envs: list[object] = []
+    _spawn(monkeypatch, tmp_path, envs=envs)
+    assert len(envs) == 1 and isinstance(envs[0], dict), envs
+    assert "TEST_TWIN_HOST" not in envs[0], f"the caller's TEST_TWIN_HOST={envs[0]['TEST_TWIN_HOST']!r} reached the twin's environment"
+    assert envs[0]["MICROPYPATH"] == twin_process.TWIN_MICROPYPATH and envs[0]["TZ"] == "UTC", envs[0]
 
 
 def test_the_limit_is_the_pinned_interpreters_own(micropython_bin: Path) -> None:

@@ -486,6 +486,29 @@ def test_a_device_wiring_a_uart_link_boots_its_link_on_the_driven_clock(harness:
     assert args == ["--debug-level", str(level), "--test-kbd-traceback", "--test-uart-driven-clock", "--test-flash-stall-max"], args
 
 
+def test_a_callers_twin_host_never_moves_a_boots_twin_off_where_the_scenarios_query(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The DNS scenarios query the captive DNS at HOST, and the twin binds it at its own TEST_TWIN_HOST: a caller's must not
+    # reach it. Context.boot() through the real spawn(), only the process stubbed.
+    envs: list[object] = []
+
+    def popen(_cmd: "list[str]", **kw: object) -> object:
+        envs.append(kw["env"])
+        return SimpleNamespace(pid=0, poll=lambda: None, returncode=None)
+
+    def shutdown(run: "SimpleNamespace", _label: str) -> int:
+        run.log_file.close()
+        return 0
+
+    monkeypatch.setenv("TEST_TWIN_HOST", "127.0.0.77")
+    monkeypatch.setattr(subprocess, "Popen", popen)
+    monkeypatch.setattr(harness, "wait_until_serving", lambda *_a: None)
+    monkeypatch.setattr(harness, "shutdown", shutdown)
+    with harness.Context("fixture-device", "/nonexistent", -1, tmp_path, (), iter([20000]), "fixture").boot():
+        pass
+    assert len(envs) == 1 and isinstance(envs[0], dict), envs
+    assert "TEST_TWIN_HOST" not in envs[0], f"the caller's TEST_TWIN_HOST={envs[0]['TEST_TWIN_HOST']!r} reached the harness's twin: its captive DNS binds there while the scenarios query {harness.HOST}"
+
+
 def test_a_stored_level_is_kept_and_a_boot_not_logged_plants_nothing(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config = tmp_path / "state_01" / "config"
     config.mkdir(parents=True)

@@ -13,6 +13,7 @@ mode="server" for a bound socket answering inbound datagrams.
 import asyncio
 import select
 import socket
+import time
 
 from micropython import const
 
@@ -99,16 +100,20 @@ class UDPSocket:
             ok = False
         return ok
 
-    async def _poll(self, mask: int, wait_ms: int) -> bool:
-        # ipoll(0), then sleep_ms(wait_ms), until mask (or a real POLLERR/POLLHUP) is set; no
-        # deadline of its own - ready() bounds it with asyncio.wait_for_ms() (SPECIFICATION.md F.2).
+    async def _poll(self, mask: int, wait_ms: int, timeout_ms: int) -> bool:
+        # ipoll(0), then sleep_ms(wait_ms), until mask (or a real POLLERR/POLLHUP) is set or a timeout_ms > 0 has passed, the
+        # last sleep cut to end there. Never wait_for_ms(): it took a cancel landing after its timeout for it (SPECIFICATION.md F.2).
+        t0 = time.ticks_ms()
         while True:
             if self.poller is None:  # a concurrent disconnect() can null this mid-loop
+                return False
+            left = (timeout_ms - time.ticks_diff(time.ticks_ms(), t0)) if timeout_ms > 0 else wait_ms
+            if left <= 0:
                 return False
             for _, event in self.poller.ipoll(0):
                 if event & (mask | select.POLLERR | select.POLLHUP):
                     return True
-            await asyncio.sleep_ms(wait_ms)
+            await asyncio.sleep_ms(min(wait_ms, left))
 
     async def disconnect(self) -> bool:
         # Serialized against _connect() through the same lock - a concurrent disconnect() could
@@ -125,11 +130,7 @@ class UDPSocket:
         if not self.connected or self.poller is None:
             return False
         try:
-            if timeout_ms <= 0:
-                return await self._poll(mask, _POLL_IDLE_MS)
-            return await asyncio.wait_for_ms(self._poll(mask, _POLL_WAIT_MS), timeout_ms)
-        except asyncio.TimeoutError:
-            return False
+            return await self._poll(mask, _POLL_WAIT_MS if timeout_ms > 0 else _POLL_IDLE_MS, timeout_ms)
         except (MemoryError, OSError) as e:
             if isinstance(e, MemoryError):
                 console("UDPSocket", e)  # the class has no logger; the memory gates read this text (CLAUDE.md)

@@ -6,6 +6,7 @@ import asyncio
 import asyncio.core as _core  # type: ignore[import-not-found]  # the run queue; no stub covers it
 import time
 
+from _async_harness import cancel as _harness_cancel
 from _fast_sleep import check_sleep_ms
 from _ticks30 import TICKS_PERIOD, Ticks30Time  # every 2**30 clock here is tests/_ticks30.py's Ticks30Time
 
@@ -89,8 +90,10 @@ class _Wake:
             _core._task_queue.push(self.task)
 
     def remove(self, _task: object) -> None:
-        # The task leaves without its wake (a cancel, a close or a thrown exception): the clock lists the wake no more.
+        # The task leaves without its wake (a cancel, a close, a thrown exception or a wake-up off this queue): the clock
+        # lists the wake no more, and a step its task still takes here ends the sleep, as a run-queue sleep woken early.
         self.task = None
+        self.fired = True
         self.clock._delist(self)
 
     def throw(self, exc: BaseException, *_args: object) -> None:
@@ -226,6 +229,17 @@ class DrivenTime(Ticks30Time):
         self._driving()
         self.now += ms
         self._release_due()
+
+    async def cancel(self, task: "asyncio.Task[T]", limit_ms: int) -> None:
+        # The harness's cancel() with this clock run until the task ends: its cleanup may sleep on the clock (an I2C probe's
+        # settle in a `finally`), which a canceller driving nothing never wakes. Past limit_ms it fails, naming the time.
+        if not task.done():
+            task.cancel()
+            try:
+                await self.run_until(task.done, limit_ms)
+            except AssertionError as e:
+                raise AssertionError(f"the cancelled {task.coro} never ended - {e}") from None
+        await _harness_cancel(task)
 
     async def elapse(self, ms: int) -> None:
         # Moves the clock to each wake due within ms in order, letting what it wakes run there, then to now + ms.

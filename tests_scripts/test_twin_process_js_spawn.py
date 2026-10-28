@@ -22,9 +22,10 @@ _LIMIT = twin_process._QSTR_MAX_BYTES
 _OVER = "x" * (_LIMIT + 1)
 
 
-def _spawn(tmp_path: Path, *, device: str = "fixture-device", config_dir: str = "", root_dir: str = "repo", layout: str = "", home: bool = True) -> "tuple[dict[str, object], list[str]]":
+def _spawn(tmp_path: Path, *, device: str = "fixture-device", config_dir: str = "", root_dir: str = "repo", layout: str = "", home: bool = True, caller_env: "dict[str, str] | None" = None) -> "tuple[dict[str, object], list[str]]":
     # One spawnTwin() in a fresh Node, waited out and stopped: what it threw or how the stub exited, and the stub's log,
-    # one line per call (the probe's -c call as "probe"). root_dir places the copy; layout's entries lead its twin line.
+    # one line per call (the probe's -c call as "probe"); the twin writes its TEST_TWIN_HOST to tmp_path/twin_host.
+    # root_dir places the copy; layout's entries lead its twin line; caller_env goes over the caller's own environment.
     root = tmp_path / root_dir
     for rel in _COPIED:
         (root / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -37,12 +38,12 @@ def _spawn(tmp_path: Path, *, device: str = "fixture-device", config_dir: str = 
     log = tmp_path / "calls"
     interpreter = tmp_path / "toolchain" / "micropython" / "ports" / "unix" / "build-standard" / "micropython"
     interpreter.parent.mkdir(parents=True)
-    interpreter.write_text(f'#!/usr/bin/env bash\nif [ "${{1:-}}" = -c ]; then echo probe >>{shlex.quote(str(log))}; echo standard; exit 0; fi\necho "micropython $*" >>{shlex.quote(str(log))}\n', encoding="utf-8")
+    interpreter.write_text(f'#!/usr/bin/env bash\nif [ "${{1:-}}" = -c ]; then echo probe >>{shlex.quote(str(log))}; echo standard; exit 0; fi\necho "${{TEST_TWIN_HOST-<unset>}}" >{shlex.quote(str(tmp_path / "twin_host"))}\necho "micropython $*" >>{shlex.quote(str(log))}\n', encoding="utf-8")
     interpreter.chmod(0o755)
     runtime = tmp_path / "runtime"
     runtime.mkdir()
     env = {name: value for name, value in os.environ.items() if not name.startswith("SENSORS_PORT_LOCK") and (home or name != "HOME")}
-    env.update({"PICO_TOOLCHAIN_DIR": str(tmp_path / "toolchain"), "XDG_RUNTIME_DIR": str(runtime)})
+    env.update({"PICO_TOOLCHAIN_DIR": str(tmp_path / "toolchain"), "XDG_RUNTIME_DIR": str(runtime), **(caller_env or {})})
     twin = json.dumps({"device": device, "port": 20000, "configDir": config_dir or str(tmp_path / "config")})
     script = (
         f"import {{ spawnTwin, stopTwin }} from {json.dumps((root / _LAUNCH).as_uri())};\nlet outcome;\n"
@@ -103,6 +104,15 @@ def test_a_string_at_the_limit_or_one_the_interpreter_expands_still_starts(tmp_p
     outcome, calls = _spawn(tmp_path, config_dir=config_dir, layout=f"{at_limit}:~/{_OVER}")
     assert outcome == {"exited": 0} and len(os.fsencode(config_dir)) == _LIMIT, outcome
     assert calls[0] == "probe" and calls[1].endswith(f"--config-dir {config_dir}") and len(calls) == 2, calls
+
+
+def test_a_callers_twin_host_never_reaches_the_twin(tmp_path: Path) -> None:
+    # TEST_TWIN_HOST is scripts/test.sh's address for each of its own jobs: a caller's would bind the twin's captive DNS
+    # there, off the HOST every live test reaches the twin at and the 127.0.0.1 that port 53's lock assumes.
+    outcome, calls = _spawn(tmp_path, caller_env={"TEST_TWIN_HOST": "127.0.0.77"})
+    assert outcome == {"exited": 0} and len(calls) == 2, (outcome, calls)
+    seen = (tmp_path / "twin_host").read_text(encoding="utf-8")
+    assert seen == "<unset>\n", f"the caller's TEST_TWIN_HOST reached the twin's environment: {seen!r}"
 
 
 def test_the_launchs_limit_is_the_python_launchs_own() -> None:
