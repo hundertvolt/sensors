@@ -472,6 +472,20 @@ DONE=1
 rc=0 18:00:40
 ```
 
+### probe_timer_alarm_pool_exhaustion_20261028
+
+```
+== probe_timer_alarm_pool_exhaustion 18:00:46
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FACT constructed=16
+FACT raised=true
+FACT errno=12
+DONE
+rc=0 18:00:47
+```
+
 ### reset_bootloader_20261028
 
 ```
