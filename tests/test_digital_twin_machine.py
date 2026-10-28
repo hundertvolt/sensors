@@ -1460,12 +1460,17 @@ def test_a_timer_rearming_from_its_own_callback_runs_one_schedule() -> None:
         calls.append("first")
         t.init(period=_SHORT_PERIOD_MS, callback=lambda _t: calls.append("next"))
 
+    elapsed: list[int] = []
+
     async def scenario() -> None:
+        start = time.ticks_ms()
         timer.init(period=_SHORT_PERIOD_MS, callback=rearm)
         await asyncio.sleep_ms(_REARM_WINDOW_MS)
+        elapsed.append(time.ticks_diff(time.ticks_ms(), start))
 
     run(scenario(), _RUN_BOUND_S)
-    assert calls[:1] == ["first"] and len(calls) <= _REARM_WINDOW_MS // _SHORT_PERIOD_MS, calls
+    # One loop calls at most once per whole period that really passed: a late wake on a loaded host adds a period.
+    assert calls[:1] == ["first"] and len(calls) <= elapsed[0] // _SHORT_PERIOD_MS, (calls, elapsed)
 
 
 def test_a_soft_callback_failure_is_printed_and_the_schedule_goes_on() -> None:
