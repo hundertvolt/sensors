@@ -14,7 +14,7 @@ Each level's scope (SPECIFICATION.md E.6.1; agent, 2026-10-28):
 
 ## Matrix
 
-Built by `audit/b3/levels_walk.py` at `771786a4` (agent, 2026-10-27): 138 files, 0 named by no test at any level; rows by state: {'closed': 136, 'open': 2}.
+Built by `audit/b3/levels_walk.py` at `e61eb21f` (agent, 2026-10-27): 138 files, 0 named by no test at any level; rows by state: {'closed': 136, 'open': 2}.
 A cell names the test functions driving the file at that level (its own code, or a helper of its file that does), counted against review.md's verdict: "k/n biting" names the biting ones first; "open" means no function there is verdicted biting, fixed or justified; "- (mentioned only in …)" is a mention no test function drives (a comment, a helper's import, a name another file shares). No-change proof, checked on every run (the walk fails otherwise): each cell's files lie inside the old file-level reference cell. A "-" carries its reason (levels_data.json's dash_reasons, first match); a row is closed when every level bites or states its reason.
 
 | file | L0 | L1 | L2 | L3 | L4 | gap → action |
@@ -160,11 +160,14 @@ A cell names the test functions driving the file at that level (its own code, or
 
 ## Multi-chunk SET ladder (A.U35.22 (1))
 
-Open.
+The multi-chunk SET at each level, named by hand and joined with review.md's verdict. A.U26.87's re-home touches no `src/` file: its commit `0c0ad52c` (the U26 close, the commit that added `uart_link_echo_under_serving_load.py`) has an empty `git diff --stat 0c0ad52c^1 0c0ad52c -- src`. The second L2 test already carries a 140-byte, three-chunk SET while the graph's noise tasks run (`tests/test_digital_twin_uart_link.py:750-770`), so it owes no extension; UM4's merge is not in this base either way (agent, 2026-10-28).
 
 | level | tests | proves | state |
 |---|---|---|---|
-
+| L1 | 5/5 biting in 1 file(s): test_asy_uart_comm.py::test_a_multi_chunk_payload_arrives_byte_identical, test_asy_uart_comm.py::test_the_wire_log_of_a_multi_chunk_set_is_byte_exact, test_asy_uart_comm.py::test_chunk_counts_at_the_payload_size_boundaries … | the train's bytes, its chunk count at each payload-size boundary, and the abort and resync at every position | biting |
+| L2 | 2/2 biting in 1 file(s): test_digital_twin_uart_link.py::test_a_payload_larger_than_one_chunk_crosses_the_jumper_intact, test_digital_twin_uart_link.py::test_the_link_keeps_working_while_the_rest_of_the_graph_runs | a 140-byte SET crosses the twin jumper, alone and while the booted graph's noise tasks run | biting |
+| L3 | 3/4 biting in 3 file(s): test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper, uart_crossover_exchange.py::uart_crossover_exchange, uart_link_under_concurrent_system_load.py::uart_link_under_concurrent_system_load … | the train across the real jumper, unloaded and alternating with its GET while every other subsystem is busy (A.U26.87's load script) | open: 1 not biting; test_the_link_keeps_transferring_while_every_other_subsystem_is_busy is review.md's CRr2 row (hw_no_log, the flash tier's logs fact), so this cell waits on that lane; its device script's facts are verdicted justified |
+| L4 | 2/2 biting in 2 file(s): test_uart_link_under_api_load.py::test_a_multi_chunk_set_echoes_intact_under_serving_load, uart_link_echo_under_serving_load.py::uart_link_echo_under_serving_load | the initiator's public uart_set() echoes intact while the host drives HTTP load (A.U26.87's bench test and script) | biting |
 
 ## Single-device narrowings
 

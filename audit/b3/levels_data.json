@@ -1010,7 +1010,46 @@
    ]
   }
  },
- "ladder": [],
+ "ladder": [
+  {
+   "level": "L1",
+   "tests": [
+    "tests/test_asy_uart_comm.py::test_a_multi_chunk_payload_arrives_byte_identical",
+    "tests/test_asy_uart_comm.py::test_the_wire_log_of_a_multi_chunk_set_is_byte_exact",
+    "tests/test_asy_uart_comm.py::test_chunk_counts_at_the_payload_size_boundaries",
+    "tests/test_asy_uart_comm.py::test_a_missing_ack_at_each_train_position_aborts_and_resyncs",
+    "tests/test_asy_uart_comm.py::test_an_empty_chunk_is_legal_only_as_a_two_chunk_trains_last"
+   ],
+   "proves": "the train's bytes, its chunk count at each payload-size boundary, and the abort and resync at every position"
+  },
+  {
+   "level": "L2",
+   "tests": [
+    "tests/test_digital_twin_uart_link.py::test_a_payload_larger_than_one_chunk_crosses_the_jumper_intact",
+    "tests/test_digital_twin_uart_link.py::test_the_link_keeps_working_while_the_rest_of_the_graph_runs"
+   ],
+   "proves": "a 140-byte SET crosses the twin jumper, alone and while the booted graph's noise tasks run"
+  },
+  {
+   "level": "L3",
+   "tests": [
+    "tests_hardware/flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper",
+    "tests_hardware/flash/test_uart_crossover.py::test_the_link_keeps_transferring_while_every_other_subsystem_is_busy",
+    "tests_hardware/device_scripts/uart_crossover_exchange.py::uart_crossover_exchange",
+    "tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py::uart_link_under_concurrent_system_load"
+   ],
+   "proves": "the train across the real jumper, unloaded and alternating with its GET while every other subsystem is busy (A.U26.87's load script)",
+   "note": "test_the_link_keeps_transferring_while_every_other_subsystem_is_busy is review.md's CRr2 row (hw_no_log, the flash tier's logs fact), so this cell waits on that lane; its device script's facts are verdicted justified"
+  },
+  {
+   "level": "L4",
+   "tests": [
+    "tests_hardware/bench/test_uart_link_under_api_load.py::test_a_multi_chunk_set_echoes_intact_under_serving_load",
+    "tests_hardware/device_scripts/uart_link_echo_under_serving_load.py::uart_link_echo_under_serving_load"
+   ],
+   "proves": "the initiator's public uart_set() echoes intact while the host drives HTTP load (A.U26.87's bench test and script)"
+  }
+ ],
  "narrowings": [
   {
    "test": "the real-website checks (A.U25.48's file, since moved into the twin CI's `real_website_*` scenarios)",
@@ -1042,6 +1081,6 @@
  ],
  "functional_intro": "Derived by the walk, one row per `src/` module: its real consumers in the generated graph (the `src/` modules a generated device reaches that import it, and the generated module where that imports it directly), and the L2 functions that drive it in a generated device's graph: a function of its matrix row's L2 cell that is also in the generated module's L2 cell, else the same for its first consumer that has one (named \"through\"). The devices are those the biting ones run on: a twin CI scenario on every device wiring its drivers, a construction scenario or a `PER_DEVICE` file on every device, any other twin test on the device its file picks (SPECIFICATION.md E.2.1). A row bites when such a function is verdicted biting and the module is booted (agent, 2026-10-28).",
  "system_intro": "First one row per REST route of the generated API reference (`build/generated_src/api/<device>.json`), derived: the L2 functions whose code, or a helper of their file, names the route's method and path, and the devices they run on (as above). Then one row per top-level feature of SPECIFICATION.md A.2 and per item of A.4's \"functional behaviors confirmed intentional\" list, with its tests named by hand (`levels_data.json` `system_rows`); a module-internal item names the lowest level that proves it. Recovery paths are `conformance.md`'s rows (A.U35.52's rungs), cited there, not repeated here (agent, 2026-10-28).",
- "ladder_intro": "Open.",
+ "ladder_intro": "The multi-chunk SET at each level, named by hand and joined with review.md's verdict. A.U26.87's re-home touches no `src/` file: its commit `0c0ad52c` (the U26 close, the commit that added `uart_link_echo_under_serving_load.py`) has an empty `git diff --stat 0c0ad52c^1 0c0ad52c -- src`. The second L2 test already carries a 140-byte, three-chunk SET while the graph's noise tasks run (`tests/test_digital_twin_uart_link.py:750-770`), so it owes no extension; UM4's merge is not in this base either way (agent, 2026-10-28).",
  "narrowings_intro": "Each test that deliberately runs on one device, the device it takes, and the row whose tests cover the other devices (agent, 2026-10-28)."
 }

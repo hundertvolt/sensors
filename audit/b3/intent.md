@@ -9,7 +9,7 @@ Scope of this record (agent, 2026-10-28): each field and constructor parameter o
 
 ## Items
 
-Built by `audit/b3/levels_walk.py` at `771786a4` (agent, 2026-10-27): per module its direct and real-chain rows, then each catalog code
+Built by `audit/b3/levels_walk.py` at `e61eb21f` (agent, 2026-10-27): per module its direct and real-chain rows, then each catalog code
 it defines with the test functions naming it in a file that drives the module, joined with review.md's verdict; rows by state: {'biting': 237}.
 
 | layer | module | intent item | source | biting tests (level) | gap → action |
