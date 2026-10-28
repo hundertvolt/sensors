@@ -161,3 +161,88 @@ rc 1 (citations of then-untracked files, before `git add`), reg1 rc 1 (before th
 (the idiom red, fixed) and tier_final3 rc 1 (the two twin_record reds above); tier_final2 was killed by the restart
 (the lead wrote its done line; its partial log deleted). Raw downloads (apt and runner-images sources) deleted after use.
 nothing of mine is running
+
+## Follow-up CI1b, written by the lane (2026-10-28 00:33 UTC)
+
+Branch audit/u35-ci after 3b9b2e72, worktree S/wt-u35ci, logs S/u35/laneD/ci1/b_*. Not pushed.
+
+### Commits
+- `fdd3da68` the rule, its tests and the CI wiring (+ the new margin row, which its tag needs to be green).
+- `db5d8fd5` Part N (floor, cap, test-cap, tool.apt_step_timeout_s, ci.playwright_install_timeout_min rows) and B.10.1's
+  step 4.
+
+### The rule and its numbers
+- required = max(floor, margin x bytes still to fetch after copy-in / bound of the step that fetches them).
+  `Rule(cap_s, floor, bound_s, bound_from, margin)` in `scripts/ci_apt_cache.py`; `check --bound-s --bound-from [--margin]`.
+- Margin: new `ci.apt_mirror_rate_margin = 2.0` (the fetch fits half its bound; a larger margin costs only probe time,
+  since with no mirror fast enough the fastest measured still goes first). Floor: `ci.apt_mirror_min_bytes_per_s`
+  (1 MB/s), unchanged value, now the floor.
+- Bounds, each read from its tag's own site: firmware-build-verify's apt-packages step prints
+  `bound-s={st._APT_STEP_TIMEOUT_S}` (tool.apt_step_timeout_s, 150 s, one download attempt) and passes
+  `bound-from: tool.apt_step_timeout_s`; playwright-chromium has one bound step (the tag `ci.playwright_install_timeout_min
+  = 5` moved there) whose `min` the install's `timeout "${LIMIT_MIN}m"` reads and whose `s` (300) goes to the check.
+- Numbers: firmware 588 MB -> 2 x 588/150 = 7.84 MB/s (the 1.3 MB/s node of job 122543124264 now fails it, as it fails
+  the set); Playwright 25.9 MB -> 173 kB/s, under the floor -> 1 MB/s (unchanged behaviour for the web jobs). With
+  nothing left to fetch (the smoke job's forced check after a full hit) the floor applies.
+- Probe: budget = cap x required (the most a mirror at exactly the required rate moves inside the cap: 10 MB on the
+  floor, 78 MB for the firmware set, read from libstdc++-arm-none-eabi-newlib). The cap stays the fixed 10 s, so the
+  probe costs at most 10 s a mirror (three mirrors) whatever the set; a healthy 30 MB/s node reads the 78 MB in ~2.6 s.
+- Log: "== required rate N kB/s: M x B bytes still to fetch over the S s bound (<tag>), floor F kB/s"; verdicts
+  "fast enough" / "too slow (required N kB/s)"; with none fast enough "::warning::no mirror in ... reached N kB/s
+  (measured: <uri> <rate>, ...): the fastest measured, <uri>, goes first" (the all-refused warning lists them too).
+- Unchanged: the complete-set-only save; the drop-in finding 1 (zz-retries) still open for the lead.
+
+### Red first and plants (b_red1.log, b_oldrule.log, b_bites.log, b_bites2.log, b_wfbites2.log)
+- New tests: `test_a_medium_mirror_too_slow_for_the_set_inside_its_bound_is_dropped` (1.3 MB/s loopback, 1 MB set, 2 s
+  bound, margin 4 -> 2 MB/s: dropped, the fast one kept, the log line and the 1 MB budget pinned),
+  `test_a_set_the_medium_mirror_fits_inside_its_bound_keeps_it` (20 s bound -> floor 400 kB/s: kept; a restored 20 MB
+  archive is not counted), `test_with_every_archive_under_the_budget_the_measured_rate_decides`, and
+  `test_every_mirror_check_sizes_its_rate_on_its_own_fetching_bound` (workflow). On the old code all new script tests and
+  every check() caller were red (b_red1: 12 failed, the new signature); run behaviourally on the old rule (b_oldrule) the
+  medium test fails because the old code KEEPS the 1.3 MB/s mirror ("200000 of 200000 bytes in 0.15 s = 1313 kB/s,
+  healthy", which matches the CI probe's 1290 kB/s).
+- Script plants, each red: Q1 margin ignored (medium-dropped test), Q2 floor ignored (5 tests), Q3 budget from the floor
+  (the 1 MB budget assertion), Q4 restored bytes counted (fits test), Q5 verdict on the floor instead of the required
+  rate (first passed: reaching the budget inside the cap already implies the rate; the new rate-decides test, where the
+  archive is under the budget, made it red), Q6 warning without the measured rates. All 15 earlier plants (P1-P13, P4b)
+  re-run against the new code: all red.
+- Workflow plants, each red: W11 firmware bound-from the Playwright tag, W12 firmware bound literal, W13 Playwright
+  bound-from the firmware tag, W14 the install's own literal instead of the bound step, W15 the check ignoring its bound
+  inputs, W16 apt-packages printing another constant, W17 Playwright passing minutes as seconds; W1-W10 re-run (W3's
+  anchor moved to `${LIMIT_MIN}`): all red.
+
+### Part N
+- `ci.apt_mirror_rate_margin` new (estimated (agent, 2026-10-28), measurement owed: the install's rate against the
+  probe's on the next CI runs that fetch).
+- `ci.apt_mirror_min_bytes_per_s`: now the floor; measurement status names the 1.3 MB/s node that passed it and could
+  not fit the set.
+- `ci.apt_mirror_probe_cap_s`: the budget it sets now (cap x required), why the cap stays fixed, and the one real
+  measurement: run 40603784233 job 122543124264 (2026-10-27), the 10 MB budget in 7.75 s = 1290 kB/s against the
+  install's steady 1.3 MB/s (cmake 11.2 MB in 8.7 s, gcc 57.5 MB in 43.9 s, newlib 49.2 MB in 37.2 s): the probe reads
+  the node's real rate. Still "measurement owed" for a healthy node.
+- `tool.apt_step_timeout_s`, `ci.playwright_install_timeout_min` (same values and sites): name the rate sized on them.
+  `l0.apt_mirror_probe_test_cap_s`: covers the medium-node tests.
+- B.10.1 step 4 states the rule, its numbers and the run behind it.
+
+### Checks (final head db5d8fd5)
+- lint_direct rc 0 (ruff incl. build/generated_src, shellcheck, actionlint, zizmor --offline: 0 findings, the base's 15
+  suppressed); shellcheck on the three actions' run blocks clean; mypy main 274, host 314, twin 57: no issues.
+- raising_walk, e51_sweep, review_rows --check: rc 0 (8614 rows).
+- test_ci_apt_cache (19), test_ci_workflow, every @tunable reader named before, comment cap, citations, decision
+  vocabulary, retry counts, host CLI idiom: 803 passed (b_cA), 699 (b_cB).
+- Whole tests_scripts tier on db5d8fd5 (b_tier.log, pinned to CPUs 0-2): 7069 passed, 9 skipped, 2 failed, zero
+  MemoryError / "memory allocation failed": the same two test_twin_record reds as on 3b9b2e72, their inputs still equal
+  to 4adf28a6's (`git diff 4adf28a6 HEAD -- tests_hardware digital_twin scripts/record_twin_instrument_runs.py
+  tests_scripts/test_twin_record.py` empty), so not this lane's.
+- Times: test_ci_apt_cache.py 19 tests in 6.5-6.8 s (was 16 in 5.8 s; the three new tests add 0.5 s each at most).
+
+### Only a real CI run can confirm
+- The firmware job's log line "required rate 7840 kB/s: 2 x 587835714 bytes ... over the 150 s bound
+  (tool.apt_step_timeout_s)" and, on a medium node, the drop of azure with the fallback's measured rate; whether the https
+  archive.ubuntu.com mirror moves the 78 MB budget at 7.84 MB/s from Azure (if not, the fastest goes first with the
+  warning, and the 588 MB may still not fit: that would be a bound question, not the check's).
+
+State: nothing uncommitted in S/wt-u35ci; every run through S/u35/laneD/ci1/run.sh with RUNS.md lines, all exited
+(b_red1 rc 1 and b_oldrule's two reds are the red-first evidence; b_wf1 rc 1 was the margin tag before its row; b_tier
+rc 1 the two twin_record reds).
+nothing of mine is running

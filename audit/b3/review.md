@@ -4,14 +4,14 @@ Requirement: every test in `tests/`, `tests_scripts/`, `tests_js/` and `tests_ha
 
 ## Counts
 
-Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_verdicts.json`: 8622 rows, 353 flagged. A flag is a candidate; the verdict is the reviewer's.
+Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_verdicts.json`: 8626 rows, 353 flagged. A flag is a candidate; the verdict is the reviewer's.
 
 | level | rows | flagged |
 |---|---|---|
 | bench (hardware) | 121 | 22 |
 | device script | 91 | 0 |
 | flash (hardware) | 89 | 65 |
-| host (pytest) | 2982 | 70 |
+| host (pytest) | 2986 | 70 |
 | manual (hardware) | 21 | 2 |
 | twin (MicroPython) | 690 | 38 |
 | twin scenario | 176 | 10 |
@@ -23,7 +23,7 @@ Rendered by `audit/sweeps/review_rows.py` from `redflags.py`'s scan and `review_
 | CRr2 | 63 |
 | fixed | 67 |
 | justified | 129 |
-| biting | 8363 |
+| biting | 8367 |
 
 | red flag | rows | verdicts |
 |---|---|---|
@@ -6220,19 +6220,22 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests_scripts/test_ceiling_probe.py:196 | test_a_held_connection_the_server_closes_mid_walk_voids_the_count | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_ceiling_probe.py:203 | test_a_refusal_by_rst_is_read_as_the_wall | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_ceiling_probe.py:209 | test_the_drain_wait_reads_an_rst_refusal_as_not_yet | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_ci_apt_cache.py:135 | test_a_slow_mirror_apt_tries_first_is_dropped_and_the_fast_one_kept | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_ci_apt_cache.py:146 | test_a_healthy_first_mirror_leaves_the_list_as_it_is | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_ci_apt_cache.py:153 | test_a_redirect_is_followed_and_an_http_error_is_not_healthy | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_ci_apt_cache.py:170 | test_a_list_in_an_unknown_form_is_left_unchanged_with_a_warning | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_ci_apt_cache.py:178 | test_the_list_is_never_emptied | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_ci_apt_cache.py:198 | test_a_full_cache_hit_skips_the_check_unless_forced | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_ci_apt_cache.py:214 | test_a_probe_never_outlasts_its_cap | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_ci_apt_cache.py:241 | test_the_key_follows_the_exact_archives_and_not_their_order | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_ci_apt_cache.py:255 | test_a_line_without_sha256_is_never_cached_and_a_foreign_line_is_named | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_ci_apt_cache.py:270 | test_a_cached_archive_reaches_apt_only_with_the_index_size_and_sha256 | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_ci_apt_cache.py:284 | test_copy_out_takes_what_apt_fetched_and_drops_what_the_set_no_longer_holds | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_ci_apt_cache.py:300 | test_playwrights_dry_run_names_its_packages | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_ci_apt_cache.py:319 | test_the_commands_chain_as_the_ci_steps_run_them | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_ci_apt_cache.py:148 | test_a_medium_mirror_too_slow_for_the_set_inside_its_bound_is_dropped | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_ci_apt_cache.py:161 | test_with_every_archive_under_the_budget_the_measured_rate_decides | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_ci_apt_cache.py:171 | test_a_set_the_medium_mirror_fits_inside_its_bound_keeps_it | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_ci_apt_cache.py:183 | test_a_slow_mirror_apt_tries_first_is_dropped_and_the_fast_one_kept | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_ci_apt_cache.py:194 | test_a_healthy_first_mirror_leaves_the_list_as_it_is | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_ci_apt_cache.py:201 | test_a_redirect_is_followed_and_an_http_error_is_not_healthy | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_ci_apt_cache.py:218 | test_a_list_in_an_unknown_form_is_left_unchanged_with_a_warning | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_ci_apt_cache.py:226 | test_the_list_is_never_emptied | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_ci_apt_cache.py:248 | test_a_full_cache_hit_skips_the_check_unless_forced | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_ci_apt_cache.py:264 | test_a_probe_never_outlasts_its_cap | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_ci_apt_cache.py:291 | test_the_key_follows_the_exact_archives_and_not_their_order | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_ci_apt_cache.py:305 | test_a_line_without_sha256_is_never_cached_and_a_foreign_line_is_named | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_ci_apt_cache.py:320 | test_a_cached_archive_reaches_apt_only_with_the_index_size_and_sha256 | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_ci_apt_cache.py:334 | test_copy_out_takes_what_apt_fetched_and_drops_what_the_set_no_longer_holds | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_ci_apt_cache.py:350 | test_playwrights_dry_run_names_its_packages | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_ci_apt_cache.py:369 | test_the_commands_chain_as_the_ci_steps_run_them | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_ci_workflow.py:123 | test_every_needs_edge_is_read_ungated_or_stated_success_gated | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_ci_workflow.py:137 | test_the_order_only_jobs_carry_not_cancelled_and_the_twin_e2e_stays_gated | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_ci_workflow.py:146 | test_the_web_filter_lists_every_input_and_compares_against_the_last_green_commit | host (pytest) | biting | — | biting as is |
@@ -6250,10 +6253,11 @@ Every `ns_*` row, and every row whose reason classes it (a) a normal situation t
 | tests_scripts/test_ci_workflow.py:275 | test_every_script_a_run_calls_as_a_command_is_executable_in_git | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_ci_workflow.py:290 | test_every_job_budget_is_tagged | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_ci_workflow.py:299 | test_every_playwright_install_is_bounded_and_retried_by_apt | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_ci_workflow.py:320 | test_every_playwright_cache_keys_on_the_runner_identity_the_toolchain_action_computes | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_ci_workflow.py:344 | test_the_apt_cache_runs_around_every_apt_install | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_ci_workflow.py:376 | test_no_apt_cache_step_can_fail_a_job | host (pytest) | biting | — | biting as is |
-| tests_scripts/test_ci_workflow.py:385 | test_every_cache_action_is_one_tag | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_ci_workflow.py:322 | test_every_playwright_cache_keys_on_the_runner_identity_the_toolchain_action_computes | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_ci_workflow.py:346 | test_the_apt_cache_runs_around_every_apt_install | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_ci_workflow.py:378 | test_every_mirror_check_sizes_its_rate_on_its_own_fetching_bound | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_ci_workflow.py:402 | test_no_apt_cache_step_can_fail_a_job | host (pytest) | biting | — | biting as is |
+| tests_scripts/test_ci_workflow.py:411 | test_every_cache_action_is_one_tag | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_citations.py:249 | test_every_citation_resolves_or_is_allow_listed | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_citations.py:254 | test_the_allowlist_only_shrinks | host (pytest) | biting | — | biting as is |
 | tests_scripts/test_citations.py:272 | test_each_kind_of_miss_is_caught | host (pytest) | biting | — | biting as is |

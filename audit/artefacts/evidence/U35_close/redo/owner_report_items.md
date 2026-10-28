@@ -210,3 +210,13 @@ source.
   (1.3 MB/s) against its fixed 1 MB/s threshold, and the 463 MB compiler package cannot arrive inside a 150 s attempt
   at that rate. The threshold was the lead's estimate in the brief; it is now being derived from the bytes to fetch
   and the step's own time bound. PR comment posted with the cause.
+- Possible product defect found by UM4 (lead, 00:40): MicroPython's wait_for()/wait_for_ms() turn a cancel that lands
+  in a short window (after the timeout fired, before the inner task ended) into a TimeoutError. A product loop that
+  catches that TimeoutError and goes on cannot be cancelled: the supervisor's or the shutdown's cancel is lost and the
+  awaiting side hangs. One loop has this shape (the NeoPixel overlay loop); a sweep of every such site in the firmware,
+  each with a test that fails first and a small local fix, is the next lane. It may also explain the hung cleanup
+  cancel being root-caused separately.
+- UM4 process notes: four reds its own files carried were caught only by the merged head's whole tier (it had run
+  focused checks before the merge), all fixed; one edit by heredoc and one by cp before it switched to the edit tools.
+- Lead deviation (00:47): six lead-log entries (LEAD NOTES 336-341) were timestamped by estimate instead of from
+  `date -u`, one of them ahead of the real time; corrected in a following entry, content unchanged.
