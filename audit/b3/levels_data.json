@@ -7,5 +7,622 @@
   "asy_base_classes.py E RECOVERY_READ_RAISED": "closed (OF-245): planted `errno=_ERR_RECOVERY_READ_RAISED` -> `errno=_ERR_CALLBACK` at src/asy_base_classes.py:673 (its log site) fails tests/test_asy_base_classes.py::test_a_raising_recovery_read_back_is_logged_as_recovery_read_raised at gc -1 and 32768, zero memory markers (agent, 2026-10-27)",
   "asy_base_classes.py E RECOVERY_WRITE_RAISED": "closed (OF-245): planted `errno=_ERR_RECOVERY_WRITE_RAISED` -> `errno=_ERR_CALLBACK` at src/asy_base_classes.py:688 (its log site) fails tests/test_asy_base_classes.py::test_a_raising_recovery_write_is_logged_as_recovery_write_raised and tests/test_asy_base_classes.py::test_set_dict_cfg_recover_failed_push_correction_write_exception_is_caught at gc -1 and 32768, zero memory markers (agent, 2026-10-27)",
   "asy_uart_comm.py E UART_WRONG_KIND": "closed (OF-245): planted `_validate()`'s `return _ERR_UART_WRONG_KIND` -> `return _ERR_UART_FRAME_INVALID` at src/asy_uart_comm.py:909 (the code the listener's fault logs, :574) fails tests/test_asy_uart_comm.py::test_an_ack_arriving_at_a_listener_is_logged_as_the_wrong_kind and ::test_an_undefined_command_is_distinguished_from_a_valid_but_unexpected_one at gc -1 and 32768, zero memory markers (agent, 2026-10-27)"
- }
+ },
+ "schema_plants": {
+  "int_min": {
+   "site": "src/asy_config_manager.py:179 `val_min <= value` -> `val_min < value` (checked_int)",
+   "classes": [
+    "int:the minimum"
+   ],
+   "rows": {
+    "bmp3xx": [
+     "SampleInterval: the minimum"
+    ],
+    "isl29125": [
+     "IRCompAdjust: the minimum",
+     "SampleInterval: the minimum"
+    ],
+    "scd30": [
+     "Altitude: the minimum",
+     "AmbPres: the minimum",
+     "FRCWindow: the minimum",
+     "ForceCalRef: the minimum",
+     "MeasInterval: the minimum"
+    ]
+   }
+  },
+  "int_max": {
+   "site": "src/asy_config_manager.py:179 `value <= val_max` -> `value < val_max` (checked_int)",
+   "classes": [
+    "int:the maximum"
+   ],
+   "rows": {
+    "bmp3xx": [
+     "SampleInterval: the maximum"
+    ],
+    "isl29125": [
+     "IRCompAdjust: the maximum",
+     "SampleInterval: the maximum"
+    ],
+    "scd30": [
+     "Altitude: the maximum",
+     "AmbPres: the maximum",
+     "FRCWindow: the maximum",
+     "ForceCalRef: the maximum",
+     "MeasInterval: the maximum"
+    ],
+    "sgp40": [
+     "BackupMaxAge: the maximum",
+     "BackupPeriod: the maximum",
+     "WaitTimeNTP: the maximum"
+    ]
+   }
+  },
+  "float_min": {
+   "site": "src/asy_config_manager.py:165 `val_min <= value` -> `val_min < value` (checked_float)",
+   "classes": [
+    "float:the minimum"
+   ],
+   "rows": {
+    "bmp3xx": [
+     "MeanAtmTemp: the minimum",
+     "PresOffset: the minimum",
+     "SeaLevelOffset: the minimum",
+     "TempOffset: the minimum"
+    ],
+    "isl29125": [
+     "AutoRangeDwell: the minimum",
+     "AutoRangeThresh: the minimum",
+     "FiltCoeff: the minimum",
+     "GainRatio: the minimum"
+    ],
+    "scd30": [
+     "FRCNoise: the minimum",
+     "FRCRate: the minimum",
+     "TempOffset: the minimum"
+    ],
+    "sgp40": [
+     "Hum: the minimum",
+     "Temp: the minimum"
+    ]
+   }
+  },
+  "float_max": {
+   "site": "src/asy_config_manager.py:165 `value <= val_max` -> `value < val_max` (checked_float)",
+   "classes": [
+    "float:the maximum"
+   ],
+   "rows": {
+    "bmp3xx": [
+     "MeanAtmTemp: the maximum",
+     "PresOffset: the maximum",
+     "SeaLevelOffset: the maximum",
+     "TempOffset: the maximum"
+    ],
+    "isl29125": [
+     "AutoRangeDwell: the maximum",
+     "AutoRangeThresh: the maximum",
+     "FiltCoeff: the maximum",
+     "GainRatio: the maximum"
+    ],
+    "scd30": [
+     "FRCNoise: the maximum",
+     "FRCRate: the maximum",
+     "TempOffset: the maximum"
+    ],
+    "sgp40": [
+     "Hum: the maximum",
+     "Temp: the maximum"
+    ]
+   }
+  },
+  "int_range_removed": {
+   "site": "src/asy_config_manager.py:179 checked_int's range check -> `True`",
+   "classes": [
+    "int:below the minimum",
+    "int:above the maximum"
+   ],
+   "rows": {
+    "bmp3xx": [
+     "SampleInterval: above the maximum",
+     "SampleInterval: below the minimum"
+    ],
+    "isl29125": [
+     "IRCompAdjust: above the maximum",
+     "IRCompAdjust: below the minimum",
+     "SampleInterval: above the maximum",
+     "SampleInterval: below the minimum"
+    ],
+    "scd30": [
+     "Altitude: above the maximum",
+     "Altitude: below the minimum",
+     "AmbPres: above the maximum",
+     "AmbPres: below the minimum",
+     "FRCWindow: above the maximum",
+     "FRCWindow: below the minimum",
+     "ForceCalRef: above the maximum",
+     "ForceCalRef: below the minimum",
+     "MeasInterval: above the maximum",
+     "MeasInterval: below the minimum"
+    ],
+    "sgp40": [
+     "BackupMaxAge: above the maximum",
+     "BackupMaxAge: below the minimum",
+     "BackupPeriod: above the maximum",
+     "BackupPeriod: below the minimum",
+     "WaitTimeNTP: above the maximum",
+     "WaitTimeNTP: below the minimum"
+    ]
+   }
+  },
+  "float_range_removed": {
+   "site": "src/asy_config_manager.py:165 checked_float's range check -> `True`",
+   "classes": [
+    "float:below the minimum",
+    "float:above the maximum",
+    "float:NaN",
+    "float:+inf",
+    "float:-inf"
+   ],
+   "rows": {
+    "bmp3xx": [
+     "MeanAtmTemp: +inf",
+     "MeanAtmTemp: -inf",
+     "MeanAtmTemp: NaN",
+     "MeanAtmTemp: above the maximum",
+     "MeanAtmTemp: below the minimum",
+     "PresOffset: +inf",
+     "PresOffset: -inf",
+     "PresOffset: NaN",
+     "PresOffset: above the maximum",
+     "PresOffset: below the minimum",
+     "SeaLevelOffset: +inf",
+     "SeaLevelOffset: -inf",
+     "SeaLevelOffset: NaN",
+     "SeaLevelOffset: above the maximum",
+     "SeaLevelOffset: below the minimum",
+     "TempOffset: +inf",
+     "TempOffset: -inf",
+     "TempOffset: NaN",
+     "TempOffset: above the maximum",
+     "TempOffset: below the minimum"
+    ],
+    "isl29125": [
+     "AutoRangeDwell: +inf",
+     "AutoRangeDwell: -inf",
+     "AutoRangeDwell: NaN",
+     "AutoRangeDwell: above the maximum",
+     "AutoRangeDwell: below the minimum",
+     "AutoRangeThresh: +inf",
+     "AutoRangeThresh: -inf",
+     "AutoRangeThresh: NaN",
+     "AutoRangeThresh: above the maximum",
+     "AutoRangeThresh: below the minimum",
+     "FiltCoeff: +inf",
+     "FiltCoeff: -inf",
+     "FiltCoeff: NaN",
+     "FiltCoeff: above the maximum",
+     "FiltCoeff: below the minimum",
+     "GainRatio: +inf",
+     "GainRatio: -inf",
+     "GainRatio: NaN",
+     "GainRatio: above the maximum",
+     "GainRatio: below the minimum"
+    ],
+    "scd30": [
+     "FRCNoise: +inf",
+     "FRCNoise: -inf",
+     "FRCNoise: NaN",
+     "FRCNoise: above the maximum",
+     "FRCNoise: below the minimum",
+     "FRCRate: +inf",
+     "FRCRate: -inf",
+     "FRCRate: NaN",
+     "FRCRate: above the maximum",
+     "FRCRate: below the minimum",
+     "TempOffset: +inf",
+     "TempOffset: -inf",
+     "TempOffset: NaN",
+     "TempOffset: above the maximum",
+     "TempOffset: below the minimum"
+    ],
+    "sgp40": [
+     "Hum: +inf",
+     "Hum: -inf",
+     "Hum: NaN",
+     "Hum: above the maximum",
+     "Hum: below the minimum",
+     "Temp: +inf",
+     "Temp: -inf",
+     "Temp: NaN",
+     "Temp: above the maximum",
+     "Temp: below the minimum"
+    ]
+   }
+  },
+  "set_membership_removed": {
+   "site": "src/asy_config_manager.py:118 a set member's bypass -> `if False:`",
+   "classes": [
+    "set:the set's smallest",
+    "set:the set's largest"
+   ],
+   "rows": {
+    "bmp3xx": [
+     "FiltCoeff: the set's largest",
+     "FiltCoeff: the set's smallest",
+     "PresOvers: the set's largest",
+     "PresOvers: the set's smallest",
+     "TempOvers: the set's largest",
+     "TempOvers: the set's smallest"
+    ],
+    "isl29125": [
+     "IRCompOffset: the set's largest",
+     "IRCompOffset: the set's smallest",
+     "Range: the set's largest",
+     "Range: the set's smallest",
+     "Resolution: the set's largest",
+     "Resolution: the set's smallest"
+    ]
+   }
+  },
+  "set_membership_ignored": {
+   "site": "src/asy_config_manager.py:118 `check_val in val_special` dropped (every value a member)",
+   "classes": [
+    "set:below the set's smallest",
+    "set:above the set's largest",
+    "set:a non-member inside the set's span"
+   ],
+   "rows": {
+    "bmp3xx": [
+     "FiltCoeff: a non-member inside the set's span",
+     "FiltCoeff: above the set's largest",
+     "FiltCoeff: below the set's smallest",
+     "PresOvers: a non-member inside the set's span",
+     "PresOvers: above the set's largest",
+     "PresOvers: below the set's smallest",
+     "TempOvers: a non-member inside the set's span",
+     "TempOvers: above the set's largest",
+     "TempOvers: below the set's smallest"
+    ],
+    "isl29125": [
+     "IRCompOffset: above the set's largest",
+     "IRCompOffset: below the set's smallest",
+     "Range: a non-member inside the set's span",
+     "Range: above the set's largest",
+     "Range: below the set's smallest",
+     "Resolution: a non-member inside the set's span",
+     "Resolution: above the set's largest",
+     "Resolution: below the set's smallest"
+    ]
+   }
+  },
+  "special_scalar_removed": {
+   "site": "src/asy_config_manager.py:123 the scalar special's bypass -> `if False:`",
+   "classes": [
+    "int:the special value",
+    "float:the special value"
+   ],
+   "rows": {
+    "scd30": [
+     "AmbPres: the special value"
+    ]
+   }
+  },
+  "min_and_special": {
+   "site": "src/asy_config_manager.py:179 and :123 together (the minimum that is also the special value)",
+   "classes": [
+    "int:the minimum",
+    "int:the special value"
+   ],
+   "rows": {
+    "sgp40": [
+     "BackupMaxAge: the minimum",
+     "BackupMaxAge: the special value",
+     "BackupPeriod: the minimum",
+     "BackupPeriod: the special value",
+     "WaitTimeNTP: the minimum",
+     "WaitTimeNTP: the special value"
+    ]
+   }
+  },
+  "bool_type_removed": {
+   "site": "src/asy_config_manager.py:310 `type(check_val) is bool` dropped",
+   "classes": [
+    "bool:the int 1",
+    "bool:None"
+   ],
+   "rows": {
+    "isl29125": [
+     "Calibrate: None",
+     "Calibrate: the int 1",
+     "RangeAuto: None",
+     "RangeAuto: the int 1"
+    ],
+    "scd30": [
+     "ContMeas: None",
+     "ContMeas: the int 1",
+     "SelfCal: None",
+     "SelfCal: the int 1"
+    ],
+    "sgp40": [
+     "ResetVOC: None",
+     "ResetVOC: the int 1"
+    ]
+   }
+  },
+  "bool_branch_refuses": {
+   "site": "src/asy_config_manager.py:310 the bool branch refuses every value",
+   "classes": [
+    "bool:True",
+    "bool:False"
+   ],
+   "rows": {
+    "isl29125": [
+     "Calibrate: False",
+     "Calibrate: True",
+     "RangeAuto: False",
+     "RangeAuto: True"
+    ],
+    "scd30": [
+     "ContMeas: False",
+     "ContMeas: True",
+     "SelfCal: False",
+     "SelfCal: True"
+    ],
+    "sgp40": [
+     "ResetVOC: False",
+     "ResetVOC: True"
+    ]
+   }
+  },
+  "none_admitted": {
+   "site": "src/asy_config_manager.py:299 a None input answered as accepted",
+   "classes": [
+    "int:None",
+    "float:None",
+    "set:None"
+   ],
+   "rows": {
+    "bmp3xx": [
+     "FiltCoeff: None",
+     "MeanAtmTemp: None",
+     "PresOffset: None",
+     "PresOvers: None",
+     "SampleInterval: None",
+     "SeaLevelOffset: None",
+     "TempOffset: None",
+     "TempOvers: None"
+    ],
+    "isl29125": [
+     "AutoRangeDwell: None",
+     "AutoRangeThresh: None",
+     "FiltCoeff: None",
+     "GainRatio: None",
+     "IRCompAdjust: None",
+     "IRCompOffset: None",
+     "Range: None",
+     "Resolution: None",
+     "SampleInterval: None"
+    ],
+    "scd30": [
+     "Altitude: None",
+     "AmbPres: None",
+     "FRCNoise: None",
+     "FRCRate: None",
+     "FRCWindow: None",
+     "ForceCalRef: None",
+     "MeasInterval: None",
+     "TempOffset: None"
+    ],
+    "sgp40": [
+     "BackupMaxAge: None",
+     "BackupPeriod: None",
+     "WaitTimeNTP: None"
+    ]
+   }
+  },
+  "sgp_comp_t_removed": {
+   "site": "src/asy_sgp40_driver.py:424 `checked_float(temp_val, _COMP_T_FIELD)` -> `temp_val`",
+   "classes": [
+    "float:below the minimum",
+    "float:above the maximum",
+    "float:NaN",
+    "float:+inf",
+    "float:-inf"
+   ],
+   "rows": {
+    "sgp40": [
+     "Temp: +inf",
+     "Temp: -inf",
+     "Temp: NaN",
+     "Temp: above the maximum",
+     "Temp: below the minimum"
+    ]
+   }
+  },
+  "sgp_comp_h_removed": {
+   "site": "src/asy_sgp40_driver.py:425 `checked_float(hum_val, _COMP_RH_FIELD)` -> `hum_val`",
+   "classes": [
+    "float:below the minimum",
+    "float:above the maximum",
+    "float:NaN",
+    "float:+inf",
+    "float:-inf"
+   ],
+   "rows": {
+    "sgp40": [
+     "Hum: +inf",
+     "Hum: -inf",
+     "Hum: NaN",
+     "Hum: above the maximum",
+     "Hum: below the minimum"
+    ]
+   }
+  },
+  "sgp_comp_none_skip_removed": {
+   "site": "src/asy_sgp40_driver.py:413 the unavailable-sample skip -> `if False:`",
+   "classes": [
+    "float:None"
+   ],
+   "rows": {
+    "sgp40": [
+     "Hum: None",
+     "Temp: None"
+    ]
+   }
+  },
+  "scd_contmeas_removed": {
+   "site": "src/asy_scd30_driver.py:308 ContMeas's type_or_range_error() -> `False, cont_meas`",
+   "classes": [
+    "bool:the int 1",
+    "bool:None"
+   ],
+   "rows": {
+    "scd30": [
+     "ContMeas: None",
+     "ContMeas: the int 1"
+    ]
+   }
+  },
+  "bmp_bound_moved": {
+   "site": "src/asy_bmp3xx_driver.py:102 `_MAX_TRIGGER_S` 3600 -> 3599 (the runtime schema; the test reads the declared one)",
+   "classes": [
+    "int:the maximum"
+   ],
+   "rows": {
+    "bmp3xx": [
+     "SampleInterval: the maximum"
+    ]
+   }
+  },
+  "scd_bound_moved": {
+   "site": "src/asy_scd30_driver.py:115 MeasInterval's minimum 2 -> 3",
+   "classes": [
+    "int:the minimum"
+   ],
+   "rows": {
+    "scd30": [
+     "MeasInterval: the minimum"
+    ]
+   }
+  },
+  "sgp_bound_moved": {
+   "site": "src/asy_sgp40_driver.py:100 BackupPeriod's maximum 1440 -> 1439",
+   "classes": [
+    "int:the maximum"
+   ],
+   "rows": {
+    "sgp40": [
+     "BackupPeriod: the maximum"
+    ]
+   }
+  },
+  "isl_bound_moved": {
+   "site": "src/asy_isl29125_driver.py:157 IRCompAdjust's minimum 0 -> 1",
+   "classes": [
+    "int:the minimum"
+   ],
+   "rows": {
+    "isl29125": [
+     "IRCompAdjust: the minimum"
+    ]
+   }
+  }
+ },
+ "schema_tests": {
+  "bmp3xx": {
+   "put": "tests/test_asy_bmp3xx_driver.py::test_a_put_takes_each_declared_field_inside_its_domain_and_refuses_it_outside"
+  },
+  "scd30": {
+   "put": "tests/test_asy_scd30_driver.py::test_a_put_takes_each_declared_field_inside_its_domain_and_refuses_it_outside"
+  },
+  "sgp40": {
+   "put": "tests/test_asy_sgp40_driver.py::test_a_put_takes_each_declared_field_inside_its_domain_and_refuses_it_outside",
+   "comp": "tests/test_asy_sgp40_driver.py::test_a_compensation_sample_inside_its_declared_domain_is_measured_and_one_outside_is_not",
+   "comp_fields": [
+    "Temp",
+    "Hum"
+   ]
+  },
+  "isl29125": {
+   "put": "tests/test_asy_isl29125_driver.py::test_a_put_takes_each_declared_field_inside_its_domain_and_refuses_it_outside"
+  }
+ },
+ "schema_intro": "Derived by `audit/b3/levels_walk.py` from the four sensor drivers' declared schemas, read by `tests/_schema_cases.py`'s `declared_fields()` and `domain_cases()` (every `_VAL_*` schema and module-level FieldSchema: each bound from below, at it and from above, a set's edges and first gap, both bools and a non-bool, None, and NaN/+inf/-inf for a float field), then each `# @limits` tag of their constructors. A schema row maps to its driver's L1 sweep, which drives every case through the PUT path (`_set_dict_cfg()`, ContMeas/ResetVOC/Calibrate included) or, for SGP40's compensation inputs, the read path, and names every case that answered against its declared domain. A row bites when that sweep is verdicted biting and a plant of the row's own check class (`levels_data.json` `schema_plants`: one check broken in a private copy first on MICROPYPATH) made it report that row at gc -1 and at 32768, zero memory markers (agent, 2026-10-28). The rows of the `# @limits` tags are L0's, where buildgen's validation is the claim. Combinations of fields are CM3's (the config-value dimensions), not this section's.",
+ "limits_tests": {
+  "bmp3xx.address": {
+   "refused": [
+    "tests_scripts/test_buildgen_validate.py::test_bmp3xx_address_outside_legal_set_rejected"
+   ],
+   "taken": [
+    "tests_scripts/test_buildgen_validate.py::test_bmp3xx_address_in_legal_set_is_fine"
+   ],
+   "omitted": [
+    "tests_scripts/test_buildgen_limits.py::test_every_limited_field_defaults_inside_its_own_domain"
+   ],
+   "notes": {
+    "refused": "sent 0x50, 0 and 0x78: the check is set membership, so a non-member below the set stands for 0x75",
+    "omitted": "new; red first in a private tree copy: BMP3XX_Reader's `trigger_s` default 1 -> 0, and its `address` default 0x77 -> 0x78, each fail it (agent, 2026-10-28)"
+   }
+  },
+  "bmp3xx.trigger_s": {
+   "refused": [
+    "tests_scripts/test_buildgen_validate.py::test_bmp3xx_trigger_s_outside_legal_range_rejected"
+   ],
+   "taken": [
+    "tests_scripts/test_buildgen_validate.py::test_bmp3xx_trigger_s_in_legal_range_is_fine"
+   ],
+   "omitted": [
+    "tests_scripts/test_buildgen_limits.py::test_every_limited_field_defaults_inside_its_own_domain"
+   ],
+   "notes": {
+    "refused": "sent 0, 3601 and -1",
+    "taken": "sent 1, 3600 and 60",
+    "omitted": "new; red first in a private tree copy: BMP3XX_Reader's `trigger_s` default 1 -> 0, and its `address` default 0x77 -> 0x78, each fail it (agent, 2026-10-28)"
+   }
+  },
+  "scd30.trigger_s": {
+   "refused": [
+    "tests_scripts/test_buildgen_validate.py::test_scd30_trigger_s_outside_legal_range_rejected"
+   ],
+   "taken": [
+    "tests_scripts/test_buildgen_validate.py::test_scd30_trigger_s_in_legal_range_is_fine"
+   ],
+   "omitted": [
+    "tests_scripts/test_buildgen_limits.py::test_every_limited_field_defaults_inside_its_own_domain"
+   ],
+   "notes": {
+    "refused": "sent 0, 1801 and -1",
+    "taken": "sent 1, 1800 and 3",
+    "omitted": "the same test reads SCD30_Reader's default 3"
+   }
+  },
+  "isl29125.trigger_s": {
+   "refused": [
+    "tests_scripts/test_buildgen_validate.py::test_isl29125_trigger_s_outside_legal_range_rejected"
+   ],
+   "taken": [
+    "tests_scripts/test_buildgen_validate.py::test_isl29125_trigger_s_in_legal_range_is_fine"
+   ],
+   "omitted": [
+    "tests_scripts/test_buildgen_limits.py::test_every_limited_field_defaults_inside_its_own_domain"
+   ],
+   "notes": {
+    "refused": "new (sent 0, 3601 and -1); red first in a private tree copy: the tag removed builds all three (agent, 2026-10-28)",
+    "taken": "new (sent 1, 3600 and 60); red first: the tag moved to 1..3599 refuses 3600, to 2..3600 refuses 1 (agent, 2026-10-28)",
+    "omitted": "the same test reads ISL29125_Reader's default 1"
+   }
+  }
+ },
+ "route_tests": {},
+ "system_rows": [],
+ "picking_files": [],
+ "dash_reasons": [],
+ "curated_cells": {},
+ "ladder": [],
+ "narrowings": [],
+ "functional_intro": "Open.",
+ "system_intro": "Open.",
+ "ladder_intro": "Open.",
+ "narrowings_intro": "Open."
 }

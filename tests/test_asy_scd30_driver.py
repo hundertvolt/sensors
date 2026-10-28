@@ -14,6 +14,7 @@ from _error_codes import code
 from _fake_time import UTCValid
 from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep
+from _schema_cases import declared_fields, domain_cases
 from _src_const import src_const, src_int
 from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen, scd30_nvm_writes
@@ -1466,6 +1467,30 @@ def test_set_dict_cfg_wrong_type_value_rejected_before_dispatch() -> None:
     _queue_snapshot(_reader_fake_i2c(reader))
     result = run(reader._set_dict_cfg({"TempOffset": "not a number"}, reader.get_cfg_schema()))
     assert result == {"TempOffset": "Invalid"}
+
+
+def test_a_put_takes_each_declared_field_inside_its_domain_and_refuses_it_outside() -> None:
+    # Every declared field's edges through the PUT path (tests/_schema_cases.py), ContMeas's command field included:
+    # "Invalid" outside the declared domain with no NVM write and the FRC file untouched, "Valid" or "Unchanged" inside it.
+    reader = _make_reader()
+    i2c = _reader_fake_i2c(reader)
+    fields = declared_fields("src/asy_scd30_driver.py")
+    assert sorted(cm.schema_names(reader.get_cfg_schema()) + ["ContMeas"]) == sorted(field[0] for field in fields)
+    frc = ["FRCNoise", "FRCRate", "FRCWindow"]
+    wrong: list[str] = []  # every case that answered against its declared domain, so one failure names them all
+    with FastAsyncSleep():  # each accepted chip write's settle wait is recorded, not slept
+        for field in fields:
+            name = field[0]
+            for label, value, inside in domain_cases(field):
+                i2c.read_queue.clear()
+                _queue_snapshot(i2c)
+                nvm, stored = scd30_nvm_writes(i2c), run(reader.cfgmgr.get_dict(frc))
+                word = run(reader._set_dict_cfg({name: value}, reader.get_cfg_schema()))[name]
+                if word not in (("Valid", "Unchanged") if inside else ("Invalid",)):
+                    wrong.append(f"{name}: {label} -> {word}")
+                elif not inside and (scd30_nvm_writes(i2c), run(reader.cfgmgr.get_dict(frc))) != (nvm, stored):
+                    wrong.append(f"{name}: {label} -> stored")
+    assert wrong == [], wrong
 
 
 def test_set_dict_cfg_unknown_key_reported_invalid_without_dispatch() -> None:

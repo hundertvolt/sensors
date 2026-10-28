@@ -5,6 +5,7 @@ import ast
 import importlib.util
 import io
 import json
+import os
 import re
 import subprocess
 import sys
@@ -302,6 +303,7 @@ class Subject:
         self.qual = qual
         self.qual_re = re.compile("|".join(r"(?<![\w-])" + re.escape(n) + r"(?![\w-])" for n in sorted(qual)))
         self.bare_string = self.stem is not None and self.top in ("src", "scripts", "toolchain", "digital_twin") and self.stem not in COLLIDING
+        self.stem_re = re.compile(r"(?<![\w-])" + re.escape(self.stem or "") + r"(?![\w-])")  # the stem as a word inside a string
 
     def mentioned(self, code: str) -> bool:
         return any(q in code for q in self.qual) and bool(self.qual_re.search(code))
@@ -316,7 +318,7 @@ class Subject:
         return False
 
     def hit(self, piece: Piece, twin_path: bool) -> bool:
-        return self.mentioned(piece.code) or any(self.imported(m, n, twin_path) for m, n in piece.imports) or (self.bare_string and self.stem in piece.strings)
+        return self.mentioned(piece.code) or any(self.imported(m, n, twin_path) for m, n in piece.imports) or (self.bare_string and any(self.stem in x and self.stem_re.search(x) for x in piece.strings))
 
 
 class Word:
@@ -351,20 +353,23 @@ class Cell:
     def __init__(self, keys: list[str], old: list[Path]) -> None:
         self.keys, self.old = keys, old
         self.biting = [k for k in keys if VERDICT.get(k) in TERMINAL]
+        self.reason = ""  # why a "-" cell needs no test at its level, from levels_data.json's dash_reasons
+        self.hand = 0  # how many of keys levels_data.json names by hand
 
     @property
     def state(self) -> str:
         return "-" if not self.keys else "bites" if self.biting else "open"
 
     def text(self) -> str:
+        why = f"; {self.reason}" if self.reason else ""
         if not self.old:
-            return "-"
+            return f"- ({self.reason})" if self.reason else "-"
         if not self.keys:  # a mention no test function drives (a comment, a helper's import, a name shared with another file)
-            return "- (mentioned only in " + ", ".join(p.name for p in self.old[:3]) + (" …" if len(self.old) > 3 else "") + ")"
+            return "- (mentioned only in " + ", ".join(p.name for p in self.old[:3]) + (" …" if len(self.old) > 3 else "") + why + ")"
         shown = (self.biting or self.keys)[:3]
         files = len({k.split("::")[0] for k in self.keys})
         head = f"{len(self.biting)}/{len(self.keys)} biting in {files} file(s)" if self.biting else "open: " + ", ".join(f"{v or 'no review row'} {n}" for v, n in Counter(VERDICT.get(k) for k in self.keys).items())
-        return head + ": " + ", ".join(Path(k.split("::")[0]).name + "::" + k.split("::", 1)[1] for k in shown) + (" …" if len(self.keys) > 3 else "")
+        return head + (f" ({self.hand} named by hand)" if self.hand else "") + ": " + ", ".join(Path(k.split("::")[0]).name + "::" + k.split("::", 1)[1] for k in shown) + (" …" if len(self.keys) > 3 else "")
 
 
 SUPERSET_FAILS: list[str] = []
@@ -396,6 +401,24 @@ def cell_for(level: str, subj: "Subject | Word", old_names: set[str], extra: boo
     return Cell(keys, old)
 
 
+def dash_reason(rel: str, level: str) -> str:
+    # The first dash_reasons entry whose pattern matches the file and whose levels hold this one; "" when none does.
+    for entry in DATA["dash_reasons"]:
+        if level in entry["levels"] and re.search(entry["match"], rel):
+            USED.add("dash_reasons/" + entry["match"] + "/" + ",".join(entry["levels"]))
+            return str(entry["reason"])
+    return ""
+
+
+def curated(keys: "list[str]", where: str) -> Cell:
+    # A cell whose functions levels_data.json names: each must be a test the scan knows, or the walk fails.
+    missing = [k for k in keys if k not in VERDICT]
+    if missing:
+        SUPERSET_FAILS.append(f"{where}: levels_data.json names tests the scan does not know: {missing}")
+    REACHED.update(keys)
+    return Cell(list(keys), sorted({tree / k.split("::")[0] for k in keys}, key=lambda p: p.name))
+
+
 def keep_header(path: Path) -> str:
     return path.read_text(encoding="utf-8").split("\n## ")[0].rstrip() + "\n"
 
@@ -408,13 +431,21 @@ for path in SUBJECTS:
     cells = {lv: cell_for(lv, subj, subj.old) for lv in LEVELS}
     REACHED.update(k for c in cells.values() for k in c.keys)
     DUMP[rel] = {lv: c.keys for lv, c in cells.items()}
+    for lv, given in DATA["curated_cells"].get(rel, {}).items():  # named by hand where no mechanical reference reaches
+        USED.add(f"curated_cells/{rel}/{lv}")
+        if isinstance(given, list):
+            cells[lv] = curated(cells[lv].keys + [k for k in given if k not in cells[lv].keys], f"{rel} {lv}")
+            cells[lv].hand = len(given)
+        else:
+            cells[lv].reason = given
+    for lv, c in cells.items():
+        c.reason = c.reason or (dash_reason(rel, lv) if c.state == "-" else "")
     booted = sorted(BOOTED.get(path.stem, ())) if rel.startswith("src/") else []
     note = f"; booted on {len(booted)} device(s) by the generated graph (L2 real chain)" if booted else ""
     gap = not any(c.old for c in cells.values()) and not booted
     gaps += gap
-    open_lv = [lv for lv, c in cells.items() if c.state == "open"]
-    dash = [lv for lv, c in cells.items() if c.state == "-"]
-    state = "gap: no test names it" if gap else ("open: " + ", ".join(open_lv) + " driven by no biting test function") if open_lv else "biting: every level with a test function has a biting one" + (f" ({', '.join(dash)} -)" if dash else "")
+    open_lv = [lv for lv, c in cells.items() if c.state == "open"] + [lv + " '-' with no reason" for lv, c in cells.items() if c.state == "-" and not c.reason and not (lv == "L2" and booted)]
+    state = "gap: no test names it" if gap else ("open: " + ", ".join(open_lv)) if open_lv else "closed: every level bites or states why it needs no test"
     states[state.split(":")[0]] += 1
     rows.append(f"| {rel} | {cells['L0'].text()} | {cells['L1'].text()} | {cells['L2'].text()}{note} | {cells['L3'].text()} | {cells['L4'].text()} | {state} |")
 # The generated modules, one row per kind: a device name appears only under devices/ (convention), never here.
@@ -428,13 +459,29 @@ for suffix, (pattern, probe) in GEN.items():
     cells = {lv: cell_for(lv, word, set(probe), extra=True) for lv in LEVELS}
     REACHED.update(k for c in cells.values() for k in c.keys)
     DUMP[f"generated{suffix}"] = {lv: c.keys for lv, c in cells.items()}
-    open_lv = [lv for lv, c in cells.items() if c.state == "open"]
-    dash = [lv for lv, c in cells.items() if c.state == "-"]
-    state = ("open: " + ", ".join(open_lv) + " driven by no biting test function") if open_lv else "biting: every level with a test function has a biting one" + (f" ({', '.join(dash)} -)" if dash else "")
+    for lv, given in DATA["curated_cells"].get(f"generated{suffix}", {}).items():  # named by hand: the boot entry as main.py on silicon
+        USED.add(f"curated_cells/generated{suffix}/{lv}")
+        if isinstance(given, list):
+            cells[lv] = curated(cells[lv].keys + [k for k in given if k not in cells[lv].keys], f"generated{suffix} {lv}")
+            cells[lv].hand = len(given)
+        else:
+            cells[lv].reason = given
+    for lv, c in cells.items():
+        c.reason = c.reason or (dash_reason(f"build/generated_src/sensortask_<device>{suffix}.py", lv) if c.state == "-" else "")
+    open_lv = [lv for lv, c in cells.items() if c.state == "open"] + [lv + " '-' with no reason" for lv, c in cells.items() if c.state == "-" and not c.reason]
+    state = ("open: " + ", ".join(open_lv)) if open_lv else "closed: every level bites or states why it needs no test"
     states[state.split(":")[0]] += 1
     rows.append(f"| build/generated_src/sensortask_<device>{suffix}.py ({len(DEVICES)} devices) | {cells['L0'].text()} | {cells['L1'].text()} | {cells['L2'].text()} | {cells['L3'].text()} | {cells['L4'].text()} | {state} |")
+lrows = []
+for item in DATA["ladder"]:
+    cell = curated(item["tests"], "ladder " + item["level"])
+    lrows.append(f"| {item['level']} | {cell.text()} | {item['proves']} | {'biting' if cell.biting and len(cell.biting) == len(cell.keys) else 'open: ' + str(len(cell.keys) - len(cell.biting)) + ' not biting'}{'; ' + item['note'] if item.get('note') else ''} |")
+nrows = []
+for item in DATA["narrowings"]:
+    cell = curated(item["covering_tests"], "narrowing " + item["test"])
+    nrows.append(f"| {item['test']} | {item['narrowed_to']} | {item['covering_row']} | {cell.text()} | {'closed' if cell.biting else 'open'} |")
 levels = tree / "audit/b3/levels.md"
-levels.write_text(keep_header(levels) + f"\n## Matrix\n\nBuilt by `audit/b3/levels_walk.py` at `{src_head}` (agent, 2026-10-27): {len(rows)} files, {gaps} named by no test at any level; rows by state: {dict(states)}.\nA cell names the test functions driving the file at that level (its own code, or a helper of its file that does), counted against review.md's verdict: \"k/n biting\" names the biting ones first; \"open\" means no function there is verdicted biting, fixed or justified; \"- (mentioned only in …)\" is a mention no test function drives (a comment, a helper's import, a name another file shares). No-change proof, checked on every run (the walk fails otherwise): each cell's files lie inside the old file-level reference cell. The multi-chunk SET ladder (A.U35.22 (1)) is open.\n\n| file | L0 | L1 | L2 | L3 | L4 | gap → action |\n|---|---|---|---|---|---|---|\n" + "\n".join(rows) + "\n", encoding="utf-8")
+levels.write_text(keep_header(levels) + f"\n## Matrix\n\nBuilt by `audit/b3/levels_walk.py` at `{src_head}` (agent, 2026-10-27): {len(rows)} files, {gaps} named by no test at any level; rows by state: {dict(states)}.\nA cell names the test functions driving the file at that level (its own code, or a helper of its file that does), counted against review.md's verdict: \"k/n biting\" names the biting ones first; \"open\" means no function there is verdicted biting, fixed or justified; \"- (mentioned only in …)\" is a mention no test function drives (a comment, a helper's import, a name another file shares). No-change proof, checked on every run (the walk fails otherwise): each cell's files lie inside the old file-level reference cell. A \"-\" carries its reason (levels_data.json's dash_reasons, first match); a row is closed when every level bites or states its reason.\n\n| file | L0 | L1 | L2 | L3 | L4 | gap → action |\n|---|---|---|---|---|---|---|\n" + "\n".join(rows) + "\n\n## Multi-chunk SET ladder (A.U35.22 (1))\n\n" + DATA["ladder_intro"] + "\n\n| level | tests | proves | state |\n|---|---|---|---|\n" + "\n".join(lrows) + "\n\n## Single-device narrowings\n\n" + DATA["narrowings_intro"] + "\n\n| test | narrowed to | covering row | covering tests | state |\n|---|---|---|---|---|\n" + "\n".join(nrows) + "\n", encoding="utf-8")
 
 irows, istates = [], Counter()
 for path in sorted(tree.glob("src/*.py")):
@@ -468,13 +515,155 @@ for path in sorted(tree.glob("src/*.py")):
         note = DATA["intent_notes"].get(note_key, "")
         USED.add(f"intent_notes/{note_key}") if note else None
         irows.append(f"| function | {path.name} | {'E' if kind == 'ERR' else 'W'} {name} ({num}) | src/{path.name}:{n} | {'; '.join(found) or '-'} | {note if biting else 'gap: no biting test function names the code and drives the module' + ('; ' + note if note else '')} |")
+os.chdir(tree)  # tests/_schema_cases.py reads src/ paths relative to the tree, as the test runner does
+sys.path.insert(0, str(tree / "tests"))
+CASES = _load("_schema_cases", tree / "tests/_schema_cases.py")
+SENSORS = ("bmp3xx", "scd30", "sgp40", "isl29125")
+PLANTS = DATA["schema_plants"]
+srows, sstates = [], Counter()
+for driver in SENSORS:
+    src = f"src/asy_{driver}_driver.py"
+    lines = (tree / src).read_text(encoding="utf-8").splitlines()
+    spec = DATA["schema_tests"][driver]
+    for field in CASES.declared_fields(src):  # type: ignore[attr-defined]
+        key = spec["comp"] if field[0] in spec.get("comp_fields", ()) else spec["put"]
+        line = next(n for n, text in enumerate(lines, 1) if f'("{field[0]}", "{field[1]}"' in text)
+        for label, value, inside in CASES.domain_cases(field):  # type: ignore[attr-defined]
+            row = f"{field[0]}: {label}"
+            bit = sorted(name for name, plant in PLANTS.items() if row in plant["rows"].get(driver, ()))
+            verdict = VERDICT.get(key)
+            REACHED.add(key)
+            ok = verdict in TERMINAL and bool(bit)
+            sstates["biting" if ok else "open"] += 1
+            srows.append(f"| function | asy_{driver}_driver.py | {field[0]} ({field[1]}): {label} `{value!r}` → {'taken' if inside else 'refused'} | {src}:{line} | L1 {Path(key.split('::')[0]).name}::{key.split('::', 1)[1]} ({verdict or 'no review row'}) | {'biting: fails under ' + ', '.join(bit) if ok else 'open: ' + ('no plant fails this case' if not bit else str(verdict))} |")
+LIMIT_TAG = re.compile(r"^# @limits (\w+) (?:in \{([^}]*)\}|(\S+)\.\.(\S+))\s*$", re.M)
+for driver in SENSORS:
+    src = f"src/asy_{driver}_driver.py"
+    text = (tree / src).read_text(encoding="utf-8")
+    for m in LIMIT_TAG.finditer(text):
+        name, line = m.group(1), text[: m.start()].count("\n") + 1
+        if m.group(2):
+            choices = sorted(int(x, 0) for x in m.group(2).split(","))
+            lcases = [("below the set's smallest", choices[0] - 1, False), ("the set's smallest", choices[0], True), ("the set's largest", choices[-1], True), ("above the set's largest", choices[-1] + 1, False)]
+            lcases += [("a non-member inside the set's span", v, False) for v in range(choices[0], choices[-1]) if v not in choices][:1]
+        else:
+            low, high = int(m.group(3)), int(m.group(4))
+            lcases = [("below the minimum", low - 1, False), ("the minimum", low, True), ("the maximum", high, True), ("above the maximum", high + 1, False)]
+        lcases.append(("None: the device TOML leaves the key out (TOML has no null)", None, True))
+        spec = DATA["limits_tests"][f"{driver}.{name}"]
+        USED.add(f"limits_tests/{driver}.{name}")
+        for label, value, inside in lcases:
+            group = "omitted" if value is None else "taken" if inside else "refused"
+            cell = curated(spec[group], f"limits {driver}.{name} {group}")
+            ok = bool(cell.keys) and len(cell.biting) == len(cell.keys)
+            sstates["biting" if ok else "open"] += 1
+            srows.append(f"| function | asy_{driver}_driver.py | constructor `{name}` (`# @limits`): {label}{'' if value is None else f' `{value:#x}`' if name == 'address' else f' `{value}`'} → {'built' if inside else 'refused by the build'} | {src}:{line} | L0 {cell.text()} | {'biting' if ok else 'open'}{'; ' + spec['notes'][group] if spec.get('notes', {}).get(group) else ''} |")
+
+SCENARIO_FILE = "scripts/_digital_twin_scenarios.py"
+SCEN: dict[str, tuple[tuple[str, ...], str]] = {}
+for node in ast.parse((tree / SCENARIO_FILE).read_text(encoding="utf-8")).body:
+    for deco in getattr(node, "decorator_list", []):
+        if isinstance(deco, ast.Call) and getattr(deco.func, "id", "") == "scenario" and deco.args and isinstance(deco.args[0], ast.Constant):
+            kw = {k.arg: ast.literal_eval(k.value) for k in deco.keywords if k.arg in ("drivers", "first_device")}
+            SCEN[str(deco.args[0].value)] = (tuple(kw.get("drivers", ())), str(kw.get("first_device", "")))
+DEV_DRIVERS = {d: set(re.findall(r'^driver = "(\w+)"', (tree / "devices" / f"{d}.toml").read_text(encoding="utf-8"), re.M)) for d in DEVICES}
+PER_DEVICE_FILES = {p.relative_to(tree).as_posix() for p in tree.glob("tests/test_*.py") if re.search(r"^PER_DEVICE = True$", p.read_text(encoding="utf-8"), re.M)}
+
+
+def devices_of(key: str) -> "set[str] | None":
+    # The generated devices a test runs its body on; None for one device the file picks for it (SPECIFICATION.md E.2.1).
+    file, name = key.split("::", 1)
+    if file == SCENARIO_FILE:
+        drivers, first = SCEN[name]
+        return None if first else {d for d in DEVICES if set(drivers) <= DEV_DRIVERS[d]}
+    if file == "tests/_digital_twin_construction_scenarios.py" or (file in PER_DEVICE_FILES and file not in DATA["picking_files"]):
+        return set(DEVICES)
+    return None
+
+
+def scope_text(keys: "list[str]") -> "tuple[str, bool]":
+    # The devices the biting ones among `keys` cover together, and whether that is every generated device.
+    covered: set[str] = set()
+    picked = False
+    for k in keys:
+        if VERDICT.get(k) in TERMINAL:
+            got = devices_of(k)
+            covered |= got or set()
+            picked = picked or got is None
+    every = covered == set(DEVICES)
+    text = "every device" if every else f"{len(covered)} of {len(DEVICES)} devices" + (" + a picked device" if picked else "") if covered else "a picked device (E.2.1)" if picked else "no device"
+    return text, every
+
+
+GEN_L2 = set(DUMP["generated"]["L2"])
+frows, fstates = [], Counter()
+for path in sorted(tree.glob("src/*.py")):
+    mod = path.stem
+    consumers = sorted(c for c, imported in SRC.items() if mod in imported and c in BOOTED)
+    direct_gen = any(mod in {a or b for a, b in IMPORTS.findall(GENERATED.get(f"sensortask_{d}", ""))} for d in DEVICES)
+    keys = [k for k in DUMP[f"src/{path.name}"]["L2"] if k in GEN_L2 and VERDICT.get(k) in TERMINAL]
+    through = "itself"
+    if not keys:
+        for c in consumers:
+            keys = [k for k in DUMP[f"src/{c}.py"]["L2"] if k in GEN_L2 and VERDICT.get(k) in TERMINAL]
+            if keys:
+                through = c + ".py"
+                break
+    REACHED.update(keys)
+    booted = sorted(BOOTED.get(mod, ()))
+    covered = set().union(*[devices_of(k) or set() for k in keys])
+    picked = any(devices_of(k) is None for k in keys)
+    scope = f"{len(covered & set(booted))} of the {len(booted)} booting devices" + (" + a picked device" if picked else "")
+    ok = bool(keys) and bool(booted)
+    fstates["biting" if ok else "gap"] += 1
+    who = ", ".join(c + ".py" for c in consumers) + (", " if consumers and direct_gen else "") + ("the generated module" if direct_gen else "")
+    shown = ", ".join(Path(k.split("::")[0]).name + "::" + k.split("::", 1)[1] for k in keys[:2]) + (" …" if len(keys) > 2 else "")
+    frows.append(f"| functional | {path.name} | real consumer: {who or 'none in the generated graph'}; booted on {len(booted)} device(s) | the generated graph's import chain | L2 {len(keys)} biting, through {through}: {shown or '-'}; {scope} | {'biting' if ok else 'gap: no L2 function drives it in a generated graph'} |")
+
+ROUTES = sorted({(r["method"], r["path"]) for d in DEVICES for r in json.loads((tree / f"build/generated_src/api/{d}.json").read_text(encoding="utf-8"))["routes"]})
+
+
+class AllOf:
+    # Every pattern in one piece's code (its own, or a helper's of its file): a route's method and its path.
+    def __init__(self, patterns: "list[str]") -> None:
+        self.rxs = [re.compile(x) for x in patterns]
+        self.tag = "&".join(patterns)
+
+    def hit(self, piece: Piece, _twin_path: bool) -> bool:
+        return all(x.search(piece.code) for x in self.rxs)
+
+
+L2_FILES = [*LEVELS["L2"], *EXTRA["L2"]]
+syrows, systates = [], Counter()
+for method, route in ROUTES:
+    subj_r = AllOf([f'"{method}"', f'"{re.escape(route)}"'])
+    keys = sorted({k for p in L2_FILES if route in p.read_text(encoding="utf-8", errors="replace") for k in driving(analysis(p), subj_r)})  # type: ignore[arg-type]
+    keys += [k for k in DATA["route_tests"].get(f"{method} {route}", []) if k not in keys]
+    USED.add(f"route_tests/{method} {route}") if f"{method} {route}" in DATA["route_tests"] else None
+    cell = curated(keys, f"route {method} {route}")
+    scope, every = scope_text(keys)
+    ok = bool(cell.biting) and every
+    systates["biting" if ok else "open"] += 1
+    syrows.append(f"| system | REST | {method} {route} | build/generated_src/api/<device>.json | L2 {cell.text()}; {scope} | {'biting on every device' if ok else 'open: not on every device'} |")
+for item in DATA["system_rows"]:
+    cell = curated(item["tests"], "system " + item["feature"])
+    scope, every = scope_text(item["tests"])
+    applies = item.get("applies", "every device")
+    ok = bool(cell.biting) and (every or applies != "every device")
+    systates["biting" if ok else "open"] += 1
+    syrows.append(f"| system | {item['area']} | {item['feature']} | {item['source']} | {cell.text()}; {scope} | {('biting' if ok else 'open') + ('; ' + item['note'] if item.get('note') else '')} |")
+
 intent = tree / "audit/b3/intent.md"
-intent.write_text(keep_header(intent) + f"\n## Items\n\nBuilt by `audit/b3/levels_walk.py` at `{src_head}` (agent, 2026-10-27): per module its direct and real-chain rows, then each catalog code\nit defines with the test functions naming it in a file that drives the module, joined with review.md's verdict; rows by state: {dict(istates)}. Schema bounds, `None` and NaN/±inf rows, and the functional and system integration layers, are open.\n\n| layer | module | intent item | source | biting tests (level) | gap → action |\n|---|---|---|---|---|---|\n" + "\n".join(irows) + "\n", encoding="utf-8")
+intent.write_text(keep_header(intent) + f"\n## Items\n\nBuilt by `audit/b3/levels_walk.py` at `{src_head}` (agent, 2026-10-27): per module its direct and real-chain rows, then each catalog code\nit defines with the test functions naming it in a file that drives the module, joined with review.md's verdict; rows by state: {dict(istates)}.\n\n| layer | module | intent item | source | biting tests (level) | gap → action |\n|---|---|---|---|---|---|\n" + "\n".join(irows) + "\n\n## Schema bounds (function layer)\n\n" + DATA["schema_intro"] + f" Rows by state: {dict(sstates)}.\n\n| layer | module | intent item | source | biting tests (level) | gap → action |\n|---|---|---|---|---|---|\n" + "\n".join(srows) + "\n\n## Functional integration\n\n" + DATA["functional_intro"] + f" Rows by state: {dict(fstates)}.\n\n| layer | module | intent item | source | biting tests (level) | gap → action |\n|---|---|---|---|---|---|\n" + "\n".join(frows) + "\n\n## System integration\n\n" + DATA["system_intro"] + f" Rows by state: {dict(systates)}.\n\n| layer | area | intent item | source | biting tests (level); devices | gap → action |\n|---|---|---|---|---|---|\n" + "\n".join(syrows) + "\n", encoding="utf-8")
 if "--dump" in sys.argv:
     Path(sys.argv[sys.argv.index("--dump") + 1]).write_text(json.dumps({"rows": DUMP, "unreached": sorted(str(r["key"]) for r in RECORDS if str(r["key"]) not in REACHED)}, indent=1), encoding="utf-8")
 per_tier = Counter(str(r["level"]) for r in RECORDS if str(r["key"]) not in REACHED)
-print(len(rows), "files,", gaps, "gaps, rows", dict(states), ";", len(irows), "intent rows", dict(istates), "; unreached test functions", sum(per_tier.values()), dict(per_tier))
+print(len(rows), "files,", gaps, "gaps, rows", dict(states), ";", len(irows), "intent rows", dict(istates), "; schema", dict(sstates), "; functional", dict(fstates), "; system", dict(systates), "; unreached test functions", sum(per_tier.values()), dict(per_tier))
 STALE = [f"intent_notes/{k}" for k in DATA["intent_notes"] if f"intent_notes/{k}" not in USED]
+STALE += ["dash_reasons/" + e["match"] + "/" + ",".join(e["levels"]) for e in DATA["dash_reasons"] if "dash_reasons/" + e["match"] + "/" + ",".join(e["levels"]) not in USED]
+STALE += [f"curated_cells/{row}/{lv}" for row, cells in DATA["curated_cells"].items() for lv in cells if f"curated_cells/{row}/{lv}" not in USED]
+STALE += [f"limits_tests/{k}" for k in DATA["limits_tests"] if f"limits_tests/{k}" not in USED]
+STALE += [f"route_tests/{k}" for k in DATA["route_tests"] if f"route_tests/{k}" not in USED]
 if STALE:
     print("STALE DATA (levels_data.json names a row the walk did not render):\n" + "\n".join(STALE))
     sys.exit(1)
