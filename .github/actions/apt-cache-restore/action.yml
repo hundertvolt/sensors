@@ -24,6 +24,12 @@ inputs:
     required: false
     default: 'false'
     description: Probe the mirror even when the cache holds every planned archive (the job fetches more from it later)
+  bound-s:
+    required: true
+    description: The bound in seconds of the step that fetches what the cache does not hold, read from its own tag site
+  bound-from:
+    required: true
+    description: The tunable that bound comes from, named in the check's log line
 
 outputs:
   key:
@@ -105,11 +111,14 @@ runs:
       env:
         FAMILY: ${{ inputs.family }}
         ALWAYS_CHECK: ${{ inputs.always-check }}
+        BOUND_S: ${{ inputs.bound-s }}
+        BOUND_FROM: ${{ inputs.bound-from }}
       run: |
         dir="$RUNNER_TEMP/apt-cache-$FAMILY"
         force=()
         if [ "$ALWAYS_CHECK" = true ]; then force=(--force); fi
-        python3 -I scripts/ci_apt_cache.py check --manifest "$dir/manifest.json" --have "$dir/copy-in" --mirror-list /etc/apt/apt-mirrors.txt --out "$dir/apt-mirrors.txt" "${force[@]}"
+        python3 -I scripts/ci_apt_cache.py check --manifest "$dir/manifest.json" --have "$dir/copy-in" --mirror-list /etc/apt/apt-mirrors.txt --out "$dir/apt-mirrors.txt" \
+            --bound-s "$BOUND_S" --bound-from "$BOUND_FROM" "${force[@]}"
         # Written beside it, then renamed over it: a failed write leaves apt the whole old list, never a cut one.
         if [ -f "$dir/apt-mirrors.txt" ] && ! { sudo install -m 0644 "$dir/apt-mirrors.txt" /etc/apt/apt-mirrors.txt.new && sudo mv /etc/apt/apt-mirrors.txt.new /etc/apt/apt-mirrors.txt; }; then
             echo "::warning::writing /etc/apt/apt-mirrors.txt failed - apt keeps the list it had"

@@ -612,8 +612,8 @@ jobs:
           persist-credentials: false
       - name: Set up MicroPython toolchain (uv sync, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
-      # The list ensure_apt_packages() installs below, read as it reads it, for the mirror check and package cache
-      # around that install; like every step of theirs it cannot fail the job (B.10.1).
+      # The list ensure_apt_packages() installs below, read as it reads it, and the bound of each of its download attempts,
+      # for the mirror check and package cache around that install; like every step of theirs it cannot fail the job (B.10.1).
       - name: The ARM toolchain's apt packages
         id: apt-packages
         continue-on-error: true
@@ -627,6 +627,7 @@ jobs:
           import setup_toolchain as st
           versions = st.load_versions(Path("toolchain/versions.toml"))
           print("list=" + " ".join(versions["toolchain"]["apt_packages"]))
+          print(f"bound-s={st._APT_STEP_TIMEOUT_S}")
           PYEOF
       - name: Check the apt mirror and restore cached packages
         id: apt
@@ -634,6 +635,8 @@ jobs:
         with:
           family: firmware
           packages: ${{ steps.apt-packages.outputs.list }}
+          bound-s: ${{ steps.apt-packages.outputs.bound-s }}
+          bound-from: tool.apt_step_timeout_s
       # A cache miss fails the picotool step below by name (no cached build tree), never skipping the
       # build.
       #

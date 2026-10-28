@@ -31,12 +31,14 @@ if TYPE_CHECKING:
     class Fetcher(Protocol):
         def __call__(self, url: str, *, cap_s: float, budget: int) -> "Probe": ...
 
-# One mirror probe's cap and the rate it must reach: healthy nodes serve 30 MB/s or more, slow ones 45-130 kB/s
-# (actions/runner-images#14823). The probe reads at most cap x rate bytes: "healthy" is "that much inside the cap".
+# A mirror must fetch what is left inside the fetching step's bound over the margin, and never run under the floor;
+# the probe reads cap x that rate, so "fast enough" is "that much inside the cap" (SPECIFICATION.md B.10.1).
 # @tunable ci.apt_mirror_probe_cap_s = 10
 PROBE_CAP_S = 10
 # @tunable ci.apt_mirror_min_bytes_per_s = 1000000
 MIN_BYTES_PER_S = 1000000
+# @tunable ci.apt_mirror_rate_margin = 2.0
+RATE_MARGIN = 2.0
 
 _LINE = re.compile(r"^'(?P<uri>[^'\s]+)' (?P<file>\S+) (?P<size>\d+) ?(?P<hash>\S*)$")
 _SHA256 = re.compile(r"^sha256:([0-9a-f]{64})$", re.IGNORECASE)
@@ -289,9 +291,28 @@ def _kb(rate: float) -> str:
     return "inf" if rate == float("inf") else f"{rate / 1000:.0f} kB/s"
 
 
-def check(planned: "list[Planned]", have: "set[str]", list_path: Path, *, cap_s: float, min_rate: float, force: bool = False, fetcher: "Fetcher" = fetch) -> "str | None":
-    # The mirror list with the slow mirrors ahead of the first healthy one dropped, or None to leave it as it is.
-    # With no healthy mirror the fastest measured stays first; the list keeps that one and all after it, never empty.
+@dataclass(frozen=True)
+class Rule:
+    # How fast a mirror must be: the probe's cap, the floor, the bound of the step that fetches what the cache does not
+    # hold (bound_from names its tunable for the log) and the margin.
+    cap_s: float
+    floor: float
+    bound_s: float
+    bound_from: str
+    margin: float = RATE_MARGIN
+
+    def __post_init__(self) -> None:
+        if not self.bound_s > 0:
+            raise ValueError(f"a fetching step's bound must be positive, not {self.bound_s}")
+
+    def required(self, to_fetch: int) -> float:
+        # The rate that moves to_fetch bytes inside bound_s / margin, never under the floor.
+        return max(self.floor, self.margin * to_fetch / self.bound_s)
+
+
+def check(planned: "list[Planned]", have: "set[str]", list_path: Path, rule: Rule, *, force: bool = False, fetcher: "Fetcher" = fetch) -> "str | None":
+    # The mirror list with the mirrors ahead of the first one fast enough for the bytes still to fetch dropped, or None
+    # to leave it as it is. With none fast enough the fastest measured goes first; the list is never left empty.
     remaining = [item for item in planned if item.file not in have]
     if not remaining and not force:
         print("== every planned archive came from the cache: no mirror check", flush=True)
@@ -311,7 +332,10 @@ def check(planned: "list[Planned]", have: "set[str]", list_path: Path, *, cap_s:
     if not candidates:
         print(f"== no planned archive comes from {list_path}: no mirror check", flush=True)
         return None
-    budget = int(cap_s * min_rate)
+    to_fetch = sum(item.size for item, _ in candidates if item.file not in have)
+    required = rule.required(to_fetch)
+    print(f"== required rate {_kb(required)}: {rule.margin:g} x {to_fetch} bytes still to fetch over the {rule.bound_s:g} s bound ({rule.bound_from}), floor {_kb(rule.floor)}", flush=True)
+    budget = int(rule.cap_s * required)
     large = [pair for pair in candidates if pair[0].size >= budget]
     item, rel = min(large, key=lambda pair: pair[0].size) if large else max(candidates, key=lambda pair: pair[0].size)
     want = min(budget, item.size)
@@ -319,9 +343,9 @@ def check(planned: "list[Planned]", have: "set[str]", list_path: Path, *, cap_s:
     measured: list[tuple[Mirror, Probe]] = []
     chosen = None
     for mirror in ordered:
-        probe = fetcher(mirror.uri.rstrip("/") + "/" + rel, cap_s=cap_s, budget=want)
-        healthy = not probe.error and probe.received >= want and probe.rate >= min_rate
-        verdict = "healthy" if healthy else f"slow (healthy is {_kb(min_rate)} or more)"
+        probe = fetcher(mirror.uri.rstrip("/") + "/" + rel, cap_s=rule.cap_s, budget=want)
+        healthy = not probe.error and probe.received >= want and probe.rate >= required
+        verdict = "fast enough" if healthy else f"too slow (required {_kb(required)})"
         reason = f" - {probe.error}" if probe.error else ""
         print(f"== probe {probe.url}: {probe.received} of {want} bytes in {probe.seconds:.2f} s = {_kb(probe.rate)}, {verdict}{reason}", flush=True)
         measured.append((mirror, probe))
@@ -329,12 +353,13 @@ def check(planned: "list[Planned]", have: "set[str]", list_path: Path, *, cap_s:
             chosen = mirror
             break
     if chosen is None:
+        rates = ", ".join(f"{mirror.uri} {_kb(probe.rate)}" for mirror, probe in measured)
         answered = [(mirror, probe) for mirror, probe in measured if probe.received > 0]
         if not answered:
-            warn(f"no mirror in {list_path} answered the probe: left unchanged")
+            warn(f"no mirror in {list_path} answered the probe (measured: {rates}): left unchanged")
             return None
         chosen = max(answered, key=lambda pair: pair[1].rate)[0]
-        warn(f"no mirror in {list_path} reached {_kb(min_rate)}: the fastest measured, {chosen.uri}, goes first")
+        warn(f"no mirror in {list_path} reached {_kb(required)} (measured: {rates}): the fastest measured, {chosen.uri}, goes first")
     dropped = ordered[: ordered.index(chosen)]
     if not dropped:
         return None
@@ -378,7 +403,8 @@ def _cli_copy_in(args: argparse.Namespace) -> int:
 def _cli_check(args: argparse.Namespace) -> int:
     planned = read_manifest(args.manifest)
     have = {Path(entry.decode()).name for entry in args.have.read_bytes().split(b"\0") if entry} if args.have.is_file() else set()
-    new_text = check(planned, have, args.mirror_list, cap_s=args.cap_s, min_rate=args.min_bytes_per_s, force=args.force)
+    rule = Rule(cap_s=args.cap_s, floor=args.min_bytes_per_s, bound_s=args.bound_s, bound_from=args.bound_from, margin=args.margin)
+    new_text = check(planned, have, args.mirror_list, rule, force=args.force)
     if new_text is not None:
         args.out.write_text(new_text, encoding="utf-8")
         print(f"== {args.mirror_list} from here on:\n{new_text.rstrip()}", flush=True)
@@ -392,6 +418,13 @@ def _cli_copy_out(args: argparse.Namespace) -> int:
     print(f"== {copied} archives copied to {args.cache_dir}, {missing} of {cacheable} missing", flush=True)
     emit(args.github_output, complete=str(bool(cacheable) and missing == 0).lower(), copied=copied)
     return 0
+
+
+def _positive(text: str) -> float:
+    value = float(text)
+    if not value > 0:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a positive number")
+    return value
 
 
 def main(argv: "list[str] | None" = None) -> int:
@@ -413,7 +446,10 @@ def main(argv: "list[str] | None" = None) -> int:
     probe.add_argument("--mirror-list", type=Path, required=True)
     probe.add_argument("--out", type=Path, required=True)
     probe.add_argument("--cap-s", type=float, default=PROBE_CAP_S)
-    probe.add_argument("--min-bytes-per-s", type=float, default=MIN_BYTES_PER_S)
+    probe.add_argument("--min-bytes-per-s", type=float, default=MIN_BYTES_PER_S, help="the floor of the required rate")
+    probe.add_argument("--bound-s", type=_positive, required=True, help="the bound of the step that fetches what is left")
+    probe.add_argument("--bound-from", required=True, help="the tunable that bound comes from, for the log")
+    probe.add_argument("--margin", type=_positive, default=RATE_MARGIN)
     probe.add_argument("--force", action="store_true", help="probe even when the cache holds every planned archive")
     out = commands.add_parser("copy-out", help="copy what apt fetched into the cache folder")
     out.add_argument("--manifest", type=Path, required=True)
