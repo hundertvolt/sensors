@@ -11,7 +11,8 @@ Rebuilt by `handback.py` after every step; the newest day is complete up to its 
 ## Short runs (every day)
 
 ```
-
+image (name='micropython', version=(1, 29, 0, ''), _machine='Raspberry Pi Pico W with RP2040', _mpy=4870, _build='RPI_PICO_W', _thread='unsafe') v1.29.0 on 2026-10-28 (GNU 14.2.1 MinSizeRel)
+fs_root ['config_BMP3XX.cfg', 'config_HWTEST_DEBUGLEVEL_BACKUP.cfg', 'config_HWTEST_REBOOT.cfg', 'config_ISL29125.cfg', 'config_MQTT.cfg', 'config_NOTIFY.cfg', 'config_NTP.cfg', 'config_SCD30.cfg', 'config_SGP40.cfg', 'config_SYSTEM.cfg', 'config_WIFI.cfg']
 ```
 
 ## Day 20261028
@@ -50,6 +51,172 @@ Memory region         Used Size  Region Size  %age Used
 make[1]: Leaving directory '/home/nico/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
 /home/nico/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/firmware.uf2
 build rc=0 -rw-rw-r-- 1 nico nico 1818112 Oct 28 17:49 /home/nico/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/firmware.uf2
+```
+
+### flash_20261028
+
+```
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+Loading into Flash:   [                              ]  0%
+Loading into Flash:   [                              ]  1%
+Loading into Flash:   [                              ]  2%
+Loading into Flash:   [=                             ]  4%
+Loading into Flash:   [=                             ]  5%
+Loading into Flash:   [=                             ]  6%
+Loading into Flash:   [==                            ]  8%
+Loading into Flash:   [==                            ]  9%
+Loading into Flash:   [===                           ]  10%
+Loading into Flash:   [===                           ]  12%
+Loading into Flash:   [===                           ]  13%
+Loading into Flash:   [====                          ]  14%
+Loading into Flash:   [====                          ]  16%
+Loading into Flash:   [=====                         ]  17%
+Loading into Flash:   [=====                         ]  18%
+Loading into Flash:   [======                        ]  20%
+Loading into Flash:   [======                        ]  21%
+Loading into Flash:   [======                        ]  22%
+Loading into Flash:   [=======                       ]  24%
+Loading into Flash:   [=======                       ]  25%
+Loading into Flash:   [========                      ]  27%
+Loading into Flash:   [========                      ]  28%
+Loading into Flash:   [========                      ]  29%
+Loading into Flash:   [=========                     ]  31%
+Loading into Flash:   [=========                     ]  32%
+Loading into Flash:   [=========                     ]  33%
+Loading into Flash:   [==========                    ]  35%
+Loading into Flash:   [==========                    ]  36%
+Loading into Flash:   [===========                   ]  37%
+Loading into Flash:   [===========                   ]  39%
+Loading into Flash:   [============                  ]  40%
+Loading into Flash:   [============                  ]  41%
+Loading into Flash:   [============                  ]  43%
+Loading into Flash:   [=============                 ]  44%
+Loading into Flash:   [=============                 ]  45%
+Loading into Flash:   [==============                ]  47%
+Loading into Flash:   [==============                ]  48%
+Loading into Flash:   [===============               ]  50%
+Loading into Flash:   [===============               ]  51%
+Loading into Flash:   [===============               ]  52%
+Loading into Flash:   [================              ]  54%
+Loading into Flash:   [================              ]  55%
+Loading into Flash:   [================              ]  56%
+Loading into Flash:   [=================             ]  58%
+Loading into Flash:   [=================             ]  59%
+Loading into Flash:   [==================            ]  60%
+Loading into Flash:   [==================            ]  62%
+Loading into Flash:   [==================            ]  63%
+Loading into Flash:   [===================           ]  64%
+Loading into Flash:   [===================           ]  66%
+Loading into Flash:   [====================          ]  67%
+Loading into Flash:   [====================          ]  68%
+Loading into Flash:   [=====================         ]  70%
+Loading into Flash:   [=====================         ]  71%
+Loading into Flash:   [=====================         ]  72%
+Loading into Flash:   [======================        ]  74%
+Loading into Flash:   [======================        ]  75%
+Loading into Flash:   [=======================       ]  77%
+Loading into Flash:   [=======================       ]  78%
+Loading into Flash:   [=======================       ]  79%
+Loading into Flash:   [========================      ]  81%
+Loading into Flash:   [========================      ]  82%
+Loading into Flash:   [========================      ]  83%
+Loading into Flash:   [=========================     ]  85%
+Loading into Flash:   [=========================     ]  86%
+Loading into Flash:   [==========================    ]  87%
+Loading into Flash:   [==========================    ]  89%
+Loading into Flash:   [===========================   ]  90%
+Loading into Flash:   [===========================   ]  91%
+Loading into Flash:   [===========================   ]  93%
+Loading into Flash:   [============================  ]  94%
+Loading into Flash:   [============================  ]  95%
+Loading into Flash:   [============================= ]  97%
+Loading into Flash:   [============================= ]  98%
+Loading into Flash:   [==============================]  100%
+Verifying Flash:      [                              ]  0%
+Verifying Flash:      [                              ]  1%
+Verifying Flash:      [                              ]  2%
+Verifying Flash:      [=                             ]  4%
+Verifying Flash:      [=                             ]  5%
+Verifying Flash:      [=                             ]  6%
+Verifying Flash:      [==                            ]  8%
+Verifying Flash:      [==                            ]  9%
+Verifying Flash:      [===                           ]  10%
+Verifying Flash:      [===                           ]  12%
+Verifying Flash:      [===                           ]  13%
+Verifying Flash:      [====                          ]  14%
+Verifying Flash:      [====                          ]  16%
+Verifying Flash:      [=====                         ]  17%
+Verifying Flash:      [=====                         ]  18%
+Verifying Flash:      [======                        ]  20%
+Verifying Flash:      [======                        ]  21%
+Verifying Flash:      [======                        ]  22%
+Verifying Flash:      [=======                       ]  24%
+Verifying Flash:      [=======                       ]  25%
+Verifying Flash:      [========                      ]  27%
+Verifying Flash:      [========                      ]  28%
+Verifying Flash:      [========                      ]  29%
+Verifying Flash:      [=========                     ]  31%
+Verifying Flash:      [=========                     ]  32%
+Verifying Flash:      [=========                     ]  33%
+Verifying Flash:      [==========                    ]  35%
+Verifying Flash:      [==========                    ]  36%
+Verifying Flash:      [===========                   ]  37%
+Verifying Flash:      [===========                   ]  39%
+Verifying Flash:      [============                  ]  40%
+Verifying Flash:      [============                  ]  41%
+Verifying Flash:      [============                  ]  43%
+Verifying Flash:      [=============                 ]  44%
+Verifying Flash:      [=============                 ]  45%
+Verifying Flash:      [==============                ]  47%
+Verifying Flash:      [==============                ]  48%
+Verifying Flash:      [===============               ]  50%
+Verifying Flash:      [===============               ]  51%
+Verifying Flash:      [===============               ]  52%
+Verifying Flash:      [================              ]  54%
+Verifying Flash:      [================              ]  55%
+Verifying Flash:      [================              ]  56%
+Verifying Flash:      [=================             ]  58%
+Verifying Flash:      [=================             ]  59%
+Verifying Flash:      [==================            ]  60%
+Verifying Flash:      [==================            ]  62%
+Verifying Flash:      [==================            ]  63%
+Verifying Flash:      [===================           ]  64%
+Verifying Flash:      [===================           ]  66%
+Verifying Flash:      [====================          ]  67%
+Verifying Flash:      [====================          ]  68%
+Verifying Flash:      [=====================         ]  70%
+Verifying Flash:      [=====================         ]  71%
+Verifying Flash:      [=====================         ]  72%
+Verifying Flash:      [======================        ]  74%
+Verifying Flash:      [======================        ]  75%
+Verifying Flash:      [=======================       ]  77%
+Verifying Flash:      [=======================       ]  78%
+Verifying Flash:      [=======================       ]  79%
+Verifying Flash:      [========================      ]  81%
+Verifying Flash:      [========================      ]  82%
+Verifying Flash:      [========================      ]  83%
+Verifying Flash:      [=========================     ]  85%
+Verifying Flash:      [=========================     ]  86%
+Verifying Flash:      [==========================    ]  87%
+Verifying Flash:      [==========================    ]  89%
+Verifying Flash:      [===========================   ]  90%
+Verifying Flash:      [===========================   ]  91%
+Verifying Flash:      [===========================   ]  93%
+Verifying Flash:      [============================  ]  94%
+Verifying Flash:      [============================  ]  95%
+Verifying Flash:      [============================= ]  97%
+Verifying Flash:      [============================= ]  98%
+Verifying Flash:      [==============================]  100%
+  OK
+
+The device was rebooted to start the application.
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM image (name='micropython', version=(1, 29, 0, ''), _machine='Raspberry Pi Pico W with RP2040', _mpy=4870, _build='RPI_PICO_W', _thread='unsafe') v1.29.0 on 2026-10-28 (GNU 14.2.1 MinSizeRel)
+SUM fs_root ['config_BMP3XX.cfg', 'config_HWTEST_DEBUGLEVEL_BACKUP.cfg', 'config_HWTEST_REBOOT.cfg', 'config_ISL29125.cfg', 'config_MQTT.cfg', 'config_NOTIFY.cfg', 'config_NTP.cfg', 'config_SCD30.cfg', 'config_SGP40.cfg', 'config_SYSTEM.cfg', 'config_WIFI.cfg']
 ```
 <!-- end day -->
 
