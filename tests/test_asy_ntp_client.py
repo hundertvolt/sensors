@@ -32,6 +32,7 @@ from machine import RTC, Timer
 
 import asy_base_classes
 import asy_ntp_client as ntpmod
+import asy_udp_socket
 from asy_dns_client import DNS_FAILED, DNS_NOT_SENT, DNS_NXDOMAIN, DNS_RESOLVED
 from asy_ntp_client import NTPClient, NtpTiming
 from asy_print_log import DEFAULT_LOG, LogConfig, PrintLogHistoryStore
@@ -117,6 +118,8 @@ _SYNCED_POLL_TRIES = 50
 _STATE_POLL_TRIES = 200
 # @tunable l1.asy_ntp_client_retry_armed_poll_tries = 300
 _RETRY_ARMED_POLL_TRIES = 300
+_FETCH_CANCEL_ROUNDS = 12  # the rounds after a fetch's deadline passes a cancel is tried at: the failure's whole handling
+_END_ROUNDS = 20  # scheduler rounds a cancelled sync task gets to end in
 
 
 _PORTS = PortAllocator("test_asy_ntp_client")  # this file's band (tests/_port_bands.py)
@@ -3315,6 +3318,42 @@ def test_the_servers_offset_moves_the_set_time() -> None:
     seen = _against_responder(_responder_client(), responder, ["serve"])
     after = int(time.time())
     assert seen[0][3] in [_rtc_reading(t + 3600) for t in range(before, after + 1)], seen[0][3]
+
+
+def test_a_cancel_in_any_round_after_a_silent_fetch_times_out_ends_the_sync_task() -> None:
+    # The shutdown cancels the sync task and awaits it. ready()'s wait_for_ms() took a cancel landing after its timeout for
+    # the timeout: the fetch read as no reply and the loop went back to its trigger wait (SPECIFICATION.md F.2).
+    client = _responder_client()
+    client._ntp_fetch_timeout_ms = _NO_REPLY_FETCH_TIMEOUT_MS
+    responder = NtpResponder(_PORTS.next())  # bound and never served: no request is answered
+
+    async def scenario(clock: DrivenTime, rounds: int) -> bool:
+        task = asyncio.create_task(client._sync_loop())
+        await clock.elapse(0)  # parked on its trigger
+        client._ntp_sync_trigger_event.set()
+        await clock.elapse(_NO_REPLY_FETCH_TIMEOUT_MS - 1)  # the request sent, its reply awaited
+        clock.advance(1)  # the fetch's deadline passes; what it wakes runs from the next round
+        for _ in range(rounds):
+            await asyncio.sleep_ms(0)
+        task.cancel()
+        for _ in range(_END_ROUNDS):
+            if task.done():
+                break
+            await asyncio.sleep_ms(0)
+        done = task.done()
+        if not done:  # back on its trigger: ended there, so the failure below names the round
+            await clock.elapse(0)
+            await cancel(task)
+        return done
+
+    ended: list[bool] = []
+    try:
+        for k in range(_FETCH_CANCEL_ROUNDS):
+            with DrivenTime(asy_udp_socket, sleeps=True) as clock, redirect_udp_port(ntpmod, 123, responder.port):
+                ended.append(run(scenario(clock, k)))
+    finally:
+        responder.close()
+    assert all(ended), f"a cancel in these rounds after the fetch timed out did not end the task: {[k for k, done in enumerate(ended) if not done]}"
 
 
 def test_a_silent_responder_fails_each_attempt_with_no_reply() -> None:
