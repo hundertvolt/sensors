@@ -21,6 +21,21 @@ reset armed=wdt_1000 cause=3 reason=0x1 chip=0x000100 r0_kept=1 r1_kept=1 elapse
 reset armed=wdt_4000 cause=3 reason=0x1 chip=0x000100 r0_kept=1 r1_kept=1 elapsed_ms=4000
 wdt_cap 8389 refused: timeout exceeds 8388
 reset armed=wdt_8388 cause=3 reason=0x1 chip=0x000100 r0_kept=1 r1_kept=1 elapsed_ms=8388
+heap_total=187904
+gc_collect fill=10% objects=129 worst_us=4957
+gc_collect fill=30% objects=659 worst_us=9831
+gc_collect fill=50% objects=1182 worst_us=14809
+gc_collect fill=70% objects=1769 worst_us=19855
+gc_collect fill=80% objects=2049 worst_us=23355
+loop_lag threshold=-1 n=16601 max_us=10415 bins=[11411, 2128, 597, 2177, 287, 1, 0, 0] edges=(500, 1000, 2000, 5000, 10000, 20000, 50000)
+timer_1000 threshold=-1 fires=180 expected=180 worst_jitter_us=8426
+timer_100 threshold=-1 fires=1800 expected=1800 worst_jitter_us=9285
+loop_lag threshold=32768 n=16425 max_us=8157 bins=[6500, 4093, 4313, 1498, 21, 0, 0, 0] edges=(500, 1000, 2000, 5000, 10000, 20000, 50000)
+timer_1000 threshold=32768 fires=180 expected=180 worst_jitter_us=6838
+timer_100 threshold=32768 fires=1800 expected=1800 worst_jitter_us=6900
+recursion plain depth=29 stack_use_at_entry=764 error=RuntimeError('maximum recursion depth exceeded',)
+recursion in_task depth=26 error=RuntimeError('maximum recursion depth exceeded',)
+cstack_check cost_us_per_call=29.41
 ```
 
 ## Day 20261028
@@ -576,6 +591,32 @@ warning: `--no-sync` is a no-op for Python scripts with inline metadata, which a
 SUM reset armed=wdt_8388 cause=3 reason=0x1 chip=0x000100 r0_kept=1 r1_kept=1 elapsed_ms=8388
 DONE=1
 rc=0 17:50:48
+```
+
+### runtime_20261028
+
+```
+== runtime 17:50:58
+Resolved 22 packages in 4ms
+Audited 20 packages in 1ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM heap_total=187904
+SUM gc_collect fill=10% objects=129 worst_us=4957
+SUM gc_collect fill=30% objects=659 worst_us=9831
+SUM gc_collect fill=50% objects=1182 worst_us=14809
+SUM gc_collect fill=70% objects=1769 worst_us=19855
+SUM gc_collect fill=80% objects=2049 worst_us=23355
+SUM loop_lag threshold=-1 n=16601 max_us=10415 bins=[11411, 2128, 597, 2177, 287, 1, 0, 0] edges=(500, 1000, 2000, 5000, 10000, 20000, 50000)
+SUM timer_1000 threshold=-1 fires=180 expected=180 worst_jitter_us=8426
+SUM timer_100 threshold=-1 fires=1800 expected=1800 worst_jitter_us=9285
+SUM loop_lag threshold=32768 n=16425 max_us=8157 bins=[6500, 4093, 4313, 1498, 21, 0, 0, 0] edges=(500, 1000, 2000, 5000, 10000, 20000, 50000)
+SUM timer_1000 threshold=32768 fires=180 expected=180 worst_jitter_us=6838
+SUM timer_100 threshold=32768 fires=1800 expected=1800 worst_jitter_us=6900
+SUM recursion plain depth=29 stack_use_at_entry=764 error=RuntimeError('maximum recursion depth exceeded',)
+SUM recursion in_task depth=26 error=RuntimeError('maximum recursion depth exceeded',)
+SUM cstack_check cost_us_per_call=29.41
+DONE=1
+rc=0 17:57:10
 ```
 <!-- end day -->
 
