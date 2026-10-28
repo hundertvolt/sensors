@@ -36,6 +36,14 @@ timer_100 threshold=32768 fires=1800 expected=1800 worst_jitter_us=6900
 recursion plain depth=29 stack_use_at_entry=764 error=RuntimeError('maximum recursion depth exceeded',)
 recursion in_task depth=26 error=RuntimeError('maximum recursion depth exceeded',)
 cstack_check cost_us_per_call=29.41
+uart_read_short timeout_char=1 got=10 of 53 worst_us=2022
+uart_read_short timeout_char=2 got=10 of 53 worst_us=3053
+uart_read_short timeout_char=5 got=10 of 53 worst_us=6062
+uart_read_short timeout_char=10 got=10 of 53 worst_us=11063
+uart_frame53 whole_read_worst_us=4546 clamped_call_worst_us=51 clamped_frame_worst_us=4678
+uart_any_latency_1byte best_us=117 worst_us=131 (wire time 87 us)
+uart_stream 1to0 dur_s=120 bytes_ok=891200 mismatches=0 max_backlog=76 of 512
+uart_stream 0to1 dur_s=120 bytes_ok=891200 mismatches=0 max_backlog=77 of 512
 ```
 
 ## Day 20261028
@@ -617,6 +625,25 @@ SUM recursion in_task depth=26 error=RuntimeError('maximum recursion depth excee
 SUM cstack_check cost_us_per_call=29.41
 DONE=1
 rc=0 17:57:10
+```
+
+### uart_20261028
+
+```
+== uart 17:57:13
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.66ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM uart_read_short timeout_char=1 got=10 of 53 worst_us=2022
+SUM uart_read_short timeout_char=2 got=10 of 53 worst_us=3053
+SUM uart_read_short timeout_char=5 got=10 of 53 worst_us=6062
+SUM uart_read_short timeout_char=10 got=10 of 53 worst_us=11063
+SUM uart_frame53 whole_read_worst_us=4546 clamped_call_worst_us=51 clamped_frame_worst_us=4678
+SUM uart_any_latency_1byte best_us=117 worst_us=131 (wire time 87 us)
+SUM uart_stream 1to0 dur_s=120 bytes_ok=891200 mismatches=0 max_backlog=76 of 512
+SUM uart_stream 0to1 dur_s=120 bytes_ok=891200 mismatches=0 max_backlog=77 of 512
+DONE=1
+rc=0 17:59:15
 ```
 <!-- end day -->
 
