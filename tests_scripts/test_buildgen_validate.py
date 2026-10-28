@@ -1221,6 +1221,24 @@ def test_scd30_trigger_s_in_legal_range_is_fine(tmp_path: Path, src_dir: Path, l
     assert [(lf.min, lf.max) for lf in spec.limits_schema if lf.toml_field == "trigger_s"] == [(1, 1800)]
 
 
+@pytest.mark.parametrize("bad_trigger", [0, 3601, -1])
+def test_isl29125_trigger_s_outside_legal_range_rejected(tmp_path: Path, src_dir: Path, bad_trigger: int) -> None:
+    doc = base_doc()
+    array_at(doc, "instance").append({"driver": "isl29125", "name_ext": "", "bus": "i2c0", "irq_pin": 6, "trigger_s": bad_trigger})
+    with pytest.raises(BuildError, match="outside this driver's legal range") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.fix) == ("instance.field-out-of-range", "set trigger_s within 1..3600")
+
+
+@pytest.mark.parametrize("legal_trigger", [1, 3600, 60])
+def test_isl29125_trigger_s_in_legal_range_is_fine(tmp_path: Path, src_dir: Path, legal_trigger: int) -> None:
+    doc = base_doc()
+    array_at(doc, "instance").append({"driver": "isl29125", "name_ext": "", "bus": "i2c0", "irq_pin": 6, "trigger_s": legal_trigger})
+    spec = _build(tmp_path, src_dir, doc).instances[("isl29125", "")]
+    assert spec.fields["trigger_s"] == legal_trigger
+    assert [(lf.min, lf.max) for lf in spec.limits_schema if lf.toml_field == "trigger_s"] == [(1, 3600)]
+
+
 @pytest.mark.parametrize("bad_size", [0x1000, 0x8000])
 def test_fram_max_size_outside_legal_set_rejected(tmp_path: Path, src_dir: Path, bad_size: int) -> None:
     # A size no known part has would build and then fail at boot; the build names the legal set.

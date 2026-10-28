@@ -11,6 +11,7 @@ from _error_codes import code
 from _fake_time import UTCValid
 from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep, check_sleep_ms
+from _schema_cases import declared_fields, domain_cases, special_alone
 from _src_const import src_float, src_int, src_strs
 from _stack_overflow import stack_overflow
 from _ticks30 import TICKS_PERIOD, Ticks30Time
@@ -22,6 +23,7 @@ from machine import Timer as FakeTimer
 import asy_base_classes
 import asy_isl29125_driver
 import asy_print_log
+from asy_config_manager import schema_names
 from asy_i2c_driver import I2C
 from asy_isl29125_driver import (
     ISL29125,
@@ -1135,6 +1137,26 @@ def test_init_leaves_no_state_behind_after_a_failed_attempt() -> None:
     seed_healthy_chip(i2c)
     with FastAsyncSleep():
         assert run(init_reader(reader, i2c)) is True
+
+
+def test_a_put_takes_each_declared_field_inside_its_domain_and_refuses_it_outside() -> None:
+    # Every declared field's edges through the PUT path (tests/_schema_cases.py), Calibrate's command field included:
+    # "Invalid" and nothing stored outside the declared domain, "Valid" or "Unchanged" inside it.
+    _i2c, reader = _make_reader("put_domain")
+    fields = declared_fields("src/asy_isl29125_driver.py")
+    assert sorted(schema_names(reader.get_cfg_schema())) == sorted(field[0] for field in fields)
+    wrong: list[str] = []  # every case that answered against its declared domain, so one failure names them all
+    with FastAsyncSleep():  # a calibration run's waits are recorded, not slept
+        for field in fields:
+            name = field[0]
+            for label, value, inside in domain_cases(field):
+                before = None if special_alone(field) else run(reader.cfgmgr.get_dict([name]))
+                word = run(reader._set_dict_cfg({name: value}, reader.get_cfg_schema()))[name]
+                if word not in (("Valid", "Unchanged") if inside else ("Invalid",)):
+                    wrong.append(f"{name}: {label} -> {word}")
+                elif not inside and before is not None and run(reader.cfgmgr.get_dict([name])) != before:
+                    wrong.append(f"{name}: {label} -> stored")
+    assert wrong == [], wrong
 
 
 def test_a_restart_resets_the_output_filter() -> None:

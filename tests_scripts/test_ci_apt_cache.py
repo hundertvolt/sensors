@@ -224,13 +224,21 @@ def test_a_list_in_an_unknown_form_is_left_unchanged_with_a_warning(apt_cache: M
 
 
 def test_the_list_is_never_emptied(apt_cache: ModuleType, mirrors: Callable[[Serve], Mirror], tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    slower, slow = mirrors(throttled(1024)), mirrors(throttled(4096))
+    slower, slow = "http://slower.invalid/ubuntu/", "http://slow.invalid/ubuntu/"
+    received = {slower: 10_000, slow: 40_000}  # inside the 0.5 s cap: 20 and 80 kB/s, both under the floor
+
+    def fetcher(url: str, *, cap_s: float, budget: int) -> object:
+        # Fixed rates, so which mirror is the fastest never rests on two throttled servers' timing on a loaded host.
+        uri = next(uri for uri in received if url.startswith(uri))
+        return apt_cache.Probe(url, min(budget, received[uri]), cap_s)
+
     # No mirror healthy: the fastest measured goes first, everything ahead of it is dropped, it and the rest stay.
-    assert _check(apt_cache, _list(tmp_path, f"{slower.uri}\tpriority:1\n{slow.uri}\tpriority:2\n")) == f"{slow.uri}\tpriority:2\n"
+    assert _check(apt_cache, _list(tmp_path, f"{slower}\tpriority:1\n{slow}\tpriority:2\n"), fetcher=fetcher) == f"{slow}\tpriority:2\n"
     out = capsys.readouterr().out
-    assert f"reached 400 kB/s (measured: {slower.uri} " in out and f"kB/s, {slow.uri} " in out and f"the fastest measured, {slow.uri}, goes first" in out, out
+    assert f"reached 400 kB/s (measured: {slower} 20 kB/s, {slow} 80 kB/s)" in out and f"the fastest measured, {slow}, goes first" in out, out
     # A lone slow mirror, and mirrors that never answer, leave the list as it is.
-    assert _check(apt_cache, _list(tmp_path, f"{slow.uri}\tpriority:1\n")) is None
+    lone = mirrors(throttled(4096))
+    assert _check(apt_cache, _list(tmp_path, f"{lone.uri}\tpriority:1\n")) is None
     refused = socketless_uri()
     assert _check(apt_cache, _list(tmp_path, f"{refused}\tpriority:1\n{refused}x/\tpriority:2\n")) is None
     out = capsys.readouterr().out

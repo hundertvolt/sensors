@@ -12,6 +12,7 @@ from _fake_time import UTCValid
 from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep, check_sleep_ms
 from _fram_builders import make_fram_manager
+from _schema_cases import declared_fields, domain_cases, special_alone
 from _src_const import src_const, src_int
 from _src_schema import src_schema
 from _tmp_scratch import TmpScratch
@@ -22,6 +23,7 @@ import asy_print_log
 import asy_sgp40_driver
 import voc_algorithm
 from asy_base_classes import ValueRef
+from asy_config_manager import schema_names
 from asy_i2c_driver import I2C
 from asy_print_log import LogConfig, PrintLogHistoryStore
 from asy_sgp40_driver import SGP40, SGP40_I2C, SGP40_Reader, SgpBackup
@@ -787,6 +789,31 @@ def test_a_nan_inf_or_bool_temperature_is_a_read_failure_without_bus_traffic() -
         assert _last_err(log, "ErrNum") == code("E", "READ"), bad
 
 
+def test_a_compensation_sample_inside_its_declared_domain_is_measured_and_one_outside_is_not() -> None:
+    # Temp's and Hum's declared edges (tests/_schema_cases.py) on the read path: a sample outside is a read failure with
+    # no bus traffic, one inside reaches the chip, and None (no sample yet) skips the cycle.
+    comp = [field for field in declared_fields("src/asy_sgp40_driver.py") if field[0] in ("Temp", "Hum")]
+    assert [field[0] for field in comp] == ["Temp", "Hum"]
+    wrong: list[str] = []  # every case that answered against its declared domain, so one failure names them all
+    for field in comp:
+        for label, value, inside in domain_cases(field):
+            reader = _make_reader()
+            source = _FakeCompSource(value, 50.0) if field[0] == "Temp" else _FakeCompSource(25.0, value)  # type: ignore[arg-type]
+            reader._temperature, reader._humidity = ValueRef(source, "Temp"), ValueRef(source, "Hum")
+            fake_bus = bus(reader._sgp._i2c_sgp40.i2c_device.i2c)
+            fake_bus.log.clear()
+            data, compensated, _serialized = run(reader._read_sgp(None, serialize=False, deserialize=False))
+            measured = fake_bus.log != []
+            if value is None:  # no sample yet: the cycle is skipped, not failed
+                if compensated or measured:
+                    wrong.append(f"{field[0]}: {label} -> not skipped")
+            elif compensated is not True or measured is not inside:
+                wrong.append(f"{field[0]}: {label} -> {'measured' if measured else 'not measured'}")
+            elif not inside and data != SGP40(None, None, None, None):
+                wrong.append(f"{field[0]}: {label} -> published")
+    assert wrong == [], wrong
+
+
 def test_a_stale_compensation_sample_skips_the_cycle() -> None:
     # A producer sample older than _COMP_MAX_AGE_S counts as unavailable: no measurement, nothing logged.
     max_age = _COMP_MAX_AGE_S
@@ -1145,6 +1172,27 @@ def test_set_dict_cfg_reset_voc_false_reports_valid_not_failed() -> None:
     results = run(reader._set_dict_cfg({"ResetVOC": False}, reader.get_cfg_schema()))
     assert results == {"ResetVOC": "Valid"}
     assert reader._reset_pending is False
+
+
+def test_a_put_takes_each_declared_field_inside_its_domain_and_refuses_it_outside() -> None:
+    # Every declared PUT field's edges (tests/_schema_cases.py), ResetVOC's command field included: "Invalid" and nothing
+    # stored outside the declared domain, "Valid" or "Unchanged" inside it.
+    reader = SGP40_Reader(_make_i2c(), ValueRef(_FakeCompSource(), "Temp"), ValueRef(_FakeCompSource(), "Hum"), max_module_error=2, cfg_path=_sgp_cfg_dir("put_domain"))
+    run(reader.setup())
+    names = schema_names(reader.get_cfg_schema())
+    fields = [field for field in declared_fields("src/asy_sgp40_driver.py") if field[0] in names]
+    assert sorted(names) == sorted(field[0] for field in fields)
+    wrong: list[str] = []  # every case that answered against its declared domain, so one failure names them all
+    for field in fields:
+        name = field[0]
+        for label, value, inside in domain_cases(field):
+            before = None if special_alone(field) else run(reader.cfgmgr.get_dict([name]))
+            word = run(reader._set_dict_cfg({name: value}, reader.get_cfg_schema()))[name]
+            if word not in (("Valid", "Unchanged") if inside else ("Invalid",)):
+                wrong.append(f"{name}: {label} -> {word}")
+            elif not inside and before is not None and run(reader.cfgmgr.get_dict([name])) != before:
+                wrong.append(f"{name}: {label} -> stored")
+    assert wrong == [], wrong
 
 
 def test_get_dict_cfg_unaffected_by_the_command_only_reset_field_in_the_schema() -> None:
@@ -1777,6 +1825,30 @@ def test_check_storage_backup_counter_wraps_before_it_could_overflow() -> None:
     reader._backup_counter = _BACKUP_COUNTER_MAX - 1
     run(reader._check_storage())
     assert reader._backup_counter == 0  # wrapped, not left to grow past the cap
+
+
+def test_a_backup_period_of_zero_never_triggers_a_backup() -> None:
+    # BackupPeriod 0 is "Backups off" (SPECIFICATION.md A.4): the count a one-minute period backs up at triggers nothing at 0.
+    serialized: dict[int, bool] = {}
+    for period in (1, 0):
+        cfg_dir = _sgp_cfg_dir(f"backup_period_{period}")
+        _write_sgp_cfg(cfg_dir, {"BackupPeriod": period, "BackupMaxAge": 7200, "WaitTimeNTP": 30})
+        manager, _chip = make_fram_manager()
+        run(manager.setup())
+        reader = SGP40_Reader(
+            _make_i2c(),
+            ValueRef(_FakeCompSource(), "Temp"),
+            ValueRef(_FakeCompSource(), "Hum"),
+            backup=SgpBackup(manager, _ntp_synced),
+            log=LogConfig(manager, 10, None),
+            max_module_error=5,
+            cfg_path=cfg_dir,
+        )
+        run(reader.setup())
+        reader._voc_init = 0  # no restore pending: only the backup half decides
+        reader._backup_counter = 59  # one count short of the 60 a one-minute period backs up at
+        _buf, serialized[period], _deserialize, _cfg = run(reader._check_storage())
+    assert serialized == {1: True, 0: False}
 
 
 def test_init_sgp_sets_verify_to_the_documented_formula() -> None:
