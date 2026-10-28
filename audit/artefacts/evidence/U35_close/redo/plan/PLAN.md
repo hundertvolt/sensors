@@ -1,6 +1,7 @@
 # Finishing the audit: the repair, the remaining work, and how it ends
 
-Written by the lead, 2026-10-28 13:20 UTC. A plan only: nothing in it starts without the owner's go-ahead.
+Written by the lead, 2026-10-28 13:20 UTC; checked row by row against the sources the same day (`plancheck/`). A
+plan only: nothing in it starts without the owner's go-ahead.
 
 The owner's request (2026-10-28): "a plan to do all the tidy and repair work in the existing status"; "a plan about
 which items remain open from current U35 until the end - revised with the new knowledge"; "a plan how to implement it,
@@ -44,18 +45,23 @@ What it rests on:
   gates stay strict: the memory gates at both GC stages, the hang backstop, strict typing, the comment cap, the bus
   hazard rule, the wear rules and the UART changelog. Machinery serving only the audit goes; no check of a product
   property goes with it.
+- **Checked row by row (2026-10-28, on the owner's request).** Every row was checked against the code, the pre-audit
+  tree, the owner's rows and the pinned sources, and corrected where the evidence did not hold
+  (`plancheck/CHANGES.md`); independent agents then tried to falsify the claims (4.4, rule 11).
 - **All seven decisions were taken by the owner on 2026-10-28** (section 6). R0 starts only with its own go-ahead.
-  Four clarifications are asked later, each at the start of the batch it affects (section 7).
+  Six clarifications are asked later, each at the start of the batch or checkpoint it affects (section 7).
 
 ## 1. Where the project stands
 
 **The tree.**
-- The pushed audit head is `fc509999`. Its product tree equals the integration head `497b3eda`.
-- The 97 integration commits since the redo's base are only in this container (`audit/u35-int`); the pushed snapshots
-  carry their trees, not their history. The plan does not need that history. If the owner wants it kept, it can be
-  pushed as its own branch, with the owner's permission.
-- CI on snapshot 17 runs; on snapshot 16 it was red only on `test_twin_record`'s two checks. All MicroPython tests pass
-  at both GC stages.
+- The pushed audit head is `0603e74d` (snapshot 18). Its product tree equals the integration head `497b3eda`.
+- The integration history (300 commits since the redo's base, 97 on the first-parent line) stays in this container:
+  its messages carry lane names, which the redo keeps out of pushed commit messages (a practice of the redo, not an
+  owner rule; ten earlier pushed subjects carry them). Its messages and changed files are kept in the evidence folder
+  (`redo/int_history.txt.gz`). The plan does not need the history itself.
+- CI on snapshots 16-18 was red only on `test_twin_record`'s two checks. All 6,058 unit-tier MicroPython tests pass at
+  both GC stages. The 24 twin end-to-end jobs and the coverage job are success-gated behind the red unit jobs and have
+  not run in CI since 2026-10-21 (run 39665515089 on `49fde7b5`, green, 27 minutes).
 - Paused by the owner:
   - lanes LD+CM3, CRr2c and IN2, whose unmerged work is saved as patches in the evidence folder (`redo/paused/`);
   - lane CRr2d, just started;
@@ -65,21 +71,23 @@ What it rests on:
 
 | | before the audit | now |
 |---|---|---|
-| free flash in the dev image | 107 KB (U0 baseline) | about 43 KB |
-| `src/` bytecode | 164,566 B | 211,648 B (+29 %) |
-| firmware lines changed | | about 3,900, of which about 1,640 are in doubt, plus about 230 newly in doubt (SCAN2) |
+| free flash in the dev image | 107 KiB (U0 baseline) | about 42 KiB (a lane build of 2026-10-26; R0 re-measures it) |
+| `src/` bytecode (bare source names) | 161,626 B | 208,708 B (+47,082 B, +29 %) |
+| firmware lines in behavioural changes (`REPORT.md` 2's rows) | | about 3,900, of which about 1,640 are in doubt, plus about 230 newly in doubt (SCAN2); in git, 11,726 lines added in `src/`, net +2,649 |
 | test and tool lines | 105,942 | 232,891 |
-| CI unit-tier timeout | 45 min | 175 min, for a warm run of 9-10 min |
+| CI unit-tier timeout | 45 min | 175 min, for a warm run of about 12 min (9-10 min on 2026-10-20) |
 | twin end-to-end jobs | 6 | 24 |
-| SPECIFICATION.md | 514 KB | 1,573 KB, of which 562 KB is the tunables register |
-| `audit/` | | 14,052 files, 127 MB |
+| SPECIFICATION.md | 514 KiB | 1,573 KiB, of which 562 KiB is the tunables register |
+| `audit/` | | 14,052 files, 127 MiB at `497b3eda` (14,347 files, 131 MiB at the pushed head) |
 
 **What is known and verified:**
-- 17 confirmed gaps in the pre-audit code, each closable in 1-14 lines (`REPORT.md` 3).
+- 17 confirmed gaps in the pre-audit code, most closable in 1-14 lines (CRC32 about 22; the lwIP listener close a
+  toolchain patch) (`REPORT.md` 3).
 - The keep list: the owner's decisions in their smallest form, the confirmed gaps and the rare-but-real cases that
   stay in scope (`SCAN2.md` 5).
-- The removal closure: every dependent site of each root that goes, 2,131 rows (`scan2/G4_closure.tsv`,
-  `G4b_closure.tsv`). It loses no confirmed gap and no rare-but-real case, provided the five named items stay.
+- The removal closure: every dependent site of each root that goes, 2,129 rows from 173 roots
+  (`scan2/G4_closure.tsv`, `G4b_closure.tsv`). It loses no confirmed gap and no rare-but-real case, provided the five
+  named items stay.
 - The decision review covers 2,784 decisions:
   - 82 would be answered differently;
   - 71 become obsolete with the cleanup;
@@ -93,7 +101,7 @@ What it rests on:
 - U36a and U36b, the docs pass: 96 actions.
 - U37, the close: 17 actions.
 - The closing ledger: 9 items.
-- The open findings list: 260 rows, about 80 of them open or partly closed.
+- The open findings list (`audit/sweeps/open_findings.md`): 260 rows, 73 of them open or partly closed.
 
 ## 2. Plan 1: the repair of the existing state
 
@@ -129,46 +137,69 @@ What it rests on:
   holding the removed code. Decision 7 places it: a finding a future reader might rebuild gets one line at its
   module's Part in SPECIFICATION.md, platform facts go to Part F, unverified ones become owed-hardware rows, and
   trivial items stay only in the audit evidence.
-- **In every batch**, for the batch's own files (DECREV 3.3-3.6):
+- **In every batch**, for the batch's own files (DECREV 3.2-3.6):
   - test-only product code goes: `setup()` bools (dev's `UARTComm.setup()` keeps its bool, since its caller reads
-    it), `set_utc_valid(valid=)`, `_shutdown_task`;
+    it), the I2C and SPI `deinit()` and `set_level()` bools (`UARTDriver.deinit()` keeps its, which its `init()` reads),
+    `set_utc_valid(valid=)`, `_shutdown_task`;
   - a narrowing branch that can never run becomes a typing-side form;
   - the per-episode log flags give way to the central newest-entry rule (OR35.b, "Pure and simple.");
   - the whole-millisecond rule stays only for waits in loops.
 
 ### 2.2 R0, settling (no product code)
 
-- **The paused lanes close.** Their patches are already in the evidence folder; their worktrees go once the patches
-  are checked complete. The register's U35-U37 rows point to this plan.
-- **The twin record goes** (2.4), so that CI is green from the start.
-- **DECREV 9's three static checks** run before B1: the logger-side C-stack check at a near-exhausted C stack, on the
-  Unix port (item 3); the three BR2 fixes, read at the parent of `7008730e` against v1.29.0 (item 5); and the
-  2026-10-07 proposal behind the exception-handler guard (item 6). Each decides its batch item before the batch
-  starts.
-- **The baseline numbers** are recorded as the "before" column: per-module lines and bytecode against `25caf528`, the
-  image size and free flash per device, test and tool lines, CI time per job.
-- **The section 4 rules** go into the lead's checklist. The knowledge list and the findings list start empty.
+- **The lanes close.** The paused lanes' patches are complete in the evidence folder (checked 2026-10-28: no file in
+  their worktrees is newer than its patch; CRr2d's holds no work; CMr1n, RF1 and CM4 never started). Their worktrees go,
+  and so do those of every merged lane. The register's U35-U37 rows point to this plan.
+- **The twin record's committed copy goes** (2.4): `tests_hardware/twin_record.json` and its staleness test
+  `tests_scripts/test_twin_record.py` (about 1,600 lines), with their references in BACKLOG.md,
+  HEAP_FRAGMENTATION_MEASUREMENTS.md, `digital_twin/README.md`, `digital_twin/run_device_script.py`, `pyproject.toml`,
+  `tests_hardware/README.md` and Part N. The runner `scripts/record_twin_instrument_runs.py` stays: it is the committed
+  runner of the owner's `twin-first-for-instruments` "ok" and the only path to the twin hardware run at 32768. R3 runs
+  it once on the final tree at both stages and commits the record and its test again, exceptions listed. The record's
+  exception reasons (about 36) become the first knowledge-list lines before the copy goes. `twin_board.py` and `--twin`
+  stay.
+- **DECREV 9's three checks** run before B1: the logger-side C-stack check at a near-exhausted C stack, a Unix-port run
+  (item 3; this half decides B1's form, and its board half, REPORT 7's item 1, checks that form in round 1); the three
+  BR2 fixes, read at the parent of `7008730e` against v1.29.0 (item 5); and the 2026-10-07 proposal behind the
+  exception-handler guard (item 6). Each decides its batch item before the batch starts.
+- **The baseline numbers** are recorded as the "before" column: per-module lines and bytecode against `25caf528`
+  (compiled with `-s`, bare source names), the image size and free flash per device, test and tool lines, CI time per
+  job.
+- **The first full CI run** after R0 is the first run of the 24 twin jobs and the coverage job since 2026-10-21. Its
+  result is part of R0's close: a red job is root-caused in R0, and its fix goes to the batch that owns the code.
+- **The section 4 rules** go into the lead's checklist. A new findings list (4.2) starts empty; the knowledge list
+  starts with the twin record's exception reasons. `audit/sweeps/open_findings.md` keeps its 73 open or partly closed
+  rows, as input to R1's ledgers and as R5's OR5.a list.
 
 ### 2.3 The batches (R1: firmware and build chain)
 
 | batch | files | the main content (from the scans) |
 |---|---|---|
-| B1 logging and catalog | `asy_print_log.py`, `buildgen/error_catalog.json`; the `report_if_fatal()` sites in every module | The C-stack reboot: 123 call sites become one check in the logger, explicit calls and the Microdot hook (the owner's decision, in smallest form). The caught-failure text of the UART driver, UDP and RegionBuffer goes through the owning module's logger (the owner's "Option 1" direction; the memory gates keep their sight). Catalog rows of removed codes go, with no placeholder, and the 6 existing placeholders go (decision 6); the no-reuse rule's text says it applies from the release on. Runs alone, because it touches every module. Clarification (d) first. |
-| B2 core | `asy_base_classes.py`, `asy_system_service.py`, `asy_config_manager.py`, `math_helpers.py`, `asy_api_response.py` | `ResetBits` in `/status` (the decoded reset reason stays), `ConfigUnpersisted` in `/status` (the flag stays for the shutdown flush), W69 back to its console line, E115, the uptime re-arm, the 1,200 ms escalation bound, the mempause auto-unpause (decision 3, item 2), the shared timed-wait primitive and its sweep (one Part F sentence instead), a chip-setup failure back on the normal ladder with the mild rung first, the `rel_humidity()` clamp back as legacy had it (clarification (h) first). Kept: the recovery ladder (smaller form), the reset path, the system commands, the staged write, the newest-entry rule, the counter caps. |
-| B3 storage | `asy_fram_driver.py`, `asy_fram_manager.py`, `asy_crc_checks.py` | The lost-FRAM chain (decision 3, item 1: goes whole), E28 back to the owner's FRAM_FULL scope, the chunk read's MemoryError catch. Kept: the per-owner CRC seed (owner), the blank chunk and the layout shift (gaps), the unreadable store, a declared FRAM that never sets up. Clarification (e) first. |
-| B4 buses and sensors | `asy_i2c_driver.py`, `asy_spi_driver.py`, the SCD30, SGP40 (with `voc_algorithm.py`), BMP3XX and ISL29125 drivers | The I2C "not initialized" contract at every consumer, the I2C clear as one clock-out routine, the short-ACK path in about 4 lines; the BMP3XX power-on detector with W71, E27 at the BMP3XX site, its conversion wait and scratch view back to the STATUS poll; W73; the ISL shadow compare back to after a failed write, W75 back to its console line; the SGP40's sample-age check and `None` branch, its restart back to the restore, its own "no backup" warning back; the VOC constants back to the per-sample port (DECREV 3.1, 3.6). Kept: I2C-6/7, the ISL settle horizon, the SGP40 restore cycle, a wedged bus at boot, a chip failing in operation. |
-| B5 network | `asy_wifi_service.py` (form only), `asy_ntp_client.py`, `asy_dns_client.py`, `asy_captive_dns.py`, `asy_udp_socket.py`, `asy_webserver_service.py` | The web server's start retries and W62 (one start; a restart rebinds at once with `SO_REUSEADDR`), WS-2's head refusals except the `Content-Length` check and WS-9's quiet print with its merge list (decision 3, item 3), W16, the captive DNS re-raise, the NTP 44-47-byte refusal and the cadence chain with its `TickSeconds` users, the resolver's passed-in logger and `(address, cause)` widening (its one caller logs), the stored NTPHost/DNSFallback re-check, the HTTP version refusal, the page build-date stamp. Kept: the Wi-Fi behaviour as decided (form only), the zero NTP timestamp, the 512 B receive with one yield per datagram, the listener close, the head bounds, a trace per dropped connection, W12. |
-| B6 UART | `asy_uart_driver.py`, `asy_uart_comm.py`, `asy_uart_link_driver.py` | The zero-length guard, E91/E92, the PieceBuffer's `read_at()` and `trim()` (dev's echo only). The wire format stays untouched, and every change gets its changelog entry. Kept: the DMA ring, the hazard mode, the link's `initialized`. Clarification (c) first. |
-| B7 LED | `asy_neopixel_driver.py`, `asy_notification_service.py` | Not a rewrite: the module's audit diff is mostly names, typing and comments, with five behavioural rows. The overlay rewritten every 300 s (NP-5, 5 lines) goes back to the pre-audit wait, which also removes the lost shutdown cancel. The entry sanitiser (NP-3, 11 lines) goes: REST and the notification service already bound every value. NP-4's defined end state is settled in the ledger, since the two scans differ on it. The internal request queues at its deadline, as the approved text says, and W67 goes (DECREV 4.4). The notification's sample-age check and its `State` field go. Kept: the refusal of an external command while a signal runs (NP-1), the bounded internal wait (NP-2), the REST refusal. |
-| B8 build chain and generated code | `buildgen/`, the generated modules, `js/` frozen into the image | About 314 lines of build checks that no device TOML can trip, the I2C timeout build rule, the UART constant parse with no user, and the website lines with no recorded agreement (the items the owner approved stay; `PICTURE.md` 5). |
+| B1 logging and catalog | `asy_print_log.py`, `buildgen/error_catalog.json`; the `report_if_fatal()` sites in every module | The C-stack reboot (the owner's "ok": "A C-stack overflow caught anywhere is recorded") in smallest form: the 123 calls in `src/` become one check at each logger entry point, ahead of the level gate and of any FRAM write, so that the 12 handlers reporting only through `pr.err()` are covered too, plus explicit calls at the 5 handlers that log nothing (`asy_base_classes.py:132`, `asy_captive_dns.py:190`, `asy_fram_driver.py:174`, `asy_system_service.py:474`, `asy_webserver_service.py:203`) and the Microdot hook; the generated boot entry's call, which nothing reads, goes in B8. Every `console()` line in `src/` that prints a caught exception (the UART driver 10, the UDP socket 7, which print `OSError`s too, RegionBuffer, the COBS codec, the logger's own arm and four more of its lines, and one each in the base classes, the system service, the DNS client and the webserver, three in the FRAM manager): their fate is clarification (d), widened to them, since the owner's "Option 1" (2026-10-20) set the unit tests' log level and no owner word covers these lines. E28 shrinks to one entry at setup for an unreadable store; its run flag, its heap-failure arm and its setup-write arm go, and a full FRAM stays silent (owner, 2026-09-16: "we do not even add errno/wrnno for the out of FRAM memory"). Catalog rows of removed codes go, with no placeholder, and the 6 existing placeholders go (decision 6); the no-reuse rule's text says it applies from the release on. Runs alone, because it touches every module. Clarification (d) first. |
+| B2 core | `asy_base_classes.py`, `asy_system_service.py`, `asy_config_manager.py`, `math_helpers.py`, `asy_api_response.py`; the `/status` emitter lines and website rows of its keys (`buildgen/codegen.py:293`, `:297`; `definitions.py:635-649`) | Go: `ResetBits` in `/status` with its emitter line and website row (the decoded `ResetReason`, OR60, stays; the RUN-pin and HAD_POR hardware checks that read the raw bits are re-planned in R2 and round 1); `ConfigUnpersisted` in `/status` the same way (the flag stays for the shutdown flush); W69 with `absent_at_boot` and the logger's `restored` flag, a missing config file returning to the pre-audit persisted warning (one per boot) where the defaults are then written, while a command-only schema keeps its printed note (OR136.a (3)), and OR136.a's write-once kept; the uptime re-arm; the 1,200 ms escalation bound (the reset record is written before it). Changed: a chip-setup failure follows OR113's order, mild rung first (there was no ladder before the audit). Changed back: `rel_humidity()` clamps again, as legacy and the pre-audit code did (the owner's note kept the helpers and asked for the tests to be aligned; the no-clamp rule is agent text). Kept: E115, the one persisted trace of a supervisor crash (without it the reset reads as reason 2, a watchdog reset with no record); the mempause deadline (decision 3, item 2), its two cascade parts judged in the ledger; the recovery ladder (smaller form); the reset path; the system commands; the staged write; the newest-entry rule; the counter caps (OR103); the measured uptime (OR101). The wet bulb's cold-dry corner: clarification (h) first. |
+| B3 storage | `asy_fram_driver.py`, `asy_fram_manager.py`, `asy_crc_checks.py`; `erase_ready()`'s caller in `asy_system_service.py` | Go: the lost-FRAM chain (decision 3, item 1), with `erase_ready()`'s shrink and its caller; the SPI "no bus" consumers and E52 in `asy_fram_driver.py` (B4's contract, this batch's file); the chunk read's `MemoryError` catch and the two rows of the same kind beside it (A-M9, A-M10, A-M11, judged in the ledger). Kept: the setup's identification retries with W29 (decision 3, item 4); the watch task's escalation for a declared FRAM that never sets up (OR89); the per-owner CRC seed, which is the layout-shift fix (owner, 2026-10-28); the blank chunk; the unreadable store; the CRC32 in two 16-bit words (a confirmed gap, as landed). Clarification (e) first. |
+| B4 buses and sensors | `asy_i2c_driver.py`, `asy_spi_driver.py`, the SCD30, SGP40 (with `voc_algorithm.py`), BMP3XX and ISL29125 drivers | Go: the I2C "no bus" contract at every consumer, and the SPI driver's side of it, whose consumers in the FRAM driver go in B3 (rp2's constructors cannot fail with their stored arguments, `machine_i2c.c:61-118`, `machine_spi.c:138-217` at v1.29.0); the BMP3XX power-on detector with W71, its conversion wait and scratch view back to the STATUS poll; E27 at the BMP3XX site, a plain read failure there (E27 stays for the SCD30 range gate, DECREV 3.1); W73; the ISL shadow compare back to after a failed write, W75 back to the pre-audit console line; the SGP40's sample-age check and `None` branch, its restart back to the restore, its own "no backup" warning back; the VOC constants back to the per-sample port. Shrunk: the I2C clear as one clock-out routine, the short-ACK path in about 4 lines. Kept: I2C-6/7, the ISL settle horizon, the SGP40 restore cycle, a wedged bus at boot, a chip failing in operation. VOC-3's restore validation is judged in the ledger. |
+| B5 network | `asy_wifi_service.py` (form only), `asy_ntp_client.py`, `asy_dns_client.py`, `asy_captive_dns.py`, `asy_udp_socket.py`, `asy_webserver_service.py` | Go: the web server's start retries and W62 (one start; asyncio sets `SO_REUSEADDR` and rp2's lwIP builds with `SO_REUSE 1`, so a restart rebinds at once); WS-2's head refusals, the HTTP version refusal among them, except the `Content-Length` check, and WS-9's quiet print with its merge list (decision 3, item 3); W16; the captive DNS re-raise; the NTP 44-47-byte refusal; the NTP cadence chain (NTP-12, NTP-13, NTP-15); the resolver's passed-in logger and `(address, cause)` widening (a diagnostic beyond need; one E67 as before), its console line for a caught `MemoryError` (`asy_dns_client.py:154`) joining clarification (d)'s list; the stored NTPHost/DNSFallback re-check. Kept: `TickSeconds` with its owner-decided users (SysUptime, LastSyncAge, WifiUptime, the LED pause); the Wi-Fi behaviour as decided (form only); the zero NTP timestamp; the 512 B receive with one yield per datagram; the listener close; the head bounds; a trace per dropped connection; W12. |
+| B6 UART | `asy_uart_driver.py`, `asy_uart_comm.py`, `asy_uart_link_driver.py`, `asy_framing_codecs.py`; `PieceBuffer` in `asy_base_classes.py` | Go: the zero-length guard. Kept: `PieceBuffer.trim()`, which `uart_get()`, the SET receive and `readline()` call; `PieceBuffer.read_at()` with the responder's piece reply and the echo's piece answer (without them the echo copies the peer's whole train, 12,192 bytes on dev, per GET: the scans' one measured row, and OR143 bounds contiguous allocations); the construction refusals, E91 with its build mirror and E92 (no TOML reaches it: generated code wires no framing), the pre-audit pattern of a standalone module that refuses its own bad parameters (the ledger may shrink their form); the DMA ring; the hazard mode; the link's `initialized`. The codec's decode-size change and its removed counter are judged in the ledger, the codec being a real feature of the module. The wire format stays untouched, and every change gets its changelog entry. Clarification (c) first. |
+| B7 LED | `asy_neopixel_driver.py`, `asy_notification_service.py`; the `State` field's buildgen, catalog and website sites | Not a rewrite: the module's audit diff is mostly names, typing and comments, with five behavioural rows. The overlay rewritten every 300 s (NP-5, 5 lines) goes back to the pre-audit wait, which also removes the lost shutdown cancel. The entry sanitiser (NP-3, 11 lines) goes back to the pre-audit clamp, per channel with the 0.1 s floor; its 60 s cap and its move to the entry go. NP-4's defined end state is settled in the ledger, since the two scans differ on it. The internal request queues at its deadline, as the approved text says, and W67 goes (DECREV 4.4). The notification's sample-age check and its `State` field go, with the field's generated status key (`buildgen/codegen.py:307`), its website row (`definitions.py:700-702`), its `NotifyState` code table, the mock data and the website test that names it, all in this batch. Kept: the refusal of an external command while a signal runs (NP-1), the bounded internal wait (NP-2), the REST refusal, the overnight window (OR69), the measured LED pause (OR104). |
+| B8 build chain and generated code | `buildgen/`, the generated modules, `devices/*.toml`, `js/` and `html/` frozen into the image, the website stager in `scripts/` | Go: the build checks that no device TOML can trip (about 260 lines; the twin-wiring typing and the compile check of the generated text are judged on their own), except a rule whose violation would make a boot refuse or boot-loop: of the four I2C timeout rules, `bus.i2c-timeout-range` and `bus.i2c-timeout-max` stay as one 1-200,000 us range (rp2 stores the timeout as `uint32_t`, `machine_i2c.c:47`), the boot-clear budget and the loop-hold rule go, and `smallest_hard_consumer()` stays for the twin, flash, bench and timing tests that read it; the UART ranges stay as the build mirror of B6's kept refusals. The website lines with no recorded agreement (the items the owner approved stay; `PICTURE.md` 5), among them the page build-date stamp, with its stager half in `scripts/_stage_website.py`, `build_firmware.py` and `build_website.sh`. The device TOMLs follow their drivers (the UART keys follow B6, the `@tunable` tags R2's Part N scope). Kept: the generated boot entry's confirmed gaps (the emergency exception buffer, the loop-end labels); the read triggers' bus-spread order, OR47's "it's always only about sensors with bus access" (it equals the construction order on today's six devices). |
 
-**Order.** B1 runs alone, then B2. B3-B7 run at most two at a time, on disjoint files. B8 runs last, because buildgen
-reads the drivers' tags.
+The table names each batch's main items; the ledger judges every hunk, unnamed ones included. Outside R1: `ext/` stays
+as re-vendored (Microdot v2.7.0, byte-identical upstream; OR129.a, OR131.a); `src/LICENSE-captive_dns` (path names
+and the holder line, U34) is R4's.
+
+**Order.** B1 runs alone, then B2. B3-B7 run at most two at a time, on disjoint `src/` files. Three files are shared:
+`buildgen/error_catalog.json`, the generated status emitter (`buildgen/codegen.py`) and its website rows
+(`definitions.py`). `tests_scripts/test_error_catalog.py` makes a code's row go with its last site, and
+`test_buildgen_definitions.py` makes a status row go with its key, so each batch removes its own rows and keys there,
+and the lead merges those hunks of two parallel batches. B8 runs last for the rest of buildgen, because buildgen reads
+the drivers' tags.
 
 **The places where the build differs from the owner's words** (DECREV 4) are repaired where their code lives:
-- the VOC "settled" wording in B4;
+- the VOC "settled" wording in B4: the catalog's VOCState row and the SGP40 `@web` description, worded so that the
+  decision-vocabulary check, whose allow-list only shrinks, passes;
 - the LED queue in B7;
-- E28 in B3;
+- E28 in B1;
 - the clamp in B2;
 - the heap-floor row in R2;
 - the WoZi wording and the seven misattributed texts in R4.
@@ -182,19 +213,28 @@ reads the drivers' tags.
 
 ### 2.4 Tests, tooling, CI and the register (R2)
 
-- **Retired first, in R0:** the twin record (`tests_hardware/twin_record.json`, about 2,260 lines with its tests). It is
-  audit machinery and the only red in CI. With it gone, every later push is judged on green CI.
-- **Each test and tool file is classified once.** The classes:
+- **Retired first, in R0:** the twin record's committed copy and its staleness test (2.2, about 1,600 lines; the
+  runner, `twin_board.py` and `--twin` stay). The copy is the only red in CI; with it gone the whole CI runs again, and
+  the first run after R0 shows whether every later push starts from green (2.2).
+- **Each test and tool file is classified once** (`tests/`, `tests_scripts/`, `tests_js/`, `tests_hardware/`,
+  `digital_twin/`, `scripts/`, `toolchain/`, `mockdata/` and the CI files). The classes:
   - it pins a product property: kept;
-  - it is a tool test covered by an owner row (OR23.a's build chain, `setup_toolchain.py` and
-    `micropython_overrides.py` included; OR15.a's summary block): kept, slimmed where it repeats itself;
-  - it is audit machinery or docs policing born in the audit (`test_citations.py`, `test_decision_vocabulary.py` with
-    its 393-line allow-list, the repo-scan reader's own tests, the ~1,700 lines that pin SPECIFICATION.md tables, the
-    bite self-tests of the tests): removed;
+  - it is a tool test covered by an owner row or an owner word in the rulings file (OR23.a's build chain,
+    `setup_toolchain.py` and `micropython_overrides.py` included; OR15.a's summary block; the CI apt mirror check and
+    cache, 2026-10-27; the repo scanner's own tests, which test the reader the owner's comment-cap gate runs on): kept,
+    slimmed where it repeats itself;
+  - it is audit machinery born in the audit (the bite self-tests of the tests, which OR21.a (2) did not adopt):
+    removed;
+  - the eight files that pin SPECIFICATION.md tables (about 1,700 lines) are classified one by one by what they check:
+    those that check a product property through the table (lock order, run-phase allocation, task inventory, timing
+    bounds) or carry an owner row (OR30.a (2)'s tunables check, the owner-signed A.11, OR23.a's key table, OR45's
+    levels) fall under the first two classes, and only their restatement of the table is slimmed;
   - it is harness: kept, unless a lighter form keeps the same property.
   The list goes to the owner at R2's checkpoint before anything is removed.
   The owner rules stay in full: the comment cap gate, the gc-site checker, the memory-gate agreement, the persistence
-  marker completeness and the four-tier bus hazard files.
+  marker completeness and the four-tier bus hazard files. The two decision-records checks (`test_citations.py`,
+  `test_decision_vocabulary.py`, the owner's prevention rule 5, OR68 "4. yes") stay until clarification (i), with
+  their allow-lists only shrinking.
 - **Tests of removed code** have already gone in R1, batch by batch.
 - **Waits in tests.** The seven tests that sleep a fixed time and then assert wait for their condition instead (OR37.a
   (3)). The shared twin's 89 s wall-clock retirement gives way to its idle event. The launcher stop file and the rig
@@ -206,7 +246,8 @@ reads the drivers' tags.
 - **The tunables register** (SPECIFICATION.md Part N) returns to OR30.a's own scope:
   - included: CI and per-file timeouts and retries, the Unix-port heap flag, twin run and soak durations, the
     hardware-tier budgets, and the firmware and build values of the same kind;
-  - not included: the about 860 rows for numbers inside test bodies;
+  - not included: the rows for numbers inside test bodies (about 860 by the plan's count; R2's checkpoint list states
+    the split from the hardware-tier budgets row by row before the cut);
   - the `@tunable` tags outside that scope go;
   - the values that stay are checked for accuracy.
   The heap-floor row loses "measurement owed" (the owner's `heap-floors-kept` "ok": "never to fit a reading").
@@ -220,14 +261,16 @@ reads the drivers' tags.
 
 ### 3.1 Retired, and why
 
-- **The paused lanes** (LD+CM3, CRr2c, IN2, CRr2d, CMr1n, RF1, CM4) close without merging. They build B3 records and
-  machinery on a tree that R1 changes; their patches stay in the evidence folder. Their owner rows (OR41.a, OR49.a,
-  OR21.a, OR25.a) are met in R3 on the final tree.
+- **The paused lanes** (LD+CM3, CRr2c, IN2, CRr2d, CMr1n, RF1, CM4) close without merging. They build group-B3 records
+  and machinery on a tree that R1 changes; their patches stay in the evidence folder. Their owner rows (OR41.a, OR49.a,
+  OR21.a, OR25.a) are met in R3 on the final tree. LD+CM3's patch also holds two L2 load tests that OR49.a (1) names
+  (the full soft-callback queue, the DNS flood at the hotspot); R3's OR49.a takes them from the patch.
 - **The closing ledger's items 1-7** go the same way. Item 8 (the NeoPixel) is batch B7. Item 9, the serial close, is
   replaced as follows:
   - the coverage re-run becomes R3's one coverage run;
   - the measurements go to R2's accuracy check and the phase numbers;
-  - the twin record re-record falls away with the record;
+  - the twin record re-record becomes R3's one runner run on the final tree (2.2);
+  - the twin CI on the integration head becomes R1's twin done-criterion and the first full CI run after R0;
   - D3r becomes R4;
   - REC2 becomes R5's terminal states;
   - W10 becomes each phase's close.
@@ -250,41 +293,56 @@ row:
     "Always regard the modules as libraries");
   - (4) faults planted only where the owner scoped it ("Planting faults is a good measure for complex measurement
     tests ... but not required for the straightforward tests").
-- **OR19.a.** Every test reviewed. An unchanged test keeps the verdict it already has in `review.md`, matched by name
-  and body, not line. Changed and new tests are reviewed fresh.
-- **OR21.a.** Each check-style test whose subject changed is triggered once. No new permanent control arms.
+- **OR19.a.** Every test reviewed. A test keeps the verdict it already has in `review.md` only where neither it nor the
+  code it targets changed in R1 or R2 (decision 4), matched by name and body, not line. Others are reviewed fresh.
+- **OR21.a and OR29.a (4).** Each check-style test whose subject changed is triggered once. No new permanent control
+  arms. The twin runner runs every device script and hardware test once at both GC stages on the final tree, and the
+  record and its test are committed again with the exceptions listed (the owner's `twin-first-for-instruments`).
 - **OR22.a and OR23.a.** The generated code and the build chain are checked once on the final tree, and a gap gets a
   test.
 - **OR25.a.** The intent map is updated by subtraction, and a gap gets a test. The map stays a working file.
-- **OR37.a and OR38.a.** One pass over the tests changed since the audit start, for harmful constructs, races and
-  hygiene.
-- **OR39.a and OR40.a.** Speed and footprint are measured. Both GC stages run in every tier that runs MicroPython
-  (this exists).
+- **OR37.a and OR38.a.** One pass over the tests, scripts, runners, tools and `src/` modules changed since the audit
+  start, for harmful constructs, races, leaked resources and hygiene.
+- **OR39.a and OR40.a.** Speed and footprint are measured. Both GC stages run in the unit and twin tiers (this
+  exists); the hardware tiers by OR40.a (3).
 - **OR41.a.** The assembly and interaction matrices are reading aids: each cell carries a reason or names its existing
   test. A new test is written only for a real interaction with none.
 - **OR49.a.** Each finite resource gets a test or a reason, and every new load test gets its report entry (OR49.a (3)).
 - **OR26, the "no uncaught exceptions" pillar.** The raising-call map is redone only for the modules R1 changed. A
   defect counts only with a reproduction.
+- **U35's 37 and 52.** The normal situations that accept a logged code (the owner's 2026-09-12 startup-jitter rule), and
+  every recovery rung that stays, tested at every level that can reach it (OR113.a (2)).
 - **The four-tier bus hazard rule and the wear-gate table**, for the final tree's bus-facing changes and the hardware
   tests' writes.
 - **Round 1's preparation** (OR8.a, OR17.a, OR29.a):
-  - the queue in order, with expected outcomes and the wear budget;
+  - the queue (BACKLOG.md's "Real-hardware work still owed", which replaced OR8.a's queue file) in order, with
+    expected outcomes and the wear budget;
   - the hardware tests linted, typechecked and collection-checked;
   - the twin fidelity table;
   - the hardware knowledge, cross-checked against the datasheets.
 
-**R3 is done when:** every B3 owner row has its outcome on the final tree (met and where, or one stated limit for the
-owner), and round 1 is fully prepared.
+**R3 is done when:** every group-B3 owner row (`audit/CONSOLIDATION.md` 2, with section 4's B3 additions OR20/OR36,
+OR45, OR55 and OR77/OR79) has its outcome on the final tree (met and where, or one stated limit for the owner), and
+round 1 is fully prepared.
 
 **The first hardware round** (its own go-ahead):
-- the twelve items of `REPORT.md` 7;
-- the FRAM log's W29 history, read before anything is flashed (decision 3, item 4: knowledge only);
-- the owner's owed rows (the DMA ring proof, reset reasons 21, 22 and 10+phase, the first unfed watchdog stretch,
-  dev's receive-ring peak).
+- `REPORT.md` 7's items 1, 3, 4, 5, 7, 8 and 10, with the optional 12 (item 1, the C-stack peak, is the bench reading
+  of the owner's `c-stack-reboot` "ok" and checks B1's logger-side form);
+- item 11, the owner's owed rows (the DMA ring proof, reset reasons 21, 22 and 10+phase, the first unfed watchdog
+  stretch, dev's receive-ring peak);
+- the queue R3 prepares (OR8.a: the hardware phase "works through the queue"), the lone-BMP3xx general call among it;
+- the actions of `audit/actions/C.md` that survive R1 (OR47.a's boot log and trigger stamps, OR60.a (4)'s reset codes
+  0, 9, 10+p and 20, OR50.a (3)(b)'s bench packages, OR79.a's off-subnet DNS attempt);
+- the review "ok"s that name the bench: the SGP40 chip identity and serial read, the SCD30 readiness limits;
+- B2's RUN-pin and HAD_POR checks, re-planned;
+- the FRAM log's W29 history, read before anything is flashed (decision 3, item 4: knowledge only).
+What the session on the bare MicroPython image before R1 answers (owner, 2026-10-28) is not repeated. Items 2, 6 and 9
+are not run: the owner's decisions of 2026-10-28 settled what they were to decide (the lost-FRAM chain goes and the
+mempause deadline stays, without a measurement; NP-5 is reverted).
 FRAM logs are read and saved first. A confirmed failure gets its minimal fix, on evidence. The twin is corrected until
 it agrees.
 
-**R4, the docs, written once from the final state** (B4's rows):
+**R4, the docs, written once from the final state** (the group-B4 owner rows):
 - **OR27.a.** Facts, rules and agreements only, no history.
 - **OR13 and OR14.** The scans already did most of the drift check.
 - **OR15.a.** The README's task-first layout with a checked CLI reference.
@@ -292,6 +350,8 @@ it agrees.
 - **OR10 and OR10.b.** The new-module procedure, proven by fresh builds against two baselines, capped at three runs,
   then a report.
 - **OR68.a.** Provenance, plus DECREV 4's WoZi wording and section 5's seven misattributed texts fixed.
+- **OR51.a (4).** The quality bar and test standard in SPECIFICATION.md (Part D, D.12, Part E); session practice in
+  CLAUDE.md's working agreements.
 - **The knowledge list** placed as decision 7 says.
 - **U36's 96 actions** are the checklist inputs for their documents. Each is kept if its subject survives R1 and R2.
   Its rule actions are proposals unless an owner row stands behind them.
@@ -304,6 +364,11 @@ it agrees.
 - **The release.** The version and the release note.
 - **The final report**, with OR49.a (3)'s entries.
 - **The build-environment list.** The chroot list covers every build-environment change since the legs were last run.
+- **The D.15 order beyond `src/`** (A.U36.038; OR96: "2. a but not the unit tests themselves"; "Option d is fine",
+  2026-10-27): the sweep and its all-scope check.
+- **U37's 01 (2), 02, 04, 05 and 17.** The second dependency check (A.SDEP.25, OR129.a (1)), the allow-lists removed
+  once empty, the knowledge base and the twin fidelity table made final, BACKLOG's owed-hardware list from phase C's
+  inventory, and the owner-row trace.
 
 **The last round:**
 - OR40.a (3)'s two-image GC proof, as release proof;
@@ -311,10 +376,11 @@ it agrees.
 - OR17.a's further twin corrections.
 
 **D, the close:**
-- the Stull paper moves to the datasheets;
+- the Stull paper moves to the datasheets repository, after clarification (j);
 - the do-not-reopen decisions are checked at their doc sites;
 - the plan and `audit/` are deleted;
-- one merge into `main`, tagged as the release (OR11.a, OR52.a (4)).
+- one merge into `main`, tagged v2.0 as the release with the owner's agreement (OR11.a, OR52.a (4); the review's
+  `release-version-2-0` and `release-defined-point`).
 
 ## 4. Plan 3: how it is carried out without drifting
 
@@ -324,8 +390,8 @@ it agrees.
   above.
 - The plan ends at D. There is no phase after it, and no list grows except by the admission rule (4.2).
 - A phase ends with a report and a stop. The next phase starts only with the owner's go-ahead.
-- Inside a phase, batches run one after the other without waiting. Each batch ends with a short report of numbers and
-  carries no question.
+- Inside a phase, batches run one after the other without waiting, except for a batch's clarification (section 7).
+  Each batch ends with a short report of numbers and carries no question.
 - **Caps on the loops.**
   - OR9.a's passes and OR10.b's runs stop after three, with a report.
   - An item gets at most one follow-up lane.
@@ -369,20 +435,35 @@ done-criteria, observations.
    - the audit's own machinery: minimal and throwaway. No tests of audit tools, no records keyed on line numbers, no
      raw logs committed.
 5. Inventories and matrices are reading aids, never work lists.
-6. No hardcoded delay checks, in the product or in tests. A new wait uses an event, an order, or the driven clock.
+6. No new hardcoded delay check of the NP-5 kind, in the product or in tests; a new wait uses an event, an order, or
+   the driven clock. The owner-decided deadlines (the mempause deadline, the LED request's deadline, the NTP stale
+   interval) and the hang backstop stay.
 7. Agent-written requirements are proposals. Only the owner's words bind. A planning-phase ".a" row the owner
    answered "yes" to is the owner's.
 8. Every owner word goes into the rulings file, verbatim, as it is given.
 9. Unforeseen decisions take the smallest change. Each is recorded and shown in the next batch report.
+10. **The five checks, before anything is written or shown** (owner, 2026-10-28: "Revise our current plans, so they do
+    not contain such glitches anymore."). A ledger row, a finding, a recommendation or an answer to the owner carries
+    its evidence, and changes before it is used when the evidence does not hold:
+    - where it is: the file and line now and at `25caf528`;
+    - what governs it: the pre-audit specification and the owner's rows and rulings, quoted;
+    - who uses it: a search over firmware, website, build chain, device files, tests, twin and docs;
+    - what the platform does: the pinned MicroPython, Microdot or lwIP source, never a report or memory;
+    - how big it is: counted from git, never described.
+11. **Falsification as the final verification** (owner, 2026-10-28: "The claim falsification check agent scan seems
+    reasonable, too. Add this as a final verification and adapt the run counts accordingly."). The plan check ends
+    with independent agents that get the plan's claims and the repository, without the lead's evidence or reasoning,
+    and try to refute each claim. The lead verifies every refutation at the source before it changes the plan.
 
 ### 4.5 Lanes and review
 
 - A lane's brief lists items from the phase list only. A finding outside it goes to the findings list, never to a new
   lane.
-- At most two lanes run at a time, on disjoint files. The lead does small items directly.
+- At most two lanes run at a time, on disjoint `src/` files; the three shared files as in 2.3. The lead does small
+  items directly.
 - The lead reads every changed line before a merge. A lane fixes its own reds before it hands back.
-- Every push follows the local gate (lint, typecheck, the unit tier at both GC stages, the twin suite where the batch
-  touches it). CI is followed through the PR's notifications; nothing is pushed while CI runs.
+- Every push follows the local gate (lint, typecheck, the unit tier and dev's twin suite at both GC stages; the other
+  devices' twins run in CI). CI is followed through the PR's notifications; nothing is pushed while CI runs.
 - Records are few and fixed in advance:
   - this plan;
   - one state ledger per phase;
@@ -406,42 +487,49 @@ done-criteria, observations.
 ## 5. Effort (estimates, for the budgets in decision 5; corrected 2026-10-28 on the owner's question)
 
 What drives the time is machine time, not analysis: the removal list is already known (the closure). Measured inputs:
-- the full local unit tier takes about 10-11 minutes per GC stage on a quiet host (2026-10-26 17:31-17:53), and 17-20
-  minutes under load (2026-10-27);
-- one CI run takes about 16 minutes (run 40678957431).
+- the full local unit tier takes about 10-11 minutes per GC stage on a quiet host (2026-10-26 17:31-17:53), and 17-35
+  minutes under load (2026-10-27, four lead gates, all with failures);
+- dev's local twin suite takes about 21-22 minutes per GC stage (2026-10-26);
+- one CI run takes about 16 minutes with the twin and coverage jobs skipped (run 40678957431), and took 27 minutes with
+  them (run 39665515089, 2026-10-21).
 
 Per R1 batch (judgement):
 - the change ledger from the scan rows: about 0.5 h;
 - the edits: 0.5-1 h;
 - test first: each row's red run is one test file on the Unix port, about 0.5 h per batch in all;
 - the full gate at both GC stages, twice (once more after the fixes): 1-1.4 h;
+- dev's twin suite at both GC stages, once: about 0.7 h;
 - the line-by-line review: 0.3-0.5 h;
-- the push and CI: 0.3 h.
-That is about 3.1-4.2 h per batch. Eight batches, five of them two at a time, take six slots.
+- the push and CI: 0.5 h.
+That is about 4.0-5.1 h per batch. Eight batches, five of them two at a time, take six slots.
 
 | phase | lane runs (cap) | wall-clock hours (estimate) |
 |---|---|---|
-| R0 settling | 0 | about 1 |
-| R1 firmware and build chain, 8 batches, test first | 12 (8 + 4 follow-ups) | 19-25 |
+| P the plan check, before R0 (2026-10-28) | 5 (its falsification agents) | 12-22 at its go-ahead; about 1.7 used |
+| R0 settling | 0 | 2-2.5 |
+| R1 firmware and build chain, 8 batches, test first | 12 (8 + 4 follow-ups) | 24-31 |
 | R2 tests, tooling, CI, register | 6 | 5-8 |
-| R3 test campaign once, round 1 preparation (decision 4's lean form) | 8 | 6-10 |
-| round 1 | (the owner's bench time) | 1-2 sessions |
+| R3 test campaign once, round 1 preparation (decision 4's lean form) | 8 | 9-15 |
+| round 1 | (the owner's bench time) | 2-3 sessions |
 | R4 docs (with up to 3 OR10.b runs) | 8 | 8-12 |
-| R5 close of execution | 4 | 3-5 |
+| R5 close of execution | 6 | 6-10 |
 | last round and D | 2 | 2-4 plus the owner's session |
-| **total before round 1** | **26** | **31-44** |
-| **total after round 1** | **14** | **13-21** |
+| **total before round 1** | **31** | **about 42-58** |
+| **total after round 1** | **16** | **16-26** |
 
-These are estimates, not measurements. The first version (40-60 hours before round 1) carried unstated padding,
-partly anchored on the U35 redo's pace, which was the runaway pace. The softest numbers are the number of fix rounds
-per batch and R3, which depends on decision 4.
+P and R0 were added or corrected by the plan check: P's own runs, and R0's twin-record edits, Unix-port run and twelve
+baseline builds (a firmware build takes about a minute on a built toolchain). These are estimates, not measurements. The
+first version (40-60 hours before round 1) carried unstated padding, partly anchored on the U35 redo's pace, which was
+the runaway pace. The falsification added the twin suite and the full CI time to each batch, R0's first full CI run,
+R3's wider OR37.a/OR38.a pass and its twin runner run, and R5's D.15 sweep and U37 items. The softest numbers are the
+number of fix rounds per batch, R3 (the twin runner's run time is not measured) and R5's D.15 sweep.
 
 ## 6. Decisions needed before R0 starts (one at a time)
 
 1. **The plan's shape.**
    - Facts: the old plans carry hypothetical-based actions and the old way of working; the owner's 2026-10-23 words
      put the firmware first ("The goal for the first hardware round after U35 was to have the firmware final. That's
-     still in place.").
+     still in place."), and on 2026-10-26: "there is no need to restrict on "firmware first" alone".
    - Proposal: retire the old plans as in 3.1. Run R0, R1, R2, R3, round 1, R4, R5, the last round and D, in that
      order.
    - The alternative: docs before round 1. The docs would then be written twice, once more after the round's
@@ -471,14 +559,9 @@ per batch and R3, which depends on decision 4.
      `py/stream.c:122-128`). WS-9's quiet print and merge list go; WS-1's head limits and the 3-4 line C-stack hook
      stay.
    - **Item 4 decided (owner, 2026-10-28: "keep it"):** the setup's up-to-three identification reads with W29 stay,
-     your OR113's first rung ("retry the transaction"); without it a single disturbed read would skip the ladder's mild
+     OR113.a's first rung ("retry the transaction"); without it a single disturbed read would skip the ladder's mild
      step. Round 1's FRAM log read records whether W29 ever appeared, as knowledge only.
    - **Decision 3 is closed.**
-   - (a) Remove their code in R1 and verify them in round 1. A confirmed one comes back as a minimal fix, on
-     evidence.
-   - (b) A short measurement session before R1. This needs the bench and at least one flash cycle, and it delays R1.
-   - The pre-audit code these items replace ran without an observed failure.
-   - Recommendation: (a).
 4. **Where R3's effort goes.** The owner asked for this distinction (06:37: "So we will have to find a distinction
    where to put the effort.").
    - Proposal: each B3 row is met on the final tree, in the form listed in 3.2. The review verdicts of unchanged
@@ -494,10 +577,14 @@ per batch and R3, which depends on decision 4.
    - **Decided (owner, 2026-10-28): "A".** Each budget at the top of its estimate: R0 1 h; R1 25 h, 12 runs; R2 8 h,
      6 runs; R3 10 h, 8 runs; R4 12 h, 8 runs; R5 5 h, 4 runs; the last round and D 4 h, 2 runs. A stop with a report
      at 80 % of either; hours count from a phase's go-ahead, without time waiting for the owner.
+   - Applied by the same rule after the plan check and its falsification: R0 2.5 h; R1 31 h; R3 15 h; R5 10 h and 6
+     runs; the plan check 22 h (its estimate at the go-ahead was 12-22 h; about 1.7 h used) and 5 runs, the runs added
+     for its falsification agents (owner, 2026-10-28: "adapt the run counts accordingly").
 6. **Retired error numbers.**
-   - Facts: the never-reuse rule is agent text, and it would leave about 20 tombstone rows. Its stated reason is FRAM
-     history across reflashes, which the owner does not require (OR47.a: "no requirement for the fram to stay
-     consistent through firmware re-flashes"). The refactored firmware has only ever run on the dev bench.
+   - Facts: the never-reuse rule is agent text, and it would leave about 20 tombstone rows. The tree states no reason;
+     the scan gives FRAM history across reflashes (DECREV.md), which the owner does not require (OR47.a: "no
+     requirement for the fram to stay consistent through firmware re-flashes"). The refactored firmware has only ever
+     run on the dev bench.
    - (a) Drop the rule: a removed code's row goes, and its number may be reused.
    - (b) Keep the tombstones.
    - Recommendation: (a), the smaller change, resting on OR47.a.
@@ -519,29 +606,38 @@ per batch and R3, which depends on decision 4.
 
 ## 7. Clarifications asked later, at the start of the batch they affect
 
-These are two of the owner's statements that pull apart (DECREV 6). Each is asked once, in prose, when its batch
-begins, and never before:
-- **(d)** the console at DebugLevel 0: OR35.a against Q6's "Option a" (batch B1);
-- **(h)** the wet bulb's cold-dry corner against "Adapt the humidity to the verified range" (batch B2);
+Each sets an owner statement against another owner statement or a code fact (DECREV 6; (i) and (j) found by the plan
+check). Each is asked once, in prose, when its batch or checkpoint begins, and never before:
+- **(d)** the console at DebugLevel 0: OR35.a against Q6's "Option a", and with it every `console()` line in `src/`
+  that prints a caught exception, weighed against the owner's "no evidence to a bug ... is silently lost" and the
+  memory gates, which see a caught MemoryError only through a printed line (batch B1);
+- **(h)** whether the owner's "Adapt the humidity to the verified range" (said of the Magnus pair) extends to the wet
+  bulb's cold-dry corner, an agent-added exclusion (batch B2; the `rel_humidity()` clamp is not part of it);
 - **(e)** FRAM's own log for one invalid block: OR56 against "stay as is" (batch B3);
 - **(c)** a lost UART frame: the `uart-flash-erase-overrun` "change" note against the accepted flash-stall
-  degradation (batch B6).
+  degradation (batch B6);
+- **(i)** the two decision-records checks: the owner's prevention rule 5 (OR68 "4. yes", CLAUDE.md's decision records)
+  against "The audit verification machinery is just a temporary tool" (2026-10-28) (R2's checkpoint);
+- **(j)** the Stull paper's move: write access to the `datasheets` repository (the owner's grant names fetching only)
+  and the paper's redistribution terms (OR52.a (7)) (at D).
 
 Not asked:
-- (a) and (b) are settled by decisions 4 and 5.
+- (b) is settled by decision 4; (a), OR30.a's scope of the tunables register, by R2's Part N scope, shown at R2's
+  checkpoint.
 - (f) is Wi-Fi, which the owner has decided ("I decided everything already.").
-- (g), the hazard row added to A.11 after the owner signed it off, is a records fix: the signed-off table is restored
-  in R4, and the added row's content moves to the Part it concerns, as agent text.
+- (g), the hazard clause added to A.11's row 2 after the owner signed it off, is a records fix: the signed-off table
+  is restored in R4, and since B6 keeps the hazard mode, row 2 keeps naming the `UartHazards` dispatch field (A.11's
+  own rule, `test_a11_names_every_dispatch_field`), marked as agent text.
 
 ## Appendix A: U35 and the closing ledger, item by item
 
-U35's states are from Q35 (2026-10-27). Later lanes advanced 07, 22, 36 and 52 without finishing them.
+U35's states are from Q35 (2026-10-27). Later lanes advanced 03, 07, 08, 22, 36, 37, 41 and 52 without finishing them.
 
 | action | state | where it goes |
 |---|---|---|
 | 01 B3 working files | done | retired with the records; R3 keeps working files only where it needs them |
 | 02 every level at both stages against the baseline | open | replaced by each batch's full runs and the phase numbers |
-| 03 review every test | partly (8,482 rows) | R3, OR19.a: verdicts carry over by name and body; changed and new tests reviewed |
+| 03 review every test | partly (8,482 rows) | R3, OR19.a: verdicts carry over where neither the test nor its target changed; the rest reviewed |
 | 04 faults planted per module | partly (153 rows, 1 open) | R3, OR16.a (4), in the owner's planting scope; results carry over for unchanged code |
 | 05 check-style tests triggered | done | R3, OR21.a: re-triggered only where the subject changed |
 | 06 J.7's latency blindness | done | stays; R2 reviews it with the UART tests |
@@ -554,7 +650,7 @@ U35's states are from Q35 (2026-10-27). Later lanes advanced 07, 22, 36 and 52 w
 | 13 NeoPixel and notification on driven time | done | re-checked after B7's revert |
 | 15 NTP loopback cap | partly | R2 |
 | 17-20 the small test fixes | done | stay |
-| 21 lone-BMP3xx general call on the flash tier | done | its silicon run is in round 1 |
+| 21 lone-BMP3xx general call on the flash tier | done | its silicon run is in round 1, through the queue R3 prepares |
 | 22 N.27 and the ladder of levels | open | R2 (Part N); the levels record retires |
 | 23 every tier's cost | open | replaced by the phase numbers |
 | 24 the heavy-file list | partly | R2 |
@@ -562,18 +658,18 @@ U35's states are from Q35 (2026-10-27). Later lanes advanced 07, 22, 36 and 52 w
 | 28, 29 load on every finite resource, zero-think readers | partly | R3, OR49.a |
 | 30, 31 planted failures stop the feed | done | stay |
 | 32 the real 2**30 wrap | partly (the run merged, green) | its result is recorded as knowledge; no more work |
-| 33-35 forty days, dropped wake-ups, counter caps | done | stay (the caps are cheap bounds the owner wants) |
+| 33-35 forty days, dropped wake-ups, counter caps | done | stay (the caps: OR103, "No unbounded counters anywhere") |
 | 36 raising-call map | open (BR1-BR4 advanced) | R3, OR26, for the modules R1 changed, reproduction required |
 | 37 normal situations that accept a logged code | partly | R3 |
 | 38-40 twin boot log, smoke log, torn write | done | stay |
 | 41 E.5.1 verdicts | partly | R3's one coverage run (OR16.a (3)) |
-| 42-47, 55 removals of unreachable guards | done (45 reversed: the owner kept `logger=`) | consistent with R1; B1-B3 re-check them |
+| 42-47, 55 removals of unreachable guards | done (45 reversed: `logger=` kept under the owner's library rule) | consistent with R1; the batches of their files re-check them (B2, B3, B6, B8) |
 | 48 the cancel-at-each-await sweep | done | R2 reviews it as harness |
-| 49 every instrument through the twin runner | partly | the twin record retires in R0; OR21.a's twin pointing goes to R3 |
+| 49 every instrument through the twin runner | partly | the record's committed copy retires in R0 and the runner stays; R3 runs it once on the final tree (OR21.a, OR29.a (4)) |
 | 50 the four-tier rule for every bus change | open | R3, for the final tree's bus-facing changes |
 | 51 the wear gate of every hardware test | open | R3: one table, and a marker fix if one is wrong |
 | 52 every recovery rung at every level | open (CO1-CO5 advanced) | R3, for the rungs that stay (the owner's ladder) |
-| 53 the owner's latest test demands | partly | R3: the B3 rows are its checklist |
+| 53 the owner's latest test demands | partly | R3: the group-B3 rows are its checklist |
 | 54 B3's hardware items | partly | R3: round 1's preparation |
 | 56 test-tier tunables owed | open | R2: Part N to OR30.a's scope; its values measured |
 | 57 the BACKLOG chroot list | open | R5: one paragraph for every build-environment change since the legs |
@@ -581,7 +677,7 @@ U35's states are from Q35 (2026-10-27). Later lanes advanced 07, 22, 36 and 52 w
 | closing ledger item | where it goes |
 |---|---|
 | 1 LD+CM3, load records and the assembly matrix | retired; OR49.a and OR41.a (1) in R3 |
-| 2 CRr2c, the flash-tier log check through the twin | retired; OR21.a's hardware-test twin check in R3, in its lean form |
+| 2 CRr2c, the flash-tier log check through the twin | retired; R3's twin runner run (OR21.a, OR29.a (4)) |
 | 3 IN2, the reverse map and the lwIP review rows | retired; OR25.a in R3 |
 | 4 CRr2d, the bench tier's sets through the dev twin | retired, as item 2 |
 | 5 CMr1n, the drift arms | retired; the drift check is reviewed in R2 as twin machinery |
@@ -590,15 +686,18 @@ U35's states are from Q35 (2026-10-27). Later lanes advanced 07, 22, 36 and 52 w
 | 8 the NeoPixel's lost cancel | batch B7: the revert removes it |
 | 9 the serial close | replaced, as in 3.1 |
 
+Phase C's action list (`audit/actions/C.md`, A.C.01-A.C.19): each action that survives R1 goes to round 1's list (3.2);
+the rest is dropped at R3's preparation, each with its reason.
+
 ## Appendix B: U36 and U37, by group
 
 - **U36a and U36b, 96 actions.** 81 are doc actions, 14 rule actions and 1 a code action, all written against heads
   `b10c88a` and `82c430e`. At R4's start each is filtered against the final tree:
   - its subject is gone: dropped;
   - its subject stays: a checklist input for its document.
-  The substance they carry is the owner's rows OR27.a, OR13, OR14, OR15.a, OR44.a, OR10.b and OR68.a, which R4 meets
-  directly. The rule actions add CLAUDE.md rules; each is shown to the owner at R4's checkpoint, and only those with an
-  owner row behind them are adopted.
+  The substance they carry is the owner's rows OR27.a, OR13, OR14, OR15.a, OR44.a, OR10.b, OR51.a (4) and OR68.a,
+  which R4 meets directly. The rule actions add CLAUDE.md or SPECIFICATION.md rules; each is shown to the owner at R4's
+  checkpoint, and only those with an owner row behind them are adopted. The one code action, A.U36.038, goes to R5.
 - **U37, 17 actions, by where they go:**
   - **R5:** the fixed close order (01), the allow-lists removed once empty (02), stray files (03), the knowledge base
     and the twin fidelity (04), the owed-hardware list (05), BACKLOG's four kinds of content (06), the re-verification

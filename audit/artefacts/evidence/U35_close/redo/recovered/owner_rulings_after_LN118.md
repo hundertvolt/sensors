@@ -267,3 +267,25 @@ their context). From now on every owner word is appended here as it is given.
   R0 still needs its own go-ahead.
 - (2026-10-28 14:29 UTC, after all seven PLAN.md decisions, the push) "do a push so we keep everything in any case"
   Go-ahead for a push of the plan with its decisions and the records as the next snapshot; not R0's go-ahead.
+- (2026-10-28 14:33 UTC, on the plan's reliability) "What worries me much at the current stage: when going through the decisions,
+  there was a pattern repeating: I only asked a question about a fact, and that alone was reason enough for you to
+  revise your recommended actions, mostly refining them significantly. This is a clear sign that you papered over
+  important details and had such many oversights that multiple appeared just in these seven questions. I wonder how
+  many there are in the whole plan. What do you suggest how to handle this - will such issues be found while working
+  on it? Before? After? How?"
+- (2026-10-28 14:37 UTC, on the plan's reliability, after the lead's answer) "How about revising the current plans now?" A question,
+  not a go-ahead; answered with what a revision now covers and costs.
+- (2026-10-28 14:44 UTC, the plan check, go-ahead) "Revise our current plans, so they do not contain such glitches anymore. The claim
+  falsification check agent scan seems reasonable, too. Add this as a final verification and adapt the run counts
+  accordingly." Go-ahead for the check of every PLAN.md row (the five checks, evidence per row, a change list), with
+  independent falsification agents as its final verification and their runs added to the budget table.
+- (2026-10-28 15:59 UTC, the plan check's falsification agents) "Are these agents the last to go?" A question; answered:
+  F3 and F4 are the last planned, the fifth budgeted run is unspent.
+- (2026-10-28 16:06 UTC, after the plan check; push and hardware handover, go-ahead) "Once the falsification agent work and
+  your follow up is done, save and push.
+  Then, prepare a handover for real hardware tests and measurements which can be done without using any existing
+  firmware - e.g. env setups, other script heavy work. Also, consider measurements and tests which run with minimal
+  examples, not firmware. Prefer timing and script heavy work (but no hours long stuff, no soaks) so we can use the
+  remaining 1...2% weekly budget for low token, longer duration measurements, which will yield you much knowledge for
+  the upcoming work already." Go-ahead for the push (snapshot 19) after F3/F4 and their follow-up, then for writing a
+  handover; the handover is prepared, not run (no real-hardware go-ahead for this session).

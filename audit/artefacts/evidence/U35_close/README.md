@@ -86,3 +86,15 @@ retired plans, what remains by phase, the way of working with its budgets, and t
 words. `redo/int_history.txt.gz` lists the integration history's commits (messages and changed files, no source),
 which stays local because its messages carry lane names. `redo/recovered/` and the lane plan gain the owner's words
 of the decisions. Nothing ran; nothing in the plan has started.
+
+## Nineteenth snapshot (2026-10-28): `redo/plancheck/`
+
+The owner, worried that factual questions kept refining the plan's recommendations ("This is a clear sign that you
+papered over important details"), asked for the plan to be revised so it holds no such glitches, with an independent
+falsification as the final verification ("Revise our current plans, so they do not contain such glitches anymore. The
+claim falsification check agent scan seems reasonable, too. Add this as a final verification and adapt the run counts
+accordingly."), then for a push. `redo/plan/PLAN.md` is the checked plan. `redo/plancheck/` holds the evidence:
+`R1.md` and `R0R2_rest.md` (the lead's check of every row: where it is, what governs it, who uses it, what the platform
+does, how big it is), `CHANGES.md` (every change and its kind), the four falsification hand-backs under `falsify/`
+(297 claims tried by agents that had the repository but not the lead's evidence: 5 refuted, 78 partly), the edit
+scripts and the plan's backups before each step. Nothing ran on the product; nothing in the plan has started.
