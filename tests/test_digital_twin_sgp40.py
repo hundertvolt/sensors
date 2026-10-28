@@ -15,7 +15,7 @@ from _fast_sleep import FastAsyncSleep
 from _sgp40_chip import SGP40Chip
 from _tmp_scratch import TmpScratch
 from _twin_common import Walk
-from _twin_devices import distinct_wirings, wiring_plan
+from _twin_devices import bus_keywords, distinct_wirings, wiring_plan
 from _twin_random import FixedRandom
 
 import asy_i2c_driver
@@ -278,8 +278,8 @@ def _crc_recovery_on(device: str) -> None:
 
 
 def _sgp40_bus(device: str) -> "tuple[asy_i2c_driver.I2C, str]":
-    # The bus the device wires its SGP40 on, built as its own plan describes it, every neighbour on it; each
-    # neighbour's measurement Timer is stopped, as no test here reads one.
+    # The bus the device wires its SGP40 on, built as its own plan and generated module build it, every neighbour on it;
+    # each neighbour's measurement Timer is stopped, as no test here reads one.
     plan = wiring_plan(device)
     machine.reset_peripherals()
     machine.configure_wiring(plan)
@@ -288,7 +288,7 @@ def _sgp40_bus(device: str) -> "tuple[asy_i2c_driver.I2C, str]":
     scl, sda = pins.get("scl"), pins.get("sda")
     assert isinstance(scl, int)
     assert isinstance(sda, int)
-    i2c = asy_i2c_driver.I2C(int(bus[3:]), scl_pin=scl, sda_pin=sda)
+    i2c = asy_i2c_driver.I2C(int(bus[3:]), scl_pin=scl, sda_pin=sda, **bus_keywords(device, bus))
     found = machine.peripheral(bus)
     assert isinstance(found, machine.I2C)
     for neighbour in found.devices.values():

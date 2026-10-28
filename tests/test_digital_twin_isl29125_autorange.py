@@ -34,7 +34,7 @@ from _async_harness import cancel_all, run
 from _error_codes import code
 from _src_const import src_const
 from _tmp_scratch import TmpScratch
-from _twin_devices import device_with, wiring_plan
+from _twin_devices import bus_keywords, device_with, wiring_plan
 from machine import Pin
 
 import asy_i2c_driver
@@ -71,7 +71,7 @@ async def _make_dev_reader(name: str, *, resolution: int = 16, dwell_s: float = 
     machine.reset_peripherals()
     machine.configure_wiring(plan)
     Pin.reset_registry()
-    i2c = asy_i2c_driver.I2C(int(bus_name[3:]), pins["scl"], pins["sda"], frequency=50000)  # type: ignore[typeddict-item]  # an I2C bus's pins
+    i2c = asy_i2c_driver.I2C(int(bus_name[3:]), pins["scl"], pins["sda"], **bus_keywords(device, bus_name))  # type: ignore[typeddict-item]  # an I2C bus's pins
     assert i2c._i2c is not None
     chip = i2c._i2c.devices[attachment["address"]]
     # The fake keeps CONVERTING on its own timer, and that is load-bearing: a CONFIG1 write restarts

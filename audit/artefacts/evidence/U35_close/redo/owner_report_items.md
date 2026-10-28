@@ -203,3 +203,10 @@ source.
   stale or altered file is never installed; the integrity you were told holds, by our check rather than apt's.
   Found on the way: the runner image's own apt setting (1 retry, 15 s) overrides the documented 2 retries / 30 s for
   Playwright's apt calls; left as is until the next CI log shows the effective values (the lead's call then).
+- WR1 (lead, 00:19): the twin tests' "one device per distinct wiring" pick now includes each bus's own settings, and the
+  twin's shared, SGP40, SCD30 and ISL29125 test buses are built with exactly the settings the device's generated module
+  passes (pinned by a new test). No pick changed; the SGP40 twin bus had run at a 100 kHz default no device uses.
+- CI apt fix, first real run (lead, 00:19): red on the firmware build. The mirror check passed a medium node
+  (1.3 MB/s) against its fixed 1 MB/s threshold, and the 463 MB compiler package cannot arrive inside a 150 s attempt
+  at that rate. The threshold was the lead's estimate in the brief; it is now being derived from the bytes to fetch
+  and the step's own time bound. PR comment posted with the cause.

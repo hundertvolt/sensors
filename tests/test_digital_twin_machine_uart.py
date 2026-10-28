@@ -47,7 +47,8 @@ _RSR_OE = 0x08
 
 
 def _driver_pair(baudrate: int = 115200) -> "tuple[asy_uart_driver.UART, asy_uart_driver.UART, UARTLink]":
-    # The product driver on both twin UARTs, joined by the bench jumper and polled by bounded pollers.
+    # The product driver on both twin UARTs, joined by the bench jumper and polled by bounded pollers: a harness pair at
+    # the test's own baud rate, not a device's link (test_digital_twin_uart_link.py runs the one a device builds).
     machine.reset_peripherals()
     sender = asy_uart_driver.UART(0, tx_pin=0, rx_pin=1, baudrate=baudrate, poll_wait_ms=1, poll_idle_ms=1)
     receiver = asy_uart_driver.UART(1, tx_pin=8, rx_pin=9, baudrate=baudrate, poll_wait_ms=1, poll_idle_ms=1)

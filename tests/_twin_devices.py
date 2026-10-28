@@ -59,6 +59,13 @@ _PREFIX = "sensortask_"
 _SUFFIX = "_wiring_plan.json"
 
 
+def _bus_statement(lines: "list[str]", device: str, bus: str) -> str:
+    # A bus's construction statement among a generated module's stripped lines: exactly one, or the caller fails.
+    found = [line for line in lines if line.startswith(bus + " = ")]
+    assert len(found) == 1, f"{device}'s generated module builds {bus} {len(found)} times, not once: {found!r}"
+    return found[0]
+
+
 def _constructs(statement: str, driver: str) -> bool:
     # An assignment to the driver's module global: its own name, or the name with "_" and its name extension.
     name = statement.split(" = ", 1)[0]
@@ -73,6 +80,22 @@ def _identifiers(statement: str) -> "list[str]":
 def _items(mapping: "I2CAttachment | SpiAttachment | I2CPins | SpiPins | UartPins") -> "list[tuple[str, object]]":
     # A plan mapping as its items in key order: a json-loaded dict's own order is not one to compare by.
     return sorted(mapping.items(), key=lambda item: item[0])
+
+
+def _module_lines(device: str) -> "list[str]":
+    with open(_TREE + "/" + _PREFIX + device + ".py") as f:
+        return [line.strip() for line in f]
+
+
+def bus_construction(device: str, bus: str) -> str:
+    # The device's generated construction statement of one bus, as buildgen writes it from the TOML's [bus.<name>].
+    return _bus_statement(_module_lines(device), device, bus)
+
+
+def bus_keywords(device: str, bus: str) -> "dict[str, int]":
+    # The settings that statement passes by keyword: what it leaves out stays the driver's own default.
+    arguments = bus_construction(device, bus).split("(", 1)[1].rstrip(")").split(", ")
+    return {name: int(value) for name, _, value in (argument.partition("=") for argument in arguments) if value}
 
 
 def device_with(*drivers: str) -> str:
@@ -131,21 +154,20 @@ def wiring_plan(device: str) -> "TwinWiringPlan":
 
 
 def wiring_read(device: str, *drivers: str) -> "list[object]":
-    # What a scenario on these drivers reads of a device: each one's generated construction statement and every module
-    # constant it names (its TOML settings), and for each bus, SPI bus or UART pair one sits on, its pins and occupants.
+    # What a scenario on these drivers reads of a device: the generated construction statement of each one and of each bus,
+    # SPI bus or UART pair one sits on (its TOML settings), every module constant they name, and those buses' pins and occupants.
     plan = wiring_plan(device)
-    with open(_TREE + "/" + _PREFIX + device + ".py") as f:
-        lines = [line.strip() for line in f]
+    lines = _module_lines(device)
+    buses = [bus for bus in sorted(plan["buses"]) if any(a["driver"] in drivers for a in plan["buses"][bus])]
+    spi = [bus for bus in sorted(plan["spi"]) if plan["spi"][bus]["driver"] in drivers]
+    uart = plan["uart"]
+    pair = [uart["initiator_bus"], uart["responder_bus"]] if uart is not None and "uart_link" in drivers else []
     read: list[object] = [statement for statement in lines if any(_constructs(statement, driver) for driver in drivers)]
+    read += [_bus_statement(lines, device, bus) for bus in buses + spi + pair]
     named = {name for statement in read for name in _identifiers(str(statement)) if name[:1] == "_"}
     read += [line for line in lines if " = " in line and line.split(" = ", 1)[0].split(":", 1)[0] in named]
-    for bus in sorted(plan["buses"]):
-        if any(a["driver"] in drivers for a in plan["buses"][bus]):
-            read.append((bus, _items(plan["pins"][bus]), [_items(a) for a in plan["buses"][bus]]))
-    for bus in sorted(plan["spi"]):
-        if plan["spi"][bus]["driver"] in drivers:
-            read.append((bus, _items(plan["pins"][bus]), _items(plan["spi"][bus])))
-    uart = plan["uart"]
-    if uart is not None and "uart_link" in drivers:
-        read.append([(bus, _items(plan["pins"][bus])) for bus in (uart["initiator_bus"], uart["responder_bus"])])
+    read += [(bus, _items(plan["pins"][bus]), [_items(a) for a in plan["buses"][bus]]) for bus in buses]
+    read += [(bus, _items(plan["pins"][bus]), _items(plan["spi"][bus])) for bus in spi]
+    if pair:
+        read.append([(bus, _items(plan["pins"][bus])) for bus in pair])
     return read

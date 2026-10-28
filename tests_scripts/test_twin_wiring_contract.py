@@ -360,15 +360,22 @@ def test_no_shared_bus_anywhere_fails_naming_the_devices(twin_devices: types.Mod
 _READ_BASE: "dict[str, object]" = {
     "buses": {"i2c0": [{"driver": "scd30", "name_ext": "", "address": 0x61, "irq_pin": 8}], "i2c1": [{"driver": "sgp40", "name_ext": "", "address": 0x59}]},
     "spi": {"spi0": {"driver": "fram", "name_ext": "", "max_size": 8192}},
-    "pins": {"i2c0": {"scl": 13, "sda": 12}, "i2c1": {"scl": 27, "sda": 26}, "spi0": {"sck": 2, "mosi": 3, "miso": 4}},
-    "uart": None,
-    "instances": ["fram", "scd30", "sgp40"],
+    "pins": {"i2c0": {"scl": 13, "sda": 12}, "i2c1": {"scl": 27, "sda": 26}, "spi0": {"sck": 2, "mosi": 3, "miso": 4}, "uart0": {"tx": 0, "rx": 1}, "uart1": {"tx": 8, "rx": 9}},
+    "uart": {"initiator_bus": "uart0", "responder_bus": "uart1"},
+    "instances": ["fram", "scd30", "sgp40", "uart_link"],
 }
 _READ_LINES = (
+    "    i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000, timeout=200000)",
+    "    i2c1 = asy_i2c_driver.I2C(1, 27, 26, frequency=50000)",
+    "    spi0 = asy_spi_driver.SPI(0, 2, 3, 4)",
+    "    uart0 = asy_uart_driver.UART(0, 0, 1, baudrate=115200, poll_wait_ms=2, poll_idle_ms=50)",
+    "    uart1 = asy_uart_driver.UART(1, 8, 9, baudrate=115200, poll_wait_ms=2, poll_idle_ms=50)",
     '    conn = WifiService(WifiConfig("SensorStationA", "12345678", 5, 8), log=log_fram)',
     "    fram = FRAMManager(spi0, 1, max_size=0x2000, log=log_ram)",
     "    scd30 = SCD30_Reader(i2c0, 8, trigger_s=3, max_module_error=_MAX_MODULE_ERROR, log=log_fram)",
     '    sgp40 = SGP40_Reader(i2c1, temperature=ValueRef(scd30, "Temp"), log=log_fram)',
+    '    uart_link_init = UARTLinkDriver(uart0, "initiator", name_ext="init", log=log_fram)',
+    '    uart_link_resp = UARTLinkDriver(uart1, "responder", name_ext="resp", log=log_fram)',
 )
 # One text edit to a second device's plan or generated module, by what it changes: a scenario on the drivers named reads
 # it (True) or does not (False).
@@ -384,12 +391,18 @@ _READ_EDITS: "list[tuple[str, tuple[str, ...], str, str, bool]]" = [
     ("another driver's bus", ("scd30",), '"i2c1": {"scl": 27', '"i2c1": {"scl": 19', False),
     ("another driver's settings", ("scd30", "sgp40"), "FRAMManager(spi0, 1,", "FRAMManager(spi0, 17,", False),
     ("the hostname", ("scd30", "sgp40", "fram"), "SensorStationA", "SensorStationB", False),
+    ("its bus's timeout", ("scd30",), "50000, timeout=200000", "50000, timeout=100000", True),
+    ("its bus's frequency", ("scd30",), "I2C(0, 13, 12, frequency=50000", "I2C(0, 13, 12, frequency=100000", True),
+    ("its SPI bus's construction", ("fram",), "SPI(0, 2, 3, 4)", "SPI(0, 18, 19, 16)", True),
+    ("its UART bus's poll rate", ("uart_link",), "UART(1, 8, 9, baudrate=115200, poll_wait_ms=2, poll_idle_ms=50", "UART(1, 8, 9, baudrate=115200, poll_wait_ms=2, poll_idle_ms=20", True),
+    ("another driver's bus's timeout", ("sgp40",), "50000, timeout=200000", "50000, timeout=100000", False),
+    ("a UART bus no named driver sits on", ("scd30", "sgp40", "fram"), "UART(0, 0, 1, baudrate=115200, poll_wait_ms=2", "UART(0, 0, 1, baudrate=115200, poll_wait_ms=1", False),
 ]
 
 
 def _plant_device(tree: Path, device: str, old: str = "", new: str = "") -> None:
     # A full plan and the generated module's construction statements, old replaced by new in whichever holds it.
-    texts = [json.dumps({"device": device, **_READ_BASE}), '_MAX_MODULE_ERROR = const(5)\n_BUILD_DATE = const("2026-01-01")\n\n\ndef build_system():\n    global conn, fram, scd30, sgp40\n' + "\n".join(_READ_LINES) + "\n"]
+    texts = [json.dumps({"device": device, **_READ_BASE}), '_MAX_MODULE_ERROR = const(5)\n_BUILD_DATE = const("2026-01-01")\n\n\ndef build_system():\n    global i2c0, i2c1, spi0, uart0, uart1, conn, fram, scd30, sgp40, uart_link_init, uart_link_resp\n' + "\n".join(_READ_LINES) + "\n"]
     assert not old or sum(text.count(old) for text in texts) == 1, old
     plan, module = (text.replace(old, new) if old else text for text in texts)
     (tree / f"sensortask_{device}_wiring_plan.json").write_text(plan, encoding="utf-8")
@@ -416,6 +429,50 @@ def test_identical_devices_share_one_run_on_the_first_of_them(twin_devices: type
     assert twin_devices.distinct_wirings() == ["fixture-device-a", "fixture-device-b"]  # every instance a device wires
     with pytest.raises(AssertionError, match=r"'isl29125'"):
         twin_devices.distinct_wirings("isl29125")
+
+
+def test_a_bus_s_keywords_are_the_settings_its_generated_construction_passes(twin_devices: types.ModuleType, tmp_path: Path) -> None:
+    _plant_device(tmp_path, "fixture-device-a")
+    assert twin_devices.bus_construction("fixture-device-a", "spi0") == "spi0 = asy_spi_driver.SPI(0, 2, 3, 4)"
+    assert [twin_devices.bus_keywords("fixture-device-a", bus) for bus in ("i2c0", "i2c1", "spi0", "uart1")] == [
+        {"frequency": 50000, "timeout": 200000},
+        {"frequency": 50000},
+        {},
+        {"baudrate": 115200, "poll_wait_ms": 2, "poll_idle_ms": 50},
+    ]
+    with pytest.raises(AssertionError, match=r"fixture-device-a's generated module builds uart2 0 times"):
+        twin_devices.bus_keywords("fixture-device-a", "uart2")
+
+
+def test_a_bus_its_module_never_builds_fails_the_read_naming_it(twin_devices: types.ModuleType, tmp_path: Path) -> None:
+    _plant_device(tmp_path, "fixture-device-a", "    i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000, timeout=200000)\n", "")
+    with pytest.raises(AssertionError, match=r"fixture-device-a's generated module builds i2c0 0 times"):
+        twin_devices.wiring_read("fixture-device-a", "scd30")
+
+
+def test_generated_devices_differing_only_in_one_bus_s_timeout_each_run(twin_devices: types.ModuleType, tmp_path: Path) -> None:
+    # A device's generated module and plan written twice, the second's one I2C timeout changed: a scenario on a chip of
+    # that bus, or on every instance, runs on both; one on a chip of another bus only on the first.
+    for device in DEVICE_NAMES:
+        generated = generate_device(_REPO / "devices" / f"{device}.toml", _REPO / "src", _REPO / "ext", build_date="2026-01-01T00:00:00Z")
+        timed = [line.strip() for line in generated.module_source.splitlines() if " = asy_i2c_driver.I2C(" in line and ", timeout=" in line]
+        if timed:
+            break
+    else:
+        pytest.fail(f"no generated module of {DEVICE_NAMES!r} builds an I2C bus with a timeout")
+    plan = compute_twin_wiring(generated.model)
+    bus = timed[0].split(" = ", 1)[0]
+    on_bus = [a["driver"] for a in plan["buses"][bus]]
+    elsewhere = sorted({a["driver"] for name, attached in plan["buses"].items() if name != bus for a in attached} - set(on_bus))
+    assert on_bus and elsewhere, (bus, plan["buses"])
+    assert generated.module_source.count(timed[0]) == 1, timed[0]
+    changed = timed[0].replace(", timeout=", ", timeout=1")
+    for name, source in (("fixture-device-a", generated.module_source), ("fixture-device-b", generated.module_source.replace(timed[0], changed))):
+        (tmp_path / f"sensortask_{name}.py").write_text(source, encoding="utf-8")
+        (tmp_path / f"sensortask_{name}_wiring_plan.json").write_text(json.dumps({**plan, "device": name}), encoding="utf-8")
+    assert twin_devices.distinct_wirings(on_bus[0]) == ["fixture-device-a", "fixture-device-b"], twin_devices.wiring_read("fixture-device-b", on_bus[0])
+    assert twin_devices.distinct_wirings() == ["fixture-device-a", "fixture-device-b"]
+    assert twin_devices.distinct_wirings(elsewhere[0]) == ["fixture-device-a"]
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)

@@ -31,7 +31,7 @@ from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - importe
 from _port_bands import PortAllocator  # noqa: E402 - imported after the prewarm and the UDP shim
 from _src_const import src_int  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
-from _twin_devices import devices_with_shared_bus, distinct_wirings, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
+from _twin_devices import bus_construction, bus_keywords, devices_with_shared_bus, distinct_wirings, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
 
 import asy_i2c_driver  # noqa: E402 - imported after the prewarm and the UDP shim
 import asy_wifi_service  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -100,12 +100,11 @@ _HOLD_SCD30_CYCLES = 3  # whole SCD30 cycles of real bus load the driven 60 s re
 _POLL_S = 0.1  # how often the ladder runs and the command waits look again
 _POLL_MS = int(_POLL_S * 1000)  # the same look on a driven clock
 _ERASE_UNIT: int = src_int("src/asy_fram_manager.py", "_ERASE_UNIT")
+_I2C_DEFAULT_TIMEOUT_US: int = src_int("src/asy_i2c_driver.py", "_DEFAULT_TIMEOUT_US")
 _STA_RETRY_S: int = src_int("src/asy_wifi_service.py", "_STA_RETRY_AFTER_LOSS_S")
 _STA_ESTABLISHED: int = src_int("src/asy_wifi_service.py", "_PHASE_STA_ESTABLISHED")
 # @tunable l2.bus_hazard_concurrency_erase_us_per_byte = 8
 _ERASE_US_PER_BYTE = 8  # the erase's real wire time at the 1 MHz bus (asy_fram_manager.py's _ERASE_UNIT comment)
-# @tunable l2.bus_hazard_concurrency_shared_bus_timeout_us = 200000
-_SHARED_BUS_TIMEOUT_US = 200000  # the shared bus's SCL-release bound; its twin transfers complete at once
 _GENERAL_CALL_ENTRY = ("writeto", 0x00, b"\x06", True)
 # Which get_data() field, per driver, proves that driver produced a real reading under load - the twin tier's much
 # smaller analogue of tests/_bus_hazard_catalog.py's mock-tier adapters (Part C.8); a new driver needs an entry first.
@@ -388,13 +387,14 @@ def _sgp40_measure_command(temperature: int, relative_humidity: int) -> bytes:
 
 
 def _shared_bus(device: str, bus_name: str) -> "asy_i2c_driver.I2C":
-    # The device's bus on its own plan and pins, as its generated module builds it: a fresh bus and chips each time.
+    # The device's bus on its own plan and pins, with the settings its generated construction passes: a fresh bus and
+    # chips each time.
     plan = wiring_plan(device)
     pins = plan["pins"][bus_name]
     machine.reset_peripherals()
     machine.configure_wiring(plan)
     machine.Pin.reset_registry()
-    return asy_i2c_driver.I2C(int(bus_name[3:]), pins["scl"], pins["sda"], frequency=50000, timeout=_SHARED_BUS_TIMEOUT_US)  # type: ignore[typeddict-item]  # an I2C bus's pins
+    return asy_i2c_driver.I2C(int(bus_name[3:]), pins["scl"], pins["sda"], **bus_keywords(device, bus_name))  # type: ignore[typeddict-item]  # an I2C bus's pins
 
 
 def _sibling_read(device: str, sibling: str, bus: "asy_i2c_driver.I2C") -> "Callable[[], Coroutine[object, object, object]]":
@@ -807,6 +807,26 @@ def test_three_concurrent_sgp40_measurements_each_send_and_read_their_own_words(
     assert _sgp40_measure_command(25, 50) == b"\x26\x0f\x80\x00\xa2\x66\x66\x93"  # Table 9's default command
     for device in distinct_wirings("sgp40"):
         _three_concurrent_measurements(device)
+
+
+def test_each_shared_bus_is_built_as_its_generated_construction_builds_it() -> None:
+    # On every shared bus, the built bus's port, pins, frequency and SCL-release bound against the generated statement's
+    # own text, and the twin controller's against those: a setting the statement leaves out stays the driver's default.
+    for device, bus_name, _occupants in _SHARED:
+        built: list[asy_i2c_driver.I2C] = []
+
+        async def build(device: str = device, bus_name: str = bus_name, built: "list[asy_i2c_driver.I2C]" = built) -> None:
+            built.append(_shared_bus(device, bus_name))  # inside a run: a chip's refresh timer is a task, ended with it
+
+        run_timed(build(), timeout_s=_RUN_BOUND_S)
+        port, scl, sda, frequency, timeout = built[0]._args
+        statement = bus_construction(device, bus_name)
+        expected = f"{bus_name} = asy_i2c_driver.I2C({port}, {scl}, {sda}, frequency={frequency}" + (")" if timeout is None else f", timeout={timeout})")
+        assert statement == expected, f"{device} {bus_name}: built {built[0]._args}, generated {statement!r}"
+        controller = built[0]._i2c
+        assert controller is not None, f"{device} {bus_name}: no controller built"
+        bound = _I2C_DEFAULT_TIMEOUT_US if timeout is None else timeout
+        assert (controller.freq, controller.timeout) == (frequency, bound), f"{device} {bus_name}: controller {(controller.freq, controller.timeout)}, built {built[0]._args}"
 
 
 def test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads() -> None:
