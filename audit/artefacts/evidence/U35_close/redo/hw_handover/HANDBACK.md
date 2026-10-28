@@ -36,6 +36,14 @@ dns unreachable_server host=example.com result=OSError(-2,) wall_ms=6985 timer_t
 tcp_rebind_8080 after=served reuse=0 OSError(98,), reuse=1 ok
 udp_rebind_53 reuse=0 ok, reuse=1 ok
 ntp answers=10 of 10 median_ms=38 worst_ms=68
+json_floats n=18 not_round_tripping=0 examples=[]
+float_repr 0.1=0.1 1013.25=1013.25 21.37=21.37 12345.678=12345.678
+heap free=181584 alloc=6320
+memoryerror big_alloc=MemoryError('memory allocation failed, allocating 10000000 bytes',)
+memoryerror exhaust=MemoryError('memory allocation failed, allocating 1024 bytes',) after_kib=171
+irq_alloc_above hard=0 emergency_buf=0 (the traceback is the console text above)
+irq_alloc_above hard=1 emergency_buf=0 (the traceback is the console text above)
+irq_alloc_above hard=1 emergency_buf=256 (the traceback is the console text above)
 reset armed=? cause=3 reason=0x1 chip=0x000100 r0_kept=0 r1_kept=0 elapsed_ms=-1
 reset armed=? cause=3 reason=0x1 chip=0x000100 r0_kept=0 r1_kept=0 elapsed_ms=-1
 reset armed=machine_reset cause=3 reason=0x2 chip=0x000100 r0_kept=1 r1_kept=1 elapsed_ms=0
@@ -518,6 +526,34 @@ FACT value_2={"radio_on": true, "value": "\u0001\u0002", "readback": "\u0001\u00
 FACT restored="ok"
 DONE
 rc=0 18:01:02
+```
+
+### quick_20261028
+
+```
+== quick 18:01:06
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM json_floats n=18 not_round_tripping=0 examples=[]
+SUM float_repr 0.1=0.1 1013.25=1013.25 21.37=21.37 12345.678=12345.678
+SUM heap free=181584 alloc=6320
+SUM memoryerror big_alloc=MemoryError('memory allocation failed, allocating 10000000 bytes',)
+SUM memoryerror exhaust=MemoryError('memory allocation failed, allocating 1024 bytes',) after_kib=171
+Traceback (most recent call last):
+  File "<stdin>", line 39, in _alloc
+MemoryError: memory allocation failed, allocating 10000000 bytes
+SUM irq_alloc_above hard=0 emergency_buf=0 (the traceback is the console text above)
+Uncaught exception in IRQ callback handler
+MemoryError: 
+SUM irq_alloc_above hard=1 emergency_buf=0 (the traceback is the console text above)
+Uncaught exception in IRQ callback handler
+Traceback (most recent call last):
+  File "<stdin>", line 39, in _alloc
+MemoryError: memory allocation failed, heap is locked
+SUM irq_alloc_above hard=1 emergency_buf=256 (the traceback is the console text above)
+DONE=1
+rc=0 18:01:08
 ```
 
 ### reset_bootloader_20261028
