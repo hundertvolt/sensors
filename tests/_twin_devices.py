@@ -87,6 +87,17 @@ def _module_lines(device: str) -> "list[str]":
         return [line.strip() for line in f]
 
 
+def bus_construction(device: str, bus: str) -> str:
+    # The device's generated construction statement of one bus, as buildgen writes it from the TOML's [bus.<name>].
+    return _bus_statement(_module_lines(device), device, bus)
+
+
+def bus_keywords(device: str, bus: str) -> "dict[str, int]":
+    # The settings that statement passes by keyword: what it leaves out stays the driver's own default.
+    arguments = bus_construction(device, bus).split("(", 1)[1].rstrip(")").split(", ")
+    return {name: int(value) for name, _, value in (argument.partition("=") for argument in arguments) if value}
+
+
 def device_with(*drivers: str) -> str:
     # The first generated device whose plan wires every named driver.
     return devices_with(*drivers)[0]

@@ -31,7 +31,7 @@ from _fast_sleep import FastAsyncSleep
 from _scd30_chip import SCD30Chip, SCD30Nvm
 from _tmp_scratch import TmpScratch
 from _twin_common import Walk
-from _twin_devices import distinct_wirings, wiring_plan
+from _twin_devices import bus_keywords, distinct_wirings, wiring_plan
 from _twin_random import FixedRandom
 from _write_counters import WriteCountingOpen
 
@@ -140,8 +140,9 @@ def _largest_offset_on(device: str) -> None:
 
 
 def _reader_on_the_twin_bus(device: str, cfg_path: str) -> "tuple[SCD30_Reader, SCD30Chip]":
-    # The real reader on the bus the device wires its SCD30 on, built as its plan describes it, every neighbour on it;
-    # the measurement Timers of the chip and of each neighbour are stopped, so each test produces what it reads.
+    # The real reader on the bus the device wires its SCD30 on, built as its plan and generated module build it, every
+    # neighbour on it; the measurement Timers of the chip and of each neighbour are stopped, so each test produces what
+    # it reads.
     plan = wiring_plan(device)
     machine.reset_peripherals()
     machine.configure_wiring(plan)
@@ -150,7 +151,7 @@ def _reader_on_the_twin_bus(device: str, cfg_path: str) -> "tuple[SCD30_Reader, 
     scl, sda = pins.get("scl"), pins.get("sda")
     assert isinstance(scl, int)
     assert isinstance(sda, int)
-    i2c = asy_i2c_driver.I2C(int(bus[3:]), scl_pin=scl, sda_pin=sda, frequency=50000)
+    i2c = asy_i2c_driver.I2C(int(bus[3:]), scl_pin=scl, sda_pin=sda, **bus_keywords(device, bus))
     reader = SCD30_Reader(i2c, irq_pin=attachment["irq_pin"], cfg_path=cfg_path)
     found = machine.peripheral(bus)
     assert isinstance(found, machine.I2C)

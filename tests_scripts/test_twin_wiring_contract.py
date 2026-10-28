@@ -431,6 +431,19 @@ def test_identical_devices_share_one_run_on_the_first_of_them(twin_devices: type
         twin_devices.distinct_wirings("isl29125")
 
 
+def test_a_bus_s_keywords_are_the_settings_its_generated_construction_passes(twin_devices: types.ModuleType, tmp_path: Path) -> None:
+    _plant_device(tmp_path, "fixture-device-a")
+    assert twin_devices.bus_construction("fixture-device-a", "spi0") == "spi0 = asy_spi_driver.SPI(0, 2, 3, 4)"
+    assert [twin_devices.bus_keywords("fixture-device-a", bus) for bus in ("i2c0", "i2c1", "spi0", "uart1")] == [
+        {"frequency": 50000, "timeout": 200000},
+        {"frequency": 50000},
+        {},
+        {"baudrate": 115200, "poll_wait_ms": 2, "poll_idle_ms": 50},
+    ]
+    with pytest.raises(AssertionError, match=r"fixture-device-a's generated module builds uart2 0 times"):
+        twin_devices.bus_keywords("fixture-device-a", "uart2")
+
+
 def test_a_bus_its_module_never_builds_fails_the_read_naming_it(twin_devices: types.ModuleType, tmp_path: Path) -> None:
     _plant_device(tmp_path, "fixture-device-a", "    i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000, timeout=200000)\n", "")
     with pytest.raises(AssertionError, match=r"fixture-device-a's generated module builds i2c0 0 times"):
