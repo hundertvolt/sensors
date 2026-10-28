@@ -379,6 +379,63 @@ DONE=1
 rc=0 18:00:09
 ```
 
+### probe_isl29125_mock_conformance_probe_20261028
+
+```
+== probe_isl29125_mock_conformance_probe 18:00:15
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+A01_device_id=7d
+A02_id_burst_2_c1_is_25=7d25
+A03_config_before_reset=3fbf1f
+A04_config_after_reset=000000
+A05_thresholds_after_reset=0000ffff
+B01_status_first_read=00
+B02_status_second_read=00
+B03_status_after_write_00=00
+B04_status_reserved_bits_set=no
+B05_green_low_byte_now=03
+B05_status_burst_2=1203
+B06_status_burst_2_second_byte_is_data=yes
+C01_config1_ff_readback=3f
+C02_config2_ff_readback=bf
+C03_config3_ff_readback=1f
+C04_config_after_reset_2=000000
+C05_read_reg_0f=00
+C06_read_reg_10=00
+C07_write_reg_0f=accepted
+C08_read_reg_0f_after_write=00
+C09_read_8_from_0x0d_rollover=4cff000000000000
+D01_config_burst_readback=052809
+D02_config_after_single_c2_write=051509
+D03_config_partial_read_from_c2=1509
+D04_threshold_roundtrip=3412cdab
+E01_counts_16bit_hi_range=16208,9869,18044
+E02_data_partial_read_from_0x0b=8d267c46
+E03_data_burst_8_past_end=503f8d267c460000
+E04_counts_16bit_lo_range=65095,65409,65083
+E05_counts_12bit_lo_range=4095,3769,4060
+E06_12bit_within_4095=yes
+F01_powerdown_holds_data=yes
+F02_standby_holds_data=yes
+G01_config1_restart_stale_window=yes
+G02_config1_restart_new_after_cycle=yes
+H01_int_idle_level=1
+H02_int_asserted_low=yes
+H03_int_assert_ms_bucket=fast<400
+H04_status_rgbthf_set_when_int=yes
+H05_int_released_by_status_read=1
+H06_status_rgbthf_cleared_by_read=yes
+H07_prst4_ms=1067
+H08_prst4_unit=rgb_cycles
+J01_cycle_12bit_ms_series=7,6,8,7,6,6,9,6
+J02_cycle_12bit_series_complete=yes
+I01_final_config=000000
+DONE=1
+rc=0 18:00:27
+```
+
 ### reset_bootloader_20261028
 
 ```
