@@ -334,6 +334,31 @@ DONE=1
 rc=0 17:59:58
 ```
 
+### probe_bmp3xx_conformance_probe_20261028
+
+```
+== probe_bmp3xx_conformance_probe 18:00:02
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+A01_chip_id=50
+A02_calibration=0e6cc84af4f30087f71efd0c625c75f3038e3e1ac5
+A03_err_reg=00
+B01_status_after_reset=10
+B02_pwr_ctrl_after_reset=00
+B03_pwr_ctrl_during_forced=13
+B04_status_after_conversion=70
+B05_pwr_ctrl_after_conversion=03
+B06_data=00486900447e
+B07_status_after_data_read=10
+C01_osr_config_written=0b04
+C02_osr_config_after_softreset=0000
+C03_por_after_softreset=1
+C04_por_after_second_read=0
+DONE=1
+rc=0 18:00:04
+```
+
 ### reset_bootloader_20261028
 
 ```
