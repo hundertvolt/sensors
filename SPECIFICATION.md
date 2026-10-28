@@ -8853,7 +8853,8 @@ without a listed reason, its list holding every such site with the reason this c
 - **Timeouts** — `asyncio.wait_for()`/`wait_for_ms()` make two task objects per call, the awaited
   coroutine promoted to a task and the runner (`extmod/asyncio/funcs.py:24-30`), and a seconds
   timeout adds a boxed float (`extmod/asyncio/core.py:62-63`) that `wait_for_ms()` avoids:
-  transient, fixed, per webserver call, UDP wait, FRAM presence check and NeoPixel overlay wake.
+  transient, fixed, per webserver call, FRAM presence check and NeoPixel overlay wake; a UDP wait starts
+  none (F.2).
 - **Views** — one `memoryview` slice per I2C register access (the bus's held view), none for a whole
   buffer on I2C, SPI or UART, one per partial UART write retry (`py/objarray.c:556`): transient, fixed.
 - **Tuples of names** — a tuple display of names (an `isinstance()` type tuple, a multiple return) is

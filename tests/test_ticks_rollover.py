@@ -30,6 +30,7 @@ import asy_notification_service
 import asy_system_service
 import asy_uart_comm
 import asy_uart_driver
+import asy_udp_socket
 from asy_base_classes import TickSeconds
 from asy_bmp3xx_driver import BMP3XX_I2C
 from asy_i2c_driver import I2C
@@ -39,6 +40,7 @@ from asy_print_log import LogConfig
 from asy_system_service import SystemService
 from asy_uart_comm import DEFAULT_LIMITS, ROLE_INITIATOR, TransferLimits, UARTComm
 from asy_uart_driver import UART
+from asy_udp_socket import UDPSocket
 
 try:
     from typing import TYPE_CHECKING
@@ -66,6 +68,7 @@ _KNOWN_TICKS_USERS = (
     "src/asy_system_service.py",
     "src/asy_uart_comm.py",
     "src/asy_uart_driver.py",
+    "src/asy_udp_socket.py",
 )
 _REFERENCE_NOW = 10_000  # a start far from any wrap: each crossing case must match the same call made here
 _SCL_PIN = 1
@@ -119,6 +122,22 @@ class _SteppingTime(Ticks30Time):
         if self.on_read is not None:
             self.on_read(self.reads)
         return value
+
+
+class _UdpLink:
+    # A UDPSocket's socket and poller as ready() reads them, no real socket or select.poll(): ipoll(0) is empty until
+    # `ready`, then one POLLIN; close() and unregister() serve the teardown.
+    def __init__(self) -> None:
+        self.ready = False
+
+    def close(self) -> None:
+        pass
+
+    def ipoll(self, _timeout_ms: int) -> "list[tuple[object, int]]":
+        return [(self, select.POLLIN)] if self.ready else []
+
+    def unregister(self, *_args: object) -> None:
+        pass
 
 
 # This Unix-port test rig's own ticks period, confirmed empirically (see the module docstring) - NOT the
@@ -482,6 +501,24 @@ def _uart_ready_wait(start: int, arrive_at: "int | None") -> "tuple[bool, int]":
         _restore(asy_uart_driver)
 
 
+def _udp_ready_wait(start: int, arrive_at: "int | None") -> "tuple[bool, int]":
+    # UDPSocket.ready(POLLIN, 50) from uptime `start`, 10 ms per clock read; a datagram is ready from read `arrive_at`
+    # (None: at _LET_GO_READS). Returns (ready, clock reads).
+    sock = UDPSocket(("127.0.0.1", 9), mode="client")
+    link = _UdpLink()
+    sock._sock, sock.poller, sock.connected = link, link, True  # type: ignore[assignment]  # as _connect() leaves them
+
+    def on_read(reads: int) -> None:
+        if reads == (arrive_at or _LET_GO_READS):
+            link.ready = True
+
+    clock = _install_stepping(asy_udp_socket, start, 10, on_read)
+    try:
+        return run(sock.ready(select.POLLIN, 50)), clock.reads
+    finally:
+        _restore(asy_udp_socket)
+
+
 def test_this_rigs_ticks_period_is_self_consistent() -> None:
     # Re-derives the exact accepted/rejected boundary independently of the bisection above, as a
     # direct check on the discovered period rather than trusting the bisection's own arithmetic.
@@ -695,6 +732,15 @@ def test_the_uart_cancel_ack_wait_crosses_the_ticks_wrap() -> None:
         wrapped = _uart_cancel_wait(TICKS_PERIOD - 20, ack_at)
         assert wrapped == _uart_cancel_wait(_REFERENCE_NOW, ack_at), (ack_at, wrapped)
         assert wrapped == expected, (ack_at, wrapped)
+
+
+def test_the_udp_ready_deadline_crosses_the_ticks_wrap() -> None:
+    # Started 20 ms before the wrap: no datagram ends the wait at its 50 ms bound with no poll there, and one ready after
+    # the wrap is reported, as away from it.
+    for arrive_at, expected in ((None, (False, 6)), (3, (True, 3)), (5, (True, 5))):
+        wrapped = _udp_ready_wait(TICKS_PERIOD - 20, arrive_at)
+        assert wrapped == _udp_ready_wait(_REFERENCE_NOW, arrive_at), (arrive_at, wrapped)
+        assert wrapped == expected, (arrive_at, wrapped)
 
 
 def test_the_i2c_scl_release_waits_cross_the_ticks_us_wrap() -> None:
