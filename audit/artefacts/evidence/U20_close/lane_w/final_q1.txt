@@ -1,0 +1,7 @@
+uart_link std exit=0 wall=82.7s
+uart_link thr exit=0 wall=92.1s
+real_website_integration std exit=0 wall=11.9s
+real_website_integration thr exit=0 wall=12.8s
+run_generic_integration std exit=0 wall=1.3s
+run_generic_integration thr exit=0 wall=1.6s
+DONE

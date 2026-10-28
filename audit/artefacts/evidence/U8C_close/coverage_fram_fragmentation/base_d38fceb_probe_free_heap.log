@@ -1,0 +1,26 @@
+PROBE fram size 8192 free 15400960 alloc 1190048
+PASS test_wozi_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load
+PROBE fram size 8192 free 14076320 alloc 2514688
+PASS test_wozi_write_protect_blocks_reads_too_and_the_data_survives_it
+PROBE fram size 8192 free 15031232 alloc 1559776
+PASS test_wozi_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun
+PROBE fram size 8192 free 14149632 alloc 2441376
+PASS test_wozi_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call
+PROBE fram size 262144 free 286624 alloc 1271840
+PASS test_dev_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call
+PROBE fram size 8192 free 9333472 alloc 7257536
+PASS test_wozi_fram_recovers_after_an_injected_spi_read_fault
+PROBE fram size 262144 free 15049664 alloc 1795296
+PASS test_dev_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load
+PROBE fram size 8192 free 2825536 alloc 13765472
+PASS test_wozi_storage_pause_short_circuits_before_the_bus_so_an_injected_fault_survives
+PROBE fram size 8192 free 14070336 alloc 2520672
+PASS test_wozi_fram_recovers_after_an_injected_spi_write_fault
+PROBE fram size 8192 free 14651840 alloc 1939168
+PASS test_wozi_survives_concurrent_bus_load_and_a_real_established_wifi_disconnect
+PROBE fram size 8192 free 10754016 alloc 5836992
+PASS test_wozi_storage_pause_gates_the_real_twin_chip_and_override_still_reaches_it
+PROBE fram size 8192 free 13198816 alloc 3392192
+PROBE fram size 8192 free 14290624 alloc 2300384
+PASS test_wozi_storage_pause_does_not_survive_a_simulated_reboot
+12/12 passed, 0 failed, 0 skipped

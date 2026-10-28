@@ -1,0 +1,11 @@
+...................                                                      [100%]
+============================= slowest 8 durations ==============================
+0.24s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_a_callers_marker_expression_narrows_the_floor_and_never_replaces_it[narrowed]
+0.23s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_without_a_floor_the_callers_last_marker_expression_is_the_selection
+0.22s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_pytest_sees_the_evidence_directory_exported
+0.22s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_a_failing_verdict_fails_the_wrapper_although_pytest_exited_0
+0.22s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_the_log_and_the_record_land_in_the_evidence_archive
+0.21s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_pytest_runs_once_with_the_record_plugin_and_the_callers_arguments_before_v
+0.21s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_a_callers_marker_expression_narrows_the_floor_and_never_replaces_it[attached-form]
+0.21s call     tests_scripts/test_require_clean_hardware_run_sh.py::test_every_uv_call_runs_without_an_implicit_sync
+19 passed in 3.31s

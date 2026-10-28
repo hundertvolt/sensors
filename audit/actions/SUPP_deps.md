@@ -1,0 +1,1055 @@
+# A-L supplement SUPP_deps — the dependency-refresh step (HEAD cbedc48; verified at d6557c5)
+
+Why: OR129 (owner, 2026-09-30) "Check all external dependencies for updates - both modules, repos and tooling, just
+everything. - If you find updates, carefully check what was changed. - Solve possible breaking changes without any
+regressions. - Check for opportunities, improvements, fixes we can profit from and update our code accordingly. - Check
+especially for fixes we needed to implement workarounds for, if they were solved upstream, apply and fix no longer needed
+workarounds to clean implementations." OR129.a (1)-(5) place it inside U0 right after the B0 baseline and before the first
+B1 change, with a short second check in U37; register block LEAD/R33 (`audit/pass2/LEAD.md:347-355`).
+
+Method: every pin site was found by search at HEAD `cbedc48` (`toolchain/`, `scripts/`, `pyproject.toml`, `uv.lock`,
+`package.json`, `package-lock.json`, `.nvmrc`, `.github/`, `ext/`, `vitest.config.js`, PEP 723 headers, `THIRD_PARTY_LICENSES.md`;
+greps for `git clone|curl |wget |pip install|npm install|uv pip|micromamba|apt-get install|https?://`, `# /// script`,
+`uses:`); MicroPython submodule pins read from the scratchpad `mp/` checkout at `v1.29.0` (`0fd6c57`, `git submodule
+status`), the rp2/Unix submodule lists from `ports/rp2/CMakeLists.txt:94-96, 365, 411`, `extmod/extmod.cmake:351`,
+`py/mkrules.cmake:268`, `py/mkrules.mk:224`, `ports/unix/Makefile:47, 175-178`, `extmod/extmod.mk:247-249` and the manifests
+`ports/rp2/boards/manifest.py`, `ports/unix/variants/manifest.py` at that tag. No network: the new versions are found at
+execution time by the commands each action names. The legacy tree and `arduino/` are out (OR129.a (2)); nothing there was
+read. The previous whole-tree refresh (`90e8c17`, 2026-09-10, "Update every external module to latest stable") is the
+precedent for scope and record shape. Line citations of other units' actions were counted with the scanner kept at the
+scratchpad `al/SUPP_deps/cites2.py` and recounted at `d6557c5` with `al/SDEPv/cites_v.py`, which classifies each token
+once (the method is restated in A.SDEP.23 and above the counts table). Permanent text quoted below carries no audit ID.
+
+## Inventory at HEAD
+
+"Moves by" says how the pin changes; "derived" means it follows another pin and is never set by hand.
+
+| # | dependency | pin site (HEAD) | value at HEAD | moves by | what this repo uses it for |
+|---|---|---|---|---|---|
+| D1 | MicroPython | `toolchain/versions.toml:10` `ref` | `v1.29.0` (`0fd6c57`) | edit `ref` or `setup_toolchain.py --latest` (`:522-537`, `:554-557`) | firmware, `mpy-cross`, both Unix-port test binaries, frozen `extmod/asyncio` |
+| D2 | pico-sdk | derived, `toolchain/setup_toolchain.py:225-233` (`lib/pico-sdk` submodule of D1) | `98a542c` (2.3.0, `90e8c17` message) | D1 | rp2 HAL (I2C/SPI/UART/watchdog/flash), CYW43 arch |
+| D3 | pico-sdk's `lib/mbedtls` | `setup_toolchain.py:586` (`git submodule update --init lib/mbedtls` in `pico-sdk/`) | D2's pin | D2 | picotool build |
+| D4 | picotool | derived, `setup_toolchain.py:236-255` (newest tag sharing D2's major.minor), installed `:258-285` under `/usr/local` | `2.3.1` at the last bump (`90e8c17`) | D2; newest matching patch floats at each `setup` | flashing, UF2 info |
+| D5 | lwIP | D1's `lib/lwip` (`extmod/extmod.cmake:351`) | `77dcd25` | D1 | rp2 TCP/IP; options `versions.toml:41-52` via `micropython_overrides.py` |
+| D6 | cyw43-driver | D1's `lib/cyw43-driver` (`ports/rp2/CMakeLists.txt:411`) | `055d642` | D1 | Wi-Fi STA/AP |
+| D7 | mbedtls | D1's `lib/mbedtls` (`ports/rp2/CMakeLists.txt:95`; Unix `extmod/extmod.mk:247-249`, `MICROPY_SSL_MBEDTLS = 1` `ports/unix/mpconfigport.mk:31`) | `0bebf8b` (v3.6.6, pass 4 F.18) | D1 | compiled into both targets; `-Wno-array-bounds` workaround |
+| D8 | tinyusb | D1's `lib/tinyusb` (`ports/rp2/CMakeLists.txt:96`) | `b549ac1` | D1 | USB CDC console |
+| D9 | btstack | D1's `lib/btstack` (`RPI_PICO_W/mpconfigboard.cmake` `MICROPY_BLUETOOTH_BTSTACK ON` → `CMakeLists.txt:365`) | `77e752a` | D1 | compiled in, unused by `src/` (image size only) |
+| D10 | micropython-lib | D1's `lib/micropython-lib` (`py/mkrules.cmake:268` (rp2), `py/mkrules.mk:224` (Unix)) | `ee4bb8f` | D1 | frozen by the board manifests: `bundle-networking`, `aioble`, `onewire`, `ds18x20`, `dht`, `neopixel` (rp2); `unix-ffi`, `mip-cmdline`, `ssl` (Unix); `src/` imports `neopixel` |
+| D11 | berkeley-db-1.xx | D1's submodule (`ports/unix/Makefile:47`) | `0f3bb69` | D1 | Unix port build only |
+| D12 | ARM cross-compiler and host build tools | `versions.toml:14-29` `apt_packages` (`gcc-arm-none-eabi`, `libnewlib-arm-none-eabi`, `libstdc++-arm-none-eabi-newlib`, `build-essential`, `cmake`, `pkg-config`, `git`, `libusb-1.0-0-dev`, `libffi-dev` — system libffi, since `MICROPY_STANDALONE` is unset, `ports/unix/Makefile:175-178` — `libcap2-bin`); bench tier `setup_toolchain.py:707-709` (`network-manager`, `iproute2`, `iptables`, `ensure_*()` `:712-740`); Playwright's OS set via `playwright install-deps chromium` (`setup_toolchain.py:1058`, `ci.yml:118, :121, :168, :171, :212, :215, :285, :288`) | distro version, unpinned by decision (SPEC B.3 step 4 "no pin needed") | the host's apt archive / the CI runner image | every build |
+| D13 | Microdot | `ext/microdot.py` + `ext/LICENSE-microdot`; stated at `THIRD_PARTY_LICENSES.md:15-20`, SPEC `:62`, `:289-294`, CLAUDE.md `:108-115`, `:857`, `:1063` | tag `v2.6.2` (upstream `v2.7.0` exists, SPEC A.5 `:290-294`, checked 2026-09-23) | re-vendor an unmodified upstream tag | the REST/static server |
+| D14 | freezefs | `ext/freezefs/` (`__main__.py`, `archive.py`, `ffsmount.py`, `ffsextract.py`, `LICENSE`); stated at `THIRD_PARTY_LICENSES.md:21-23`, SPEC `:63` ("freezefs 2.4") | upstream `main` synced 2026-09-10 (`90e8c17`); upstream `main` at `26be9e3` per `audit/actions/U34.md:7` | re-vendor upstream `main` (no tags) | website freezing (`scripts/build_frozen_html.sh:33`), runtime `VfsFrozen` |
+| D15 | MicroPython stubs | `scripts/typecheck.sh:64-67` `micropython-rp2-rpi_pico_w-stubs==<ref X.Y.Z>.*` (pulls `micropython-stdlib-stubs`) | `1.29.0.*` — installed `1.29.0.post1`, stdlib `.post1/.post2` (SPEC F.5.5); the newest post-release floats at each install | D1 (X.Y.Z); post-release floats | main mypy pass typeshed (`typings/`) |
+| D16 | Python dev tools | `pyproject.toml:17-36` | `mypy==2.3.1` (`:21`), `ruff==0.16.6` (`:22`), `pytest` unpinned (`:23`; `uv.lock:350` 9.1.1), `mpremote` unpinned (`:24`; `uv.lock:214` 1.29.0), `types-pyserial==3.5.0.20260712` (`:27`), `shellcheck-py==0.11.0.1` (`:31`), `actionlint-py==1.7.12.24` (`:32`), `zizmor==1.30.1` (`:35`) | edit the pin, `uv lock` | lint, typecheck, host tests, hardware runner |
+| D17 | Python transitive set | `uv.lock` (21 packages, `version = 1`, `requires-python = ">=3.11"`) | e.g. `pluggy 1.6.0`, `pygments 2.21.0`, `packaging 26.3`, `pyserial 3.5` | `uv lock --upgrade` | the above |
+| D18 | uv | unpinned: `pip install uv` at `.github/actions/setup-micropython-toolchain/action.yml:18`, `ci.yml:324, :353, :379, :404`; locally whatever is installed | floating | newest at each CI run | every Python step |
+| D19 | coverage (renderer) | `scripts/_render_coverage.py:4` PEP 723 `dependencies = ["coverage"]` | unpinned, unlocked | newest at each run | `scripts/test.sh --coverage` (`:479, :481`) |
+| D20 | host Python | `pyproject.toml:11` `requires-python = ">=3.11"`, the five PEP 723 headers | the host's / runner's interpreter | host | every host script |
+| D21 | Node | `.nvmrc:1` `22` (major only); patch = newest `latest-v22.x` at install (`setup_toolchain.py:929-1011`); CI `actions/setup-node` `node-version-file: .nvmrc` (`ci.yml:75, :104, :156, :200, :271`) | 22.x | edit `.nvmrc` | web tier |
+| D22 | npm packages | `package.json:23-37` (13 caret ranges) + `package-lock.json` (lockfileVersion 3, 307 packages) | `@eslint/js 10.0.1`, `@types/node 26.5.1`, `@vitest/browser-playwright 5.0.0`, `@vitest/coverage-v8 5.0.0`, `eslint 10.10.0`, `eslint-plugin-html 8.2.0`, `globals 17.12.0`, `html-validate 11.15.0`, `playwright 1.63.0`, `stylelint 17.15.0`, `stylelint-config-standard 40.0.0`, `typescript 7.0.2`, `vitest 5.0.0` (lock `:384`, `:943`, `:1317`, `:1341`, `:1939`, `:1998`, `:2364`, `:2462`, `:3382`, `:3839`, `:3922`, `:4187`, `:4352`) | edit ranges, `npm install` | web lint, typecheck, tests |
+| D23 | Playwright Chromium | derived from `playwright-core 1.63.0` (lock `:3398`); `npx playwright install chromium` (`setup_toolchain.py:1050`), `npx playwright install --with-deps chromium` (`ci.yml:118, :168, :212, :285`); cache key `hashFiles('package-lock.json')` (`ci.yml:115, :165, :209, :282`); sandbox fallback `/opt/pw-browsers/chromium` (`vitest.config.js:18-19`) | Playwright's pinned build | D22 | Vitest browser mode |
+| D24 | cross-browser engines | `scripts/setup_cross_browser_toolchain.sh:21` (`webkit2gtk-driver`, `xvfb`, apt), `:29-33` (`microsoft-edge-stable`, Microsoft apt repo), `:50-53` (micromamba `latest`, conda-forge `firefox geckodriver`) | unpinned by decision (G8 contradiction 6: owner browser floor PQ10) | newest at install; CI cache key `cross-browser-firefox-v1` (`ci.yml:305`) | `scripts/cross_browser_smoke.mjs` |
+| D25 | first-party GitHub Actions | `actions/checkout@v7` (`ci.yml:32, 70, 99, 151, 195, 266, 320, 349, 375, 400, 432, 463, 486, 579, 612`), `actions/setup-node@v5` (`:73, 102, 154, 198, 269`), `actions/cache@v6` (`:112, 162, 206, 279, 302`; `action.yml:32`), `actions/upload-artifact@v7` (`:248, 545, 552, 588`) | tag-pinned (`zizmor.yml:10` `ref-pin`) | edit the tag | CI |
+| D26 | third-party GitHub Actions | `dorny/paths-filter@15192bc… # v3` (`ci.yml:35`); `codecov/codecov-action@a99c28d… # v7` (`:530, :537`) | SHA-pinned (`zizmor.yml:13` `hash-pin`) | hand bump; codecov goes (OR63.a, A.U28.15) | web path filter |
+| D27 | CI runner image | `runs-on: ubuntu-latest` (every job) | floating | GitHub | D12's apt versions in CI |
+| D28 | derived-code upstreams (not fetched) | `THIRD_PARTY_LICENSES.md:25-106, :123-156, :175-205`: Adafruit BMP3XX, SCD30, SGP40, FRAM; jposada202020/MicroPython_ISL29125 (archived 2024-12); micropython-lib `ntptime.py`; vshymanskyy/aiodns (inspiration only); p-doyle captive portal (Apache-2.0); DFRobot_SGP40 (the literal-port source) / Sensirion embedded-sgp (archived 2024-04), successor Sensirion/gas-index-algorithm; karfas/upy-simple-app | derivation point only; no pin | — | reference for fixes to the kept parts |
+
+Not in scope: the `datasheets/` tree (committed PDFs, not a submodule — data, not an external dependency); the scratchpad reference clones (audit files); the legacy tree and `arduino/` (OR129.a (2)).
+
+## Actions
+
+### A.SDEP.01 Run the refresh after the baseline, one family per commit
+- **Why**: LEAD/R33 — "After the B0 baseline and before the first B1 change, every external dependency … is checked
+  for updates; each update's changes are read; breaking changes are fixed with no regression …; useful upstream fixes
+  and improvements are adopted" (owner, 2026-09-30, OR129; OR129.a (1)-(3)).
+- **Site**: U0 execution order: after A.U0.06 (baseline measured) and A.U0.02/A.U0.04 (baseline SHA, non-interference
+  rules), before the first B1 unit (U1); worktree and branch per A.U0.04; record `audit/artefacts/ENV/dependency_refresh.md`
+  (audit file, beside A.U0.06's `baseline.md`). The step runs immediately after A.U0.06 and before A.U0.07-A.U0.60 are
+  executed (OR129.a (1) "right after the baseline is recorded"); the texts it writes are then in the tree when
+  A.U0.08/A.U0.09 build their allow-lists.
+- **Change**: (1) The record holds one row per inventory line D1-D28: pin site, value before, newest available (with
+  the command that found it, run at execution), changelog/diff read (link or tag range), decision (moved / held back /
+  already newest / not applicable) with its reason, check result (A.SDEP.02), and the commit. (2) Order, one family per
+  commit so a regression bisects to one family: (a) Python tools and `uv.lock` (A.SDEP.03); (b) Node, npm, Playwright
+  (A.SDEP.04); (c) GitHub Actions (A.SDEP.05); (d) Microdot, freezefs (A.SDEP.06, A.SDEP.07); (e) MicroPython with
+  everything it pulls in, then the stubs (A.SDEP.08, A.SDEP.09) — this commit also carries every anchor re-derivation
+  the new tag forces (A.SDEP.11 (b), A.SDEP.13 (b) for the planned override's texts, A.SDEP.14), since a drifted anchor
+  fails `setup` and the family could not pass its gate otherwise; (f) the workaround checks (A.SDEP.11-A.SDEP.19),
+  each retirement its own commit; (g) derived-code upstreams (A.SDEP.10). Tools go first so the firmware bump's findings
+  are measured with the final tool set. (3) "Newest" means the newest stable release of that family (no pre-release,
+  release candidate or preview tag; for Node the newest release line in Active LTS; for MicroPython a plain `vX.Y.Z`
+  tag, as `latest_stable_micropython_ref()` already selects, `setup_toolchain.py:522-537`); untagged upstream commits
+  after a tag are noted in the record only (G4/R01 Req "newer upstream changes are noted only"). (4) Hold-back rule,
+  self-resolved from OR129.a (3) "fix breaking changes with no regression": a dependency whose newest release breaks a
+  check and whose break cannot be fixed within the standing rules (vendored code never edited, no test-only artefact in
+  product code, no weakened gate) stays at the newest release that passes, and the hold-back is recorded in the register as a decision
+  taken on the owner's behalf (OR2.c) and entered in BACKLOG's owner-question list (A.U0.12) with the dependency, the
+  failing release, the reason and "re-checked at the next refresh"; the U37 check
+  (A.SDEP.25) re-reads it. (5) Routing: a breaking-change fix and a workaround retirement are made in this step; an
+  adoption opportunity that changes project behaviour or structure beyond that (a new upstream API worth using, an
+  upstream fix to derived code) is entered as a delta item for its owning unit (CONSOLIDATION section 2: "later
+  findings (B0, B3, C) pass it as a delta"), with the upstream reference. A change that would alter an owner-decided
+  behaviour is parked and logged for review (harmonization 1), never a stop. (6) No real hardware in this step:
+  nothing is flashed and no `mpremote` runs; a firmware version change is validated in phase C (OR129.a (5), A.SDEP.08).
+- **Blast**: callers — · generated — · js — · tests — (the checks are A.SDEP.02's) · twin — · docs audit file; the
+  permanent records are A.SDEP.21 · toml — · uart —.
+- **Depends**: A.U0.02, A.U0.04, A.U0.06.
+- **Kind**: rule (audit file)
+
+### A.SDEP.02 One check gate per family, against the baseline
+- **Why**: LEAD/R33 — "breaking changes are fixed with no regression against the baseline at every level and both GC
+  stages"; OR129.a (3) "lint and typecheck clean; a ruff/mypy upgrade's new findings are decided one by one, never
+  blanket-ignored"; CLAUDE.md memory-safety bullet (the four `MemoryError` gates, both GC stages).
+- **Site**: every family commit of A.SDEP.03-A.SDEP.19; results in the refresh record.
+- **Change**: after each family commit, serialized under A.U0.04's port lock, the same command set A.U0.06 measured:
+  L0 `uv run pytest tests_scripts`, `npm run lint`, `npm run typecheck`, `npm run lint:html`, `npm run lint:css`, `npm
+  test` (all shards, the live PUT matrix included); L1 `scripts/test.sh` and `GC_THRESHOLD=32768 scripts/test.sh`, plus
+  `scripts/test.sh --coverage` (coverage advisory, its test result gating, SPEC E.5.3); L2 `scripts/run_digital_twin_ci.sh`
+  for every device (both GC stages inside); L3/L4 `uv run pytest tests_hardware --collect-only` (board-free, HW.T14);
+  `scripts/lint.sh` (ruff, shellcheck, actionlint, zizmor); `scripts/typecheck.sh` (all three passes); every device's
+  firmware built and verified (`RUN_SLOW_FIRMWARE_BUILD=1 uv run pytest tests_scripts/test_build_firmware.py -k
+  test_real_firmware_build_produces_a_valid_uf2`); for families (e) and (a) also `uv run toolchain/setup_toolchain.py
+  test`. Pass criteria against the A.U0.06 record (the commands A.U0.06 does not measure — `npm run lint:html`,
+  `npm run lint:css`, the per-device firmware build with its image sizes, `uv run toolchain/setup_toolchain.py test` and
+  the cross-browser smoke — are run once on the baseline worktree before the first family commit, inside A.U0.04's port
+  and toolchain locks, and recorded as extra rows of `audit/artefacts/ENV/baseline.md`; A-C may instead move them into
+  A.U0.06): zero failures; collected/passed/skipped/deselected counts equal to the
+  baseline or each difference explained in the record; zero `MemoryError` / `memory allocation failed` markers at both
+  GC stages in the unit and twin gates (the flash/bench gates' shared `MEMORY_ERROR_MARKERS` stays covered by
+  `tests_scripts/test_memory_error_gate_agreement.py`; those two gates themselves run in phase C); lint 0 and each mypy
+  pass 0 findings; `tsc`, ESLint, Stylelint, html-validate 0 findings; wall clock, host peak RAM and image sizes
+  (LEAD/R07) recorded — a figure worse than the baseline beyond run-to-run spread (established by one repeat of that
+  level on the baseline worktree, inside A.U0.04's repeat budget) is a regression to root-cause, never accepted silently. New findings from an upgraded checker
+  (ruff, mypy, ESLint, `tsc`, Stylelint, html-validate, shellcheck, actionlint, zizmor) are listed in the record one by
+  one and each is decided: fix the code, or add the narrowest suppression the tool offers with its reason in the
+  existing place (`pyproject.toml` `[tool.ruff.lint]` ignore list with a comment; the per-rule entries of
+  `eslint.config.js`, `.stylelintrc.json`, `.htmlvalidate.json`; `zizmor.yml`) — never a blanket disable, never a
+  version held back to avoid a finding. The family commit is pushed and CI goes green before the next family starts
+  (the sync point of CONSOLIDATION section 2). When the sandbox can build a chroot, the family commits (a) and (e) also
+  run CLAUDE.md's two-leg chroot recipe, and (e) the installer leg; otherwise A.SDEP.21 (3)'s BACKLOG entry records them
+  as owed.
+- **Blast**: callers — · generated — (regenerated by the runs) · js — · tests none changes by this action · twin state
+  files archived first (A.U0.04) · docs audit record · toml — · uart —.
+- **Depends**: A.U0.06, A.SDEP.01.
+- **Kind**: test (audit file)
+
+### A.SDEP.03 Refresh the Python dev tools and `uv.lock`
+- **Why**: LEAD/R33 — "Python dev tools and `uv.lock`"; OR129.a (5) "tools stay pinned …; the `uv.lock` merge check";
+  CLAUDE.md "Code quality tooling" (every tool pinned: `select = ["ALL"]` turns an unpinned upgrade into an unchosen
+  rule) and the `uv.lock` bullet (`CLAUDE.md:791-804`).
+- **Site**: `pyproject.toml:21-35` (pins), `uv.lock` (whole file); D16-D20.
+- **Change**: find newest: `uv lock --upgrade --dry-run` (or `uv tree --outdated --depth 1`) for the direct and
+  transitive set, and each tool's PyPI release list for the exact newest stable. Read, per tool, the changelog from the
+  pinned version to the newest, for the parts this repo uses: **ruff** — every rule newly stable (select `ALL` enables
+  it), rules renamed or removed (an ignore list or `noqa` naming a gone code), changes to rules in the `ignore` list and
+  `per-file-ignores` (`pyproject.toml:62-` and the per-file table), `target-version = "py310"`, `allowed-confusables`;
+  **mypy** — flags newly part of `--strict`, changes to `warn_unused_ignores`, `custom_typeshed_dir`/`follow_imports`
+  handling (the main pass, SPEC B.15), the bundled typeshed (the host pass) and error-code renames used in `# type:
+  ignore[...]` comments; **pytest** — deprecations touching `tests_scripts/conftest.py` and `tests_hardware/conftest.py`
+  (custom options, markers and the deselect hook the wear gates use, `--collect-only`), `tmp_path`, `monkeypatch`,
+  `parametrize`, `skip`; **mpremote** — the commands the hardware tier drives (`connect`, `exec`, `run`, `soft-reset`,
+  `reset`; `tests_hardware/harness.py`, `scripts/mpremote_connect.sh`, `scripts/run_*_hardware_suite.sh`), and
+  its compatibility with the firmware pin D1 (mpremote is released with MicroPython; today's lock pairs 1.29.0 with the
+  1.29.0 pin, which A.U28.02 notes — the refresh records the pair it ends with, and reads mpremote's notes for any
+  firmware-version requirement); **shellcheck-py / actionlint-py / zizmor** — new checks and
+  config-schema changes (`zizmor.yml`; actionlint's `uses: $/` support, W32 of the catalog); **types-pyserial** —
+  signature changes the host pass checks. Then: exact `==` pins in `pyproject.toml` for the tools that carry one today
+  (pytest and mpremote stay unpinned here; A.U28.02 pins them, taking the versions this refresh resolved), `uv lock
+  --upgrade`, `uv sync`, and the merge check CLAUDE.md prescribes, done on every lock rewrite, not only after a merge:
+  `ruff --version`, `mypy --version`, `zizmor --version`, `actionlint --version`, `shellcheck --version` each equal the
+  pin, and every `[package.metadata.requires-dev] dev` specifier in `uv.lock` agrees with the lock's `[[package]]
+  version` of that name (A.U28.03 later makes this a test). uv itself: record `uv --version` before and after (A.U28.02
+  pins it from this refresh's version). `coverage` (D19): record the version `uv run scripts/_render_coverage.py`
+  resolves; A.U24.72/A.U28.02 pin it. Check gate A.SDEP.02; the new-findings list is decided there.
+- **Blast**: callers every `uv sync`/`uv run` (local, CI, `setup_toolchain.py env`) · generated — · js — · tests
+  existing: the whole suite runs under the new pytest; `tests_scripts/test_micropython_overrides.py`, `test_build_firmware.py`
+  and every L0 file are what a pytest deprecation would break · twin — · docs `CLAUDE.md:498`, `.github/zizmor.yml:15` and
+  `BACKLOG.md:749` name "actionlint 1.7.12" (the W32 reason; A.SDEP.19 re-stamps them); the other tool versions appear
+  only in `pyproject.toml`/`uv.lock` · toml `pyproject.toml`, `uv.lock` · uart — · build-environment: A.SDEP.21's BACKLOG chroot entry.
+- **Depends**: A.SDEP.01, A.SDEP.02.
+- **Kind**: code
+
+### A.SDEP.04 Refresh Node, the npm packages and the Playwright browser
+- **Why**: LEAD/R33 — "Node and npm packages"; OR129.a (2) "Node (`.nvmrc`) and every npm package".
+- **Site**: `.nvmrc:1`; `package.json:23-37`; `package-lock.json`; D21-D24.
+- **Change**: find newest: Node — the newest release line whose status is Active LTS in `https://nodejs.org/dist/
+  index.json` (`lts` field); npm — `npm outdated` (wanted/latest per package) and `npm view <pkg> version` for each of the
+  13 direct packages. Read the release notes from the locked version to the newest for the parts this repo uses:
+  **Node** — the APIs of the Node-context files (`vitest.config.js`, `tests_js/_live_twin_command.js`,
+  `tests_js/_live_matrix_command.js`, `scripts/cross_browser_smoke.mjs`: `child_process`, `fs`, `net`, timers) and the
+  engines range of every direct package; **vitest / @vitest/browser-playwright / @vitest/coverage-v8** — browser mode,
+  `provider: playwright({ launchOptions })`, the Commands API (`commands:` at `vitest.config.js:49-58`), `testTimeout`,
+  `coverage.reportsDirectory`/`exclude` (catalog W34), `--exclude` CLI semantics used by `package.json:14, :18`;
+  **playwright** — `chromium.launch({executablePath})`, `install`/`install-deps` CLI, the bundled Chromium revision;
+  **eslint / @eslint/js / eslint-plugin-html / globals** — every core rule added since the pinned version (the curated
+  `BUG_CATCHING_RULES` list in `eslint.config.js:13-` mirrors ruff `ALL`: each new core rule is decided — added with a
+  reason or left out as a style preference, per the file's own header), `recommended` changes, flat-config changes;
+  **typescript** — `checkJs`/JSDoc behaviour under the strict flags in `tsconfig.json:10-24` and `tsconfig.node.json`;
+  **stylelint / stylelint-config-standard** and **html-validate** — rules added to the extended presets
+  (`.stylelintrc.json`, `.htmlvalidate.json` `recommended`/`document`/`a11y`) and `require-sri`; **@types/node** — its
+  major follows `.nvmrc` (A.U28.23 states the rule; the refresh applies it: `@types/node` takes the newest release of the
+  `.nvmrc` major). Then: `.nvmrc` → the new major if it moved; `package.json` ranges → `^<newest>` (the caret form stays,
+  the lock pins); `npm install` regenerates `package-lock.json`; `npm audit` read and every advisory in a shipped-path
+  or CI-path package resolved by the update or recorded; `npx playwright install chromium` (the CI cache key follows the
+  lock hash by itself). Check gate A.SDEP.02, plus the cross-browser smoke (`scripts/setup_cross_browser_toolchain.sh`
+  then `node scripts/cross_browser_smoke.mjs`) where the sandbox can run it, else CI's `web-cross-browser-smoke` job.
+- **Blast**: callers CI `setup-node` (`node-version-file: .nvmrc`, unchanged), `setup_toolchain.py` `ensure_node()`
+  (reads the major, unchanged) · generated `build/generated_src/definitions/` rebuilt by `npm run build:site` (no
+  content change expected) · js every `js/`, `tests_js/` file under the new lint/type rules · tests existing: the whole
+  web tier; `tests_scripts/test_js_coverage_excludes_json.py`, `test_js_coverage_report_dir.py` (pin vitest config
+  halves) · twin — (the live-twin commands spawn the twin; their Node APIs are the Node read above) · docs
+  `README.md:208-209` (the pinned Node major and trixie's, re-stated when `.nvmrc` moves); `.gitignore:9-12` (Vitest's
+  attachment directory, re-checked against the new Vitest); SPEC H.8 names no package version (grep at execution) · toml — ·
+  uart — · build-environment: A.SDEP.21's BACKLOG chroot entry (`.nvmrc`, `package*.json`).
+- **Depends**: A.SDEP.01, A.SDEP.02; co-lands A.U28.23 (`engines`, `@types/node` major rule — A-C moves it into this
+  commit or leaves it in U28 with this refresh's versions).
+- **Kind**: code
+
+### A.SDEP.05 Refresh the GitHub Actions pins and record the runner image
+- **Why**: LEAD/R33 — "GitHub Actions pins"; `zizmor.yml:5-13` policy (first-party tag-pinned, third-party SHA-pinned);
+  CLAUDE.md `:499-500` "Adding a SHA-pinned third-party action means bumping that SHA by hand".
+- **Site**: `.github/workflows/ci.yml` (D25 sites listed in the inventory), `.github/actions/setup-micropython-toolchain/
+  action.yml:32`; D26, D27.
+- **Change**: find newest: for each first-party action the newest major tag (`git ls-remote --tags
+  https://github.com/actions/<name>`); read its release notes from the pinned major for the inputs this repo passes:
+  `checkout` `persist-credentials: false`; `setup-node` `node-version-file` (and its default caching, which this repo
+  does not enable); `cache` `path`/`key` (and restore semantics the toolchain and Playwright caches rely on);
+  `upload-artifact` `name`/`path`/`if-no-files-found`/`continue-on-error` use (`ci.yml:248, 545, 552, 588`) and the
+  artifact-name uniqueness rule per run. Tags move by editing `@vN` at every site of that action (one `sed` per action,
+  the count per action recorded). `dorny/paths-filter`: A.U28.13 is executed here (newest `v4.x.y`, peeled commit, its
+  changelog and code-path reading); A-C moves it into this commit. `codecov/codecov-action` is not refreshed: A.U28.15
+  removes it (OR63.a). Runner: record the image name and version `ubuntu-latest` resolved to (the "Runner Image" block
+  of any job log) and the `gcc-arm-none-eabi`/`gcc` versions `firmware-build-verify` installed; a runner OS move since
+  the baseline is a D12 change, covered by that job. Check gate A.SDEP.02 (zizmor `unpinned-uses` and actionlint are the
+  gates that read these lines) and a green CI run.
+- **Blast**: callers every CI job · generated — · js — · tests existing: none pins an action version (grep `@v[0-9]` in
+  `tests_scripts/`: none; A.U28.08 later adds workflow-rule checks) · twin — · docs SPEC B.10/B.10.1 name no action
+  versions (grep at execution) · toml — · uart — · build-environment: A.SDEP.21's BACKLOG chroot entry (CI config).
+- **Depends**: A.SDEP.01, A.SDEP.02; A.U28.13 (pulled forward).
+- **Kind**: code
+
+### A.SDEP.06 Re-vendor Microdot at its newest upstream tag, unmodified
+- **Why**: LEAD/R33 — "vendored Microdot as an unmodified upstream tag"; OR129.a (2) "re-vendored only as an unmodified
+  upstream tag, never edited"; CLAUDE.md hard rule (`ext/microdot.py` "No edits, no restyling, ever"); G6/R53 (hash pin).
+- **Site**: `ext/microdot.py`, `ext/LICENSE-microdot`; `THIRD_PARTY_LICENSES.md:15-20`; SPEC `:62`, `:289-294`, `:334`,
+  `:5197`; CLAUDE.md `:108-115`, `:857`, `:1063`; `tests/test_setter_microdot_integration.py:2, :272` (docstring and comment naming v2.6.2).
+- **Change**: find newest: `git ls-remote --tags https://github.com/miguelgrinberg/microdot` (newest `vX.Y.Z`). If newer
+  than `v2.6.2`: read `CHANGES.md` and `git diff v2.6.2..<tag> -- src/microdot/microdot.py` for what this repo relies on
+  (the facts SPEC A.5 states and A.U19.19's checklist lists): `Microdot.get`/`put` registration, `errorhandler()` by
+  status code and by class, `after_request`, `dispatch_request()`'s blanket catch, `Response.write()`'s `OSError` muting
+  and `MUTED_SOCKET_ERRORS`, the stream methods `handle_request()` calls (the `_TimeoutStreamProxy` forwards exactly
+  those: `readline`, `readexactly`, `awrite`, `aclose`, `close`, `wait_closed`, `get_extra_info`,
+  `src/asy_webserver_service.py:234-291`), header-per-write emission (catalog W29), `Request.create()` → body read order
+  and the class attributes `max_content_length`, `max_body_length`, `max_readline` (`:363-370`), `send_file(...,
+  compressed=True)`, `Response.send_file_buffer_size` (`:666`) — including upstream's default `send_file` read size (1,024 B at v2.6.2,
+  `ext/microdot.py:567, 746`), which the per-response `send_file_buffer_size` override exists for (A.U18.43 (5) writes
+  its trigger), `find_route()` first-match order (`:397`), HTTP/1.0
+  default, `redirect`, `abort`, `URLPattern` `<path:...>` (`:400`). Default: adopt (OR129 "just everything"); hold back
+  only under A.SDEP.01 (4). Adopt: replace `ext/microdot.py` with the tag's `src/microdot/microdot.py` byte-for-byte and
+  `ext/LICENSE-microdot` with the tag's `LICENSE`; record both sha256 in the refresh record; every text naming `v2.6.2`
+  (sites above) → the new tag; CLAUDE.md `:108` "~441 lines behind the `v2.6.2`" re-measured against the new tag
+  (`diff` line count of `python/CommonDrivers/microdot.py` — read, not edited — against it); SPEC A.5 `:290-294`'s
+  upstream-v2.7.0 note becomes the statement of what the new tag changed for this repo. The legacy copy
+  `python/CommonDrivers/microdot.py` is not touched (legacy rule). Check gate A.SDEP.02; the REST tiers are the
+  deciding ones (`tests/test_asy_webserver_service.py`, `tests/test_setter_microdot_integration.py`,
+  `tests/test_website_build_integration.py`, `tests/_webserver_concurrency_scenarios.py` and its six
+  `test_digital_twin_webserver_concurrency_<device>.py`, the live PUT matrix).
+- **Blast**: callers `src/asy_webserver_service.py` (imports `Request, Response, abort, redirect, send_file`, `:10`),
+  `buildgen/codegen.py:303` (generated `from microdot import Microdot`), `api_response.py` `_RequestLike` stand-in ·
+  generated every `sensortask_<device>.py` imports it (text unchanged) · js — · tests the files above; A.U19.18's hash
+  table (sha256 computed for `v2.6.2`) and A.U19.19's `ext/microdot.py` line citations and A.U8.23's vendored stubs take
+  the new tag (A.SDEP.23 re-check) · twin the webserver concurrency scenarios · docs sites above; SPEC H.7 serving walls
+  (A.5 says a 2.7.0 move shifts none — re-verified for the actual tag); A.U18.43 (5)'s planned `:666` comment takes the
+  new tag and the new default · toml — · uart — · build-environment: none
+  (pure Python, copied into the frozen build by `scripts/build_firmware.py`).
+- **Depends**: A.SDEP.01, A.SDEP.02; co-lands A.U19.18/A.U19.19/A.U8.23/A.U34.12 (they execute later against the new tag).
+- **Kind**: code, doc
+
+### A.SDEP.07 Re-vendor freezefs at upstream `main`, recorded by commit
+- **Why**: LEAD/R33 — "any other fetched source"; `THIRD_PARTY_LICENSES.md:21-23` ("Upstream publishes no release tags,
+  so 'current' here means `main`"); G9/R22 (freezefs recorded by commit, A.U34.08).
+- **Site**: `ext/freezefs/*`; `THIRD_PARTY_LICENSES.md:21-23`; SPEC `:63`; `scripts/build_frozen_html.sh:10-11, :30-33`.
+- **Change**: find newest: `git ls-remote https://github.com/bixb922/freezefs HEAD` (and tags, in case upstream starts
+  tagging — then the newest tag is taken, as for Microdot). If the commit differs from the vendored state (compare each
+  vendored file byte-for-byte against the upstream file at that commit): read the upstream log since the vendored state
+  and the diff of `archive.py`, `ffsmount.py`, `ffsextract.py`, `__main__.py` for what this repo uses — the CLI options
+  `scripts/build_frozen_html.sh:33` passes, the archive format (`archive.py` `VERSION`, `:13`) that the frozen website
+  module carries, and `ffsmount.VfsFrozen` (the runtime mount `asy_webserver_service.py` serves from, `:329`, `:652`).
+  Adopt: copy the upstream files byte-for-byte, record the commit SHA and each sha256; THIRD_PARTY `:21-23` names the
+  commit (A.U34.08's wording: by commit, holder and year); SPEC `:63` "freezefs 2.4" → the recorded commit (A.U34.08
+  already corrects the "2.4" name). An archive-format change alters the frozen website on silicon: its L2 coverage is
+  `tests/test_digital_twin_real_website_integration.py` and `tests_scripts/test_build_frozen_html_sh.py`; the silicon
+  check joins A.SDEP.08's BACKLOG hardware entry. Check gate A.SDEP.02.
+- **Blast**: callers `scripts/build_frozen_html.sh:33`, the frozen `frozen_html` module at boot · generated the frozen
+  website module (rebuilt) · js — · tests `tests_scripts/test_build_frozen_html_sh.py`, `tests/test_asy_webserver_service.py:16,
+  :1848` (hand-built `VfsFrozen`), `tests/test_website_build_integration.py`,
+  `tests/test_digital_twin_real_website_integration.py`; A.U34.08's `tests_scripts/test_vendored_freezefs.py` hashes take
+  this commit (A.SDEP.23) · twin as tests · docs THIRD_PARTY, SPEC `:63`, A.9 · toml — · uart — · build-environment:
+  none new.
+- **Depends**: A.SDEP.01, A.SDEP.02; co-lands A.U34.08.
+- **Kind**: code, doc
+
+### A.SDEP.08 Move the MicroPython pin with everything it pulls in
+- **Why**: LEAD/R33 — "MicroPython pin with lwIP/cyw43/pico-sdk/mbedtls, ARM toolchain and every
+  `toolchain/versions.toml` pin"; OR129.a (5) "CLAUDE.md's version-bump re-check practice runs and its SPEC F.5 record
+  is updated … a firmware version change is validated on hardware in phase C under its own go-ahead"; G4/R01 (the pin
+  moves only on the owner's call — OR129 is that call; the platform re-check follows every move) (owner, 2026-09-26,
+  OR69.a (9)).
+- **Site**: `toolchain/versions.toml:10`; D1-D12; every text stating the pinned version (grep `1\.29` outside `audit/`,
+  `ext/`, the legacy tree and `datasheets/`: 24 files at HEAD — SPECIFICATION.md 35 hits, CLAUDE.md 9, BACKLOG.md 7,
+  `tests/machine.py` 5, `HEAP_FRAGMENTATION_MEASUREMENTS.md` 4, `digital_twin/README.md` 4, `digital_twin/machine.py` 4,
+  `tests/test_asy_spi_driver.py` 2, `tests_hardware/device_scripts/bus_deinit_is_a_noop_on_real_hardware.py` 2, one each
+  in `src/asy_spi_driver.py:5`, `src/asy_i2c_driver.py:183`, `src/asy_udp_socket.py:174`, `scripts/typecheck.sh:83`,
+  `tests_hardware/README.md:424`, `digital_twin/unix_port_poll_prewarm.py:1`, `tests/test_config_manager.py:929`,
+  `tests/test_website_build_integration.py:43`, `tests/test_digital_twin_bus_hazard_concurrency.py:475`,
+  `tests/test_asy_wifi_service.py:440`, `tests/test_digital_twin_machine.py:319`, `tests/_fram_chip_fake.py:106`,
+  `tests/test_asy_fram_manager.py:2204`; further pinned-source and version-stamped claims
+  `HEAP_FRAGMENTATION_MEASUREMENTS.md:24, :166`, `tests_hardware/README.md:965, :968`, `.gitignore:36-38`,
+  `pyproject.toml:238`, `tests/test_asy_neopixel_driver.py:543`; and the fixture literals `tests_scripts/test_buildgen_validate.py:1576`,
+  `tests_scripts/test_micropython_overrides.py:857`, which stay (synthetic inputs, not claims)).
+- **Change**: (1) Find newest: `git ls-remote --tags https://github.com/micropython/micropython.git`, filtered as
+  `latest_stable_micropython_ref()` does (`setup_toolchain.py:522-537`). Precondition: a
+  `micropython-rp2-rpi_pico_w-stubs` release for that X.Y.Z exists on PyPI (`https://pypi.org/pypi/
+  micropython-rp2-rpi_pico_w-stubs/json`); if not, the pin moves to the newest tag that has one, and the newer tag is
+  recorded as held back per A.SDEP.01 (4) (register and BACKLOG's owner-question list; "stubs not yet published") — the message `scripts/typecheck.sh:68-79` prints says
+  the same choice ("hold toolchain/versions.toml's [micropython] ref back"). No newer tag: record "already newest";
+  (2)-(6) do not apply, and the workaround checks read their upstream issue states only (A.SDEP.13). (2) Read: the release notes of every release after v1.29.0 up to the new tag; `git log --oneline
+  v1.29.0..<new> --` and `git diff v1.29.0 <new> --` for the paths this repo relies on — `py/` (`gc.c`, `vm.c`,
+  `scheduler.c`, `runtime.c`, `objexcept.c`, `binary.c`, `modstruct.c`, `parse.c`, `builtinimport.c`, `objbool.c`,
+  `stream.c`, `mpconfig.h`, `mkrules.cmake`, `usermod.cmake`, `manifest.cmake`), `extmod/asyncio/` (all), `extmod/
+  modlwip.c`, `extmod/modselect.c`, `extmod/modtime.c`, `extmod/modjson.c`, `extmod/machine_i2c.c`, `extmod/
+  machine_spi.c`, `extmod/modnetwork.c`, `extmod/network_cyw43.c`, `extmod/lwip-include/`, `extmod/extmod.cmake`,
+  `extmod/vfs*.c`, `ports/rp2/` (`machine_i2c.c`, `machine_spi.c`, `machine_uart.c`, `machine_timer.c`,
+  `machine_wdt.c`, `machine_pin.c`, `machine_mem_backup.c`, `modmachine.c`, `modtime.c`, `datetime_patch.c`,
+  `rp2_flash.c`, `main.c`, `mphalport.c/h`, `mpconfigport.h`, `CMakeLists.txt`, `Makefile`, `lwip_inc/`,
+  `boards/RPI_PICO_W/`, `boards/manifest.py`), `ports/unix/` (`unix_mphal.c`, `modsocket.c`, `modtime.c`,
+  `variants/`, `Makefile`), `shared/timeutils/`, `shared/netutils/dhcpserver.c`, `mpy-cross/`; and `git diff
+  --submodule=log v1.29.0 <new> -- lib/` for every moved submodule, each read for its used parts: lwIP D5 (`tcp_out.c`,
+  `tcp_in.c`, `pbuf.c`, `mem.c`, `memp.c`, `init.c`'s `#error`s, `opt.h`, `dns.c`, `dhcp.c` — the B.14.2.1 ensemble),
+  cyw43 D6 (`cyw43_ctrl.c`, `cyw43_lwip.c`, link status and AP paths), pico-sdk D2 (`hardware_i2c`, `hardware_spi`,
+  `hardware_uart`, `hardware_watchdog`, `hardware_flash`, `pico_cyw43_arch`; picotool D4 follows it), mbedtls D7
+  (catalog W03), tinyusb D8 (CDC), btstack D9 (size only), micropython-lib D10 (`neopixel`, the `bundle-networking`
+  members), berkeley-db D11. Security advisories in the range (GitHub advisories for micropython/micropython) are read
+  with the same scope. (3) Move: `versions.toml:10` → the new tag; `uv run toolchain/setup_toolchain.py setup` (clones
+  or updates D1, derives D2/D4, builds and verifies every artefact); the stub move is A.SDEP.09; mpremote per A.SDEP.03.
+  (4) The platform re-check (CLAUDE.md "Platform target" practice, in full): every Part F fact and every upstream source citation and version-stamped claim in SPECIFICATION.md, CLAUDE.md,
+  BACKLOG.md, `digital_twin/README.md`, `tests_hardware/README.md`, `HEAP_FRAGMENTATION_MEASUREMENTS.md`,
+  `THIRD_PARTY_LICENSES.md`, code and config comments (`pyproject.toml:238`, `.gitignore:36-38` included) re-read at the new tag and re-stamped or
+  corrected — claims still stamped v1.28.0 (`.gitignore:38`, `tests/test_asy_neopixel_driver.py:543`,
+  `digital_twin/README.md:78, :896, :913`, `digital_twin/unix_port_poll_prewarm.py:1`) re-read at the new tag too; every code, test and twin claim site above
+  re-verified (each fake's modelled rp2 fact — `tests/machine.py:26, :153, :205-211, :351`,
+  `digital_twin/machine.py:48, :250, :368, :836` — against the new port source); each construct asked whether a newer
+  or better way now exists (adoptions routed per A.SDEP.01 (5)); every ruled-out item of F.5.6 re-checked, not carried;
+  the override anchors and their mechanisms (A.SDEP.11, A.SDEP.13, A.SDEP.14); the heap-map parser anchor (G4/R01; the
+  `micropython.mem_info(1)` block-map format the hardware heap tests parse, `tests_hardware/heap_map.py`); SPEC B.14.3's documented mechanism (the `Makefile` forward, the board guard and the
+  868,352 B default) re-verified at the new tag; the CYW43 constants A.U18.27 names (link status 2, PM word `0xA11140`,
+  `extmod/network_cyw43.c`, `extmod/modnetwork.c`) re-checked against the new cyw43-driver and port. (5) Measure:
+  for every device, `.bss`, `.data` and `__GcHeapEnd - __GcHeapStart` from `firmware.elf` (B.14.2.1's method) and the
+  image size against the filesystem boundary (LEAD/R07), before and after; a GC-heap change updates B.14.2.1's
+  "Baseline is …" line and table header ("v1.29.0"), and SPEC H.7/I budgets that quote the heap are updated or routed to
+  U30 as a delta when the change is material. (6) Hardware (phase C, never here): BACKLOG "Real-hardware work still
+  owed" gains "The firmware pin moved from v1.29.0 to <new> (<date>): on `dev`, run the flash, bench and mid-soak tiers
+  against a `dev` build of the new pin, redo the on-target confirmations Part F.5 records (the I2C/SPI `deinit()` device
+  script, the SPI RX-overrun consequence (`device_scripts/fram_busy_status_lockout.py`), the heap-headroom test in
+  `tests_hardware/flash/test_memory_stress.py`), check `sys.implementation` reports the new version, and read the FRAM logs first (agent, <date>)." The same
+  round re-checks the harness workarounds A.U26.65 names against their triggers (catalog W44). F.5's
+  "field-proven on the dev bench" paragraph (`SPECIFICATION.md:3683-3691`) becomes "built and verified at L0-L2; silicon
+  proof owed (BACKLOG)" until phase C closes it. Check gate A.SDEP.02, every device's firmware build included.
+- **Blast**: callers `setup_toolchain.py` (all subcommands), `scripts/build_firmware.py`, `scripts/test.sh`,
+  `scripts/run_digital_twin_ci.sh`, `scripts/run_unix_port_integration.sh`, CI cache key (`action.yml:38` hashes
+  `versions.toml`: a cold cache on the next CI run, expected) · generated every generated module is rebuilt and frozen
+  with the new `mpy-cross` (the `.mpy` format version may move — `sys.implementation._mpy`) · js — · tests every tier
+  (the whole point); the fakes above where a modelled fact changed; `tests_hardware` device scripts whose stated floor
+  or fact changed (`bus_deinit_is_a_noop_on_real_hardware.py:26-27`) · twin `digital_twin/machine.py` modelled facts;
+  `unix_port_poll_prewarm.py`/`_unix_port_udp_addr_shim.py` (catalog W12/W13) · docs the sites above; SPEC F.5 record
+  (A.SDEP.21); CLAUDE.md `:17` ("what the 1.29 pin changed (Part F.5)") and `:42-49` ("Last run") (A.SDEP.21);
+  `THIRD_PARTY_LICENSES.md:157-173` (the `dhcpserver.c` note re-read) · toml `versions.toml:10` · uart — (a changed `machine.UART`
+  fact gets a UART_C_PORT_CHANGELOG.md entry only if it changes `asy_uart_comm.py`, the protocol module — Class B "no C
+  impact" unless wire bytes, accept rules or timings move) · build-environment: A.SDEP.21's BACKLOG chroot entry (a new
+  pin is exactly what both chroot legs must cover); hardware: the BACKLOG entry in (6).
+- **Depends**: A.SDEP.01, A.SDEP.02, A.SDEP.03 (tools first) — (step (1) makes the new-tag checkout itself, A.SDEP.24's
+  second corpus checkout).
+- **Kind**: code, doc, rule, hardware
+
+### A.SDEP.09 Install the stubs of the new pin; record the post-releases
+- **Why**: LEAD/R33 — "stub packages"; OR129.a (4) "the stub repairs in `scripts/typecheck.sh` … the Timer stub gap";
+  G4/R35 (stubs at the version derived from the pinned ref).
+- **Site**: `scripts/typecheck.sh:64-97`; D15.
+- **Change**: with D1 at its new (or unchanged) X.Y.Z, delete `typings/` (so no older tree is overlaid — the defect
+  A.U21.04 fixes later) and run `scripts/typecheck.sh`; record the installed `micropython-rp2-rpi_pico_w-stubs` and
+  `micropython-stdlib-stubs` versions from `typings/*.dist-info`. Even with D1 unchanged, the `==1.29.0.*` spec picks the
+  newest post-release at each install, so a newer `.postN` is taken here and recorded. Read the micropython-stubs
+  release notes / changelog between the old and new stub releases. Then the stub workarounds of the catalog (W08-W11,
+  A.SDEP.15). New mypy findings are decided one by one (A.SDEP.02); a genuine stub regression is repaired the same way
+  F.5.5's two are (conditional repair at the stub tree, never `type: ignore` in `src/`), with its own trigger.
+- **Blast**: callers CI `lint-and-typecheck` · generated — · js — · tests the main mypy pass · twin — · docs SPEC F.5.5
+  (names `1.29.0.post1`), CLAUDE.md `:805-821`, `:841-` (name the stub versions) · toml — (A.U27.02 later pins the
+  recorded post-releases in `[stubs]`: it takes this record's versions) · uart —.
+- **Depends**: A.SDEP.08.
+- **Kind**: code
+
+### A.SDEP.10 Read the derived-code upstreams for fixes to the kept parts
+- **Why**: OR129 "both modules, repos and tooling, just everything … Check for opportunities, improvements, fixes we can
+  profit from" (owner, 2026-09-30); SPEC F.4 (Adafruit-derived code restructured freely; `voc_algorithm.py` a literal port
+  kept diffable against its reference); CLAUDE.md "When changing a sensor driver's behavior, verify against the legacy
+  driver's own actually-proven field behavior".
+- **Site**: D28; `THIRD_PARTY_LICENSES.md:25-106, :123-156, :175-205` (derivation records).
+- **Change**: for each non-archived upstream, read its commit log since the derivation point this repo records (or,
+  where none is recorded, since the file's first commit in this repo, `git log --follow --diff-filter=A`), for changes
+  to the parts this repo kept: Adafruit BMP3XX / SCD30 / SGP40 (register maps, command codes, CRC, conversion formulas,
+  timing), Adafruit FRAM (opcodes), micropython-lib `ntptime.py` (the `0x1B` query, epoch delta, `MIN_NTP_TIMESTAMP`),
+  Sensirion `gas-index-algorithm` (algorithm constants and fixed-point steps `voc_algorithm.py` mirrors) and
+  `DFRobot/DFRobot_SGP40` `Python/raspberrypi/DFRobot_SGP40_VOCAlgorithm.py` (the Python translation `voc_algorithm.py`
+  literally ports, SPEC F.4), p-doyle
+  captive portal (the `DNSQuery` byte layout). Archived upstreams (jposada ISL29125, Sensirion embedded-sgp) and
+  inspiration-only ones (aiodns, karfas) are recorded "archived / not a copy — nothing to take". Each upstream fix that
+  applies to a kept part is verified against the chip's datasheet (CLAUDE.md datasheet rule) and becomes a delta item for
+  its owning unit (U12 `voc_algorithm.py`, U15 the drivers, U16 FRAM, U18 NTP/captive DNS), never a drive-by change here;
+  a formula change follows D.1's flag-don't-silently-change treatment. THIRD_PARTY entries gain nothing unless a fix is
+  taken (then U34 records the new upstream reference).
+- **Blast**: callers — · generated — · js — · tests — (delta items carry their own) · twin — · docs audit record;
+  delta items · toml — · uart —.
+- **Depends**: A.SDEP.01.
+- **Kind**: rule (audit file)
+
+### A.SDEP.11 Re-check the SIGINT override and the heap-unwedge defence
+- **Why**: OR129.a (4) "the `MICROPY_ASYNC_KBD_INTR` override and the other `toolchain/micropython_overrides.py`
+  anchors … the `unix_port_gc_unwedge` defence"; SPEC B.14.1 re-verification checklist (`:1211-1222`); G4/R34 (the
+  unwedge helper retires once the override is proven in every binary) (owner, 2026-09-26, OR52.a (6)). Catalog W01, W02.
+- **Site**: `toolchain/micropython_overrides.py:40-90` (`_UNIX_KBD_INTR_ANCHOR`, `verify_unix_kbd_intr_anchor()`,
+  `apply_unix_kbd_intr_override()`); `digital_twin/unix_port_gc_unwedge.py`.
+- **Change**: at the new tag, re-read `ports/unix/unix_mphal.c` `sighandler()` and `ports/unix/variants/
+  mpconfigvariant_common.h` (B.14.1's checklist). Three outcomes: (a) anchor line unchanged and the immediate
+  `nlr_raise()` path still the default for the standard variant → override stays, nothing else changes; (b) the line
+  changed shape but the immediate path still exists → re-derive the anchor and the generated `#undef`/`#define`,
+  re-run B.14.1's hammer loop (Run 3 + Run 5 at `gc.threshold=32768` across every device, the 700-iteration bar B.14.1
+  records) before trusting shutdowns, and update `tests_scripts/test_micropython_overrides.py`'s fake tree; (c) upstream
+  made deferred delivery the Unix default (the retirement condition B.14.1 names) → the override goes: delete
+  `_UNIX_KBD_INTR_ANCHOR`, `verify_unix_kbd_intr_anchor()`, `apply_unix_kbd_intr_override()` and their calls in
+  `build_unix_port()` (`setup_toolchain.py:371-372` and the `override_make_vars` splice, `:380`), the variant redirect with
+  them (`build-standard` then comes from the Makefile's own `BUILD ?= build-$(VARIANT)`); B.14.1 is removed and B.14's list
+  states "the Unix port delivers SIGINT through `mp_sched_keyboard_interrupt()` by default (`<file:line>` at <tag>); no
+  override is needed";
+  A.U21.06's post-build proof keeps its deferred-branch check (it then proves upstream's default), without the sentinel
+  half. The unwedge helper is not decided here: its retirement is already planned on the proof, independent of upstream
+  (A.U25.39 after A.U21.06); this step only confirms F.6's mechanism (`py/gc.c` collect-flag handling) is unchanged at
+  the new tag or rewrites F.6 to what the tag does.
+- **Blast**: callers `build_unix_port()` (three builds) · generated — · js — · tests (c): `tests_scripts/
+  test_micropython_overrides.py:40-270` (`TestVerifyUnixKbdIntrAnchor`, the apply/build tests) delete or retarget;
+  `:227-232` structural asserts · twin every twin run's shutdown (Run 3/Run 5) · docs B.14 intro "(so far: two
+  implemented …)" count, B.14.1, F.6 amendment, CLAUDE.md `:681-695` (the shutdown-flake bullet: its fix becomes
+  "upstream's default since <tag>"); CLAUDE.md `:665-680` (its "Superseded at the root" sentence, `:677`); `BACKLOG.md:540`;
+  `HEAP_FRAGMENTATION_MEASUREMENTS.md:284, :286` (the recipes drop `VARIANT_DIR=`); `digital_twin/README.md:100` (all four
+  only under (c)), BACKLOG chroot entry · toml — · uart —.
+- **Depends**: A.SDEP.08; A.U21.06 and A.U25.39 follow it.
+- **Kind**: code, test, doc
+
+### A.SDEP.12 Hand the mbedtls check its facts at the new pin
+- **Why**: OR129.a (4) "the GCC 14 mbedtls workaround"; G8/R21 (trigger already met at v1.29.0: mbedtls v3.6.6 carries
+  the fix; removal waits only for a clean GCC ≥ 14 build, A.U21.16). Catalog W03.
+- **Site**: `toolchain/setup_toolchain.py:32-36`, `:335`, `:379`; A.U21.16.
+- **Change**: read the new tag's `lib/mbedtls` version (`git -C lib/mbedtls describe --tags` in the toolchain checkout)
+  and confirm the `mbedtls_xor()` fix is still in it (the file `A.U21.16` names); record the version in the refresh
+  record; also read GCC bug #121044 and Debian #1085354 (the second retirement branch G8/R21 names) and the GCC version
+  the trixie leg and `firmware-build-verify` install, recorded beside it. Nothing is removed here: A.U21.16's step 1 (a GCC ≥ 14 build of both targets without the flag — a trixie
+  chroot when the session can build one, else the bench Pi4 in phase C) stays the deciding test, and its planned SPEC
+  B.7.1 text takes this record's mbedtls version instead of "`0bebf8b` / v3.6.6" when the pin moved (A.SDEP.23). If
+  this session can build a GCC ≥ 14 chroot (CLAUDE.md recipe, trixie leg), A.U21.16 step 1 may run now and its branch
+  2a/2b be applied in this step (A-C moves it); otherwise it stays in U21.
+- **Blast**: callers `build_firmware()`, `build_unix_port()` · generated — · js — · tests as A.U21.16 · twin — · docs
+  as A.U21.16 · toml — · uart —.
+- **Depends**: A.SDEP.08.
+- **Kind**: rule
+
+### A.SDEP.13 Decide the modlwip send override against the new pin
+- **Why**: OR129.a (4) "the modlwip `ERR_MEM` override (issue 19704)"; OR114.a (1), (4) "the anchor check fails the build
+  when upstream changes the loop, and the override is removed once the pin carries a real fix" (owner, 2026-09-30,
+  OR114); G4/R44. Catalog W04, W05, W06.
+- **Site**: planned `toolchain/micropython_overrides.py` `modlwip_eagain` (A.U21.09-A.U21.14); `extmod/modlwip.c` at the
+  new tag; `src/asy_webserver_service.py:255-259, :269-270` (the `peer_gone` suppression).
+- **Change**: at the new tag read `extmod/modlwip.c`'s `lwip_tcp_send()` and the state of issue 19704 and PRs 19705/19708
+  (and any successor). Outcomes, each recorded: (a) the pin carries a real fix (a non-blocking send returns without
+  sleeping when `tcp_write()` reports `ERR_MEM` — `EAGAIN`, or a partial write/`ENOBUFS`) → A.U21.09-A.U21.11 are not
+  executed (no override; the BACKLOG watch entry A.U21.09 plans is not written); A.U21.12/A.U21.13's host lwIP build and
+  hammer run against the upstream code instead (OR115.a's "prove it is solved and stable" applies to the upstream fix
+  unchanged); A.U19.24 is re-read against the upstream return value (`EAGAIN` vs partial write); SPEC B.14.2.1's stall
+  sentence (A.U14.30) states the fix at `<tag>`; phase C's A.U21.14 reproduces on v1.29.0 firmware and proves on the new
+  pin. (b) the loop changed but no real fix (e.g. upstream `6e79dcf9c`, after v1.29.0, which only swaps the sleep for
+  `poll_sockets()` with a ticks-based 10 s cap, per `audit/actions/SUPP_lwip.md`) → A.U21.09's anchor texts
+  (`_MODLWIP_ERR_MEM_LOOP`, `_MODLWIP_INSERT_AFTER`, the include anchor, the `extmod.cmake`/`CMakeLists.txt`/`Makefile`/
+  `usermod.cmake` line numbers) are re-derived at the new tag before A.U21.09 executes (A.SDEP.23). (c) unchanged → A.U21.09
+  as planned. Separately: `setsockopt(TCP_NODELAY)`'s missing NULL check and lock (`extmod/modlwip.c:1527-1535` at
+  v1.29.0) is re-read; if fixed, it is recorded only — "No `TCP_NODELAY` call" is the owner's decision (OR114.a (2)), not
+  a workaround this step may lift; a change would go to the owner under harmonization 1. The write-after-reset
+  behaviour behind `peer_gone` (a freed pcb still accepting writes that reach `tcp_write(NULL)`) is re-read in the same
+  function: if the new tag refuses writes on a closed/freed pcb with an error, the suppression's comment changes to the
+  new reason (it still saves a pointless write) and the retirement is a delta for U19; if not, unchanged.
+- **Blast**: callers `build_firmware()` (A.U21.10) · generated — · js — · tests A.U21.11-A.U21.13, A.U19.24,
+  `tests/test_asy_webserver_service.py:1648-1660` (`peer_gone` path) · twin — · docs SPEC B.14 (A.U21.09's new
+  subsection or its absence), B.14.2.1, H.7.1 (A.U14.03), CLAUDE.md "Platform target" addition A.U21.09 plans, BACKLOG
+  watch entry · toml — · uart —; hardware A.U21.14, A.U26.85.
+- **Depends**: A.SDEP.08; decides the shape of A.U21.09-A.U21.14.
+- **Kind**: rule, code
+
+### A.SDEP.14 Re-verify the lwIP option override's anchors and ensemble
+- **Why**: OR129.a (4) "the other `toolchain/micropython_overrides.py` anchors"; SPEC B.14.2 version-bump checklist
+  (`:1379-1383`); CLAUDE.md "Platform target" ("re-reading the real mechanism behind each anchor"). Not a workaround —
+  a configuration override — so it has no retirement condition; listed with the anchors it depends on.
+- **Site**: `toolchain/micropython_overrides.py:93-345` (21 anchors, `LWIP_MACROS_GUARDED_IN_OPT_H`,
+  `LWIP_MACROS_PREDEFINED_BY_MICROPYTHON`, `check_lwip_ensemble()`, `derive_lwip_dependents()`), `:405-466` (readback);
+  `toolchain/versions.toml:41-52`; `buildgen/validate.py` (per-device N-connection check).
+- **Change**: at the new tag: re-read `extmod/lwip-include/lwipopts_common.h`, `ports/rp2/lwip_inc/lwipopts.h`, lwIP
+  `opt.h` and `init.c`; confirm each of the 21 anchors still states the same mechanism (not only that the string
+  matches); confirm each macro's guard class (guarded in `opt.h` vs predefined by MicroPython) and the atomic `MEM_SIZE`
+  block; re-derive `opt.h`'s four derived formulas (`TCP_SND_QUEUELEN`, `TCP_SNDLOWAT`, `TCP_SNDQUEUELOWAT`,
+  `PBUF_POOL_BUFSIZE`) and `init.c`'s `#error` set against `check_lwip_ensemble()`; confirm the readback still reads
+  `flags.make`/`CMakeCache.txt` as it does. A moved macro or formula updates the tuples, the ensemble checker and
+  `tests_scripts/test_micropython_overrides.py`'s fake tree and parametrized anchor cases together. Simplification
+  opportunity: if every option became `#ifndef`-guarded upstream, B.14.2's "why not `CFLAGS_EXTRA`" reasoning is
+  re-read and recorded; the one-header mechanism stays unless the reasons it states are all gone (then a delta for U21).
+  Re-measure the B.14.2.1 cost table only if lwIP's pools changed layout (per-connection cost 2,324 B).
+- **Blast**: callers `build_firmware()` · generated — · js — · tests `tests_scripts/test_micropython_overrides.py`
+  (the lwIP classes, `:274-880`), `tests_scripts/test_buildgen_validate.py` (ensemble cases) · twin — · docs B.14.2,
+  B.14.2.1, H.7; SPEC `:1375`, `:4572` (the 2,324 B per-connection cost) · toml `versions.toml:41-52` if a value must move
+  (it moves only with its reason, OR114.a (3)), and its `:38` comment (2,324 B per connection) with any re-measured cost · uart —.
+- **Depends**: A.SDEP.08.
+- **Kind**: rule, code
+
+### A.SDEP.15 Re-check the stub repairs and the stub-gap suppressions
+- **Why**: OR129.a (4) "the stub repairs in `scripts/typecheck.sh` … the Timer stub gap"; G4/R35 (each stub workaround
+  names its removal trigger; A.U27.02/A.U27.03); CLAUDE.md `:841-` ("no-op once upstream re-ships … don't replace them
+  with `type: ignore`"). Catalog W08-W11.
+- **Site**: `scripts/typecheck.sh:83-97`; `src/asy_bmp3xx_driver.py:152-154`, `src/asy_isl29125_driver.py:235-237`
+  (bare `Timer()` with its comment), and the other bare `Timer()` constructions (`asy_ntp_client.py:140-142`,
+  `asy_scd30_driver.py:142`, `asy_sgp40_driver.py:162`, `asy_wifi_service.py:175-176`, `system_service.py:83-85, :89`) —
+  13 in all; `src/asy_wifi_service.py:244`; `tests/test_ticks_rollover.py:35, :49, :51, :61-62, :70-71, :88-89`
+  (`time.pyi` `ticks_add` `_Ticks`); `digital_twin/_http_client.py:35` (`json.loads` typed `AnyStr`);
+  `src/asy_notification_service.py:25-27`;
+  `digital_twin/unix_port_poll_prewarm.py:7`; the `const()`-tuple and `DeflateIO` sites A.U27.03 lists.
+- **Change**: after A.SDEP.09's install, before the repairs run (comment them out in a scratch copy of the script, never
+  in the tree): (W08) does `typings/stdlib/asyncio/futures.pyi` exist, or do `asyncio/tasks.pyi`/`__init__.pyi` no longer
+  import from it? (W09) is `NotImplemented` declared in `typings/stdlib/builtins.pyi`? Each fixed upstream → its repair
+  block goes from `scripts/typecheck.sh`, and its F.5.5 paragraph, its CLAUDE.md sentence and its entry in A.U27.03's
+  B.15 list go with it (the defect no longer exists at the pinned stubs); still broken → kept, conditional as today. (W10) does the board stub's `Timer.__init__` accept no `id`? Run `mypy src` alone (no `tests` in scope) — the
+  `call-overload` findings CLAUDE.md `:822-830` records (12 there; 13 constructions at HEAD) are the symptom; zero → the
+  gap is fixed: CLAUDE.md's bullet, A.U27.03's B.15 row and the two driver comments go. (W11) every `# type: ignore[...]` that exists for a stub gap
+  is self-checking: `warn_unused_ignores = true` fails the main pass the day a stub fixes it (e.g.
+  `asy_wifi_service.py:244` `return-value`, "stub types status(str) as int"); each such failure removes that ignore (and
+  its reason comment) rather than being suppressed; `import asyncio.core` (`unix_port_poll_prewarm.py:7`,
+  `import-not-found`) the same. No new `type: ignore` enters `src/` for a stub regression (F.5.5 rule).
+- **Blast**: callers CI `lint-and-typecheck` · generated — · js — · tests A.U27.02's `tests_scripts/test_typecheck_sh.py`
+  (its fabricated trees keep all three states) · twin the twin pass · docs SPEC F.5.5, B.15 (A.U27.03's list), CLAUDE.md
+  `:805-830`, `:841-` · toml — · uart —.
+- **Depends**: A.SDEP.09.
+- **Kind**: code, doc
+
+### A.SDEP.16 Re-check the Unix-port rig workarounds
+- **Why**: OR129 "Check especially for fixes we needed to implement workarounds for" (owner, 2026-09-30); G4/R30 (every
+  Unix-port-vs-rp2 difference worked around in test code only, "recorded in Part F with source and removal trigger" —
+  A.U14.28's F.7 rows); owner, 2026-09-29 (OR102.a (10)) for the `modselect.c` row's trigger ("retired when a pin
+  re-check finds it fixed"). Catalog W12-W17, W41.
+- **Site**: `digital_twin/unix_port_poll_prewarm.py` (and its 19 caller/doc files, (W12) below); `digital_twin/_unix_port_udp_addr_shim.py`
+  (7 files); `tests/test_asy_uart_driver.py:43` `_StepPoller` and the bounded-poller rule (CLAUDE.md `:613-621`); the nine
+  `TZ=UTC` settings (`scripts/test.sh:23`, `scripts/run_digital_twin_ci.sh:25`, `scripts/run_unix_port_integration.sh:30`
+  `export TZ=UTC`; `scripts/_digital_twin_ci_suite.py:414`, `scripts/cross_browser_smoke.mjs:113`,
+  `tests_js/_live_matrix_command.js:79`, `tests_js/_live_twin_command.js:74`, `tests_scripts/test_coverage_runner.py:35`,
+  `tests_scripts/test_digital_twin_generated_boot.py:154`); the port-band scan in
+  `unix_port_poll_prewarm.py:30-47`; the two Unix binaries (`setup_toolchain.py:352-397`, `scripts/test.sh:75-99`).
+- **Change**: at the new tag, per workaround: (W12) `extmod/modselect.c`'s pollfds-growth pointer update still rewrites a
+  poll object whose `pollfd` is `NULL`? (`digital_twin/README.md:886-918` states the trace at `:132`; re-read the loop).
+  Fixed → `prewarm_poll_set()` and its calls go (15 files: the module, `run_generic_integration.py:29, :331-332`,
+  the eleven `tests/` importers, `tests/test_digital_twin_poll_prewarm.py` deleted, the README's "What's here"/"Known
+  gaps" entries removed; plus the `digital_twin/machine.py:757` comment; the justification comments of
+  `_cancel_and_join()`/`_drain_flag()` (`tests/test_asy_isl29125_driver.py:2333-2350`; the helpers stay, the reason
+  changes), `tests/_webserver_concurrency_scenarios.py:358`, `BACKLOG.md:787`, SPEC `:2790`, `:4091`, `:5622`)
+  (`segfault_stress_repro.py` is deleted by A.U25.40 in any case); every `# noqa: E402` that only existed because the
+  removed call preceded the imports goes in the same commit (11 files, `grep -l 'noqa: E402'` ∩ the callers), else
+  `RUF100` fails `lint.sh`; CLAUDE.md `:780-787`'s example is re-pointed to a remaining case or the bullet reworded. (W13) `ports/unix/modsocket.c` `bind()`/`connect()`/`sendto()` still require a buffer sockaddr and `recvfrom()`
+  still returns raw bytes? Each quirk fixed → that half of `_unix_port_udp_addr_shim.py` goes, and the `getaddrinfo(...)[0][-1]`
+  pre-resolution in the 12 `tests/`/`digital_twin/` files A.U14.28 lists goes with it; every `# noqa: E402` that only
+  existed because the removed call preceded the imports goes in the same commit (11 files, `grep -l 'noqa: E402'` ∩ the
+  callers), else `RUF100` fails `lint.sh`; CLAUDE.md `:780-787`'s example is re-pointed to a remaining case or the bullet
+  reworded. (W14) the bounded-fake rule stays
+  whatever upstream does (bounded fakes are the test design, CLAUDE.md); only its stated cause is re-read (`extmod/modselect.c`'s POSIX path). (W15)
+  `ports/unix/modtime.c` `mktime()` still host-libc/`$TZ`? Fixed → the nine `TZ=UTC` settings go (`scripts/test.sh:23`, `run_digital_twin_ci.sh:25`,
+  `run_unix_port_integration.sh:30`, `_digital_twin_ci_suite.py:414`, `cross_browser_smoke.mjs:113`,
+  `tests_js/_live_matrix_command.js:79`, `_live_twin_command.js:74`, `tests_scripts/test_coverage_runner.py:35`,
+  `test_digital_twin_generated_boot.py:154`) and CLAUDE.md `:709-717` goes. (W16) `getsockname()` added to the Unix port's socket? Then `_bind_free_listener()`'s band scan can become a port-0
+  bind read back (a delta for U25/U27; the band convention of the other listeners follows). (W17) settrace still
+  allocating per call when compiled in (`py/vm.c`, `py/profile.c`)? If upstream made an idle `sys.settrace` free, the two
+  binaries could become one — re-measured with E.5.2's method before any change; parked for the owner's review (the two-binary split is an owner
+  decision, 2026-09-21; harmonization 1), with the E.5.2 re-measurement attached; not done here.
+  (W41) `ports/unix/modtime.c` `gmtime()` (`:130-150`) still returns 9 elements? Returns 8 → the normalisation in
+  `tests/test_asy_ntp_client.py:1414-1428` goes, and `test_this_interpreters_gmtime_returns_nine_elements_not_eight`
+  (`:1428`) fails and so announces it, then goes with it.
+  Each finding is written as the matching F.7 row's trigger outcome (A.U14.28 executes later with these results).
+- **Blast**: callers the twin runner, `scripts/test.sh`, `scripts/_digital_twin_ci_suite.py` (shim) · generated — · js
+  `tests_js/_live_matrix_command.js:79`, `_live_twin_command.js:74` (W15) · tests per outcome above; `tests/test_digital_twin_sensortask_integration.py:19-23`, the six webserver-concurrency files;
+  `tests/test_asy_ntp_client.py:1414-1428` (W41);
+  the 11 `# noqa: E402` files (W12/W13, `RUF100`); `tests/test_asy_isl29125_driver.py:2333-2350` comments; the TZ-setting
+  harness files (W15) · twin every real-socket twin entry · docs `digital_twin/README.md:78-92, :747-795, :867-918`;
+  CLAUDE.md `:613-621`, `:709-717`, `:780-787`; `BACKLOG.md:787`; SPEC F.6/F.7, E.3, E.5.2, `:2790`, `:4091`, `:5622` · toml — · uart —.
+- **Depends**: A.SDEP.08; A.U14.28, A.U25.34, A.U25.43 take the results; co-lands with A.U25.40 (deletes
+  `segfault_stress_repro.py` unconditionally, OR102.a (10)) — A-C merges.
+- **Kind**: rule, code, test, doc
+
+### A.SDEP.17 Re-check the MicroPython runtime facts that shape code
+- **Why**: OR129.a (4) "`getaddrinfo()`'s timeout status and the `I2C`/`SPI` `deinit()` facts"; CLAUDE.md "Platform
+  target" practice ("is there now a newer/better/more-complete way to do this"); G6/R55 (every workaround of an external
+  defect is re-checked when the upstream version moves). Catalog W18-W28, W37-W40, W42.
+- **Site**: SPEC F.1 (`:3459-3560`), F.2 (`:3604-3659`), F.5.1, F.5.7-F.5.9; the code shaped by each (catalog column).
+- **Change**: at the new tag, each fact re-read at its source and the code shape it forces re-judged:
+  (W18) nested `asyncio.run()` — `extmod/asyncio/core.py` `run()` still `run_until_complete(create_task(coro))` on the one
+  queue? A raise instead of a crash changes CLAUDE.md `:650-664`'s symptom text only; the "sync scope only" rule stays.
+  (W19) async generators — `py/compile.c`/`py/objgenerator.c` still lack `__aiter__`/`__anext__`? Supported → the
+  `/status` "collect into a list" form may become an async generator: a delta for U19/U30 (memory impact measured first),
+  not done here. (W20) `[*a, b]` in displays, `await` in comprehensions — now compiled? The concatenation / plain-loop
+  forms stay valid; F.1's text changes; a style change is not forced (delta only if a rule prefers the new form).
+  (W21) `struct.pack()` silent truncation — still gated behind `MICROPY_PREVIEW_VERSION_2` in `py/binary.c`? If the
+  checks became default, F.1's fact flips and the shape validations before packing stay (defence against wrong data,
+  not only against the runtime). (W22) soft `Timer` callbacks — `py/scheduler.c` `mp_sched_schedule()` still drops on a
+  full queue silently? `PERIODIC` for must-fire timers stays either way (C.9); the text follows the source. (W23) `[x] *
+  n` segfault range — `py/objlist.c`/`py/obj.c` size check; the clamp-before-allocate rule stays; F.1's range text
+  follows. (W24) `machine.UART.deinit()` still leaves `read_buffer.buf` unrooted (`ports/rp2/machine_uart.c`)? Fixed →
+  the fresh-construction in `src/asy_uart_driver.py:199-207` stays correct but stops being load-bearing: its comment and
+  F.5.7 are rewritten to say so. (W25) `machine.UART.read()` still waits per missing byte in `mp_event_handle_nowait()`?
+  The owner's no-blocking rule (CLAUDE.md, 2026-09-11) keeps the `any()` clamp (`asy_uart_driver.py:121-123`) and the
+  yield in `ready()` (`:258`) either way; F.5.8/F.5.9's mechanism text follows the source. (W26) `machine.I2C`/`SPI`
+  `deinit()` — does rp2 now set the protocol `.deinit` slot, or do constructors stop returning static singletons? Either
+  changes F.5.1, the wrapper comments (`asy_i2c_driver.py:183`, `asy_spi_driver.py`), both fakes (`tests/machine.py:153`,
+  `digital_twin/machine.py:250`), the device script `bus_deinit_is_a_noop_on_real_hardware.py`, and the controller
+  re-initialise rung of the recovery ladder (A.U13.R01) — a delta for U13/U14 with a phase-C check. (W27)
+  `socket.getaddrinfo()` — any asyncio-level timeout added (`extmod/asyncio/`, `extmod/modlwip.c`)? Recorded in F.2
+  (A.U14.16's text takes the new tag); no code change (the project calls it only on a numeric host). (W28) the CYW43
+  `isconnected()` false positive — any upstream fix in cyw43-driver D6 or `extmod/network_cyw43.c`, and the state of micropython#9455, #9505,
+  #18797? Recorded in F.2 only:
+  the power-cycle recovery is an owner-settled, intended feature (CLAUDE.md hard rule), not retired by an upstream fix.
+  (W37) `ports/rp2/main.c` boot order — USB still initialised only after `_boot.py` returns (micropython#15230)? The
+  frozen `main.py` entry is correct either way; SPEC `:959-968`'s text follows the source. (W38) `py/gc.c` allocator API
+  (`gc_alloc(n_bytes, alloc_flags)`, `:891`) — any placement or long-lived heap section added (micropython#2057)? The
+  boot-confined `gc.collect()` reset and `gc.threshold(32768)` are an owner-approved design (2026-09-18): any change is
+  parked for the owner's review (harmonization 1), not done here; SPEC `:4825-4833` states the source. (W39)
+  `extmod/modjson.c` — does `json.loads()` now reject a doubled or missing comma? Fixed → `tests/_strict_json.py` may
+  stay as defence: a delta for U24. (W40) `extmod/asyncio/stream.py` — does `readexactly()`/`read(-1)` still re-concatenate
+  (`r += r2`)? Fixed → the twin HTTP client (`digital_twin/_http_client.py:76-77, :101`) may use plain `readexactly()`: a
+  delta for U25, memory measured first. (W42) cyw43-driver `cyw43_ll_wifi_ap_get_stas()` at the new pin re-read for the
+  100 ms settle before `status("stations")` (`src/asy_wifi_service.py:232-246`); removal only on A.U18.43's trigger, a
+  hardware round in phase C.
+- **Blast**: callers per item · generated — · js — · tests per item (the fakes, the device scripts — `uart_read_never_blocks_the_loop.py` beside the two W25 names —,
+  `tests/test_asy_uart_driver.py`, `tests/_uart_comm_harness.py` sync-scope rule; `tests_scripts/test_gc_collect_sites.py`,
+  `tests_scripts/test_digital_twin_boot_contiguity.py` (W38); `tests/test_strict_json.py` (W39); the twin soak Run 11
+  (W40); `tests/test_asy_wifi_service.py:1833-1848` (W42)) · twin `digital_twin/machine.py`, `digital_twin/_http_client.py`
+  (W40) · docs SPEC F.1, F.2, F.5.x, `:959-968` (W37), `:4825-4833` and I.4(f.1) (W38); `digital_twin/README.md:710-746`
+  (W40); `tests_hardware/README.md:625-640` (W28, kept); CLAUDE.md
+  `:17-20`, `:650-664`, the UART no-blocking hard rule's mechanism sentence · toml — · uart — (W24/W25 touch
+  `asy_uart_driver.py` comments only; `asy_uart_comm.py`, the protocol module, is not changed by this action, so no
+  UART_C_PORT_CHANGELOG.md entry).
+- **Depends**: A.SDEP.08; co-lands with A.U18.43 (1) (W42's trigger) — A-C merges.
+- **Kind**: rule, doc
+
+### A.SDEP.18 Re-check the Microdot gaps the webserver wrapper covers
+- **Why**: OR129 "Check especially for fixes we needed to implement workarounds for" (owner, 2026-09-30); CLAUDE.md
+  hard rule (Microdot's behaviour is changed only by wrapping it); SPEC A.5 ("The one gap: exceptions raised while
+  writing the response itself"); G6/R55 (Microdot's 1,024 B `send_file` default). Catalog W29, W30, W43.
+- **Site**: `src/asy_webserver_service.py:234-291` (`_TimeoutStreamProxy`: `_bounded_read()` read-timeout logging
+  `:248-260`, header coalescing in `awrite()` `:268-278`), `:692-731` (`_serve()`'s write-phase catches).
+- **Change**: at the Microdot tag A.SDEP.06 vendors: (W29) does `Response.write()` still emit the status line and each
+  header as separate writes? If upstream now writes the header block in one call, the coalescing in `awrite()` is no
+  longer needed: `_head` and its branch go, and `tests/test_asy_webserver_service.py:1977`'s "the whole header block is
+  one write" assertion stays true through upstream (it pins the property, not the mechanism) — kept; SPEC I.3's
+  "cut response never ends mid-headers" text states the upstream behaviour. (W30) does `dispatch_request()`/
+  `handle_request()` still swallow read-phase exceptions (so a read timeout is observable only in the proxy) and let
+  write-phase exceptions escape (A.5's one gap)? A change moves the logging point: the proxy's read-timeout log or
+  `_serve()`'s write-timeout log is removed where Microdot now reports it through a hook this repo registers — decided
+  against OR35.b/OR56.a (1) "one event, one entry", tested by the existing timeout tests; a delta for U19 if the change
+  is more than removing a now-dead branch. Unchanged → recorded, nothing moves. (W43) `send_file()`'s default read size at
+  the vendored tag (1,024 B at v2.6.2, `ext/microdot.py:567, 746`): the per-response `send_file_buffer_size` override
+  (`src/asy_webserver_service.py:666`) stays — it is the one write bound — and its comment names the new default
+  (A.U18.43 (5) writes it).
+- **Blast**: callers `WebserverService._serve()` · generated — · js — · tests `tests/test_asy_webserver_service.py`
+  (`:1648-1660`, `:1977`, the per-call-timeout tests), `tests/_webserver_concurrency_scenarios.py`, the twin
+  webserver-concurrency files · twin as tests · docs SPEC A.5, I.3, H.7.1 · toml — · uart —.
+- **Depends**: A.SDEP.06; co-lands with A.U18.43 (5) (W43's comment) — A-C merges.
+- **Kind**: rule, code
+
+### A.SDEP.19 Re-check the CI and web-tooling workarounds
+- **Why**: OR129.a (4) "zizmor's `self-repository` disable (actionlint syntax support)"; CLAUDE.md `:496-499`, `:588-603`
+  (the `uv sync` retry: "Don't 'simplify' the retry away"); SPEC H.7 (engine channels), H.8 (coverage exclude). Catalog
+  W32-W36.
+- **Site**: `.github/zizmor.yml:14-18`; the nine `uses: ./.github/actions/setup-micropython-toolchain` sites (`ci.yml:123,
+  173, 217, 290, 436, 467, 490, 583, 616`); the `uv sync` retry loops (`action.yml:22-30`; `ci.yml:326-335, 355-362,
+  381-388, 406-413, 439-447, 493-501`; `setup_toolchain.py` `run_retried(["uv", "sync"])`, `:1019`); `vitest.config.js:30-38`;
+  `scripts/setup_cross_browser_toolchain.sh:17-56`.
+- **Change**: (W32) with the refreshed actionlint (A.SDEP.03): does it accept `uses: $/.github/actions/…` (the form
+  zizmor's `self-repository` audit asks for)? Yes → the nine local `uses:` move to that form, the `self-repository`
+  block in `zizmor.yml` goes, CLAUDE.md `:496-499`'s sentence goes (A.U28.14/A.U28.40 rewrite that bullet and the file
+  header — they take this outcome); both gates must pass together. No → the three texts naming "actionlint 1.7.12" (`CLAUDE.md:498`,
+  `.github/zizmor.yml:15`, `BACKLOG.md:749`) name the refreshed actionlint version; nothing else changes. (W33) does `actionlint-py`
+  now ship a wheel carrying the binary (no build-time download)? The retries stay either way (CLAUDE.md: they guard any
+  third party's outage during `uv sync`); only the reason text in CLAUDE.md `:588-603`, SPEC B.10 and `action.yml:19-21`
+  is updated if the named example stopped being true. (W34) does `@vitest/coverage-v8` still re-parse non-JS files V8
+  reported? Fixed → `exclude: ["**/*.json"]` goes with its comment and `tests_scripts/test_js_coverage_excludes_json.py`,
+  SPEC H.8's sentence rewritten; the `htmlcov_js` directory choice is not an upstream defect (the `coverage/` shadowing
+  is this repo's layout) and stays. (W35) the engine channels: is Ubuntu's `firefox` still a snap-only stub, and is
+  Playwright's own Firefox/WebKit reachable from the sessions' network? The channel choice stays unless both reasons are
+  gone (then a delta for U28); the engines stay unpinned (G8 contradiction 6), so "refresh" here means a fresh install
+  (the CI cache key suffix `cross-browser-firefox-v1` bumped, `ci.yml:305`) and a passing smoke. (W36) the refreshed
+  Vitest browser API: can its `page` navigate to an external origin (vitest-dev/vitest#7875)? Yes → the live-backend
+  tests use Vitest's `page` and the Commands-API detour (`tests_js/_live_twin_command.js`, `_live_matrix_command.js`,
+  `vitest.config.js:47-58`) goes: a delta for U23/U28; No → recorded, unchanged.
+- **Blast**: callers CI jobs · generated — · js `vitest.config.js`, `tests_js/_live_twin_command.js`,
+  `_live_matrix_command.js`, `tests_js/live-backend*.test.js` (W36) · tests `tests_scripts/test_js_coverage_excludes_json.py`,
+  `tests_scripts/test_setup_cross_browser_toolchain_sh.py`, A.U28.08's workflow-rule checks (take the `uses:` form) ·
+  twin — · docs CLAUDE.md `:496-499`, `:588-603`; `.github/zizmor.yml:15`, `BACKLOG.md:749` (W32); SPEC B.10, B.10.1, H.7 `:4543-4545` (W36), `:4698-4712`, H.8 · toml — · uart — ·
+  build-environment: A.SDEP.21's BACKLOG chroot entry (CI config).
+- **Depends**: A.SDEP.03, A.SDEP.04, A.SDEP.05; co-lands A.U28.01 (the retry sites it consolidates carry W33's reason
+  text; A-C keeps one).
+- **Kind**: code, doc
+
+### A.SDEP.20 Measure a post-refresh baseline for every later unit
+- **Why**: OR129.a (1) "every later unit then lands on current versions and is measured against a known baseline";
+  OR39.a (3) (before-values for the load and size figures); LEAD/R07 (image sizes).
+- **Site**: `audit/artefacts/ENV/baseline.md` (A.U0.06's record, audit file).
+- **Change**: after the last family commit, A.U0.06's full measurement runs once more on the refreshed tree (same
+  commands, same serialization); the record gains a second column "after the dependency refresh" beside the B0 column,
+  with each delta attributed to the family that caused it (from A.SDEP.02's per-family results). From B1 on, every
+  unit's before/after comparison (OR39.a (3), OR30.a (3) run times, LEAD/R07 image sizes) is taken against this column;
+  the B0 column stays as the pre-refresh reference. When no dependency moved, the record says so and the B0 column
+  serves both.
+- **Blast**: callers — · generated — · js — · tests — · twin state archived first (A.U0.04) · docs audit file; U8's
+  tunables write-figure (A.U0.06 Blast) takes the refreshed value · toml — · uart —.
+- **Depends**: A.SDEP.02-A.SDEP.19.
+- **Kind**: test (audit file)
+
+### A.SDEP.21 Record the refresh in the permanent docs
+- **Why**: OR129.a (5) "CLAUDE.md's version-bump re-check practice runs and its SPEC F.5 record is updated; … a BACKLOG
+  entry for the owner's chroot run"; LEAD/R33 Home ("SPEC F.5; SPEC B.14; CLAUDE.md 'Platform target'; BACKLOG
+  build-environment list"); CLAUDE.md "Pull request workflow" (every build-environment change is listed for the owner's
+  chroot run, owner, 2026-09-18).
+- **Site**: `CLAUDE.md:17` ("what the 1.29 pin changed (Part F.5)"), `:42-45` ("**Last run: 1.28.0 → 1.29.0, 2026-09-10;
+  results in SPECIFICATION.md Part F.5** — including …"); SPECIFICATION.md F.5 (`:3678-4066`); BACKLOG.md
+  "Deferred / explicitly out-of-scope work" chroot entry (`:515-`), "Real-hardware work still owed" (`:345-`),
+  the owner-question list (A.U0.12); `THIRD_PARTY_LICENSES.md:13-23`.
+- **Change**: (1) CLAUDE.md `:42-45` → "**Last run: <old> → <new>, <date>; results in SPECIFICATION.md Part F.5** —
+  including what it found (<one clause per finding>) and what it ruled out (<one clause>)"; when the pin did not move:
+  "**Last run: <date>, no newer stable MicroPython release than <pin>**"; `:17` names the current pin. (2) SPEC F.5:
+  the heading "MicroPython 1.29 delta (audited 2026-09-10, `v1.28.0..v1.29.0`)" → "MicroPython at the pin (`<new>`,
+  audited <date>)"; its opening sentence keeps its method statement; each F.5.x subsection re-verified at the new tag
+  (A.SDEP.08 (4)) states its fact in present tense for the current pin (the "new in 1.29"/"since 1.29" wording is kept
+  only where the version floor itself is the fact, e.g. `I2C.deinit()`'s 1.29 floor); new findings get their own
+  subsections; the silicon paragraph per A.SDEP.08 (6). A closing subsection **"F.5.10 Standing workarounds for upstream
+  defects, and what retires each"** (agent, <date>): one line per workaround still standing after this step (the
+  catalog below minus the retired ones) — name, where it lives, the upstream condition that retires it, the section
+  holding the detail (B.7.1, B.14.x, F.5.5/B.15, F.6, F.7, A.5, H.7, H.8); the Part F intro checklist G4/R01 plans (U36)
+  gains "every entry of F.5.10 is re-checked at each pin move and at every dependency refresh". (3) BACKLOG chroot entry
+  gains "<date>, dependency refresh: `toolchain/versions.toml` MicroPython ref <old> → <new> (both legs build the new pin
+  and its pico-sdk/picotool; the GCC ≥ 14 leg also decides the mbedtls flag), `pyproject.toml`/`uv.lock` tool versions,
+  `package.json`/`package-lock.json`/`.nvmrc` (Node <old> → <new>), `ci.yml`/composite-action pins<, `scripts/
+  typecheck.sh` / `toolchain/micropython_overrides.py` / `toolchain/setup_toolchain.py` for each retired workaround>;
+  the installer leg is owed because `versions.toml` changed" — only the parts that actually changed are named. (4)
+  BACKLOG "Real-hardware work still owed": A.SDEP.08 (6)'s entry (and A.SDEP.07's frozen-website check when freezefs's
+  format moved). (5) one entry per held-back dependency in BACKLOG's owner-question list (A.U0.12), as a decision taken
+  on the owner's behalf (OR2.c); upstream items to watch live in F.5.10 only, except the issue-19704 entry OR114.a (4)
+  orders (A.U21.09's). (6) THIRD_PARTY `:15-23` per A.SDEP.06/A.SDEP.07. No text written
+  here cites an audit ID; every decision carries "(owner, <date>)" or "(agent, <date>)".
+- **Blast**: callers — · generated — · js — · tests `tests_scripts/test_comment_block_cap.py` (no code comment is written
+  here); A.U0.08's citation check and A.U0.09's vocabulary check read the new texts · twin — · docs as sites; A-C merges
+  with A.U14's F.5.x rewrites (A.U14.20, A.U14.21, A.U14.22, A.U14.31, A.U14.35, A.U14.36), A.U21.09's CLAUDE.md
+  addition, A.U27.02/A.U27.03's F.5.5/B.15 texts, A.U28.38's chroot entry, U36's CLAUDE.md/SPEC pass · toml — · uart —.
+- **Depends**: A.SDEP.03-A.SDEP.19.
+- **Kind**: doc
+
+### A.SDEP.22 CLAUDE.md states the refresh practice for every dependency
+- **Why**: LEAD/R33 Home "CLAUDE.md 'Platform target'"; the owner's rule (owner, 2026-09-30, OR129).
+- **Site**: `CLAUDE.md:26-27` ("Two standing AI-session practices …") and a new third bullet after `:49`.
+- **Change**: `:26` "Two standing AI-session practices" → "Three standing AI-session practices"; new bullet: "- **Every
+  external dependency is refreshed as one step, not only MicroPython** (owner, 2026-09-30: "Check all external
+  dependencies for updates - both modules, repos and tooling, just everything."): the vendored `ext/` code (only as an
+  unmodified upstream tag or commit), the stub packages, every Python and npm tool with its lock, Node, the GitHub
+  Actions pins and every other fetched source. Read each update's changelog and the diff of the parts this repo uses;
+  fix what breaks with no regression at every level and both GC stages; take the fixes the project profits from; and
+  re-check every standing workaround in SPECIFICATION.md Part F.5.10, removing it for the clean form where upstream
+  fixed it. Pins stay pinned; the bullet above runs whenever the MicroPython ref moves." The owner's quote is verbatim
+  from OR129 (that row's first bullet).
+- **Blast**: callers — · generated — · js — · tests A.U0.09's decision-vocabulary check (the bullet carries its actor
+  tag) · twin — · docs CLAUDE.md only; README's "Further reading" unchanged · toml — · uart —.
+- **Depends**: A.SDEP.21 (F.5.10 exists); co-lands A.U0.10/A.U0.11 (other U0 CLAUDE.md edits) and A.U21.09 (same
+  section).
+- **Kind**: rule, doc
+
+### A.SDEP.23 Re-check every pinned-upstream citation before its action runs
+- **Why**: OR129.a (5) "every A-L action citing a pinned upstream source line is re-checked against the new pin before it
+  is executed"; LEAD/R33 State ("every unit re-checks its actions' upstream line citations against the new pin before
+  executing them"); P11 (every behaviour-bearing claim traces to a primary source at the pinned version).
+- **Site**: the action files in `audit/actions/` (audit files); the counts per unit in "Citation re-check counts" below
+  (216 actions / 660 citations at d6557c5).
+- **Change**: only when A.SDEP.06-A.SDEP.09 moved a pin (MicroPython with its submodules, Microdot, freezefs, the stubs);
+  otherwise the refresh record says "no pin moved; citations stand" and this action is done. (1) Once, right after the
+  refresh: rerun the citation scanner over `audit/actions/*.md` (families and patterns: MicroPython tree paths
+  `py|extmod|ports|shared|mpy-cross|drivers|tools/<file>.<c|h|py|cmake|mk|ld>:<n>` and `ports/…/Makefile|CMakeLists.txt:<n>`,
+  optionally prefixed `mp/`; bare MicroPython/cyw43/lwIP C file names `<name>.<c|h|cmake>:<n>` not preceded by a path;
+  lwIP `lwip/`, `lib/lwip/`, `src/core|include|api|netif/…:<n>`; cyw43 `cyw43/`, `lib/cyw43-driver/`, `cyw43_*.c|h:<n>`;
+  pico-sdk `picosdk/`, `lib/pico-sdk/`, `src/rp2_common|rp2040|common|host|boards/…:<n>`; micropython-lib `mplib/`,
+  `lib/micropython-lib/`, `drivers/led/…:<n>`; Microdot `ext/microdot.py:<n>`, `microdot/…:<n>`; freezefs
+  `ext/freezefs/…:<n>`; stubs `typings/…:<n>`, `*.pyi:<n>`; third-party action sources `src/main.ts|git.ts:<n>`; excluding
+  the legacy `python/CommonDrivers/microdot.py` and non-dependency references such as `sensirion_gas_index_algorithm.c`;
+  each `path:line` token is classified once, by its path (a bare `cyw43_*.c`, lwIP or MicroPython file name counts in one
+  family only); the MicroPython family includes `lib/` (`lib/littlefs`, in-tree); `SUPP_lwip.md` and `AC_NOTES.md` are
+  scanned too) plus the version literals that name a moved pin (`v1.29.0`, `v2.6.2`, the submodule SHAs `98a542c`, `77dcd25`,
+  `055d642`, `0bebf8b`, `ee4bb8f`, the stub post-releases, the Python/npm tool versions an action quotes, e.g. A.U28.02's
+  `pytest==9.1.1`/`mpremote==1.29.0`, A.U19.18's sha256 table, A.U34.08's freezefs commit). Citations marked as v1.28.0
+  facts (the scratchpad `mp128/` or "at v1.28.0") cite a fixed old tag and are skipped. (2) Per action, before it is
+  executed (the executing agent's first step): for each citation, `git diff -U0 v1.29.0 <new> -- <path>` maps the old
+  line to the new one (submodule citations: `git -C lib/<sub> diff -U0 <old SHA> <new SHA> -- <path>`; Microdot: `git diff
+  -U0 v2.6.2 <tag> -- src/microdot/microdot.py`; freezefs: the diff between the two recorded commits; stub `.pyi` lines:
+  `diff -U0` of the two installed `typings/` trees); unchanged text at a shifted line → the line number is updated in the working copy of the action;
+  changed text → the action's premise is re-read at the new tag and the action revised before it runs (a wrong premise
+  goes to A-C as a delta with a register fix, harmonization 24's "a fact beats any text about it"); a version literal →
+  the action takes the refreshed value from the refresh record. The permanent text an action writes cites the new tag's
+  lines, never v1.29.0's. (3) Actions whose whole purpose a refresh settled are closed with the evidence (e.g. A.U21.09-
+  A.U21.11 under A.SDEP.13 (a); A.U21.16 when A.SDEP.12 applies it).
+- **Blast**: callers — · generated — · js — · tests — · twin — · docs audit files (the action files, the register
+  where a premise changed) · toml — · uart —.
+- **Depends**: A.SDEP.06-A.SDEP.09, A.SDEP.24 (the new-tag corpus).
+- **Kind**: rule (audit file)
+
+### A.SDEP.24 Point the plan's corpus topics at the refreshed pins
+- **Why**: LEAD/R33 (the re-check needs both trees); OR4.a (the corpus of sources the audit reads); G10/R03 (A.U0.03's
+  corpus at the pin).
+- **Site**: `PROJECT_AUDIT_PLAN.md:760-797` (4.6 ENV topics; ENV.T03 at `:775-777`); A.U0.03's corpus step (audit files).
+- **Change**: ENV.T03 "(already at `v1.29.0` with the rp2 submodules …) read-only; clone only Microdot `v2.6.2` into the
+  scratchpad" → "at the pinned ref (`toolchain/versions.toml`) with the rp2 submodules (`lib/lwip`, `lib/cyw43-driver`,
+  `lib/pico-sdk`, `lib/micropython-lib`) read-only; Microdot at the vendored tag; after the dependency refresh the
+  previous pins (MicroPython `v1.29.0` with its submodules, Microdot `v2.6.2`) stay in the scratchpad read-only for the
+  citation re-check." New topic "**ENV.T11** (once) Dependency refresh after T02 and before B1 (LEAD/R33): every
+  external dependency updated against the baseline, workarounds re-checked, the post-refresh baseline recorded; a short
+  second check at B5." 4.6 intro `:762-763` "T02, T05-T10" → "T02, T05-T11". A.U0.03's step (2) runs again as soon as
+  A.SDEP.08 (1) and A.SDEP.06 name the new tags, before their reading steps (a second checkout; the first one is kept).
+- **Blast**: callers — · generated — · js — · tests `audit/sweeps/validate_plan.py` (V1/V3/V4 over the edited plan) ·
+  twin — · docs audit files · toml — · uart —.
+- **Depends**: A.U0.03; the second checkout follows A.SDEP.08 (1) and A.SDEP.06's tag choice (A.SDEP.08 no longer
+  depends on this action).
+- **Kind**: rule (audit file)
+
+### A.SDEP.25 U37: check for releases made during execution
+- **Why**: OR129.a (1) "a short second check at B5 (U37) catches releases made during execution"; LEAD/R33 "A short second
+  check runs at B5".
+- **Site**: U37 (B5 close of execution), before its final re-verification pass; the refresh record (audit file) and
+  A.SDEP.21's permanent records.
+- **Change**: for every inventory line D1-D28 and every pin execution added (`[stubs]` in `versions.toml`, A.U27.02;
+  `[tool.uv] required-version`, A.U28.02; the `coverage` pin, A.U24.72/A.U28.02; the dorny commit, A.U28.13; the Microdot
+  hash table, A.U19.18; the freezefs commit, A.U34.08; A.U21.03's toolchain record fields), compare the pinned value with
+  the newest stable release found by the same commands A.SDEP.03-A.SDEP.10 name, and re-read every held-back entry and
+  every F.5.10 upstream item (issue 19704 included). Nothing new → one line in the refresh record and CLAUDE.md's "Last
+  run" line re-dated. A new release → that family's action (A.SDEP.03-A.SDEP.10) and the workaround re-checks it touches
+  (A.SDEP.11-A.SDEP.19) run for it, with B5's re-verification passes (until one ends all green) as the check gate in place
+  of A.SDEP.02; A.SDEP.21's records are updated; a MicroPython move at B5 extends phase C's hardware entry to the newer
+  pin; the permanent texts citing the moved source are re-checked by A.SDEP.08 (4)'s platform re-check, and A.SDEP.23
+  applies to any action not yet executed. The release note (LEAD/R15)
+  names the pins the release ships with.
+- **Blast**: callers as the family actions · generated as A.SDEP.08 · js as A.SDEP.04 · tests as A.SDEP.02 via B5 · twin
+  as A.SDEP.08 · docs A.SDEP.21's sites; the release note · toml as the families · uart —.
+- **Depends**: all of U0-U36 executed; A.SDEP.01-A.SDEP.24.
+- **Kind**: code, test, doc
+
+## Workaround catalog
+
+Every standing workaround for an upstream defect or limitation, found by search (CLAUDE.md, SPEC B.7.1, B.14, E.5.2, F.1,
+F.2, F.5, F.6, H.7, H.8, A.5; `toolchain/`, `scripts/typecheck.sh`, `.github/`, `digital_twin/`, `vitest.config.js`; comments
+naming an upstream issue or version: `grep -rn "workaround\|issues/[0-9]\|bugzilla\|1\.29\|v1\.28"`). "Check" is what the
+refresh reads at the new pin; "clean form" is what replaces the workaround once upstream fixed it; blast radius lists the
+tests that pin the workaround and the docs that state it. W07, W31 and W45 are listed to show they were considered: they
+are not workarounds and have no retirement condition. 42 workarounds (W36-W45 added at verification by a wider search:
+`grep -rniE "workaround|stub gap|no-op on rp2|issues/[0-9]+|[a-z-]+/[a-z-]+#[0-9]+|once upstream|revisit"` over the code
+scopes, configs and every doc).
+
+| W | workaround (HEAD) | retired when upstream … | check at the new pin | clean form | blast radius | action |
+|---|---|---|---|---|---|---|
+| W01 | `unix_kbd_intr` override: `micropython_overrides.py:40-84`, `setup_toolchain.py:371-372, :380` | makes deferred SIGINT delivery the Unix standard-variant default (B.14.1 `:1219-1222`) | `ports/unix/variants/mpconfigvariant_common.h`, `unix_mphal.c` `sighandler()` | no override; plain `make` variant build | `tests_scripts/test_micropython_overrides.py:40-270`; A.U21.06's proof; SPEC B.14, B.14.1, F.6 amendment; CLAUDE.md `:681-695` | A.SDEP.11 |
+| W02 | `digital_twin/unix_port_gc_unwedge.py` + calls in `run_generic_integration.py`, `launch.py` | (not upstream-bound) retired by the post-build SIGINT proof (G4/R34, owner, 2026-09-26) | F.6's `py/gc.c` mechanism still as described | helper deleted (A.U25.39) | `tests/test_digital_twin_unix_port_gc_unwedge.py`; SPEC F.6; CLAUDE.md `:665-680`; `digital_twin/README.md:92` | A.SDEP.11 → A.U25.39 |
+| W03 | `-Wno-array-bounds` for mbedtls: `setup_toolchain.py:32-36, :335, :379` | vendors mbedtls ≥ 3.6.6 (met at v1.29.0) or GCC fixes #121044, and a GCC ≥ 14 build of both targets is clean without the flag | `lib/mbedtls` tag at the new pin | no `CFLAGS_EXTRA` on the rig/firmware lines (or a one-file suppression) | `test_micropython_overrides.py:194-215`; SPEC B.7.1, B.14 intro; CLAUDE.md `:979-983` | A.SDEP.12 → A.U21.16 |
+| W04 | planned `modlwip_eagain` override (A.U21.09-A.U21.14) | carries a real fix for issue 19704 (non-blocking send returns on `ERR_MEM`) | `extmod/modlwip.c` `lwip_tcp_send()`; issue 19704, PRs 19705/19708 | no override; hammer tests run against upstream | A.U21.11-A.U21.13, A.U19.24, A.U26.85; SPEC B.14.x, B.14.2.1; BACKLOG watch entry | A.SDEP.13 |
+| W05 | no `setsockopt(TCP_NODELAY)` call (owner decision, OR114.a (2)) | NULL-checks the pcb and takes the lwIP lock (`modlwip.c:1527-1535` at v1.29.0) | same function | unchanged: an owner decision, not lifted by this step | — (absence); SPEC B.14.x text | A.SDEP.13 (record only) |
+| W06 | `peer_gone` write suppression: `asy_webserver_service.py:255-259, :269-270` | refuses writes on a freed pcb with an error | `modlwip.c` write path after a reset | reason text updated; removal a U19 delta | `tests/test_asy_webserver_service.py:1648-1660`; SPEC H.7.1 (A.U14.03) | A.SDEP.13 |
+| W07 | lwIP option override `lwip_connection_counts` — configuration, not a workaround (not counted) | — | the 21 anchors and the ensemble | — | `test_micropython_overrides.py:274-880` | A.SDEP.14 |
+| W08 | stub repair: `asyncio/futures.pyi` re-export (`typecheck.sh:90-93`) | stdlib-stubs ship the re-export again | the file exists after install, or no importer needs it | block removed | A.U27.02's `test_typecheck_sh.py`; SPEC F.5.5; CLAUDE.md `:841-` | A.SDEP.15 |
+| W09 | stub repair: `NotImplemented` uncommented (`typecheck.sh:94-97`) | `builtins.pyi` declares it | `grep '^NotImplemented' builtins.pyi` | block removed | as W08 | A.SDEP.15 |
+| W10 | bare `Timer()` accepted by the main pass only via `tests/machine.py` (13 `src/` constructions, two with comments) | board stub declares a zero-argument `Timer()` | `mypy src` alone: 0 `call-overload` | comments and CLAUDE.md `:822-830` go | `tests/machine.py` `Timer`; A.U27.03 B.15 list | A.SDEP.15 |
+| W11 | stub-gap `type: ignore`s (`asy_wifi_service.py:244`; `unix_port_poll_prewarm.py:7`; `tests/test_ticks_rollover.py` ×9 `type-var`; `digital_twin/_http_client.py:35`; A.U27.03's `const()`/`_mpy_shed`/`DeflateIO` sites) | the stub gains the missing precision | `warn_unused_ignores` flags each fixed one | the ignore and its reason removed | main/twin mypy passes | A.SDEP.15 |
+| W12 | `unix_port_poll_prewarm.py` (modselect.c pollfds growth rewrites a `NULL` `pollfd`) | `extmod/modselect.c` skips `NULL` `pollfd` on reallocation | the reallocation loop | `prewarm_poll_set()` and its 19 call/doc files go (their `# noqa: E402`s with it, `RUF100`) | `tests/test_digital_twin_poll_prewarm.py`, 11 importers (`# noqa: E402`; CLAUDE.md `:780-787`); `tests/test_asy_isl29125_driver.py:2333-2350`, `tests/_webserver_concurrency_scenarios.py:358`; `digital_twin/README.md:76-92, :886-918`; `BACKLOG.md:787`; SPEC `:2790`, `:4091`, `:5622`; F.7 row 12 | A.SDEP.16 |
+| W13 | `_unix_port_udp_addr_shim.py` and `getaddrinfo(...)[0][-1]` pre-resolution in tests (micropython#6924) | Unix `modsocket.c` takes `(host, port)` and returns tuples | `bind`/`connect`/`sendto`/`recvfrom` in `ports/unix/modsocket.c` | shim halves and pre-resolutions go (their `# noqa: E402`s with them, `RUF100`) | 7 shim files, 12 pre-resolving files; CLAUDE.md `:780-787`; README `:747-795`; F.7 rows 1-2 | A.SDEP.16 |
+| W14 | bounded poll fakes only (`_StepPoller`), non-fd `select.poll()` never ready on GitHub runners | — the rule stays (test design) | the stated cause | text only | `tests/test_asy_uart_driver.py`; CLAUDE.md `:613-621` | A.SDEP.16 |
+| W15 | `TZ=UTC` (`export` at `scripts/test.sh:23`, `run_digital_twin_ci.sh:25`, `run_unix_port_integration.sh:30`; child env at `_digital_twin_ci_suite.py:414`, `cross_browser_smoke.mjs:113`, `tests_js/_live_matrix_command.js:79`, `_live_twin_command.js:74`, `tests_scripts/test_coverage_runner.py:35`, `test_digital_twin_generated_boot.py:154`) | Unix `modtime.c` `mktime()` stops using host libc/`$TZ` | `ports/unix/modtime.c` | the nine `TZ=UTC` settings go | live-clock tests; the nine setting sites; CLAUDE.md `:709-717`; F.7 row 6 | A.SDEP.16 |
+| W16 | port-band scan `_bind_free_listener()` (`unix_port_poll_prewarm.py:30-47`) — Unix port has no `getsockname()` | adds `getsockname()` | `ports/unix/modsocket.c` locals table | port-0 bind read back (U25/U27 delta) | twin HTTP bands; README `:869-870`; F.7 row 3 | A.SDEP.16 |
+| W17 | two Unix binaries, settrace-free rig (`setup_toolchain.py:352-397`, `scripts/test.sh:75-99`) | an idle compiled-in `sys.settrace` stops allocating per call | `py/vm.c`, `py/profile.c`; E.5.2 measurement | parked for the owner's review (owner decision 2026-09-21; harmonization 1), E.5.2 re-measurement attached | `test_micropython_overrides.py:227-232`; SPEC B.2, E.5.2; CLAUDE.md coverage bullet | A.SDEP.16 |
+| W18 | "never nest `asyncio.run()`" rule (segfault) | `run()` raises inside a running loop | `extmod/asyncio/core.py` `run()` | rule stays; symptom text changes | U24's sync-scope check; CLAUDE.md `:650-664`; F.1 | A.SDEP.17 |
+| W19 | `/status` collects into a list (no async generators) | async generators supported | `py/compile.c`, `py/objgenerator.c` | U19/U30 delta, memory measured first | the `/status` streaming tests; F.1, Part I | A.SDEP.17 |
+| W20 | list concatenation for `[*a, b]`, plain loops for `await` in comprehensions | both compile | `py/compile.c` | forms stay valid; F.1 text | F.1, C.14.3 | A.SDEP.17 |
+| W21 | validate shape before `struct.pack()` (silent truncation) | overflow checks leave `MICROPY_PREVIEW_VERSION_2` | `py/binary.c` gating | validation stays; F.1 fact flips | F.1 | A.SDEP.17 |
+| W22 | `PERIODIC` for every must-fire soft timer (silent drop on a full queue) | `mp_sched_schedule()` reports or never drops | `py/scheduler.c` | rule stays; text follows | C.9, F.1 | A.SDEP.17 |
+| W23 | clamp sizes before allocating (`[x] * n` segfault range) | the size check precedes the multiplication | `py/objlist.c`/`py/obj.c` | clamp stays; F.1 range text | `LockableBuffer`/`PrintLogHistory` tests; F.1 | A.SDEP.17 |
+| W24 | fresh `machine.UART(...)` on re-init (`asy_uart_driver.py:199-207`) | `deinit()` keeps the RX buffer rooted, or `init()` re-roots it | `ports/rp2/machine_uart.c` | construction stays, comment says it is no longer load-bearing | `device_scripts/uart_crossover_recovery.py`; F.5.7 | A.SDEP.17 |
+| W25 | `any()` clamp and yield in `ready()` (`asy_uart_driver.py:121-123, :258`) | `read()` stops waiting per missing byte | `machine_uart.c` read loop | owner rule keeps the code; F.5.8/F.5.9 text | `uart_driver_read_never_blocks_the_loop.py`, `uart_read_never_blocks_the_loop.py`, `uart_idle_poll_rate.py`; F.5.8, F.5.9 | A.SDEP.17 |
+| W26 | wrappers treat `I2C`/`SPI` `deinit()` as reference-drop only (no-op on rp2) | rp2 sets the `.deinit` slot / drops static singletons | `ports/rp2/machine_i2c.c`, `machine_spi.c` | F.5.1, comments, fakes, device script; ladder rung (U13/U14 delta) | `tests/machine.py:153`, `digital_twin/machine.py:250`, `bus_deinit_is_a_noop_on_real_hardware.py` | A.SDEP.17 |
+| W27 | `getaddrinfo()` only on a numeric host (no timeout possible) | asyncio-level timeout for it | `extmod/asyncio/`, `modlwip.c` | F.2 text (A.U14.16) | — | A.SDEP.17 |
+| W28 | power-cycle backstop for the CYW43 `isconnected()` false positive | (not retired: owner-settled intended recovery) | cyw43-driver, `network_cyw43.c`; the state of micropython#9455, #9505, #18797 | F.2 fact line only | F.2; CLAUDE.md hard rule; `tests_hardware/README.md:625-640` and the `hard_reset()` recovery in `bench/test_network_resilience.py` (kept: owner-settled recovery) | A.SDEP.17 |
+| W29 | header block coalesced into one write (`asy_webserver_service.py:268-278`) | Microdot writes the header block in one call | `Response.write()` at the vendored tag | `_head` branch goes; the one-write test stays | `test_asy_webserver_service.py:1977`; SPEC I.3 | A.SDEP.18 |
+| W30 | per-call timeout proxy logs read timeouts; `_serve()` catches write-phase escapes | Microdot reports both through a hook | `dispatch_request()`/`handle_request()` | logging point moves (one event, one entry) | per-call-timeout tests; SPEC A.5 | A.SDEP.18 |
+| W31 | `Connection: close` via `after_request` — protocol hygiene, not a workaround (not counted) | — | — | — | `test_asy_webserver_service.py:1514, :2340` | — |
+| W32 | zizmor `self-repository` disabled (`zizmor.yml:14-18`) | actionlint accepts `uses: $/…` | the refreshed actionlint | nine local `uses:` in the new form; the disable goes | A.U28.08's workflow checks; CLAUDE.md `:496-499`; `.github/zizmor.yml:15`, `BACKLOG.md:749` (the version they name) | A.SDEP.19 |
+| W33 | `uv sync` retried (composite action, six CI jobs, `setup_toolchain.py:1019`) | (not retired: the retry guards any third-party outage, CLAUDE.md) | `actionlint-py` wheel contents | reason text only | CLAUDE.md `:588-603`; SPEC B.10 | A.SDEP.19 |
+| W34 | `coverage.exclude: ["**/*.json"]` (`vitest.config.js:30-38`) | `@vitest/coverage-v8` stops re-parsing non-JS files | the refreshed provider | exclude and its test go | `tests_scripts/test_js_coverage_excludes_json.py`; SPEC H.8 | A.SDEP.19 |
+| W35 | Firefox from conda-forge, Edge from Microsoft's repo (`setup_cross_browser_toolchain.sh:26-56`) | Ubuntu ships a non-snap Firefox and Playwright's engines are reachable | package status, reachability | channel stays unless both reasons go (U28 delta) | `tests_scripts/test_setup_cross_browser_toolchain_sh.py`; SPEC H.7 `:4698-4712` | A.SDEP.19 |
+| W36 | Live-backend browser tests drive their own Playwright page through Vitest's Commands API (`tests_js/_live_twin_command.js:1-3` "Vitest's own browser-mode `page` has no API for navigating to an external origin - vitest-dev/vitest#7875", `_live_matrix_command.js:1`, `vitest.config.js:47-58`) | Vitest browser mode can navigate its `page` to an external origin | the refreshed Vitest's browser API; issue vitest-dev/vitest#7875 | the live tests use Vitest's `page` (U23/U28 delta) | `tests_js/live-backend*.test.js`; SPEC H.7 `:4543-4545`; `vitest.config.js:48`'s pointer | A.SDEP.19 |
+| W37 | Boot entry frozen as `main.py`, never a non-returning `_boot.py` (SPEC `:959-968`; micropython#15230: rp2 `main.c` initialises USB only after `_boot.py` returns) | (not retired: `main.py` is correct either way) | `ports/rp2/main.c` boot order | text only | SPEC `:959-968`; `buildgen/codegen.py` `generate_boot_entry_source()` | A.SDEP.17 |
+| W38 | Boot-confined `gc.collect()` placement reset and `gc.threshold(32768)` against fragmentation upstream leaves unfixed (SPEC `:4825-4833`, micropython#2057; `gc_alloc(n_bytes, alloc_flags)` only, `py/gc.c:891`; owner-approved exception 2026-09-18, CLAUDE.md) | upstream gains a placement or long-lived heap section | `py/gc.c` allocator API | parked for owner review (owner decision; harmonization 1) | `tests_scripts/test_gc_collect_sites.py`, `test_digital_twin_boot_contiguity.py`; SPEC I.4(f.1) | A.SDEP.17 |
+| W39 | Strict RFC 8259 check before decoding response bodies (`tests/_strict_json.py:1-3`: MicroPython's `json.loads()` accepts a doubled or missing comma; used by `digital_twin/_http_client.py:30-33`, `tests/_shared_rest_roundtrip.py`) | `extmod/modjson.c` rejects malformed separators | `extmod/modjson.c` | helper may stay as defence (U24 delta) | `tests/test_strict_json.py`; `digital_twin/README.md` | A.SDEP.17 |
+| W40 | Twin HTTP client reads through `readinto()`/fixed chunks, never `Stream.readexactly()`/`read(-1)` (`digital_twin/_http_client.py:76-77, :101`; `digital_twin/README.md:710-746`: `extmod/asyncio/stream.py`'s `r += r2` accumulation fragments the heap) | `stream.py` reads without re-concatenating | `extmod/asyncio/stream.py` | plain `readexactly()` (U25 delta, memory measured first) | twin soak (Run 11); README `:710-746` | A.SDEP.17 |
+| W41 | Unix-port 9-element `gmtime()` normalised to 8 in the NTP tests (`tests/test_asy_ntp_client.py:1414-1428`; F.7 row 4) | Unix `modtime.c` returns 8 elements | `ports/unix/modtime.c:130-150` | normalisation goes; `test_this_interpreters_gmtime_returns_nine_elements_not_eight` fails and announces it | `tests/test_asy_ntp_client.py` | A.SDEP.16 |
+| W42 | 100 ms settle before `status("stations")` (`src/asy_wifi_service.py:232-246`; A.U18.43 (1): no source basis in cyw43 `055d642`) | a hardware round shows the count right without it (A.U18.43's trigger) | `cyw43_ll_wifi_ap_get_stas()` in the new cyw43-driver | settle removed (phase C) | `tests/test_asy_wifi_service.py:1833-1848` | A.SDEP.17 |
+| W43 | Per-response `send_file_buffer_size` override (`src/asy_webserver_service.py:666`; Microdot v2.6.2 reads 1,024 B per chunk, `ext/microdot.py:567, 746`) | (not retired: the override is the one write bound; its reason follows the tag) | `send_file()` at the vendored tag | comment names the new default (A.U18.43 (5)) | SPEC H.7 serving walls | A.SDEP.18 |
+| W44 | Harness workarounds naming an external tool or component (A.U26.65: USB CDC raw-REPL rebind `harness.py:183-207, :391-405`; `nmcli --escape no` `bench_control.py:58-62`; tcpdump capture instead of DNAT-to-loopback `:126-151`) | each A.U26.65 trigger (e.g. a full round with no recorded rebind) | the refreshed MicroPython/tinyusb D8 for the CDC one; the bench host's NetworkManager and kernel (D12 bench packages) | per trigger, phase C | `tests_hardware/README.md` traps section | A.SDEP.08 (6) (phase C) |
+| W45 | CYW43 values MicroPython does not name — link status 2, PM word `0xA11140` (G4/R18, A.U18.27) — a pin-move re-check, not a workaround (not counted) | — | `extmod/network_cyw43.c:43-52, 365`, `extmod/modnetwork.c:197-202` at the new tag | — | A.U18.27's constants | A.SDEP.08 (4) |
+
+## Citation re-check counts (A.SDEP.23)
+
+Actions in `audit/actions/` whose text cites a pinned upstream source line, at HEAD `d6557c5` (recount, scanner
+scratchpad `al/SDEPv/cites_v.py`; the first count at `cbedc48` with `al/SUPP_deps/cites2.py` double-counted tokens that
+matched two families). Method: one token = `<path>`?`:<line>[-line][, line]*` inside a `### A.` block (AC_NOTES,
+REGISTER_FIXES_* and this file skipped), each token classified once, by its path — MicroPython
+`py|extmod|ports|shared|mpy-cross|drivers|tools|lib/…` with optional `mp/`; lwIP `lwip/`, `lib/lwip/`,
+`src/core|include|api|netif/`; cyw43 `cyw43/`, `lib/cyw43-driver/`; pico-sdk; micropython-lib `mplib/`; Microdot
+`ext/microdot.py`, `microdot/`; freezefs `ext/freezefs/*` incl. `LICENSE`; stubs `typings/`, `*.pyi`; action sources
+`src/main.ts|git.ts`; bare upstream C names; `foo.c` and `sensirion_gas_index_algorithm.c` dropped as not a pinned
+dependency; `mp128/` (a fixed old tag): zero hits. "cites" counts `path:line` tokens; families count actions: mp =
+MicroPython tree with a path, bare = MicroPython/cyw43/lwIP C file named without a path. Units with none: U4, U8C, U8C2,
+U33, U36b (U37 not yet written); `SUPP_lwip.md` 6 and `AC_NOTES.md` 5 outside action blocks.
+
+| unit file | actions | cites | families |
+|---|---|---|---|
+| U0 | 1 | 1 | mp 1 |
+| U1 | 4 | 6 | mp 4 |
+| U2 | 1 | 1 | mp 1 |
+| U3 | 1 | 4 | mp 1, bare 1 |
+| U5 | 1 | 1 | mp 1 |
+| U6 | 3 | 9 | mp 3, cyw43 1, bare 2 |
+| U7 | 1 | 1 | mp 1 |
+| U8 | 3 | 4 | mp 2, stubs 1 |
+| U9 | 1 | 1 | mp 1 |
+| U10 | 6 | 7 | mp 6 |
+| U11 | 8 | 13 | mp 8 |
+| U12 | 2 | 2 | mp 2 |
+| U13 | 8 | 15 | mp 7, bare 2 |
+| U14 | 26 | 151 | mp 26, bare 6, lwIP 4, Microdot 1, cyw43 1 |
+| U15 | 4 | 5 | mp 4 |
+| U16 | 1 | 1 | mp 1 |
+| U17 | 3 | 6 | mp 3 |
+| U18 | 17 | 45 | mp 15, cyw43 4, bare 5, lwIP 3, Microdot 1 |
+| U19 | 8 | 35 | mp 8, Microdot 4, freezefs 1, lwIP 1 |
+| U20 | 7 | 21 | mp 6, bare 2, freezefs 1 |
+| U21 | 8 | 40 | mp 8, bare 2, lwIP 1 |
+| U22 | 1 | 2 | mp 1 |
+| U23 | 1 | 1 | mp 1 |
+| U24 | 21 | 46 | mp 20, bare 5 |
+| U25 | 24 | 83 | mp 21, bare 13, cyw43 2 |
+| U26 | 8 | 22 | mp 8, cyw43 1, bare 1 |
+| U27 | 6 | 16 | mp 4, stubs 1, freezefs 1, bare 1 |
+| U28 | 4 | 10 | action sources 2, mp 2, lwIP 1 |
+| U29 | 1 | 14 | mp 1, lwIP 1, cyw43 1, bare 1 |
+| U30 | 8 | 26 | mp 8, Microdot 1 |
+| U31 | 9 | 17 | mp 9 |
+| U32 | 2 | 10 | mp 2, cyw43 1 |
+| U34 | 2 | 4 | freezefs 2, mp 1, bare 1 |
+| U35 | 6 | 12 | mp 5, bare 1 |
+| U36a | 1 | 1 | mp 1 |
+| SUPP_coverage | 3 | 3 | mp 3 |
+| SUPP_owner_0930 | 3 | 8 | mp 3, bare 1 |
+| SUPP_recovery | 2 | 16 | bare 2, mp 1, pico-sdk 1, cyw43 1 |
+| **total** | **216** | **660** | |
+
+Version-literal citations of a moved pin are additional and re-derived by the same run: `v1.29.0` in 35 of the 44 action
+files (all but SUPP_coverage, U4, U8, U8C, U8C2, U9, U12, U33, U36b), `v2.6.2` in 8 (U0, U8, U8C, U18, U19, U27, U34,
+U36a), the submodule SHAs in 10 (SUPP_recovery, U0, U14, U18, U21, U24, U25, U29, U34, U36a), tool versions in U7, U21,
+U27, U28.
+
+## Co-landing and conflicts with existing actions
+
+1. A.U28.02 pins `pytest==9.1.1` and `mpremote==1.29.0` "the versions the lock resolves today": after A.SDEP.03 it takes
+   the refreshed lock's versions, and mpremote the release equal to the refreshed MicroPython pin (A.SDEP.23).
+2. A.U28.13 (dorny to a v4 commit) executes inside A.SDEP.05; A.U28.07 stays in U28 on top of it.
+3. A.U28.23 (`@types/node` major follows `.nvmrc`, `engines`) co-lands with A.SDEP.04, which moves `.nvmrc` first.
+4. A.U28.15 removes Codecov: A.SDEP.05 does not refresh `codecov/codecov-action`.
+5. A.U19.18's sha256 table and A.U19.19's `ext/microdot.py` line citations were computed at `v2.6.2`; A.U8.23 vendors that
+   tag's stubs; A.U34.12 names the tag: all take the tag A.SDEP.06 vendors.
+6. A.U34.08 records freezefs by commit and adds `tests_scripts/test_vendored_freezefs.py`: it takes A.SDEP.07's commit.
+7. A.U21.09-A.U21.14: A.SDEP.13 decides whether the override is built (outcome (a) drops A.U21.09-A.U21.11 and retargets
+   A.U21.12/A.U21.13 at upstream), and outcome (b) re-derives A.U21.09's anchor texts before it runs.
+8. A.U21.16 takes A.SDEP.12's mbedtls version for its B.7.1 text, and may run inside the refresh when a GCC ≥ 14 build is
+   available (A.SDEP.12).
+9. A.U21.02's "platform re-check" notice does not exist yet when A.SDEP.08 moves the pin; A.SDEP.08 (4) performs that
+   re-check in full regardless. A.U21.04's typings wipe is done by hand in A.SDEP.09 until A.U21.04 lands.
+10. A.U27.02's `[stubs]` pins take A.SDEP.09's recorded post-releases; A.U27.03's B.15 list omits entries A.SDEP.15 retired.
+11. A.U14.28 (F.7 rows and triggers) takes A.SDEP.16's outcomes; A.U14.29 diffs the builds of the refreshed pin; A.U14.24
+    ("F.1's pico-sdk line with the pin's own") takes the refreshed pico-sdk; every A.U14 F-text action re-checks its
+    v1.29.0 citations (A.SDEP.23; U14 holds the most: 26 actions, 151 citations).
+12. A.U25.34/A.U25.43 (UDP shim first, prewarm first) take A.SDEP.16's outcomes; A.U25.39 (unwedge retirement) is unchanged;
+    A.U25.40 deletes `segfault_stress_repro.py` unconditionally (OR102.a (10)), so A.SDEP.16 (W12) no longer decides it.
+13. A.U0.03's corpus gets a second checkout at the new tags (A.SDEP.24); A.U0.06's record gains the post-refresh column
+    (A.SDEP.20).
+14. A.U24.72 (coverage pin) and A.U28.02 take the `coverage` version A.SDEP.03 recorded.
+15. A.U28.38 and A.SDEP.21 (3) write the same BACKLOG chroot entry: A-C merges them into one entry text.
+16. A.U13.R01's controller re-initialise rung rests on F.5.1's static-singleton fact: A.SDEP.17 (W26) re-checks it.
+17. A.SDEP.19 co-lands A.U28.01 (the retry sites it consolidates carry W33's reason text; A-C keeps one).
+18. A.U18.43 writes the triggers of the `stations` settle (W42, (1)) and of the `send_file_buffer_size` comment (W43, (5)):
+    both take the refreshed cyw43-driver and Microdot tag (A.SDEP.06, A.SDEP.17, A.SDEP.18). A.U26.65's harness triggers
+    (W44) are re-checked in A.SDEP.08 (6)'s phase-C round.
+19. A.U0.12 (BACKLOG's owner-question list) receives the hold-back entries of A.SDEP.01 (4) and A.SDEP.21 (5).
+
+## Ledger
+
+| register block | clause for this unit (short) | result |
+|---|---|---|
+| LEAD/R33 | code, test and doc in U0 (the dependency-refresh step after the baseline); U37 second check; every unit re-checks its upstream line citations against the new pin before executing; hardware validation of a new firmware pin in C | A.SDEP.01-A.SDEP.10 (frame, gate, the eight families), A.SDEP.11-A.SDEP.19 (42 workarounds, catalog W01-W45), A.SDEP.20 (post-refresh baseline), A.SDEP.21-A.SDEP.22 (records, CLAUDE.md practice), A.SDEP.23 (citation re-check, 216 actions / 660 citations at d6557c5), A.SDEP.24 (plan corpus), A.SDEP.25 (U37); hardware: A.SDEP.08 (6) → BACKLOG "Real-hardware work still owed", phase C |
+
+## Register fixes
+
+1. **LEAD/R33 Sources** (`audit/pass2/LEAD.md:349`): append "· G4/R01 (pin moves on the owner's call; the platform
+   re-check) · G4/R30 (F.7 Unix-port rows and triggers) · G4/R34 (the unwedge helper retires on the SIGINT proof) · G4/R35
+   (stub workaround triggers) · G4/R44 (modlwip override) · G6/R53 (Microdot hash) · G8/R21 (mbedtls trigger) · G8/R25
+   (Node major) · G8/R54 (every tool pinned) · G9/R22 (freezefs by commit) · G4/R18 (CYW43 constants re-checked at every
+   pin move) · G6/R55 (workarounds re-checked when upstream moves; A.U18.43, A.U26.65) · G7/R25 (`segfault_stress_repro.py`
+   retired, A.U25.40) · G8/R20 (override anchors re-verified at every ref move) · G10/R03 (the reference corpus,
+   A.SDEP.24)" — each is a block whose planned actions co-land
+   with this step (list "Co-landing and conflicts" above); without them A-C cannot see the links.
+2. **LEAD/R33 State** (`:351`): append "— planned in `audit/actions/SUPP_deps.md`; two OR129.a (4) items are
+   confirmations, not upstream decisions: `unix_port_gc_unwedge` retires on the SIGINT proof (G4/R34, A.U25.39), and the
+   mbedtls trigger is already met at v1.29.0 (G8/R21, pass 4 F.18), removal waiting only on a GCC ≥ 14 build (A.U21.16)".
+3. **`audit/pass2/INDEX.md`**: DONE at d6557c5 (`audit/sweeps/pass2_index.py` rerun; LEAD/R33 under P5, U0, U37, C,
+   OR114, OR129).
+4. **`PROJECT_AUDIT_PLAN.md:775-777`** (ENV.T03 "already at `v1.29.0` … clone only Microdot `v2.6.2`") goes stale the moment
+   the refresh moves a pin, and 4.6 has no topic for the refresh itself: A.SDEP.24 rewrites T03, adds ENV.T11 and
+   updates the 4.6 intro's once-only list (`:762-763`).
+5. **Texts that state a version this step moves.** G6/R53 Req: "stays byte-identical to upstream `v2.6.2`" → "stays
+   byte-identical to its recorded upstream tag (`v2.6.2` until the dependency refresh re-vendors it, LEAD/R33)"; Sources
+   add "· OR129.a (2)". `PROJECT_AUDIT_PLAN.md:143`: "Stays on Microdot `v2.6.2` (`v2.7.0` checked 2026-09-26: nothing this
+   project needs)" → "Re-vendored only as an unmodified upstream tag by the dependency refresh (OR129.a (2), LEAD/R33)".
+   `audit/CONSOLIDATION.md:230-232`: append "(superseded by OR129.a: the dependency refresh re-checks both, LEAD/R33)";
+   section 2 B0 row (`:48`) adds "; then the dependency refresh (OR129.a, LEAD/R33)", B5 row (`:53`) adds "; the short
+   second dependency check (OR129.a (1))". The other plan mentions of `v1.29.0`/`v2.6.2` (`:585`, `:611`, `:1656`,
+   `:1678`, `:2845`, `:3202`) name the audit's starting corpus and stay, read through A.SDEP.23.
+
+## Open points
+
+None. Every choice was self-resolved from OR129/OR129.a and the standing rules: "newest" is the newest stable release
+per family, Node's newest Active LTS line (A.SDEP.01 (3)); a dependency that breaks a check it cannot pass within the
+rules is held back and recorded (A.SDEP.01 (4)); a MicroPython tag without published stubs is held back the same way
+(A.SDEP.08 (1), the choice `scripts/typecheck.sh:68-79` already names); adoption beyond a breaking-change fix or a
+workaround retirement is routed as a delta to its owning unit (A.SDEP.01 (5), CONSOLIDATION section 2); the owner's
+"No `TCP_NODELAY` call" (OR114.a (2)) and the power-cycle backstop are not lifted by any upstream fix (A.SDEP.13, W28) —
+a reason to revisit either is parked for owner review (harmonization 1), never decided here; the engines of the
+cross-browser smoke stay unpinned (G8 contradiction 6). W17 (the two Unix binaries, owner decision 2026-09-21) and W38
+(the boot-confined `gc.collect()` reset and threshold, owner-approved 2026-09-18) are likewise parked for the owner's
+review during execution if the new pin changes their premise — not owner questions now.
+
+Verified 2026-09-30 (`audit/actions/verify/SUPP_deps.md`): V.SDEP.01-V.SDEP.24 applied.

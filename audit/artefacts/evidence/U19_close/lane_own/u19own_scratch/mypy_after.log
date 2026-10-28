@@ -1,0 +1,57 @@
+tests_hardware/device_scripts/heap_under_connection_ceiling.py:11:1: error:
+Cannot find implementation or library stub for module named "sensortask_dev" 
+[import-not-found]
+    import sensortask_dev
+    ^
+tests_hardware/device_scripts/heap_headroom_after_full_system_build.py:9:1: error:
+Cannot find implementation or library stub for module named "sensortask_dev" 
+[import-not-found]
+    import sensortask_dev
+    ^
+tests_hardware/device_scripts/fram_capacity_after_full_system_build.py:7:1: error:
+Cannot find implementation or library stub for module named "sensortask_dev" 
+[import-not-found]
+    import sensortask_dev
+    ^
+tests_hardware/device_scripts/serving_at_default_gc.py:11:1: error: Cannot find
+implementation or library stub for module named "sensortask_dev" 
+[import-not-found]
+    import sensortask_dev
+    ^
+tests_hardware/device_scripts/allocation_need_per_source.py:10:1: error: Cannot
+find implementation or library stub for module named "sensortask_dev" 
+[import-not-found]
+    import sensortask_dev
+    ^
+tests_hardware/device_scripts/allocation_need_per_source.py:10:1: note: See https://mypy.readthedocs.io/en/stable/running_mypy.html#missing-imports
+tests/test_asy_wifi_service.py: note: In function "test_integration_a_hotspot_client_holds_the_unit_until_it_leaves_then_the_window_end_retries_sta":
+tests/test_asy_wifi_service.py:3331:34: error: Incompatible types in assignment
+(expression has type
+"def _no_captive_dns(_ip: str, _netmask: str) -> Coroutine[Any, Any, None]",
+variable has type
+"def run(self, server_ip: str, netmask: str) -> Coroutine[Any, Any, None]") 
+[assignment]
+            client._dns_server.run = _no_captive_dns  # type: ignore[metho...
+                                     ^~~~~~~~~~~~~~~
+tests/test_asy_wifi_service.py:3331:34: note: Error code "assignment" not covered by "type: ignore[method-assign]" comment
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:10:1: error:
+Cannot find implementation or library stub for module named "sensortask_dev" 
+[import-not-found]
+    import sensortask_dev
+    ^
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:155: error:
+Unused "type: ignore" comment  [unused-ignore]
+        sensortask_dev.gc = batch_gc  # type: ignore[assignment]
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py: note: In function "_main":
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:200:9: error:
+Returning Any from function declared to return "Task[None] | None" 
+[no-any-return]
+            return task
+            ^~~~~~~~~~~
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py: note: At top level:
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:202: error:
+Unused "type: ignore" comment  [unused-ignore]
+        sysfunct._start_task = _counting_start_task  # type: ignore[method...
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+Found 10 errors in 7 files (checked 169 source files)

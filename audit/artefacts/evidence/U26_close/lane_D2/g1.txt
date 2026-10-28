@@ -1,0 +1,330 @@
+=== test_device_script_bench_facts
+F.........F.                                                             [100%]
+=================================== FAILURES ===================================
+_______ test_no_script_carries_a_board_literal_or_another_device_module ________
+
+>   ???
+E   AssertionError: board facts belong in BENCH, the device module in the one rendered import:
+E       allocation_need_per_source.py:11 imports sensortask_dev
+E       bmp3xx_plausibility_read.py:23 I2C() takes a pin or bus literal
+E       fram_busy_status_lockout.py:39 SPI() takes a pin or bus literal
+E       fram_capacity_after_full_system_build.py:8 imports sensortask_dev
+E       fram_command_hold_timing.py:18 SPI() takes a pin or bus literal
+E       fram_error_log_reset_during_boot_window.py:21 SPI() takes a pin or bus literal
+E       fram_error_log_reset_race_seed_and_race.py:27 SPI() takes a pin or bus literal
+E       fram_error_log_reset_race_verify.py:26 SPI() takes a pin or bus literal
+E       fram_error_log_roundtrip.py:17 SPI() takes a pin or bus literal
+E       fram_manager_roundtrip.py:16 SPI() takes a pin or bus literal
+E       fram_pause_unpause_and_gating.py:175 SPI() takes a pin or bus literal
+E       fram_write_protect_roundtrip.py:80 SPI() takes a pin or bus literal
+E       heap_headroom_after_full_system_build.py:10 imports sensortask_dev
+E       heap_layout_after_full_boot_sequence.py:11 imports sensortask_dev
+E       heap_under_connection_ceiling.py:12 imports sensortask_dev
+E       i2c_held_sda_recovery.py:31 binds _REGISTER to a literal
+E       isl29125_lighting_scenarios.py:322 I2C() takes a pin or bus literal
+E       isl29125_lighting_scenarios.py:323 NeoPixel() takes a pin or bus literal
+E       isl29125_mechanism_envelope.py:215 I2C() takes a pin or bus literal
+E       isl29125_mechanism_envelope.py:216 NeopixelDriver() takes a pin or bus literal
+E       isl29125_mock_conformance_probe.py:17 binds ADDR to a literal
+E       isl29125_mock_conformance_probe.py:76 I2C() takes a pin or bus literal
+E       isl29125_mock_conformance_probe.py:76 Pin() takes a pin or bus literal
+E       isl29125_mock_conformance_probe.py:76 Pin() takes a pin or bus literal
+E       isl29125_plausibility_read.py:32 NeoPixel() takes a pin or bus literal
+E       isl29125_plausibility_read.py:36 I2C() takes a pin or bus literal
+E       isl29125_plausibility_read.py:32 Pin() takes a pin or bus literal
+E       isl29125_real_irq_edge.py:117 NeoPixel() takes a pin or bus literal
+E       scd30_plausibility_read.py:26 I2C() takes a pin or bus literal
+E       scd30_real_irq_edge.py:20 I2C() takes a pin or bus literal
+E       serving_at_default_gc.py:12 imports sensortask_dev
+E       sgp40_fram_backup_restore.py:58 I2C() takes a pin or bus literal
+E       sgp40_fram_backup_restore.py:59 SPI() takes a pin or bus literal
+E       sgp40_voc_algorithm_quality.py:52 I2C() takes a pin or bus literal
+E       uart_crossover_exchange.py:90 UART() takes a pin or bus literal
+E       uart_crossover_exchange.py:91 UART() takes a pin or bus literal
+E       uart_crossover_recovery.py:81 UART() takes a pin or bus literal
+E       uart_crossover_recovery.py:82 UART() takes a pin or bus literal
+E       uart_driver_read_never_blocks_the_loop.py:140 UART() takes a pin or bus literal
+E       uart_driver_read_never_blocks_the_loop.py:141 UART() takes a pin or bus literal
+E       uart_driver_read_never_blocks_the_loop.py:140 Pin() takes a pin or bus literal
+E       uart_driver_read_never_blocks_the_loop.py:140 Pin() takes a pin or bus literal
+E       uart_idle_poll_rate.py:65 UART() takes a pin or bus literal
+E       uart_link_under_concurrent_system_load.py:154 UART() takes a pin or bus literal
+E       uart_link_under_concurrent_system_load.py:155 UART() takes a pin or bus literal
+E       uart_link_under_concurrent_system_load.py:163 I2C() takes a pin or bus literal
+E       uart_link_under_concurrent_system_load.py:164 SPI() takes a pin or bus literal
+E       uart_read_never_blocks_the_loop.py:28 UART() takes a pin or bus literal
+E       uart_read_never_blocks_the_loop.py:29 UART() takes a pin or bus literal
+E       uart_read_never_blocks_the_loop.py:28 Pin() takes a pin or bus literal
+E       uart_read_never_blocks_the_loop.py:28 Pin() takes a pin or bus literal
+E       uart_read_never_blocks_the_loop.py:29 Pin() takes a pin or bus literal
+E       uart_read_never_blocks_the_loop.py:29 Pin() takes a pin or bus literal
+E   assert not ['allocation_need_per_source.py:11 imports sensortask_dev', 'bmp3xx_plausibility_read.py:23 I2C() takes a pin or bus l...I() takes a pin or bus literal', 'fram_error_log_reset_during_boot_window.py:21 SPI() takes a pin or bus literal', ...]
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_device_script_bench_facts.py:73: AssertionError
+________ test_the_bench_facts_table_dates_and_sources_every_filled_row _________
+
+>   ???
+E   AssertionError: tests_hardware/README.md has no "### Bench facts" table
+E   assert None is not None
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_device_script_bench_facts.py:152: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_device_script_bench_facts.py::test_no_script_carries_a_board_literal_or_another_device_module
+FAILED tests_scripts/test_device_script_bench_facts.py::test_the_bench_facts_table_dates_and_sources_every_filled_row
+2 failed, 10 passed in 1.01s
+
+real	0m1.620s
+user	0m1.499s
+sys	0m0.070s
+rc=1
+=== test_device_script_facts
+FF.F........                                                             [100%]
+=================================== FAILURES ===================================
+____________________ test_no_device_script_prints_a_verdict ____________________
+
+>   ???
+E   AssertionError: a device script prints RESULT; it reports facts and the host test decides: {'allocation_need_per_source.py': [165, 171], 'bmp3xx_plausibility_read.py': [53, 57, 69, 71], 'config_float_round_trip.py': [70, 75, 87, 89], 'float_boundary_2pow24.py': [40, 42], 'fram_busy_status_lockout.py': [42, 48, 55, 68, 70], 'fram_capacity_after_full_system_build.py': [53, 51, 37], 'fram_command_hold_timing.py': [62, 21, 37, 40, 54, 60], 'fram_error_log_reset_during_boot_window.py': [66, 24, 30, 39, 48, 54, 63], 'fram_error_log_reset_race_seed_and_race.py': [73, 30, 39, 48, 56], 'fram_error_log_reset_race_verify.py': [68, 29, 38, 46, 49, 52, 64], 'fram_error_log_roundtrip.py': [68, 21, 27, 37, 43, 49, 58, 65], 'fram_manager_roundtrip.py': [40, 19, 24, 28, 33, 37], 'fram_pause_unpause_and_gating.py': [178, 183, 196, 198], 'fram_write_protect_roundtrip.py': [115, 83, 88, 113, 96, 99, 108], 'heap_headroom_after_full_system_build.py': [142, 137, 140, 118], 'heap_layout_after_full_boot_sequence.py': [214, 54, 154, 175, 189], 'heap_under_connection_ceiling.py': [83, 89], 'isl29125_lighting_scenarios.py': [374, 376], 'isl29125_mechanism_envelope.py': [264, 266], 'isl29125_plausibility_read.py': [68, 72, 100, 102], 'reboot_fallback_starves_the_watchdog.py': [41, 49, 38], 'reboot_persist_read.py': [18, 22, 24, 26], 'reboot_persist_write.py': [25, 19], 'scd30_plausibility_read.py': [60, 64, 76, 78], 'scd30_real_irq_edge.py': [47, 52, 54], 'scheduler_saturation_drop.py': [58, 60], 'serving_at_default_gc.py': [133, 139], 'sgp40_fram_backup_restore.py': [122, 63, 75, 87, 95, 107, 119], 'sgp40_sample_cadence.py': [78, 39, 34, 44, 59], 'sgp40_voc_algorithm_quality.py': [76, 92, 94], 'system_debug_level_raise_for_boot_log_check.py': [21, 25, 32, 40, 46, 48], 'system_debug_level_restore_after_boot_log_check.py': [19, 23, 33, 35], 'system_service_restarts_a_real_dead_task.py': [54, 56], 'timer_alarm_pool_exhaustion.py': [16, 20, 22], 'uart_crossover_exchange.py': [146, 148], 'uart_crossover_recovery.py': [160, 162], 'uart_driver_read_never_blocks_the_loop.py': [144, 173, 175], 'uart_idle_poll_rate.py': [114, 116], 'uart_link_under_concurrent_system_load.py': [245, 247], 'uart_read_never_blocks_the_loop.py': [78, 80], 'unretrieved_task_exception_handler.py': [186, 190, 192], 'wifi_country_hostname_edge_values.py': [40, 14, 16, 31, 33, 35]}
+E   assert not {'allocation_need_per_source.py': [165, 171], 'bmp3xx_plausibility_read.py': [53, 57, 69, 71], 'config_float_round_trip.py': [70, 75, 87, 89], 'float_boundary_2pow24.py': [40, 42], ...}
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_device_script_facts.py:52: AssertionError
+_________ test_every_host_function_that_runs_a_script_parses_its_facts _________
+
+>   ???
+E   AssertionError: a script's output must reach harness.parse_facts(): {'bench/test_heap_under_connection_ceiling.py': ['test_heap_at_peak_while_a_full_ceiling_is_held runs a script and parses no facts'], 'bench/test_serving_heap_at_default_gc.py': ['test_every_source_and_route_fits_a_small_free_run runs a script and parses no facts', 'test_serving_sweep_at_the_reactive_default runs a script and parses no facts'], 'conformance.py': ['run_probe_on_twin runs a script and parses no facts'], 'flash/test_bus_electrical_timing.py': ['test_soft_timer_callback_drop_self_heals_under_scheduler_saturation runs a script and parses no facts', 'test_timer_init_raises_enomem_when_real_alarm_pool_is_exhausted runs a script and parses no facts', 'test_scd30_real_irq_edge_drives_a_real_read runs a script and parses no facts', 'test_single_precision_float_boundary_at_2pow24 runs a script and parses no facts'], 'flash/test_config_float_round_trip.py': ['test_config_floats_round_trip_unchanged runs a script and parses no facts'], 'flash/test_fram_storage.py': ['_run_and_assert_pass runs a script and parses no facts', 'test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write runs a script and parses no facts'], 'flash/test_memory_stress.py': ['test_real_gc_heap_headroom_survives_a_full_system_build runs a script and parses no facts'], 'flash/test_reboot_persistence.py': ['test_config_value_survives_a_genuine_hard_reset runs a script and parses no facts', 'test_boot_import_mechanism_actually_boots_the_real_system runs a script and parses no facts'], 'flash/test_sensor_accuracy.py': ['test_scd30_real_reading_is_within_datasheet_plausible_bounds runs a script and parses no facts', 'test_bmp3xx_real_reading_is_within_datasheet_plausible_bounds runs a script and parses no facts', 'test_sgp40_voc_algorithm_produces_plausible_and_stable_results runs a script and parses no facts', 'test_sgp40_sample_cadence runs a script and parses no facts', 'test_isl29125_real_reading_is_within_datasheet_plausible_bounds runs a script and parses no facts', 'test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration runs a script and parses no facts', 'test_isl29125_survives_recombined_realistic_lighting_scenarios runs a script and parses no facts', 'test_isl29125_register_probe_matches_the_digital_twins_fake_chip runs a script and parses no facts'], 'flash/test_task_supervisor.py': ['test_the_supervisor_restarts_a_real_dead_task runs a script and parses no facts'], 'flash/test_uart_crossover.py': ['_run_or_fail runs a script and parses no facts'], 'flash/test_unretrieved_task_exception_handler.py': ['test_the_unretrieved_exception_report_is_allocation_free_and_retains_nothing_on_real_hardware runs a script and parses no facts'], 'flash/test_watchdog_starvation.py': ['test_watchdog_starvation_triggers_a_real_hardware_reset runs a script and parses no facts', 'test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm runs a script and parses no facts']}
+E   assert not {'bench/test_heap_under_connection_ceiling.py': ['test_heap_at_peak_while_a_full_ceiling_is_held runs a script and par... script and parses no facts', 'test_single_precision_float_boundary_at_2pow24 runs a script and parses no facts'], ...}
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_device_script_facts.py:76: AssertionError
+__________ test_every_loop_in_an_async_def_awaits_on_every_path_back ___________
+
+>   ???
+E   AssertionError: loops in an async def that can loop back without an await (script: loop lines): {'allocation_need_per_source.py': [149, 155], 'bmp3xx_plausibility_read.py': [44], 'bus_topology_autodetect_and_hazard_sweep.py': [140], 'isl29125_lighting_scenarios.py': [361], 'isl29125_mechanism_envelope.py': [252], 'isl29125_plausibility_read.py': [59], 'isl29125_real_irq_edge.py': [101], 'scd30_plausibility_read.py': [52], 'scd30_real_irq_edge.py': [39], 'uart_driver_read_never_blocks_the_loop.py': [101, 112]}
+E   assert not {'allocation_need_per_source.py': [149, 155], 'bmp3xx_plausibility_read.py': [44], 'bus_topology_autodetect_and_hazard_sweep.py': [140], 'isl29125_lighting_scenarios.py': [361], ...}
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_device_script_facts.py:164: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_device_script_facts.py::test_no_device_script_prints_a_verdict
+FAILED tests_scripts/test_device_script_facts.py::test_every_host_function_that_runs_a_script_parses_its_facts
+FAILED tests_scripts/test_device_script_facts.py::test_every_loop_in_an_async_def_awaits_on_every_path_back
+3 failed, 9 passed in 0.51s
+
+real	0m0.756s
+user	0m0.697s
+sys	0m0.054s
+rc=1
+=== test_device_script_watchdog
+.FF.                                                                     [100%]
+=================================== FAILURES ===================================
+___________ test_no_rendered_script_sleeps_longer_than_one_feed_step ___________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9326/test_no_rendered_script_sleeps0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fac2218fd90>
+
+>   ???
+E   AssertionError: a wait longer than 2000 ms goes through fed_sleep_ms()/fed_wait_ms(): {'heap_layout_after_full_boot_sequence.py': ['line 195: sleep_ms(_STARTER_SETTLE_MS)'], 'heap_under_connection_ceiling.py': ['line 76: sleep(_BOOT_WAIT_S)'], 'serving_at_default_gc.py': ['line 125: sleep(_BOOT_S)'], 'sgp40_sample_cadence.py': ['line 64: sleep(_WINDOW_S)']}
+E   assert not {'heap_layout_after_full_boot_sequence.py': ['line 195: sleep_ms(_STARTER_SETTLE_MS)'], 'heap_under_connection_ceiling...'], 'serving_at_default_gc.py': ['line 125: sleep(_BOOT_S)'], 'sgp40_sample_cadence.py': ['line 64: sleep(_WINDOW_S)']}
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_device_script_watchdog.py:80: AssertionError
+_______ test_a_script_run_longer_than_one_watchdog_period_arms_and_feeds _______
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9326/test_a_script_run_longer_than_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fac2219ff50>
+
+>   ???
+E   AssertionError: allowed more than 8 s yet never arms and feeds the watchdog (script: timeout_s): {'scd30_real_irq_edge.py': 30.0}
+E   assert not {'scd30_real_irq_edge.py': 30.0}
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_device_script_watchdog.py:112: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_device_script_watchdog.py::test_no_rendered_script_sleeps_longer_than_one_feed_step
+FAILED tests_scripts/test_device_script_watchdog.py::test_a_script_run_longer_than_one_watchdog_period_arms_and_feeds
+2 failed, 2 passed in 0.75s
+
+real	0m0.996s
+user	0m0.916s
+sys	0m0.061s
+rc=1
+=== test_device_script_rig_parking
+F.....                                                                   [100%]
+=================================== FAILURES ===================================
+_______ test_every_neopixel_a_script_constructs_is_parked_on_every_path ________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9328/test_every_neopixel_a_script_c0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fee36a7bcd0>
+
+>   ???
+E   AssertionError: a NeoPixel constructed outside a try that parks it dark (script: lines): {'isl29125_lighting_scenarios.py': [323], 'isl29125_mechanism_envelope.py': [216], 'isl29125_plausibility_read.py': [32]}
+E   assert not {'isl29125_lighting_scenarios.py': [323], 'isl29125_mechanism_envelope.py': [216], 'isl29125_plausibility_read.py': [32]}
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_device_script_rig_parking.py:61: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_device_script_rig_parking.py::test_every_neopixel_a_script_constructs_is_parked_on_every_path
+1 failed, 5 passed in 0.41s
+
+real	0m0.677s
+user	0m0.598s
+sys	0m0.070s
+rc=1
+=== test_device_script_fram_regions
+FF......                                                                 [100%]
+=================================== FAILURES ===================================
+_________ test_every_raw_fram_call_is_addressed_from_a_declared_region _________
+
+>   ???
+E   AssertionError: raw FRAM calls whose address no _SCRATCH_REGIONS/_EVIDENCE_REGIONS declares (script: lines): {'fram_cs_hijack_fault_injection_and_recovery.py': [106, 108, 115, 124, 133]}
+E   assert not {'fram_cs_hijack_fault_injection_and_recovery.py': [106, 108, 115, 124, 133]}
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_device_script_fram_regions.py:139: AssertionError
+_ test_every_scratch_region_lies_above_the_allocation_and_regions_never_overlap _
+
+allocated_size = 1140
+
+>   ???
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_device_script_fram_regions.py:166: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_device_script_fram_regions.py:166: in <listcomp>
+    ???
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_device_script_fram_regions.py:128: in _regions
+    ???
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_device_script_fram_regions.py:113: in _evaluate
+    ???
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_device_script_fram_regions.py:113: in <genexpr>
+    ???
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_device_script_fram_regions.py:113: in _evaluate
+    ???
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_device_script_fram_regions.py:113: in <genexpr>
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+node = <ast.Subscript object at 0x7f1770023ee0>
+facts = {'device_module': 'sensortask_dev', 'bus': {'i2c0': {'id': 0, 'scl_pin': 13, 'sda_pin': 12, 'frequency': 50000}, 'i2c1..., 'bus': 'i2c1', 'irq_pin': 6, ...}, ...}, 'addresses': {'scd30': 97, 'sgp40': 89, 'bmp3xx': 119, 'isl29125': 68}, ...}
+
+>   ???
+E   KeyError: 'dump_size'
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_device_script_fram_regions.py:119: KeyError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_device_script_fram_regions.py::test_every_raw_fram_call_is_addressed_from_a_declared_region
+FAILED tests_scripts/test_device_script_fram_regions.py::test_every_scratch_region_lies_above_the_allocation_and_regions_never_overlap
+2 failed, 6 passed in 1.50s
+
+real	0m2.033s
+user	0m1.764s
+sys	0m0.094s
+rc=1
+=== test_hardware_clones
+F.                                                                       [100%]
+=================================== FAILURES ===================================
+____________ test_no_function_body_is_copied_in_the_hardware_levels ____________
+
+>   ???
+E   AssertionError: identical function bodies - one helper (or a device_scripts/_shared include) instead:
+E       bench/test_bus_concurrency_under_api_load.py::_synced = bench/test_network_resilience.py::_synced = bench/test_network_resilience.py::_synced
+E       bench/test_bus_concurrency_under_api_load.py::get_sensors_worker = bench/test_bus_concurrency_under_api_load.py::get_sensors_worker = bench/test_bus_concurrency_under_api_load.py::get_sensors_worker
+E       bench/test_end_to_end_timing.py::_try_fetch_ok = bench/test_hotspot_role_reversal.py::_dut_reachable_again = bench/test_network_resilience.py::_sta_reconnected = bench/test_wifi_networking.py::_http_ok
+E       conformance.py::parse = isl29125_conformance.py::parse
+E       device_scripts/bus_concurrency_scd30_write_vs_siblings.py::isl_read = device_scripts/isl29125_cross_device_concurrency.py::isl_read = device_scripts/sgp40_general_call_reset_hazard.py::isl_read
+E       device_scripts/heap_headroom_after_full_system_build.py::_dump_map = device_scripts/heap_layout_after_full_boot_sequence.py::_dump_map
+E       device_scripts/heap_headroom_after_full_system_build.py::_largest_block = device_scripts/heap_layout_after_full_boot_sequence.py::_largest_block
+E       device_scripts/heap_headroom_after_full_system_build.py::_report_checked = device_scripts/heap_layout_after_full_boot_sequence.py::_report_checked
+E       device_scripts/heap_under_connection_ceiling.py::_dump = device_scripts/serving_at_default_gc.py::_dump
+E       device_scripts/heap_under_connection_ceiling.py::_report_unretrieved = device_scripts/serving_at_default_gc.py::_report_unretrieved
+E       device_scripts/uart_crossover_exchange.py::_settled = device_scripts/uart_crossover_recovery.py::_settled
+E       flash/test_bus_electrical_timing.py::_parse_result = flash/test_reboot_persistence.py::_parse_result
+E       flash/test_uart_crossover.py::_assert_pass = flash/test_unretrieved_task_exception_handler.py::_assert_pass
+E   assert not [['bench/test_bus_concurrency_under_api_load.py::_synced', 'bench/test_network_resilience.py::_synced', 'bench/test_ne...room_after_full_system_build.py::_dump_map', 'device_scripts/heap_layout_after_full_boot_sequence.py::_dump_map'], ...]
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_hardware_clones.py:32: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_hardware_clones.py::test_no_function_body_is_copied_in_the_hardware_levels
+1 failed, 1 passed in 0.47s
+
+real	0m0.734s
+user	0m0.677s
+sys	0m0.044s
+rc=1
+=== test_tests_hardware_persistence_write_gating
+.........                                                                [100%]
+9 passed in 4.36s
+
+real	0m4.663s
+user	0m4.090s
+sys	0m0.487s
+rc=0
+=== test_persistence_write_marker_completeness
+........F........F.....F...                                              [100%]
+=================================== FAILURES ===================================
+________ test_the_set_of_persisting_helpers_is_exactly_the_triaged_one _________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d2')
+
+>   ???
+E   AssertionError: the set of non-test functions issuing a persisting PUT changed - triage each one and update _KNOWN_PERSISTING_HELPERS.
+E       added: []
+E       gone: ['_repair_leftover']
+E   assert {'_recover_st...ined_hotspot'} == {'_recover_st..._worker', ...}
+E     
+E     Extra items in the right set:
+E     '_repair_leftover'
+E     Use -v to get more diff
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_persistence_write_marker_completeness.py:388: AssertionError
+______ test_every_device_script_that_persists_is_run_only_by_a_gated_test ______
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d2')
+
+>   ???
+E   AssertionError: these device scripts write flash or the SCD30's NVM outside the gate:
+E       bench/test_serving_heap_at_default_gc.py::test_every_source_and_route_fits_a_small_free_run runs allocation_need_per_source.py (build_system() over the production config) unmarked
+E       flash/test_fram_storage.py::test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build runs fram_capacity_after_full_system_build.py (build_system() over the production config) unmarked
+E       flash/test_memory_stress.py::test_real_gc_heap_headroom_survives_a_full_system_build runs heap_headroom_after_full_system_build.py (build_system() over the production config) unmarked
+E       heap_layout_after_full_boot_sequence.py (build_system() over the production config) has no runner in tests_hardware/
+E       flash/test_sensor_accuracy.py::test_sgp40_sample_cadence runs sgp40_sample_cadence.py (build_system() over the production config) unmarked
+E   assert not ['bench/test_serving_heap_at_default_gc.py::test_every_source_and_route_fits_a_small_free_run runs allocation_need_per...uracy.py::test_sgp40_sample_cadence runs sgp40_sample_cadence.py (build_system() over the production config) unmarked']
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_persistence_write_marker_completeness.py:591: AssertionError
+_________________ test_no_test_carries_an_unregistered_marker __________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d2')
+
+>   ???
+E   AssertionError: unregistered markers (a collection error under --strict-markers): {'tests_hardware/bench/test_hotspot_role_reversal.py::test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt': ['long_soak'], 'tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved': ['long_soak'], 'tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic': ['long_soak'], 'tests_hardware/flash/test_bus_electrical_timing.py::test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout': ['long_soak'], 'tests_hardware/flash/test_memory_stress.py::test_single_core_timing_headroom_holds_under_normal_full_task_load': ['long_soak'], 'tests_hardware/flash/test_sensor_accuracy.py::test_sgp40_sample_cadence': ['long_soak']}
+E   assert not {'tests_hardware/bench/test_hotspot_role_reversal.py::test_a_second_failed_streak_goes_silent_and_links_on_a_later_att...test_bus_electrical_timing.py::test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout': ['long_soak'], ...}
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_persistence_write_marker_completeness.py:719: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_persistence_write_marker_completeness.py::test_the_set_of_persisting_helpers_is_exactly_the_triaged_one
+FAILED tests_scripts/test_persistence_write_marker_completeness.py::test_every_device_script_that_persists_is_run_only_by_a_gated_test
+FAILED tests_scripts/test_persistence_write_marker_completeness.py::test_no_test_carries_an_unregistered_marker
+3 failed, 24 passed in 2.83s
+
+real	0m3.984s
+user	0m3.788s
+sys	0m0.156s
+rc=1
+=== test_level_containment
+..........................                                               [100%]
+26 passed in 1.10s
+
+real	0m1.380s
+user	0m1.253s
+sys	0m0.108s
+rc=0
+=== test_bench_no_task_ended_completeness
+.F.......                                                                [100%]
+=================================== FAILURES ===================================
+____________ test_every_fault_injecting_test_asserts_no_task_ended _____________
+
+>   ???
+E   AssertionError: these tests inject a fault but check no task ended (bench: assert_no_task_ended(); flash: the script's SYSTEM fact): bench/test_hotspot_role_reversal.py::test_dut_enters_hotspot_mode_after_ssid_cleared, bench/test_hotspot_role_reversal.py::test_hotspot_ssid_matches_configured_hostname, bench/test_hotspot_role_reversal.py::test_hotspot_password_matches_known_fixed_value, bench/test_hotspot_role_reversal.py::test_bench_radio_associates_within_bounded_window, bench/test_hotspot_role_reversal.py::test_bench_radio_receives_a_valid_dhcp_lease, bench/test_hotspot_role_reversal.py::test_leased_ip_falls_within_the_aps_own_subnet, bench/test_hotspot_role_reversal.py::test_arbitrary_hostname_resolves_to_the_aps_own_ip, bench/test_hotspot_role_reversal.py::test_devices_own_hostname_resolves_the_same_way, bench/test_hotspot_role_reversal.py::test_genuine_root_domain_query_is_answered_correctly, bench/test_hotspot_role_reversal.py::test_malformed_truncated_packet_is_silently_dropped, bench/test_hotspot_role_reversal.py::test_spoofed_off_subnet_source_address_is_ignored, bench/test_hotspot_role_reversal.py::test_dns_flood_backoff_curve_recovers_once_flood_stops, bench/test_hotspot_role_reversal.py::test_every_get_endpoint_reachable_and_shaped_over_the_hotspot_link, bench/test_hotspot_role_reversal.py::test_representative_put_round_trips_over_the_hotspot_link, bench/test_hotspot_role_reversal.py::test_real_static_website_content_serves_over_the_hotspot_link, bench/test_hotspot_role_reversal.py::test_nonsense_path_redirects_to_root_over_the_hotspot_link, bench/test_hotspot_role_reversal.py::test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link, bench/test_hotspot_role_reversal.py::test_malformed_http_request_over_real_wireless_degrades_cleanly, bench/test_hotspot_role_reversal.py::test_concurrent_multi_client_burst_is_out_of_scope_here, bench/test_hotspot_role_reversal.py::test_invalid_credentials_rejected_without_triggering_reconnect, bench/test_hotspot_role_reversal.py::test_a_wrong_password_over_the_hotspot_reopens_the_hotspot, bench/test_hotspot_role_reversal.py::test_real_credentials_put_succeeds_and_confirms_accepted_values, bench/test_hotspot_role_reversal.py::test_role_flip_back_and_reachability_are_asserted_in_fixture_teardown, bench/test_hotspot_role_reversal.py::test_post_condition_sta_connected_state_inferred_from_reachability, flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write, flash/test_uart_crossover.py::test_one_sided_silence_recovers_and_a_parameter_mismatch_fails_loudly
+E   assert not ['bench/test_hotspot_role_reversal.py::test_dut_enters_hotspot_mode_after_ssid_cleared', 'bench/test_hotspot_role_reve...ceives_a_valid_dhcp_lease', 'bench/test_hotspot_role_reversal.py::test_leased_ip_falls_within_the_aps_own_subnet', ...]
+
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b/tests_scripts/test_bench_no_task_ended_completeness.py:142: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_bench_no_task_ended_completeness.py::test_every_fault_injecting_test_asserts_no_task_ended
+1 failed, 8 passed in 0.26s
+
+real	0m0.626s
+user	0m0.573s
+sys	0m0.047s
+rc=1

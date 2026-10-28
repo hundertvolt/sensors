@@ -1,0 +1,18 @@
+start 20:24:24 (RUNS.md; the commit 8386afa)
+lint rc=0 20:24:30
+typecheck noargs rc=0 20:24:59
+typecheck ci rc=0 20:25:27
+gc-1 rc=1 20:35:49 (test_modlwip_eagain: slowest spin round 21457 us, bound 20000 us; every other file and the tests_scripts tier passed)
+gc32768 rc=0 20:36:35
+phase A done 20:36:35
+npm rc=0 20:48:10
+klkizi rc=0 20:48:27
+grkizi rc=0 20:48:29
+arzi rc=0 20:48:30
+schlafzi rc=0 20:48:30
+wozi rc=0 20:49:04
+dev rc=0 20:50:58
+phase B done 20:50:58
+coverage rc=0 21:06:25
+done 21:06:25
+(end times are each log's last write; the gate's own timeline output went with the container restart on 2026-10-13, read 05:40 that day)

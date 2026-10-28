@@ -1,0 +1,12 @@
+test_stored_config_golden	base	1	9.48	0	18 passed in 9.03s
+test_stored_config_golden	w1	1	9.19	0	19 passed in 8.76s
+test_stored_config_golden	base	2	9.79	0	18 passed in 9.37s
+test_stored_config_golden	w1	2	9.21	0	19 passed in 8.80s
+test_stored_config_golden	base	3	9.11	0	18 passed in 8.68s
+test_stored_config_golden	w1	3	9.15	0	19 passed in 8.75s
+test_lint_type_scopes	base	1	2.20	0	8 passed in 1.98s
+test_lint_type_scopes	w1	1	2.78	0	8 passed in 2.55s
+test_lint_type_scopes	base	2	2.35	0	8 passed in 2.09s
+test_lint_type_scopes	w1	2	2.47	0	8 passed in 2.24s
+test_lint_type_scopes	base	3	1.96	0	8 passed in 1.73s
+test_lint_type_scopes	w1	3	2.67	0	8 passed in 2.43s

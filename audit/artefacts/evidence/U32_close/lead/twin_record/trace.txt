@@ -1,0 +1,28 @@
+twin record trace, 72b1281 -> 1528dd2 (+ working tree)
+entries 122 -> 122; added []; removed []
+result and reason unchanged: 122 of 122
+runner files changed since 72b1281: none
+tests_hardware/device_scripts/allocation_need_per_source.py: pass -> pass; moved api_sha256: src/asy_system_service.py, src/asy_webserver_service.py
+tests_hardware/device_scripts/c_stack_budget.py: exception -> exception; moved sha256: tests_hardware/device_scripts/c_stack_budget.py
+tests_hardware/device_scripts/fram_pause_unpause_and_gating.py: exception -> exception; moved api_sha256: src/asy_system_service.py
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py: exception -> exception; moved sha256: tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py; api_sha256: src/asy_system_service.py
+tests_hardware/device_scripts/reboot_fallback_starves_the_watchdog.py: exception -> exception; moved api_sha256: src/asy_system_service.py
+tests_hardware/device_scripts/reset_code_command_incomplete.py: exception -> exception; moved sha256: tests_hardware/device_scripts/reset_code_command_incomplete.py
+tests_hardware/device_scripts/reset_code_invalid_record.py: exception -> exception; moved api_sha256: src/asy_system_service.py
+tests_hardware/device_scripts/reset_code_stack_exhausted.py: exception -> exception; moved sha256: tests_hardware/device_scripts/reset_code_stack_exhausted.py; api_sha256: src/asy_system_service.py
+tests_hardware/device_scripts/serving_at_default_gc.py: exception -> exception; moved api_sha256: src/asy_webserver_service.py
+tests_hardware/device_scripts/sgp40_sample_cadence.py: exception -> exception; moved sha256: tests_hardware/device_scripts/sgp40_sample_cadence.py; api_sha256: src/asy_system_service.py
+tests_hardware/device_scripts/system_command_config_reset.py: exception -> exception; moved sha256: tests_hardware/device_scripts/system_command_config_reset.py
+tests_hardware/device_scripts/system_command_fram_erase.py: exception -> exception; moved sha256: tests_hardware/device_scripts/system_command_fram_erase.py; api_sha256: src/asy_system_service.py, src/asy_webserver_service.py
+tests_hardware/device_scripts/system_command_hang.py: exception -> exception; moved sha256: tests_hardware/device_scripts/system_command_hang.py
+tests_hardware/device_scripts/system_command_reboot.py: exception -> exception; moved sha256: tests_hardware/device_scripts/system_command_reboot.py; api_sha256: src/asy_system_service.py
+tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py: pass -> pass; moved sha256: tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py; api_sha256: src/asy_system_service.py
+tests_hardware/device_scripts/uart_comm_hazards.py: exception -> exception; moved api_sha256: src/asy_uart_comm.py
+tests_hardware/device_scripts/uart_crossover_exchange.py: exception -> exception; moved api_sha256: src/asy_uart_comm.py
+tests_hardware/device_scripts/uart_crossover_recovery.py: exception -> exception; moved api_sha256: src/asy_uart_comm.py
+tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py: exception -> exception; moved api_sha256: src/asy_uart_comm.py
+tests_hardware/device_scripts/uart_idle_poll_rate.py: exception -> exception; moved api_sha256: src/asy_uart_comm.py
+tests_hardware/device_scripts/uart_link_echo_under_serving_load.py: exception -> exception; moved api_sha256: src/asy_system_service.py, src/asy_uart_comm.py
+tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py: exception -> exception; moved api_sha256: src/asy_uart_comm.py
+tests_hardware/device_scripts/unretrieved_task_exception_handler.py: pass -> pass; moved sha256: tests_hardware/device_scripts/unretrieved_task_exception_handler.py; api_sha256: src/asy_system_service.py
+untraced moved hashes: 0

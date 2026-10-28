@@ -1,0 +1,4 @@
+    datasheets=_datasheets_checked(),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+832 passed, 1 warning in 70.03s (0:01:10)

@@ -1,0 +1,4 @@
+403c403
+< #define MICROPY_PY_SYS_SETTRACE (0)
+---
+> #define MICROPY_PY_SYS_SETTRACE 1

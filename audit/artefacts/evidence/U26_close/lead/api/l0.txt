@@ -1,0 +1,171 @@
+........................................................................ [  5%]
+..FF.F.FF...F.....................................................F..... [ 11%]
+......F................................................................. [ 17%]
+........................................................................ [ 22%]
+........................................................................ [ 28%]
+........................................................................ [ 34%]
+........................................................................ [ 39%]
+........................................................................ [ 45%]
+........................................................................ [ 51%]
+........................................................................ [ 56%]
+........................................................................ [ 62%]
+........................................................................ [ 68%]
+........................................................................ [ 73%]
+........................................................................ [ 79%]
+........................................................................ [ 85%]
+.......F................................................................ [ 90%]
+........................................................................ [ 96%]
+.............................................                            [100%]
+=================================== FAILURES ===================================
+_ test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_bus_concurrency_under_api_load.py] _
+
+module = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26api/tests_hardware/bench/test_bus_concurrency_under_api_load.py')
+
+    @pytest.mark.parametrize("module", sorted((TESTS_HARDWARE / "bench").glob("*.py")), ids=lambda p: p.name)
+    def test_no_bench_module_resets_the_board_outside_the_reported_helpers(module: Path) -> None:
+>       assert _bare_resets(module.read_text(encoding="utf-8")) == [], f"{module.name}: call harness.recover_by_reset()/kick_then_reset() instead"
+E       AssertionError: test_bus_concurrency_under_api_load.py: call harness.recover_by_reset()/kick_then_reset() instead
+E       assert ['line 435'] == []
+E         
+E         Left contains one more item: 'line 435'
+E         Use -v to get more diff
+
+tests_scripts/test_bench_harness_helpers.py:189: AssertionError
+_ test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_end_to_end_timing.py] _
+
+module = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26api/tests_hardware/bench/test_end_to_end_timing.py')
+
+    @pytest.mark.parametrize("module", sorted((TESTS_HARDWARE / "bench").glob("*.py")), ids=lambda p: p.name)
+    def test_no_bench_module_resets_the_board_outside_the_reported_helpers(module: Path) -> None:
+>       assert _bare_resets(module.read_text(encoding="utf-8")) == [], f"{module.name}: call harness.recover_by_reset()/kick_then_reset() instead"
+E       AssertionError: test_end_to_end_timing.py: call harness.recover_by_reset()/kick_then_reset() instead
+E       assert ['line 131', ...', 'line 227'] == []
+E         
+E         Left contains 5 more items, first extra item: 'line 131'
+E         Use -v to get more diff
+
+tests_scripts/test_bench_harness_helpers.py:189: AssertionError
+_ test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_hotspot_role_reversal.py] _
+
+module = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26api/tests_hardware/bench/test_hotspot_role_reversal.py')
+
+    @pytest.mark.parametrize("module", sorted((TESTS_HARDWARE / "bench").glob("*.py")), ids=lambda p: p.name)
+    def test_no_bench_module_resets_the_board_outside_the_reported_helpers(module: Path) -> None:
+>       assert _bare_resets(module.read_text(encoding="utf-8")) == [], f"{module.name}: call harness.recover_by_reset()/kick_then_reset() instead"
+E       AssertionError: test_hotspot_role_reversal.py: call harness.recover_by_reset()/kick_then_reset() instead
+E       assert ['line 217'] == []
+E         
+E         Left contains one more item: 'line 217'
+E         Use -v to get more diff
+
+tests_scripts/test_bench_harness_helpers.py:189: AssertionError
+_ test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_network_resilience.py] _
+
+module = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26api/tests_hardware/bench/test_network_resilience.py')
+
+    @pytest.mark.parametrize("module", sorted((TESTS_HARDWARE / "bench").glob("*.py")), ids=lambda p: p.name)
+    def test_no_bench_module_resets_the_board_outside_the_reported_helpers(module: Path) -> None:
+>       assert _bare_resets(module.read_text(encoding="utf-8")) == [], f"{module.name}: call harness.recover_by_reset()/kick_then_reset() instead"
+E       AssertionError: test_network_resilience.py: call harness.recover_by_reset()/kick_then_reset() instead
+E       assert ['line 151', ...ine 441', ...] == []
+E         
+E         Left contains 10 more items, first extra item: 'line 151'
+E         Use -v to get more diff
+
+tests_scripts/test_bench_harness_helpers.py:189: AssertionError
+_ test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_rest_endpoints_over_sta.py] _
+
+module = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26api/tests_hardware/bench/test_rest_endpoints_over_sta.py')
+
+    @pytest.mark.parametrize("module", sorted((TESTS_HARDWARE / "bench").glob("*.py")), ids=lambda p: p.name)
+    def test_no_bench_module_resets_the_board_outside_the_reported_helpers(module: Path) -> None:
+>       assert _bare_resets(module.read_text(encoding="utf-8")) == [], f"{module.name}: call harness.recover_by_reset()/kick_then_reset() instead"
+E       AssertionError: test_rest_endpoints_over_sta.py: call harness.recover_by_reset()/kick_then_reset() instead
+E       assert ['line 116', 'line 153'] == []
+E         
+E         Left contains 2 more items, first extra item: 'line 116'
+E         Use -v to get more diff
+
+tests_scripts/test_bench_harness_helpers.py:189: AssertionError
+_ test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_wifi_networking.py] _
+
+module = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26api/tests_hardware/bench/test_wifi_networking.py')
+
+    @pytest.mark.parametrize("module", sorted((TESTS_HARDWARE / "bench").glob("*.py")), ids=lambda p: p.name)
+    def test_no_bench_module_resets_the_board_outside_the_reported_helpers(module: Path) -> None:
+>       assert _bare_resets(module.read_text(encoding="utf-8")) == [], f"{module.name}: call harness.recover_by_reset()/kick_then_reset() instead"
+E       AssertionError: test_wifi_networking.py: call harness.recover_by_reset()/kick_then_reset() instead
+E       assert ['line 54', '...', 'line 124'] == []
+E         
+E         Left contains 3 more items, first extra item: 'line 54'
+E         Use -v to get more diff
+
+tests_scripts/test_bench_harness_helpers.py:189: AssertionError
+_ test_no_hardware_module_runs_uv_without_no_sync[flash/test_toolchain_flash_boot.py] _
+
+module = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26api/tests_hardware/flash/test_toolchain_flash_boot.py')
+
+    @pytest.mark.parametrize("module", sorted(p for p in TESTS_HARDWARE.rglob("*.py") if "device_scripts" not in p.parts), ids=lambda p: str(p.relative_to(TESTS_HARDWARE)))
+    def test_no_hardware_module_runs_uv_without_no_sync(module: Path) -> None:
+        # Nothing inside a hardware run syncs, so a lock change or a third party's outage cannot read as a board fault.
+>       assert _no_sync_offenders(module.read_text(encoding="utf-8")) == [], module.name
+E       AssertionError: test_toolchain_flash_boot.py
+E       assert ["line 49: ['..., '--output'"] == []
+E         
+E         Left contains 2 more items, first extra item: "line 49: ['uv', 'run', 'toolchain/setup_toolchain.py', 'env', '--tier"
+E         Use -v to get more diff
+
+tests_scripts/test_bench_harness_helpers.py:326: AssertionError
+_ test_no_hardware_module_runs_uv_without_no_sync[manual/manual_toolchain.py] __
+
+module = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26api/tests_hardware/manual/manual_toolchain.py')
+
+    @pytest.mark.parametrize("module", sorted(p for p in TESTS_HARDWARE.rglob("*.py") if "device_scripts" not in p.parts), ids=lambda p: str(p.relative_to(TESTS_HARDWARE)))
+    def test_no_hardware_module_runs_uv_without_no_sync(module: Path) -> None:
+        # Nothing inside a hardware run syncs, so a lock change or a third party's outage cannot read as a board fault.
+>       assert _no_sync_offenders(module.read_text(encoding="utf-8")) == [], module.name
+E       AssertionError: manual_toolchain.py
+E       assert ["line 27: ['..., '--output'"] == []
+E         
+E         Left contains one more item: "line 27: ['uv', 'run', 'scripts/build_firmware.py', 'dev', '--output'"
+E         Use -v to get more diff
+
+tests_scripts/test_bench_harness_helpers.py:326: AssertionError
+________________ test_the_l3_key_table_equals_the_builds_tables ________________
+
+spec_text = '# SPECIFICATION\n\nCentral specification: architecture, build/toolchain mechanics, sensor-driver architecture,\n`src/...sh and pause | the budget constants, the SYSTEM entry write or the supervisor pass change |\n\n<!-- tunables:end -->\n'
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26api')
+
+    def test_the_l3_key_table_equals_the_builds_tables(spec_text: str, repo_root: Path) -> None:
+        documented, built = _spec_rows(spec_text), _build_rows(repo_root / "src")
+        missing, extra = sorted(built - documented), sorted(documented - built)
+>       assert not missing and not extra, f"SPECIFICATION.md L.3's key table lacks {missing} and states {extra} the build does not take"
+E       AssertionError: SPECIFICATION.md L.3's key table lacks [('[device]', 'bench', False)] and states [] the build does not take
+E       assert (not [('[device]', 'bench', False)])
+
+tests_scripts/test_toml_schema_contract.py:71: AssertionError
+=============================== warnings summary ===============================
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26api/tests_hardware/bench/test_bus_concurrency_under_api_load.py:287: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26api/tests_hardware/bench/test_bus_concurrency_under_api_load.py:457: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26api/tests_hardware/bench/test_bus_concurrency_under_api_load.py:546: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_bus_concurrency_under_api_load.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_end_to_end_timing.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_hotspot_role_reversal.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_network_resilience.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_rest_endpoints_over_sta.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_wifi_networking.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_toolchain_flash_boot.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/manual_toolchain.py]
+FAILED tests_scripts/test_toml_schema_contract.py::test_the_l3_key_table_equals_the_builds_tables
+9 failed, 1260 passed, 3 warnings in 77.04s (0:01:17)

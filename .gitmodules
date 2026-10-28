@@ -1,0 +1,3 @@
+[submodule "datasheets"]
+	path = datasheets
+	url = https://github.com/hundertvolt/datasheets.git

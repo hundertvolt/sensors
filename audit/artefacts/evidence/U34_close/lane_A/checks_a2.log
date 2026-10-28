@@ -1,0 +1,69 @@
+== scans
+scans rc=0
+984 passed, 1 warning in 109.96s (0:01:49)
+== readers
+bench_restores_serving rc=0 0.35s 14 passed in 0.07s
+device_script_bench_facts rc=0 2.17s 12 passed in 1.63s
+digital_twin_generated_boot rc=0 58.42s 22 passed in 57.78s
+harness_mpremote_retry rc=0 0.45s 9 passed in 0.13s
+persistence_write_marker_completeness rc=0 4.10s 28 passed in 3.05s
+setup_toolchain_env rc=0 3.03s 159 passed in 2.73s
+buildgen_definitions rc=0 4.66s 401 passed in 3.67s
+buildgen_validate rc=0 7.48s 414 passed in 5.93s
+fault_or_warning_never_both rc=0 2.47s 14 passed in 1.86s
+task_tops rc=0 2.67s 19 passed in 1.64s
+buildgen_limits rc=0 0.71s 68 passed in 0.47s
+device_tomls rc=0 1.36s 36 passed in 0.81s
+lint_sh rc=0 3.25s 15 passed in 2.97s
+lock_order rc=0 5.34s 10 passed in 5.03s
+buildgen_driver_registry rc=0 0.73s 47 passed in 0.33s
+buildgen_error_contract rc=0 11.09s 184 passed in 8.59s
+buildgen_schema_ast rc=0 0.44s 47 passed in 0.17s
+buildgen_source_agreement rc=0 2.15s 17 passed in 1.47s
+buildgen_web_tag rc=0 1.34s 159 passed in 1.05s
+buildgen_wiring rc=0 0.83s 64 passed in 0.47s
+device_script_config_schemas rc=0 1.46s 12 passed in 0.89s
+digital_twin_scenarios rc=0 2.13s 60 passed in 1.71s
+import_graph rc=0 16.53s 21 passed in 15.94s
+memory_catalog rc=0 1.88s 22 passed in 1.31s
+isl29125_copies rc=0 0.97s 28 passed in 0.75s
+no_variant_literals rc=0 8.32s 19 passed in 8.10s
+twin_record rc=1 0.78s 1 failed, 5 passed in 0.51s
+== mypy
+host rc=0 Success: no issues found in 306 source files
+main rc=0 Success: no issues found in 262 source files
+== paired (base, head alternating, two rounds)
+pair vendored_freezefs base1 rc=0 0.30s
+pair vendored_freezefs head1 rc=0 0.28s
+pair vendored_freezefs base2 rc=0 0.42s
+pair vendored_freezefs head2 rc=0 0.34s
+pair citations base1 rc=0 11.78s
+pair citations head1 rc=0 12.17s
+pair citations base2 rc=0 11.38s
+pair citations head2 rc=0 11.41s
+pair legacy_paths base1 rc=0 2.10s
+pair legacy_paths head1 rc=0 2.13s
+pair legacy_paths base2 rc=0 2.32s
+pair legacy_paths head2 rc=0 2.24s
+pair decision_vocabulary base1 rc=0 9.45s
+pair decision_vocabulary head1 rc=0 9.45s
+pair decision_vocabulary base2 rc=0 9.08s
+pair decision_vocabulary head2 rc=0 9.40s
+== unit tests (base, head alternating per stage)
+unit asy_captive_dns -1 base rc=0 25.58s 64/64 passed, 0 failed, 0 skipped mem=0
+unit asy_captive_dns -1 head rc=0 25.59s 64/64 passed, 0 failed, 0 skipped mem=0
+unit asy_captive_dns 32768 base rc=0 25.67s 64/64 passed, 0 failed, 0 skipped mem=0
+unit asy_captive_dns 32768 head rc=0 25.65s 64/64 passed, 0 failed, 0 skipped mem=0
+unit asy_fram_driver -1 base rc=0 0.20s 104/104 passed, 0 failed, 0 skipped mem=0
+unit asy_fram_driver -1 head rc=0 0.18s 104/104 passed, 0 failed, 0 skipped mem=0
+unit asy_fram_driver 32768 base rc=0 0.23s 104/104 passed, 0 failed, 0 skipped mem=0
+unit asy_fram_driver 32768 head rc=0 0.22s 104/104 passed, 0 failed, 0 skipped mem=0
+unit asy_bmp3xx_driver -1 base rc=0 13.87s 138/138 passed, 0 failed, 0 skipped mem=0
+unit asy_bmp3xx_driver -1 head rc=0 13.91s 138/138 passed, 0 failed, 0 skipped mem=0
+unit asy_bmp3xx_driver 32768 base rc=0 14.06s 138/138 passed, 0 failed, 0 skipped mem=0
+unit asy_bmp3xx_driver 32768 head rc=0 13.85s 138/138 passed, 0 failed, 0 skipped mem=0
+unit asy_isl29125_driver -1 base rc=0 2.60s 246/246 passed, 0 failed, 0 skipped mem=0
+unit asy_isl29125_driver -1 head rc=0 2.57s 246/246 passed, 0 failed, 0 skipped mem=0
+unit asy_isl29125_driver 32768 base rc=0 2.96s 246/246 passed, 0 failed, 0 skipped mem=0
+unit asy_isl29125_driver 32768 head rc=0 3.07s 246/246 passed, 0 failed, 0 skipped mem=0
+== memory markers in every log: 

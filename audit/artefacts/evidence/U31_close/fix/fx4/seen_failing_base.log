@@ -1,0 +1,85 @@
+..F..FFF                                                                 [100%]
+=================================== FAILURES ===================================
+_ test_the_lag_under_load_is_over_the_windows_begun_after_its_start_and_the_boot_window_is_reported_apart _
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31fx4/scripts/_digital_twin_scenarios.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11835/test_the_lag_under_load_is_ove0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fb6bdb2d950>
+capsys = <_pytest.capture.CaptureFixture object at 0x7fb6bdb2db10>
+
+    def test_the_lag_under_load_is_over_the_windows_begun_after_its_start_and_the_boot_window_is_reported_apart(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+        # The first LOOP_LAG line after the load's start closes the window open then, which holds the end of boot: its
+        # figure is reported beside the load's, never as it, and a line printed before the load counts in neither.
+        failures, printed, evidence = _lag_run(harness, tmp_path, monkeypatch, capsys, [240000, 3000, 2500, 2800])
+        assert failures == [], failures
+>       assert "max 3000 us over 4 windows" in printed and "max 240000 us" in printed and "400000" not in printed, printed
+E       AssertionError: loop lag under load: max 3000 us over 3 windows begun after its start (bound 6000000 us); the window open at its start, with the end of boot: max 240000 us; after it: LOOP_LAG max_us=900 p99_us=900 samples=500
+E         
+E       assert ('max 3000 us over 4 windows' in 'loop lag under load: max 3000 us over 3 windows begun after its start (bound 6000000 us); the window open at its start, with the end of boot: max 240000 us; after it: LOOP_LAG max_us=900 p99_us=900 samples=500\n')
+
+tests_scripts/test_digital_twin_scenarios.py:286: AssertionError
+_ test_every_window_the_load_spans_is_held_to_the_bound_the_boot_one_included[the window straddling the stop] _
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31fx4/scripts/_digital_twin_scenarios.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11835/test_every_window_the_load_spa2')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fb6bdb2e910>
+capsys = <_pytest.capture.CaptureFixture object at 0x7fb6bdb2db50>, over = 4
+expected = 'under load'
+
+    @pytest.mark.parametrize(("over", "expected"), [(0, "in the window open when the load began"), (2, "under load"), (4, "under load")], ids=["the boot window", "a load window", "the window straddling the stop"])
+    def test_every_window_the_load_spans_is_held_to_the_bound_the_boot_one_included(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], over: int, expected: str) -> None:
+        # The window open when the readers stop closes on the next LOOP_LAG line: it holds load, so it is bound as a load window.
+        bound_us = smallest_hard_consumer(load_device(device_toml(DEVICE_NAMES[0])), harness.SRC_DIR).ms * 1000
+        figures = [240000, 3000, 2500, 2800, 2000]
+        figures[over] = bound_us + 1
+        failures, _printed, _evidence = _lag_run(harness, tmp_path, monkeypatch, capsys, figures[:4], (figures[4], 900, 900))
+>       assert any(f"lagged {bound_us + 1} us {expected}" in f for f in failures), failures
+E       AssertionError: []
+E       assert False
+E        +  where False = any(<generator object test_every_window_the_load_spans_is_held_to_the_bound_the_boot_one_included.<locals>.<genexpr> at 0x7fb6bee9eb60>)
+
+tests_scripts/test_digital_twin_scenarios.py:297: AssertionError
+_ test_the_settle_window_begins_after_the_stop_and_drops_no_led_frame[the window after the straddling one] _
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31fx4/scripts/_digital_twin_scenarios.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11835/test_the_settle_window_begins_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fb6bd8f7cd0>
+capsys = <_pytest.capture.CaptureFixture object at 0x7fb6bd8f5c10>
+after = (60000, -1, 60000), settles = True
+
+    @pytest.mark.parametrize(("after", "settles"), [((60000, -1, 60000), True), ((2000, 0, 900), False)], ids=["the window after the straddling one", "one LED frame of lag"])
+    def test_the_settle_window_begins_after_the_stop_and_drops_no_led_frame(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], after: "tuple[int, int, int]", settles: bool) -> None:
+        # The line after the straddling one closes a window begun after the stop: it settles under one LED frame (the
+        # neopixel driver's frame period), and neither the straddling window nor a later one stands in for it.
+        frame_us = 1000 // module_int_const(harness.SRC_DIR, "asy_neopixel_driver.py", "_NEOPIXEL_FREQ_HZ") * 1000
+        failures, _printed, _evidence = _lag_run(harness, tmp_path, monkeypatch, capsys, [240000, 3000, 2500, 2800], (after[0], frame_us + after[1], after[2]))
+>       assert (failures == []) if settles else any("did not settle" in f for f in failures), failures
+E       AssertionError: ["the lag after the load did not settle under 50 ms: 'LOOP_LAG max_us=60000 p99_us=60000 samples=500'"]
+E       assert False
+
+tests_scripts/test_digital_twin_scenarios.py:306: AssertionError
+_ test_the_settle_window_begins_after_the_stop_and_drops_no_led_frame[one LED frame of lag] _
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31fx4/scripts/_digital_twin_scenarios.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11835/test_the_settle_window_begins_1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fb6bd886810>
+capsys = <_pytest.capture.CaptureFixture object at 0x7fb6bd884a10>
+after = (2000, 0, 900), settles = False
+
+    @pytest.mark.parametrize(("after", "settles"), [((60000, -1, 60000), True), ((2000, 0, 900), False)], ids=["the window after the straddling one", "one LED frame of lag"])
+    def test_the_settle_window_begins_after_the_stop_and_drops_no_led_frame(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], after: "tuple[int, int, int]", settles: bool) -> None:
+        # The line after the straddling one closes a window begun after the stop: it settles under one LED frame (the
+        # neopixel driver's frame period), and neither the straddling window nor a later one stands in for it.
+        frame_us = 1000 // module_int_const(harness.SRC_DIR, "asy_neopixel_driver.py", "_NEOPIXEL_FREQ_HZ") * 1000
+        failures, _printed, _evidence = _lag_run(harness, tmp_path, monkeypatch, capsys, [240000, 3000, 2500, 2800], (after[0], frame_us + after[1], after[2]))
+>       assert (failures == []) if settles else any("did not settle" in f for f in failures), failures
+E       AssertionError: []
+E       assert False
+
+tests_scripts/test_digital_twin_scenarios.py:306: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_the_lag_under_load_is_over_the_windows_begun_after_its_start_and_the_boot_window_is_reported_apart
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_every_window_the_load_spans_is_held_to_the_bound_the_boot_one_included[the window straddling the stop]
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_the_settle_window_begins_after_the_stop_and_drops_no_led_frame[the window after the straddling one]
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_the_settle_window_begins_after_the_stop_and_drops_no_led_frame[one LED frame of lag]
+4 failed, 4 passed, 49 deselected in 0.67s

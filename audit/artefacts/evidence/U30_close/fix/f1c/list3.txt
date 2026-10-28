@@ -1,0 +1,2 @@
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30f1c /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/f1c/bite_arm_last/test_uart_comm_hazard.py -1 bite.hazard_arm_last_window_only
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30f1c /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/f1c/bite_wall_clean/test_uart_comm_hazard.py -1 bite.hazard_wall_clock_clean_checks w

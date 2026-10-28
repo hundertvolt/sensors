@@ -1,0 +1,35 @@
+test_digital_twin_sensortask_integration.arzi.-1 rc=0 wall=112.00 mem=0 :: 11/11 passed, 0 failed, 0 skipped
+test_digital_twin_sensortask_integration.dev.-1 rc=0 wall=22.55 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.grkizi.-1 rc=0 wall=21.15 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.klkizi.-1 rc=0 wall=21.16 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.schlafzi.-1 rc=0 wall=21.21 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.wozi.-1 rc=0 wall=21.67 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.arzi.32768 rc=0 wall=114.41 mem=0 :: 11/11 passed, 0 failed, 0 skipped
+test_digital_twin_sensortask_integration.dev.32768 rc=0 wall=24.50 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.grkizi.32768 rc=0 wall=22.03 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.klkizi.32768 rc=0 wall=22.29 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.schlafzi.32768 rc=0 wall=21.93 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.wozi.32768 rc=0 wall=22.52 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.arzi.settrace rc=1 wall=116.51 mem=0 :: 10/11 passed, 1 failed, 0 skipped
+FAIL test_a_restored_backup_reports_its_timestamp_without_ntp:
+test_digital_twin_sensortask_integration.dev.settrace rc=1 wall=28.86 mem=0 :: 3/11 passed, 1 failed, 7 skipped
+FAIL test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0:
+test_digital_twin_sensortask_integration.grkizi.settrace rc=0 wall=23.77 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.klkizi.settrace rc=0 wall=23.49 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.schlafzi.settrace rc=0 wall=23.53 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.wozi.settrace rc=0 wall=24.29 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_uart_field_sweep.-1 rc=0 wall=60.80 mem=0 :: 10/10 passed, 0 failed, 0 skipped
+test_digital_twin_uart_field_sweep.32768 rc=0 wall=64.34 mem=0 :: 10/10 passed, 0 failed, 0 skipped
+test_digital_twin_uart_field_sweep.settrace rc=0 wall=67.42 mem=0 :: 10/10 passed, 0 failed, 0 skipped
+bite ul_crc rc=1 :: 0/1 passed, 1 failed, 0 skipped
+FAIL test_a_crc16_exerciser_pair_catches_a_corrupted_byte:
+bite fs_cur rc=1 :: 0/2 passed, 2 failed, 0 skipped
+FAIL test_cur_chunk_boundaries_crc16:
+--
+FAIL test_cur_chunk_sweep_nocrc:
+bite st_keep rc=1 :: 0/1 passed, 1 failed, 0 skipped
+FAIL test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0:
+bite st_keep_dev rc=1 :: 0/1 passed, 1 failed, 0 skipped
+FAIL test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0:
+bite fc_untraced2 rc=0 :: 3/3 passed, 0 failed, 0 skipped
+BATCH-DONE

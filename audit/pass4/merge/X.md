@@ -1,0 +1,21 @@
+# Pass 4 merge — agent X ledger (G2.md, G3.md, G4.md, G5.md), 2026-09-29
+
+- Q08 | G3/R35 | applied | `scd_timer_triggers` check-before-step saturation at `trigger_half_sec` added to State as code in U15 (LEAD/R24); `asy_scd30_driver.py:416` (`+= 1`) and :418 (`>=` trigger) checked at HEAD
+- Q09 | G3/R48 | applied | State "holds" → code in U15 (LEAD/R24): masked wrap-by-design sequence; sites checked at HEAD (`_write_failures` :1082/:1154/:1377, `_reconciled_write_failures` :256/:486-492)
+- Q10 | G3/R10 | applied | constant 32767 → 16383 added to State as code in U12; Req's "constants traced 1:1" gains "but the uptime limit, lowered under LEAD/R24" so the Req does not contradict it; `voc_algorithm.py:14` (interval 1), :40, :417-426 checked (limit F16(16382), final value < F16(16383) < 2**30, consistent with K.29)
+- Q14 | G2/R05 | applied | Rank rewritten: owner-directed core (`1ed1c9a`, `ffe52a8`, `96ba194`, paraphrase), raw-transaction level and surface rule agent, no-seam half owner (OR36)
+- Q16 | G5/R40 | applied | owner-confirmed recovery intent (`a2ef9ec`) added to Rank, chain shape agent; `d4814cc` message 14 item 2 added to Sources with the OR37.a (2) reading
+- Q18 | G5/R16 | applied | untrusted-input parser site class added to Req's allow-list (`captive_dns.py:187` checked at HEAD: broad catch mapping to the empty-domain sentinel); owner's "general containment, not per-condition" added to Sources
+- Q26 | G2/R09 | applied | `d4814cc` message 9 quote added to Sources as the earliest statement of the containment rule
+- Q28 | G4/R44 | applied | PCB + 3 build error labelled agent (`58b14ac`, closed unanswered from `5fed638`, on the owner-review list) added to Rank
+- Q30 | G3/R24 | not applied | replaced by M02 (LEAD_MERGE section 1, answered by OR109.a (2))
+- Q37 | G4/R03 | applied | four U14 doc items (F.07, F.13, F.15, F.17) added to State; `.gitignore:38` "v1.28.0" stamp confirmed; BACKLOG line corrected :165 → :164-165 (the sentence spans both)
+- Q38 | G4/R02 | applied | State "holds" → doc in U14 (F.26, F.28, F.46); ":4841's 'plus the merge cost'" corrected to :4843 and "THR:634" to `tests_hardware/README.md:633-634` (the phrase spans both lines); :4831-4833, :4815, :4857 confirmed
+- Q39 | G4/R22 | applied | residue clause (micropython#18797 fixed since v1.28.0, `bfc69dbe8`, PR #18805) added to State
+- Q40 | G5/R36 | applied | README citation fix added to State as doc in U26; `tests_hardware/README.md:633` confirmed to cite #9455/#9505/#18797
+- Q43 | G2/R17 | applied | per-test verdicts added to State (merged with M04); all ten test line numbers, the `:242` assert and `_bus_hazard_catalog.py:383-384` checked at HEAD; cited as R.20-R.29
+- Q44 | G2/R10 | applied | two tier gaps added to State (R.24, R.31), the L3 gap tied to G2/R17's moved `:271` test; wozi.toml puts sgp40 and bmp3xx on i2c1 (checked)
+- Q45 | G3/R50 (near) | not applied | becomes LEAD/R30 per LEAD_MERGE section 1 (lead's block, OR109.a (0))
+- M02 | G3/R24 | applied | no block carries the BMP3xx bound, so G3/R24 (the BMP3xx interval setter block H.10 names) takes it: 1-3,600 s rule added to Req, owner tag to Rank, OR109.a (2) to Sources; `asy_bmp3xx_driver.py:71-72, :120` and `asy_isl29125_driver.py:110-111` (H.10 said :112) checked at HEAD
+- M03 | G3/R10 | applied | owner's temporary-heap-int acceptance added to Req, OR109.a (1) to Sources
+- M04 | G2/R17 | applied | merged into Q43's `:356` verdict: it is LEAD/R30's regression test (owner, 2026-09-29, OR109.a (0))

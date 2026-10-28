@@ -1,0 +1,11 @@
+--- u13t_tools/overlay_i/asy_i2c_driver.py	2026-10-07 11:20:06.811101636 +0000
++++ u13t_tools/overlay_mut/asy_i2c_driver.py	2026-10-07 11:25:01.240145744 +0000
+@@ -370,6 +370,8 @@
+         # controller re-init (Part F.5.1) - under one bus-lock hold. _REC_NO_CONTROLLER leaves no bus.
+         async with self.bus_lock:
+             status = await self._clear_locked()
++        await asyncio.sleep_ms(30)
++        async with self.bus_lock:
+             try:
+                 self.init(*self._args)
+             except (OSError, ValueError):

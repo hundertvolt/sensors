@@ -1,0 +1,23 @@
+scripts/_hardware_verdict.py: note: In class "_Verdict":
+scripts/_hardware_verdict.py:73:16: error: Base type Summary becomes "Any" due
+to an unfollowed import  [no-any-unimported]
+    class _Verdict(Summary):  # type: ignore[misc]  # Summary is Any to my...
+                   ^~~~~~~
+scripts/_hardware_verdict.py:73:16: note: Error code "no-any-unimported" not covered by "type: ignore[misc]" comment
+scripts/_hardware_verdict.py: note: In class "_CollectionOnly":
+scripts/_hardware_verdict.py:131:23: error: Base type Summary becomes "Any" due
+to an unfollowed import  [no-any-unimported]
+    class _CollectionOnly(Summary):  # type: ignore[misc]
+                          ^~~~~~~
+scripts/_hardware_verdict.py:131:23: note: Error code "no-any-unimported" not covered by "type: ignore[misc]" comment
+scripts/_hardware_verdict.py: note: In function "_not_a_run":
+scripts/_hardware_verdict.py:136:1: error: Argument 1 to "_not_a_run" becomes
+"Any" due to an unfollowed import  [no-any-unimported]
+    def _not_a_run(summary: Summary, record: "dict[str, object]") -> int:
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/manual/runner.py: note: In function "_run_one":
+tests_hardware/manual/runner.py:46:1: error: Argument 2 to "_run_one" becomes
+"Any" due to an unfollowed import  [no-any-unimported]
+    def _run_one(t: ManualTest, summary: "Summary") -> bool:
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Found 4 errors in 2 files (checked 305 source files)

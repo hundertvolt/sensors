@@ -1,0 +1,13 @@
+rebuild rc=0
+ruff rc=0
+mypy_noargs rc=0
+mypy_ci rc=0
+mypy_twin rc=0
+mypy_host rc=0
+npm_lint rc=0
+npm_typecheck rc=1
+test_website_layering rc=0
+test_js_api_mirrors rc=0
+test_decision_vocabulary rc=0
+test_tunables_register rc=1
+done

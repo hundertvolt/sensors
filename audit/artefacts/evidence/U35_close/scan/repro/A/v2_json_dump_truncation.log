@@ -1,0 +1,15 @@
+before: {"A": 1, "B": 2.5}
+raised: RuntimeError maximum recursion depth exceeded
+after: length 1650 starts '{"Z": [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[['
+does not parse: syntax error in JSON
+rc=0
+before: {"A": 1, "B": 2.5}
+raised: RuntimeError maximum recursion depth exceeded
+after: length 1650 starts '{"Z": [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[['
+does not parse: syntax error in JSON
+rc=0
+before: {"A": 1, "B": 2.5}
+raised: RuntimeError maximum recursion depth exceeded
+after: length 1650 starts '{"Z": [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[['
+does not parse: syntax error in JSON
+rc=0

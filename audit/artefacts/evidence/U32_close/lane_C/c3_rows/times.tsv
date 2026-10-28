@@ -1,0 +1,12 @@
+tests/test_sensortask.py[arzi]@-1	29.37	0
+tests/test_sensortask.py[arzi]@32768	33.07	0
+tests/test_sensortask.py[dev]@-1	46.60	0
+tests/test_sensortask.py[dev]@32768	53.91	0
+tests/test_sensortask.py[grkizi]@-1	28.64	0
+tests/test_sensortask.py[grkizi]@32768	33.22	0
+tests/test_sensortask.py[klkizi]@-1	28.59	0
+tests/test_sensortask.py[klkizi]@32768	33.24	0
+tests/test_sensortask.py[schlafzi]@-1	28.78	0
+tests/test_sensortask.py[schlafzi]@32768	33.00	0
+tests/test_sensortask.py[wozi]@-1	32.28	0
+tests/test_sensortask.py[wozi]@32768	40.60	0

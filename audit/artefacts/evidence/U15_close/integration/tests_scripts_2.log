@@ -1,0 +1,73 @@
+........................................................................ [  2%]
+........ssssss.......................................................... [  4%]
+........................................................................ [  6%]
+........................................................................ [  9%]
+........................................................................ [ 11%]
+........................................................................ [ 13%]
+........................................................................ [ 16%]
+........................................................................ [ 18%]
+........................................................................ [ 20%]
+........................................................................ [ 23%]
+........................................................................ [ 25%]
+........................................................................ [ 27%]
+........................................................................ [ 30%]
+........................................................................ [ 32%]
+........................................................................ [ 34%]
+........................................................................ [ 37%]
+........................................................................ [ 39%]
+........................................................................ [ 41%]
+........................................................................ [ 44%]
+........................................................................ [ 46%]
+........................................................................ [ 48%]
+........................................................................ [ 51%]
+........................................................................ [ 53%]
+........................................................................ [ 55%]
+........................................................................ [ 58%]
+........................................................................ [ 60%]
+........................................................................ [ 62%]
+..........................................................s.ssss........ [ 65%]
+........................................................................ [ 67%]
+........................................................................ [ 69%]
+........................................................................ [ 72%]
+........................................................................ [ 74%]
+........................................................................ [ 76%]
+........................................................................ [ 79%]
+........................................................................ [ 81%]
+........................................................................ [ 83%]
+.........F.............................................................. [ 86%]
+........................................................................ [ 88%]
+........................................................................ [ 90%]
+........................................................................ [ 92%]
+........................................................................ [ 95%]
+........................................................................ [ 97%]
+........................................................................ [ 99%]
+.                                                                        [100%]
+=================================== FAILURES ===================================
+____________ test_no_file_outside_the_device_tomls_names_a_variant _____________
+
+    def test_no_file_outside_the_device_tomls_names_a_variant() -> None:
+        found = collect_findings()
+        new = {path: hits[:3] for path, hits in found.items() if path not in _NOT_YET_CLEANED}
+>       assert not new, "variant literals outside devices/ - take the device from data, an argument or a TOML property:\n" + "\n".join(f"  {p}: {h}" for p, h in sorted(new.items()))
+E       AssertionError: variant literals outside devices/ - take the device from data, an argument or a TOML property:
+E           tests_hardware/device_scripts/sgp40_sample_cadence.py: [(9, 'sensortask_dev'), (29, 'sensortask_dev'), (33, 'sensortask_dev')]
+E       assert not {'tests_hardware/device_scripts/sgp40_sample_cadence.py': [(9, 'sensortask_dev'), (29, 'sensortask_dev'), (33, 'sensortask_dev')]}
+
+tests_scripts/test_no_variant_literals.py:205: AssertionError
+=============================== warnings summary ===============================
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15int/tests_hardware/bench/test_bus_concurrency_under_api_load.py:289: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15int/tests_hardware/bench/test_bus_concurrency_under_api_load.py:459: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15int/tests_hardware/bench/test_bus_concurrency_under_api_load.py:548: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests_scripts/test_no_variant_literals.py::test_no_file_outside_the_device_tomls_names_a_variant
+1 failed, 3085 passed, 11 skipped, 3 warnings in 578.39s (0:09:38)

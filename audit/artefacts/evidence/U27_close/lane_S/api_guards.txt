@@ -1,0 +1,119 @@
+=== test_shell_conventions
+tests_scripts/test_shell_conventions.py::test_every_script_follows_the_static_convention[scripts/run_digital_twin_ci.sh] PASSED [ 21%]
+tests_scripts/test_shell_conventions.py::test_every_script_follows_the_static_convention[scripts/run_unix_port_integration.sh] PASSED [ 25%]
+tests_scripts/test_shell_conventions.py::test_every_script_follows_the_static_convention[scripts/setup_cross_browser_toolchain.sh] PASSED [ 26%]
+tests_scripts/test_shell_conventions.py::test_help_exits_0_with_the_usage_before_running_anything[-h-scripts/run_digital_twin_ci.sh] PASSED [ 45%]
+tests_scripts/test_shell_conventions.py::test_help_exits_0_with_the_usage_before_running_anything[-h-scripts/run_unix_port_integration.sh] PASSED [ 49%]
+tests_scripts/test_shell_conventions.py::test_help_exits_0_with_the_usage_before_running_anything[-h-scripts/setup_cross_browser_toolchain.sh] PASSED [ 50%]
+tests_scripts/test_shell_conventions.py::test_help_exits_0_with_the_usage_before_running_anything[--help-scripts/run_digital_twin_ci.sh] PASSED [ 69%]
+tests_scripts/test_shell_conventions.py::test_help_exits_0_with_the_usage_before_running_anything[--help-scripts/run_unix_port_integration.sh] PASSED [ 73%]
+tests_scripts/test_shell_conventions.py::test_help_exits_0_with_the_usage_before_running_anything[--help-scripts/setup_cross_browser_toolchain.sh] PASSED [ 74%]
+tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/run_digital_twin_ci.sh] FAILED [ 87%]
+tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/setup_cross_browser_toolchain.sh] FAILED [ 90%]
+tests_scripts/test_shell_conventions.py::test_the_twin_runner_refuses_a_missing_or_unknown_device_naming_it_and_the_valid_ones[no-argument] PASSED [ 94%]
+tests_scripts/test_shell_conventions.py::test_the_twin_runner_refuses_a_missing_or_unknown_device_naming_it_and_the_valid_ones[no-value] PASSED [ 95%]
+tests_scripts/test_shell_conventions.py::test_the_twin_runner_refuses_a_missing_or_unknown_device_naming_it_and_the_valid_ones[unknown-device] PASSED [ 97%]
+tests_scripts/test_shell_conventions.py::test_the_twin_runner_refuses_a_missing_or_unknown_device_naming_it_and_the_valid_ones[fixture-device] PASSED [ 98%]
+E         +     'scripts/build_frozen_html.sh:30: mktemp before the EXIT trap that removes '...
+E         +     'scripts/build_website.sh:33: mktemp before the EXIT trap that removes it '
+E         +     'scripts/test.sh: 2 EXIT traps (lines 115, 410) - one trap removes every '...
+_ test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/run_digital_twin_ci.sh] _
+script = 'scripts/run_digital_twin_ci.sh'
+E       AssertionError: scripts/run_digital_twin_ci.sh refused --not-an-option without naming it:
+E         usage: scripts/run_digital_twin_ci.sh <device> - one of: arzi dev grkizi klkizi schlafzi wozi
+E       assert '--not-an-option' in 'usage: scripts/run_digital_twin_ci.sh <device> - one of: arzi dev grkizi klkizi schlafzi wozi\n'
+E        +  where 'usage: scripts/run_digital_twin_ci.sh <device> - one of: arzi dev grkizi klkizi schlafzi wozi\n' = CompletedProcess(args=['/tmp/pytest-of-root/pytest-9846/conventions0/.stub_bin/bash', '/tmp/pytest-of-root/pytest-9846/conventions0/scripts/run_digital_twin_ci.sh', '--not-an-option'], returncode=2, stdout='', stderr='usage: scripts/run_digital_twin_ci.sh <device> - one of: arzi dev grkizi klkizi schlafzi wozi\n').stderr
+E       AssertionError: scripts/run_manual_hardware_tests.sh --not-an-option got past its argument check and ran ['uv run --no-sync python tests_hardware/manual/__main__.py --not-an-option']
+E         Left contains one more item: 'uv run --no-sync python tests_hardware/manual/__main__.py --not-an-option'
+E         +     'uv run --no-sync python tests_hardware/manual/__main__.py --not-an-option',
+_ test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/setup_cross_browser_toolchain.sh] _
+script = 'scripts/setup_cross_browser_toolchain.sh'
+E       AssertionError: scripts/setup_cross_browser_toolchain.sh --not-an-option got past its argument check and ran ['sudo apt-get update', 'sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends webkit2gtk-driver xvfb']
+FAILED tests_scripts/test_shell_conventions.py::test_every_script_follows_the_static_convention[scripts/build_frozen_html.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_every_script_follows_the_static_convention[scripts/build_website.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_every_script_follows_the_static_convention[scripts/test.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_help_exits_0_with_the_usage_before_running_anything[-h-scripts/_run_lower_levels.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_help_exits_0_with_the_usage_before_running_anything[--help-scripts/_run_lower_levels.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/_run_lower_levels.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/build_frozen_html.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/build_website.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/lint.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/run_digital_twin_ci.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/run_manual_hardware_tests.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/setup_cross_browser_toolchain.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/typecheck.sh]
+======================== 13 failed, 58 passed in 0.90s =========================
+=== test_twin_never_needs_tests_on_its_path
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_the_layout_file_holds_the_unit_and_the_twin_layout PASSED [  1%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_the_twin_layout_still_carries_no_tests_directory_and_the_guard_sees_its_launch_sites PASSED [  3%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_every_twin_launch_reads_the_layout_file FAILED [  5%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_a_literal_an_unread_launch_and_an_unexplained_derivation_are_caught PASSED [  7%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_the_twin_machine_module_imports_under_cpython PASSED [  9%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_every_twin_directory_a_twin_module_puts_on_sys_path_is_scanned PASSED [ 11%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_imports_from_tests_at_module_level[_bmp3xx_chip.py] PASSED [ 12%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_imports_from_tests_at_module_level[_crc8.py] PASSED [ 14%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_imports_from_tests_at_module_level[_fault_injection.py] PASSED [ 16%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_imports_from_tests_at_module_level[_flash_stall.py] PASSED [ 18%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_imports_from_tests_at_module_level[_fram_chip.py] PASSED [ 20%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_imports_from_tests_at_module_level[_http_client.py] PASSED [ 22%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_imports_from_tests_at_module_level[_isl29125_chip.py] PASSED [ 24%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_imports_from_tests_at_module_level[_scd30_chip.py] PASSED [ 25%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_imports_from_tests_at_module_level[_sgp40_chip.py] PASSED [ 27%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_imports_from_tests_at_module_level[_twin_common.py] PASSED [ 29%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_imports_from_tests_at_module_level[_wall_clock.py] PASSED [ 31%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_imports_from_tests_at_module_level[launch.py] PASSED [ 33%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_imports_from_tests_at_module_level[machine.py] PASSED [ 35%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_imports_from_tests_at_module_level[neopixel.py] PASSED [ 37%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_imports_from_tests_at_module_level[network.py] PASSED [ 38%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_imports_from_tests_at_module_level[rp2.py] PASSED [ 40%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_imports_from_tests_at_module_level[run_device_script.py] PASSED [ 42%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_imports_from_tests_at_module_level[run_generic_integration.py] PASSED [ 44%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_imports_from_tests_at_module_level[unix_port_poll_prewarm.py] PASSED [ 46%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_imports_from_tests_at_module_level[unix_port_unretrieved_report.py] PASSED [ 48%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_imports_from_tests_at_module_level[_ntp_responder.py] PASSED [ 50%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_imports_from_tests_at_module_level[_offline_ntp_config.py] PASSED [ 51%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_imports_from_tests_at_module_level[_unix_port_udp_addr_shim.py] PASSED [ 53%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_calls_the_strict_checking_json_accessor[_bmp3xx_chip.py] PASSED [ 55%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_calls_the_strict_checking_json_accessor[_crc8.py] PASSED [ 57%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_calls_the_strict_checking_json_accessor[_fault_injection.py] PASSED [ 59%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_calls_the_strict_checking_json_accessor[_flash_stall.py] PASSED [ 61%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_calls_the_strict_checking_json_accessor[_fram_chip.py] PASSED [ 62%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_calls_the_strict_checking_json_accessor[_http_client.py] PASSED [ 64%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_calls_the_strict_checking_json_accessor[_isl29125_chip.py] PASSED [ 66%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_calls_the_strict_checking_json_accessor[_scd30_chip.py] PASSED [ 68%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_calls_the_strict_checking_json_accessor[_sgp40_chip.py] PASSED [ 70%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_calls_the_strict_checking_json_accessor[_twin_common.py] PASSED [ 72%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_calls_the_strict_checking_json_accessor[_wall_clock.py] PASSED [ 74%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_calls_the_strict_checking_json_accessor[launch.py] PASSED [ 75%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_calls_the_strict_checking_json_accessor[machine.py] PASSED [ 77%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_calls_the_strict_checking_json_accessor[neopixel.py] PASSED [ 79%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_calls_the_strict_checking_json_accessor[network.py] PASSED [ 81%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_calls_the_strict_checking_json_accessor[rp2.py] PASSED [ 83%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_calls_the_strict_checking_json_accessor[run_device_script.py] PASSED [ 85%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_calls_the_strict_checking_json_accessor[run_generic_integration.py] PASSED [ 87%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_calls_the_strict_checking_json_accessor[unix_port_poll_prewarm.py] PASSED [ 88%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_calls_the_strict_checking_json_accessor[unix_port_unretrieved_report.py] PASSED [ 90%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_calls_the_strict_checking_json_accessor[_ntp_responder.py] PASSED [ 92%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_calls_the_strict_checking_json_accessor[_offline_ntp_config.py] PASSED [ 94%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_no_twin_module_calls_the_strict_checking_json_accessor[_unix_port_udp_addr_shim.py] PASSED [ 96%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_the_twins_ntp_writer_derives_its_file_name_from_the_product PASSED [ 98%]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_every_persistent_twin_state_default_is_git_ignored PASSED [100%]
+_________________ test_every_twin_launch_reads_the_layout_file _________________
+    def test_every_twin_launch_reads_the_layout_file() -> None:
+E         Left contains 12 more items, first extra item: "scripts/_twin_process.py:24: the twin MICROPYPATH literal 'build/generated_src:src:digital_twin:ext:frozen_modules:.frozen' - read scripts/micropypath.toml's twin instead"
+E         +     'scripts/_twin_process.py:24: the twin MICROPYPATH literal '...
+tests_scripts/test_twin_never_needs_tests_on_its_path.py:144: AssertionError
+FAILED tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_every_twin_launch_reads_the_layout_file
+========================= 1 failed, 53 passed in 0.79s =========================
+scripts/_twin_process.py:24: the twin MICROPYPATH literal 'build/generated_src:src:digital_twin:ext:frozen_modules:.frozen' - read scripts/micropypath.toml's twin instead
+scripts/_twin_process.py launches a twin runner without reading scripts/micropypath.toml's twin
+scripts/cross_browser_smoke.mjs:26: the twin MICROPYPATH literal 'build/generated_src:src:digital_twin:ext:build/generated_html/${device}:.frozen' - read scripts/micropypath.toml's twin instead
+scripts/cross_browser_smoke.mjs launches a twin runner without reading scripts/micropypath.toml's twin
+scripts/run_unix_port_integration.sh:124: the twin MICROPYPATH literal 'build/generated_src:src:digital_twin:ext:frozen_modules:.frozen' - read scripts/micropypath.toml's twin instead
+scripts/run_unix_port_integration.sh launches a twin runner without reading scripts/micropypath.toml's twin
+tests_scripts/test_digital_twin_generated_boot.py:361: the twin MICROPYPATH literal '{tmp_path}:src:digital_twin:ext:.frozen' - read scripts/micropypath.toml's twin instead
+tests_scripts/test_digital_twin_generated_boot.py launches a twin runner without reading scripts/micropypath.toml's twin
+tests_scripts/test_tool_help.py:104: the twin MICROPYPATH literal 'digital_twin:src:.frozen' - read scripts/micropypath.toml's twin instead
+tests_js/_twin_process.js:137: the twin MICROPYPATH literal 'build/generated_src:src:digital_twin:ext:build/generated_html/${device}:.frozen' - read scripts/micropypath.toml's twin instead
+tests_js/_twin_process.js launches a twin runner without reading scripts/micropypath.toml's twin
+tests_hardware/twin_board.py launches a twin runner without reading scripts/micropypath.toml's twin

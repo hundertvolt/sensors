@@ -1,0 +1,4 @@
+tests/test_asy_captive_dns.py
+tests/test_asy_ntp_client.py
+tests/test_asy_udp_socket.py
+tests/test_asy_wifi_service.py

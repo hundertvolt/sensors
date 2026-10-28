@@ -1,0 +1,283 @@
+FFFFFF.F                                                                 [100%]
+=================================== FAILURES ===================================
+_ test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts[device---device's value (256 bytes)] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11358/test_a_string_the_interpreter_0')
+case = 'device', named = "--device's value (256 bytes)"
+
+    @pytest.mark.parametrize(
+        ("case", "named"),
+        [
+            ("device", "--device's value (256 bytes)"),
+            ("multibyte device", "--device's value (256 bytes)"),
+            ("config directory", "--config-dir's value"),
+            ("micropypath entry", "MICROPYPATH entry 1 (256 bytes)"),
+            ("home-relative entry without HOME", "MICROPYPATH entry 1 (258 bytes)"),
+            ("runner's directory", "the runner's directory"),
+        ],
+    )
+    def test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts(tmp_path: Path, case: str, named: str) -> None:
+        # Each kills the interpreter before the runner's first line ("FATAL: uncaught NLR", exit 1), which read as a twin that
+        # "exited before ever serving"; a byte count, not characters, is what the interpreter measures.
+        device, config_dir, layout, root_dir, home = "fixture-device", "", "", "repo", True
+        if case == "device":
+            device = _OVER
+        elif case == "multibyte device":
+            device = "é" * ((_LIMIT + 1) // 2)
+        elif case == "config directory":
+            config_dir = str(tmp_path / ("c" * 250))
+            named += f" ({len(os.fsencode(config_dir))} bytes)"
+        elif case == "micropypath entry":
+            layout = _OVER
+        elif case == "home-relative entry without HOME":
+            layout, home = f"~/{_OVER}", False
+        else:
+            root_dir = f"{'r' * 200}/repo"
+            named += f" ({len(os.fsencode(os.path.realpath(tmp_path / root_dir / 'digital_twin')))} bytes)"
+        outcome, calls = _spawn(tmp_path, device=device, config_dir=config_dir, root_dir=root_dir, layout=layout, home=home)
+        refused = str(outcome.get("refused", outcome))
+>       assert refused.startswith("the twin was not started: ") and named in refused, refused
+E       AssertionError: {'exited': 0}
+E       assert (False)
+E        +  where False = <built-in method startswith of str object at 0x7fb8c41f9830>('the twin was not started: ')
+E        +    where <built-in method startswith of str object at 0x7fb8c41f9830> = "{'exited': 0}".startswith
+
+tests_scripts/test_twin_process_js_spawn.py:94: AssertionError
+_ test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts[multibyte device---device's value (256 bytes)] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11358/test_a_string_the_interpreter_1')
+case = 'multibyte device', named = "--device's value (256 bytes)"
+
+    @pytest.mark.parametrize(
+        ("case", "named"),
+        [
+            ("device", "--device's value (256 bytes)"),
+            ("multibyte device", "--device's value (256 bytes)"),
+            ("config directory", "--config-dir's value"),
+            ("micropypath entry", "MICROPYPATH entry 1 (256 bytes)"),
+            ("home-relative entry without HOME", "MICROPYPATH entry 1 (258 bytes)"),
+            ("runner's directory", "the runner's directory"),
+        ],
+    )
+    def test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts(tmp_path: Path, case: str, named: str) -> None:
+        # Each kills the interpreter before the runner's first line ("FATAL: uncaught NLR", exit 1), which read as a twin that
+        # "exited before ever serving"; a byte count, not characters, is what the interpreter measures.
+        device, config_dir, layout, root_dir, home = "fixture-device", "", "", "repo", True
+        if case == "device":
+            device = _OVER
+        elif case == "multibyte device":
+            device = "é" * ((_LIMIT + 1) // 2)
+        elif case == "config directory":
+            config_dir = str(tmp_path / ("c" * 250))
+            named += f" ({len(os.fsencode(config_dir))} bytes)"
+        elif case == "micropypath entry":
+            layout = _OVER
+        elif case == "home-relative entry without HOME":
+            layout, home = f"~/{_OVER}", False
+        else:
+            root_dir = f"{'r' * 200}/repo"
+            named += f" ({len(os.fsencode(os.path.realpath(tmp_path / root_dir / 'digital_twin')))} bytes)"
+        outcome, calls = _spawn(tmp_path, device=device, config_dir=config_dir, root_dir=root_dir, layout=layout, home=home)
+        refused = str(outcome.get("refused", outcome))
+>       assert refused.startswith("the twin was not started: ") and named in refused, refused
+E       AssertionError: {'exited': 0}
+E       assert (False)
+E        +  where False = <built-in method startswith of str object at 0x7fb8c41ee3f0>('the twin was not started: ')
+E        +    where <built-in method startswith of str object at 0x7fb8c41ee3f0> = "{'exited': 0}".startswith
+
+tests_scripts/test_twin_process_js_spawn.py:94: AssertionError
+_ test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts[config directory---config-dir's value] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11358/test_a_string_the_interpreter_2')
+case = 'config directory', named = "--config-dir's value (315 bytes)"
+
+    @pytest.mark.parametrize(
+        ("case", "named"),
+        [
+            ("device", "--device's value (256 bytes)"),
+            ("multibyte device", "--device's value (256 bytes)"),
+            ("config directory", "--config-dir's value"),
+            ("micropypath entry", "MICROPYPATH entry 1 (256 bytes)"),
+            ("home-relative entry without HOME", "MICROPYPATH entry 1 (258 bytes)"),
+            ("runner's directory", "the runner's directory"),
+        ],
+    )
+    def test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts(tmp_path: Path, case: str, named: str) -> None:
+        # Each kills the interpreter before the runner's first line ("FATAL: uncaught NLR", exit 1), which read as a twin that
+        # "exited before ever serving"; a byte count, not characters, is what the interpreter measures.
+        device, config_dir, layout, root_dir, home = "fixture-device", "", "", "repo", True
+        if case == "device":
+            device = _OVER
+        elif case == "multibyte device":
+            device = "é" * ((_LIMIT + 1) // 2)
+        elif case == "config directory":
+            config_dir = str(tmp_path / ("c" * 250))
+            named += f" ({len(os.fsencode(config_dir))} bytes)"
+        elif case == "micropypath entry":
+            layout = _OVER
+        elif case == "home-relative entry without HOME":
+            layout, home = f"~/{_OVER}", False
+        else:
+            root_dir = f"{'r' * 200}/repo"
+            named += f" ({len(os.fsencode(os.path.realpath(tmp_path / root_dir / 'digital_twin')))} bytes)"
+        outcome, calls = _spawn(tmp_path, device=device, config_dir=config_dir, root_dir=root_dir, layout=layout, home=home)
+        refused = str(outcome.get("refused", outcome))
+>       assert refused.startswith("the twin was not started: ") and named in refused, refused
+E       AssertionError: {'exited': 0}
+E       assert (False)
+E        +  where False = <built-in method startswith of str object at 0x7fb8c336fbf0>('the twin was not started: ')
+E        +    where <built-in method startswith of str object at 0x7fb8c336fbf0> = "{'exited': 0}".startswith
+
+tests_scripts/test_twin_process_js_spawn.py:94: AssertionError
+_ test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts[micropypath entry-MICROPYPATH entry 1 (256 bytes)] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11358/test_a_string_the_interpreter_3')
+case = 'micropypath entry', named = 'MICROPYPATH entry 1 (256 bytes)'
+
+    @pytest.mark.parametrize(
+        ("case", "named"),
+        [
+            ("device", "--device's value (256 bytes)"),
+            ("multibyte device", "--device's value (256 bytes)"),
+            ("config directory", "--config-dir's value"),
+            ("micropypath entry", "MICROPYPATH entry 1 (256 bytes)"),
+            ("home-relative entry without HOME", "MICROPYPATH entry 1 (258 bytes)"),
+            ("runner's directory", "the runner's directory"),
+        ],
+    )
+    def test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts(tmp_path: Path, case: str, named: str) -> None:
+        # Each kills the interpreter before the runner's first line ("FATAL: uncaught NLR", exit 1), which read as a twin that
+        # "exited before ever serving"; a byte count, not characters, is what the interpreter measures.
+        device, config_dir, layout, root_dir, home = "fixture-device", "", "", "repo", True
+        if case == "device":
+            device = _OVER
+        elif case == "multibyte device":
+            device = "é" * ((_LIMIT + 1) // 2)
+        elif case == "config directory":
+            config_dir = str(tmp_path / ("c" * 250))
+            named += f" ({len(os.fsencode(config_dir))} bytes)"
+        elif case == "micropypath entry":
+            layout = _OVER
+        elif case == "home-relative entry without HOME":
+            layout, home = f"~/{_OVER}", False
+        else:
+            root_dir = f"{'r' * 200}/repo"
+            named += f" ({len(os.fsencode(os.path.realpath(tmp_path / root_dir / 'digital_twin')))} bytes)"
+        outcome, calls = _spawn(tmp_path, device=device, config_dir=config_dir, root_dir=root_dir, layout=layout, home=home)
+        refused = str(outcome.get("refused", outcome))
+>       assert refused.startswith("the twin was not started: ") and named in refused, refused
+E       AssertionError: {'exited': 0}
+E       assert (False)
+E        +  where False = <built-in method startswith of str object at 0x7fb8c33231b0>('the twin was not started: ')
+E        +    where <built-in method startswith of str object at 0x7fb8c33231b0> = "{'exited': 0}".startswith
+
+tests_scripts/test_twin_process_js_spawn.py:94: AssertionError
+_ test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts[home-relative entry without HOME-MICROPYPATH entry 1 (258 bytes)] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11358/test_a_string_the_interpreter_4')
+case = 'home-relative entry without HOME'
+named = 'MICROPYPATH entry 1 (258 bytes)'
+
+    @pytest.mark.parametrize(
+        ("case", "named"),
+        [
+            ("device", "--device's value (256 bytes)"),
+            ("multibyte device", "--device's value (256 bytes)"),
+            ("config directory", "--config-dir's value"),
+            ("micropypath entry", "MICROPYPATH entry 1 (256 bytes)"),
+            ("home-relative entry without HOME", "MICROPYPATH entry 1 (258 bytes)"),
+            ("runner's directory", "the runner's directory"),
+        ],
+    )
+    def test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts(tmp_path: Path, case: str, named: str) -> None:
+        # Each kills the interpreter before the runner's first line ("FATAL: uncaught NLR", exit 1), which read as a twin that
+        # "exited before ever serving"; a byte count, not characters, is what the interpreter measures.
+        device, config_dir, layout, root_dir, home = "fixture-device", "", "", "repo", True
+        if case == "device":
+            device = _OVER
+        elif case == "multibyte device":
+            device = "é" * ((_LIMIT + 1) // 2)
+        elif case == "config directory":
+            config_dir = str(tmp_path / ("c" * 250))
+            named += f" ({len(os.fsencode(config_dir))} bytes)"
+        elif case == "micropypath entry":
+            layout = _OVER
+        elif case == "home-relative entry without HOME":
+            layout, home = f"~/{_OVER}", False
+        else:
+            root_dir = f"{'r' * 200}/repo"
+            named += f" ({len(os.fsencode(os.path.realpath(tmp_path / root_dir / 'digital_twin')))} bytes)"
+        outcome, calls = _spawn(tmp_path, device=device, config_dir=config_dir, root_dir=root_dir, layout=layout, home=home)
+        refused = str(outcome.get("refused", outcome))
+>       assert refused.startswith("the twin was not started: ") and named in refused, refused
+E       AssertionError: {'exited': 0}
+E       assert (False)
+E        +  where False = <built-in method startswith of str object at 0x7fb8c3dc2cf0>('the twin was not started: ')
+E        +    where <built-in method startswith of str object at 0x7fb8c3dc2cf0> = "{'exited': 0}".startswith
+
+tests_scripts/test_twin_process_js_spawn.py:94: AssertionError
+_ test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts[runner's directory-the runner's directory] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11358/test_a_string_the_interpreter_5')
+case = "runner's directory", named = "the runner's directory (283 bytes)"
+
+    @pytest.mark.parametrize(
+        ("case", "named"),
+        [
+            ("device", "--device's value (256 bytes)"),
+            ("multibyte device", "--device's value (256 bytes)"),
+            ("config directory", "--config-dir's value"),
+            ("micropypath entry", "MICROPYPATH entry 1 (256 bytes)"),
+            ("home-relative entry without HOME", "MICROPYPATH entry 1 (258 bytes)"),
+            ("runner's directory", "the runner's directory"),
+        ],
+    )
+    def test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts(tmp_path: Path, case: str, named: str) -> None:
+        # Each kills the interpreter before the runner's first line ("FATAL: uncaught NLR", exit 1), which read as a twin that
+        # "exited before ever serving"; a byte count, not characters, is what the interpreter measures.
+        device, config_dir, layout, root_dir, home = "fixture-device", "", "", "repo", True
+        if case == "device":
+            device = _OVER
+        elif case == "multibyte device":
+            device = "é" * ((_LIMIT + 1) // 2)
+        elif case == "config directory":
+            config_dir = str(tmp_path / ("c" * 250))
+            named += f" ({len(os.fsencode(config_dir))} bytes)"
+        elif case == "micropypath entry":
+            layout = _OVER
+        elif case == "home-relative entry without HOME":
+            layout, home = f"~/{_OVER}", False
+        else:
+            root_dir = f"{'r' * 200}/repo"
+            named += f" ({len(os.fsencode(os.path.realpath(tmp_path / root_dir / 'digital_twin')))} bytes)"
+        outcome, calls = _spawn(tmp_path, device=device, config_dir=config_dir, root_dir=root_dir, layout=layout, home=home)
+        refused = str(outcome.get("refused", outcome))
+>       assert refused.startswith("the twin was not started: ") and named in refused, refused
+E       AssertionError: {'exited': 0}
+E       assert (False)
+E        +  where False = <built-in method startswith of str object at 0x7fb8c3318970>('the twin was not started: ')
+E        +    where <built-in method startswith of str object at 0x7fb8c3318970> = "{'exited': 0}".startswith
+
+tests_scripts/test_twin_process_js_spawn.py:94: AssertionError
+_______________ test_the_launchs_limit_is_the_python_launchs_own _______________
+
+    def test_the_launchs_limit_is_the_python_launchs_own() -> None:
+        # The JS copy of the qstr limit is scripts/_twin_process.py's, which is checked against the interpreter itself.
+        copies = re.findall(r"^const QSTR_MAX_BYTES = (\d+);", (REPO_ROOT / _LAUNCH).read_text(encoding="utf-8"), re.MULTILINE)
+>       assert copies == [str(_LIMIT)], f"{_LAUNCH} holds the qstr limit {copies}, scripts/_twin_process.py {_LIMIT}"
+E       AssertionError: tests_js/_twin_process.js holds the qstr limit [], scripts/_twin_process.py 255
+E       assert [] == ['255']
+E         
+E         Right contains one more item: '255'
+E         Use -v to get more diff
+
+tests_scripts/test_twin_process_js_spawn.py:111: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_twin_process_js_spawn.py::test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts[device---device's value (256 bytes)]
+FAILED tests_scripts/test_twin_process_js_spawn.py::test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts[multibyte device---device's value (256 bytes)]
+FAILED tests_scripts/test_twin_process_js_spawn.py::test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts[config directory---config-dir's value]
+FAILED tests_scripts/test_twin_process_js_spawn.py::test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts[micropypath entry-MICROPYPATH entry 1 (256 bytes)]
+FAILED tests_scripts/test_twin_process_js_spawn.py::test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts[home-relative entry without HOME-MICROPYPATH entry 1 (258 bytes)]
+FAILED tests_scripts/test_twin_process_js_spawn.py::test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts[runner's directory-the runner's directory]
+FAILED tests_scripts/test_twin_process_js_spawn.py::test_the_launchs_limit_is_the_python_launchs_own
+7 failed, 1 passed in 0.71s

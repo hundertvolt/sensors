@@ -1,0 +1,51 @@
+........................................................................ [  4%]
+........................................................................ [  8%]
+........................................................................ [ 12%]
+........................................................................ [ 16%]
+........................................................................ [ 20%]
+........................................................................ [ 24%]
+........................................................................ [ 28%]
+........................................................................ [ 32%]
+........................................................................ [ 37%]
+........................................................................ [ 41%]
+........................................................................ [ 45%]
+........................................................................ [ 49%]
+........................................................................ [ 53%]
+........................................................................ [ 57%]
+........................................................................ [ 61%]
+........................................................................ [ 65%]
+........................................................................ [ 70%]
+........................................................................ [ 74%]
+......................F................................................. [ 78%]
+........................................................................ [ 82%]
+........................................................................ [ 86%]
+........................................................................ [ 90%]
+........................................................................ [ 94%]
+........................................................................ [ 98%]
+..................                                                       [100%]
+=================================== FAILURES ===================================
+____________ test_no_file_outside_the_device_tomls_names_a_variant _____________
+
+    def test_no_file_outside_the_device_tomls_names_a_variant() -> None:
+        found = collect_findings()
+        new = {path: hits[:3] for path, hits in found.items() if path not in _NOT_YET_CLEANED}
+>       assert not new, "variant literals outside devices/ - take the device from data, an argument or a TOML property:\n" + "\n".join(f"  {p}: {h}" for p, h in sorted(new.items()))
+E       AssertionError: variant literals outside devices/ - take the device from data, an argument or a TOML property:
+E           tests_scripts/test_ruff_exemptions_live.py: [(66, '"dev"'), (145, 'wozi')]
+E       assert not {'tests_scripts/test_ruff_exemptions_live.py': [(66, '"dev"'), (145, 'wozi')]}
+
+tests_scripts/test_no_variant_literals.py:108: AssertionError
+============================= slowest 10 durations =============================
+14.17s setup    tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+7.81s setup    tests_scripts/test_build_device_websites_sh.py::test_every_device_gets_its_own_site_from_its_generated_definitions[arzi]
+4.81s call     tests_scripts/test_no_variant_literals.py::test_every_not_yet_cleaned_entry_still_carries_a_literal
+4.40s call     tests_scripts/test_no_variant_literals.py::test_no_file_outside_the_device_tomls_names_a_variant
+3.60s call     tests_scripts/test_suppression_form.py::test_no_suppression_is_bare
+3.50s call     tests_scripts/test_tunables_register.py::test_every_tag_is_well_formed_and_sits_above_its_literal
+3.38s setup    tests_scripts/test_frozen_inputs_reproducible.py::test_two_hash_seeds_stage_byte_identical_inputs
+3.10s call     tests_scripts/test_const_mirrors.py::test_every_test_copy_of_a_src_const_is_read_or_pinned
+2.73s call     tests_scripts/test_port_bands.py::test_every_test_file_that_binds_a_port_draws_it_from_its_band
+1.27s call     tests_scripts/test_lint_sh.py::test_a_clean_run_generates_first_then_ends_with_the_block_counting_every_check
+=========================== short test summary info ============================
+FAILED tests_scripts/test_no_variant_literals.py::test_no_file_outside_the_device_tomls_names_a_variant
+1 failed, 1745 passed in 110.02s (0:01:50)

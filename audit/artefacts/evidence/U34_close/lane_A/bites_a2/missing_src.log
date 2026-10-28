@@ -1,0 +1,32 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+_______________ test_each_attributed_file_has_exactly_one_entry ________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u34/laneA/bites_a2/missing_src')
+
+    def test_each_attributed_file_has_exactly_one_entry(repo_root: Path) -> None:
+        entries = _entries(repo_root)
+        wrong = {rel: len(entries.get(rel, [])) for rel in _attributed(repo_root) if len(entries.get(rel, [])) != 1}
+>       assert not wrong, f"each attributed src/ file needs exactly one {_LICENCE_FILE} entry whose first code span is its path: {wrong}"
+E       AssertionError: each attributed src/ file needs exactly one THIRD_PARTY_LICENSES.md entry whose first code span is its path: {'src/asy_dns_client.py': 0}
+E       assert not {'src/asy_dns_client.py': 0}
+
+tests_scripts/test_third_party_attribution.py:101: AssertionError
+_______ test_every_src_path_the_licence_file_names_exists_with_a_header ________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u34/laneA/bites_a2/missing_src')
+
+    def test_every_src_path_the_licence_file_names_exists_with_a_header(repo_root: Path) -> None:
+        named = {span for span in _CODE_SPAN.findall(" ".join(_lines(repo_root, _LICENCE_FILE))) if span.startswith("src/")}
+        named |= {subject for subject in _entries(repo_root) if subject.startswith("src/")}
+        missing = sorted(span for span in named if not (repo_root / span).exists())
+        headerless = sorted(span for span in named if span.endswith(".py") and span not in _attributed(repo_root))
+>       assert not missing and not headerless, f"{_LICENCE_FILE} names src/ paths that do not exist {missing} or carry no attribution header {headerless}"
+E       AssertionError: THIRD_PARTY_LICENSES.md names src/ paths that do not exist ['src/asy_dns_resolver.py'] or carry no attribution header ['src/asy_dns_resolver.py']
+E       assert (not ['src/asy_dns_resolver.py'])
+
+tests_scripts/test_third_party_attribution.py:109: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_third_party_attribution.py::test_each_attributed_file_has_exactly_one_entry
+FAILED tests_scripts/test_third_party_attribution.py::test_every_src_path_the_licence_file_names_exists_with_a_header
+2 failed, 2 deselected in 0.05s

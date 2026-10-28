@@ -1,0 +1,4 @@
+9c4d0f4d483b31cc10fbb47905a46b776cc6e91ea40d3cdd72db5bd548428392  ports/unix/build-lwip/micropython
+9720091d0b759dc41fa03703ae8004bbde12dbb6462f16cb37d1190604a629c1  ports/unix/build-settrace/micropython
+903723b0e2a947f87cb1e96c028019892062305cd8df9f290a108e0cc60ff2a1  ports/unix/build-standard/micropython
+f7baad5259261f00678e844ea3ef089d049043b74ed778e712d3b2d6d62b717c  mpy-cross/build/mpy-cross

@@ -1,0 +1,12 @@
+write_config answered (False, {})
+served after the refusal {'X': 5}
+file holds {"X": 1}
+rc=0
+write_config answered (False, {})
+served after the refusal {'X': 5}
+file holds {"X": 1}
+rc=0
+write_config answered (False, {})
+served after the refusal {'X': 5}
+file holds {"X": 1}
+rc=0

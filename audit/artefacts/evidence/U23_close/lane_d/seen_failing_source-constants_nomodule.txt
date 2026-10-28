@@ -1,0 +1,55 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d
+
+6:33:34 AM [vite] Internal server error: Failed to resolve import "./_source_constants.js" from "tests_js/source-constants.test.js". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/tests_js/source-constants.test.js:7:47
+  5  |  import mockServerSource from "../js/mock-server.js?raw";
+  6  |  import pollManagerSource from "../js/poll-manager.js?raw";
+  7  |  import { readIntConst, readObjectConst } from "./_source_constants.js";
+     |                                                 ^
+  8  |  
+  9  |  describe("readIntConst", () => {
+      at TransformPluginContext._formatLog (file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/node_modules/vite/dist/node/chunks/node.js:8766:39)
+      at TransformPluginContext.error (file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/node_modules/vite/dist/node/chunks/node.js:8763:14)
+      at normalizeUrl (file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/node_modules/vite/dist/node/chunks/node.js:26593:18)
+      at file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/node_modules/vite/dist/node/chunks/node.js:26663:30
+      at async Promise.all (index 4)
+      at TransformPluginContext.transform (file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/node_modules/vite/dist/node/chunks/node.js:26629:4)
+      at EnvironmentPluginContainer.transform (file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/node_modules/vite/dist/node/chunks/node.js:8545:14)
+      at loadAndTransform (file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/node_modules/vite/dist/node/chunks/node.js:20157:26)
+      at viteTransformMiddleware (file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/node_modules/vite/dist/node/chunks/node.js:20377:20)
+ ❯ |chromium| tests_js/source-constants.test.js (0 test)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/source-constants.test.js [ tests_js/source-constants.test.js ]
+Error: Failed to import test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/tests_js/source-constants.test.js
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:5822:5
+ ❯ collectTests node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:5798:3
+ ❯ startTests node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:6480:17
+
+Caused by: TypeError: Failed to fetch dynamically imported module: http://localhost:63315/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/tests_js/source-constants.test.js?import&browserv=1791873214151
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  no tests
+   Start at  06:33:33
+   Duration  1.74s (worker 100%)
+
+== Summary: npm test ==
+Commit: 8fff76f (uncommitted changes)
+Levels: L0
+Counts (tests): passed 0 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 1
+Failed:
+  - tests_js/source-constants.test.js: module error: Failed to import test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/tests_js/source-constants.test.js
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing:
+  - npm test: no test case ran
+Result: FAIL
+Exit code: 1

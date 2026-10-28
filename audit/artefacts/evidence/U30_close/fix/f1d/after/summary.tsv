@@ -1,0 +1,29 @@
+print_log@-1	0.49	rc=0	mem=0	100/100 passed, 0 failed, 0 skipped
+print_log@32768	0.54	rc=0	mem=0	100/100 passed, 0 failed, 0 skipped
+print_log@settrace	0.78	rc=0	mem=0	100/100 passed, 0 failed, 0 skipped
+fram_allocation_budget@32768	0.09	rc=0	mem=0	2/2 passed, 0 failed, 0 skipped
+asy_fram_allocation_budget@-1	0.09	rc=0	mem=0	2/2 passed, 0 failed, 0 skipped
+asy_fram_manager@-1	5.34	rc=0	mem=0	143/143 passed, 0 failed, 0 skipped
+fram_integration@-1	1.37	rc=0	mem=0	12/12 passed, 0 failed, 0 skipped
+digital_twin_fram@-1	0.11	rc=1	mem=0	RuntimeError: build/generated_src/ is missing or stale - run: uv run scripts/_generate_sensortask_modules.py
+digital_twin_fram_crash_points@-1	9.53	rc=0	mem=0	3/3 passed, 0 failed, 0 skipped
+asy_fram_wire_trace@-1	0.40	rc=0	mem=0	9/9 passed, 0 failed, 0 skipped
+asy_config_manager@-1	0.11	rc=0	mem=0	234/234 passed, 0 failed, 0 skipped
+asy_base_classes@-1	0.38	rc=0	mem=0	189/189 passed, 0 failed, 0 skipped
+readiness_gates@-1	0.18	rc=0	mem=0	14/14 passed, 0 failed, 0 skipped
+notification_fram_integration@-1	0.22	rc=0	mem=0	3/3 passed, 0 failed, 0 skipped
+asy_webserver_connections@-1	1.21	rc=0	mem=0	24/24 passed, 0 failed, 0 skipped
+asy_neopixel_driver@-1	9.49	rc=0	mem=0	54/54 passed, 0 failed, 0 skipped
+asy_isl29125_driver@-1	2.58	rc=0	mem=0	246/246 passed, 0 failed, 0 skipped
+asy_uart_link_driver@-1	2.35	rc=0	mem=0	36/36 passed, 0 failed, 0 skipped
+neopixel_wifi_integration@-1	0.16	rc=1	mem=0	RuntimeError: build/generated_src/ is missing or stale - run: uv run scripts/_generate_sensortask_modules.py
+asy_sgp40_driver@-1	8.08	rc=0	mem=0	164/164 passed, 0 failed, 0 skipped
+asy_bmp3xx_driver@-1	13.67	rc=0	mem=0	137/137 passed, 0 failed, 0 skipped
+asy_webserver_service@-1	4.30	rc=0	mem=0	218/218 passed, 0 failed, 0 skipped
+asy_system_service@-1	23.69	rc=0	mem=0	172/172 passed, 0 failed, 0 skipped
+asy_scd30_driver@-1	21.99	rc=0	mem=0	130/130 passed, 0 failed, 0 skipped
+asy_captive_dns@-1	25.57	rc=0	mem=0	63/63 passed, 0 failed, 0 skipped
+asy_ntp_client@-1	23.83	rc=0	mem=0	188/188 passed, 0 failed, 0 skipped
+asy_uart_comm@-1	61.23	rc=0	mem=0	193/193 passed, 0 failed, 0 skipped
+sensortask[wozi]@-1	0.15	rc=1	mem=0	RuntimeError: build/generated_src/ is missing or stale - run: uv run scripts/_generate_sensortask_modules.py
+sensortask[dev]@-1	0.13	rc=1	mem=0	RuntimeError: build/generated_src/ is missing or stale - run: uv run scripts/_generate_sensortask_modules.py

@@ -1,0 +1,15 @@
+..........F.............................                                 [100%]
+=================================== FAILURES ===================================
+________________ test_no_test_tier_keeps_its_own_copy_of_a_code ________________
+
+    def test_no_test_tier_keeps_its_own_copy_of_a_code() -> None:
+        problems, _flagged = _test_side_copies()
+>       assert not problems, "\n".join(problems)
+E       AssertionError: tests/test_asy_print_log.py:728 test_a_pause_landing_while_the_resets_write_waits_on_the_write_lock_clears_nothing() compares a logged code with the literal(s) [2] - use code()
+E         tests/test_asy_print_log.py:747 test_a_pause_landing_while_the_resets_write_waits_on_the_chunks_op_lock_clears_nothing() compares a logged code with the literal(s) [2] - use code()
+E       assert not ('tests/test_asy_print_log.py:728 test_a_pause_landing_while_the_resets_write_waits_on_the_write_lock_clears_nothing()...resets_write_waits_on_the_chunks_op_lock_clears_nothing() compares a logged code with the literal(s) [2] - use code()')
+
+tests_scripts/test_error_catalog.py:635: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_error_catalog.py::test_no_test_tier_keeps_its_own_copy_of_a_code
+1 failed, 39 passed in 6.07s

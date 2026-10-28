@@ -1,0 +1,7 @@
+FAIL test_fram_chunk_layout_is_contiguous_deterministic_and_in_owner_order:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneD/bite/layout_top_down/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneD/bite/layout_top_down/tests/_sensortask_scenarios.py", line 2935, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneD/bite/layout_top_down/tests/_sensortask_scenarios.py", line 572, in _scenario_fram_chunk_layout
+AssertionError: ['WEBSERVER', 'UART_resp', 'UART_init', 'CFGMGR_NOTIFY', 'NOTIFY', 'CFGMGR_ISL29125', 'ISL29125', 'CFGMGR_BMP3XX', 'BMP3XX', 'SGP40_VOC', 'CFGMGR_SGP40', 'SGP40', 'SCD30', 'CFGMGR_SYSTEM', 'SYSTEM', 'CFGMGR_NTP', 'NTP', 'DNSSRV', 'CFGMGR_WIFI', 'WIFI', 'NEOPIXEL']
+0/1 passed, 1 failed, 0 skipped

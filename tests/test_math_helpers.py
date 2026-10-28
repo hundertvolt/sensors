@@ -1,8 +1,16 @@
+"""The derived-quantity formulas (dew point, wet bulb, altitude, chromaticity, the EMA, ...) against reference values,
+their range boundaries and their non-finite inputs."""
+
 import math_helpers as mh
 
 
 def approx(a: float, b: float, tol: float = 1e-6) -> bool:
     return abs(a - b) <= tol
+
+
+def present(result: float | None) -> float:
+    assert result is not None
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -47,8 +55,12 @@ def test_wet_bulb_humidity_above_range() -> None:
 
 
 def test_wet_bulb_boundary_values_accepted() -> None:
-    assert mh.wet_bulb_temperature(-20.0, 5.0) is not None
-    assert mh.wet_bulb_temperature(50.0, 99.0) is not None
+    # The cold-dry corner line's two end points and the far edge (Stull 2011, Fig. 3), each against Stull 2011's eq. 1
+    # evaluated by hand: T atan(0.151977 (RH + 8.313659)^0.5) + atan(T + RH) - atan(RH - 1.676331)
+    # + 0.00391838 RH^1.5 atan(0.023101 RH) - 4.686035.
+    for temperature, humidity, expected in ((-20.0, 75.0, -20.949), (10.0, 5.0, 0.608), (50.0, 5.0, 20.909), (50.0, 99.0, 50.035)):
+        value = mh.wet_bulb_temperature(temperature, humidity)
+        assert value is not None and abs(value - expected) < 0.001, (temperature, humidity, value)
 
 
 def test_wet_bulb_no_exception_on_extreme_inputs() -> None:
@@ -66,6 +78,18 @@ def test_wet_bulb_nan_and_inf_return_none() -> None:
     assert mh.wet_bulb_temperature(inf, 50.0) is None
     assert mh.wet_bulb_temperature(-inf, 50.0) is None
     assert mh.wet_bulb_temperature(20.0, inf) is None
+
+
+def test_wet_bulb_is_refused_in_the_cold_dry_corner() -> None:
+    # Stull (2011) Fig. 3 excludes the region below the line (-20 degC, 75 %) to (10 degC, 5 %);
+    # at 5 degC the line sits at 75 - 70 * 25 / 30 = 16.7 %, so 15 % lies below it and 20 % above it.
+    assert mh.wet_bulb_temperature(-10.0, 20.0) is None
+    assert mh.wet_bulb_temperature(-20.0, 74.9) is None
+    assert mh.wet_bulb_temperature(5.0, 15.0) is None
+    assert mh.wet_bulb_temperature(5.0, 20.0) is not None
+    result = mh.wet_bulb_temperature(20.0, 50.0)  # the paper's worked example, "13.7 degC"
+    assert result is not None
+    assert approx(result, 13.699, tol=1e-3)
 
 
 # ---------------------------------------------------------------------------
@@ -116,8 +140,11 @@ def test_dew_point_out_of_range_humidity() -> None:
 
 
 def test_dew_point_boundary_values_accepted() -> None:
-    assert mh.dew_point(-40.0, 0.1) is not None
-    assert mh.dew_point(50.0, 100.0) is not None
+    # Ice pair 22.46/272.62 at -40 degC, 0.1 %: a = 22.46 * -40 / 232.62 = -3.86209, ln 0.001 = -6.90776,
+    # b = 22.46 * 272.62 / 232.62 = 26.32209, so 272.62 * (a + ln) / (b - ln) = -88.357 degC.
+    assert approx(present(mh.dew_point(-40.0, 0.1)), -88.357, tol=1e-3)
+    # RH 100 % makes the log term 0: the formula then returns the air temperature itself.
+    assert approx(present(mh.dew_point(50.0, 100.0)), 50.0)
 
 
 def test_dew_point_never_exceeds_air_temperature() -> None:
@@ -136,73 +163,76 @@ def test_dew_point_nan_and_inf_return_none() -> None:
 
 
 # ---------------------------------------------------------------------------
-# altitude_baro
+# pressure_at_height
 # ---------------------------------------------------------------------------
 
 
-def test_altitude_baro_none_inputs() -> None:
-    assert mh.altitude_baro(None, 0.0, 20.0) is None
-    assert mh.altitude_baro(1013.0, None, 20.0) is None
-    assert mh.altitude_baro(1013.0, 0.0, None) is None
+def test_pressure_at_height_none_inputs() -> None:
+    assert mh.pressure_at_height(None, 0.0, 20.0) is None
+    assert mh.pressure_at_height(1013.0, None, 20.0) is None
+    assert mh.pressure_at_height(1013.0, 0.0, None) is None
 
 
-def test_altitude_baro_zero_offset_is_identity() -> None:
-    result = mh.altitude_baro(1000.0, 0.0, 20.0)
+def test_pressure_at_height_zero_offset_is_identity() -> None:
+    result = mh.pressure_at_height(1000.0, 0.0, 20.0)
     assert result is not None
     assert approx(result, 1000.0, tol=1e-6)
 
 
-def test_altitude_baro_negative_dh_increases_pressure() -> None:
+def test_pressure_at_height_negative_dh_increases_pressure() -> None:
     # Negative dh = reducing a station reading up to sea level, so pressure should increase.
-    result = mh.altitude_baro(950.0, -500.0, 15.0)
+    result = mh.pressure_at_height(950.0, -500.0, 15.0)
     assert result is not None
     assert result > 950.0
 
 
-def test_altitude_baro_positive_dh_decreases_pressure() -> None:
-    result = mh.altitude_baro(1013.25, 1000.0, 15.0)
+def test_pressure_at_height_positive_dh_decreases_pressure() -> None:
+    result = mh.pressure_at_height(1013.25, 1000.0, 15.0)
     assert result is not None
     assert result < 1013.25
 
 
-def test_altitude_baro_out_of_range_pressure() -> None:
-    assert mh.altitude_baro(299.9, 0.0, 20.0) is None
-    assert mh.altitude_baro(1250.1, 0.0, 20.0) is None
+def test_pressure_at_height_out_of_range_pressure() -> None:
+    assert mh.pressure_at_height(299.9, 0.0, 20.0) is None
+    assert mh.pressure_at_height(1250.1, 0.0, 20.0) is None
 
 
-def test_altitude_baro_out_of_range_temperature() -> None:
-    assert mh.altitude_baro(1000.0, 0.0, -40.1) is None
-    assert mh.altitude_baro(1000.0, 0.0, 85.1) is None
+def test_pressure_at_height_out_of_range_temperature() -> None:
+    assert mh.pressure_at_height(1000.0, 0.0, -40.1) is None
+    assert mh.pressure_at_height(1000.0, 0.0, 85.1) is None
 
 
-def test_altitude_baro_out_of_range_dh() -> None:
-    assert mh.altitude_baro(1000.0, -9000.1, 20.0) is None
-    assert mh.altitude_baro(1000.0, 9000.1, 20.0) is None
+def test_pressure_at_height_out_of_range_dh() -> None:
+    assert mh.pressure_at_height(1000.0, -9000.1, 20.0) is None
+    assert mh.pressure_at_height(1000.0, 9000.1, 20.0) is None
 
 
-def test_altitude_baro_boundary_values_accepted() -> None:
-    assert mh.altitude_baro(300.0, -9000.0, -40.0) is not None
-    assert mh.altitude_baro(1250.0, 9000.0, 85.0) is not None
+def test_pressure_at_height_boundary_values_accepted() -> None:
+    # p0 * exp(-dh * gM / (R * T)) with gM / R = 0.0341626 K/m: at -40 degC and dh -9000 m the exponent is
+    # 9000 * 0.0341626 / 233.15 = 1.318737, so 300 * e**1.318737 = 1121.609 hPa; at 85 degC and dh 9000 m it is
+    # -9000 * 0.0341626 / 358.15 = -0.858477, so 1250 * e**-0.858477 = 529.759 hPa.
+    assert approx(present(mh.pressure_at_height(300.0, -9000.0, -40.0)), 1121.609, tol=1e-3)
+    assert approx(present(mh.pressure_at_height(1250.0, 9000.0, 85.0)), 529.759, tol=1e-3)
 
 
-def test_altitude_baro_no_exception_near_absolute_zero() -> None:
+def test_pressure_at_height_no_exception_near_absolute_zero() -> None:
     # tmean = -273.15 would zero the formula's denominator; the -40..85 degC range check must
     # reject it before the division ever runs.
-    assert mh.altitude_baro(1000.0, 100.0, -273.15) is None
+    assert mh.pressure_at_height(1000.0, 100.0, -273.15) is None
 
 
-def test_altitude_baro_nan_and_inf_return_none() -> None:
+def test_pressure_at_height_nan_and_inf_return_none() -> None:
     nan = float("nan")
     inf = float("inf")
-    assert mh.altitude_baro(nan, 0.0, 20.0) is None
-    assert mh.altitude_baro(1000.0, nan, 20.0) is None
-    assert mh.altitude_baro(1000.0, 0.0, nan) is None
-    assert mh.altitude_baro(-inf, 0.0, 20.0) is None
-    assert mh.altitude_baro(1000.0, inf, 20.0) is None
+    assert mh.pressure_at_height(nan, 0.0, 20.0) is None
+    assert mh.pressure_at_height(1000.0, nan, 20.0) is None
+    assert mh.pressure_at_height(1000.0, 0.0, nan) is None
+    assert mh.pressure_at_height(-inf, 0.0, 20.0) is None
+    assert mh.pressure_at_height(1000.0, inf, 20.0) is None
 
 
 # ---------------------------------------------------------------------------
-# abs_humidity / rel_humidity
+# abs_humidity
 # ---------------------------------------------------------------------------
 
 
@@ -211,10 +241,19 @@ def test_abs_humidity_none_inputs() -> None:
     assert mh.abs_humidity(20.0, None) is None
 
 
-def test_abs_humidity_valid() -> None:
-    result = mh.abs_humidity(20.0, 50.0)
-    assert result is not None
-    assert 8.0 < result < 9.5
+def test_abs_humidity_matches_hand_worked_values() -> None:
+    # Magnus form 13.23454 * RH / (T + 273.15) * 10**(a * T / (b + T)), Tetens/Murray water pair a 7.5, b 237.3.
+    # 20 degC, 50 %: 2.25730 * 10**(150 / 257.3) = 2.25730 * 3.82805 = 8.6410 g/m3.
+    assert approx(present(mh.abs_humidity(20.0, 50.0)), 8.6410, tol=1e-4)
+    # 40 degC, 100 %: 4.22626 * 10**(300 / 277.3) = 4.22626 * 12.07427 = 51.0290 g/m3.
+    assert approx(present(mh.abs_humidity(40.0, 100.0)), 51.0290, tol=1e-4)
+    # Below 0 degC the supercooled-water pair a 7.6, b 240.7. -30 degC, 100 %: 5.44295 * 10**(-228 / 210.7)
+    # = 5.44295 * 0.08277 = 0.4505 g/m3.
+    assert approx(present(mh.abs_humidity(-30.0, 100.0)), 0.4505, tol=1e-4)
+    # The branch switch at 0 degC: 0 degC, 100 % is 4.84515 * 10**0 = 4.8452; -0.1 degC, 100 % is
+    # 4.84693 * 10**(-0.76 / 240.6) = 4.84693 * 0.99275 = 4.8118 (the below-zero pair).
+    assert approx(present(mh.abs_humidity(0.0, 100.0)), 4.8452, tol=1e-4)
+    assert approx(present(mh.abs_humidity(-0.1, 100.0)), 4.8118, tol=1e-4)
 
 
 def test_abs_humidity_zero_humidity_is_zero() -> None:
@@ -234,8 +273,9 @@ def test_abs_humidity_out_of_range_humidity() -> None:
 
 
 def test_abs_humidity_boundary_values_accepted() -> None:
-    assert mh.abs_humidity(-30.0, 0.0) is not None
-    assert mh.abs_humidity(40.0, 100.0) is not None
+    # The domain's two corners: 0 % RH is 0 g/m3 at any temperature; 40 degC, 100 % is 51.0290 (above).
+    assert mh.abs_humidity(-30.0, 0.0) == 0.0
+    assert approx(present(mh.abs_humidity(40.0, 100.0)), 51.0290, tol=1e-4)
 
 
 def test_abs_humidity_nan_and_inf_return_none() -> None:
@@ -247,25 +287,32 @@ def test_abs_humidity_nan_and_inf_return_none() -> None:
     assert mh.abs_humidity(20.0, inf) is None
 
 
+# ---------------------------------------------------------------------------
+# rel_humidity
+# ---------------------------------------------------------------------------
+
+
 def test_rel_humidity_none_inputs() -> None:
     assert mh.rel_humidity(None, 5.0) is None
     assert mh.rel_humidity(20.0, None) is None
 
 
-def test_rel_humidity_round_trip() -> None:
-    ah = mh.abs_humidity(20.0, 50.0)
-    assert ah is not None
-    rh = mh.rel_humidity(20.0, ah)
-    assert rh is not None
-    assert approx(rh, 50.0, tol=0.01)
+def test_rel_humidity_round_trips_each_hand_worked_vector() -> None:
+    # The exact inverse of abs_humidity: each (degC, %RH) vector above comes back within the tolerance, a saturated
+    # one included (its inverse may land a rounding step above 100 %).
+    for temperature, humidity in ((20.0, 50.0), (40.0, 100.0), (-30.0, 100.0), (0.0, 100.0), (-0.1, 100.0)):
+        rh = mh.rel_humidity(temperature, mh.abs_humidity(temperature, humidity))
+        assert rh is not None
+        assert approx(rh, humidity, tol=0.01)
 
 
-def test_rel_humidity_clamped_high() -> None:
-    # An abs_hum far above what 100% RH would produce at this temperature must clamp to 100, not
-    # return an out-of-range percentage.
-    result = mh.rel_humidity(20.0, 20.0)
-    assert result is not None
-    assert approx(result, 100.0, tol=1e-6)
+def test_rel_humidity_refuses_a_value_above_saturation() -> None:
+    # No clamp: a result above 100 % (beyond the rounding margin) is outside the domain and returns None.
+    assert mh.rel_humidity(20.0, 20.0) is None  # 115.7 %
+    assert mh.rel_humidity(40.0, 100.0) is None  # 196 %
+    saturated = mh.abs_humidity(20.0, 100.0)
+    assert saturated is not None
+    assert mh.rel_humidity(20.0, saturated * 1.0001) is None  # 100.01 %
 
 
 def test_rel_humidity_zero_is_zero() -> None:
@@ -285,8 +332,9 @@ def test_rel_humidity_out_of_range_abs_hum() -> None:
 
 
 def test_rel_humidity_boundary_values_accepted() -> None:
-    assert mh.rel_humidity(-30.0, 0.0) is not None
-    assert mh.rel_humidity(40.0, 100.0) is not None
+    # The domain's two corners: 0 g/m3 is 0 % anywhere; 51.0290 g/m3 at 40 degC is saturation, 100 %.
+    assert mh.rel_humidity(-30.0, 0.0) == 0.0
+    assert approx(present(mh.rel_humidity(40.0, 51.0290)), 100.0, tol=1e-3)
 
 
 def test_rel_humidity_nan_and_inf_return_none() -> None:
@@ -326,8 +374,9 @@ def test_rgb_to_hsb_nan_and_inf_rejected() -> None:
 
 
 def test_rgb_to_hsb_boundary_values_accepted() -> None:
-    assert mh.rgb_to_hsb(0.0, 0.0, 0.0) is not None
-    assert mh.rgb_to_hsb(1.0, 1.0, 1.0) is not None
+    # Hexcone: no chroma gives hue and saturation 0, and the brightness is the largest channel.
+    assert mh.rgb_to_hsb(0.0, 0.0, 0.0) == (0.0, 0.0, 0.0)
+    assert mh.rgb_to_hsb(1.0, 1.0, 1.0) == (0.0, 0.0, 1.0)
 
 
 def test_rgb_to_hsb_grey_has_zero_hue_and_saturation() -> None:
@@ -416,7 +465,7 @@ def test_rgb_to_xyz_black_is_zero() -> None:
     assert approx(z_val, 0.0)
 
 
-def test_rgb_to_xyz_pure_red_matches_the_sRGB_matrix_column() -> None:
+def test_rgb_to_xyz_pure_red_matches_the_srgb_matrix_column() -> None:
     result = mh.rgb_to_xyz(1.0, 0.0, 0.0)
     assert result is not None
     x_val, y_val, z_val = result
@@ -491,8 +540,9 @@ def test_chromaticity_xy_d65_white_point() -> None:
 
 
 def test_chromaticity_xy_boundary_sum_accepted() -> None:
-    assert mh.chromaticity_xy(1e-12, 0.0, 0.0) is not None
-    assert mh.chromaticity_xy(1e9, 0.0, 0.0) is not None
+    # x = X / (X + Y + Z), y = Y / (X + Y + Z): the whole sum in X gives (1, 0) at both ends of the window.
+    assert mh.chromaticity_xy(1e-12, 0.0, 0.0) == (1.0, 0.0)
+    assert mh.chromaticity_xy(1e9, 0.0, 0.0) == (1.0, 0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -532,16 +582,33 @@ def test_cct_mccamy_d65_chromaticity_is_close_to_6500k() -> None:
 
 
 def test_cct_mccamy_out_of_span_result_is_rejected_not_clamped() -> None:
-    # A valid (in-domain) chromaticity whose formula result still lands outside the McCamy
-    # validity span (2000-12500K) must return None, never a clamped 2000.0/12500.0 that would
+    # A valid (in-domain) chromaticity whose formula result still lands outside the helper's
+    # output span (2000-12500 K) must return None, never a clamped 2000.0/12500.0 that would
     # look like a real measurement.
     assert mh.cct_mccamy(0.0, 0.5) is None
 
 
 def test_cct_mccamy_boundary_domain_values_accepted_or_rejected_on_their_own_merits() -> None:
-    # 0.0/1.0 are in-domain chromaticities; whether the *result* is in-span is a separate question
-    # already covered above - this only asserts the domain gate itself doesn't reject them outright.
-    assert mh.cct_mccamy(0.0, 0.0) is not None
+    # 0.0 is an in-domain chromaticity: n = (0 - 0.3320) / (0.1858 - 0) = -1.786868, and
+    # 449 n**3 + 3525 n**2 + 6823.3 n + 5520.33 = 2021.28 K, inside the 2000-12500 K span.
+    assert approx(present(mh.cct_mccamy(0.0, 0.0)), 2021.28, tol=0.01)
+
+
+def test_cct_mccamy_tracks_the_planckian_locus_within_its_stated_error() -> None:
+    # Oracle: colour-science 0.4.7 blackbody spectra against the CIE 1931 2-degree CMFs (agent, 2026-09-29) -
+    # not this port's own output.
+    for chroma_x, chroma_y, kelvin, bound_pct in (
+        (0.44754, 0.40743, 2856.0, 1.0),
+        (0.3451, 0.35161, 5000.0, 1.0),
+        (0.31353, 0.32363, 6500.0, 1.0),
+        (0.28693, 0.29558, 9000.0, 1.0),
+        (0.28063, 0.28829, 10000.0, 1.2),
+        (0.2701, 0.27547, 12500.0, 3.6),
+    ):
+        result = present(mh.cct_mccamy(chroma_x, chroma_y))
+        assert abs(result - kelvin) <= kelvin * bound_pct / 100.0
+    assert mh.cct_mccamy(0.52668, 0.4133) is None  # a 2000 K blackbody: the cubic gives 1981 K
+    assert approx(present(mh.cct_mccamy(0.26858, 0.27355)), 12463.0, tol=1.0)  # a 13000 K blackbody
 
 
 # ---------------------------------------------------------------------------
@@ -625,6 +692,58 @@ def test_ema_step_converges_toward_a_held_constant_sample() -> None:
         value = mh.ema_step(value, 100.0, 0.2)
     assert value is not None
     assert approx(value, 100.0, tol=1e-3)  # gap shrinks by (1-0.2) per step: 100*0.8**60 ~ 1.5e-4
+
+
+# ---------------------------------------------------------------------------
+# The residual catches, each reached through a stand-in math module
+# ---------------------------------------------------------------------------
+
+
+class _RaisingMath:
+    # Stands in for math_helpers' math: every function the five residual catches guard raises a fresh error_type.
+    def __init__(self, error_type: "type[Exception]") -> None:
+        self._error_type = error_type
+
+    def _fail(self) -> float:
+        raise self._error_type("stand-in domain error")
+
+    def atan(self, _x: float) -> float:
+        return self._fail()
+
+    def exp(self, _x: float) -> float:
+        return self._fail()
+
+    def log(self, _x: float) -> float:
+        return self._fail()
+
+    def pow(self, _x: float, _y: float) -> float:
+        return self._fail()
+
+    def sqrt(self, _x: float) -> float:
+        return self._fail()
+
+
+def _residual_results() -> "list[float | None]":
+    # In-domain arguments for each function with a residual catch, so every call reaches its try body.
+    return [
+        mh.abs_humidity(20.0, 50.0),
+        mh.dew_point(20.0, 50.0),
+        mh.pressure_at_height(1013.25, 100.0, 15.0),
+        mh.rel_humidity(20.0, 8.0),
+        mh.wet_bulb_temperature(20.0, 50.0),
+    ]
+
+
+def test_residual_math_errors_return_none() -> None:
+    assert None not in _residual_results()  # the real math computes all five
+    real = mh.math
+    try:
+        for error_type in (ValueError, OverflowError):  # OverflowError stands for the ArithmeticError half
+            mh.math = _RaisingMath(error_type)  # type: ignore[assignment]  # a stand-in for the module's math, restored below
+            results = _residual_results()
+            assert results == [None, None, None, None, None], (error_type, results)
+    finally:
+        mh.math = real
 
 
 if __name__ == "__main__":

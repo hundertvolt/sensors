@@ -1,0 +1,10 @@
+ANN401 Dynamically typed expressions (typing.Any) are disallowed in `_boot`
+  --> tests/test_digital_twin_wifi_modes.py:64:22
+   |
+64 | async def _boot() -> "Any":
+   |                      ^^^^^
+65 |     # The generated main()'s first two steps on the twin buses: build_system() with the watchdog the boot entry arms,
+66 |     # then the setup list. The wiring plan goes first: every twin bus construction reads it.
+   |
+
+Found 1 error.

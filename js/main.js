@@ -5,8 +5,8 @@
  */
 
 import { loadDefinitions } from "./definitions.js";
-import { initNav } from "./nav.js";
-import { renderSection } from "./render.js";
+import { showBanner } from "./render.js";
+import { buildDateOf, historyOf, startShell, visibilityOf } from "./shell.js";
 
 /** @typedef {import("./definitions.js").SiteDefinitions} SiteDefinitions */
 
@@ -16,6 +16,7 @@ import { renderSection } from "./render.js";
  *   hamburgerEl: HTMLElement, backdropEl: HTMLElement, errorBannerEl: HTMLElement,
  *   deviceNameEl: HTMLElement, inlinedDefinitionsEl?: HTMLElement | null,
  * }} elements
+ * @returns {Promise<() => void>} stop: ends everything the page started.
  */
 export async function startApp(elements) {
     const { appShellEl, mainEl, drawerEl, hamburgerEl, backdropEl, errorBannerEl, deviceNameEl, inlinedDefinitionsEl } = elements;
@@ -25,36 +26,18 @@ export async function startApp(elements) {
     try {
         defs = await loadDefinitions("definitions.json", inlinedDefinitionsEl);
     } catch (error) {
-        errorBannerEl.textContent = `Could not load definitions: ${String(error)}`;
-        errorBannerEl.classList.remove("hidden");
-        return;
+        showBanner(errorBannerEl, `Could not load definitions: ${String(error)}`);
+        return () => { /* nothing was started */ };
     }
 
     deviceNameEl.textContent = defs.device.displayName;
-
-    let stopCurrentSection = () => { /* no section rendered yet - replaced on the first select */ };
-    const setCurrentNav = initNav({
+    return startShell({
         defs,
-        appShellEl,
-        drawerEl,
-        hamburgerEl,
-        backdropEl,
-        onSelect: (sectionKey) => selectSection(sectionKey),
+        elements: { appShellEl, mainEl, drawerEl, hamburgerEl, backdropEl },
+        keyTarget: document,
+        visibility: visibilityOf(document),
+        history: historyOf(window),
+        reload: () => window.location.reload(),
+        pageBuildDate: buildDateOf(document),
     });
-
-    /** @param {string} sectionKey */
-    function selectSection(sectionKey) {
-        const section = defs.sections.find((/** @type {SiteDefinitions["sections"][number]} */ entry) => entry.key === sectionKey);
-        if (section === undefined) {
-            // Defensive only: every real sectionKey traces back to defs.sections itself (a nav
-            // click, or defs.landingSection, which validateDefinitions() already requires to
-            // match a real section key), so this can't currently fire.
-            return;
-        }
-        stopCurrentSection();
-        setCurrentNav(sectionKey);
-        stopCurrentSection = renderSection(defs, section, mainEl);
-    }
-
-    selectSection(defs.landingSection);
 }

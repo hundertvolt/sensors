@@ -1,0 +1,6 @@
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25g/tests_scripts/test_digital_twin_ci_suite_errcount.py:356: assert (0 == 1)
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_ci_suite_errcount.py::test_a_reset_that_did_not_answer_valid_fails_inside_the_budget[Failed]
+FAILED tests_scripts/test_digital_twin_ci_suite_errcount.py::test_a_reset_that_did_not_answer_valid_fails_inside_the_budget[Invalid]
+FAILED tests_scripts/test_digital_twin_ci_suite_errcount.py::test_a_reset_that_did_not_answer_valid_fails_inside_the_budget[None]
+3 failed, 74 passed in 0.56s

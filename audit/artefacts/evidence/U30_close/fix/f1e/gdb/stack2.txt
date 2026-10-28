@@ -1,0 +1,325 @@
+stack rsp+0 7ffd0e1c4618: int(47444117804524)
+stack rsp+8 7ffd0e1c4620: heap[?1dbad261c783423 blk23436]
+stack rsp+16 7ffd0e1c4628: 564c00000000
+stack rsp+24 7ffd0e1c4630: 7ffd0e1c4670
+stack rsp+32 7ffd0e1c4638: 7ffd0e1c4780
+stack rsp+40 7ffd0e1c4640: 10
+stack rsp+48 7ffd0e1c4648: 40
+stack rsp+56 7ffd0e1c4650: NULL
+stack rsp+64 7ffd0e1c4658: NULL
+stack rsp+72 7ffd0e1c4660: 7ffd0e1c4770
+stack rsp+80 7ffd0e1c4668: q''
+stack rsp+88 7ffd0e1c4670: 7ffd0e1c48d0
+stack rsp+96 7ffd0e1c4678: NULL
+stack rsp+104 7ffd0e1c4680: q'<q11861029450855?>'
+stack rsp+112 7ffd0e1c4688: bin+c70e0
+stack rsp+120 7ffd0e1c4690: 7ffd0e1c4618
+stack rsp+128 7ffd0e1c4698: 7ffd0e1c4788
+stack rsp+136 7ffd0e1c46a0: heap[?ce820 blk421300]
+stack rsp+144 7ffd0e1c46a8: 7ffd0e1c4710
+stack rsp+152 7ffd0e1c46b0: 7ffd0e1c4710
+stack rsp+160 7ffd0e1c46b8: q''
+stack rsp+168 7ffd0e1c46c0: heap[closure blk421299+8]
+stack rsp+176 7ffd0e1c46c8: eb89bf784f121800
+stack rsp+184 7ffd0e1c46d0: imm7f08806d67fe
+stack rsp+192 7ffd0e1c46d8: bin+d6298
+stack rsp+200 7ffd0e1c46e0: 7ffd0e1c47f0
+stack rsp+208 7ffd0e1c46e8: heap[?ce820 blk421300]
+stack rsp+216 7ffd0e1c46f0: 7ffd0e1c4710
+stack rsp+224 7ffd0e1c46f8: NULL
+stack rsp+232 7ffd0e1c4700: q''
+stack rsp+240 7ffd0e1c4708: int(47444117772145)
+stack rsp+248 7ffd0e1c4710: heap[?ce820 blk421300]
+stack rsp+256 7ffd0e1c4718: heap[?4b86ce3a54f74a4a blk23238+48]
+stack rsp+264 7ffd0e1c4720: 7ffd0e1c4750
+stack rsp+272 7ffd0e1c4728: q'<q17459042058241?>'
+stack rsp+280 7ffd0e1c4730: bin+d6298
+stack rsp+288 7ffd0e1c4738: bin+d0c90
+stack rsp+296 7ffd0e1c4740: NULL
+stack rsp+304 7ffd0e1c4748: 50
+stack rsp+312 7ffd0e1c4750: int(0)
+stack rsp+320 7ffd0e1c4758: None
+stack rsp+328 7ffd0e1c4760: heap[coro blk87920]
+stack rsp+336 7ffd0e1c4768: heap[float blk505]
+stack rsp+344 7ffd0e1c4770: int(79)
+stack rsp+352 7ffd0e1c4778: heap[range blk2]
+stack rsp+360 7ffd0e1c4780: heap[?cdbc0 blk421297]
+stack rsp+368 7ffd0e1c4788: int(47444117772009)
+stack rsp+376 7ffd0e1c4790: 7ffd0e1c4718
+stack rsp+384 7ffd0e1c4798: 7ffd0e1c4810
+stack rsp+392 7ffd0e1c47a0: NULL
+stack rsp+400 7ffd0e1c47a8: q''
+stack rsp+408 7ffd0e1c47b0: NULL
+stack rsp+416 7ffd0e1c47b8: eb89bf784f121800
+stack rsp+424 7ffd0e1c47c0: heap[?0 blk12]
+stack rsp+432 7ffd0e1c47c8: 8
+stack rsp+440 7ffd0e1c47d0: imm7f08806d0cae
+stack rsp+448 7ffd0e1c47d8: int(0)
+stack rsp+456 7ffd0e1c47e0: q''
+stack rsp+464 7ffd0e1c47e8: heap[heapobj@7f0880725d40 blk421292+48]
+stack rsp+472 7ffd0e1c47f0: heap[closure blk421301]
+stack rsp+480 7ffd0e1c47f8: int(47444117766776)
+stack rsp+488 7ffd0e1c4800: int(180)
+stack rsp+496 7ffd0e1c4808: 20
+stack rsp+504 7ffd0e1c4810: heap[?cdbc0 blk421297]
+stack rsp+512 7ffd0e1c4818: heap[range blk2]
+stack rsp+520 7ffd0e1c4820: heap[heapobj@7f0880725d40 blk421292+56]
+stack rsp+528 7ffd0e1c4828: int(47444117763345)
+stack rsp+536 7ffd0e1c4830: int(69837245548117)
+stack rsp+544 7ffd0e1c4838: eb89bf784f121800
+stack rsp+552 7ffd0e1c4840: 50
+stack rsp+560 7ffd0e1c4848: heap[?cdbc0 blk421297]
+stack rsp+568 7ffd0e1c4850: bin+c70e0
+stack rsp+576 7ffd0e1c4858: imm7f08806d0cae
+stack rsp+584 7ffd0e1c4860: heap[heapobj@7f0880725d40 blk421292+40]
+stack rsp+592 7ffd0e1c4868: heap[heapobj@7f0880725d40 blk421292]
+stack rsp+600 7ffd0e1c4870: int(69837245548118)
+stack rsp+608 7ffd0e1c4878: int(47444117804619)
+stack rsp+616 7ffd0e1c4880: heap[?1dbad261c783423 blk23436]
+stack rsp+624 7ffd0e1c4888: 564c00000000
+stack rsp+632 7ffd0e1c4890: 7ffd0e1c48d0
+stack rsp+640 7ffd0e1c4898: heap[heapobj@7f0880725d40 blk421292+152]
+stack rsp+648 7ffd0e1c48a0: int(69837245548100)
+stack rsp+656 7ffd0e1c48a8: int(47444117807937)
+stack rsp+664 7ffd0e1c48b0: NULL
+stack rsp+672 7ffd0e1c48b8: NULL
+stack rsp+680 7ffd0e1c48c0: heap[heapobj@7f0880725d40 blk421292+136]
+stack rsp+688 7ffd0e1c48c8: int(7)
+stack rsp+696 7ffd0e1c48d0: 7ffd0e1c4a30
+stack rsp+704 7ffd0e1c48d8: NULL
+stack rsp+712 7ffd0e1c48e0: q'<q11861029450855?>'
+stack rsp+720 7ffd0e1c48e8: bin+c70e0
+stack rsp+728 7ffd0e1c48f0: 7ffd0e1c4878
+stack rsp+736 7ffd0e1c48f8: heap[?cdbc0 blk421297]
+stack rsp+744 7ffd0e1c4900: heap[?ce820 blk31662]
+stack rsp+752 7ffd0e1c4908: heap[heapobj@7f0880725d40 blk421292]
+stack rsp+760 7ffd0e1c4910: heap[heapobj@7f0880725d40 blk421292]
+stack rsp+768 7ffd0e1c4918: int(7)
+stack rsp+776 7ffd0e1c4920: q'test_f8_task_starters_exposes_exactly_one_server_task_for_the_supervisor'
+stack rsp+784 7ffd0e1c4928: eb89bf784f121800
+stack rsp+792 7ffd0e1c4930: 7ffd0e1c49d0
+stack rsp+800 7ffd0e1c4938: bin+d6298
+stack rsp+808 7ffd0e1c4940: 7ffd0e1c49d0
+stack rsp+816 7ffd0e1c4948: heap[?ce820 blk31662]
+stack rsp+824 7ffd0e1c4950: heap[heapobj@7f0880725d40 blk421292]
+stack rsp+832 7ffd0e1c4958: 78
+stack rsp+840 7ffd0e1c4960: int(7)
+stack rsp+848 7ffd0e1c4968: int(47444117772145)
+stack rsp+856 7ffd0e1c4970: q''
+stack rsp+864 7ffd0e1c4978: heap[heapobj@7f0880632da0 blk420954+48]
+stack rsp+872 7ffd0e1c4980: NULL
+stack rsp+880 7ffd0e1c4988: NULL
+stack rsp+888 7ffd0e1c4990: NULL
+stack rsp+896 7ffd0e1c4998: eb89bf784f121800
+stack rsp+904 7ffd0e1c49a0: q''
+stack rsp+912 7ffd0e1c49a8: heap[heapobj@7f0880632da0 blk420954+144]
+stack rsp+920 7ffd0e1c49b0: int(69837245234574)
+stack rsp+928 7ffd0e1c49b8: heap[heapobj@7f0880632da0 blk420954+40]
+stack rsp+936 7ffd0e1c49c0: heap[heapobj@7f0880632da0 blk420954]
+stack rsp+944 7ffd0e1c49c8: heap[?247ff1fa2f9b32e2 blk1180+28]
+stack rsp+952 7ffd0e1c49d0: bin+c70e0
+stack rsp+960 7ffd0e1c49d8: int(47444117804619)
+stack rsp+968 7ffd0e1c49e0: heap[?38eb1cb1c783957 blk1284]
+stack rsp+976 7ffd0e1c49e8: 564c00000000
+stack rsp+984 7ffd0e1c49f0: 7ffd0e1c4a30
+stack rsp+992 7ffd0e1c49f8: heap[heapobj@7f0880632da0 blk420954+136]
+stack rsp+1000 7ffd0e1c4a00: NULL
+stack rsp+1008 7ffd0e1c4a08: bin+d6060
+stack rsp+1016 7ffd0e1c4a10: NULL
+stack rsp+1024 7ffd0e1c4a18: NULL
+stack rsp+1032 7ffd0e1c4a20: heap[heapobj@7f0880632da0 blk420954+144]
+stack rsp+1040 7ffd0e1c4a28: int(6)
+stack rsp+1048 7ffd0e1c4a30: 7ffd0e1c4b90
+stack rsp+1056 7ffd0e1c4a38: NULL
+stack rsp+1064 7ffd0e1c4a40: q'<q11861029450855?>'
+stack rsp+1072 7ffd0e1c4a48: bin+c70e0
+stack rsp+1080 7ffd0e1c4a50: 7ffd0e1c49d8
+stack rsp+1088 7ffd0e1c4a58: heap[heapobj@7f0880632da0 blk420954+144]
+stack rsp+1096 7ffd0e1c4a60: heap[?ce820 blk561]
+stack rsp+1104 7ffd0e1c4a68: heap[heapobj@7f0880632da0 blk420954]
+stack rsp+1112 7ffd0e1c4a70: heap[heapobj@7f0880632da0 blk420954]
+stack rsp+1120 7ffd0e1c4a78: int(6)
+stack rsp+1128 7ffd0e1c4a80: int(57)
+stack rsp+1136 7ffd0e1c4a88: eb89bf784f121800
+stack rsp+1144 7ffd0e1c4a90: 7ffd0e1c4b30
+stack rsp+1152 7ffd0e1c4a98: heap[dict blk1]
+stack rsp+1160 7ffd0e1c4aa0: 7ffd0e1c4b30
+stack rsp+1168 7ffd0e1c4aa8: heap[?ce820 blk561]
+stack rsp+1176 7ffd0e1c4ab0: heap[heapobj@7f0880632da0 blk420954]
+stack rsp+1184 7ffd0e1c4ab8: 98
+stack rsp+1192 7ffd0e1c4ac0: int(6)
+stack rsp+1200 7ffd0e1c4ac8: int(47444117772145)
+stack rsp+1208 7ffd0e1c4ad0: heap[heapobj@7f08806331a0 blk32263+88]
+stack rsp+1216 7ffd0e1c4ad8: heap[heapobj@7f08806331a0 blk32263+80]
+stack rsp+1224 7ffd0e1c4ae0: NULL
+stack rsp+1232 7ffd0e1c4ae8: q''
+stack rsp+1240 7ffd0e1c4af0: q'_call'
+stack rsp+1248 7ffd0e1c4af8: eb89bf784f121800
+stack rsp+1256 7ffd0e1c4b00: heap[heapobj@7f08806331a0 blk32263+72]
+stack rsp+1264 7ffd0e1c4b08: heap[heapobj@7f08806331a0 blk32263+272]
+stack rsp+1272 7ffd0e1c4b10: q'<q17459311309028?>'
+stack rsp+1280 7ffd0e1c4b18: heap[heapobj@7f08806331a0 blk32263+72]
+stack rsp+1288 7ffd0e1c4b20: heap[heapobj@7f08806331a0 blk32263]
+stack rsp+1296 7ffd0e1c4b28: int(69837245236112)
+stack rsp+1304 7ffd0e1c4b30: bin+c70e0
+stack rsp+1312 7ffd0e1c4b38: int(47444117804619)
+stack rsp+1320 7ffd0e1c4b40: heap[?38eb1cb1c783957 blk1284]
+stack rsp+1328 7ffd0e1c4b48: 564c00000000
+stack rsp+1336 7ffd0e1c4b50: 7ffd0e1c4b90
+stack rsp+1344 7ffd0e1c4b58: heap[heapobj@7f08806331a0 blk32263+264]
+stack rsp+1352 7ffd0e1c4b60: int(79)
+stack rsp+1360 7ffd0e1c4b68: int(4)
+stack rsp+1368 7ffd0e1c4b70: bin+d1790
+stack rsp+1376 7ffd0e1c4b78: NULL
+stack rsp+1384 7ffd0e1c4b80: heap[heapobj@7f08806331a0 blk32263+296]
+stack rsp+1392 7ffd0e1c4b88: int(14)
+stack rsp+1400 7ffd0e1c4b90: 7ffd0e1c4cf0
+stack rsp+1408 7ffd0e1c4b98: NULL
+stack rsp+1416 7ffd0e1c4ba0: q'<q11861029450855?>'
+stack rsp+1424 7ffd0e1c4ba8: bin+c70e0
+stack rsp+1432 7ffd0e1c4bb0: 7ffd0e1c4b38
+stack rsp+1440 7ffd0e1c4bb8: heap[heapobj@7f08806331a0 blk32263+272]
+stack rsp+1448 7ffd0e1c4bc0: heap[?ce820 blk593]
+stack rsp+1456 7ffd0e1c4bc8: heap[heapobj@7f08806331a0 blk32263]
+stack rsp+1464 7ffd0e1c4bd0: heap[heapobj@7f08806331a0 blk32263]
+stack rsp+1472 7ffd0e1c4bd8: int(14)
+stack rsp+1480 7ffd0e1c4be0: int(69837245559298)
+stack rsp+1488 7ffd0e1c4be8: eb89bf784f121800
+stack rsp+1496 7ffd0e1c4bf0: 7ffd0e1c4c90
+stack rsp+1504 7ffd0e1c4bf8: heap[dict blk1]
+stack rsp+1512 7ffd0e1c4c00: 7ffd0e1c4c90
+stack rsp+1520 7ffd0e1c4c08: heap[?ce820 blk593]
+stack rsp+1528 7ffd0e1c4c10: heap[heapobj@7f08806331a0 blk32263]
+stack rsp+1536 7ffd0e1c4c18: 130
+stack rsp+1544 7ffd0e1c4c20: int(14)
+stack rsp+1552 7ffd0e1c4c28: int(47444117772145)
+stack rsp+1560 7ffd0e1c4c30: heap[heapobj@7f088062eb80 blk40+40]
+stack rsp+1568 7ffd0e1c4c38: heap[heapobj@7f088062eb80 blk40+56]
+stack rsp+1576 7ffd0e1c4c40: NULL
+stack rsp+1584 7ffd0e1c4c48: int(0)
+stack rsp+1592 7ffd0e1c4c50: q'globals'
+stack rsp+1600 7ffd0e1c4c58: eb89bf784f121800
+stack rsp+1608 7ffd0e1c4c60: heap[heapobj@7f088062eb80 blk40+56]
+stack rsp+1616 7ffd0e1c4c68: heap[heapobj@7f088062eb80 blk40+136]
+stack rsp+1624 7ffd0e1c4c70: int(69837245559302)
+stack rsp+1632 7ffd0e1c4c78: heap[heapobj@7f088062eb80 blk40+40]
+stack rsp+1640 7ffd0e1c4c80: heap[heapobj@7f088062eb80 blk40]
+stack rsp+1648 7ffd0e1c4c88: heap[?2625d0131d87b25c blk21363+3628]
+stack rsp+1656 7ffd0e1c4c90: bin+c70e0
+stack rsp+1664 7ffd0e1c4c98: int(47444117804524)
+stack rsp+1672 7ffd0e1c4ca0: heap[?1dbad261c783423 blk23436]
+stack rsp+1680 7ffd0e1c4ca8: 7f0800000000
+stack rsp+1688 7ffd0e1c4cb0: 7ffd0e1c4cf0
+stack rsp+1696 7ffd0e1c4cb8: heap[heapobj@7f088062eb80 blk40+128]
+stack rsp+1704 7ffd0e1c4cc0: heap[heapobj@7f088062eb80 blk40+48]
+stack rsp+1712 7ffd0e1c4cc8: 50
+stack rsp+1720 7ffd0e1c4cd0: heap[dict blk10911]
+stack rsp+1728 7ffd0e1c4cd8: NULL
+stack rsp+1736 7ffd0e1c4ce0: heap[heapobj@7f088062eb80 blk40+112]
+stack rsp+1744 7ffd0e1c4ce8: c
+stack rsp+1752 7ffd0e1c4cf0: 7ffd0e1c4e18
+stack rsp+1760 7ffd0e1c4cf8: heap[?ce3f0 blk10904]
+stack rsp+1768 7ffd0e1c4d00: q'<q11861029450855?>'
+stack rsp+1776 7ffd0e1c4d08: bin+c70e0
+stack rsp+1784 7ffd0e1c4d10: 7ffd0e1c4c98
+stack rsp+1792 7ffd0e1c4d18: heap[heapobj@7f088062eb80 blk40+136]
+stack rsp+1800 7ffd0e1c4d20: heap[?ce3f0 blk10904]
+stack rsp+1808 7ffd0e1c4d28: int(2)
+stack rsp+1816 7ffd0e1c4d30: heap[heapobj@7f088062eb80 blk40]
+stack rsp+1824 7ffd0e1c4d38: int(0)
+stack rsp+1832 7ffd0e1c4d40: 20
+stack rsp+1840 7ffd0e1c4d48: eb89bf784f121800
+stack rsp+1848 7ffd0e1c4d50: 7ffd0e1c4df0
+stack rsp+1856 7ffd0e1c4d58: bin+d6298
+stack rsp+1864 7ffd0e1c4d60: 7ffd0e1c4df0
+stack rsp+1872 7ffd0e1c4d68: heap[?ce820 blk32]
+stack rsp+1880 7ffd0e1c4d70: heap[heapobj@7f088062eb80 blk40]
+stack rsp+1888 7ffd0e1c4d78: 78
+stack rsp+1896 7ffd0e1c4d80: c
+stack rsp+1904 7ffd0e1c4d88: int(47444117772145)
+stack rsp+1912 7ffd0e1c4d90: NULL
+stack rsp+1920 7ffd0e1c4d98: NULL
+stack rsp+1928 7ffd0e1c4da0: NULL
+stack rsp+1936 7ffd0e1c4da8: NULL
+stack rsp+1944 7ffd0e1c4db0: int(529)
+stack rsp+1952 7ffd0e1c4db8: eb89bf784f121800
+stack rsp+1960 7ffd0e1c4dc0: 7ffd0e1c50e0
+stack rsp+1968 7ffd0e1c4dc8: heap[?ce820 blk32]
+stack rsp+1976 7ffd0e1c4dd0: int(0)
+stack rsp+1984 7ffd0e1c4dd8: int(529)
+stack rsp+1992 7ffd0e1c4de0: NULL
+stack rsp+2000 7ffd0e1c4de8: 7ffd0e1c50e0
+stack rsp+2008 7ffd0e1c4df0: 20
+stack rsp+2016 7ffd0e1c4df8: int(47444117938893)
+stack rsp+2024 7ffd0e1c4e00: 7ffd0e1c50e0
+stack rsp+2032 7ffd0e1c4e08: heap[free blkNone]
+stack rsp+2040 7ffd0e1c4e10: NULL
+stack rsp+2048 7ffd0e1c4e18: NULL
+stack rsp+2056 7ffd0e1c4e20: NULL
+stack rsp+2064 7ffd0e1c4e28: int(47444117938752)
+stack rsp+2072 7ffd0e1c4e30: 20
+stack rsp+2080 7ffd0e1c4e38: 7ffd0e1c4df8
+stack rsp+2088 7ffd0e1c4e40: int(70362420098905)
+stack rsp+2096 7ffd0e1c4e48: int(0)
+stack rsp+2104 7ffd0e1c4e50: 4
+stack rsp+2112 7ffd0e1c4e58: NULL
+stack rsp+2120 7ffd0e1c4e60: 7ffd0e1c50e0
+stack rsp+2128 7ffd0e1c4e68: eb89bf784f121800
+stack rsp+2136 7ffd0e1c4e70: int(0)
+stack rsp+2144 7ffd0e1c4e78: 564d02b0b320
+stack rsp+2152 7ffd0e1c4e80: int(1)
+stack rsp+2160 7ffd0e1c4e88: 7ffd0e1c50c8
+stack rsp+2168 7ffd0e1c4e90: 4
+stack rsp+2176 7ffd0e1c4e98: q'<q11861029483282?>'
+stack rsp+2184 7ffd0e1c4ea0: bin+d8a20
+stack rsp+2192 7ffd0e1c4ea8: heap[list blk7]
+stack rsp+2200 7ffd0e1c4eb0: q'/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/f1e/R/tests'
+stack rsp+2208 7ffd0e1c4eb8: 7ffd0e1c4f18
+stack rsp+2216 7ffd0e1c4ec0: 4
+stack rsp+2224 7ffd0e1c4ec8: q'<q17590605024726?>'
+stack rsp+2232 7ffd0e1c4ed0: 7ffd0e1c5040
+stack rsp+2240 7ffd0e1c4ed8: imm564ce3979fc6
+stack rsp+2248 7ffd0e1c4ee0: int(47444117933822)
+stack rsp+2256 7ffd0e1c4ee8: NULL
+stack rsp+2264 7ffd0e1c4ef0: c
+stack rsp+2272 7ffd0e1c4ef8: 8300000
+stack rsp+2280 7ffd0e1c4f00: 800
+stack rsp+2288 7ffd0e1c4f08: 8300000
+stack rsp+2296 7ffd0e1c4f10: c000
+stack rsp+2304 7ffd0e1c4f18: heap[?d4fd0 blk3]
+stack rsp+2312 7ffd0e1c4f20: q'/'
+stack rsp+2320 7ffd0e1c4f28: 200000
+stack rsp+2328 7ffd0e1c4f30: c000
+stack rsp+2336 7ffd0e1c4f38: 7ffd0e1c4f68
+stack rsp+2344 7ffd0e1c4f40: immcf00000006
+stack rsp+2352 7ffd0e1c4f48: NULL
+stack rsp+2360 7ffd0e1c4f50: NULL
+stack rsp+2368 7ffd0e1c4f58: NULL
+stack rsp+2376 7ffd0e1c4f60: NULL
+stack rsp+2384 7ffd0e1c4f68: eb89bf784f121800
+stack rsp+2392 7ffd0e1c4f70: NULL
+stack rsp+2400 7ffd0e1c4f78: 7ffd0e1c50c8
+stack rsp+2408 7ffd0e1c4f80: 7ffd0e1c5040
+stack rsp+2416 7ffd0e1c4f88: 4
+stack rsp+2424 7ffd0e1c4f90: NULL
+stack rsp+2432 7ffd0e1c4f98: bin+c4938
+stack rsp+2440 7ffd0e1c4fa0: 7f08819cd000
+stack rsp+2448 7ffd0e1c4fa8: q'<q17459313398841?>'
+stack rsp+2456 7ffd0e1c4fb0: 7ffd0e1c4ff0
+stack rsp+2464 7ffd0e1c4fb8: 7ffd0e1c50c8
+stack rsp+2472 7ffd0e1c4fc0: 4e38ed040
+stack rsp+2480 7ffd0e1c4fc8: bin+230b0
+stack rsp+2488 7ffd0e1c4fd0: 7ffd0e1c50c8
+stack rsp+2496 7ffd0e1c4fd8: q'<q2187474122906195305?>'
+stack rsp+2504 7ffd0e1c4fe0: 4
+stack rsp+2512 7ffd0e1c4fe8: NULL
+stack rsp+2520 7ffd0e1c4ff0: bin+c4938
+stack rsp+2528 7ffd0e1c4ff8: 7f08819cd000
+stack rsp+2536 7ffd0e1c5000: q'<q2187474122933720425?>'
+stack rsp+2544 7ffd0e1c5008: q'<q2190469054003582313?>'
+stack rsp+2552 7ffd0e1c5010: 7ffd00000000
+stack rsp+2560 7ffd0e1c5018: NULL
+stack rsp+2568 7ffd0e1c5020: NULL
+stack rsp+2576 7ffd0e1c5028: 4
+stack rsp+2584 7ffd0e1c5030: 7ffd0e1c50c0
+stack rsp+2592 7ffd0e1c5038: eb89bf784f121800

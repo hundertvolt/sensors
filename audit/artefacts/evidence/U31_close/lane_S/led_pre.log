@@ -1,0 +1,99 @@
+== ruff
+All checks passed!
+ruff rc=0
+== mypy main
+tests/test_notification_scd30_integration.py: note: In function "_make_hum_stack":
+tests/test_notification_scd30_integration.py:62:5: error: "NeopixelDriver" has
+no attribute "neopixel_dt"  [attr-defined]
+        pixel.neopixel_dt = 0.01
+        ^~~~~~~~~~~~~~~~~
+tests/test_notification_scd30_integration.py: note: In function "_make_stack":
+tests/test_notification_scd30_integration.py:86:5: error: "NeopixelDriver" has
+no attribute "neopixel_dt"  [attr-defined]
+        pixel.neopixel_dt = 0.01
+        ^~~~~~~~~~~~~~~~~
+tests/test_notification_neopixel_integration.py: note: In function "_make_pair":
+tests/test_notification_neopixel_integration.py:79:5: error: "NeopixelDriver"
+has no attribute "neopixel_dt"  [attr-defined]
+        pixel.neopixel_dt = _FRAME_S
+        ^~~~~~~~~~~~~~~~~
+tests/test_ticks_rollover.py: note: In function "_neopixel_wait_outcome":
+tests/test_ticks_rollover.py:210:5: error: "NeopixelDriver" has no attribute
+"neopixel_dt"  [attr-defined]
+        driver.neopixel_dt = 0.01
+        ^~~~~~~~~~~~~~~~~~
+tests/test_notification_sgp40_integration.py: note: In function "_make_stack":
+tests/test_notification_sgp40_integration.py:102:5: error: "NeopixelDriver" has
+no attribute "neopixel_dt"  [attr-defined]
+        pixel.neopixel_dt = 0.01
+        ^~~~~~~~~~~~~~~~~
+tests/test_notification_scd30_sgp40_integration.py: note: In function "_make_dual_stack":
+tests/test_notification_scd30_sgp40_integration.py:70:5: error:
+"NeopixelDriver" has no attribute "neopixel_dt"  [attr-defined]
+        pixel.neopixel_dt = 0.01
+        ^~~~~~~~~~~~~~~~~
+tests/test_neopixel_wifi_integration.py: note: In function "test_real_neopixel_driver_on_off_toggle_through_wifi_service_ext_led":
+tests/test_neopixel_wifi_integration.py:59:5: error: "NeopixelDriver" has no
+attribute "neopixel_dt"  [attr-defined]
+        pixel.neopixel_dt = 0.01
+        ^~~~~~~~~~~~~~~~~
+Found 7 errors in 6 files (checked 260 source files)
+mypy-main rc=1
+== mypy src tests dev-scripts
+tests/test_notification_scd30_integration.py: note: In function "_make_hum_stack":
+tests/test_notification_scd30_integration.py:62:5: error: "NeopixelDriver" has
+no attribute "neopixel_dt"  [attr-defined]
+        pixel.neopixel_dt = 0.01
+        ^~~~~~~~~~~~~~~~~
+tests/test_notification_scd30_integration.py: note: In function "_make_stack":
+tests/test_notification_scd30_integration.py:86:5: error: "NeopixelDriver" has
+no attribute "neopixel_dt"  [attr-defined]
+        pixel.neopixel_dt = 0.01
+        ^~~~~~~~~~~~~~~~~
+tests/test_notification_neopixel_integration.py: note: In function "_make_pair":
+tests/test_notification_neopixel_integration.py:79:5: error: "NeopixelDriver"
+has no attribute "neopixel_dt"  [attr-defined]
+        pixel.neopixel_dt = _FRAME_S
+        ^~~~~~~~~~~~~~~~~
+tests/test_ticks_rollover.py: note: In function "_neopixel_wait_outcome":
+tests/test_ticks_rollover.py:210:5: error: "NeopixelDriver" has no attribute
+"neopixel_dt"  [attr-defined]
+        driver.neopixel_dt = 0.01
+        ^~~~~~~~~~~~~~~~~~
+tests/test_notification_sgp40_integration.py: note: In function "_make_stack":
+tests/test_notification_sgp40_integration.py:102:5: error: "NeopixelDriver" has
+no attribute "neopixel_dt"  [attr-defined]
+        pixel.neopixel_dt = 0.01
+        ^~~~~~~~~~~~~~~~~
+tests/test_notification_scd30_sgp40_integration.py: note: In function "_make_dual_stack":
+tests/test_notification_scd30_sgp40_integration.py:70:5: error:
+"NeopixelDriver" has no attribute "neopixel_dt"  [attr-defined]
+        pixel.neopixel_dt = 0.01
+        ^~~~~~~~~~~~~~~~~
+tests/test_neopixel_wifi_integration.py: note: In function "test_real_neopixel_driver_on_off_toggle_through_wifi_service_ext_led":
+tests/test_neopixel_wifi_integration.py:59:5: error: "NeopixelDriver" has no
+attribute "neopixel_dt"  [attr-defined]
+        pixel.neopixel_dt = 0.01
+        ^~~~~~~~~~~~~~~~~
+Found 7 errors in 6 files (checked 226 source files)
+mypy-sts rc=1
+== checks
+........................................................................ [  9%]
+........................................................................ [ 18%]
+........................................................................ [ 27%]
+........................................................................ [ 36%]
+........................................................................ [ 45%]
+........................................................................ [ 54%]
+........................................................................ [ 64%]
+........................................................................ [ 73%]
+........................................................................ [ 82%]
+........................................................................ [ 91%]
+...................................................................      [100%]
+=============================== warnings summary ===============================
+tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31s/tests_scripts/test_citations.py:236: UserWarning: datasheets/ submodule not initialised - paths under it are not checked
+    datasheets=_datasheets_checked(),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+787 passed, 1 warning in 63.96s (0:01:03)
+checks rc=0

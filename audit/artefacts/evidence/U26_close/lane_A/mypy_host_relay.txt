@@ -1,0 +1,410 @@
+tests_hardware/bench/test_wifi_networking.py: note: In function "test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing":
+tests_hardware/bench/test_wifi_networking.py:101:5: error: Missing positional
+argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_uart_link_under_api_load.py: note: In function "test_the_link_stays_healthy_while_the_api_is_hammered":
+tests_hardware/bench/test_uart_link_under_api_load.py:82:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_uart_link_under_api_load.py:123:17: error: Need type
+annotation for "entry"  [var-annotated]
+            entry = counts.get(name, {})
+                    ^~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_uart_link_under_api_load.py: note: In function "test_an_api_overload_does_not_corrupt_the_link_or_the_reverse":
+tests_hardware/bench/test_uart_link_under_api_load.py:181:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_uart_link_under_api_load.py:212:17: error: Need type
+annotation for "entry"  [var-annotated]
+            entry = counts.get(name, {})
+                    ^~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py: note: In function "test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback":
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py:45:5: error:
+Missing positional argument "reason" in call to "reset_all_error_logs" 
+[call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py:56:69: error:
+Dict entry 0 has incompatible type "str": "dict[str, int]"; expected "str":
+"int | float | str | list[JSONValue] | dict[str, JSONValue] | None"  [dict-item]
+    ...ttp_client.fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": _BMP3XX_TES...
+                                                        ^~~~~~~~~~~~~~~~~~~~~...
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py: note: In function "test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback":
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py:85:5: error:
+Missing positional argument "reason" in call to "reset_all_error_logs" 
+[call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py:96:69: error:
+Dict entry 0 has incompatible type "str": "dict[str, int]"; expected "str":
+"int | float | str | list[JSONValue] | dict[str, JSONValue] | None"  [dict-item]
+    ...ttp_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": _ISL29125...
+                                                        ^~~~~~~~~~~~~~~~~~~~~...
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py: note: In function "test_notification_pause_time_push_counts_down_over_real_rest":
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py:127:5: error:
+Missing positional argument "reason" in call to "reset_all_error_logs" 
+[call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py: note: In function "test_sgp40_reset_voc_command_push_over_real_rest":
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py:153:5: error:
+Missing positional argument "reason" in call to "reset_all_error_logs" 
+[call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py: note: In function "test_isl29125_calibrate_command_push_over_real_rest":
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py:172:5: error:
+Missing positional argument "reason" in call to "reset_all_error_logs" 
+[call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_real_wifi_outage_and_recovery_while_in_normal_sta_mode":
+tests_hardware/bench/test_network_resilience.py:123:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_real_wifi_flaps_repeatedly_without_wedging_the_system":
+tests_hardware/bench/test_network_resilience.py:165:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "_assert_wifi_log_has_only_benign_outage_warnings":
+tests_hardware/bench/test_network_resilience.py:209:13: error: Need type
+annotation for "entry"  [var-annotated]
+        entry = get_errcount(dut_ip).get("WIFI", {})
+                ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_real_operations_survive_and_recover_under_sustained_packet_loss_and_latency":
+tests_hardware/bench/test_network_resilience.py:233:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py:261:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)  # never leave a deliberately-provoke...
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_real_operations_unaffected_by_light_realistic_wifi_congestion":
+tests_hardware/bench/test_network_resilience.py:268:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_real_operations_survive_real_packet_corruption":
+tests_hardware/bench/test_network_resilience.py:285:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py:308:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_real_operations_survive_duplicated_and_reordered_packets":
+tests_hardware/bench/test_network_resilience.py:315:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py:338:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot":
+tests_hardware/bench/test_network_resilience.py:358:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py:375:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)  # the one deliberately-provoked fail...
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_ntp_server_sends_garbage_instead_of_a_valid_response":
+tests_hardware/bench/test_network_resilience.py:390:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py:417:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)  # never leave a deliberately-provoke...
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_dns_server_sends_garbage_instead_of_a_valid_response":
+tests_hardware/bench/test_network_resilience.py:421:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py:450:9: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+            reset_all_error_logs(dut_ip)
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source":
+tests_hardware/bench/test_network_resilience.py:473:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py:510:9: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+            reset_all_error_logs(dut_ip)
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly":
+tests_hardware/bench/test_network_resilience.py:535:9: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+            reset_all_error_logs(dut_ip)
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py:559:9: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+            reset_all_error_logs(dut_ip)
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_garbage_ssid_via_rest_config_is_handled_gracefully":
+tests_hardware/bench/test_network_resilience.py:614:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py:687:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)  # the fallback path above can log it...
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "_restore_ssid_over":
+tests_hardware/bench/test_network_resilience.py:700:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(host)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_connections_at_and_above_the_real_socket_limit_degrade_cleanly":
+tests_hardware/bench/test_network_resilience.py:724:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_get_nonsense_path_is_shaped_404_over_the_normal_network":
+tests_hardware/bench/test_network_resilience.py:800:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_put_malformed_raw_request_is_rejected_cleanly_over_the_normal_network":
+tests_hardware/bench/test_network_resilience.py:812:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_put_oversized_body_is_rejected_with_413_over_the_normal_network":
+tests_hardware/bench/test_network_resilience.py:844:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py:849:60: error: Argument 5 to
+"fetch" has incompatible type "dict[str, dict[str, int]]"; expected
+"dict[str, JSONValue] | None"  [arg-type]
+    ...http_client.fetch(dut_ip, 80, "PUT", "/sensors", oversized, timeout_s=...
+                                                        ^~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "_put_sized":
+tests_hardware/bench/test_network_resilience.py:879:61: error: Argument 5 to
+"fetch" has incompatible type "dict[str, dict[str, str]]"; expected
+"dict[str, JSONValue] | None"  [arg-type]
+    ...http_client.fetch(dut_ip, 80, "PUT", "/sensors", _sized_sensors_body(t...
+                                                        ^~~~~~~~~~~~~~~~~~~~~...
+tests_hardware/bench/test_network_resilience.py: note: In function "test_put_body_cap_boundary_is_exact_over_the_normal_network":
+tests_hardware/bench/test_network_resilience.py:885:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_put_the_band_that_used_to_be_accepted_is_now_rejected_over_the_normal_network":
+tests_hardware/bench/test_network_resilience.py:899:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap":
+tests_hardware/bench/test_network_resilience.py:911:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits":
+tests_hardware/bench/test_network_resilience.py:925:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status":
+tests_hardware/bench/test_network_resilience.py:940:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_put_nonsense_field_values_are_marked_invalid_not_crashed":
+tests_hardware/bench/test_network_resilience.py:1000:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py:1028:24: error: Need type
+annotation for "cfgmgr_entry"  [var-annotated]
+            cfgmgr_entry = errcount.get("CFGMGR_BMP3XX", {})
+                           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py:1033:9: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+            reset_all_error_logs(dut_ip)
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_slowloris_style_partial_request_is_reclaimed_by_the_outer_timeout":
+tests_hardware/bench/test_network_resilience.py:1043:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py:1070:9: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+            reset_all_error_logs(dut_ip)
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_abrupt_disconnect_mid_response_does_not_hang_the_server":
+tests_hardware/bench/test_network_resilience.py:1074:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py:1089:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)  # hygiene regardless of which way th...
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures":
+tests_hardware/bench/test_network_resilience.py:1100:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body":
+tests_hardware/bench/test_network_resilience.py:1124:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_network_resilience.py: note: In function "test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one":
+tests_hardware/bench/test_network_resilience.py:1168:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_memory_stress_bench.py: note: In function "test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot":
+tests_hardware/bench/test_memory_stress_bench.py:120:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_memory_stress_bench.py:130:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_memory_stress_bench.py: note: In function "test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved":
+tests_hardware/bench/test_memory_stress_bench.py:143:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_memory_stress_bench.py:146:88: error: No overload
+variant of "get" of "dict" matches argument types "str", "int"  [call-overload]
+    ...nt_after[mod] for mod in _FRAM_BACKED_MODULES if errcount_after.get(mo...
+                                                        ^~~~~~~~~~~~~~~~~~~~~...
+tests_hardware/bench/test_memory_stress_bench.py:146:88: note: Possible overload variants:
+tests_hardware/bench/test_memory_stress_bench.py:146:88: note:     def get(self, Never, None = ..., /) -> None
+tests_hardware/bench/test_memory_stress_bench.py:146:88: note:     def get(self, Never, Never, /) -> Never
+tests_hardware/bench/test_memory_stress_bench.py:146:88: note:     def [_T] get(self, Never, _T, /) -> _T
+tests_hardware/bench/test_memory_stress_bench.py:156:9: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+            reset_all_error_logs(dut_ip)
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_hotspot_role_reversal.py: note: In function "_wifi_log":
+tests_hardware/bench/test_hotspot_role_reversal.py:133:13: error: Need type
+annotation for "entry"  [var-annotated]
+        entry = get_errcount(ip).get("WIFI", {})
+                ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_hotspot_role_reversal.py:134:68: error: Argument 1 to
+"int" has incompatible type
+"int | float | str | list[JSONValue] | dict[str, JSONValue] | Any | None";
+expected "str | Buffer | SupportsInt | SupportsIndex | SupportsTrunc" 
+[arg-type]
+    ...ry.get("counter", 0)), [(str(h.get("type")), int(h.get("num", 0))) for...
+                                                        ^~~~~~~~~~~~~~~
+tests_hardware/bench/test_hotspot_role_reversal.py: note: In function "test_malformed_truncated_packet_is_silently_dropped":
+tests_hardware/bench/test_hotspot_role_reversal.py:319:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(joined_hotspot)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_hotspot_role_reversal.py: note: In function "test_nonsense_path_redirects_to_root_over_the_hotspot_link":
+tests_hardware/bench/test_hotspot_role_reversal.py:394:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(joined_hotspot)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_hotspot_role_reversal.py: note: In function "test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link":
+tests_hardware/bench/test_hotspot_role_reversal.py:419:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(joined_hotspot)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_hotspot_role_reversal.py: note: In function "test_malformed_http_request_over_real_wireless_degrades_cleanly":
+tests_hardware/bench/test_hotspot_role_reversal.py:433:5: error: Missing
+positional argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(joined_hotspot)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_end_to_end_timing.py: note: In function "test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly":
+tests_hardware/bench/test_end_to_end_timing.py:159:5: error: Missing positional
+argument "reason" in call to "reset_all_error_logs"  [call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_end_to_end_timing.py:236:9: error: Missing positional
+argument "reason" in call to "reset_all_error_logs"  [call-arg]
+            reset_all_error_logs(dut_ip)
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_bus_concurrency_under_api_load.py: note: In function "test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_crashes":
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:140:5: error:
+Missing positional argument "reason" in call to "reset_all_error_logs" 
+[call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:210:5: error:
+Missing positional argument "reason" in call to "reset_all_error_logs" 
+[call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_bus_concurrency_under_api_load.py: note: In function "test_concurrent_get_sensors_under_real_multi_client_load_survives_light_network_degradation":
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:221:5: error:
+Missing positional argument "reason" in call to "reset_all_error_logs" 
+[call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:277:5: error:
+Missing positional argument "reason" in call to "reset_all_error_logs" 
+[call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_bus_concurrency_under_api_load.py: note: In function "test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry":
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:289:5: error:
+Missing positional argument "reason" in call to "reset_all_error_logs" 
+[call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:301:5: error:
+Missing positional argument "reason" in call to "reset_all_error_logs" 
+[call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:359:5: error:
+Missing positional argument "reason" in call to "reset_all_error_logs" 
+[call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_bus_concurrency_under_api_load.py: note: In function "test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_real_wifi_flapping":
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:370:5: error:
+Missing positional argument "reason" in call to "reset_all_error_logs" 
+[call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:443:5: error:
+Missing positional argument "reason" in call to "reset_all_error_logs" 
+[call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_bus_concurrency_under_api_load.py: note: In function "test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load":
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:459:5: error:
+Missing positional argument "reason" in call to "reset_all_error_logs" 
+[call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:529:5: error:
+Missing positional argument "reason" in call to "reset_all_error_logs" 
+[call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_bus_concurrency_under_api_load.py: note: In function "test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load":
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:548:5: error:
+Missing positional argument "reason" in call to "reset_all_error_logs" 
+[call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:615:5: error:
+Missing positional argument "reason" in call to "reset_all_error_logs" 
+[call-arg]
+        reset_all_error_logs(dut_ip)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Found 82 errors in 8 files (checked 233 source files)

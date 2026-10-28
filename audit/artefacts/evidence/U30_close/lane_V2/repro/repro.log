@@ -1,0 +1,33 @@
+== -c 255
+ok
+rc=0
+== -c 256
+FATAL: uncaught NLR 0x7fcfeb205240
+rc=1
+== runner --device 256
+FATAL: uncaught NLR 0x7fb18a805080
+rc=1
+== MICROPYPATH entry 255
+ok
+rc=0
+== MICROPYPATH entry 256
+FATAL: uncaught NLR 0x7f494ba05040
+rc=1
+== MICROPYPATH ~/ entry 300 with HOME
+ok
+rc=0
+== MICROPYPATH ~/ entry 300 without HOME
+FATAL: uncaught NLR 0x7f0e55805040
+rc=1
+== script dir 283 bytes
+FATAL: uncaught NLR 0x7f9158405240
+rc=1
+== script dir 252 bytes
+FATAL: uncaught NLR 0x7f9b2a6050a0
+rc=1
+== script dir 255 bytes, relative script
+ok
+rc=0
+== script dir 256 bytes, relative script
+FATAL: uncaught NLR 0x7fa4c5605240
+rc=1

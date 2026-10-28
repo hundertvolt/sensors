@@ -1,0 +1,85 @@
+  failed sync exiting 1 before anything reaches the board. The default flash and bench tiers run: the device scripts
+  whose suppression comments moved (`isl29125_mechanism_envelope.py`, `sgp40_sample_cadence.py`,
+  `sgp40_voc_algorithm_quality.py`, `system_command_fram_erase.py`, `system_command_hang.py`,
+  `uart_driver_read_never_blocks_the_loop.py`, comments only) through the flash and bench tests
+  that run them; the host files edited (`bench/test_hotspot_role_reversal.py`,
+  `flash/test_system_commands.py`, `conftest.py`'s `bench`
+  fixture, now a plain return, and its VL805 read, `bench_control.py`'s two `contextlib.suppress`
+  forms, `twin_board.py`, `website_identity.py`); and `dev`'s UART link, whose listen and whose GET,
+  train and ACK waits now name a frame their read dropped ("listen read dropped a corrupted or
+  incomplete frame", "answer read dropped ... for GET", "train read dropped ... at chunk", "ACK read
+  dropped ... after sending frame") apart from a silence. Then the gated run, `--allow-persistence-write`, for the persistence-gated tests among
+  them (`bench/test_hotspot_role_reversal.py`, `bench/test_system_commands_over_rest.py`,
+  none in the default run. Twin row: none new
+  (`tests_hardware/twin_board.py` runs the same device scripts under `--twin`).
+setup" above — installs `picotool`, grants non-root USB access). A session always flashes `dev`,
+never `wozi` — `wozi` is never physically flashed; its hardcoded pins don't match any real bench
+wiring (see the device table at the top of this file, and CLAUDE.md's hard rule); moving one of
+the owner's own units is their operation (see "Moving a legacy unit to this firmware" below).
+(`legacy/firmware/`) on MicroPython 1.24.1 (owner, 2026-09-26). Nothing is migrated: the unit gets
+a fresh setup, and its flash is erased first (owner, 2026-09-26, paraphrase).
+  carries its `Content-Length`. `_serve()` catches what propagates and never raises out of its task:
+  an `OSError` Microdot does not mute is traced as `wrnno` 51, anything else as `errno` 23.
+  `Response.write()` also mutes a reset (ECONNRESET, EPIPE) from a response write; the stream proxy
+  marks the peer gone when a write raises `OSError`, so such a client counts in `HTTPDropped` and no
+  further write is tried.
+  supervisor, reboot and watchdog stay above it unchanged. `_serve()` never raises out of its task.
+    'Hum'), backup=SgpBackup(fram, _clock_was_set), ..., log=log_fram)` — **chunk 10** (error
+and the generated `_clock_was_set()` (its `SgpBackup`) and direct references to `scd30` (its
+  a module leaves the list at its next successful write (C.7.3). `LastTaskEnd` — `null` until a
+  supervised task ends this boot, then the last one's `{"Task": "<logger name>.<starter name>",
+  "Uptime": <SysUptime seconds when its end was logged>}` (A.7's `_collect_task_names()`); RAM-only,
+  the successor of legacy's "Task last error"; a starter that raised at start ends no task; the
+  reason is in that module's and SYSTEM's error history (owner, 2026-09-30: "(a) Yes: publish it as
+  `LastTaskEnd` in `/status`."; the question: "Keep showing which task ended last on the API?").
+  `UTCTime` — `null` until the
+  first NTP sync, like `LocalTime`, and again while `NTPSynced` is false. `UnixTime` — the device's
+  Unix seconds (an int) when the poll was answered, `null` until the first NTP sync; every age on
+  the website is computed against it. `networking`'s link
+  fields (`Mode`, `Connected`, `IPv4`, `Subnet`, `Gateway`, `DNS`, `RSSI`) — one snapshot, refreshed
+  each second, never a radio read per request; `RSSI` is `null` outside a STA link (C.8). `WifiTS` —
+  that snapshot's UTC time (the Wi-Fi task's `TS`), `null` until the first NTP sync, so a stale
+  value shows the Wi-Fi task stalled, judged against `UTCTime` (owner, 2026-09-29). `HTTPDropped` —
+  the web connections dropped in the last 24 hours, at hourly resolution: a refusal at the ceiling,
+  a refused head, or a peer reset before or during its response, which the error history alone shows
+  only as entries spending one slot per run of identical codes; held in 24 hourly bins allocated
+  once and advanced from the uptime seconds (the hourly window counter, G.2), each bin and the sum
+  capped at `COUNTER_CAP`, so a drop leaves the count 23-24 hours after it happened; no drop, read
+  or hour change allocates; `ResetErrors` clears it; each drop is also traced once (A.5; owner,
+  2026-10-01). A 413 is answered, so it is not a drop.
+  `BackupTS`/`RestoreTS` under each SGP40 source — `null` = none since boot,
+  `0` = no timestamp (owner, 2026-09-29). `errcount` — one entry per module plus one per
+  `ConfigManager` (`CFGMGR_<name>`).
+its creator's logger (G.2's task top), checked by `tests_scripts/test_task_tops.py`. The FRAM
+manager's chip watch
+(`FRAMManager.start_asy_watch_chip`, A.4) is a task starter, so it takes no row.
+0?"). It lives in
+`asy_print_log.py` because only the logger prints. Fixed-argument `print()` and
+  and logs `e` through its creator's logger (`self.pr.err_s()`), so the module that creates a task
+  logs its failure (owner, 2026-10-21: "The task logs shall then be handled by their creators in
+  general and the caveats are okay as they are inevitable."; the question, paraphrase: whether a
+  task's failure is logged by the module creating it, with FRAM paused before a reset and the
+  logging call itself as the two caveats). Both caveats are inherent: a top that runs once FRAM is
+  paused for a reset reaches the console and the RAM log only, and a failure of the logging call
+  itself reaches only the loop's exception handler (F.1). The check is
+  `tests_scripts/test_task_tops.py`.
+  pinned by
+  `tests_scripts/test_definitions_js_mirrors.py` and the shape corpus
+`alwaysExecuted`,
+`resolution` (a number's step the device rounds to), `ignoredWhenSet` (the sibling whose non-zero
+value overrides the field), `statusPath` (where `GET /status` carries the field's live value),
+`clearable` (a string the page may empty with its own Clear button), `confirm` (the page asks before
+it sends)). Every maintenance field of the Status section carries a `path` (`[source, field]`, set
+by the generator, A.8).
+"Task Last Ended" row (`LastTaskEnd`, where legacy's System Status showed "Task last error", A.8),
+and `ResetReason`'s description
+"Why the device last restarted, as a numeric code; click it for its meaning."); and the
+`warn_co2`/`warn_voc`/`warn_hum` UI metadata, read with the
+schema by codegen and definitions alike from `buildgen/signals.py`'s one catalog, `WARN_SIGNALS`.
+reset task; per
+system command that passes the gate: the one shutdown task. Per config GET: its dict, bounded by the schema.
+  REST command), `_gmtimestruct_to_dict()` (time tuple to JSON), `_clock_was_set()` (where an SGP40
+  keeps a FRAM backup: its timestamp gate, the clock set this boot, G.2's `utc_now()`), the
+  `_collect_*()` list builders (each run once: the setup list, the config stores, the task starters
+  and their names, the timer and trigger starters, the error sources and the level setters), and the
+  `signal_sink` bound method (`mode="attr"`, L.3);

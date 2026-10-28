@@ -1,0 +1,41 @@
+Plugin "vitest:mocks:interceptor" defines Vite-specific hooks (configureServer) in a plugin returned from applyToEnvironment. These hooks will be ignored.
+
+ RUN  v5.0.0 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20b
+      API started at http://localhost:63315/
+
+ ✓ |chromium| tests_js/render.test.js (35 tests) 9969ms
+   ✓ renderSection (35)
+     ✓ colors each individual field's own box by its own result, not just the card's worst status 456ms
+     ✓ sparse-omits an untouched toggle/enum field left at its current value, unlike a dispatch-marked field 423ms
+     ✓ still submits a toggle/enum field explicitly flipped back to its original value (a real, deliberate change) 378ms
+     ✓ submits a numeric-valued enum field as a number, not a stringified one (regression) 436ms
+     ✓ renders an errcount group outside the Status section from GET /status's errcount 391ms
+     ✓ shows Valid (not Failed) after a successful Reset All Errors submission, even though /status's PUT never returns a per-field result 718ms
+     ✓ a toggle field with no real GET readback but a schema-declared defaultValue (3)
+       ✓ submits it once deliberately flipped away from the defaultValue 312ms
+     ✓ shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds 381ms
+     ✓ reports Invalid for non-numeric text in a number field instead of silently submitting 0 (regression) 377ms
+     ✓ reports Invalid for non-numeric text in a composite subfield instead of silently submitting 0 (regression) 515ms
+     ✓ reports Invalid for a composite field submitted with only some subfields filled 659ms
+     ✓ reports Valid for a fully-specified composite LightCmdLED submission and never persists it (dispatch-only, matches real GET /notification) 843ms
+     ✓ skips the PUT and shows a neutral message when LightCmdLED's Apply is clicked with every subfield left blank 576ms
+     ✓ shows Failed for a field silently missing from a nominally-OK PUT response, without losing the other field's real status 321ms
+
+ Test Files  1 passed (1)
+      Tests  35 passed (35)
+   Start at  10:44:11
+   Duration  12.37s (tests 94%, worker 5%, import 1%)
+
+== Summary: npm test ==
+Commit: 7efb5f2 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 35 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

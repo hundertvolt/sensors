@@ -1,0 +1,21 @@
+start 13:49:27
+lint rc=0 13:49:29
+typecheck noargs rc=0 13:50:04
+typecheck ci rc=0 13:50:44
+gc32768 rc=0 14:02:13
+gc-1 rc=0 14:02:16
+phase A done 14:02:16
+start twin 2 dev 14:02:16
+start twin 1 wozi 14:02:16
+start twin 6 grkizi 14:02:16
+start twin 3 arzi 14:02:16
+arzi rc=0 14:15:17
+start twin 4 klkizi 14:15:17
+grkizi rc=0 14:15:19
+start twin 5 schlafzi 14:15:19
+wozi rc=0 14:15:52
+dev rc=0 14:17:53
+klkizi rc=0 14:28:23
+schlafzi rc=0 14:28:25
+phase B done 14:28:25
+done 14:28:25

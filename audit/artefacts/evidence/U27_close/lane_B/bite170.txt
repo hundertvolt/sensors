@@ -1,0 +1,3 @@
+E       AssertionError: assert {'build/gener.../definitions'} == {'build/generated_src/api'}
+FAILED tests_scripts/test_js_generated_definitions_loader.py::test_the_loader_reads_the_toml_stamp_the_generator_writes
+1 failed, 3 passed in 1.59s

@@ -1,0 +1,548 @@
+..........FF.F.FF...F................................................... [ 51%]
+..F...........F.....................................................     [100%]
+=================================== FAILURES ===================================
+_ test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_bus_concurrency_under_api_load.py] _
+
+module = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26a/tests_hardware/bench/test_bus_concurrency_under_api_load.py')
+
+    @pytest.mark.parametrize("module", sorted((TESTS_HARDWARE / "bench").glob("*.py")), ids=lambda p: p.name)
+    def test_no_bench_module_resets_the_board_outside_the_reported_helpers(module: Path) -> None:
+>       assert _bare_resets(module.read_text(encoding="utf-8")) == [], f"{module.name}: call harness.recover_by_reset()/kick_then_reset() instead"
+E       AssertionError: test_bus_concurrency_under_api_load.py: call harness.recover_by_reset()/kick_then_reset() instead
+E       assert ['line 435'] == []
+E         
+E         Left contains one more item: 'line 435'
+E         Use -v to get more diff
+
+tests_scripts/test_bench_harness_helpers.py:189: AssertionError
+_ test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_end_to_end_timing.py] _
+
+module = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26a/tests_hardware/bench/test_end_to_end_timing.py')
+
+    @pytest.mark.parametrize("module", sorted((TESTS_HARDWARE / "bench").glob("*.py")), ids=lambda p: p.name)
+    def test_no_bench_module_resets_the_board_outside_the_reported_helpers(module: Path) -> None:
+>       assert _bare_resets(module.read_text(encoding="utf-8")) == [], f"{module.name}: call harness.recover_by_reset()/kick_then_reset() instead"
+E       AssertionError: test_end_to_end_timing.py: call harness.recover_by_reset()/kick_then_reset() instead
+E       assert ['line 131', ...', 'line 227'] == []
+E         
+E         Left contains 5 more items, first extra item: 'line 131'
+E         Use -v to get more diff
+
+tests_scripts/test_bench_harness_helpers.py:189: AssertionError
+_ test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_hotspot_role_reversal.py] _
+
+module = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26a/tests_hardware/bench/test_hotspot_role_reversal.py')
+
+    @pytest.mark.parametrize("module", sorted((TESTS_HARDWARE / "bench").glob("*.py")), ids=lambda p: p.name)
+    def test_no_bench_module_resets_the_board_outside_the_reported_helpers(module: Path) -> None:
+>       assert _bare_resets(module.read_text(encoding="utf-8")) == [], f"{module.name}: call harness.recover_by_reset()/kick_then_reset() instead"
+E       AssertionError: test_hotspot_role_reversal.py: call harness.recover_by_reset()/kick_then_reset() instead
+E       assert ['line 217'] == []
+E         
+E         Left contains one more item: 'line 217'
+E         Use -v to get more diff
+
+tests_scripts/test_bench_harness_helpers.py:189: AssertionError
+_ test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_network_resilience.py] _
+
+module = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26a/tests_hardware/bench/test_network_resilience.py')
+
+    @pytest.mark.parametrize("module", sorted((TESTS_HARDWARE / "bench").glob("*.py")), ids=lambda p: p.name)
+    def test_no_bench_module_resets_the_board_outside_the_reported_helpers(module: Path) -> None:
+>       assert _bare_resets(module.read_text(encoding="utf-8")) == [], f"{module.name}: call harness.recover_by_reset()/kick_then_reset() instead"
+E       AssertionError: test_network_resilience.py: call harness.recover_by_reset()/kick_then_reset() instead
+E       assert ['line 151', ...ine 441', ...] == []
+E         
+E         Left contains 10 more items, first extra item: 'line 151'
+E         Use -v to get more diff
+
+tests_scripts/test_bench_harness_helpers.py:189: AssertionError
+_ test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_rest_endpoints_over_sta.py] _
+
+module = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26a/tests_hardware/bench/test_rest_endpoints_over_sta.py')
+
+    @pytest.mark.parametrize("module", sorted((TESTS_HARDWARE / "bench").glob("*.py")), ids=lambda p: p.name)
+    def test_no_bench_module_resets_the_board_outside_the_reported_helpers(module: Path) -> None:
+>       assert _bare_resets(module.read_text(encoding="utf-8")) == [], f"{module.name}: call harness.recover_by_reset()/kick_then_reset() instead"
+E       AssertionError: test_rest_endpoints_over_sta.py: call harness.recover_by_reset()/kick_then_reset() instead
+E       assert ['line 116', 'line 153'] == []
+E         
+E         Left contains 2 more items, first extra item: 'line 116'
+E         Use -v to get more diff
+
+tests_scripts/test_bench_harness_helpers.py:189: AssertionError
+_ test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_wifi_networking.py] _
+
+module = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26a/tests_hardware/bench/test_wifi_networking.py')
+
+    @pytest.mark.parametrize("module", sorted((TESTS_HARDWARE / "bench").glob("*.py")), ids=lambda p: p.name)
+    def test_no_bench_module_resets_the_board_outside_the_reported_helpers(module: Path) -> None:
+>       assert _bare_resets(module.read_text(encoding="utf-8")) == [], f"{module.name}: call harness.recover_by_reset()/kick_then_reset() instead"
+E       AssertionError: test_wifi_networking.py: call harness.recover_by_reset()/kick_then_reset() instead
+E       assert ['line 54', '...', 'line 124'] == []
+E         
+E         Left contains 3 more items, first extra item: 'line 54'
+E         Use -v to get more diff
+
+tests_scripts/test_bench_harness_helpers.py:189: AssertionError
+_ test_no_hardware_module_runs_uv_without_no_sync[flash/test_toolchain_flash_boot.py] _
+
+module = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26a/tests_hardware/flash/test_toolchain_flash_boot.py')
+
+    @pytest.mark.parametrize("module", sorted(p for p in TESTS_HARDWARE.rglob("*.py") if "device_scripts" not in p.parts), ids=lambda p: str(p.relative_to(TESTS_HARDWARE)))
+    def test_no_hardware_module_runs_uv_without_no_sync(module: Path) -> None:
+        # Nothing inside a hardware run syncs, so a lock change or a third party's outage cannot read as a board fault.
+>       assert _no_sync_offenders(module.read_text(encoding="utf-8")) == [], module.name
+E       AssertionError: test_toolchain_flash_boot.py
+E       assert ["line 49: ['..., '--output'"] == []
+E         
+E         Left contains 2 more items, first extra item: "line 49: ['uv', 'run', 'toolchain/setup_toolchain.py', 'env', '--tier"
+E         Use -v to get more diff
+
+tests_scripts/test_bench_harness_helpers.py:326: AssertionError
+_ test_no_hardware_module_runs_uv_without_no_sync[manual/manual_toolchain.py] __
+
+module = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26a/tests_hardware/manual/manual_toolchain.py')
+
+    @pytest.mark.parametrize("module", sorted(p for p in TESTS_HARDWARE.rglob("*.py") if "device_scripts" not in p.parts), ids=lambda p: str(p.relative_to(TESTS_HARDWARE)))
+    def test_no_hardware_module_runs_uv_without_no_sync(module: Path) -> None:
+        # Nothing inside a hardware run syncs, so a lock change or a third party's outage cannot read as a board fault.
+>       assert _no_sync_offenders(module.read_text(encoding="utf-8")) == [], module.name
+E       AssertionError: manual_toolchain.py
+E       assert ["line 27: ['..., '--output'"] == []
+E         
+E         Left contains one more item: "line 27: ['uv', 'run', 'scripts/build_firmware.py', 'dev', '--output'"
+E         Use -v to get more diff
+
+tests_scripts/test_bench_harness_helpers.py:326: AssertionError
+============================== slowest durations ===============================
+1.00s call     tests_scripts/test_bench_harness_helpers.py::test_wait_for_script_server_gives_up_when_nothing_ever_answers
+0.62s call     tests_scripts/test_bench_harness_helpers.py::test_render_inlines_facts_extras_includes_and_the_device_module
+0.50s call     tests_scripts/test_bench_harness_helpers.py::test_wait_for_script_server_waits_out_main_pys_server_then_finds_the_scripts
+0.27s call     tests_scripts/test_bench_harness_helpers.py::test_every_pinned_log_line_is_one_src_actually_logs[config is ready]
+0.26s call     tests_scripts/test_bench_harness_helpers.py::test_observe_during_returns_the_lines_before_during_and_after_the_action
+0.20s call     tests_scripts/test_bench_harness_helpers.py::test_wait_for_script_server_stops_waiting_for_the_script_when_its_test_ends
+0.12s call     tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_hotspot_role_reversal.py]
+0.12s call     tests_scripts/test_bench_harness_helpers.py::test_get_routes_adds_the_page_and_filters_by_streaming
+0.10s call     tests_scripts/test_bench_harness_helpers.py::test_recover_by_reset_raises_after_exactly_one_reset_when_never_ready
+0.08s call     tests_scripts/test_bench_harness_helpers.py::test_fram_backed_logger_names_are_buildgens_expected_facts
+0.08s call     tests_scripts/test_bench_harness_helpers.py::test_render_refuses_an_extra_shadowing_a_board_fact
+0.07s call     tests_scripts/test_bench_harness_helpers.py::test_wait_for_boot_returns_once_a_boot_line_arrived_and_names_the_debug_level_need_otherwise
+0.07s call     tests_scripts/test_bench_harness_helpers.py::test_bench_facts_build_for_every_device_as_a_literal_the_board_reads_back[dev]
+0.06s call     tests_scripts/test_bench_harness_helpers.py::test_the_bench_route_set_is_the_rest_references_get_routes[arzi]
+0.05s call     tests_scripts/test_bench_harness_helpers.py::test_observe_during_raises_when_its_log_tail_broke
+0.05s call     tests_scripts/test_bench_harness_helpers.py::test_recover_by_reset_resets_only_when_the_first_wait_times_out_and_reports_it[reset-calls1-1]
+0.05s call     tests_scripts/test_bench_harness_helpers.py::test_bench_facts_build_for_every_device_as_a_literal_the_board_reads_back[arzi]
+0.04s call     tests_scripts/test_bench_harness_helpers.py::test_bench_facts_build_for_every_device_as_a_literal_the_board_reads_back[grkizi]
+0.04s call     tests_scripts/test_bench_harness_helpers.py::test_the_bench_route_set_is_the_rest_references_get_routes[dev]
+0.04s call     tests_scripts/test_bench_harness_helpers.py::test_the_bench_route_set_is_the_rest_references_get_routes[wozi]
+0.04s call     tests_scripts/test_bench_harness_helpers.py::test_the_bench_route_set_is_the_rest_references_get_routes[klkizi]
+0.04s call     tests_scripts/test_bench_harness_helpers.py::test_the_bench_route_set_is_the_rest_references_get_routes[schlafzi]
+0.04s call     tests_scripts/test_bench_harness_helpers.py::test_the_bench_route_set_is_the_rest_references_get_routes[grkizi]
+0.04s call     tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_network_resilience.py]
+0.03s call     tests_scripts/test_bench_harness_helpers.py::test_bench_facts_build_for_every_device_as_a_literal_the_board_reads_back[wozi]
+0.03s call     tests_scripts/test_bench_harness_helpers.py::test_bench_facts_build_for_every_device_as_a_literal_the_board_reads_back[klkizi]
+0.03s call     tests_scripts/test_bench_harness_helpers.py::test_the_bench_toml_facts_come_from_the_toml_and_src
+0.03s call     tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_bus_concurrency_under_api_load.py]
+0.03s call     tests_scripts/test_bench_harness_helpers.py::test_bench_facts_build_for_every_device_as_a_literal_the_board_reads_back[schlafzi]
+0.03s call     tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_network_resilience.py]
+0.02s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_network_resilience.py]
+0.02s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[harness.py]
+0.02s call     tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_bus_concurrency_under_api_load.py]
+0.02s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_bus_concurrency_under_api_load.py]
+0.01s call     tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_hotspot_role_reversal.py]
+0.01s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_hotspot_role_reversal.py]
+0.01s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench_control.py]
+0.01s call     tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_serving_heap_at_default_gc.py]
+0.01s call     tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_memory_stress_bench.py]
+0.01s call     tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_sensor_config_push_over_real_hardware.py]
+0.01s call     tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_uart_link_under_api_load.py]
+0.01s call     tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_heap_under_connection_ceiling.py]
+0.01s call     tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_rest_endpoints_over_sta.py]
+0.01s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_sensor_config_push_over_real_hardware.py]
+0.01s call     tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_sensor_config_push_over_real_hardware.py]
+0.01s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[heap_map.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_end_to_end_timing.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[conftest.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_serving_heap_at_default_gc.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_serving_heap_at_default_gc.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_rest_endpoints_over_sta.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench_facts.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_rest_endpoints_over_sta.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_end_to_end_timing.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[error_log_helpers.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_memory_stress_bench.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_memory_stress_bench.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_uart_link_under_api_load.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_uart_link_under_api_load.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_heap_under_connection_ceiling.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_end_to_end_timing.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_heap_under_connection_ceiling.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_wifi_networking.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/runner.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_wifi_networking.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_sensor_accuracy.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_bus_concurrency.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_reflash_retries_only_while_no_bootsel_device_is_enumerated[exits0-3-flashed]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_wifi_networking.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_memory_stress.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_bus_electrical_timing.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_toolchain_flash_boot.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[dns_probe.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/dns_probe.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[isl29125_conformance.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_config_float_round_trip.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_fram_storage.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_watchdog_starvation.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[twin_board.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_uart_crossover.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_configured_max_connections_is_the_builds_own_ceiling_for_every_device[dev]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[http_client.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_reboot_persistence.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/manual_toolchain.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/manual_sensor_accuracy.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_reflash_retries_only_while_no_bootsel_device_is_enumerated[exits1-1-raises]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_configured_max_connections_is_the_builds_own_ceiling_for_every_device[grkizi]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_configured_max_connections_is_the_builds_own_ceiling_for_every_device[wozi]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[evidence.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/manual_bus_electrical.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_configured_max_connections_is_the_builds_own_ceiling_for_every_device[arzi]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_reflash_retries_only_while_no_bootsel_device_is_enumerated[exits2-2-raises]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/manual_persistence.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_reflash_retries_only_while_no_bootsel_device_is_enumerated[exits3-5-raises]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_render_leaves_a_plain_script_alone_and_refuses_extras_it_cannot_receive
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[rogue_udp_responder.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_get_routes_adds_the_page_and_filters_by_streaming
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_configured_max_connections_is_the_builds_own_ceiling_for_every_device[klkizi]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_render_leaves_a_plain_script_alone_and_refuses_extras_it_cannot_receive
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_unretrieved_task_exception_handler.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[website_identity.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_configured_max_connections_is_the_builds_own_ceiling_for_every_device[schlafzi]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/manual_wifi.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_task_supervisor.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_render_refuses_an_extra_shadowing_a_board_fact
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/conftest.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_the_worker_rule_sees_a_worker_that_catches_only_oserror
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[ntp_probe.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_get_routes_adds_the_page_and_filters_by_streaming
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_wait_for_script_server_ends_at_once_when_its_test_has_already_stopped
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_render_inlines_facts_extras_includes_and_the_device_module
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_a_logger_absent_before_and_present_now_is_a_shape_change
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_the_bare_reset_rule_sees_a_direct_hard_reset
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_recover_by_reset_raises_after_exactly_one_reset_when_never_ready
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_the_bench_route_set_is_the_rest_references_get_routes[dev]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_bus_concurrency_under_api_load.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_the_bench_route_set_is_the_rest_references_get_routes[arzi]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_uart_link_under_api_load.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/__main__.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench_facts.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_memory_stress_bench.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_reflash_retries_only_while_no_bootsel_device_is_enumerated[exits1-1-raises]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_the_bench_route_set_is_the_rest_references_get_routes[schlafzi]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[error_log_helpers.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_reflash_retries_only_while_no_bootsel_device_is_enumerated[exits3-5-raises]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_every_pinned_log_line_is_one_src_actually_logs[FRAM SPI FRAM Driver Setup complete]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_the_bench_route_set_is_the_rest_references_get_routes[schlafzi]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_memory_stress_bench.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_bench_facts_build_for_every_device_as_a_literal_the_board_reads_back[arzi]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_heap_under_connection_ceiling.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_the_bench_route_set_is_the_rest_references_get_routes[grkizi]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_end_to_end_timing.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_the_bench_route_set_is_the_rest_references_get_routes[wozi]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_sensor_config_push_over_real_hardware.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[heap_map.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_serving_heap_at_default_gc.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_wifi_networking.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_heap_under_connection_ceiling.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_the_bench_route_set_is_the_rest_references_get_routes[klkizi]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/conftest.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_network_resilience.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_end_to_end_timing.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_uart_link_under_api_load.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_network_resilience.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_bus_concurrency_under_api_load.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_sensor_config_push_over_real_hardware.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench_control.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_uart_link_under_api_load.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_network_resilience.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_bus_electrical_timing.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_rest_endpoints_over_sta.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/manual_persistence.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_the_bench_route_set_is_the_rest_references_get_routes[grkizi]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_hotspot_role_reversal.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_the_bench_route_set_is_the_rest_references_get_routes[dev]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_recover_by_reset_resets_only_when_the_first_wait_times_out_and_reports_it[never-needed-calls0-0]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_end_to_end_timing.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_serving_heap_at_default_gc.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_uart_crossover.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_hotspot_role_reversal.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_rest_endpoints_over_sta.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[dns_probe.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_rest_endpoints_over_sta.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_an_entry_without_an_int_counter_and_a_history_list_fails[entry0]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_the_bench_route_set_is_the_rest_references_get_routes[klkizi]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/manual_wifi.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_serving_heap_at_default_gc.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_sensor_config_push_over_real_hardware.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_hotspot_role_reversal.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_a_logger_present_before_and_absent_now_is_a_shape_change
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_wifi_networking.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_reflash_retries_only_while_no_bootsel_device_is_enumerated[exits0-3-flashed]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_bench_facts_build_for_every_device_as_a_literal_the_board_reads_back[dev]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_wifi_networking.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_configured_max_connections_is_the_builds_own_ceiling_for_every_device[arzi]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_the_no_sync_rule_sees_a_list_without_it
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_the_bench_route_set_is_the_rest_references_get_routes[wozi]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_network_resilience.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_memory_stress_bench.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[http_client.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/runner.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[evidence.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_hotspot_role_reversal.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_a_logger_absent_before_and_present_now_is_a_shape_change
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_an_entry_without_an_int_counter_and_a_history_list_fails[entry1]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_a_missing_logger_fails_naming_it_and_the_names_present
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_bench_facts_build_for_every_device_as_a_literal_the_board_reads_back[schlafzi]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_wifi_networking.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[conftest.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[soak_tiers.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_heap_under_connection_ceiling.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_bus_concurrency_under_api_load.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[ntp_probe.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_the_log_oracles_fail_closed_on_a_missing_logger[assert_no_task_ended]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_reflash_retries_only_while_no_bootsel_device_is_enumerated[exits2-2-raises]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/manual_sensor_accuracy.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_toolchain_flash_boot.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_reboot_persistence.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_recover_by_reset_raises_after_exactly_one_reset_when_never_ready
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/manual_bus_electrical.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_end_to_end_timing.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_bench_facts_build_for_every_device_as_a_literal_the_board_reads_back[arzi]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_a_grown_counter_is_a_new_error
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_retryable_picotool_exit_is_the_no_bootsel_device_status_only
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_recover_by_reset_resets_only_when_the_first_wait_times_out_and_reports_it[reset-calls1-1]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_configured_max_connections_is_the_builds_own_ceiling_for_every_device[dev]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_bus_concurrency.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_the_log_oracles_fail_closed_on_a_missing_logger[assert_module_error_log_empty]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_reflash_retries_only_while_no_bootsel_device_is_enumerated[exits0-3-flashed]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_the_bench_route_set_is_the_rest_references_get_routes[arzi]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_toolchain_flash_boot.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_unretrieved_task_exception_handler.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_fram_storage.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_the_log_oracles_fail_closed_on_a_missing_logger[assert_no_task_ended]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_every_pinned_log_line_is_one_src_actually_logs[FRAM SPI FRAM Driver Setup complete]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[harness.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_task_supervisor.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/manual_toolchain.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[isl29125_conformance.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_config_float_round_trip.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_rest_endpoints_over_sta.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_an_unchanged_counter_is_no_new_error
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/__main__.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_wait_for_boot_returns_once_a_boot_line_arrived_and_names_the_debug_level_need_otherwise
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_bus_concurrency_under_api_load.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_sensor_accuracy.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_memory_stress.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_bench_facts_build_for_every_device_as_a_literal_the_board_reads_back[grkizi]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_bench_facts_build_for_every_device_as_a_literal_the_board_reads_back[wozi]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_an_entry_without_an_int_counter_and_a_history_list_fails[entry3]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_an_entry_without_an_int_counter_and_a_history_list_fails[7]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_watchdog_starvation.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_an_entry_without_an_int_counter_and_a_history_list_fails[entry4]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_every_pinned_log_line_is_one_src_actually_logs[RTC set to:]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_hotspot_role_reversal.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_wait_for_script_server_stops_waiting_for_the_script_when_its_test_ends
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_an_entry_without_an_int_counter_and_a_history_list_fails[entry2]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_memory_stress_bench.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/manual_toolchain.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_observe_during_raises_when_its_log_tail_broke
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_heap_under_connection_ceiling.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_configured_max_connections_is_the_builds_own_ceiling_for_every_device[grkizi]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_network_resilience.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_a_grown_counter_is_a_new_error
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_wait_for_script_server_gives_up_when_nothing_ever_answers
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/dns_probe.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_uart_link_under_api_load.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_bus_electrical_timing.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_restore_board_to_serving_goes_through_kick_then_reset_and_then_waits_for_http
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_memory_stress_bench.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[rogue_udp_responder.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_network_resilience.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_wait_for_boot_returns_once_a_boot_line_arrived_and_names_the_debug_level_need_otherwise
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_bus_concurrency_under_api_load.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_rest_endpoints_over_sta.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_bench_facts_build_for_every_device_as_a_literal_the_board_reads_back[klkizi]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_a_probe_with_any_connection_closed_answered_or_reset_is_voided_by_index[ConnectionResetError-<reset>]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_the_worker_rule_sees_a_worker_that_catches_only_oserror
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_parse_facts_reads_every_fact_and_needs_done
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_an_entry_without_an_int_counter_and_a_history_list_fails[entry0]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[ntp_probe.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[twin_board.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_render_inlines_facts_extras_includes_and_the_device_module
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_every_pinned_log_line_is_one_src_actually_logs[config is ready]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_a_probe_with_any_connection_closed_answered_or_reset_is_voided_by_index[-b'']
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_a_logger_present_before_and_absent_now_is_a_shape_change
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[error_log_helpers.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_every_pinned_log_line_is_one_src_actually_logs[config is ready]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_wait_for_script_server_ends_at_once_when_its_test_has_already_stopped
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[harness.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_wait_for_script_server_gives_up_when_nothing_ever_answers
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_rest_endpoints_over_sta.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_the_bench_toml_facts_come_from_the_toml_and_src
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_every_pinned_log_line_is_one_src_actually_logs[RTC set to:]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_an_entry_without_an_int_counter_and_a_history_list_fails[entry1]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_serving_heap_at_default_gc.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_render_leaves_a_plain_script_alone_and_refuses_extras_it_cannot_receive
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench_control.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_sensor_config_push_over_real_hardware.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_a_probe_with_any_connection_closed_answered_or_reset_is_voided_by_index[-b'']
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_fram_backed_logger_names_are_buildgens_expected_facts
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[soak_tiers.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_render_refuses_an_extra_shadowing_a_board_fact
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench_facts.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_the_log_oracles_fail_closed_on_a_missing_logger[assert_no_task_ended]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_fram_backed_logger_names_are_buildgens_expected_facts
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_hotspot_role_reversal.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_bus_concurrency_under_api_load.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_serving_heap_at_default_gc.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_the_bare_reset_rule_sees_a_direct_hard_reset
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_a_missing_logger_fails_naming_it_and_the_names_present
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_the_log_oracles_fail_closed_on_a_missing_logger[assert_module_error_log_empty]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_observe_during_raises_when_its_log_tail_broke
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_sensor_config_push_over_real_hardware.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_crash_lines_take_a_traceback_and_both_allocation_spellings
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_parse_facts_refuses_a_malformed_repeated_or_non_json_fact[FACT x=1\nFACT x=2]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_wait_for_script_server_waits_out_main_pys_server_then_finds_the_scripts
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_observe_during_returns_the_lines_before_during_and_after_the_action
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[conftest.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_a_probe_with_any_connection_closed_answered_or_reset_is_voided_by_index[HTTP/1.0 408-HTTP/1.0 408]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_end_to_end_timing.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_recover_by_reset_resets_only_when_the_first_wait_times_out_and_reports_it[reset-calls1-1]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_the_bench_toml_facts_come_from_the_toml_and_src
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_an_entry_without_an_int_counter_and_a_history_list_fails[entry2]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[heap_map.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_sensor_config_push_over_real_hardware.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_an_entry_without_an_int_counter_and_a_history_list_fails[7]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/conftest.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_uart_link_under_api_load.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_observe_during_returns_the_lines_before_during_and_after_the_action
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_reflash_retries_only_while_no_bootsel_device_is_enumerated[exits3-5-raises]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_heap_under_connection_ceiling.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_an_entry_without_an_int_counter_and_a_history_list_fails[entry4]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_configured_max_connections_is_the_builds_own_ceiling_for_every_device[klkizi]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_parse_facts_refuses_a_malformed_repeated_or_non_json_fact[FACT count]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_an_unchanged_counter_is_no_new_error
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_wait_for_script_server_stops_waiting_for_the_script_when_its_test_ends
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_crash_lines_take_a_traceback_and_both_allocation_spellings
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_memory_stress_bench.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_the_log_oracles_fail_closed_on_a_missing_logger[assert_module_error_log_empty]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_an_entry_without_an_int_counter_and_a_history_list_fails[entry3]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_uart_crossover.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[website_identity.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_reflash_retries_only_while_no_bootsel_device_is_enumerated[exits1-1-raises]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_wifi_networking.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_memory_stress.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_reflash_retries_only_while_no_bootsel_device_is_enumerated[exits2-2-raises]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_bench_facts_build_for_every_device_as_a_literal_the_board_reads_back[grkizi]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_serving_heap_at_default_gc.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_uart_link_under_api_load.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_heap_under_connection_ceiling.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_a_logger_absent_before_and_present_now_is_a_shape_change
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_retryable_picotool_exit_is_the_no_bootsel_device_status_only
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_configured_max_connections_is_the_builds_own_ceiling_for_every_device[schlafzi]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_bus_concurrency.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_the_worker_rule_sees_a_worker_that_catches_only_oserror
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/test_end_to_end_timing.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/manual_wifi.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_parse_facts_refuses_a_malformed_repeated_or_non_json_fact[FACT =3]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_a_probe_with_any_connection_closed_answered_or_reset_is_voided_by_index[ConnectionResetError-<reset>]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_a_probe_whose_connections_are_all_still_open_stands
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[isl29125_conformance.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_configured_max_connections_is_the_builds_own_ceiling_for_every_device[wozi]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_recover_by_reset_resets_only_when_the_first_wait_times_out_and_reports_it[never-needed-calls0-0]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_bench_facts_build_for_every_device_as_a_literal_the_board_reads_back[wozi]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_sensor_accuracy.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_wait_for_script_server_waits_out_main_pys_server_then_finds_the_scripts
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_reboot_persistence.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_the_no_sync_rule_sees_a_list_without_it
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_bench_facts_build_for_every_device_as_a_literal_the_board_reads_back[dev]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_configured_max_connections_is_the_builds_own_ceiling_for_every_device[arzi]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[evidence.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_config_float_round_trip.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_wifi_networking.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_unretrieved_task_exception_handler.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[http_client.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_watchdog_starvation.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_every_pinned_log_line_is_one_src_actually_logs[RTC set to:]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_boot_lines_need_a_completion_marker_never_a_bare_tag
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_bench_facts_build_for_every_device_as_a_literal_the_board_reads_back[schlafzi]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_parse_facts_refuses_a_malformed_repeated_or_non_json_fact[FACT x=nan]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[bench/dns_probe.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/runner.py]
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_parse_facts_refuses_a_malformed_repeated_or_non_json_fact[FACT =3]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_an_entry_without_an_int_counter_and_a_history_list_fails[entry1]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_a_logger_present_before_and_absent_now_is_a_shape_change
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_configured_max_connections_is_the_builds_own_ceiling_for_every_device[grkizi]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_bench_facts_build_for_every_device_as_a_literal_the_board_reads_back[klkizi]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_an_entry_without_an_int_counter_and_a_history_list_fails[entry3]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_fram_storage.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_an_unchanged_counter_is_no_new_error
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[dns_probe.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_task_supervisor.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/manual_sensor_accuracy.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_a_grown_counter_is_a_new_error
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/manual_persistence.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_an_entry_without_an_int_counter_and_a_history_list_fails[entry0]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/manual_bus_electrical.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_an_entry_without_an_int_counter_and_a_history_list_fails[entry4]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_an_entry_without_an_int_counter_and_a_history_list_fails[entry2]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[rogue_udp_responder.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_kick_then_reset_kicks_the_stations_before_the_one_reset
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_restore_board_to_serving_goes_through_kick_then_reset_and_then_waits_for_http
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_wait_for_script_server_ends_at_once_when_its_test_has_already_stopped
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_every_pinned_log_line_is_one_src_actually_logs[FRAM SPI FRAM Driver Setup complete]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/__main__.py]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_boot_lines_need_a_completion_marker_never_a_bare_tag
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_kick_then_reset_kicks_the_stations_before_the_one_reset
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_configured_max_connections_is_the_builds_own_ceiling_for_every_device[schlafzi]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_an_entry_without_an_int_counter_and_a_history_list_fails[7]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_configured_max_connections_is_the_builds_own_ceiling_for_every_device[dev]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_a_probe_with_any_connection_closed_answered_or_reset_is_voided_by_index[HTTP/1.0 408-HTTP/1.0 408]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_a_probe_with_any_connection_closed_answered_or_reset_is_voided_by_index[ConnectionResetError-<reset>]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_a_missing_logger_fails_naming_it_and_the_names_present
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_the_bare_reset_rule_sees_a_direct_hard_reset
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_recover_by_reset_resets_only_when_the_first_wait_times_out_and_reports_it[never-needed-calls0-0]
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_parse_facts_refuses_a_malformed_repeated_or_non_json_fact[FACT x=nan]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_retryable_picotool_exit_is_the_no_bootsel_device_status_only
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_restore_board_to_serving_goes_through_kick_then_reset_and_then_waits_for_http
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_boot_lines_need_a_completion_marker_never_a_bare_tag
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_the_no_sync_rule_sees_a_list_without_it
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_parse_facts_refuses_a_malformed_repeated_or_non_json_fact[FACT count]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_parse_facts_reads_every_fact_and_needs_done
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_parse_facts_refuses_a_malformed_repeated_or_non_json_fact[FACT x=1\nFACT x=2]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_kick_then_reset_kicks_the_stations_before_the_one_reset
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_a_probe_with_any_connection_closed_answered_or_reset_is_voided_by_index[-b'']
+0.00s setup    tests_scripts/test_bench_harness_helpers.py::test_parse_facts_reads_every_fact_and_needs_done
+0.00s call     tests_scripts/test_bench_harness_helpers.py::test_a_probe_whose_connections_are_all_still_open_stands
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_crash_lines_take_a_traceback_and_both_allocation_spellings
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[twin_board.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[website_identity.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_configured_max_connections_is_the_builds_own_ceiling_for_every_device[klkizi]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_configured_max_connections_is_the_builds_own_ceiling_for_every_device[wozi]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[soak_tiers.py]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_parse_facts_refuses_a_malformed_repeated_or_non_json_fact[FACT =3]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_a_probe_with_any_connection_closed_answered_or_reset_is_voided_by_index[HTTP/1.0 408-HTTP/1.0 408]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_parse_facts_refuses_a_malformed_repeated_or_non_json_fact[FACT count]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_parse_facts_refuses_a_malformed_repeated_or_non_json_fact[FACT x=1\nFACT x=2]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_parse_facts_refuses_a_malformed_repeated_or_non_json_fact[FACT x=nan]
+0.00s teardown tests_scripts/test_bench_harness_helpers.py::test_a_probe_whose_connections_are_all_still_open_stands
+=========================== short test summary info ============================
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_bus_concurrency_under_api_load.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_end_to_end_timing.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_hotspot_role_reversal.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_network_resilience.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_rest_endpoints_over_sta.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_wifi_networking.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_toolchain_flash_boot.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/manual_toolchain.py]
+8 failed, 132 passed in 4.95s

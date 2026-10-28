@@ -1,0 +1,29 @@
+.F............                                                           [100%]
+=================================== FAILURES ===================================
+______ test_every_pin_agrees_with_the_locks_manifest_and_resolved_version ______
+
+    def test_every_pin_agrees_with_the_locks_manifest_and_resolved_version() -> None:
+        with (REPO_ROOT / "uv.lock").open("rb") as f:
+            packages = tomllib.load(f)["package"]
+        (project,) = [p for p in packages if p.get("source", {}).get("virtual") == "."]
+        manifest = {_canonical(e["name"]): e.get("specifier", "") for group in project["metadata"]["requires-dev"].values() for e in group}
+        problems = []
+        for pin in (_PIN.match(entry) for entry in _group_entries()):
+            if pin is None:
+                continue  # the test above names it
+            name, version = _canonical(pin["name"]), pin["version"]
+            resolved = sorted({str(p["version"]) for p in packages if _canonical(str(p["name"])) == name})
+            if manifest.get(name) != f"=={version}":
+                problems.append(f"{name}: pyproject.toml pins =={version}, uv.lock's manifest records {manifest.get(name)!r}")
+            if resolved != [version]:
+                problems.append(f"{name}: pyproject.toml pins =={version}, uv.lock resolves {resolved}")
+>       assert not problems, "pyproject.toml and uv.lock disagree - re-run `uv lock`, then `uv sync`:\n" + "\n".join(problems)
+E       AssertionError: pyproject.toml and uv.lock disagree - re-run `uv lock`, then `uv sync`:
+E         pytest: pyproject.toml pins ==9.1.1, uv.lock's manifest records ''
+E         mpremote: pyproject.toml pins ==1.29.0, uv.lock's manifest records ''
+E       assert not ["pytest: pyproject.toml pins ==9.1.1, uv.lock's manifest records ''", "mpremote: pyproject.toml pins ==1.29.0, uv.lock's manifest records ''"]
+
+tests_scripts/test_tool_pins.py:58: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_tool_pins.py::test_every_pin_agrees_with_the_locks_manifest_and_resolved_version
+1 failed, 13 passed in 0.18s

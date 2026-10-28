@@ -1,0 +1,11 @@
+...............                                                          [100%]
+============================= slowest 8 durations ==============================
+1.49s call     tests_scripts/test_lint_sh.py::test_a_clean_run_generates_first_then_ends_with_the_block_counting_every_check
+0.51s call     tests_scripts/test_lint_sh.py::test_a_failing_check_is_named_in_the_block_and_fails_the_run[shellcheck]
+0.51s call     tests_scripts/test_lint_sh.py::test_a_failing_check_is_named_in_the_block_and_fails_the_run[ruff]
+0.51s call     tests_scripts/test_lint_sh.py::test_a_failing_check_is_named_in_the_block_and_fails_the_run[zizmor]
+0.48s call     tests_scripts/test_lint_sh.py::test_a_failing_check_is_named_in_the_block_and_fails_the_run[actionlint]
+0.02s call     tests_scripts/test_lint_sh.py::test_help_prints_the_usage_and_exits_0
+0.02s call     tests_scripts/test_lint_sh.py::test_outside_the_project_venv_nothing_runs
+0.01s call     tests_scripts/test_lint_sh.py::test_any_other_argument_is_a_usage_error_naming_it
+15 passed in 3.70s

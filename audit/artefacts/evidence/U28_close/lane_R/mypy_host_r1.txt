@@ -1,0 +1,2 @@
+Success: no issues found in 287 source files
+rc=0

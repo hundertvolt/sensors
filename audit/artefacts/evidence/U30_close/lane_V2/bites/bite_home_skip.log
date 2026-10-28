@@ -1,0 +1,45 @@
+.......F.                                                                [100%]
+=================================== FAILURES ===================================
+____ test_a_string_at_the_limit_or_one_the_interpreter_expands_still_starts ____
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11317/test_a_string_at_the_limit_or_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fb2d17ecf90>
+
+    def test_a_string_at_the_limit_or_one_the_interpreter_expands_still_starts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The boundary's other side: 255 bytes everywhere, and a ~/ entry the interpreter builds from $HOME, never interns.
+        monkeypatch.setenv("HOME", "/home/fixture")
+        at_limit = "x" * _LIMIT
+>       started = _spawn(monkeypatch, tmp_path, device=at_limit, args=("--fault", at_limit), micropypath=f"{at_limit}:~/{_OVER}:src")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_twin_process_spawn.py:74: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_twin_process_spawn.py:27: in _spawn
+    run = twin_process.spawn(launch, state_dir=state_dir or tmp_path / "state", log_path=tmp_path / "twin.log", args=args)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+launch = TwinLaunch(micropython_bin='/nonexistent/micropython', module='sensortask_fixture', wiring_plan=PosixPath('/tmp/pytest...xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx:src')
+state_dir = PosixPath('/tmp/pytest-of-root/pytest-11317/test_a_string_at_the_limit_or_0/state')
+log_path = PosixPath('/tmp/pytest-of-root/pytest-11317/test_a_string_at_the_limit_or_0/twin.log')
+args = ('--fault', 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')
+
+    def spawn(launch: TwinLaunch, *, state_dir: Path, log_path: Path, args: "tuple[str, ...] | list[str]" = ()) -> TwinRun:
+        # Every state path goes inside state_dir, so a launch never writes the manual run's defaults in digital_twin/; one the
+        # interpreter would die on before the runner starts is refused before anything is created.
+        paths = state_paths(state_dir)
+        env = dict(os.environ, MICROPYPATH=launch.micropypath, TZ="UTC")
+        cmd = [
+            launch.micropython_bin, RUNNER, "--module", launch.module, "--wiring-plan", str(launch.wiring_plan), "--device", launch.device,
+            "--host", launch.host, "--port", str(launch.port), "--fram-state-path", str(paths.fram), "--scd30-state-path", str(paths.scd30),
+            "--mem-backup-state-path", str(paths.mem_backup), "--config-dir", str(paths.config_dir) + "/", "--gc-threshold", str(launch.gc_threshold), *args,
+        ]
+        refused = _uninternable(cmd[1:], env)
+        if refused:
+>           raise ValueError(f"the twin was not started: {', '.join(refused)} - the Unix port interns each as a qstr of at most {_QSTR_MAX_BYTES} bytes and dies before the runner starts")
+E           ValueError: the twin was not started: MICROPYPATH entry 2 (258 bytes) - the Unix port interns each as a qstr of at most 255 bytes and dies before the runner starts
+
+scripts/_twin_process.py:402: ValueError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_twin_process_spawn.py::test_a_string_at_the_limit_or_one_the_interpreter_expands_still_starts
+1 failed, 8 passed in 0.11s

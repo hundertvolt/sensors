@@ -1,611 +1,454 @@
-"""Bench-tier tests for real WiFi outage/flap, NTP/DNS servers answering garbage (BACKLOG.md question
-#5), the webserver's admission ceiling on silicon, malformed REST requests and slowloris/abrupt
-disconnects. DHCP-client flakiness is deliberately out of scope (see BACKLOG.md)."""
+"""Bench-tier tests for real WiFi outage and flap (owner, 2026-09-01), NTP/DNS servers answering garbage
+(SPECIFICATION.md F.1, UDP on rp2/lwIP), the admission ceiling on silicon, malformed requests and slowloris. DHCP is
+not fault-injected: a documented known limitation (owner, 2026-09-26; tests_hardware/README.md)."""
 
-from __future__ import annotations
-
+import itertools
 import json
+import re
 import socket
+import struct
 import threading
 import time
 from typing import TYPE_CHECKING
 
+import _load
 import http_client
 import ntp_probe
 import pytest
+import serial
 from error_log_helpers import (
+    ErrcountEntry,
+    assert_module_error_log_clean,
     assert_module_error_log_contains,
     assert_module_error_log_empty,
+    assert_module_logged_one_code,
     assert_no_module_logged_a_new_error,
     assert_no_task_ended,
+    code,
+    errcount_entry,
     get_errcount,
     reset_all_error_logs,
 )
-from harness import HELD_PAD_LINE, HELD_REQUEST_LINE, Board, HardwareTestFailureError, configured_max_connections, discover_max_connections, wait_until
+from harness import (
+    HELD_PAD_LINE,
+    HELD_REQUEST_LINE,
+    SRC_DIR,
+    Board,
+    HardwareTestFailureError,
+    _wait_for_slots_to_drain,
+    bench_device,
+    boot_lines,
+    configured_max_connections,
+    crash_lines,
+    device_toml,
+    discover_max_connections,
+    get_routes,
+    hotspot_password,
+    kick_then_reset,
+    observe_during,
+    recover_by_reset,
+    schema_default,
+    wait_until,
+)
 from rogue_udp_responder import RogueUdpResponder
+
+from buildgen.definitions import definitions_for_toml
 
 if TYPE_CHECKING:
     from bench_control import BenchBridge
+    from http_client import JSONObject
+
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency", "sensortask_integration", "poll_prewarm", "ci_suite._run_8_wifi_persistence_and_configure_ntp", "ci_suite._run_11b_full_ceiling_concurrency")
 
 # ---------------------------------------------------------------------------
 # WiFi outage or flap inside an already-established STA connection. Per
 # _on_sta_disconnected(), that case takes the safe "retry in 60s" branch and never increments
-# connection_failures or reaches hotspot fallback - read out of the source, not assumed.
+# _connection_failures or reaches hotspot fallback - read out of the source, not assumed.
 # ---------------------------------------------------------------------------
 
 
-def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    reset_all_error_logs(dut_ip)
+# @tunable l4.network_resilience_outage_s = 15.0
+_OUTAGE_S = 15.0
+# @tunable l4.network_resilience_outage_reconnect_timeout_s = 150.0
+_OUTAGE_RECONNECT_TIMEOUT_S = 150.0
+# @tunable l4.network_resilience_reconnect_timeout_s = 60.0
+_RECONNECT_TIMEOUT_S = 60.0
+# @tunable l4.network_resilience_reconnect_poll_s = 3.0
+_RECONNECT_POLL_S = 3.0
+# @tunable l4.network_resilience_probe_timeout_s = 10.0
+_PROBE_TIMEOUT_S = 10.0
+# @tunable l4.network_resilience_flap_step_s = 3.0
+_FLAP_STEP_S = 3.0
+# @tunable l4.network_resilience_flap_cycles = 3
+_FLAP_CYCLES = 3
+# @tunable l4.network_resilience_degraded_reconnect_timeout_s = 90.0
+_DEGRADED_RECONNECT_TIMEOUT_S = 90.0
+# @tunable l4.network_resilience_wait_timeout_s = 30.0
+_WAIT_TIMEOUT_S = 30.0
+# @tunable l4.network_resilience_wait_poll_s = 2.0
+_WAIT_POLL_S = 2.0
+# @tunable l4.network_resilience_probe_spacing_s = 1.0
+_PROBE_SPACING_S = 1.0
+# @tunable l4.network_resilience_ntp_resync_timeout_s = 20.0
+_NTP_RESYNC_TIMEOUT_S = 20.0
+# @tunable l4.network_resilience_quick_poll_s = 1.0
+_QUICK_POLL_S = 1.0
+# @tunable l4.wifi_networking_ntp_fault_tail_s = 90.0
+_ROGUE_TAIL_S = 90.0
+# @tunable l4.bench_control_udp_capture_timeout_s = 55.0
+_UDP_CAPTURE_TIMEOUT_S = 55.0
+# @tunable l4.network_resilience_rtc_write_wait_s = 3.0
+_RTC_WRITE_WAIT_S = 3.0
+# @tunable l4.network_resilience_ntp_resync_after_reset_timeout_s = 120.0
+_NTP_RESYNC_AFTER_RESET_TIMEOUT_S = 120.0
+# @tunable l4.network_resilience_no_ap_tail_s = 15.0
+_NO_AP_TAIL_S = 15.0
+# @tunable l4.hotspot_role_reversal_join_hotspot_timeout_s = 45.0
+_JOIN_HOTSPOT_TIMEOUT_S = 45.0
+# @tunable l4.hotspot_role_reversal_dhcp_timeout_s = 45.0
+_DHCP_TIMEOUT_S = 45.0
+# @tunable l4.hotspot_role_reversal_dhcp_poll_s = 2.0
+_DHCP_POLL_S = 2.0
+# @tunable l4.network_resilience_slot_release_wait_s = 1.0
+_SLOT_RELEASE_WAIT_S = 1.0
+# @tunable l4.network_resilience_raw_socket_timeout_s = 10.0
+_RAW_SOCKET_TIMEOUT_S = 10.0
+# @tunable l4.network_resilience_held_admit_wait_s = 2.0
+_HELD_ADMIT_WAIT_S = 2.0
+# @tunable l4.network_resilience_admitted_silence_s = 1.0
+_ADMITTED_SILENCE_S = 1.0
+# @tunable l4.network_resilience_quick_recovery_timeout_s = 15.0
+_QUICK_RECOVERY_TIMEOUT_S = 15.0
+# @tunable l4.network_resilience_loaded_fetch_timeout_s = 30.0
+_LOADED_FETCH_TIMEOUT_S = 30.0
+# @tunable l4.network_resilience_storm_join_s = 60.0
+_STORM_JOIN_S = 60.0
+# @tunable l4.network_resilience_slowloris_socket_timeout_s = 30.0
+_SLOWLORIS_SOCKET_TIMEOUT_S = 30.0
+# @tunable l4.network_resilience_trickle_step_s = 3.0
+_TRICKLE_STEP_S = 3.0
+# @tunable l4.network_resilience_burst_join_s = 40.0
+_BURST_JOIN_S = 40.0
+# @tunable l4.network_resilience_served_elapsed_max_s = 30.0
+_SERVED_ELAPSED_MAX_S = 30.0
+# @tunable l4.network_resilience_degraded_get_count = 5
+_DEGRADED_GET_COUNT = 5
+# @tunable l4.network_resilience_join_attempts = 3
+_JOIN_ATTEMPTS = 3
+# @tunable l4.network_resilience_over_ceiling_attempts = 3
+_OVER_CEILING_ATTEMPTS = 3
+# @tunable l4.network_resilience_capture_attempts = 3
+_CAPTURE_ATTEMPTS = 3
+# @tunable l4.network_resilience_storm_repeat_min = 3
+_STORM_REPEAT_MIN = 3
+# @tunable l4.network_resilience_ntp_block_margin_s = 10.0
+_NTP_BLOCK_MARGIN_S = 10.0
+# @tunable l4.network_resilience_no_reconnect_tail_s = 5.0
+_NO_RECONNECT_TAIL_S = 5.0
+_NTP = "asy_ntp_client.py"
+_WIFI = "asy_wifi_service.py"
+_WEBSERVER = "asy_webserver_service.py"
+# The two traced ways a connection ends at the ceiling: the refusal itself, and a client resetting one it gave up on.
+_CEILING_TRACES = (code("W", "HTTP_REFUSED"), code("W", "HTTP_PEER_RESET"))
+
+
+@pytest.mark.provokes_log(
+    "the real outage's WLAN warnings, checked by _assert_wifi_log_has_only_benign_outage_warnings, and an NTP attempt"
+    " already past its network check when the AP drops, or its whole retry chain where the link still reads as up",
+    ("WIFI", "W", "WLAN_NO_AP"),
+    ("WIFI", "W", "WLAN_AUTH_FAILED"),
+    ("NTP", "E", "NTP_DNS_NOT_SENT"),
+    ("NTP", "E", "NTP_DNS"),
+    ("NTP", "E", "NTP_NOT_SENT"),
+    ("NTP", "E", "NTP_NO_REPLY"),
+    ("NTP", "E", "NTP_RETRIES"),
+)
+def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    reset_all_error_logs(dut_ip, request.node.name)
     bench.ap_down()
     try:
-        # No assertion here that the DUT notices within any particular window - the real behavior
-        # (per asy_wifi_service.py above) is a 60s retry cadence with no upper bound on how long the
-        # outage itself lasts, so a brief outage is a fully realistic, low-risk window to inject.
-        time.sleep(15.0)
+        # No assertion that the DUT notices within any particular window: the established-connection branch retries
+        # every 60 s with no bound on the outage, so a brief outage is a realistic, low-risk window to inject.
+        time.sleep(_OUTAGE_S)
     finally:
         bench.ap_up()
-        bench.kick_all_stations()  # clears any stale AP-side entry - see this module's own finding below
+        bench.kick_all_stations()  # no stale AP-side station entry may outlive the outage
+    _assert_recovered(board, bench, dut_ip, result_note, "a real WiFi outage", "bench.ap_up()")
+    assert_no_task_ended(dut_ip, "real WiFi outage")  # on the reset path too: FRAM keeps SYSTEM
 
-    # The CYW43 firmware can report associated while the link is dead, and neither
-    # kick_all_stations() nor the retry logic reliably clears it (tests_hardware/README.md). A
-    # fallback hard_reset() is a genuine pass per CLAUDE.md; the notes below record which ran.
-    recovered_via_hard_reset = False
-    recovery_started = time.monotonic()
+
+@pytest.mark.provokes_log(
+    "the repeated real outages' WLAN warnings, checked by _assert_wifi_log_has_only_benign_outage_warnings, and an NTP"
+    " attempt already past its network check when the AP drops, or its whole retry chain where the link still reads as up",
+    ("WIFI", "W", "WLAN_NO_AP"),
+    ("WIFI", "W", "WLAN_AUTH_FAILED"),
+    ("NTP", "E", "NTP_DNS_NOT_SENT"),
+    ("NTP", "E", "NTP_DNS"),
+    ("NTP", "E", "NTP_NOT_SENT"),
+    ("NTP", "E", "NTP_NO_REPLY"),
+    ("NTP", "E", "NTP_RETRIES"),
+)
+def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    reset_all_error_logs(dut_ip, request.node.name)
     try:
-        wait_until(
-            lambda: _sta_reconnected(dut_ip),
-            timeout_s=150.0,
-            poll_interval_s=5.0,
-            description="DUT to re-establish its real STA connection after the bridge AP comes back up",
-        )
-        print(f"RESULT NOTE: recovered gracefully in {time.monotonic() - recovery_started:.1f}s (bench.ap_up() to first reachable /status)")
-    except TimeoutError:
-        recovered_via_hard_reset = True
-        graceful_wait_s = time.monotonic() - recovery_started
-        bench.kick_all_stations()
-        board.hard_reset()
-        wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable again after a recovery hard_reset() (see this test's own comment)")
-        print(f"RESULT NOTE: recovered via a fallback hard_reset() - the graceful established-connection retry did not clear this real CYW43-firmware characteristic within {graceful_wait_s:.1f}s")
-
-    assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after a real WiFi outage and recovery"
-    assert_no_task_ended(dut_ip, "real WiFi outage")  # holds on the hard_reset() path too: FRAM keeps SYSTEM
-    if not recovered_via_hard_reset:
-        _assert_wifi_log_has_only_benign_outage_warnings(dut_ip)
-
-
-def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    reset_all_error_logs(dut_ip)
-    for _cycle in range(3):
-        bench.ap_down()
-        time.sleep(3.0)  # short relative to the 60s retry cadence above - the DUT is still mid-wait, not yet retrying
-        bench.ap_up()
-        time.sleep(3.0)
-    # kick_all_stations() once, after the last flap - see test_real_wifi_outage_and_recovery_while_
-    # in_normal_sta_mode's own comment for the full finding (a real, disclosed CYW43-firmware-level
-    # gap, not fully explained or fixed by this alone).
+        for _cycle in range(_FLAP_CYCLES):
+            bench.ap_down()
+            time.sleep(_FLAP_STEP_S)  # short against the 60 s retry cadence: the DUT is still mid-wait, not yet retrying
+            bench.ap_up()
+            time.sleep(_FLAP_STEP_S)
+    finally:
+        bench.ap_up()  # a flap cut short by a failure must not leave the bench AP down
     bench.kick_all_stations()
-
-    # Same hard_reset()-fallback-is-a-real-pass pattern as test_real_wifi_outage_and_recovery_
-    # while_in_normal_sta_mode above, same reason - see that test's own comment.
-    recovered_via_hard_reset = False
-    recovery_started = time.monotonic()
-    try:
-        wait_until(
-            lambda: _sta_reconnected(dut_ip),
-            timeout_s=150.0,
-            poll_interval_s=5.0,
-            description="DUT to re-establish its real STA connection after repeated AP flapping",
-        )
-        print(f"RESULT NOTE: recovered gracefully in {time.monotonic() - recovery_started:.1f}s (last bench.ap_up() to first reachable /status)")
-    except TimeoutError:
-        recovered_via_hard_reset = True
-        graceful_wait_s = time.monotonic() - recovery_started
-        bench.kick_all_stations()
-        board.hard_reset()
-        wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable again after a recovery hard_reset() (see this test's own comment)")
-        print(f"RESULT NOTE: recovered via a fallback hard_reset() - the graceful established-connection retry did not clear this real CYW43-firmware characteristic within {graceful_wait_s:.1f}s")
-
-    assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after repeated real WiFi flapping"
+    _assert_recovered(board, bench, dut_ip, result_note, "repeated real WiFi flapping", "the last bench.ap_up()")
     assert_no_task_ended(dut_ip, "repeated real WiFi flapping")
-    if not recovered_via_hard_reset:
-        _assert_wifi_log_has_only_benign_outage_warnings(dut_ip)  # same reasoning as the single-outage test above
-
-
-def _assert_wifi_log_has_only_benign_outage_warnings(dut_ip: str) -> None:
-    """Tolerates the two warnings a real outage logs: wrnno=5 (AP not found, a retry poll landing
-    mid-outage) and wrnno=4 (cyw43's BADAUTH, also raised when the AP drops mid-handshake - BACKLOG
-    item 29). Anything else still fails; the password never changes here, so 4 cannot be real."""
-    entry = get_errcount(dut_ip).get("WIFI", {})
-    history = entry.get("history", [])
-    # "N" entries are print_log.py's own "nothing recorded" padding (get_log()'s own encoding) -
-    # always present, filling out the fixed-size ring, and not a real log line at all.
-    unexpected = [h for h in history if h.get("type") != "N" and not (h.get("type") == "W" and h.get("num") in (4, 5))]
-    assert not unexpected, f"WIFI error log had unexpected entries beyond the known-benign wrnno=4/5: {unexpected!r} (full: {entry!r})"
-
-
-def _sta_reconnected(dut_ip: str) -> bool:
-    try:
-        return http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=5.0).status_code == 200
-    except OSError:
-        return False
 
 
 # ---------------------------------------------------------------------------
-# Real loss, latency, corruption, duplication and reordering via inject_network_degradation() -
-# perturbing real packets, unlike the binary block/redirect faults elsewhere here. The parameter
-# ranges come from researched real-world WiFi figures (tests_hardware/README.md).
+# Real loss, latency, corruption, duplication and reordering via inject_network_degradation(). A synced NTP client
+# attempts nothing until NTPInterval hours have passed (src/asy_ntp_client.py _refresh_loop()), so no NTP exchange
+# falls inside these windows: each test proves REST reachability under its impairment, and is named so.
 # ---------------------------------------------------------------------------
 
 
-def test_real_operations_survive_and_recover_under_sustained_packet_loss_and_latency(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    reset_all_error_logs(dut_ip)
-    bench.inject_network_degradation(loss_pct=30, delay_ms=150, jitter_ms=50)
-    try:
-        # Under sustained 30% loss and 150ms(+/-50ms) latency any individual request may
-        # legitimately fail; the property is that a bounded retry loop still gets through. 90s is
-        # generous against a handful of client retries at those figures.
-        wait_until(
-            lambda: _sta_reconnected(dut_ip),
-            timeout_s=90.0,
-            poll_interval_s=3.0,
-            description="DUT still eventually reachable over REST under sustained packet loss/latency",
-        )
-    finally:
-        bench.clear_network_degradation()
-
-    joined = "\n".join(board.tail_log(duration_s=5.0))  # a brief passive window, purely for the crash check below
-    crash_markers = [ln for ln in joined.splitlines() if "Traceback" in ln]
-    assert not crash_markers, "sustained packet loss/latency crashed the system instead of degrading cleanly:\n" + "\n".join(crash_markers)
-
-    # Full recovery once the degradation clears - back to fast, reliable responses, not left in some
-    # lingering half-degraded state (e.g. a retry loop that only backs off and never resets).
-    wait_until(
-        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=5.0).status_code == 200,
-        timeout_s=30.0,
-        poll_interval_s=2.0,
-        description="DUT fully recovered (fast, reliable REST) after network degradation cleared",
-    )
-    assert_no_task_ended(dut_ip, "sustained packet loss/latency")
-    reset_all_error_logs(dut_ip)  # never leave a deliberately-provoked fault in the live error history
+def test_rest_stays_reachable_and_recovers_under_sustained_packet_loss_and_latency(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest) -> None:
+    # Under 30% loss and 150 ms (+/-50 ms) latency any one request may fail; a bounded retry loop still gets through.
+    reset_all_error_logs(dut_ip, request.node.name)
+    _impaired(board, bench, dut_ip, _DEGRADED_RECONNECT_TIMEOUT_S, loss_pct=30, delay_ms=150, jitter_ms=50)
+    assert_no_task_ended(dut_ip, "sustained packet loss and latency")
+    reset_all_error_logs(dut_ip, request.node.name)  # no provoked fault stays in the live history
 
 
-def test_real_operations_unaffected_by_light_realistic_wifi_congestion(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    # The "everyday" end of the researched range (30ms delay, 20ms jitter, 0.5-5% loss) - unlike
-    # the sustained/severe test above, requests here should just succeed first try, with no
-    # special retry tolerance needed.
-    reset_all_error_logs(dut_ip)
-    bench.inject_network_degradation(loss_pct=2, delay_ms=30, jitter_ms=20)
-    try:
-        for _ in range(5):
-            res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
-            assert res.status_code == 200, f"a plain GET /status failed under light, realistic WiFi congestion (2% loss/30ms delay): {res.status_code} {res.body!r}"
-            time.sleep(1.0)
-    finally:
-        bench.clear_network_degradation()
-    assert_module_error_log_empty(dut_ip, "NTP")
+def test_rest_answers_first_try_under_light_realistic_wifi_congestion(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest) -> None:
+    # The everyday end of the researched range (30 ms delay, 20 ms jitter, 2% loss): every request succeeds first try.
+    reset_all_error_logs(dut_ip, request.node.name)
+
+    def window() -> None:
+        bench.inject_network_degradation(loss_pct=2, delay_ms=30, jitter_ms=20)
+        try:
+            for _ in range(_DEGRADED_GET_COUNT):
+                res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S)
+                assert res.status_code == 200, f"a plain GET /status failed under light, realistic WiFi congestion: {res.status_code} {res.body[:200]!r}"
+                time.sleep(_PROBE_SPACING_S)
+        finally:
+            bench.clear_network_degradation()
+
+    _result, lines = observe_during(board, window)
+    assert not crash_lines(lines), f"light congestion crashed the system: {crash_lines(lines)}"
     assert_no_task_ended(dut_ip, "light WiFi congestion")
+    assert_module_error_log_empty(dut_ip, "WEBSERVER")
 
 
-def test_real_operations_survive_real_packet_corruption(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    # Unlike the rogue-responder tests below, corrupt() flips a random bit inside an otherwise-real
-    # packet (a radio-level bit error) - real UDP/TCP checksums should catch and drop/retransmit
-    # it, which is exactly the property this test confirms rather than assumes.
-    reset_all_error_logs(dut_ip)
-    bench.inject_network_degradation(corrupt_pct=5)
-    try:
-        wait_until(
-            lambda: _sta_reconnected(dut_ip),
-            timeout_s=60.0,
-            poll_interval_s=3.0,
-            description="DUT still eventually reachable over REST under real packet corruption",
-        )
-    finally:
-        bench.clear_network_degradation()
-
-    joined = "\n".join(board.tail_log(duration_s=5.0))
-    crash_markers = [ln for ln in joined.splitlines() if "Traceback" in ln]
-    assert not crash_markers, "real packet corruption crashed the system instead of the checksum layer cleanly dropping it:\n" + "\n".join(crash_markers)
-
-    wait_until(
-        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=5.0).status_code == 200,
-        timeout_s=30.0,
-        poll_interval_s=2.0,
-        description="DUT fully recovered after packet corruption cleared",
-    )
+def test_rest_stays_reachable_and_recovers_under_real_packet_corruption(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest) -> None:
+    # corrupt flips a random bit inside a real packet (a radio-level bit error): UDP/TCP checksums drop it and TCP
+    # retransmits, which is the property confirmed here rather than assumed.
+    reset_all_error_logs(dut_ip, request.node.name)
+    _impaired(board, bench, dut_ip, _RECONNECT_TIMEOUT_S, corrupt_pct=5)
     assert_no_task_ended(dut_ip, "real packet corruption")
-    reset_all_error_logs(dut_ip)
+    reset_all_error_logs(dut_ip, request.node.name)
 
 
-def test_real_operations_survive_duplicated_and_reordered_packets(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    # A real duplicated/out-of-order UDP delivery - checks whether a duplicate or late reply ever
-    # gets mismatched against a different, later pending request. `reorder` needs an existing
-    # `delay` to be meaningful (man tc-netem) - the light delay here is for that, not as its own stressor.
-    reset_all_error_logs(dut_ip)
-    bench.inject_network_degradation(delay_ms=20, duplicate_pct=10, reorder_pct=25)
-    try:
-        wait_until(
-            lambda: _sta_reconnected(dut_ip),
-            timeout_s=60.0,
-            poll_interval_s=3.0,
-            description="DUT still reachable over REST under real duplicated/reordered packets",
-        )
-    finally:
-        bench.clear_network_degradation()
-
-    joined = "\n".join(board.tail_log(duration_s=5.0))
-    crash_markers = [ln for ln in joined.splitlines() if "Traceback" in ln]
-    assert not crash_markers, "duplicated/reordered packets crashed the system instead of being handled cleanly:\n" + "\n".join(crash_markers)
-
-    wait_until(
-        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=5.0).status_code == 200,
-        timeout_s=30.0,
-        poll_interval_s=2.0,
-        description="DUT fully recovered after duplication/reordering cleared",
-    )
-    assert_no_task_ended(dut_ip, "duplicated/reordered packets")
-    reset_all_error_logs(dut_ip)
+def test_rest_stays_reachable_under_duplicated_and_reordered_packets(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest) -> None:
+    # A duplicated or late reply matched to a later request would be a fault; reorder needs a delay to act on (tc-netem).
+    reset_all_error_logs(dut_ip, request.node.name)
+    _impaired(board, bench, dut_ip, _RECONNECT_TIMEOUT_S, delay_ms=20, duplicate_pct=10, reorder_pct=25)
+    assert_no_task_ended(dut_ip, "duplicated and reordered packets")
+    reset_all_error_logs(dut_ip, request.node.name)
 
 
-@pytest.mark.persistence_write
-def test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    # The real-hardware form of test_asy_ntp_client.py's retry-after-one-dropped-request test:
-    # the retry timer alone recovers, with no reboot. A guaranteed block_udp_ports() rather than
-    # netem loss, so the outage outlasts _NTP_CONN_TIMEOUT (5s) but clears inside the 15s retry.
-    get_before = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=10.0)
-    assert get_before.status_code == 200, f"GET /networking failed: {get_before.status_code} {get_before.body!r}"
-    original_host = get_before.json()["NTP_Host"]
-
-    def _synced() -> bool:
-        status = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).json()
-        return status.get("networking", {}).get("NtpSynced") is True
-
-    # dut_ip only waits for HTTP reachability, not specifically for NTP sync to finish - confirmed
-    # directly (NtpLastSyncAge showed sync completing only ~12s after dut_ip returned), so this is
-    # a real precondition worth waiting for, not asserting instantly.
-    wait_until(_synced, timeout_s=30.0, poll_interval_s=2.0, description="test precondition: DUT to report NTP-synced before this test's own transient-outage fault starts")
-    reset_all_error_logs(dut_ip)
-
+@pytest.mark.provokes_log("the blocked NTP port's attempts, which the test asserts as NTP_NO_REPLY", ("NTP", "E", "NTP_NO_REPLY"))
+def test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    # A synced client attempts nothing for hours and an unchanged NTPHost PUT fires no post function
+    # (src/asy_api_response.py): the reset under the block makes the boot's sync fail, and the client's own retry timer,
+    # never another reset, resyncs once the block - one retry period plus a margin - lifts.
+    networking = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S)
+    res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTPHost": networking.get("NTPHost")}, timeout_s=_PROBE_TIMEOUT_S)
+    word = _load.as_object(res.json().get("result"), "result").get("NTPHost")
+    assert res.status_code == 200 and word == "Unchanged", f"an NTPHost PUT of its current value answered {word!r}: something was written"
+    reset_all_error_logs(dut_ip, request.node.name)
+    block_s = _load.ntp_retry_period_s() + _NTP_BLOCK_MARGIN_S
     bench.block_udp_ports([123])
     try:
-        # Re-triggers a real resync without a reboot: PUT-ing NTP_Host back to its current value
-        # still fires post_asy_fct, which runs if ANY field in the call validated (the garbage-
-        # NTP_Host test below has the full account).
-        put_res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTP_Host": original_host}, timeout_s=10.0)
-        assert put_res.status_code == 200 and put_res.json()["result"].get("NTP_Host") in ("Valid", "Unchanged"), f"re-triggering PUT /networking NTP_Host={original_host!r} was rejected: {put_res.status_code} {put_res.body!r}"
-        time.sleep(8.0)  # longer than the real 5s fetch timeout, so this attempt genuinely fails, not just races a lucky window
+        _load.reset_and_wait(board, bench, dut_ip, timeout_s=_RECONNECT_TIMEOUT_S)
+        blocked_until = time.monotonic() + block_s
+        # The no-reply entry, never NTPSynced false: every boot starts unsynced, so only the entry proves the block met
+        # an attempt.
+        wait_until(lambda: _load._ntp_error_log_contains(dut_ip, code("E", "NTP_NO_REPLY")), timeout_s=block_s, poll_interval_s=_QUICK_POLL_S, description="an NTP attempt meeting the block (NTP_NO_REPLY)")
+        time.sleep(max(blocked_until - time.monotonic(), 0.0))
     finally:
         bench.unblock_udp_ports([123])
-
-    # Cleared well before the real 15s retry interval elapses - the retry timer's own next attempt
-    # must land on a genuinely clear network and succeed, with no hard_reset() anywhere in this test.
-    wait_until(_synced, timeout_s=20.0, poll_interval_s=1.0, description="NTP resynced via its own retry timer after a transient (not sustained) outage, with no reboot")
+    started = time.monotonic()
+    wait_until(lambda: _load.ntp_synced(dut_ip), timeout_s=_NTP_RESYNC_TIMEOUT_S + block_s, poll_interval_s=_QUICK_POLL_S, description="NTP resynced by its own retry timer after the block, with no further reset")
+    result_note(f"NTP resynced {time.monotonic() - started:.1f}s after the block lifted")
     assert_no_task_ended(dut_ip, "transient NTP outage")
-    reset_all_error_logs(dut_ip)  # the one deliberately-provoked failed attempt above did legitimately log something - never leave that in the live error history
+    assert_module_logged_one_code(dut_ip, "NTP", "E", code("E", "NTP_NO_REPLY"), events=None)  # the attempts the block met
+    reset_all_error_logs(dut_ip, request.node.name)  # after the provoked entry was read exactly
 
 
 # ---------------------------------------------------------------------------
-# NTP/DNS servers answering with garbage rather than being unreachable (BACKLOG open question 5).
-# test_wifi_networking.py covers a dropped server; these two redirect the real port to a local
-# rogue responder via redirect_udp_port_to_local(), which its own docstring marks unverified.
+# NTP/DNS servers answering garbage rather than being unreachable (SPECIFICATION.md F.1, UDP on rp2/lwIP); delivery
+# and its limits: tests_hardware/README.md 'What the network-fault injections reach'.
 # ---------------------------------------------------------------------------
 
-_ROGUE_LOCAL_PORT_NTP = 42123
-_ROGUE_LOCAL_PORT_DNS = 42153
-_GARBAGE_PAYLOAD = b"this is not a valid NTP or DNS wire-format packet, on purpose"
+# 48 bytes, the NTP packet the client receives into (src/asy_ntp_client.py _NTP_PACKET_LEN), and still no valid NTP
+# header: its first byte 0xff is leap indicator 3, which _parse_ntp_reply() rejects as unsynchronised before any time.
+_GARBAGE_PAYLOAD = b"\xff" + b"not an NTP or DNS wire-format packet, on purpose"[:47]
 
 
-def test_ntp_server_sends_garbage_instead_of_a_valid_response(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    reset_all_error_logs(dut_ip)
-    with RogueUdpResponder(_ROGUE_LOCAL_PORT_NTP, _GARBAGE_PAYLOAD):
-        bench.redirect_udp_port_to_local(123, _ROGUE_LOCAL_PORT_NTP)
-        try:
-            bench.kick_all_stations()  # see conftest.py's dut_ip docstring for the full finding
-            board.hard_reset()  # forces a fresh NTP sync attempt against the now-rogue server
-            lines = board.tail_log(duration_s=90.0)  # generous relative to asy_ntp_client.py's own retry/backoff budget
-        finally:
-            bench.clear_udp_port_redirect(123, _ROGUE_LOCAL_PORT_NTP)
+@pytest.mark.provokes_log("every garbage reply is rejected as unsynchronised (leap indicator 3)", ("NTP", "W", "NTP_UNSYNC_REPLY"))
+def test_ntp_server_sends_garbage_instead_of_a_valid_response(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    reset_all_error_logs(dut_ip, request.node.name)
+    lines, answered = _garbage_window(board, bench, dut_ip, 123)
+    assert answered.get(dut_ip, 0) >= 1, f"the injection never reached the DUT: the rogue NTP responder answered {answered!r}, never {dut_ip}"
+    assert not crash_lines(lines), f"a garbage NTP response crashed the system instead of being rejected cleanly: {crash_lines(lines)}"
+    assert boot_lines(lines), f"the board did not finish booting with a garbage-answering NTP server: {lines[-20:]}"
+    _reconnected_after_forced_resync(board, bench, dut_ip, result_note)
+    # The reply's own rejection, never the console's "Invalid NTP time received!": every failed sync prints that line.
+    assert_module_error_log_contains(dut_ip, "NTP", code("W", "NTP_UNSYNC_REPLY"), "W")
+    assert_no_task_ended(dut_ip, f"{_ROGUE_TAIL_S:g}s of garbage NTP replies")
+    reset_all_error_logs(dut_ip, request.node.name)
 
-    joined = "\n".join(lines)
-    crash_markers = [ln for ln in lines if "Traceback" in ln]
-    assert not crash_markers, "a garbage NTP response crashed the system instead of being rejected cleanly:\n" + "\n".join(crash_markers)
-    assert "CFGMGR_" in joined or "FRAM" in joined, f"system did not appear to finish booting with a garbage-answering NTP server:\n{joined}"
-    # Read from the live tail_log, not the REST errcount history, whose fixed 10-entry window a
-    # full 90s of garbage evicts. "Invalid NTP time received!" is the string because it fires for
-    # either rejection branch this 63-byte payload can hit (errno 14 or 15).
-    assert "Invalid NTP time received!" in joined, f"no sign of a rejected NTP sync attempt observed - the garbage payload may not have reached the DUT at all:\n{joined}"
 
-    # Bounded recovery retry - see test_wifi_networking.py's own equivalent comment.
+@pytest.mark.provokes_log("a garbage DNS reply fails the lookup as silence would, which NTP logs as NTP_DNS", ("NTP", "E", "NTP_DNS"))
+def test_dns_server_sends_garbage_instead_of_a_valid_response(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    reset_all_error_logs(dut_ip, request.node.name)
+    lines, answered = _garbage_window(board, bench, dut_ip, 53)
+    # A garbage DNS reply and silence log the same NTP code, so the responder's own count is what proves delivery.
+    assert answered.get(dut_ip, 0) >= 1, f"the injection never reached the DUT: the rogue DNS responder answered {answered!r}, never {dut_ip}"
+    assert not crash_lines(lines), f"a garbage DNS response crashed the system instead of being rejected cleanly: {crash_lines(lines)}"
+    assert boot_lines(lines), f"the board did not finish booting with a garbage-answering DNS server: {lines[-20:]}"
+    _reconnected_after_forced_resync(board, bench, dut_ip, result_note)
     try:
-        wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again after the hard_reset() above")
-    except TimeoutError:
-        bench.kick_all_stations()
-        board.hard_reset()
-        wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again (after one recovery hard_reset() retry)")
-    assert_no_task_ended(dut_ip, "90s of garbage NTP replies")  # past the ~60s the old NTP give-up needed
-    reset_all_error_logs(dut_ip)  # never leave a deliberately-provoked fault in the live error history
-
-
-def test_dns_server_sends_garbage_instead_of_a_valid_response(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    reset_all_error_logs(dut_ip)
-    with RogueUdpResponder(_ROGUE_LOCAL_PORT_DNS, _GARBAGE_PAYLOAD):
-        bench.redirect_udp_port_to_local(53, _ROGUE_LOCAL_PORT_DNS)
-        try:
-            bench.kick_all_stations()  # see conftest.py's dut_ip docstring for the full finding
-            board.hard_reset()  # forces a fresh DNS resolution attempt against the now-rogue server
-            lines = board.tail_log(duration_s=90.0)
-        finally:
-            bench.clear_udp_port_redirect(53, _ROGUE_LOCAL_PORT_DNS)
-
-    joined = "\n".join(lines)
-    crash_markers = [ln for ln in lines if "Traceback" in ln]
-    assert not crash_markers, "a garbage DNS response crashed the system instead of being rejected cleanly:\n" + "\n".join(crash_markers)
-    assert "CFGMGR_" in joined or "FRAM" in joined, f"system did not appear to finish booting with a garbage-answering DNS server:\n{joined}"
-
-    # Bounded recovery retry - see test_wifi_networking.py's own equivalent comment.
-    try:
-        wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again after the hard_reset() above")
-    except TimeoutError:
-        bench.kick_all_stations()
-        board.hard_reset()
-        wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again (after one recovery hard_reset() retry)")
-    # No standalone DNS-client error log exists (resolve_ipv4() is a plain function, no
-    # PrintLogHistory of its own) - a garbage reply fails the same sanity checks as no reply at
-    # all, so resolve_ipv4() exhausts every server and lands on "NTP" module's own errno=12.
-    try:
-        assert_module_error_log_contains(dut_ip, "NTP", 12, "E")
-        assert_no_task_ended(dut_ip, "90s of garbage DNS replies")
+        # resolve_ipv4() keeps no log of its own: a garbage reply fails its checks like silence, so NTP logs NTP_DNS.
+        assert_module_error_log_contains(dut_ip, "NTP", code("E", "NTP_DNS"), "E")
+        assert_no_task_ended(dut_ip, f"{_ROGUE_TAIL_S:g}s of garbage DNS replies")
     finally:
-        reset_all_error_logs(dut_ip)
+        reset_all_error_logs(dut_ip, request.node.name)
 
 
 # ---------------------------------------------------------------------------
-# Connected-socket source-address filtering (BACKLOG open question 5), which the garbage-response
-# tests cannot reach: DNAT+conntrack rewrites the reply's source back first. So capture the DUT's
-# ephemeral port with tcpdump and answer it from this host's own IP - no raw sockets needed.
+# Connected-socket source-address filtering (SPECIFICATION.md F.1, UDP on rp2/lwIP), which the garbage tests cannot
+# reach: conntrack rewrites the reply's source. The real reply is held back, the DUT's port captured with tcpdump, and
+# a reply answered from this host's own address (tests_hardware/README.md 'Known assumptions and open findings').
 # ---------------------------------------------------------------------------
 
-_NTP_SPOOF_INJECTED_UNIX_TIME = 2524608000  # 2050-01-01T00:00:00Z - decades from any real "now", safely inside _parse_ntp_reply()'s own 2025-2100 plausibility window
+_NTP_SPOOF_INJECTED_UNIX_TIME = 2524608000  # 2050-01-01T00:00:00Z - inside _parse_ntp_reply()'s 2025-2100 plausibility window
+_SPOOF_YEAR = time.gmtime(_NTP_SPOOF_INJECTED_UNIX_TIME).tm_year
 
 
-def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    # A connect()'d client socket that only accepts datagrams from its true peer must silently drop
-    # a reply from anywhere else - checkable via GET /status's UtcTime, since an accepted reply's
-    # crafted Transmit Timestamp (2050-01-01) directly sets the RTC (asy_ntp_client.py's _parse_ntp_reply()).
-    get_before = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
-    assert get_before.status_code == 200, f"GET /status failed: {get_before.status_code} {get_before.body!r}"
-    year_before = get_before.json()["system"]["UtcTime"]["year"]
-    assert 2020 < year_before < 2049, f"DUT's own UtcTime is already outside a sane pre-test range, can't use it as this test's own signal: {year_before}"
-
-    reset_all_error_logs(dut_ip)
+@pytest.mark.provokes_log("the real reply is held back and the spoof refused, so the attempt ends without a reply", ("NTP", "E", "NTP_NO_REPLY"))
+def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    # A connect()'d client socket takes datagrams from its true peer only: a spoof it took would set the RTC to its
+    # Transmit Timestamp (2050-01-01), readable as GET /status's UTCTime.
+    year_before = _utc_year(dut_ip)
+    assert year_before is not None, "GET /status's UTCTime is null: the DUT has not synced NTP yet, so its clock is no signal for this test"
+    assert year_before < _SPOOF_YEAR - 1, f"the DUT's own UTCTime year {year_before} leaves no room to tell the spoof's {_SPOOF_YEAR} apart"
+    reset_all_error_logs(dut_ip, request.node.name)
+    deadline_s = _load.ntp_fetch_timeout_s()
+    bench.block_udp_ports_from([123])  # the real reply held back: the spoof is the only answer the waiting socket gets
     try:
-        # Bounded retry of the whole capture attempt: this bench's known ~1-in-3 reachability
-        # hiccup (BACKLOG.md open question 9) can land a hard_reset() in hotspot fallback instead,
-        # sending no STA-side UDP traffic for tcpdump to see.
-        dut_ephemeral_port = None
-        attempts_made = 0
-        for _attempt in range(3):
-            attempts_made += 1
-            capture = bench.start_udp_source_capture(dut_ip, 123)
-            bench.kick_all_stations()  # see conftest.py's dut_ip docstring for the full finding
-            board.hard_reset()  # forces a fresh NTP sync attempt, giving this capture a request to observe
-            dut_ephemeral_port = bench.read_captured_udp_source_port(capture, timeout_s=55.0)  # generous relative to asy_ntp_client.py's own retry/backoff budget - see test_wifi_networking.py's equivalent comment
-            if dut_ephemeral_port is not None:
-                break
-        assert dut_ephemeral_port is not None, f"never observed a real NTP request from the DUT across {attempts_made} hard_reset() attempts - nothing to inject a reply against"
-
-        spoofed_reply = ntp_probe.build_reply(_NTP_SPOOF_INJECTED_UNIX_TIME)
+        port, captured_at = _capture_dut_ntp_port(board, bench, dut_ip, result_note)
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as spoof_sock:
-            spoof_sock.sendto(spoofed_reply, (dut_ip, dut_ephemeral_port))
-
-        time.sleep(3.0)  # generous relative to _parse_ntp_reply()'s own synchronous RTC().datetime() write, if it were ever reached
-        get_after = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
-        assert get_after.status_code == 200, f"GET /status failed: {get_after.status_code} {get_after.body!r}"
-        year_after = get_after.json()["system"]["UtcTime"]["year"]
-        assert year_after != 2050, f"the DUT's RTC was set to this test's own spoofed reply's injected date (2050-01-01) - AsyUDPSocket accepted a reply from an unexpected source on a connected socket:\n{get_after.body!r}"
+            spoof_sock.sendto(ntp_probe.build_reply(_NTP_SPOOF_INJECTED_UNIX_TIME), (dut_ip, port))
+        delay_s = time.monotonic() - captured_at
+        result_note(f"spoof sent {delay_s:.2f}s after the captured request")
+        assert delay_s < deadline_s, f"the spoof left {delay_s:.2f}s after the request, past the client's {deadline_s}s reply timeout - it landed on no waiting socket"
+        time.sleep(_RTC_WRITE_WAIT_S)  # past _parse_ntp_reply()'s synchronous RTC write, were it ever reached
+        wait_until(lambda: _load.serving(dut_ip), timeout_s=_RECONNECT_TIMEOUT_S, poll_interval_s=_RECONNECT_POLL_S, description="DUT reachable after the capture reset")
+        year_after = _utc_year(dut_ip)  # None = not synced, still not the spoof's year
+        assert year_after != _SPOOF_YEAR, f"the DUT's RTC took the spoofed reply's {_SPOOF_YEAR} - a connected socket accepted a reply from an unexpected source"
         assert_no_task_ended(dut_ip, "a spoofed NTP reply")
     finally:
-        # Always runs, even on a failed assertion above - this test's own last hard_reset() must
-        # never leave the DUT unreachable or its error history dirty for whatever runs next.
-        try:
-            wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again after the hard_reset() above")
-        except TimeoutError:
-            bench.kick_all_stations()
-            board.hard_reset()
-            wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again (after one recovery hard_reset() retry)")
-        reset_all_error_logs(dut_ip)
+        bench.unblock_udp_ports_from([123])
+    recover_by_reset(board, bench, ready=lambda: _load.ntp_synced(dut_ip), first_wait_s=_NTP_RESYNC_AFTER_RESET_TIMEOUT_S, retry_wait_s=_NTP_RESYNC_AFTER_RESET_TIMEOUT_S, skipped="the normal sync after the held-back reply, without a reset", note=result_note, description="the normal NTP sync after the spoof test")
+    reset_all_error_logs(dut_ip, request.node.name)
 
 
 # ---------------------------------------------------------------------------
-# A config-level NTP fault rather than a network-level one: PUT a garbage NTP_Host on a live
-# link, watch the DNS failure degrade cleanly, restore, confirm recovery. Starting already-synced
-# is the point - it reaches _handle_ntp_sync_failure()'s ntp_issynced() branch, which nothing did.
+# A config-level NTP fault rather than a network-level one (owner, 2026-09-02): PUT a garbage NTPHost on a live link,
+# watch the DNS failure degrade cleanly, restore, confirm recovery. The PUT's post function, ntp_force_sync(), clears
+# Synced before the attempt, so the failure takes the unsynced backoff and arms no retry timer.
 # ---------------------------------------------------------------------------
 
-# RFC 2606 reserves .invalid specifically so it can never resolve to a real address - a genuine,
-# permanent DNS-resolution failure, not a flaky "might resolve to something on some networks" guess.
+# RFC 2606 reserves .invalid so it can never resolve: a genuine, permanent DNS-resolution failure.
 _GARBAGE_NTP_HOST = "this-host-will-never-resolve.invalid"
 
 
 @pytest.mark.persistence_write
-def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    get_before = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=10.0)
-    assert get_before.status_code == 200, f"GET /networking failed: {get_before.status_code} {get_before.body!r}"
-    original_host = get_before.json()["NTP_Host"]
-    # An earlier run aborted before its own restore leaves the board already on the garbage value.
-    # The PUT below is then reported "Unchanged" and fires no post_asy_fct, so name that cause here
-    # rather than let it surface as "rejected at the schema level", which it would not have been.
-    assert original_host != _GARBAGE_NTP_HOST, f"the board is already on {_GARBAGE_NTP_HOST!r} - an earlier run aborted before restoring; put NTP_Host back before rerunning"
-
+@pytest.mark.provokes_log("the .invalid host's lookup answers NXDOMAIN, which the test waits for", ("NTP", "E", "NTP_DNS_NXDOMAIN"))
+def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    original_host = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("NTPHost")
+    if original_host == _GARBAGE_NTP_HOST:
+        # An aborted earlier run left the garbage value: its PUT below would answer "Unchanged" and fire nothing.
+        default = schema_default(_NTP, "NTPHost")
+        assert isinstance(default, str), f"src/{_NTP} NTPHost defaults to {default!r}, no host name"
+        original_host = default
+        _load._repair_leftover(dut_ip, "/networking", {"NTPHost": original_host})
+        _repair_target_note(result_note, "NTPHost")
     try:
-        reset_all_error_logs(dut_ip)
-        put_res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTP_Host": _GARBAGE_NTP_HOST}, timeout_s=10.0)
-        assert put_res.status_code == 200, f"PUT /networking NTP_Host={_GARBAGE_NTP_HOST!r} failed: {put_res.status_code} {put_res.body!r}"
-        # _VAL_NH bounds string length (3-1024) and nothing else, so a syntactically garbage but
-        # length-valid host is accepted as "Valid". The failure surfaces later, in the DNS
-        # resolution that this field's own post_asy_fct triggers.
-        assert put_res.json()["result"].get("NTP_Host") == "Valid", f"garbage NTP_Host was rejected at the schema level, not what this test means to exercise: {put_res.json()!r}"
-
-        # post_asy_fct resyncs asynchronously, so poll for the DNS failure to land:
-        # _resolve_ntp_server() logs "No valid NTP server:" at errno=12 - the same path the
-        # network-level garbage-response test hits, reached by a bad hostname instead.
-        wait_until(
-            lambda: _ntp_error_log_contains(dut_ip, 12),
-            timeout_s=30.0,
-            poll_interval_s=2.0,
-            description="NTP module to log errno=12 (No valid NTP server) for the garbage NTP_Host",
-        )
-        # The rest of the system must stay fully healthy throughout - a bad NTP host degrading
-        # gracefully means exactly this, not just "the error got logged".
-        assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive while NTP_Host was garbage"
-        assert_no_task_ended(dut_ip, "a garbage NTP_Host")
+        reset_all_error_logs(dut_ip, request.node.name)
+        res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTPHost": _GARBAGE_NTP_HOST}, timeout_s=_PROBE_TIMEOUT_S)
+        # _VAL_NTP_HOST bounds the length and the RFC 1035 label shape, so this host is "Valid"; the failure is the DNS
+        # resolution its post function triggers.
+        assert _load.as_object(res.json().get("result"), "result").get("NTPHost") == "Valid", f"garbage NTPHost was rejected at the schema level, not what this test exercises: {res.body!r}"
+        # A resolver answers NXDOMAIN for .invalid (RFC 6761 section 6.4), which NTP persists as its own code.
+        wait_until(lambda: _load._ntp_error_log_contains(dut_ip, code("E", "NTP_DNS_NXDOMAIN")), timeout_s=_WAIT_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description="NTP to log NTP_DNS_NXDOMAIN for the garbage NTPHost")
+        # Degrading cleanly means the rest stays healthy, not merely that the error got logged.
+        assert _load.serving(dut_ip), "webserver unresponsive while NTPHost was garbage"
+        assert_no_task_ended(dut_ip, "a garbage NTPHost")
     finally:
-        # Restore the real, original NTP_Host regardless of outcome - this PUT mutates the board's
-        # real, persisted config on a shared bench rig.
-        reset_all_error_logs(dut_ip)
-        restore_res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTP_Host": original_host}, timeout_s=10.0)
-        assert restore_res.status_code == 200, f"failed to restore original NTP_Host {original_host!r}: {restore_res.status_code} {restore_res.body!r}"
-        # "Unchanged" counts as restored, as in _restore_ssid_over() and the sensor-config files:
-        # if the body failed before its PUT landed the board is still on original_host, and
-        # insisting on "Valid" would replace the real failure with a cleanup assertion.
-        assert restore_res.json()["result"].get("NTP_Host") in ("Valid", "Unchanged"), f"restoring the original NTP_Host was rejected: {restore_res.json()!r}"
-
-    # Recovery: the restore PUT fires post_asy_fct too, and that resync must succeed. Read from
-    # NtpSynced under GET /status's nested "networking" object - GET /networking is config schema
-    # only and has no such field, which was a real test bug (tests_hardware/README.md).
-    def _synced() -> bool:
-        status = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).json()
-        return status.get("networking", {}).get("NtpSynced") is True
-
-    # hard_reset() fallback is a defensive measure against a rare real WiFi hiccup - a resync is
-    # expected well inside the first 30s in the overwhelming majority of runs; needing this
-    # fallback at all is worth a second look, not an expected outcome.
-    try:
-        wait_until(_synced, timeout_s=30.0, poll_interval_s=2.0, description=f"NTP to report synced again after restoring a real NTP_Host ({original_host!r})")
-    except TimeoutError:
-        bench.kick_all_stations()
-        board.hard_reset()
-        wait_until(_synced, timeout_s=120.0, poll_interval_s=3.0, description=f"NTP to report synced again (after one recovery hard_reset() retry, real NTP_Host={original_host!r})")
-    assert_module_error_log_empty(dut_ip, "NTP")
-
-
-def _ntp_error_log_contains(dut_ip: str, errno: int) -> bool:
-    entry = get_errcount(dut_ip).get("NTP")
-    if entry is None:
-        return False
-    return any(h.get("num") == errno and h.get("type") == "E" for h in entry.get("history", []))
+        reset_all_error_logs(dut_ip, request.node.name)
+        restore = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTPHost": original_host}, timeout_s=_PROBE_TIMEOUT_S)
+        # "Unchanged" counts as restored: a body that failed before its PUT landed leaves the original in place.
+        assert _load.as_object(restore.json().get("result"), "result").get("NTPHost") in ("Valid", "Unchanged"), f"restoring the original NTPHost was rejected: {restore.body!r}"
+    noted = _load.Noted(result_note)
+    recover_by_reset(board, bench, ready=lambda: _load.ntp_synced(dut_ip), first_wait_s=_WAIT_TIMEOUT_S, retry_wait_s=_NTP_RESYNC_AFTER_RESET_TIMEOUT_S, skipped="NTP resync after the restore PUT without a reset", note=noted, description=f"the NTP resync after restoring {original_host!r}")
+    if not noted.recovered:
+        assert_module_error_log_empty(dut_ip, "NTP")
 
 
 # ---------------------------------------------------------------------------
-# A real-format SSID no AP here broadcasts; _VAL_SSID bounds length only, the same gap as
-# NTP_Host. It aims to finish inside the ~50s before hotspot fallback takes dut_ip away, and when
-# jitter blows that budget it joins the DUT's own hotspot instead - a recovery path is a pass.
+# A real-format SSID no AP here broadcasts; _VAL_SSID bounds only its length and bytes, the same gap as NTPHost. Once
+# it is stored the DUT can never reconnect over the bridge, so the restore always goes over the DUT's own hotspot.
 # ---------------------------------------------------------------------------
 
-_GARBAGE_SSID = "wozi-test-net-does-not-exist"  # <=32 chars (_VAL_SSID's own cap) - real 2.4GHz-legal SSID format/length, just not broadcast by anything on this bench
-_HOTSPOT_PASSWORD = "12345678"  # hardcoded in src/asy_wifi_service.py's _configure_hotspot_ap()
+_GARBAGE_SSID = "bench-test-net-does-not-exist"
 
 
 @pytest.mark.persistence_write
-def test_garbage_ssid_via_rest_config_is_handled_gracefully(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    get_before = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=10.0)
-    assert get_before.status_code == 200, f"GET /networking failed: {get_before.status_code} {get_before.body!r}"
-    original_ssid = get_before.json()["SSID"]
-    original_hostname = get_before.json()["Hostname"]
-    # Same as the garbage-NTP_Host test above: an aborted earlier run leaves the board already on
-    # the garbage SSID, making the PUT below "Unchanged" - no reconnect_wifi() post_fct fires, and
-    # the failure would blame schema validation for what is a board-state problem.
-    assert original_ssid != _GARBAGE_SSID, f"the board is already on {_GARBAGE_SSID!r} - an earlier run aborted before restoring; put SSID back before rerunning"
-
-    reset_all_error_logs(dut_ip)
-    put_res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"SSID": _GARBAGE_SSID}, timeout_s=10.0)
-    assert put_res.status_code == 200, f"PUT /networking SSID={_GARBAGE_SSID!r} failed: {put_res.status_code} {put_res.body!r}"
-    # Length/type-only schema (see this test's own module comment above) - accepted as "Valid"
-    # here; the real failure only surfaces later, from the actual (real, over-the-air) connect
-    # attempt asy_wifi_service.py's own reconnect_wifi() post_fct triggers.
-    assert put_res.json()["result"].get("SSID") == "Valid", f"garbage SSID was rejected at the schema level, not what this test means to exercise: {put_res.json()!r}"
-
-    # Passive observation only - no exec()/is_reachable(), which disturb a live system
-    # (harness.py). One real STAT_NO_AP_FOUND cycle logged and handled cleanly is enough, over a
-    # short window, to leave margin against the hotspot-fallback budget above.
-    lines = board.tail_log(duration_s=15.0)
-    joined = "\n".join(lines)
-    assert "Traceback" not in joined, f"a real unreachable SSID crashed the system instead of degrading cleanly:\n{joined}"
-    assert "WLAN access point not found" in joined, f"no real STAT_NO_AP_FOUND cycle observed for a genuinely nonexistent SSID:\n{joined}"
-
-    # dut_ip cannot come back while the garbage SSID is configured - a reconnect is impossible by
-    # construction, not merely unlikely - so this snapshot check is correct rather than racy about
-    # whether the DUT has started its connection_failures streak toward hotspot fallback.
-    if http_client_is_ok(dut_ip):
-        # Happy path: still reachable over the normal bridge network - restore directly. Not
-        # actually expected to trigger (see comment above), kept only as a defensive fallback.
-        bench.kick_all_stations()  # the coming reconnect is a genuine machine-level association - see conftest.py's dut_ip docstring
-        _restore_ssid_over(dut_ip, original_ssid)
-    else:
-        # Fallback: once the DUT reaches hotspot fallback, restore over its own AP, as
-        # test_hotspot_role_reversal.py's fixture does. Polls is_ssid_visible() generously rather
-        # than sleeping, since this path arrives indirectly with no moment zero to measure from.
-
-        # ap_down() through join_dut_hotspot() stays in this try/finally so a timeout here
-        # cannot strand the bridge AP down.
-        try:
-            bench.ap_down()  # is_ssid_visible() needs the radio free to scan - see its own docstring
-            wait_until(
-                lambda: bench.is_ssid_visible(original_hostname),
-                timeout_s=60.0,
-                poll_interval_s=2.0,
-                description=f"DUT's own hotspot ({original_hostname!r}) to become scannable",
-            )
-            # A freshly-started AP's beacon interval means is_ssid_visible()==True doesn't
-            # guarantee nmcli's own internal rescan sees it a moment later - retry the join
-            # (ap_down() is idempotent, see its own docstring).
-            for attempt in range(3):
-                try:
-                    bench.join_dut_hotspot(original_hostname, _HOTSPOT_PASSWORD, timeout_s=45.0)
-                    break
-                except HardwareTestFailureError:
-                    if attempt == 2:
-                        raise
-                    time.sleep(3.0)
-            wait_until(lambda: bool(bench.gateway_ip()), timeout_s=45.0, poll_interval_s=2.0, description="DHCP lease on the DUT's own hotspot")
-            gateway_ip = bench.gateway_ip()
-            wait_until(lambda: http_client_is_ok(gateway_ip), timeout_s=30.0, poll_interval_s=2.0, description="DUT REST reachable over its own hotspot")
-            _restore_ssid_over(gateway_ip, original_ssid)
-        finally:
-            bench.leave_dut_hotspot_and_restore_bridge()
-        bench.kick_all_stations()
-
-    # "Mode" lives in GET /status's nested "networking" object, not in GET /networking, which is
-    # config schema only. Reading the wrong one was a test bug that could never pass whatever the
-    # DUT did; tests_hardware/README.md has what it was misattributed to.
-    def _reconnected_over_bridge() -> bool:
-        return bool(http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).json()["networking"].get("Mode") == "STA")
-
+@pytest.mark.provokes_log(
+    "the unreachable SSID's failed streak opens the hotspot; the restore's reconnect can fail once more and go silent",
+    ("WIFI", "W", "WLAN_NO_AP"),
+    ("WIFI", "W", "WLAN_AUTH_FAILED"),
+    ("WIFI", "W", "WLAN_TO_HOTSPOT"),
+    ("WIFI", "W", "WLAN_SILENT"),
+)
+def test_garbage_ssid_via_rest_config_is_handled_gracefully(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    ssid_bound = _load.field_schema(_WIFI, "SSID")[3]
+    assert isinstance(ssid_bound, int) and len(_GARBAGE_SSID.encode()) <= ssid_bound, f"{_GARBAGE_SSID!r} exceeds _VAL_SSID's {ssid_bound}-byte bound: it would be refused, not stored"
+    networking = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S)
+    original_ssid, hostname = networking.get("SSID"), str(networking.get("Hostname"))
+    restore_target = original_ssid
+    if original_ssid == _GARBAGE_SSID:
+        restore_target = bench.ap_ssid()  # the SSID a bench DUT must hold
+        _repair_target_note(result_note, "SSID")
+    stored = False
+    reset_all_error_logs(dut_ip, request.node.name)
     try:
-        wait_until(_reconnected_over_bridge, timeout_s=60.0, poll_interval_s=3.0, description=f"Mode to return to 'STA' after restoring the real SSID ({original_ssid!r})")
-    except TimeoutError:
-        # Genuine fallback, matching this tier's established "a recovery path counts as a pass"
-        # convention - not expected to trigger now that the check above is actually correct, but a
-        # real reconnect could still, in principle, occasionally need a nudge.
-        bench.kick_all_stations()
-        board.hard_reset()
-        wait_until(_reconnected_over_bridge, timeout_s=60.0, poll_interval_s=3.0, description="Mode to return to 'STA' after a hard_reset() recovery attempt")
-    reset_all_error_logs(dut_ip)  # the fallback path above can log its own transient WIFI history (e.g. one more STAT_NO_AP_FOUND while still mid-fallback) that isn't this test's own concern
-
-
-def http_client_is_ok(host: str) -> bool:
-    try:
-        return http_client.fetch(host, 80, "GET", "/status", timeout_s=5.0).status_code == 200
-    except OSError:
-        return False
-
-
-def _restore_ssid_over(host: str, original_ssid: str) -> None:
-    # Checked before the reset below erases it, over whichever address still reaches the DUT.
-    assert_no_task_ended(host, "a garbage SSID")
-    reset_all_error_logs(host)
-    restore_res = http_client.fetch(host, 80, "PUT", "/networking", {"SSID": original_ssid}, timeout_s=10.0)
-    assert restore_res.status_code == 200, f"failed to restore original SSID {original_ssid!r}: {restore_res.status_code} {restore_res.body!r}"
-    assert restore_res.json()["result"].get("SSID") in ("Valid", "Unchanged"), f"restoring the original SSID was rejected: {restore_res.json()!r}"
+        res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"SSID": _GARBAGE_SSID}, timeout_s=_PROBE_TIMEOUT_S)
+        word = _load.as_object(res.json().get("result"), "result").get("SSID")
+        stored = word in ("Valid", "Unchanged")
+        assert word == "Valid" or original_ssid == _GARBAGE_SSID, f"garbage SSID was rejected at the schema level, not what this test exercises: {res.body!r}"
+        # Passive observation only: one real STAT_NO_AP_FOUND cycle, logged and handled, inside the hotspot budget.
+        lines = board.tail_log(duration_s=_NO_AP_TAIL_S)
+        assert not crash_lines(lines), f"a real unreachable SSID crashed the system instead of degrading cleanly: {crash_lines(lines)}"
+        assert any("WLAN access point not found" in line for line in lines), f"no real STAT_NO_AP_FOUND cycle observed for a nonexistent SSID: {lines[-20:]}"
+    finally:
+        if stored:
+            _restore_over_hotspot(board, bench, hostname, str(restore_target), request.node.name, result_note)
+    # The STA mode is GET /status's networking.Mode with the board reachable over the bridge, never a /networking field.
+    recover_by_reset(board, bench, ready=lambda: _load.sta_mode(dut_ip), first_wait_s=_RECONNECT_TIMEOUT_S, retry_wait_s=_RECONNECT_TIMEOUT_S, skipped="the passive STA reconnect after the SSID restore", note=result_note, description=f"the STA reconnect after restoring {restore_target!r}")
+    assert_no_task_ended(dut_ip, "the STA reconnect after a garbage SSID")  # the hotspot phase was checked before its restore
+    reset_all_error_logs(dut_ip, request.node.name)  # the restore path can log one more STAT_NO_AP_FOUND mid-fallback
 
 
 # ---------------------------------------------------------------------------
@@ -617,80 +460,40 @@ def _restore_ssid_over(host: str, original_ssid: str) -> None:
 _MAX_CONNECTIONS = configured_max_connections()  # the build's own ceiling, never a restated literal
 
 
-def _pad(held: list[socket.socket]) -> None:
-    for index, sock in enumerate(held):
-        try:
-            sock.sendall(HELD_PAD_LINE)  # resets its per-call read timeout, as the ceiling probe does
-        except OSError as exc:
-            raise AssertionError(f"held connection {index} of {len(held)} was closed ({exc!r}) - the ceiling was not free when the test began") from exc
-
-
-def test_connections_at_and_above_the_real_socket_limit_degrade_cleanly(dut_ip: str) -> None:
-    reset_all_error_logs(dut_ip)
-    # The preceding PUT /status closing client-side doesn't mean _serve()'s finally has decremented
-    # _open_conns yet - without this settle, the _MAX_CONNECTIONS held sockets below start from a
-    # nonzero baseline, shifting every slot by one (confirmed directly).
-    time.sleep(1.0)
+@pytest.mark.provokes_log(
+    "the connections above the ceiling are refused, each tracing HTTP_REFUSED (_assert_ceiling_traced)",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
+def test_connections_at_and_above_the_real_socket_limit_degrade_cleanly(dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    reset_all_error_logs(dut_ip, request.node.name)
+    # The PUT /status just made closes client-side before _serve()'s finally releases its slot (Part I.6): settle first.
+    time.sleep(_SLOT_RELEASE_WAIT_S)
     held: list[socket.socket] = []
-    extra: socket.socket | None = None
-    last_response: bytes | None = None
+    outcomes: list[bytes] = []
     try:
-        # Each held socket sends a request line and is padded before every step: silent past the 5 s
-        # per-call timeout, each would be answered and log wrnno=2, failing the log check below.
+        # Each held socket sends a request line and is padded before every attempt: silent past the 5 s per-call
+        # timeout, each would be answered and log HTTP_CALL_TIMEOUT.
         for _ in range(_MAX_CONNECTIONS):
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(10.0)
+            sock.settimeout(_RAW_SOCKET_TIMEOUT_S)
             sock.connect((dut_ip, 80))
             sock.sendall(HELD_REQUEST_LINE)
             held.append(sock)
-        # A completed TCP connect() does not mean the accept loop has run _serve() and bumped
-        # _open_conns yet, and under load that lag can admit connection _MAX_CONNECTIONS + 1 into the
-        # app layer. A real race, so the retry below uses a fresh socket rather than a longer sleep.
-        time.sleep(2.0)
-
-        for attempt in range(3):
-            _pad(held)
-            if extra is not None:
-                extra.close()
-            extra = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            extra.settimeout(10.0)
-            # A bare connect() still succeeds at the kernel's accept queue even though _serve()
-            # rejects it the moment its task runs: reject-when-full closes without a response.
-            extra.connect((dut_ip, 80))
-            # A refusal is a FIN, or an RST once request bytes have arrived; both mean "closed without
-            # a response". Silent past 1 s means admitted - short, so the held set stays under 5 s.
-            extra.settimeout(1.0)
-            try:
-                response = extra.recv(4096)
-            except ConnectionResetError:
-                response = b""
-            except TimeoutError:
-                response = b"<held open: admitted>"
-            if response == b"":
-                break
-            last_response = response
-            if attempt < 2:
-                time.sleep(1.0)  # let the previous "extra" connection's own quick error-response cleanup (_open_conns.decrement()) actually complete
-        assert response == b"", f"a connection above the real {_MAX_CONNECTIONS}-connection ceiling was not rejected after 3 attempts: got {last_response!r}"
+        time.sleep(_HELD_ADMIT_WAIT_S)  # each held connection's _serve() has run and counted it before the first attempt
+        for attempt in range(_OVER_CEILING_ATTEMPTS):
+            outcomes.append(_extra_outcome(dut_ip, held))
+            if attempt < _OVER_CEILING_ATTEMPTS - 1:
+                time.sleep(_SLOT_RELEASE_WAIT_S)  # the refused connection's own cleanup completes before the next
     finally:
         for sock in held:
             sock.close()
-        if extra is not None:
-            extra.close()
-
-    # Once the held connections release their slots, the server must serve normally again. Closing
-    # _MAX_CONNECTIONS + 1 sockets at once can transiently reset a brand-new connection right after
-    # (ConnectionResetError) - wait_until() retries past that instead of asserting instantly.
-    wait_until(
-        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,
-        timeout_s=15.0,
-        poll_interval_s=1.0,
-        description="webserver serving normally again after the connection-limit burst cleared",
-    )
-    # _serve()'s own reject-when-full branch (confirmed directly): "silently close, no accept, no
-    # response ever written" - no pr.err_s()/wrn_s() call anywhere on that path, so a real rejection
-    # at the connection ceiling is expected to leave WEBSERVER's own error/warning log untouched.
-    assert_module_error_log_empty(dut_ip, "WEBSERVER")
+    result_note(f"above-ceiling attempts: {[o[:40] for o in outcomes]}")
+    admitted = [o for o in outcomes if o]
+    assert not admitted, f"{len(admitted)} of {_OVER_CEILING_ATTEMPTS} connections above the real {_MAX_CONNECTIONS}-connection ceiling were admitted: {admitted}"
+    # Closing the ceiling's sockets at once can reset a brand-new connection right after: retried until it serves.
+    wait_until(lambda: _load.serving(dut_ip), timeout_s=_QUICK_RECOVERY_TIMEOUT_S, poll_interval_s=_QUICK_POLL_S, description="webserver serving normally again after the connection-limit burst cleared")
+    _assert_ceiling_traced(dut_ip, len(outcomes), "above the ceiling")
     assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
@@ -701,60 +504,43 @@ def test_connections_at_and_above_the_real_socket_limit_degrade_cleanly(dut_ip: 
 # ---------------------------------------------------------------------------
 
 
-def test_get_nonsense_path_is_shaped_404_over_the_normal_network(dut_ip: str) -> None:
-    reset_all_error_logs(dut_ip)
-    res = http_client.fetch(dut_ip, 80, "GET", "/this/path/does/not/exist", timeout_s=10.0)
+def test_get_nonsense_path_is_shaped_404_over_the_normal_network(dut_ip: str, request: pytest.FixtureRequest) -> None:
+    reset_all_error_logs(dut_ip, request.node.name)
+    res = http_client.fetch(dut_ip, 80, "GET", "/this/path/does/not/exist", timeout_s=_PROBE_TIMEOUT_S)
     assert res.status_code == 404, f"GET to a nonsense path did not return 404: {res.status_code} {res.body!r}"
     body = res.json()
-    assert body["res"] == "ERR" and body["code"] == 404, f"404 response was not shaped as expected: {body!r}"
-    # _shaped_error_handler() (confirmed directly) only ever builds a response - no pr.err_s()/
-    # wrn_s() call at all, so a routine 404 must not show up as an error/warning.
+    assert body.get("res") == "ERR" and body.get("code") == 404, f"404 response was not shaped as expected: {body!r}"
+    # _shaped_error_handler() only builds a response - no logger call: a routine 404 is no error or warning.
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
     assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
-def test_put_malformed_raw_request_is_rejected_cleanly_over_the_normal_network(dut_ip: str) -> None:
-    reset_all_error_logs(dut_ip)
-    # http_client.fetch() can only ever send well-formed JSON (json.dumps()) - genuinely malformed
-    # JSON syntax and an oversized body both need a raw socket to actually produce.
+def test_put_malformed_raw_request_is_rejected_cleanly_over_the_normal_network(dut_ip: str, request: pytest.FixtureRequest) -> None:
+    reset_all_error_logs(dut_ip, request.node.name)
+    # fetch() only ever sends well-formed JSON: malformed JSON syntax needs a raw socket.
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.settimeout(10.0)
+        sock.settimeout(_RAW_SOCKET_TIMEOUT_S)
         sock.connect((dut_ip, 80))
         body = b"{not valid json"
-        request = f"PUT /sensors HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n".encode() + body
-        sock.sendall(request)
-        response = b""
-        try:
-            while True:
-                chunk = sock.recv(4096)
-                if not chunk:
-                    break
-                response += chunk
-        except TimeoutError:
-            pass
-    # microdot's send() writes the status line as the literal "HTTP/1.0 {code} {reason}\r\n".
-    # Malformed JSON is an application-level error (make_response(1), _body_as_dict()'s
-    # contract), so the HTTP status is still 200 rather than a transport-level 4xx.
+        sock.sendall(f"PUT /sensors HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n".encode() + body)
+        response = _read_until_closed(sock)
+    # microdot writes the status line as "HTTP/1.0 {code} {reason}"; malformed JSON is an application-level error
+    # (make_response(1), _body_as_dict()'s contract), so the HTTP status is still 200 with an ERR envelope.
     assert response.startswith(b"HTTP/1.0 200"), f"malformed JSON PUT did not get a clean HTTP 200 app-level error envelope: {response!r}"
     assert b'"res":"ERR"' in response or b'"res": "ERR"' in response, f"malformed JSON PUT did not produce the expected ERR envelope: {response!r}"
-
-    assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after a malformed raw PUT request"
-    # _body_as_dict() returning None (confirmed directly) just makes _put_sensors() return
-    # ar.make_response(1) - no pr.err_s()/wrn_s() call anywhere on that path either.
-    assert_module_error_log_empty(dut_ip, "WEBSERVER")
+    assert _load.serving(dut_ip), "webserver unresponsive after a malformed raw PUT request"
+    assert_module_error_log_empty(dut_ip, "WEBSERVER")  # _put_sensors() answers make_response(1) with no logger call
     assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
-def test_put_oversized_body_is_rejected_with_413_over_the_normal_network(dut_ip: str) -> None:
-    reset_all_error_logs(dut_ip)
-    # max_content_length defaults to 2048 (asy_webserver_service.py) - well past that, on a field
-    # name real drivers never register, so nothing here could accidentally validate as real config.
-    # Over max_body_length too, now they are bound, so the body is never read (SPECIFICATION I.6).
-    oversized = {"BMP3XX": {"Nonsense" + "x" * 5000: 1}}
-    res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", oversized, timeout_s=10.0)
+def test_put_oversized_body_is_rejected_with_413_over_the_normal_network(dut_ip: str, request: pytest.FixtureRequest) -> None:
+    reset_all_error_logs(dut_ip, request.node.name)
+    # Well past the cap, on a field name no driver registers, so nothing here could validate as real config; over
+    # max_body_length too, so the body is never read (SPECIFICATION.md I.6).
+    oversized: JSONObject = {"BMP3XX": {"Nonsense" + "x" * (2 * _body_cap()): 1}}
+    res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", oversized, timeout_s=_PROBE_TIMEOUT_S)
     assert res.status_code == 413, f"an oversized PUT body was not rejected with 413: {res.status_code} {res.body!r}"
-    # Rejected entirely inside vendored, unmodified ext/microdot.py before this project's own route
-    # handler (or its pr) is ever reached - nothing of ours could have logged anything here.
+    # Rejected inside vendored ext/microdot.py before this project's route handler or its logger is reached.
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
     assert_no_task_ended(dut_ip, "client misbehaviour")
 
@@ -765,177 +551,181 @@ def test_put_oversized_body_is_rejected_with_413_over_the_normal_network(dut_ip:
 # so the body was buffered and dispatched. Why both caps moved together: SPECIFICATION.md Part I.6.
 # ---------------------------------------------------------------------------
 
-_BODY_CAP = 2048  # asy_webserver_service.py's max_content_length, now bound to max_body_length too
-_OLD_CONTENT_CAP = 4096  # what it was before Part I.6; the 2048..4096 band is the discriminator
-_SCHEMA_MAX_BODY = 1312  # largest schema-permitted PUT body, dominated by NTP_Host's 1024 (I.6)
+_OLD_CONTENT_CAP = 4096  # the cap before SPECIFICATION.md I.6; the 2048..4096 band is the discriminator
 
 
-def _sized_sensors_body(total_bytes: int) -> dict[str, dict[str, str]]:
-    """A PUT /sensors body of exactly total_bytes, under a sensor key no driver registers. Unknown keys
-    are ignored silently, so nothing validates, persists or logs: the size is the whole subject, which
-    keeps every test below outside the persistence_write gate."""
-    envelope = len(json.dumps({"HWTESTNoSuchSensor": {"Padding": ""}}).encode())
-    body = {"HWTESTNoSuchSensor": {"Padding": "x" * (total_bytes - envelope)}}
-    assert len(json.dumps(body).encode()) == total_bytes, "padding arithmetic drifted from json.dumps()"
-    return body
-
-
-def _put_sized(dut_ip: str, total_bytes: int, timeout_s: float = 10.0) -> int:
-    return http_client.fetch(dut_ip, 80, "PUT", "/sensors", _sized_sensors_body(total_bytes), timeout_s=timeout_s).status_code
-
-
-def test_put_body_cap_boundary_is_exact_over_the_normal_network(dut_ip: str) -> None:
-    # "none above" and "all above" in their sharpest form: one byte apart, on real hardware.
-    # microdot's Request.create() compares with <=, so the cap itself must still be served.
-    reset_all_error_logs(dut_ip)
-    assert _put_sized(dut_ip, _BODY_CAP) == 200, "a body of exactly max_content_length was rejected - the cap must be inclusive"
-    assert _put_sized(dut_ip, _BODY_CAP - 1) == 200, "a body one byte under the cap was rejected"
-    assert _put_sized(dut_ip, _BODY_CAP + 1) == 413, "a body one byte over the cap was not rejected with 413"
-    # A 413 is raised inside vendored microdot before this project's own handler or its pr is
-    # reached, so nothing of ours can have logged anything on either side of the boundary.
-    assert_module_error_log_empty(dut_ip, "WEBSERVER")
+def test_put_body_cap_boundary_is_exact_over_the_normal_network(dut_ip: str, request: pytest.FixtureRequest) -> None:
+    # One byte apart on real hardware; microdot's Request.create() compares with <=, so the cap itself is served.
+    reset_all_error_logs(dut_ip, request.node.name)
+    cap = _body_cap()
+    assert _put_sized(dut_ip, cap) == 200, "a body of exactly max_content_length was rejected - the cap must be inclusive"
+    assert _put_sized(dut_ip, cap - 1) == 200, "a body one byte under the cap was rejected"
+    assert _put_sized(dut_ip, cap + 1) == 413, "a body one byte over the cap was not rejected with 413"
+    assert_module_error_log_empty(dut_ip, "WEBSERVER")  # a 413 is microdot's, raised before our handler or logger
     assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
-def test_put_the_band_that_used_to_be_accepted_is_now_rejected_over_the_normal_network(dut_ip: str) -> None:
-    # The one check that can tell this firmware from the previous one. Before Part I.6 the content
-    # cap was 4096 and max_body_length was microdot's own 16 KB, so a 3000 B body was buffered AND
-    # accepted; the whole 2048..16384 band was buffered before any 413. Now it is refused unread.
-    reset_all_error_logs(dut_ip)
-    midband = (_BODY_CAP + _OLD_CONTENT_CAP) // 2
+def test_put_the_band_that_used_to_be_accepted_is_now_rejected_over_the_normal_network(dut_ip: str, request: pytest.FixtureRequest) -> None:
+    # The check that tells this firmware from the previous one: before Part I.6 a 3000 B body was buffered and answered 200.
+    reset_all_error_logs(dut_ip, request.node.name)
+    midband = (_body_cap() + _OLD_CONTENT_CAP) // 2
     assert _put_sized(dut_ip, midband) == 413, f"a {midband} B body was not rejected - the old 4096 B content cap looks still in place"
     assert _put_sized(dut_ip, _OLD_CONTENT_CAP) == 413, "a body at the OLD content cap was accepted - this firmware predates Part I.6"
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
     assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
-def test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap(dut_ip: str) -> None:
-    # The direction that matters when a cap is LOWERED: the regression would be refusing something
-    # legitimate. 1312 B is the largest body any route's own schema can produce, so a real maximal
-    # config push must still be served - 1.56x headroom, derived in tests_scripts/ and asserted here.
-    reset_all_error_logs(dut_ip)
-    assert _SCHEMA_MAX_BODY < _BODY_CAP, "the schema maximum no longer fits under the cap - Part I.6's premise has moved"
-    assert _put_sized(dut_ip, _SCHEMA_MAX_BODY) == 200, f"the largest schema-permitted body ({_SCHEMA_MAX_BODY} B) was rejected"
-    # And the real field that dominates that maximum, not just padding. ONE character over
-    # _VAL_NH's own 3..1024 bound, so the handler marks it Invalid and nothing is written: at
-    # exactly 1024 it is valid, and an accepted NTP_Host is a flash write this test must not own.
-    res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTP_Host": "z" * 1025}, timeout_s=10.0)
-    assert res.status_code == 200, f"a body carrying a maximal NTP_Host was rejected at the TRANSPORT level, which is the cap's doing: {res.status_code} {res.body!r}"
-    assert res.json()["result"].get("NTP_Host") == "Invalid", f"a 1025-char NTP_Host was not marked Invalid, so it may have PERSISTED: {res.body!r}"
+@pytest.mark.provokes_log(
+    "its over-bound NTPHost is answered Invalid, and a refused value logs BAD_ARG",
+    ("NTP", "E", "BAD_ARG"),
+)
+def test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap(dut_ip: str, request: pytest.FixtureRequest) -> None:
+    # Lowering a cap risks refusing something legitimate: the largest body the bench build's own schemas can produce
+    # (derived from its definitions, as tests_scripts/test_request_body_cap_headroom.py derives it) is still served.
+    reset_all_error_logs(dut_ip, request.node.name)
+    largest = _load.largest_put_body()
+    assert largest < _body_cap(), f"the schema maximum {largest} B no longer fits under the cap - Part I.6's premise has moved"
+    assert _put_sized(dut_ip, largest) == 200, f"the largest schema-permitted body ({largest} B) was rejected"
+    # And the largest string field any schema permits: one character over _VAL_NTP_HOST's bound (RFC 1035), so the
+    # handler marks it Invalid and nothing is written - at the bound itself it would be a flash write this test must not own.
+    host_max = _load.field_schema(_NTP, "NTPHost")[3]
+    assert isinstance(host_max, int), f"_VAL_NTP_HOST declares no int length bound: {host_max!r}"
+    res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTPHost": "z" * (host_max + 1)}, timeout_s=_PROBE_TIMEOUT_S)
+    assert res.status_code == 200, f"a body carrying a maximal NTPHost was rejected at the TRANSPORT level, which is the cap's doing: {res.status_code} {res.body!r}"
+    assert _load.as_object(res.json().get("result"), "result").get("NTPHost") == "Invalid", f"an over-bound NTPHost was not marked Invalid, so it may have PERSISTED: {res.body!r}"
 
 
-def test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits(dut_ip: str) -> None:
-    # Interleaved, so a rejection cannot leave the next acceptance mis-parsed on a connection the
-    # server closed early, and an acceptance cannot let the next oversized one through.
-    reset_all_error_logs(dut_ip)
-    sizes = [128, _BODY_CAP * 2, 700, _BODY_CAP + 1, _BODY_CAP, 64, _OLD_CONTENT_CAP]
-    for size in sizes:
-        expected = 200 if size <= _BODY_CAP else 413
+# @tunable l4.cap_binding_answer_s = 2.0
+_CAP_BINDING_ANSWER_S = 2.0
+# @tunable l4.cap_binding_close_margin_s = 5.0
+_CLOSE_MARGIN_S = 5.0
+_MIN_SOCKET_WAIT_S = 0.001  # a zero timeout would make the socket non-blocking, never a last short wait
+
+
+@pytest.mark.provokes_log(
+    "the body that never arrives logs HTTP_CALL_TIMEOUT, asserted exact",
+    ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
+)
+def test_an_oversized_body_is_refused_before_it_is_read(dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    # The cap binds before the body: Content-Length one over the cap and no body byte is answered 413 at once, while at
+    # the cap the server waits for a body that never comes and reclaims the connection at its per-call timeout.
+    reset_all_error_logs(dut_ip, request.node.name)
+    cap = _body_cap()
+    per_call_s = _load.src_number(_WEBSERVER, "_DEFAULT_PER_CALL_TIMEOUT_S")
+    assert per_call_s > _CAP_BINDING_ANSWER_S, f"the answer window {_CAP_BINDING_ANSWER_S}s must stay under the per-call timeout {per_call_s}s"
+    free_before = _mem_free(dut_ip)
+    answers: dict[int, bytes] = {}
+    closed_after: float | None = None
+    for length in (cap + 1, cap):
+        with socket.create_connection((dut_ip, 80), timeout=_RAW_SOCKET_TIMEOUT_S) as sock:
+            # A head declaring `length` body bytes, and not one of them sent.
+            sock.sendall(f"PUT /sensors HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: {length}\r\n\r\n".encode())
+            sent_at = time.monotonic()
+            answers[length] = _answer_within(sock, _CAP_BINDING_ANSWER_S)
+            if length == cap:
+                closed_after = _closed_after(sock, sent_at, per_call_s + _CLOSE_MARGIN_S)
+    assert answers[cap + 1].startswith(b"HTTP/1.0 413"), f"Content-Length {cap + 1} with no body was not answered 413 within {_CAP_BINDING_ANSWER_S}s: {answers[cap + 1]!r}"
+    assert answers[cap] == b"<silent>", f"Content-Length {cap} was answered before its body arrived: {answers[cap]!r}"
+    assert closed_after is not None, f"the server held a body-less request at the cap past {per_call_s + _CLOSE_MARGIN_S}s"
+    free_after = _mem_free(dut_ip)
+    result_note(f"MemFree {free_before} -> {free_after} B; the at-cap connection closed after {closed_after:.1f}s")
+    assert abs(free_before - free_after) < cap, f"MemFree moved by {free_before - free_after} B across a refused body, as much as the cap {cap} B"
+    # The 413 logs nothing (Microdot answers it before any handler); the at-cap wait is the one read-phase timeout.
+    assert_module_logged_one_code(dut_ip, "WEBSERVER", "W", code("W", "HTTP_CALL_TIMEOUT"), events=1)
+    assert_no_task_ended(dut_ip, "client misbehaviour")
+
+
+def test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits(dut_ip: str, request: pytest.FixtureRequest) -> None:
+    # Interleaved, so a rejection cannot leave the next acceptance mis-parsed, nor an acceptance let an oversized one by.
+    reset_all_error_logs(dut_ip, request.node.name)
+    cap = _body_cap()
+    for size in [128, cap * 2, 700, cap + 1, cap, 64, _OLD_CONTENT_CAP]:
+        expected = 200 if size <= cap else 413
         status = _put_sized(dut_ip, size)
         assert status == expected, f"a {size} B body answered {status}, expected {expected}"
-    assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after a mixed-size PUT stream"
+    assert _load.serving(dut_ip), "webserver unresponsive after a mixed-size PUT stream"
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
     assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
-def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(dut_ip: str) -> None:
-    """The multi-buffer shape that motivated Part I.6, asserted on what the body cap owns: max_connections
-    bodies can be in flight at once, so the simultaneous contiguous demand is that many buffers -
-    connections x 2048 now, connections x 16384 while the band was open."""
-    reset_all_error_logs(dut_ip)
-    # The same settle the connection-ceiling test above takes, and for the same reason: _serve()
-    # releases its slot in a finally that runs after _close_writer(), so the PUT just made can
-    # still hold one. Without it the workers start against 3 free slots, not 4.
-    time.sleep(1.0)
-    # Repeated enough times to stay well past the build's own ceiling however high it has been
-    # raised, so the storm keeps overloading admission rather than merely filling it.
-    sizes = [512, _BODY_CAP * 2, _BODY_CAP, _OLD_CONTENT_CAP, 64, _BODY_CAP + 1, 900, _BODY_CAP * 2] * max(3, _MAX_CONNECTIONS)
-    answered: dict[int, int] = {}
-    refused: dict[int, str] = {}
-    other: dict[int, str] = {}
-    results_lock = threading.Lock()
-
-    def worker(index: int, size: int) -> None:
-        try:
-            status = _put_sized(dut_ip, size, timeout_s=30.0)
-        except Exception as exc:  # the worker's job is to report, never to raise into the harness
-            bucket = refused if http_client.is_ceiling_close(exc) else other
-            with results_lock:
-                bucket[index] = f"{type(exc).__name__}: {exc}"
-            return
-        with results_lock:
-            answered[index] = status
-
-    threads = [threading.Thread(target=worker, args=(i, size)) for i, size in enumerate(sizes)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(timeout=60.0)
-        assert not t.is_alive(), "a worker thread never finished within 60s - possible real deadlock under concurrent mixed-body load"
-
-    # This opens several times max_connections' worth of connections, so most are refused at the
-    # ceiling by design (queue F10 measured ~25%, at every body size including 64 B). A refusal is
-    # not a body-cap result, so it is counted, not failed - but ONLY a refusal.
+@pytest.mark.provokes_log(
+    "the storm overloads admission: each refusal traces HTTP_REFUSED (_assert_ceiling_traced)",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
+def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    # max_connections bodies can be in flight at once, so the simultaneous contiguous demand is that many buffers - the
+    # multi-buffer shape that motivated Part I.6, asserted on what the body cap owns.
+    reset_all_error_logs(dut_ip, request.node.name)
+    time.sleep(_SLOT_RELEASE_WAIT_S)  # the PUT just made can still hold a slot: _serve() releases it after the close
+    cap = _body_cap()
+    # Repeated well past the build's ceiling however high it is raised, so the storm overloads admission.
+    sizes = [512, cap * 2, cap, _OLD_CONTENT_CAP, 64, cap + 1, 900, cap * 2] * max(_STORM_REPEAT_MIN, _MAX_CONNECTIONS)
+    outcomes: dict[str, dict[int, int | str]] = {"answered": {}, "refused": {}, "other": {}}
+    lock = threading.Lock()
+    threads: list[threading.Thread] = []
+    try:
+        for i, size in enumerate(sizes):
+            thread = threading.Thread(target=_sized_worker, args=(dut_ip, i, size, outcomes, lock), name=f"put-{i}")
+            threads.append(thread)
+            thread.start()
+    finally:
+        alive = _load.join(threads, _STORM_JOIN_S)
+    assert not alive, f"{len(alive)} worker(s) never finished within {_STORM_JOIN_S:g}s - possible real deadlock under concurrent mixed-body load"
+    answered, refused, other = outcomes["answered"], outcomes["refused"], outcomes["other"]
+    # Most are refused at the ceiling, its reject-when-full (measured ~25% on 2026-09-22, at every size including 64 B): a refusal
+    # is counted, not failed - but ONLY a refusal.
     assert not other, f"{len(other)} worker(s) failed for a reason that is not the connection ceiling: {dict(list(other.items())[:8])}"
-    wrong = {i: answered[i] for i, size in enumerate(sizes) if i in answered and answered[i] != (200 if size <= _BODY_CAP else 413)}
+    wrong = {i: status for i, status in answered.items() if status != (200 if sizes[i] <= cap else 413)}
     assert not wrong, f"{len(wrong)} of {len(answered)} answered PUTs got the WRONG status under concurrency: {dict(list(wrong.items())[:8])}"
-
-    # Anti-vacuity, from the server's own documented capacity rather than a measured rate: a run
-    # where nearly everything was refused proves nothing about the cap, and one that never saw
-    # both verdicts never exercised the boundary it exists to check.
     statuses = list(answered.values())
+    # Anti-vacuity from the server's documented capacity: too few answers prove nothing, and both verdicts must appear.
     assert len(statuses) >= _MAX_CONNECTIONS, f"only {len(statuses)} of {len(sizes)} PUTs were answered at all - too few to say anything about the cap ({len(refused)} refused)"
-    assert 200 in statuses and 413 in statuses, f"the run never saw both verdicts, so the cap was never exercised under concurrency: {sorted(set(statuses))}"
-
-    # Still healthy afterwards: a body the server refused to buffer must cost it nothing. The 24
-    # workers' slots are still draining through _serve()'s finally, so a single-shot check here is
-    # refused at the ceiling - same wait_until() the connection-ceiling test above uses for that lag.
-    wait_until(
-        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,
-        timeout_s=15.0,
-        poll_interval_s=1.0,
-        description="webserver serving normally again after the concurrent mixed-body load cleared",
-    )
-    assert_module_error_log_empty(dut_ip, "WEBSERVER")
+    assert 200 in statuses and 413 in statuses, f"the run never saw both verdicts, so the cap was never exercised under concurrency: {sorted(set(map(str, statuses)))}"
+    wait_until(lambda: _load.serving(dut_ip), timeout_s=_QUICK_RECOVERY_TIMEOUT_S, poll_interval_s=_QUICK_POLL_S, description="webserver serving normally again after the concurrent mixed-body load cleared")
+    _assert_ceiling_traced(dut_ip, len(refused), "the concurrent mixed-body storm")
     assert_no_task_ended(dut_ip, "client misbehaviour")
-    print(f"RESULT NOTE: {len(answered)} answered, {len(refused)} refused at the connection ceiling, 0 answered wrongly")
+    result_note(f"{len(answered)} answered, {len(refused)} refused at the connection ceiling, 0 answered wrongly")
 
 
-def test_put_nonsense_field_values_are_marked_invalid_not_crashed(dut_ip: str) -> None:
-    reset_all_error_logs(dut_ip)
-    # Wrong type, out-of-range, and an entirely unknown sensor key, all in one real REST call -
-    # asy_bmp3xx_driver.py's own _VAL_POV only accepts _OSR_SETTINGS=(1,2,4,8,16,32).
-    res = http_client.fetch(
-        dut_ip,
-        80,
-        "PUT",
-        "/sensors",
-        {
-            "BMP3XX": {"PressOvers": "banana", "FiltCoeff": 999},
-            "TotallyUnknownSensor": {"Whatever": 1},
-        },
-        timeout_s=10.0,
-    )
+@pytest.mark.provokes_log(
+    "each refused field logs BAD_ARG: the BMP3XX pair on its config manager, the radio's byte-bound refusals on WIFI",
+    ("CFGMGR_BMP3XX", "E", "BAD_ARG"),
+    ("WIFI", "E", "BAD_ARG"),
+)
+def test_put_nonsense_field_values_are_marked_invalid_not_crashed(board: Board, dut_ip: str, request: pytest.FixtureRequest) -> None:
+    reset_all_error_logs(dut_ip, request.node.name)
+    # Wrong type, out of range and an unknown sensor key in one REST call: _VAL_PRES_OVERS accepts only _OSR_SETTINGS.
+    res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": {"PresOvers": "banana", "FiltCoeff": 999}, "TotallyUnknownSensor": {"Whatever": 1}}, timeout_s=_PROBE_TIMEOUT_S)
     assert res.status_code == 200, f"a syntactically valid but nonsensical PUT body crashed the request instead of being marked Invalid: {res.status_code} {res.body!r}"
     body = res.json()
-    bmp_result = body["result"].get("BMP3XX", {})
-    assert bmp_result.get("PressOvers") == "Invalid", f"a wrong-typed field was not marked Invalid: {bmp_result!r}"
+    result = _load.as_object(body.get("result"), "result")
+    bmp_result = _load.as_object(result.get("BMP3XX"), "result.BMP3XX")
+    assert bmp_result.get("PresOvers") == "Invalid", f"a wrong-typed field was not marked Invalid: {bmp_result!r}"
     assert bmp_result.get("FiltCoeff") == "Invalid", f"an out-of-range field was not marked Invalid: {bmp_result!r}"
-    assert "TotallyUnknownSensor" not in body["result"], f"an entirely unknown sensor key was not silently ignored: {body['result']!r}"
-
-    # Nothing above should have changed anything real - confirm the server is still fully healthy.
-    assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after nonsense PUT field values"
-
-    # A rejected key logs errno=12 on its own separate "CFGMGR_<NAME>" logger, not "BMP3XX" itself
-    # (config_manager.py's write_config()) - in-RAM only, but still real and REST-visible.
+    assert isinstance(body["result"], dict) and "TotallyUnknownSensor" not in body["result"], f"an entirely unknown sensor key was not silently ignored: {result!r}"
+    assert _load.serving(dut_ip), "webserver unresponsive after nonsense PUT field values"
     try:
-        errcount = get_errcount(dut_ip)
-        cfgmgr_entry = errcount.get("CFGMGR_BMP3XX", {})
-        assert cfgmgr_entry.get("counter") == 2, f"expected exactly 2 type/range validation errors on CFGMGR_BMP3XX (one per rejected field), got: {cfgmgr_entry!r}"
-        assert_module_error_log_contains(dut_ip, "CFGMGR_BMP3XX", 12, "E")
+        # A rejected key logs BAD_ARG on its own CFGMGR_<NAME> logger, not the sensor's (write_config()).
+        entry = errcount_entry(get_errcount(dut_ip), "CFGMGR_BMP3XX")
+        assert entry["counter"] == 2, f"expected exactly 2 type/range validation errors on CFGMGR_BMP3XX (one per rejected field), got: {entry!r}"
+        assert_module_error_log_contains(dut_ip, "CFGMGR_BMP3XX", code("E", "BAD_ARG"), "E")
+        assert_no_task_ended(dut_ip, "nonsense sensor values")
+        # A radio value within the schema's character count but past its byte bound (C.7.4): two UTF-8 bytes per "ä".
+        host_bound, ssid_bound = _load.field_schema(_WIFI, "Hostname")[3], _load.field_schema(_WIFI, "SSID")[3]
+        assert isinstance(host_bound, int) and isinstance(ssid_bound, int), f"_VAL_HOSTNAME/_VAL_SSID declare no int length bound: {host_bound!r}, {ssid_bound!r}"
+        reset_all_error_logs(dut_ip, request.node.name)
+        mode = _load.mode(dut_ip)
+        res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"Hostname": "ä" * host_bound}, timeout_s=_PROBE_TIMEOUT_S)
+        assert _load.as_object(res.json().get("result"), "result").get("Hostname") == "Invalid", f"a {2 * host_bound}-byte Hostname was not refused: {res.body!r}"
+        _assert_radio_refusal_traced(board, dut_ip, "Hostname", mode)
+        reset_all_error_logs(dut_ip, request.node.name)
+        res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"SSID": "ä" * ssid_bound}, timeout_s=_PROBE_TIMEOUT_S)
+        assert _load.as_object(res.json().get("result"), "result").get("SSID") == "Invalid", f"a {2 * ssid_bound}-byte SSID was not refused: {res.body!r}"
+        _assert_radio_refusal_traced(board, dut_ip, "SSID", mode)
         assert_no_task_ended(dut_ip, "nonsense field values")
     finally:
-        reset_all_error_logs(dut_ip)
+        reset_all_error_logs(dut_ip, request.node.name)
 
 
 # ---------------------------------------------------------------------------
@@ -944,54 +734,52 @@ def test_put_nonsense_field_values_are_marked_invalid_not_crashed(dut_ip: str) -
 # ---------------------------------------------------------------------------
 
 
-def test_slowloris_style_partial_request_is_reclaimed_by_the_outer_timeout(dut_ip: str) -> None:
-    reset_all_error_logs(dut_ip)
+@pytest.mark.provokes_log("the trickled request is reclaimed by the outer cap, which the test asserts", ("WEBSERVER", "W", "HTTP_REQUEST_CAP"))
+def test_slowloris_style_partial_request_is_reclaimed_by_the_outer_timeout(dut_ip: str, request: pytest.FixtureRequest) -> None:
+    reset_all_error_logs(dut_ip, request.node.name)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.settimeout(30.0)  # generous relative to production's own outer_cap_s=15.0
+        sock.settimeout(_SLOWLORIS_SOCKET_TIMEOUT_S)  # over the server's outer_cap_s
         sock.connect((dut_ip, 80))
         sock.sendall(b"GET /status HTTP/1.1\r\nHost: x\r\n")
-        # A real Slowloris pace, not one long stall: _TimeoutStreamProxy gives each readline()
-        # its own per_call_timeout_s=5.0. One header line every 3s keeps each call under that
-        # while the 18s total passes outer_cap_s=15.0, which is the timeout under test.
+        # One header line every 3 s keeps each readline() under its per-call timeout (HTTP_CALL_TIMEOUT never fires)
+        # while the 18 s total passes outer_cap_s, the timeout under test.
         try:
             for i in range(6):
                 sock.sendall(f"X-Pad-{i}: 1\r\n".encode())
-                time.sleep(3.0)
+                time.sleep(_TRICKLE_STEP_S)
         except OSError:
-            pass  # the server may have already closed the connection once the outer cap fired
+            pass  # the server may have closed the connection once the outer cap fired
         try:
             response = sock.recv(4096)
         except OSError:
             response = b""
     assert response == b"", f"a genuinely Slowloris-paced request (no single stall over 5s, 18s cumulative) was not reclaimed by the outer timeout: {response!r}"
-
-    assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after a slowloris-style trickle-fed request"
-    # _serve()'s outer wait_for(outer_cap_s) timeout logs wrnno=2 - this test's pacing avoids ever
-    # triggering the (also wrnno=2) per-call timeout path instead, so the wrnno is unambiguous here.
+    assert _load.serving(dut_ip), "webserver unresponsive after a slowloris-style trickle-fed request"
     try:
-        assert_module_error_log_contains(dut_ip, "WEBSERVER", 2, "W")
+        assert_module_error_log_contains(dut_ip, "WEBSERVER", code("W", "HTTP_REQUEST_CAP"), "W")
         assert_no_task_ended(dut_ip, "a slowloris-paced request")
     finally:
-        reset_all_error_logs(dut_ip)
+        reset_all_error_logs(dut_ip, request.node.name)
 
 
-def test_abrupt_disconnect_mid_response_does_not_hang_the_server(dut_ip: str) -> None:
-    reset_all_error_logs(dut_ip)
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(10.0)
-    sock.connect((dut_ip, 80))
-    sock.sendall(b"GET /measurements HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
-    sock.recv(1)  # read exactly one byte of the response, then abandon the connection entirely
-    sock.close()  # a real client vanishing mid-response (SO_LINGER default: a plain RST/FIN, not a clean shutdown)
-
-    # The server must still be healthy for the *next* client - an fd/task leak from the abandoned
-    # connection above would otherwise only surface as a slow, cumulative degradation over many
-    # such events, not an immediate, obvious failure of this one check alone.
-    assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after a client disconnected abruptly mid-response"
-    # No hard assertion on WEBSERVER's error log: whether the server is still mid-write when this
-    # RST lands (wrnno=3) is a genuine timing race, not deterministic - asserting either way risks flakiness.
-    assert_no_task_ended(dut_ip, "an abrupt mid-response disconnect")  # deterministic either way
-    reset_all_error_logs(dut_ip)  # hygiene regardless of which way the race went
+@pytest.mark.provokes_log(
+    "the client vanishes mid-response: a muted reset or the write's socket error, whichever the race gives",
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+    ("WEBSERVER", "W", "HTTP_SOCKET_ERROR"),
+)
+def test_abrupt_disconnect_mid_response_does_not_hang_the_server(dut_ip: str, request: pytest.FixtureRequest) -> None:
+    reset_all_error_logs(dut_ip, request.node.name)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(_RAW_SOCKET_TIMEOUT_S)
+        sock.connect((dut_ip, 80))
+        sock.sendall(b"GET /measurements HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+        sock.recv(1)  # one byte of the response, then the client vanishes (a plain close, no clean shutdown)
+    # A leaked fd or task would degrade over many such events; the next client must be served now.
+    assert _load.serving(dut_ip), "webserver unresponsive after a client disconnected abruptly mid-response"
+    # Whether the server is still mid-write when the close lands (HTTP_SOCKET_ERROR) is a real race, so WEBSERVER is
+    # not judged here; no task ending holds either way.
+    assert_no_task_ended(dut_ip, "an abrupt mid-response disconnect")
+    reset_all_error_logs(dut_ip, request.node.name)
 
 
 # ---------------------------------------------------------------------------
@@ -1001,20 +789,19 @@ def test_abrupt_disconnect_mid_response_does_not_hang_the_server(dut_ip: str) ->
 # ---------------------------------------------------------------------------
 
 
-def test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures(dut_ip: str) -> None:
-    reset_all_error_logs(dut_ip)
+@pytest.mark.provokes_log(
+    "the ceiling walk ends on its one refusal, HTTP_REFUSED (_assert_ceiling_traced)",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
+def test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures(dut_ip: str, request: pytest.FixtureRequest) -> None:
+    reset_all_error_logs(dut_ip, request.node.name)
     discovered = discover_max_connections(dut_ip)
     configured = configured_max_connections()
-    # Equal, not merely "at least": a board holding FEWER than configured means lwIP ran out of
-    # PCBs below the application ceiling, which is the wall this whole investigation looks for;
-    # holding more means the image on the board is not the one this tree describes.
-    assert discovered == configured, (
-        f"the board admitted {discovered} simultaneous connections, this tree configures {configured}. "
-        f"Fewer means lwIP's own MEMP_NUM_TCP_PCB (toolchain/versions.toml) is exhausted below the "
-        f"application ceiling - that is the wall (SPECIFICATION.md Part H.7). More means the "
-        f"flashed image predates this tree."
-    )
-    assert_module_error_log_empty(dut_ip, "WEBSERVER")
+    # Equal, not merely at least: fewer means lwIP ran out of PCBs below the application ceiling (the wall,
+    # SPECIFICATION.md H.7); more means the image on the board is not the one this tree describes.
+    assert discovered == configured, f"the board admitted {discovered} simultaneous connections, this tree configures {configured} (fewer: lwIP's MEMP_NUM_TCP_PCB exhausted below the ceiling; more: an older image)"
+    _assert_ceiling_traced(dut_ip, 1, "the ceiling walk")  # the walk ends on its one refusal
     assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
@@ -1025,79 +812,518 @@ def test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures(dut
 # ---------------------------------------------------------------------------
 
 
-def test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body(dut_ip: str) -> None:
-    reset_all_error_logs(dut_ip)
-    before = get_errcount(dut_ip)
+def test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body(dut_ip: str, request: pytest.FixtureRequest) -> None:
+    reset_all_error_logs(dut_ip, request.node.name)
     ceiling = configured_max_connections()
-    # The heaviest real endpoints, not the cheapest: /sensors and /status both grow with the
-    # device's own module count and are the two that stream (SPECIFICATION.md Part I.3).
-    paths = ("/sensors", "/status", "/measurements", "/networking", "/system")
-    results: list[tuple[str, int | str, float, int]] = [("", 0, 0.0, 0)] * ceiling
-
-    def _client(i: int) -> None:
-        path = paths[i % len(paths)]
-        started = time.monotonic()
-        try:
-            res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=30.0)
-            body = res.json() if res.status_code == 200 else {}
-            results[i] = (path, res.status_code, time.monotonic() - started, len(body) if isinstance(body, dict) else 0)
-        except (OSError, ValueError, http_client.HTTP_ERROR) as exc:
-            # ValueError and any HTTP error too: a truncated body IS the case under test - it has to
-            # land in results with its path rather than as a bare traceback in a dead thread.
-            results[i] = (path, repr(exc), time.monotonic() - started, 0)
-
-    time.sleep(1.0)  # a slot is released after _serve() awaits the close, so it outlives the response (Part I.6)
-    threads = [threading.Thread(target=_client, args=(i,)) for i in range(ceiling)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(timeout=40.0)
-
-    # Every one of them, not "at least the ceiling": this burst IS the ceiling, so a refusal here
-    # means the board cannot serve what it admits - the whole point of the exercise.
-    for path, status, elapsed_s, keys in results:
-        assert status == 200, f"{path} returned {status!r} in a {ceiling}-wide burst at the configured ceiling: {results}"
-        # Complete and correct, not merely non-empty: a truncated stream still parses as a 200 with
-        # a short body, and that is the shape _stream_dict_response() produces.
-        assert keys > 0, f"{path} returned a 200 with an empty or non-dict body - a truncated stream: {results}"
-        assert elapsed_s < 30.0, f"{path} took {elapsed_s:.1f}s - admitted but not served in any useful time: {results}"
-    time.sleep(1.0)  # the burst filled the ceiling and its slots outlive their responses (Part I.6)
+    # Every registered JSON GET route; the streamed ones (get_routes(streams=True)) are the ones a stack out of buffers
+    # truncates, and urllib refuses a body short of its Content-Length.
+    paths = get_routes()
+    references = {path: _keys(dut_ip, path, _LOADED_FETCH_TIMEOUT_S) for path in paths}
+    before = get_errcount(dut_ip)
+    results = ["unset"] * ceiling
+    time.sleep(_SLOT_RELEASE_WAIT_S)  # a slot is released after _serve() awaits the close, so it outlives the response (Part I.6)
+    threads: list[threading.Thread] = []
+    try:
+        for i in range(ceiling):
+            path = paths[i % len(paths)]
+            thread = threading.Thread(target=_ceiling_client, args=(dut_ip, path, references[path], results, i), name=f"ceiling-{i}")
+            threads.append(thread)
+            thread.start()
+    finally:
+        alive = _load.join(threads, _BURST_JOIN_S)
+    assert not alive, f"{alive} never finished within {_BURST_JOIN_S:g}s"
+    # Every one, not "at least the ceiling": this burst IS the ceiling, so a refusal means the board cannot serve what it admits.
+    failed = [r for r in results if r != "ok"]
+    assert not failed, f"{len(failed)} of a {ceiling}-wide burst at the configured ceiling were refused, truncated, changed shape or late (streamed: {get_routes(streams=True)}): {failed}"
+    time.sleep(_SLOT_RELEASE_WAIT_S)  # the burst's slots outlive their responses (Part I.6)
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
     assert_no_task_ended(dut_ip, "client misbehaviour")
-    # On silicon every sensor task is always running, so a full-ceiling burst IS the all-modules
-    # pressure case - and a heap it starves can surface the failure in any logger, not the webserver.
+    # Every sensor task always runs on silicon, so a full-ceiling burst starves the heap for the whole graph.
     assert_no_module_logged_a_new_error(dut_ip, before, f"a {ceiling}-wide burst at the configured ceiling")
 
 
-def test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one(dut_ip: str) -> None:
-    reset_all_error_logs(dut_ip)
-    # ext/microdot.py streams a file in send_file_buffer_size chunks, so a stack out of buffers
-    # truncates rather than failing - the one failure mode a status check structurally cannot see.
-    reference = http_client.fetch(dut_ip, 80, "GET", "/", timeout_s=30.0)
-    assert reference.status_code == 200, reference.status_code
-    assert len(reference.body) > 0, "the index page is empty uncontended - nothing to compare against"
-    time.sleep(1.0)  # its own slot outlives the response it already returned (Part I.6)
-
+def test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one(dut_ip: str, request: pytest.FixtureRequest) -> None:
+    reset_all_error_logs(dut_ip, request.node.name)
+    # ext/microdot.py streams a file in send_file_buffer_size chunks, so a stack out of buffers truncates rather than failing.
+    reference = http_client.fetch(dut_ip, 80, "GET", "/", timeout_s=_LOADED_FETCH_TIMEOUT_S)
+    assert reference.status_code == 200 and reference.body, f"the index page is unavailable uncontended - nothing to compare against: {reference.status_code}"
+    time.sleep(_SLOT_RELEASE_WAIT_S)  # its own slot outlives the response it already returned (Part I.6)
     tabs = max(2, configured_max_connections() // 2)  # 2 connections per real page load, post-inlining
     sizes: list[int | str] = [0] * (tabs * 2)
-
-    def _index(i: int) -> None:
-        try:
-            res = http_client.fetch(dut_ip, 80, "GET", "/", timeout_s=30.0)
-            same = res.status_code == 200 and res.body == reference.body
-            sizes[i] = len(res.body) if same else f"status {res.status_code}, {len(res.body)} B, differs"
-        except (OSError, http_client.HTTP_ERROR) as exc:
-            sizes[i] = repr(exc)
-
-    threads = [threading.Thread(target=_index, args=(i,)) for i in range(tabs * 2)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(timeout=40.0)
-    assert set(sizes) == {len(reference.body)}, (
-        f"a concurrent page load was truncated or refused - uncontended the index is "
-        f"{len(reference.body)} bytes, under {tabs * 2} concurrent loads it was {sizes}"
-    )
-    time.sleep(1.0)  # the burst filled the ceiling and its slots outlive their responses (Part I.6)
+    threads: list[threading.Thread] = []
+    try:
+        for i in range(tabs * 2):
+            thread = threading.Thread(target=_index_load, args=(dut_ip, reference.body, sizes, i), name=f"index-{i}")
+            threads.append(thread)
+            thread.start()
+    finally:
+        alive = _load.join(threads, _BURST_JOIN_S)
+    assert not alive, f"{alive} never finished within {_BURST_JOIN_S:g}s"
+    assert set(sizes) == {len(reference.body)}, f"a concurrent page load was truncated or refused - uncontended the index is {len(reference.body)} bytes, under {tabs * 2} concurrent loads it was {sizes}"
+    time.sleep(_SLOT_RELEASE_WAIT_S)  # the burst filled the ceiling and its slots outlive their responses (Part I.6)
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
     assert_no_task_ended(dut_ip, "client misbehaviour")
+
+
+# ---------------------------------------------------------------------------
+# The owner's OpenHAB case (owner, 2026-08-25): two polled endpoints plus a website open for manual calibration, all
+# served for two minutes - a named instance of the contract that any client mix filling the ceiling is served.
+# ---------------------------------------------------------------------------
+
+# @tunable l4.openhab_poll_interval_s = 5.0
+_OPENHAB_POLL_INTERVAL_S = 5.0
+# @tunable l4.openhab_window_s = 120.0
+_OPENHAB_WINDOW_S = 120.0
+_ASSET = re.compile(r'(?:src|href)="([^"#:?]+)"')
+
+
+def test_openhab_case_two_pollers_and_an_open_website_are_all_served(dut_ip: str, board: Board, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    reset_all_error_logs(dut_ip, request.node.name)
+    boot_before = _load.as_object(_load.get_object(dut_ip, "/status", _PROBE_TIMEOUT_S).get("system"), "GET /status system").get("BootSignature")
+    index = http_client.fetch(dut_ip, 80, "GET", "/", timeout_s=_PROBE_TIMEOUT_S)
+    assert index.status_code == 200, f"the index page is unavailable: {index.status_code}"
+    assets = ["/", *sorted({"/" + a.lstrip("./") for a in _ASSET.findall(index.body.decode("utf-8", "replace"))})]
+    poll_route, poll_s = _website_routes(bench_device())
+    latencies: dict[str, list[float]] = {}
+    failures: list[str] = []
+    stop = threading.Event()
+    clients = [(["/measurements"], _OPENHAB_POLL_INTERVAL_S), (["/status"], _OPENHAB_POLL_INTERVAL_S), (assets, _OPENHAB_WINDOW_S), ([poll_route], poll_s)]
+
+    def window() -> None:
+        threads: list[threading.Thread] = []
+        try:
+            for n, (paths, interval_s) in enumerate(clients):
+                thread = threading.Thread(target=_openhab_client, args=(dut_ip, paths, interval_s, stop, latencies, failures), name=f"openhab-{n}")
+                threads.append(thread)
+                thread.start()
+            stop.wait(_OPENHAB_WINDOW_S)
+        finally:
+            stop.set()
+            alive = _load.join(threads, _BURST_JOIN_S)
+        assert not alive, f"{alive} never finished after the OpenHAB window"
+
+    _result, lines = observe_during(board, window)
+    assert not failures, f"{len(failures)} OpenHAB-case request(s) were refused or incomplete: {failures[:10]}"
+    assert not crash_lines(lines), f"a crash over the OpenHAB window: {crash_lines(lines)}"
+    assert _load.serving(dut_ip), "/status not serving at once after the OpenHAB window"
+    boot_after = _load.as_object(_load.get_object(dut_ip, "/status", _PROBE_TIMEOUT_S).get("system"), "GET /status system").get("BootSignature")
+    assert boot_after == boot_before, f"the board rebooted during the OpenHAB case: {boot_before!r} -> {boot_after!r}"
+    assert_no_task_ended(dut_ip, "the OpenHAB case")
+    result_note("OpenHAB latency per route (s, max/median): " + ", ".join(f"{p} {max(v):.2f}/{sorted(v)[len(v) // 2]:.2f}" for p, v in sorted(latencies.items())))
+
+
+# ---------------------------------------------------------------------------
+# Console output with a host that holds the USB port open and never reads (owner, 2026-10-02: behind the persistence
+# flag): the adversarial-client load of the L1 console test replayed over HTTP must never starve the watchdog.
+# ---------------------------------------------------------------------------
+
+# @tunable l4.console_starvation_load_s = 60.0
+_CONSOLE_LOAD_S = 60.0
+# @tunable l4.console_starvation_slowloris_clients = 6
+_CONSOLE_SLOWLORIS = 6
+# @tunable l4.console_starvation_drain_timeout_s = 30.0
+_CONSOLE_DRAIN_TIMEOUT_S = 30.0
+_LINGER_RESET = struct.pack("ii", 1, 0)  # SO_LINGER on with a zero timeout: the close sends an RST (socket(7))
+
+
+@pytest.mark.persistence_write
+@pytest.mark.provokes_log(
+    "its misbehaving clients (slowloris, a refused head, a truncated body, a reset) log their HTTP warnings",
+    ("WEBSERVER", "W", "HTTP_REQUEST_CAP"),
+    ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
+    ("WEBSERVER", "W", "HTTP_BAD_HEAD"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+)
+def test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog(board: Board, dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    def adversary(kind: str, stop: threading.Event, seen: "list[str]") -> None:
+        # One misbehaving client kind, repeated until stopped: slowloris, a refused head, a truncated body, a reset.
+        while not stop.is_set():
+            try:
+                with socket.create_connection((dut_ip, 80), timeout=_RAW_SOCKET_TIMEOUT_S) as sock:
+                    if kind == "slowloris":
+                        sock.sendall(b"GET /status HTTP/1.1\r\n")
+                        while not stop.wait(_TRICKLE_STEP_S):
+                            sock.sendall(b"X-Pad: 1\r\n")
+                    elif kind == "bad-head":
+                        sock.sendall(b"\x00\x01 not a request line\r\n\r\n")
+                    elif kind == "truncated":  # 64 body bytes declared, fewer sent: no handler ever runs
+                        sock.sendall(b'PUT /sensors HTTP/1.1\r\nContent-Length: 64\r\n\r\n{"HWTESTNoSuch')
+                    else:
+                        sock.sendall(b"GET /measurements HTTP/1.1\r\n\r\n")
+                        sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, _LINGER_RESET)
+                    seen.append(kind)
+            except OSError as exc:  # a refusal at the ceiling is part of the load
+                seen.append(f"{kind}: {type(exc).__name__}")
+            stop.wait(_PROBE_SPACING_S)
+
+    system_before = _load.as_object(_load.get_object(dut_ip, "/status", _PROBE_TIMEOUT_S).get("system"), "GET /status system")
+    res = http_client.fetch(dut_ip, 80, "PUT", "/system", {"DebugLevel": 0}, timeout_s=_PROBE_TIMEOUT_S)
+    assert _load.as_object(res.json().get("result"), "result").get("DebugLevel") == "Valid", f"DebugLevel 0 was refused: {res.body!r}"
+    seen: list[str] = []
+    stop = threading.Event()
+    threads: list[threading.Thread] = []
+    port = serial.Serial(board.device, dsrdtr=False)  # held open, DTR asserted, never read: the console's output backs up
+    try:
+        port.dtr = True
+        kinds = ["slowloris"] * _CONSOLE_SLOWLORIS + ["bad-head", "truncated", "reset", "reset"]
+        for n, kind in enumerate(kinds):
+            thread = threading.Thread(target=adversary, args=(kind, stop, seen), name=f"adversary-{n}")
+            threads.append(thread)
+            thread.start()
+        stop.wait(_CONSOLE_LOAD_S)
+    finally:
+        stop.set()
+        alive = _load.join(threads, _SLOWLORIS_SOCKET_TIMEOUT_S)
+        port.close()
+        try:
+            # Each adversary's server task writes its warning before its slot frees (src/asy_webserver_service.py _serve()):
+            # a whole ceiling admitted again means every one has written it in this window, and the restore finds a slot.
+            if not alive:  # a client still running holds its slot: the assertion below names it instead
+                _wait_for_slots_to_drain(dut_ip, 80, _MAX_CONNECTIONS, timeout_s=_CONSOLE_DRAIN_TIMEOUT_S)
+        finally:
+            restore = http_client.fetch(dut_ip, 80, "PUT", "/system", {"DebugLevel": 5}, timeout_s=_PROBE_TIMEOUT_S)
+            assert _load.as_object(restore.json().get("result"), "result").get("DebugLevel") == "Valid", f"restoring DebugLevel 5 was refused: {restore.body!r}"
+    assert not alive, f"{alive} adversary client(s) never finished"
+    system_after = _load.as_object(_load.get_object(dut_ip, "/status", _PROBE_TIMEOUT_S).get("system"), "GET /status system")
+    result_note(f"{len(seen)} adversarial connections over {_CONSOLE_LOAD_S:g}s; SysUptime {system_before.get('SysUptime')} -> {system_after.get('SysUptime')}")
+    assert system_after.get("BootSignature") == system_before.get("BootSignature") and system_after.get("ResetReason") == system_before.get("ResetReason"), f"the board reset under a non-reading console host: {system_before!r} -> {system_after!r}"
+
+
+# ---------------------------------------------------------------------------
+# A flash write holds interrupts off (an erase of a 4 KB sector, up to 400 ms): the CYW43 link must survive two of them
+# under a fast /status poll, and what the closed firmware drops meanwhile is recorded.
+# ---------------------------------------------------------------------------
+
+# @tunable l4.flash_stall_poll_s = 0.05
+_FLASH_STALL_POLL_S = 0.05
+# @tunable l4.flash_stall_window_s = 5.0
+_FLASH_STALL_WINDOW_S = 5.0
+
+
+@pytest.mark.persistence_write
+def test_a_flash_write_holding_interrupts_off_keeps_the_wifi_link(dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    current = _load.get_object(dut_ip, "/notification", _PROBE_TIMEOUT_S).get("WarnCO2")
+    assert isinstance(current, int), f"GET /notification carries no int WarnCO2: {current!r}"
+    wifi_before: ErrcountEntry = errcount_entry(get_errcount(dut_ip), "WIFI")
+    polls: list[tuple[float, JSONObject | None]] = []
+    stop = threading.Event()
+    poller = threading.Thread(target=_link_poller, args=(dut_ip, stop, polls), name="link-poller")
+    try:
+        poller.start()
+        res = http_client.fetch(dut_ip, 80, "PUT", "/notification", {"WarnCO2": current + 1}, timeout_s=_PROBE_TIMEOUT_S)
+        assert _load.as_object(res.json().get("result"), "result").get("WarnCO2") == "Valid", f"WarnCO2 {current + 1} was refused: {res.body!r}"
+        stop.wait(_FLASH_STALL_WINDOW_S)  # the deferred flush runs inside this window
+    finally:
+        restore = http_client.fetch(dut_ip, 80, "PUT", "/notification", {"WarnCO2": current}, timeout_s=_PROBE_TIMEOUT_S)
+        stop.wait(_FLASH_STALL_WINDOW_S)
+        stop.set()
+        alive = _load.join([poller], _WAIT_TIMEOUT_S)
+        assert _load.as_object(restore.json().get("result"), "result").get("WarnCO2") == "Valid", f"restoring WarnCO2 {current} was refused: {restore.body!r}"
+    assert not alive, "the link poller never finished"
+    answered = [(t, n) for t, n in polls if n is not None]
+    lost = len(polls) - len(answered)
+    gaps = [b[0] - a[0] for a, b in itertools.pairwise(answered)]
+    result_note(f"{len(answered)} answered polls, {lost} lost, longest gap {max(gaps, default=0.0):.2f}s across the two flash writes")
+    assert answered, "no /status poll was answered across the two flash writes"
+    assert all(n.get("Connected") is True for _t, n in answered), f"the link reported disconnected during a flash write: {[n for _t, n in answered if n.get('Connected') is not True][:3]}"
+    uptimes = [n.get("WifiUptime") for _t, n in answered]
+    counted = [u for u in uptimes if isinstance(u, int)]
+    assert counted == uptimes and counted == sorted(counted), f"WifiUptime reset (or went missing) during a flash write: {uptimes}"
+    wifi_after = errcount_entry(get_errcount(dut_ip), "WIFI")
+    assert wifi_after["counter"] == wifi_before["counter"], f"WIFI logged during the flash writes: {wifi_before!r} -> {wifi_after!r}"
+
+
+def _answer_within(sock: socket.socket, wait_s: float) -> bytes:
+    # What the server sends within `wait_s`: its bytes, b"<closed>" for a close, b"<silent>" for nothing.
+    sock.settimeout(wait_s)
+    try:
+        return sock.recv(4096) or b"<closed>"
+    except TimeoutError:
+        return b"<silent>"
+
+
+def _assert_ceiling_traced(dut_ip: str, refusals: int, context: str) -> None:
+    # Reject-when-full closes without a response and traces one HTTP_REFUSED entry per refusal (SPECIFICATION.md H.7):
+    # exactly those two codes in WEBSERVER, and HTTPDropped holding at least the refusals the clients saw.
+    assert_module_error_log_clean(dut_ip, "WEBSERVER", allowed_warnings=_CEILING_TRACES)
+    dropped = _http_dropped(dut_ip)
+    assert dropped >= refusals, f"{context}: HTTPDropped is {dropped}, fewer than the {refusals} refusal(s) the clients saw"
+
+
+def _assert_radio_refusal_traced(board: Board, dut_ip: str, field: str, mode_before: object) -> None:
+    # The refusal's WIFI entry, no reconnect (no connect line over a short tail, Mode unchanged) and the board serving.
+    assert_module_error_log_contains(dut_ip, "WIFI", code("E", "BAD_ARG"), "E")
+    lines = board.tail_log(duration_s=_NO_RECONNECT_TAIL_S)
+    assert not [line for line in lines if "WLAN connection" in line], f"a refused {field} still triggered a reconnect: {lines}"
+    assert _load.mode(dut_ip) == mode_before, f"Mode moved from {mode_before!r} after a refused {field}"
+
+
+def _assert_recovered(board: Board, bench: "BenchBridge", dut_ip: str, result_note: "_load.Note", description: str, since: str) -> None:
+    # The CYW43 firmware can report associated while the link is dead, and neither the kick nor the retry clears it
+    # (tests_hardware/README.md): one reported reset is the recovery, and the benign-warning check runs only without it.
+    noted = _load.Noted(result_note)
+    started = time.monotonic()
+    recover_by_reset(board, bench, ready=lambda: _load.serving(dut_ip), first_wait_s=_OUTAGE_RECONNECT_TIMEOUT_S, retry_wait_s=_RECONNECT_TIMEOUT_S, skipped="_assert_wifi_log_has_only_benign_outage_warnings", note=noted, description=description)
+    served_at = time.monotonic()
+    _load.wait_for_ntp_quiet(dut_ip, served_at, result_note)
+    if not noted.recovered:
+        result_note(f"recovered gracefully in {served_at - started:.1f}s ({since} to the first reachable /status)")
+        _assert_wifi_log_has_only_benign_outage_warnings(dut_ip)
+
+
+def _assert_wifi_log_has_only_benign_outage_warnings(dut_ip: str) -> None:
+    # An outage logs AP-not-found from a retry poll mid-outage and the handshake failure cyw43 reports when the AP drops
+    # mid-handshake (SPECIFICATION.md C.7.1, the WIFI row); the password never changes here.
+    entry = errcount_entry(get_errcount(dut_ip), "WIFI")
+    benign = (code("W", "WLAN_NO_AP"), code("W", "WLAN_AUTH_FAILED"))
+    unexpected = [h for h in entry["history"] if h.get("type") != "N" and not (h.get("type") == "W" and h.get("num") in benign)]
+    assert not unexpected, f"WIFI logged beyond the outage's benign WLAN_NO_AP/WLAN_AUTH_FAILED {benign}: {unexpected!r} (full: {entry!r})"
+
+
+def _body_cap() -> int:
+    # ServingLimits' shipped max_content_length, now bound to max_body_length too.
+    return int(_load.src_number(_WEBSERVER, "_DEFAULT_MAX_CONTENT_LENGTH"))
+
+
+def _capture_dut_ntp_port(board: Board, bench: "BenchBridge", dut_ip: str, result_note: "_load.Note") -> "tuple[int, float]":
+    # The DUT's ephemeral NTP source port and when it was captured, each reset forcing a fresh request; a capture that saw
+    # nothing (the reset landed in hotspot fallback, BACKLOG.md open question 9) is retried, each retry reported.
+    for attempt in range(1, _CAPTURE_ATTEMPTS + 1):
+        capture = bench.start_udp_source_capture(dut_ip, 123)
+        kick_then_reset(board, bench)
+        port = bench.read_captured_udp_source_port(capture, timeout_s=_UDP_CAPTURE_TIMEOUT_S)
+        if port is not None:
+            return port, time.monotonic()
+        if attempt < _CAPTURE_ATTEMPTS:
+            result_note(f"capture attempt {attempt} saw no NTP request; retried with a fresh reset", recovery=True)
+    raise AssertionError(f"never observed a real NTP request from the DUT across {_CAPTURE_ATTEMPTS} resets - nothing to inject a reply against")
+
+
+def _ceiling_client(dut_ip: str, path: str, reference: "frozenset[str]", results: "list[str]", index: int) -> None:
+    started = time.monotonic()
+    try:
+        keys = _keys(dut_ip, path, _LOADED_FETCH_TIMEOUT_S)
+        elapsed = time.monotonic() - started
+        results[index] = "ok" if keys == reference and elapsed < _SERVED_ELAPSED_MAX_S else f"{path}: keys {sorted(keys ^ reference)} differ or {elapsed:.1f}s"
+    except (OSError, http_client.HTTP_ERROR, ValueError, TypeError, AssertionError) as exc:
+        # A truncated body is the case under test: it lands in results with its path, never as a dead thread.
+        results[index] = f"{path}: {exc!r}"
+
+
+def _closed_after(sock: socket.socket, since: float, bound_s: float) -> "float | None":
+    # Seconds from `since` until the server closed `sock`, None while it was still open at `bound_s`.
+    sock.settimeout(max(bound_s - (time.monotonic() - since), _MIN_SOCKET_WAIT_S))
+    try:
+        while sock.recv(4096):
+            pass
+    except TimeoutError:
+        return None
+    except ConnectionResetError:
+        pass
+    return time.monotonic() - since
+
+
+def _extra_outcome(dut_ip: str, held: list[socket.socket]) -> bytes:
+    # One connection above the held ceiling: b"" when refused (a FIN, or an RST once request bytes arrived), else what
+    # it got - silent past the short wait means admitted.
+    _pad(held)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as extra:
+        extra.settimeout(_RAW_SOCKET_TIMEOUT_S)
+        extra.connect((dut_ip, 80))  # the kernel's accept queue takes it even though _serve() rejects it at once
+        extra.settimeout(_ADMITTED_SILENCE_S)
+        try:
+            return extra.recv(4096)
+        except ConnectionResetError:
+            return b""
+        except TimeoutError:
+            return b"<held open: admitted>"
+
+
+def _garbage_window(board: Board, bench: "BenchBridge", dut_ip: str, port: int) -> "tuple[list[str], dict[str, int]]":
+    # A rogue responder on the port the OS picked, the DUT's `port` redirected to it, a reset forcing a fresh exchange,
+    # and the log tailed; the redirect is cleared on every path.
+    with RogueUdpResponder(_GARBAGE_PAYLOAD) as responder:
+        bench.redirect_udp_port_to_local(port, responder.port)
+        try:
+            kick_then_reset(board, bench)  # forces a fresh exchange against the now-rogue server
+            lines = board.tail_log(duration_s=_ROGUE_TAIL_S)  # past the client's retry and backoff budget
+        finally:
+            bench.clear_udp_port_redirect(port, responder.port)
+        return lines, dict(responder.answered_from)
+
+
+def _http_dropped(dut_ip: str) -> int:
+    # GET /status's HTTPDropped: the connections dropped in the last 24 hours, so a burst's own refusals all count.
+    dropped = _load.as_object(_load.get_object(dut_ip, "/status", _PROBE_TIMEOUT_S).get("networking"), "GET /status networking").get("HTTPDropped")
+    assert isinstance(dropped, int) and not isinstance(dropped, bool), f"GET /status carries no HTTPDropped count: {dropped!r}"
+    return dropped
+
+
+def _impaired(board: Board, bench: "BenchBridge", dut_ip: str, reachable_within_s: float, **impairment: float) -> None:
+    # Inject, REST reachable under it, clear, fully recovered - the whole window watched for a crash, then WEBSERVER;
+    # each caller asserts no task ended itself.
+    def window() -> None:
+        bench.inject_network_degradation(**impairment)
+        try:
+            wait_until(lambda: _load.serving(dut_ip), timeout_s=reachable_within_s, poll_interval_s=_RECONNECT_POLL_S, description=f"REST reachable under {impairment}")
+        finally:
+            bench.clear_network_degradation()
+        wait_until(lambda: _load.serving(dut_ip), timeout_s=_WAIT_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description=f"REST fast and reliable again after {impairment} cleared")
+
+    _result, lines = observe_during(board, window)
+    assert not crash_lines(lines), f"{impairment} crashed the system instead of degrading cleanly: {crash_lines(lines)}"
+    assert_module_error_log_empty(dut_ip, "WEBSERVER")
+
+
+def _index_load(dut_ip: str, reference: bytes, sizes: "list[int | str]", index: int) -> None:
+    try:
+        res = http_client.fetch(dut_ip, 80, "GET", "/", timeout_s=_LOADED_FETCH_TIMEOUT_S)
+        sizes[index] = len(res.body) if res.status_code == 200 and res.body == reference else f"status {res.status_code}, {len(res.body)} B, differs"
+    except (OSError, http_client.HTTP_ERROR) as exc:
+        sizes[index] = repr(exc)
+
+
+def _keys(dut_ip: str, path: str, timeout_s: float) -> "frozenset[str]":
+    # One GET's parsed object's key set; urllib raises on a body short of its Content-Length (a truncated stream).
+    res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
+    assert res.status_code == 200, f"{path} answered {res.status_code}"
+    return frozenset(res.json())
+
+
+def _link_poller(dut_ip: str, stop: threading.Event, polls: "list[tuple[float, JSONObject | None]]") -> None:
+    # GET /status every _FLASH_STALL_POLL_S: (time, its networking object), or None for a poll the link dropped.
+    while not stop.is_set():
+        try:
+            networking: JSONObject | None = _load.as_object(_load.get_object(dut_ip, "/status", _PROBE_TIMEOUT_S).get("networking"), "GET /status networking")
+        except (OSError, http_client.HTTP_ERROR, ValueError, TypeError, AssertionError):
+            networking = None
+        polls.append((time.monotonic(), networking))
+        stop.wait(_FLASH_STALL_POLL_S)
+
+
+def _mem_free(dut_ip: str) -> int:
+    free = _load.as_object(_load.get_object(dut_ip, "/status", _PROBE_TIMEOUT_S).get("system"), "GET /status system").get("MemFree")
+    assert isinstance(free, int), f"GET /status carries no MemFree: {free!r}"
+    return free
+
+
+def _openhab_client(dut_ip: str, paths: "list[str]", interval_s: float, stop: threading.Event, latencies: "dict[str, list[float]]", failures: "list[str]") -> None:
+    # One client polling `paths` in turn every `interval_s` until stopped: each answer a complete 200, JSON parsed where
+    # JSON, its latency recorded; a refusal or anything else is a failure.
+    while not stop.is_set():
+        for path in paths:
+            started = time.monotonic()
+            try:
+                res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=_LOADED_FETCH_TIMEOUT_S)
+                if res.status_code != 200:
+                    failures.append(f"{path}: {res.status_code}")
+                elif res.headers.get("Content-Type", "").startswith("application/json"):
+                    res.json()
+            except (OSError, http_client.HTTP_ERROR, ValueError, TypeError) as exc:
+                failures.append(f"{path}: {exc!r}")
+                continue
+            latencies.setdefault(path, []).append(time.monotonic() - started)
+        stop.wait(interval_s)
+
+
+def _pad(held: list[socket.socket]) -> None:
+    for index, sock in enumerate(held):
+        try:
+            sock.sendall(HELD_PAD_LINE)  # resets its per-call read timeout, as the ceiling probe does
+        except OSError as exc:
+            raise AssertionError(f"held connection {index} of {len(held)} was closed ({exc!r}) - the ceiling was not free when the test began") from exc
+
+
+def _put_sized(dut_ip: str, total_bytes: int, timeout_s: float = _PROBE_TIMEOUT_S) -> int:
+    return http_client.fetch(dut_ip, 80, "PUT", "/sensors", _sized_sensors_body(total_bytes), timeout_s=timeout_s).status_code
+
+
+def _read_until_closed(sock: socket.socket) -> bytes:
+    # Everything the server sends until it closes, or until the socket's timeout (the caller's to judge).
+    response = b""
+    try:
+        while chunk := sock.recv(4096):
+            response += chunk
+    except TimeoutError:
+        pass
+    return response
+
+
+def _reconnected_after_forced_resync(board: Board, bench: "BenchBridge", dut_ip: str, result_note: "_load.Note") -> None:
+    recover_by_reset(board, bench, ready=lambda: _load.serving(dut_ip), first_wait_s=_RECONNECT_TIMEOUT_S, retry_wait_s=_RECONNECT_TIMEOUT_S, skipped="the passive reconnect after the forced resync", note=result_note, description="the forced resync against a rogue server")
+
+
+def _repair_target_note(result_note: "_load.Note", what: str) -> None:
+    result_note(f"repaired a leftover garbage {what} from an aborted run", recovery=True)
+
+
+def _restore_over_hotspot(board: Board, bench: "BenchBridge", hostname: str, target_ssid: str, reason: str, result_note: "_load.Note") -> None:
+    # The DUT's hotspot opens once its streak fails: the bench radio, freed, scans for it, joins (the first join is
+    # retried once through a reported reset), takes a lease and PUTs the SSID back; the bridge returns on every path.
+    try:
+        bench.ap_down()
+        wait_until(lambda: bench.is_ssid_visible(hostname), timeout_s=_RECONNECT_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description=f"the DUT's own hotspot ({hostname!r}) to become scannable")
+        recover_by_reset(board, bench, ready=lambda: _try_join(bench, hostname), first_wait_s=_JOIN_ATTEMPTS * _JOIN_HOTSPOT_TIMEOUT_S, retry_wait_s=_JOIN_ATTEMPTS * _JOIN_HOTSPOT_TIMEOUT_S, skipped="the first join attempt", note=result_note, description="joining the DUT's hotspot")
+        wait_until(lambda: bool(bench.gateway_ip()), timeout_s=_DHCP_TIMEOUT_S, poll_interval_s=_DHCP_POLL_S, description="DHCP lease on the DUT's own hotspot")
+        gateway_ip = bench.gateway_ip()
+        wait_until(lambda: _load.serving(gateway_ip), timeout_s=_WAIT_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description="DUT REST reachable over its own hotspot")
+        _restore_ssid_over(gateway_ip, target_ssid, reason)
+    finally:
+        bench.leave_dut_hotspot_and_restore_bridge()
+    bench.kick_all_stations()
+
+
+def _restore_ssid_over(host: str, original_ssid: str, reason: str) -> None:
+    # Checked before any reset erases it, over whichever address still reaches the DUT.
+    assert_no_task_ended(host, "a garbage SSID")
+    reset_all_error_logs(host, reason)
+    restore = http_client.fetch(host, 80, "PUT", "/networking", {"SSID": original_ssid}, timeout_s=_PROBE_TIMEOUT_S)
+    assert restore.status_code == 200, f"failed to restore original SSID {original_ssid!r}: {restore.status_code} {restore.body!r}"
+    assert _load.as_object(restore.json().get("result"), "result").get("SSID") in ("Valid", "Unchanged"), f"restoring the original SSID was rejected: {restore.body!r}"
+
+
+def _sized_sensors_body(total_bytes: int) -> "JSONObject":
+    # A PUT /sensors body of exactly total_bytes, under a sensor key no driver registers. Unknown keys are ignored
+    # silently, so nothing validates, persists or logs: the size is the whole subject.
+    envelope = len(json.dumps({"HWTESTNoSuchSensor": {"Padding": ""}}).encode())
+    body: JSONObject = {"HWTESTNoSuchSensor": {"Padding": "x" * (total_bytes - envelope)}}
+    assert len(json.dumps(body).encode()) == total_bytes, "padding arithmetic drifted from json.dumps()"
+    return body
+
+
+def _sized_worker(dut_ip: str, index: int, size: int, outcomes: "dict[str, dict[int, int | str]]", lock: threading.Lock) -> None:
+    # One PUT of `size`, its outcome filed under answered, refused (at the ceiling) or other; never raised.
+    try:
+        status: int | str = _put_sized(dut_ip, size, timeout_s=_LOADED_FETCH_TIMEOUT_S)
+        bucket = "answered"
+    except (OSError, http_client.HTTP_ERROR) as exc:
+        status, bucket = f"{type(exc).__name__}: {exc}", "refused" if http_client.is_ceiling_close(exc) else "other"
+    with lock:
+        outcomes[bucket][index] = status
+
+
+def _try_join(bench: "BenchBridge", ssid: str) -> bool:
+    try:
+        bench.join_dut_hotspot(ssid, hotspot_password(), timeout_s=_JOIN_HOTSPOT_TIMEOUT_S)
+    except HardwareTestFailureError:
+        return False
+    return True
+
+
+def _utc_year(dut_ip: str) -> "int | None":
+    # GET /status's UTCTime year; None while the board has not synced (UTCTime is null then).
+    utc = _load.as_object(_load.get_object(dut_ip, "/status", _PROBE_TIMEOUT_S).get("system"), "GET /status system").get("UTCTime")
+    if utc is None:
+        return None
+    year = _load.as_object(utc, "GET /status system.UTCTime").get("Year")
+    assert isinstance(year, int), f"UTCTime carries no Year: {utc!r}"
+    return year
+
+
+def _website_routes(device: str) -> "tuple[str, float]":
+    # The route the page polls on landing and its interval, from the generated definitions the website itself reads.
+    definitions = json.loads(json.dumps(definitions_for_toml(device_toml(device), SRC_DIR)))
+    landing = definitions["landingSection"]
+    section = next(s for s in definitions["sections"] if s["key"] == landing)
+    return str(section["rest"]["get"]), float(section.get("pollIntervalMs") or definitions["defaultPollIntervalMs"]) / 1000

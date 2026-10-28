@@ -1,0 +1,437 @@
+{
+ "settled": [
+  {
+   "id": "uart-log-codes",
+   "step": "rule",
+   "why": "Each module's own error numbers come from one global catalog in that module's own range, so the two new link codes simply take the next free numbers in the link's band, and the catalog (not an action's stray mention) fixes the earlier code at 89; any free number would work equally, since the numbers are log identifiers, not wire bytes.",
+   "cite": "OR28.a (2)-(3); M.SRC_NET.153 Resolved; M_SRC_NET agent decision 8"
+  },
+  {
+   "id": "uart-private-names",
+   "step": "rule",
+   "why": "Your rule makes every attribute private unless another module or the general driver API needs it, and these have no reader outside their class; landing the rename once, in the first renaming step, is execution bookkeeping that changes nothing in the end state.",
+   "cite": "G10/R07 (owner, OR24); OR36.a (1); M.SRC_NET.155, .213 Resolved; M_SRC_NET agent decisions 9, 15"
+  },
+  {
+   "id": "uart-valid-frame-sync",
+   "step": "rule",
+   "why": "Once its only await is gone, keeping the bookkeeping function async would allocate a throwaway coroutine for every received frame, which the standing memory rule against churning same-shaped objects on a hot path forbids; nothing on the wire changes.",
+   "cite": "G4/R42 (owner-confirmed, CLAUDE.md memory-safety rule); M.SRC_NET.164 Resolved"
+  },
+  {
+   "id": "uart-starter-names",
+   "step": "style",
+   "why": "Every other task starter in the firmware is already a public method named start_asy_<what> (read, trigger, ntp_client, wlan_connect, uptime_counter, ...), so the two link starters follow the same shape and also give the task supervisor a readable task name.",
+   "cite": "src/ starters at HEAD (asy_bmp3xx_driver, asy_ntp_client, asy_wifi_service, system_service); G10/R16; M.SRC_NET.170, .215"
+  },
+  {
+   "id": "uart-banner-const",
+   "step": "rule",
+   "why": "A module constant that can be folded is private and const()-wrapped, which removes it as an importable attribute, and adding a test-only export would put a test artifact into the firmware, so the test reads the value from the source file instead.",
+   "cite": "G4/R27 (fact, py/parse.c v1.29.0); OR36.a (1); M.SRC_NET.212 Resolved"
+  },
+  {
+   "id": "uart-resync-one-entry",
+   "step": "rule",
+   "why": "One event leaves one entry: a resync that hit the drain bound persists its warning (which already prints its own console line), and an ordinary resync only prints, so printing a second line on top would only duplicate the console message; your later note about upper layers logging their own follow-on faults concerns different layers, not one layer's single event.",
+   "cite": "OR56.a (1) (names the UART resync case); src/print_log.py wrn_s() prints as well as persists; answers.json one-entry-per-fault note; M.SRC_NET.162"
+  },
+  {
+   "id": "uart-link-initialized",
+   "step": "style",
+   "why": "The link driver's own exercise loop needs a readiness flag to read, exactly as the protocol object's listen loop already reads its own, and the project's one setup contract gives every class with an async setup its own flag.",
+   "cite": "src/asy_uart_comm.py listen loop 'while self.initialized'; G5/R14; A.U10.22; M.SRC_NET.213 Resolved"
+  },
+  {
+   "id": "uart-banner-rename",
+   "step": "rule",
+   "why": "Your rule forbids naming a board variant anywhere outside its device file, and the banner is an application payload of the bench exerciser rather than protocol, so it is renamed and logged as a Python-internal changelog line.",
+   "cite": "OR78.a (1); CLAUDE.md UART rule (application logic not in the protocol module; Python-internal changes logged too); A.U24.67"
+  },
+  {
+   "id": "crc-empty-payload",
+   "step": "net-effect",
+   "why": "Every CRC caller in the firmware passes a fixed, non-empty length (sensor words, FRAM chunks, link frames that always carry a 5-byte header), so forbidding a zero-length payload at the callers changes nothing at runtime and leaves the CRC module untouched as recorded.",
+   "cite": "src/ CRC callers (asy_fram_manager, asy_scd30_driver, asy_sgp40_driver, asy_uart_driver via asy_uart_comm _HEADER_LEN = 5); HARVEST_REQUIREMENTS 3.3; commit 23e5443"
+  },
+  {
+   "id": "unit-test-d-t1",
+   "step": "rule",
+   "why": "Your rule runs every test file once at each memory-collection stage and lets no test change its file's stage unless the threshold itself is the test's subject, which it is not here.",
+   "cite": "G4/R49 (owner, OR40.a (1)-(2)); M.TEST_UNIT.001 Resolved"
+  },
+  {
+   "id": "unit-test-d-t2",
+   "step": "similar",
+   "why": "Same choice as 'Test copies of product values are derived': the bound tables are project-chosen values, so they are derived from the driver's own schema instead of being hand-kept.",
+   "cite": "derived-test-copies; M.TEST_UNIT.015"
+  },
+  {
+   "id": "unit-test-d-t3",
+   "step": "rule",
+   "why": "Storing the chip id only so a test can read it would be a test artifact in the firmware, which your rule forbids, so the test checks what setup visibly did instead (the id read, the calibration stored, a wrong neighbour id refused).",
+   "cite": "OR36.a (1); M.TEST_UNIT.008 Resolved"
+  },
+  {
+   "id": "unit-test-d-t4",
+   "step": "similar",
+   "why": "Same choice as 'Test copies of product values are derived': these are the project's own tuning values, read from the driver source, while the datasheet register facts in the same test stay independent copies.",
+   "cite": "derived-test-copies; M.TEST_UNIT.058"
+  },
+  {
+   "id": "unit-test-d-t5",
+   "step": "rule",
+   "why": "After the product change the old injection point is never reached, so the test would pass without testing anything; your biting-test rule says to keep the test's goal and move the fault to where it now bites, between read and store.",
+   "cite": "OR19.a (1), (4); M.TEST_UNIT.063"
+  },
+  {
+   "id": "unit-test-d-t6",
+   "step": "rule",
+   "why": "The existing comment calls index 4 the timestamp while it is the span; a plain factual comment that contradicts the code is fixed in place.",
+   "cite": "OR13.a; PQ1 answer (factual doc drift fixed in place); M.TEST_UNIT.062"
+  },
+  {
+   "id": "unit-test-d-t7",
+   "step": "rule",
+   "why": "The function it bounds now returns milliseconds, so the bound must be in milliseconds and carry the millisecond suffix; a seconds value would be off by a factor of 1000.",
+   "cite": "OR24.a (1); G10/R14; M.TEST_UNIT.091 Resolved"
+  },
+  {
+   "id": "unit-test-d-t8",
+   "step": "net-effect",
+   "why": "A 0.01 s flash duration is below the field's 0.5 s minimum, so those writes were always refused and never shortened anything; dropping them changes no test outcome, and the driven clock already covers the default.",
+   "cite": "M.TEST_UNIT.089; OR19.a (1)"
+  },
+  {
+   "id": "unit-test-d-t9",
+   "step": "similar",
+   "why": "Same choice as 'Test copies of product values are derived': the override limit is a project-chosen value, so the test reads it from source.",
+   "cite": "derived-test-copies; M.TEST_UNIT.090"
+  },
+  {
+   "id": "unit-test-d-t10",
+   "step": "best-practice",
+   "why": "Unit tests must never reach a public internet server, so the shared NTP builder empties the public fallback list by default, while the few tests that only check the schema's own defaults and do no network I/O keep it untouched.",
+   "cite": "G2/R22; hermetic-test practice; M.TEST_UNIT.095 Resolved"
+  },
+  {
+   "id": "unit-test-d-t11",
+   "step": "rule",
+   "why": "The product change makes the lock release structural, so the behaviour this test pinned no longer exists; your rule retires such a test with its replacing guard named (the lock is still released when an attempt raises).",
+   "cite": "OR111.a (2); M.TEST_UNIT.110"
+  },
+  {
+   "id": "unit-test-d-t12",
+   "step": "similar",
+   "why": "Same reading as 'Chip-id tests assert effects': the driver stores no self-test status, so the test asserts the reset that only follows a passed self-test.",
+   "cite": "unit-test-d-t3; M.TEST_UNIT.126"
+  },
+  {
+   "id": "unit-test-d-t14",
+   "step": "rule",
+   "why": "The range limits these tests read are removed by the product change, so the tests retire and the one catalog check that replaces them is named as the guard, carrying their 'must match something' requirement.",
+   "cite": "OR111.a (2); M.TEST_UNIT.157"
+  },
+  {
+   "id": "unit-test-d-t15",
+   "step": "similar",
+   "why": "Same choice as 'Test copies of product values are derived': the resync streak is a project-chosen value, read from source.",
+   "cite": "derived-test-copies; M.TEST_UNIT.161"
+  },
+  {
+   "id": "unit-test-d-t16",
+   "step": "net-effect",
+   "why": "Pinning the test helper to one fast equal poll rate keeps every timing-sensitive test's premise without per-test edits, and one separate test still asserts the shipped defaults, so this holds whatever default rates are finally chosen.",
+   "cite": "M.TEST_UNIT.170; answers.json idle-poll-rate (open, independent of this)"
+  },
+  {
+   "id": "unit-test-d-t17",
+   "step": "rule",
+   "why": "Your tunable register lists exactly the tagged values left in the code, so a row stays while three tests still use its value, and a value that is now derived needs no row of its own.",
+   "cite": "OR30.a (2); M.TEST_UNIT.187"
+  },
+  {
+   "id": "unit-test-d-t18",
+   "step": "rule",
+   "why": "The product change deletes the lock that the planned rewrite would have tested, so that rewrite has nothing to test, and the test pinning that there is no lock stands as the guard.",
+   "cite": "OR111.a (2); M.TEST_UNIT.223"
+  },
+  {
+   "id": "unit-test-d-t19",
+   "step": "net-effect",
+   "why": "This only decides which of two files holds the same tests: the per-bus-layout cases go to the file that already generates one test per bus, the hand-paired cases stay where they are, and coverage is identical either way.",
+   "cite": "M.TEST_UNIT.232; CLAUDE.md bus-hazard four-tier rule"
+  },
+  {
+   "id": "unit-test-d-t20",
+   "step": "net-effect",
+   "why": "The list of malformed addresses stays beside the four tests that use it; moving it would only add an import, and no check changes.",
+   "cite": "M.TEST_UNIT.026, .241"
+  },
+  {
+   "id": "unit-test-d-t21",
+   "step": "net-effect",
+   "why": "The shared test runner cancels every task a run leaves unfinished, so a write and its later flush must run in one coroutine; the split form would await a task that was already cancelled, so this is the only form that works.",
+   "cite": "M.TEST_HELP.043 (b); M_TEST_UNIT conventions"
+  },
+  {
+   "id": "unit-test-d-t22",
+   "step": "rule",
+   "why": "The type-violating inputs those three tests fed are now prevented statically, so the tests retire together with the removed guard and the host schema check is named as what guards instead.",
+   "cite": "OR111.a (2); M.TEST_UNIT.250"
+  },
+  {
+   "id": "unit-test-d-t23",
+   "step": "rule",
+   "why": "New firmware code needs its own unit tests before it counts as done, and every behaviour must map to a biting test.",
+   "cite": "CLAUDE.md hard rule on src/ (unit tests written and passing); OR25.a (2); M.TEST_UNIT.251"
+  },
+  {
+   "id": "unit-test-d-t24",
+   "step": "net-effect",
+   "why": "The product keeps the branch that answers a non-dictionary request with its sentinel, so the behaviour the test pins still exists and the test simply stays.",
+   "cite": "M.TEST_UNIT.256 Resolved; M.SRC_CORE.044"
+  },
+  {
+   "id": "unit-test-d-t25",
+   "step": "docs",
+   "why": "Opening a file is a synchronous call that cannot pause mid-way, so a test can only hold the write at its two real waiting points, the lock and the logger.",
+   "cite": "py/builtin.h:41 maps open() to extmod/vfs.c mp_vfs_open (a plain C function, v1.29.0); M.TEST_UNIT.259 Resolved"
+  },
+  {
+   "id": "unit-test-d-t26",
+   "step": "rule",
+   "why": "Your rule requires every generated module and every generated boot entry to be executed by at least one test tier, and the no-autostart entry is a generated boot entry.",
+   "cite": "G8/R03 (owner, OR22.a (2)); OR86.a; M.TEST_UNIT.269"
+  },
+  {
+   "id": "unit-test-d-t27",
+   "step": "rule",
+   "why": "Settled the other way: in the merged storage code a status byte left 'busy' by an interrupted write is read without any bus fault, so a chunk whose two copies both show it is invalid content rather than unreadable, and your rule re-initialises exactly such a chunk; the test should keep expecting the 'blank or invalid' answer (False), not 'unreadable' (None), which would also keep that log RAM-only at every later boot until something rewrote it.",
+   "cite": "G5/R25 (owner, OR69.a (1)); M.SRC_CORE.084 (busy byte is not a fault), M.SRC_CORE.088 (neither copy valid, none faulted -> False), M.SRC_CORE.065; M.TEST_UNIT.291 Resolved; tests/test_print_log.py both-busy test"
+  },
+  {
+   "id": "unit-test-d-t28",
+   "step": "best-practice",
+   "why": "The no-autostart entry prints the manual start line, which contains the watchdog call as text, so a text search would raise a false alarm; walking the parsed code checks the real property, that nothing is constructed.",
+   "cite": "M.TEST_UNIT.294 Resolved"
+  },
+  {
+   "id": "unit-test-d-t29",
+   "step": "docs",
+   "why": "The product change makes a failing starter a persisted error, and the persisting log call always prints the same line to the console too, so the test asserts both.",
+   "cite": "src/print_log.py err_s() (persists, then prints); M.SRC_CORE.014; M.TEST_UNIT.304 Resolved"
+  },
+  {
+   "id": "unit-test-d-t30",
+   "step": "net-effect",
+   "why": "After the network changes the UDP module keeps no tick-based timing at all, so a tick-wraparound test for it would have nothing to cross.",
+   "cite": "M.TEST_UNIT.313 Resolved; M.SRC_NET.028"
+  },
+  {
+   "id": "unit-test-d-t31",
+   "step": "net-effect",
+   "why": "The shared cancel-sweep helper has neither the per-transfer step nor the 'clear' variant this test needs, so a file-local sweep is the only way to write it, and the existing per-path sweeps stay as they are.",
+   "cite": "M.TEST_UNIT.322 Resolved"
+  },
+  {
+   "id": "unit-test-d-t32",
+   "step": "rule",
+   "why": "The check returned early without a CRC, so in that mode it passed without checking anything; registering it for the CRC mode only states its real subject, while both CRC modes stay tested overall.",
+   "cite": "OR19.a (1); OR116.a; M.TEST_UNIT.325 Resolved"
+  },
+  {
+   "id": "unit-test-d-t33",
+   "step": "style",
+   "why": "Every module's unit tests live in that module's own test file, and this test is about the VOC algorithm module.",
+   "cite": "G10/R31; tests/test_voc_algorithm.py at HEAD; M.TEST_UNIT.329"
+  },
+  {
+   "id": "unit-test-d-t34",
+   "step": "net-effect",
+   "why": "The check relies on the website bundle's existing per-module separator lines; if a later change dropped them the check would fail loudly rather than pass silently, and the dependency is already handed to the staging script's owner.",
+   "cite": "M.TEST_UNIT.333 Resolved; M_TEST_UNIT GAP-U11"
+  },
+  {
+   "id": "unit-test-driven-clock",
+   "step": "rule",
+   "why": "You approved proving long uptime and clock steps under a driven clock in the unit tier, and your rule asks for deterministic tests that force interleavings with a fake clock rather than real waits.",
+   "cite": "answers.json driven-time-and-rtc-steps (ok); OR37.a (3); G2/R15; A.U35.10"
+  },
+  {
+   "id": "test-helper-d1",
+   "step": "net-effect",
+   "why": "Looking the simulated-reboot error up on whichever machine module is loaded lets the test runner work in the lwIP host tests, which load no machine fake at all; importing a fake instead would break that tier.",
+   "cite": "M.TEST_HELP.001 Resolved; G7/R02"
+  },
+  {
+   "id": "test-helper-d2",
+   "step": "rule",
+   "why": "The write-failure knob lives in a test fake, not in the firmware, and it is the only way a unit test can reach the supervisor-restart path for the LED driver, which your rule says must be covered at every layer.",
+   "cite": "OR25.a (1)-(2); OR36.a (1) (applies to firmware only); M.TEST_HELP.006 Resolved"
+  },
+  {
+   "id": "test-helper-d3",
+   "step": "rule",
+   "why": "Your hygiene rule says each test cleans up on every path including failure, so the fake's reset hook records the counter, resets it, and only then asserts, and one failure never leaks into the next test.",
+   "cite": "OR38.a (1); M.TEST_HELP.010 Resolved"
+  },
+  {
+   "id": "test-helper-d4",
+   "step": "rule",
+   "why": "Two tests need to count FRAM writes; one counter in the chip fake serves both instead of two mechanisms for the same job.",
+   "cite": "OR44.a P4 (one shape per job); OR24.a (1); M.TEST_HELP.022 Resolved"
+  },
+  {
+   "id": "test-helper-d5",
+   "step": "rule",
+   "why": "A name that another module imports is public by the project's visibility rule, and these limits are imported by other test files.",
+   "cite": "G10/R07 (owner, OR24); M.TEST_HELP.024 Resolved"
+  },
+  {
+   "id": "test-helper-d6",
+   "step": "rule",
+   "why": "Your biting-test rule lists a swallowed exception inside a test as a red flag; catching only the declared exceptions lets an unexpected failure surface instead of being hidden.",
+   "cite": "OR19.a (1); M.TEST_HELP.026 Resolved"
+  },
+  {
+   "id": "test-helper-d7",
+   "step": "similar",
+   "why": "Same choice as 'Test copies of product values are derived': the expected FRAM owners come from the build's own construction order instead of a hand list, which was already wrong after the module order changed.",
+   "cite": "derived-test-copies; OR78.a (1); M.TEST_HELP.036"
+  },
+  {
+   "id": "test-helper-d8",
+   "step": "net-effect",
+   "why": "The boot probe measures what main() actually runs, and the grace and poll bounds belonged to a counting loop that no longer exists, so their tuning rows go with it.",
+   "cite": "OR30.a (2); M.TEST_HELP.028 Resolved"
+  },
+  {
+   "id": "test-helper-d9",
+   "step": "rule",
+   "why": "The twin must never import the unit-tier fakes, so a recorder shared by both tiers has to live in its own module rather than inside the unit scenario library.",
+   "cite": "G7/R02 (owner-confirmed, 2026-08-12); M.TEST_HELP.030 Resolved"
+  },
+  {
+   "id": "test-helper-d10",
+   "step": "rule",
+   "why": "You decided these scenarios are driven from the host side, so their new content is written once in the host harness rather than first into an in-device file that is deleted one step later.",
+   "cite": "OR125.a (1); M.TEST_HELP.031 Resolved"
+  },
+  {
+   "id": "test-helper-d11",
+   "step": "rule",
+   "why": "No test may carry a literal list of what a particular device contains, so the construction checks take the expected bus and instance names from the device's own build plan.",
+   "cite": "OR78.a (1); OR43.a (3); M.TEST_HELP.029"
+  },
+  {
+   "id": "test-helper-d12",
+   "step": "net-effect",
+   "why": "Either order meets the requirement that test data is seeded before setup runs; seeding before construction keeps the one shared boot helper generic, so nothing changes for what the tests check.",
+   "cite": "M.TEST_HELP.035 Resolved"
+  },
+  {
+   "id": "test-helper-d13",
+   "step": "similar",
+   "why": "Same choice as 'Test copies of product values are derived': the test's logger list comes from the same source the firmware uses, so the two cannot disagree.",
+   "cite": "derived-test-copies; M.TEST_HELP.035 Resolved"
+  },
+  {
+   "id": "test-helper-d14",
+   "step": "rule",
+   "why": "Two planned changes asked for the same scenario; writing it once, with the mechanism that needs no module patch and the assertions of both, avoids two tests doing one job.",
+   "cite": "OR44.a P4 (one shape per job); G10/R07; M.TEST_HELP.038 Resolved"
+  },
+  {
+   "id": "test-helper-d15",
+   "step": "style",
+   "why": "It mirrors the existing machine-contract module beside it: one shared contract file per real-hardware API that both test tiers check.",
+   "cite": "M.TEST_HELP.049 Resolved (beside _machine_contract.py)"
+  },
+  {
+   "id": "test-helper-d16",
+   "step": "net-effect",
+   "why": "This only decides in which work step the single offline-NTP writer first appears; the end state has one implementation either way, and unit boots still need a config that never reaches a public server, whatever local NTP responder the twin gains from your later note.",
+   "cite": "M.TEST_HELP.047 Resolved; G2/R22; answers.json twin-tolerates-ntp-offline (change: local responder for the twin)"
+  },
+  {
+   "id": "host-check-d-tsc1",
+   "step": "rule",
+   "why": "The audit folder is temporary and permanent files may not depend on or cite it, so the analysis a permanent test runs has to live with the host tests.",
+   "cite": "G9/R12 (owner, OR68.a (4)); OR11.a; M.TSC.020 Resolved"
+  },
+  {
+   "id": "host-check-d-tsc2",
+   "step": "similar",
+   "why": "The twin's fakes stand in for the same real hardware types as the unit fakes, so the same 'no more public names than the real type' check applies to both sets, which stay separate files.",
+   "cite": "host-check rule for tests/machine.py (A.U24.18); G7/R02; M.TSC.089 Resolved"
+  },
+  {
+   "id": "host-check-d-tsc3",
+   "step": "net-effect",
+   "why": "The scenarios moved host-side under your decision, so they need an id in the coverage map wherever they now live; naming them by their registry name changes no check.",
+   "cite": "OR125.a (1); M.TSC.102 Resolved"
+  },
+  {
+   "id": "host-check-d-tsc4",
+   "step": "rule",
+   "why": "The check pins a relation between the website's request timeout and the device's outer cap that nothing else checks, and your rule keeps any test that checks something relevant.",
+   "cite": "OR33.a (1); M.TSC.121 Resolved"
+  },
+  {
+   "id": "host-check-d-tsc5",
+   "step": "rule",
+   "why": "One shared helper that derives device sets from the device files replaces per-file parsing, matching your rule that device sets are derived in one way and the project's rule against copied test helpers.",
+   "cite": "OR43.a (3); OR78.a (1); G10/R32; tests_scripts/_devices.py at HEAD; M.TSC.175 Resolved"
+  },
+  {
+   "id": "host-check-d-tsc6",
+   "step": "net-effect",
+   "why": "Checks whose planned change named no file simply get a file named after their topic; this is placement only and no check is weakened.",
+   "cite": "M.TSC.185-.188, .080, .047; G10/R31"
+  },
+  {
+   "id": "host-check-d-tsc7",
+   "step": "rule",
+   "why": "The device-file validator checks only the hostname's form, not the station-name convention, so by the plan's own rule (keep a hand check only where it tests something the validator does not) and your rule to keep relevant tests, this assertion stays.",
+   "cite": "OR33.a (1); A.U20.19; M.GEN.026; M.TSC.079 Resolved"
+  },
+  {
+   "id": "derived-test-copies",
+   "step": "style",
+   "why": "The project already derives test copies from their source and pins unavoidable copies with a source-reading check (the request-body headroom check and the hardware-conftest constants check do exactly this), and keeping datasheet, RFC and protocol facts as independent copies is what your rule asks for expected values from an independent source.",
+   "cite": "tests_scripts/test_request_body_cap_headroom.py; tests_scripts/test_tests_hardware_conftest_constants.py; OR43.a (3); OR19.a (2); OR30.a (2); G1/R41"
+  },
+  {
+   "id": "per-device-suites",
+   "step": "rule",
+   "why": "Your rule forbids naming a board variant in any file outside its device file, which per-variant wrapper files do by their very names.",
+   "cite": "OR78.a (1), (4); A.U24.65"
+  },
+  {
+   "id": "licence-checks",
+   "step": "rule",
+   "why": "Your rule says a convention a tool can check is enforced by a check rather than by review, and that soundness is proven by tools and runs; you approved the licence notices themselves.",
+   "cite": "G10/R07 (owner); OR16.a; answers.json licence-notices (ok); A.U34.07, A.U34.08"
+  },
+  {
+   "id": "fram-seam-count-l1",
+   "step": "best-practice",
+   "why": "The property is how many transfers one chunk write makes at runtime; counting call sites in the source cannot measure that (one helper makes two of them), while a recording fake in a unit test counts the real transfers, an option the action itself allows.",
+   "cite": "GAPS_G3 G3-3 / table B6; A.U26.43"
+  },
+  {
+   "id": "orphan-unit-files",
+   "step": "rule",
+   "why": "This is audit bookkeeping: the plan's own completeness rule requires every file to be owned by some piece of work, so the four unowned files and the wrapper set are taken in.",
+   "cite": "OR111.a (1); GAPS_G3 G3-4"
+  },
+  {
+   "id": "test-file-naming",
+   "step": "style",
+   "why": "The test folder already follows this almost everywhere (the platform fakes carry the real module names, every other support file is an underscore-prefixed helper), so the few stragglers are harmonised to it.",
+   "cite": "tests/ at HEAD (machine.py, network.py, neopixel.py, _*.py helpers); G10/R32; OR24.a (1)"
+  }
+ ],
+ "for_owner": []
+}

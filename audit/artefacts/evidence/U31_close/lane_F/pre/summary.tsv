@@ -1,0 +1,13 @@
+it_arzi@-1	117.75	rc=0	mem=0	12/12 passed, 0 failed, 0 skipped
+it_arzi@32768	118.00	rc=0	mem=0	12/12 passed, 0 failed, 0 skipped
+it_dev@-1	22.96	rc=0	mem=0	4/12 passed, 0 failed, 8 skipped
+it_dev@32768	23.31	rc=0	mem=0	4/12 passed, 0 failed, 8 skipped
+it_grkizi@-1	21.47	rc=0	mem=0	4/12 passed, 0 failed, 8 skipped
+it_grkizi@32768	21.68	rc=0	mem=0	4/12 passed, 0 failed, 8 skipped
+it_klkizi@-1	21.68	rc=0	mem=0	4/12 passed, 0 failed, 8 skipped
+it_klkizi@32768	21.80	rc=0	mem=0	4/12 passed, 0 failed, 8 skipped
+it_schlafzi@-1	21.95	rc=0	mem=0	4/12 passed, 0 failed, 8 skipped
+it_schlafzi@32768	22.06	rc=0	mem=0	4/12 passed, 0 failed, 8 skipped
+it_wozi@-1	22.61	rc=0	mem=0	4/12 passed, 0 failed, 8 skipped
+it_wozi@32768	22.27	rc=0	mem=0	4/12 passed, 0 failed, 8 skipped
+ALLDONE

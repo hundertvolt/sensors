@@ -1,0 +1,24 @@
+== th=-1 D=40 orig
+FLIP test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16 8/143 k=[19, 21, 23, 24, 25, 26, 28, 29] first=AssertionError: 
+FLIP test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc 9/134 k=[18, 19, 20, 23, 24, 25, 26, 29, 30] first=AssertionError: 
+== th=-1 D=40 fixed
+ok   test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16 0/340 sleeps=340 clean=383ms
+ok   test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc 0/62 sleeps=62 clean=64ms
+== th=-1 D=250 orig
+FLIP test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16 8/140 k=[18, 19, 23, 24, 25, 27, 28, 29] first=AssertionError: 
+FLIP test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc 9/134 k=[18, 19, 22, 23, 24, 25, 26, 28, 30] first=AssertionError: 
+== th=-1 D=250 fixed
+ok   test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16 0/348 sleeps=348 clean=381ms
+ok   test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc 0/59 sleeps=59 clean=64ms
+== th=32768 D=40 orig
+FLIP test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16 10/130 k=[17, 18, 19, 20, 21, 22, 23, 24, 25, 30] first=AssertionError: 
+FLIP test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc 11/137 k=[17, 18, 19, 20, 22, 24, 25, 26, 27, 28, 29] first=AssertionError: 
+== th=32768 D=40 fixed
+ok   test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16 0/345 sleeps=345 clean=389ms
+ok   test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc 0/62 sleeps=62 clean=65ms
+== th=32768 D=250 orig
+FLIP test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16 7/126 k=[18, 19, 24, 25, 26, 28, 31] first=AssertionError: 
+FLIP test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc 12/143 k=[17, 18, 19, 21, 24, 25, 26, 27, 28, 29, 30, 31] first=AssertionError: 
+== th=32768 D=250 fixed
+ok   test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16 0/328 sleeps=328 clean=399ms
+ok   test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc 0/56 sleeps=56 clean=65ms

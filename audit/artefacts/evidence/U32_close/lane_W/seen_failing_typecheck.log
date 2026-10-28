@@ -1,0 +1,5 @@
+
+> sensors-website@0.1.0 typecheck
+> tsc --noEmit && tsc --noEmit -p tsconfig.node.json
+
+tests_js/templates.test.js(101,95): error TS2322: Type '"lasttaskend"' is not assignable to type '"epoch" | "gmtimestruct"'.

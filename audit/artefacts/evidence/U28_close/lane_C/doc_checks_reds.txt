@@ -1,0 +1,28 @@
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           tests_scripts/test_test_sh.py	Anchored inside the unit-tests-coverage JOB, not on the step name: the web tier
+E       assert not [('tests_scripts/test_test_sh.py', 'Anchored inside the unit-tests-coverage JOB, not on the step name: the web tier')]
+1 failed, 5 passed in 8.30s
+====
+E       AssertionError: scripts/_unix_port.sh:18: runner.unix_port_probe_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:89: ci.devices_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:184: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:189: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:243: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:248: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:296: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:301: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:382: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:387: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         SPECIFICATION.md:10810: tool.apt_acquire_timeout_s: Sites list [('toolchain/setup_toolchain.py', '30')], the tags say [('.github/workflows/ci.yml', '30'), ('toolchain/setup_toolchain.py', '30')]
+E         SPECIFICATION.md:10811: tool.uv_sync_attempts: Sites list [('.github/actions/setup-micropython-toolchain/action.yml', '3'), ('.github/workflows/ci.yml', '3'), ('toolchain/setup_toolchain.py', '3')], the tags say [('.github/workflows/ci.yml', '3'), ('scripts/uv_sync_retried.sh', '3'), ('toolchain/setup_toolchain.py', '3')]
+E         SPECIFICATION.md:10812: tool.uv_sync_backoff_step_s: Sites list [('.github/actions/setup-micropython-toolchain/action.yml', '10'), ('.github/workflows/ci.yml', '10'), ('toolchain/setup_toolchain.py', '10.0')], the tags say [('scripts/uv_sync_retried.sh', '10'), ('toolchain/setup_toolchain.py', '10.0')]
+E       assert not ['scripts/_unix_port.sh:18: runner.unix_port_probe_timeout_s is tagged but has no SPECIFICATION.md Part N row', '.gith....github/workflows/ci.yml:248: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row', ...]
+1 failed, 14 passed in 4.32s
+====
+E       AssertionError: these now open with a header - delete their _HEADER_PENDING rows: ['.github/actions/setup-micropython-toolchain/action.yml', '.github/workflows/ci.yml']
+E       assert ['.github/act...flows/ci.yml'] == []
+E         
+E         Left contains 2 more items, first extra item: '.github/actions/setup-micropython-toolchain/action.yml'
+E         Use -v to get more diff
+1 failed, 608 passed in 4.20s
+====

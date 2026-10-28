@@ -1,0 +1,44 @@
+--- 176a88c/js/render.js
++++ lead2/e1_render.js
+@@ -35,7 +35,7 @@
+ /**
+  * Per main element, the section stopped in this turn: the next section rendered there takes its GET on the wire over,
+  * so a switch never resets a connection the device is still answering (the device counts that as a peer reset).
+- * @type {WeakMap<HTMLElement, {takenOver: boolean, onTheWire: AbortController}>}
++ * @type {WeakMap<HTMLElement, {takenOver: boolean}>}
+  */
+ const leftSections = new WeakMap();
+ 
+@@ -590,18 +590,17 @@
+  * @param {HTMLElement} mainEl
+  * @param {SectionContext} [context]
+  * @returns {() => void} stop, before a switch: drops the queued GETs; the GET on the wire runs to its end, discarded,
+- * when another section is rendered into `mainEl` in the same turn, else (the page stops) it is aborted, with any it took over.
++ * when another section is rendered into `mainEl` in the same turn, else (the page stops) it is aborted.
+  */
+ export function renderSection(defs, section, mainEl, context = {}) {
+     const left = leftSections.get(mainEl);
+-    leftSections.delete(mainEl);
+-    const { grid, errorBanner } = buildSectionShell(section, mainEl);
+-    const queued = new AbortController();
+-    const onTheWire = new AbortController();
+     if (left !== undefined) {
+         left.takenOver = true;
+-        onTheWire.signal.addEventListener("abort", () => left.onTheWire.abort(), { once: true });
++        leftSections.delete(mainEl);
+     }
++    const { grid, errorBanner } = buildSectionShell(section, mainEl);
++    const queued = new AbortController();
++    const onTheWire = new AbortController();
+     /** @type {WeakMap<HTMLElement, Record<string, unknown>>} */
+     const baselines = new WeakMap();
+     const needsStatus = section.rest.get !== "/status"
+@@ -733,7 +732,7 @@
+         stopped = true;
+         queued.abort();
+         stopLoop();
+-        const handover = { takenOver: false, onTheWire };
++        const handover = { takenOver: false };
+         leftSections.set(mainEl, handover);
+         queueMicrotask(() => {
+             if (leftSections.get(mainEl) === handover) {

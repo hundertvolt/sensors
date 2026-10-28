@@ -1,0 +1,23 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api
+
+ ✓ |chromium| tests_js/memory-markers.test.js (12 tests) 9ms
+
+ Test Files  1 passed (1)
+      Tests  12 passed (12)
+   Start at  13:43:12
+   Duration  1.42s (worker 90%, import 7%, tests 3%)
+
+== Summary: npm test ==
+Commit: 1af97e9
+Levels: L0
+Counts (tests): passed 12 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

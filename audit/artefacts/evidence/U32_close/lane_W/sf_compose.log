@@ -1,0 +1,109 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u32w
+
+ ❯ |chromium| tests_js/mock-data-compose.test.js (29 tests | 6 failed) 695ms
+   ❯ arzi's composed mock data (4)
+     × gives every field of every group a value of its kind 282ms
+     ✓ composes no key the definitions do not name 1ms
+     ✓ has an entry for every errcount row 0ms
+     ✓ holds only codes the definitions' code tables describe 1ms
+   ❯ dev's composed mock data (4)
+     × gives every field of every group a value of its kind 69ms
+     ✓ composes no key the definitions do not name 1ms
+     ✓ has an entry for every errcount row 0ms
+     ✓ holds only codes the definitions' code tables describe 0ms
+   ❯ grkizi's composed mock data (4)
+     × gives every field of every group a value of its kind 78ms
+     ✓ composes no key the definitions do not name 1ms
+     ✓ has an entry for every errcount row 0ms
+     ✓ holds only codes the definitions' code tables describe 0ms
+   ❯ klkizi's composed mock data (4)
+     × gives every field of every group a value of its kind 93ms
+     ✓ composes no key the definitions do not name 1ms
+     ✓ has an entry for every errcount row 0ms
+     ✓ holds only codes the definitions' code tables describe 0ms
+   ❯ schlafzi's composed mock data (4)
+     × gives every field of every group a value of its kind 84ms
+     ✓ composes no key the definitions do not name 0ms
+     ✓ has an entry for every errcount row 0ms
+     ✓ holds only codes the definitions' code tables describe 0ms
+   ❯ wozi's composed mock data (4)
+     × gives every field of every group a value of its kind 74ms
+     ✓ composes no key the definitions do not name 1ms
+     ✓ has an entry for every errcount row 0ms
+     ✓ holds only codes the definitions' code tables describe 0ms
+   ✓ composeMockData (5)
+     ✓ throws for a group no sample matches 2ms
+     ✓ throws for an errcount module no sample matches, never composing a healthy zero for it 1ms
+     ✓ composes a maintenance field by its path: an instance's entry under its own name, from its driver's sample 0ms
+     ✓ reports a maintenance value composed under a path no field reads 2ms
+     ✓ reports a value of the wrong kind and a stray key, so the checks above cannot pass vacuously 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > arzi's composed mock data > gives every field of every group a value of its kind
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > dev's composed mock data > gives every field of every group a value of its kind
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > grkizi's composed mock data > gives every field of every group a value of its kind
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > klkizi's composed mock data > gives every field of every group a value of its kind
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > schlafzi's composed mock data > gives every field of every group a value of its kind
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > wozi's composed mock data > gives every field of every group a value of its kind
+AssertionError: expected [ Array(1) ] to deeply equal []
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/arzi-s-composed-mock-data---gives-every-field-of-every-group-a-value-of-its-kind.png
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/dev-s-composed-mock-data---gives-every-field-of-every-group-a-value-of-its-kind.png
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/grkizi-s-composed-mock-data---gives-every-field-of-every-group-a-value-of-its-kind.png
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/klkizi-s-composed-mock-data---gives-every-field-of-every-group-a-value-of-its-kind.png
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/schlafzi-s-composed-mock-data---gives-every-field-of-every-group-a-value-of-its-kind.png
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/wozi-s-composed-mock-data---gives-every-field-of-every-group-a-value-of-its-kind.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "status/system/LastTaskEnd: no value",[39m
+[31m+ ][39m
+
+ ❯ tests_js/mock-data-compose.test.js:189:43
+    187|
+    188|     it("gives every field of every group a value of its kind", () => {
+    189|         expect(fieldProblems(defs, data)).toEqual([]);
+       |                                           ^
+    190|     });
+    191|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=b1173ecb:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=b1173ecb:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=b1173ecb:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=b1173ecb:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=b1173ecb:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=b1173ecb:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=b1173ecb:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  6 failed | 23 passed (29)
+   Start at  09:01:18
+   Duration  2.32s (tests 66%, worker 21%, import 12%, setup 1%)
+
+== Summary: npm test ==
+Commit: 6e4d3b3
+Levels: L0
+Counts (tests): passed 23 · failed 6 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/mock-data-compose.test.js > arzi's composed mock data > gives every field of every group a value of its kind: expected [ Array(1) ] to deeply equal []
+  - tests_js/mock-data-compose.test.js > dev's composed mock data > gives every field of every group a value of its kind: expected [ Array(1) ] to deeply equal []
+  - tests_js/mock-data-compose.test.js > grkizi's composed mock data > gives every field of every group a value of its kind: expected [ Array(1) ] to deeply equal []
+  - tests_js/mock-data-compose.test.js > klkizi's composed mock data > gives every field of every group a value of its kind: expected [ Array(1) ] to deeply equal []
+  - tests_js/mock-data-compose.test.js > schlafzi's composed mock data > gives every field of every group a value of its kind: expected [ Array(1) ] to deeply equal []
+  - tests_js/mock-data-compose.test.js > wozi's composed mock data > gives every field of every group a value of its kind: expected [ Array(1) ] to deeply equal []
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

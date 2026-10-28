@@ -1,0 +1,4 @@
+E       AssertionError: scripts/test.sh no longer runs the suite on the unit layout of scripts/micropypath.toml - re-derive this probe's own bounds against whatever replaced it
+tests_scripts/test_digital_twin_boot_contiguity.py:417: AssertionError
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_probe_runs_under_the_same_interpreter_settings_as_the_suite
+1 failed, 35 deselected in 0.31s

@@ -1,0 +1,45 @@
+F......................                                                  [100%]
+=================================== FAILURES ===================================
+__ test_configured_max_connections_is_the_builds_own_ceiling_for_every_device __
+
+    def test_configured_max_connections_is_the_builds_own_ceiling_for_every_device() -> None:
+        from buildgen.validate import device_max_connections
+    
+        for toml in sorted((harness.REPO_ROOT / "devices").glob("*.toml")):
+>           want = device_max_connections(toml, harness.REPO_ROOT / "src")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_bench_harness_helpers.py:140: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+buildgen/validate.py:383: in device_max_connections
+    device_table = tomllib.load(f).get("device", {})
+                   ^^^^^^^^^^^^^^^
+/usr/lib/python3.11/tomllib/_parser.py:66: in load
+    return loads(s, parse_float=parse_float)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.11/tomllib/_parser.py:102: in loads
+    pos = key_value_rule(src, pos, out, header, parse_float)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.11/tomllib/_parser.py:326: in key_value_rule
+    pos, key, value = parse_key_value_pair(src, pos, parse_float)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+src = 'not [ toml\n', pos = 4, parse_float = <class 'float'>
+
+    def parse_key_value_pair(
+        src: str, pos: Pos, parse_float: ParseFloat
+    ) -> tuple[Pos, Key, Any]:
+        pos, key = parse_key(src, pos)
+        try:
+            char: str | None = src[pos]
+        except IndexError:
+            char = None
+        if char != "=":
+>           raise suffixed_err(src, pos, "Expected '=' after a key in a key/value pair")
+E           tomllib.TOMLDecodeError: Expected '=' after a key in a key/value pair (at line 1, column 5)
+
+/usr/lib/python3.11/tomllib/_parser.py:366: TOMLDecodeError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_bench_harness_helpers.py::test_configured_max_connections_is_the_builds_own_ceiling_for_every_device
+1 failed, 22 passed in 3.01s

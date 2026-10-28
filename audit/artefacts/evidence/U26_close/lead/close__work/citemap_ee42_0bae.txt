@@ -1,0 +1,6 @@
+FLAG /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u26/close/of_new.md: tests_scripts/test_hardware_runners.py:230-235 sits in a changed hunk
+FLAG /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u26/close/of_new.md: tests_scripts/test_hardware_runners.py:232 sits in a changed hunk
+FLAG /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u26/close/of_new.md: tests_scripts/test_hardware_runners.py:230-235 sits in a changed hunk
+MOVE /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u26/close/of_new.md: tests_scripts/test_hardware_runners.py:157-200 -> :158-201
+MOVE /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u26/close/of_updates.md: tests_hardware/device_scripts/fram_pause_unpause_and_gating.py:118-124 -> :120-126
+MOVE /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u26/close/of_updates.md: tests_hardware/device_scripts/fram_pause_unpause_and_gating.py:108-109 -> :110-111

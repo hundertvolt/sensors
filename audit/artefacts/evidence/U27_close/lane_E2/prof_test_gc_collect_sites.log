@@ -1,0 +1,7 @@
+..................                                                       [100%]
+============================= slowest 8 durations ==============================
+1.40s call     tests_scripts/test_gc_collect_sites.py::test_the_live_tree_passes_the_command_with_its_generated_modules
+0.02s setup    tests_scripts/test_gc_collect_sites.py::test_the_allowed_sites_alone_are_clean
+
+(6 durations < 0.005s hidden.  Use -vv to show these durations.)
+18 passed in 1.53s

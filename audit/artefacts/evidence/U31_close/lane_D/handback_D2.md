@@ -1,0 +1,20 @@
+U31 lane D block D2 FINAL
+Branch audit/u31-d (S/wt-u31d), head 10808b9 on 996a252. Nothing uncommitted, nothing pushed. Commits: 3691002 A.7 · 58c60f8 C.9/C.9.1 · 9244840 D.4/D.5 · 5b5027e F.1/F.2/H.4 · 10808b9 F.1 supervisor fault. Only SPECIFICATION.md changed (+48/−20). Docs only, so no behaviour changes in any mode (STA, AP, Silent, Off, USB) and no timed test file grew.
+Steps:
+- 16 (A.7), applied: the L2 proof (tests/_digital_twin_construction_scenarios.py:102-137); `boot.setup_unit_stretch_ms` in step 15's stretch list and the setup-cost clause; the UART boot drain as the one timed wait in a setup unit (asy_uart_comm.py:479-509, :1072; _sensortask_scenarios.py:794-813); stretch 2 now reads `sleep_ms(1000 // N)` (asy_system_service.py:725). Already landed: "one supervisor pass, its escalation included, stays inside Part N's `system.scan_budget`", the `main(*, watchdog, cfg_path=…)` keyword paragraph, and "Full coverage: `tests/_sensortask_scenarios.py` (run by `tests/test_sensortask.py`…". U36's whole-section rewrite is not U31's, so not applied.
+- 65 (C.9.1), applied: the spread form (:725) and the bench spacing test (tests_hardware/bench/test_boot_order_and_triggers.py:86-114). C.9 also takes C1's `quiet=` (asy_base_classes.py:377-389, asy_system_service.py:479, asy_wifi_service.py:414) and C3's supervisor-row facts (asy_system_service.py:548, :569-571).
+- 26 (D.4/D.5), applied: the sleep rule and the named sync waits, per the guard (test_src_sleep_forms.py:14-22; asy_i2c_driver.py:25/36/70; asy_spi_driver.py:21/170/192).
+- 20 (F.1), applied: the heap-float/sleep sentence (py/mpconfig.h:162-164; extmod/asyncio/core.py:53-63; funcs.py:24-55, v1.29.0). Already landed: "**A `bytearray` item store keeps the low byte**".
+- 21 (F.1), applied: the per-piece write is `wait_for_ms()`. Also C3's supervisor-loop fault, code 2 (test_asy_system_service.py:3408).
+- 22 (F.2), applied: every wait_for_ms site is listed (asy_udp_socket.py:132, asy_fram_driver.py:485, asy_webserver_service.py:333/342/580-583/734/917, asy_neopixel_driver.py:92, asy_system_service.py:548).
+- 66 (E.9): its whole U31 part is lane T's flag, so it is left to D1.
+Left to D1: E.9's flag list (`--test-loop-lag-ms`, `--test-drop-timer-fire`). F.3 table rows: `stall.i2c_transfer` + `bus.i2c-timeout-consumer` (C2), the escalation entry under `system.escalation_entry_wait_ms` (C3), `lag.loop` → `loop_lag_under_combined_load`, `hold.fram_block` cited by fram_command_hold_timing.py:30, `con.uart_tx`, `stall.wlan_switch`. The flash-gap instrument's README row. L1's MemoryError at the bounded escalation wait, once it lands, goes beside the timeout at F.2 ("so the reset still follows a write that never finishes") and in C.9's Supervisor row.
+Checks: one process, the 17 repo scans plus toml_schema_contract, twin_fake_catalog, lock_order, memory_catalog, threat_model_statement, src_sleep_forms: 945 passed, rc 0. One UserWarning: the datasheets/ submodule is not initialised in the worktree, so test_citations skips datasheet paths (none cited by my edits). No reds. Zero MemoryError / "memory allocation failed". Log: S/u31/laneD/final_d2.log.
+Decisions (agent, 2026-10-21):
+- C3's "F.1/C.9.1" supervisor fact went into C.9's task-table row and F.1's stack-check paragraph, since C.9.1 is the stagger.
+- H.4's "applied via `asyncio.wait_for()`" was fixed to `wait_for_ms()`. No block lists H.4; I treated it as a consistency drift.
+- D.4 keeps its rule's own date "(agent, 2026-09-30)" from the action text.
+- D.4 names the guard's real waits: the SPI CS settle, and the I2C clear's half period at boot and in its runtime twin.
+For the lead (Part N): the `boot.unfed_stretch_2_ms` row still says "N × `1/N` s of sleeps"; the code is `sleep_ms(1000 // N)`.
+D3 starts from 10808b9. Still owed there: L.3's `bus.i2c-timeout-consumer` (C2); CLAUDE.md `UartLinkExerciser` → `UARTLinkDriver` (C3); the digital_twin/README fidelity rows (F); tests_hardware/README.md ~:1400 `wait_for` (W3); I.3 ~:8502 "per-write `asyncio.wait_for()`".
+nothing of mine is running

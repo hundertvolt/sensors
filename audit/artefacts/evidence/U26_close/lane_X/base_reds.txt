@@ -1,0 +1,140 @@
+=== test_citations
+F..............                                                          [100%]
+=================================== FAILURES ===================================
+_______________ test_every_citation_resolves_or_is_allow_listed ________________
+
+findings = Counter({('README.md', 'src/README.md'): 4, ('README.md', 'tests/README.md'): 4, ('README.md', 'toolchain/README.md'):...test_digital_twin_generated_boot.py', 'Session 6'): 1, ('tests_scripts/test_test_sh.py', 'devices/zz_test_*.toml'): 1})
+
+    def test_every_citation_resolves_or_is_allow_listed(findings: Counter[tuple[str, str]]) -> None:
+        new = sorted((findings - read_allowlist(ALLOWLIST)).elements())
+>       assert not new, "unresolved citations (path, token) - point at what exists, or state the fact in place:\n" + "\n".join(f"  {p}: {t}" for p, t in new)
+E       AssertionError: unresolved citations (path, token) - point at what exists, or state the fact in place:
+E           SPECIFICATION.md: tests_hardware/isl29125_conformance.py
+E           SPECIFICATION.md: tests_hardware/isl29125_conformance.py
+E           SPECIFICATION.md: tests_hardware/isl29125_conformance.py
+E           SPECIFICATION.md: tests_hardware/soak_tiers.py
+E           SPECIFICATION.md: tests_hardware/soak_tiers.py
+E           SPECIFICATION.md: tests_hardware/soak_tiers.py
+E           tests_hardware/README.md: tests_hardware/device_scripts/uart_read_never_blocks_the_loop.py
+E           tests_hardware/README.md: tests_hardware/isl29125_conformance.py
+E           tests_hardware/README.md: tests_hardware/soak_tiers.py
+E       assert not [('SPECIFICATION.md', 'tests_hardware/isl29125_conformance.py'), ('SPECIFICATION.md', 'tests_hardware/isl29125_conform....py'), ('SPECIFICATION.md', 'tests_hardware/soak_tiers.py'), ('SPECIFICATION.md', 'tests_hardware/soak_tiers.py'), ...]
+
+tests_scripts/test_citations.py:251: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+1 failed, 14 passed in 9.56s
+
+real	0m9.825s
+user	0m9.466s
+sys	0m0.256s
+=== test_tunables_register
+E         SPECIFICATION.md:11096: l4.network_resilience_outage_reconnect_poll_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11100: l4.network_resilience_ready_probe_timeout_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11111: l4.network_resilience_join_retry_backoff_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11166: l3.uart_crossover_exchange_join_step_ms is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11167: l3.uart_crossover_exchange_join_budget_ms is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11174: l3.uart_idle_poll_rate_sample_step_ms is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11179: l3.uart_idle_poll_rate_stop_poll_tries is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11195: l3.toolchain_flash_boot_load_timeout_s: Sites list [('tests_hardware/flash/test_toolchain_flash_boot.py', '120'), ('tests_hardware/manual/manual_toolchain.py', '120')], the tags say [('tests_hardware/harness.py', '120'), ('tests_hardware/manual/manual_toolchain.py', '120')]
+E         SPECIFICATION.md:11196: l3.toolchain_flash_boot_load_retry_backoff_s: Sites list [('tests_hardware/flash/test_toolchain_flash_boot.py', '2.0')], the tags say [('tests_hardware/harness.py', '2.0')]
+E         SPECIFICATION.md:11198: l3.toolchain_flash_boot_picotool_load_attempts: Sites list [('tests_hardware/flash/test_toolchain_flash_boot.py', '5')], the tags say [('tests_hardware/harness.py', '5')]
+E         SPECIFICATION.md:11199: l3.fram_pause_unpause_and_gating_feed_step_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11205: l3.fram_same_device_rw_concurrency_wdt_feed_every is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11218: l3.scd30_same_device_rw_concurrency_wdt_feed_every is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11222: l3.bus_concurrency_same_device_scd30_reader_wdt_feed_every is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11223: l3.bus_concurrency_same_device_scd30_snapshot_wdt_feed_every is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11227: l3.bus_concurrency_cross_device_scd30_sgp40_wdt_feed_every is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11232: l3.bus_concurrency_scd30_write_vs_siblings_wdt_feed_every is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11235: l3.bus_concurrency_isl29125_write_vs_siblings_wdt_feed_every is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11240: l3.sgp40_general_call_reset_hazard_wdt_feed_every is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11245: l3.isl29125_cross_device_concurrency_wdt_feed_every is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11249: l3.bmp3xx_same_device_rw_concurrency_wdt_feed_every is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11266: l3.scheduler_saturation_drop_timer_period_ms: Sites list [('tests_hardware/device_scripts/scheduler_saturation_drop.py', '2')], the tags say [('tests_hardware/device_scripts/scheduler_saturation_drop.py', '1')]
+E         SPECIFICATION.md:11267: l3.scheduler_saturation_drop_busy_wait_ms is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11272: l3.bus_electrical_timing_wrap_headroom_h is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11273: l3.bus_electrical_timing_rollover_headroom_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11274: l3.bus_electrical_timing_rollover_poll_interval_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11275: l3.heap_headroom_after_full_system_build_probe_min is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11276: l3.heap_headroom_after_full_system_build_probe_max_kib is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11277: l3.heap_headroom_after_full_system_build_probe_retries is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11291: l3.heap_under_connection_ceiling_boot_wait_s: Sites list [('tests_hardware/device_scripts/heap_under_connection_ceiling.py', '20'), ('tests_hardware/device_scripts/serving_at_default_gc.py', '20')], the tags say [('tests_hardware/device_scripts/heap_under_connection_ceiling.py', '20'), ('tests_hardware/device_scripts/serving_at_default_gc.py', '20'), ('tests_hardware/device_scripts/uart_link_echo_under_serving_load.py', '20')]
+E         SPECIFICATION.md:11315: l3.sgp40_fram_backup_restore_wdt_feed_interval_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11328: l3.isl29125_lighting_scenarios_step_ms is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11342: l3.sensor_accuracy_conformance_script_timeout_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11344: l3.conftest_scd30_rw_script_timeout_s is a tuned row, but no file carries its @tunable tag
+E       assert not ['tests_scripts/test_device_script_fram_regions.py:30: l0.fram_regions_boot_timeout_s is tagged but has no SPECIFICATI..., 'tests_hardware/conftest.py:49: l4.conftest_http_ready_poll_s is tagged but has no SPECIFICATION.md Part N row', ...]
+
+tests_scripts/test_tunables_register.py:253: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+1 failed, 14 passed in 4.02s
+
+real	0m4.285s
+user	0m4.133s
+sys	0m0.111s
+=== test_toml_schema_contract
+F..                                                                      [100%]
+=================================== FAILURES ===================================
+________________ test_the_l3_key_table_equals_the_builds_tables ________________
+
+spec_text = '# SPECIFICATION\n\nCentral specification: architecture, build/toolchain mechanics, sensor-driver architecture,\n`src/...sh and pause | the budget constants, the SYSTEM entry write or the supervisor pass change |\n\n<!-- tunables:end -->\n'
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26x')
+
+    def test_the_l3_key_table_equals_the_builds_tables(spec_text: str, repo_root: Path) -> None:
+        documented, built = _spec_rows(spec_text), _build_rows(repo_root / "src")
+        missing, extra = sorted(built - documented), sorted(documented - built)
+>       assert not missing and not extra, f"SPECIFICATION.md L.3's key table lacks {missing} and states {extra} the build does not take"
+E       AssertionError: SPECIFICATION.md L.3's key table lacks [('[device]', 'bench', False)] and states [] the build does not take
+E       assert (not [('[device]', 'bench', False)])
+
+tests_scripts/test_toml_schema_contract.py:71: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_toml_schema_contract.py::test_the_l3_key_table_equals_the_builds_tables
+1 failed, 2 passed in 0.31s
+
+real	0m0.565s
+user	0m0.532s
+sys	0m0.028s
+=== test_level_containment
+...F......................                                               [100%]
+=================================== FAILURES ===================================
+________________ test_no_exception_row_names_a_covered_scenario ________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26x')
+
+    def test_no_exception_row_names_a_covered_scenario(repo_root: Path) -> None:
+        twin_ids = _twin_ids(repo_root)
+        covered = _covered(repo_root)
+        stale = {_row_id(row): sorted(both) for row in _exception_rows(repo_root) if (both := _named_scenarios(row, twin_ids) & set(covered))}
+>       assert not stale, f"E.6.6 rows for scenarios an L3/L4 module now covers: {stale}"
+E       AssertionError: E.6.6 rows for scenarios an L3/L4 module now covers: {'reset-reasons-manual': ['ci_suite._run_12_reset_reasons'], 'system-commands-wear': ['ci_suite._run_13_system_commands'], 'fram-power-cut-per-transaction': ['fram_crash_points'], 'uart-hazards-on-jumper': ['uart_comm_hazard', 'uart_field_sweep'], 'uart-load-flush': ['uart_load']}
+E       assert not {'reset-reasons-manual': ['ci_suite._run_12_reset_reasons'], 'system-commands-wear': ['ci_suite._run_13_system_command...r-cut-per-transaction': ['fram_crash_points'], 'uart-hazards-on-jumper': ['uart_comm_hazard', 'uart_field_sweep'], ...}
+
+tests_scripts/test_level_containment.py:140: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_level_containment.py::test_no_exception_row_names_a_covered_scenario
+1 failed, 25 passed in 0.87s
+
+real	0m1.086s
+user	0m0.993s
+sys	0m0.088s
+=== test_device_script_bench_facts
+..........F.                                                             [100%]
+=================================== FAILURES ===================================
+________ test_the_bench_facts_table_dates_and_sources_every_filled_row _________
+
+    def test_the_bench_facts_table_dates_and_sources_every_filled_row() -> None:
+        rows = _bench_facts_rows(_README.read_text(encoding="utf-8"))
+>       assert rows is not None, 'tests_hardware/README.md has no "### Bench facts" table'
+E       AssertionError: tests_hardware/README.md has no "### Bench facts" table
+E       assert None is not None
+
+tests_scripts/test_device_script_bench_facts.py:152: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_device_script_bench_facts.py::test_the_bench_facts_table_dates_and_sources_every_filled_row
+1 failed, 11 passed in 1.42s
+
+real	0m1.905s
+user	0m1.803s
+sys	0m0.075s

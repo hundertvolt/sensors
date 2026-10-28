@@ -1,0 +1,25 @@
+..F.......                                                               [100%]
+=================================== FAILURES ===================================
+_______ test_suppressing_the_placement_collects_breaks_both_bounds[dev] ________
+
+boot_probe = <function boot_probe.<locals>.run at 0x7ffad0798360>
+device = 'dev'
+
+    @pytest.mark.parametrize("device", _CONTROL_DEVICES)
+    def test_suppressing_the_placement_collects_breaks_both_bounds(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
+        # The control arm, and the reason the bounds above mean anything: a bound the broken
+        # configuration also satisfies is not a guard. The arm keeps only the seam's own anchor collect
+        # (both arms need it to be comparable) and drops the per-module ones, so this UNDERSTATES.
+        maps = boot_probe(device, _ARM_SUPPRESSED).maps
+        seam, after = maps["batch_00"], maps["after_starter_loop_end"]
+        batch_depth = -_median(seam, maps["after_batch"])
+        boot_reach, boot_high = _reach(seam, after), _blocks_above(seam, after, _HIGH_BAND)
+        assert batch_depth < _BATCH_MEDIAN_DEPTH_MIN, f"{device}: with every per-unit collect suppressed the batch's median still sat {batch_depth} B below the seam, past the {_BATCH_MEDIAN_DEPTH_MIN} B bound - the bound no longer detects the defect it exists for"
+>       assert boot_reach > _BOOT_REACH_MAX, f"{device}: with every per-unit collect suppressed the whole boot sequence still stayed inside the {_BOOT_REACH_MAX} B bound (reach {boot_reach} B)"
+E       AssertionError: dev: with every per-unit collect suppressed the whole boot sequence still stayed inside the 65536 B bound (reach 48384 B)
+E       assert 48384 > 65536
+
+../../../../wt-u24d/tests_scripts/test_digital_twin_boot_contiguity.py:245: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_suppressing_the_placement_collects_breaks_both_bounds[dev]
+1 failed, 9 passed, 27 deselected in 4.18s

@@ -1,92 +1,67 @@
-"""Flash-tier automated tests: real toolchain/flash/boot checks, run after the one-time physical
-setup. The real UF2 flash-and-boot smoke test is gated behind `--allow-flash-cycle` and its own
-`flash_cycle` marker - a deliberate re-provisioning flash, never triggered by a routine run."""
-
-from __future__ import annotations
+"""Flash-tier automated tests: real toolchain/flash/boot checks, run after the one-time physical setup. The UF2
+flash-and-boot smoke test is gated behind `--allow-flash-cycle` and its `flash_cycle` marker, and the full toolchain
+re-verification behind `--allow-toolchain-reverify`: neither runs in a routine pass."""
 
 import subprocess
-import time
+from typing import TYPE_CHECKING
 
 import pytest
-from harness import REPO_ROOT, Board, HardwareTestFailureError, wait_until
+from harness import REPO_ROOT, reflash
 
-# ---------------------------------------------------------------------------
-# Item 23 - scripts/mpremote_connect.sh connection-stability baseline. Cheap, run first: every
-# other test in this tier assumes basic mpremote connectivity already works.
-# ---------------------------------------------------------------------------
+if TYPE_CHECKING:
+    from harness import Board
 
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ()
 
-def test_mpremote_connection_is_stable_across_repeated_calls(board: Board) -> None:
-    failures = [i for i in range(5) if not board.is_reachable()]
-    assert not failures, f"mpremote connection failed on attempt(s) {failures} out of 5 consecutive calls to {board.device}"
-
-
-# ---------------------------------------------------------------------------
-# Item 19 - `env --tier flash`/`--tier bench` recurring verification: after the one-time physical
-# attach (BACKLOG.md), re-running `env --tier flash` must be a clean, idempotent no-op.
-# ---------------------------------------------------------------------------
+# @tunable l3.toolchain_flash_boot_env_setup_timeout_s = 1200
+_ENV_SETUP_TIMEOUT_S = 1200
+# @tunable l3.toolchain_flash_boot_build_timeout_s = 600
+_BUILD_TIMEOUT_S = 600
+# @tunable l3.toolchain_flash_boot_reachability_calls = 5
+_REACHABILITY_CALLS = 5
 
 
-def test_env_tier_flash_recurring_run_is_idempotent(board: Board) -> None:
-    # "Idempotent" means "same result on a re-run," not "fast" - run_setup() always re-verifies from
-    # scratch (fresh git fetch, full picotool rebuild, full mpy-cross/Unix-port/firmware pass), which
-    # takes ~481s wall clock on this bench's Pi4; 1200s leaves headroom without masking a real hang.
+# mpremote connection stability: cheap and first, since every other check here assumes it.
+def test_mpremote_connection_is_stable_across_repeated_calls(board: "Board") -> None:
+    failures = [i for i in range(_REACHABILITY_CALLS) if not board.is_reachable()]
+    assert not failures, f"mpremote connection failed on attempt(s) {failures} out of {_REACHABILITY_CALLS:g} consecutive calls to {board.device}"
+
+
+# `env --tier flash` re-run: after the one-time physical attach, a clean, idempotent no-op.
+@pytest.mark.toolchain_reverify
+def test_env_tier_flash_recurring_run_is_idempotent(board: "Board", request: pytest.FixtureRequest) -> None:
+    if not request.config.getoption("--allow-toolchain-reverify"):
+        pytest.skip("a full toolchain re-verification: network fetches and ~8 min of builds; pass --allow-toolchain-reverify")
+    # "Idempotent" is the same result on a re-run, not a fast one: run_setup() re-verifies from scratch (~481 s on the
+    # bench Pi4), and 1200 s leaves headroom without masking a real hang.
     proc = subprocess.run(
-        ["uv", "run", "toolchain/setup_toolchain.py", "env", "--tier", "flash", "--device", board.device],
+        ["uv", "run", "--no-sync", "toolchain/setup_toolchain.py", "env", "--tier", "flash", "--device", board.device],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
-        timeout=1200,
+        timeout=_ENV_SETUP_TIMEOUT_S,
         check=False,
     )
     assert proc.returncode == 0, f"env --tier flash re-run failed (exit {proc.returncode}):\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
 
 
-# ---------------------------------------------------------------------------
-# Item 20 - real UF2 flash-and-boot smoke test on an already-provisioned, already-running board
-# (the BOOTSEL-button first-ever flash is Part 2 item 8, genuinely manual - a blank board has no
-# already-running firmware to trigger machine.bootloader() from). Deliberate re-provisioning only.
-# ---------------------------------------------------------------------------
-
-
+# The UF2 flash-and-boot smoke test on a provisioned, running board; a blank board has no running firmware to enter
+# the bootloader from, which is the manual first flash's case.
 @pytest.mark.flash_cycle
-def test_real_uf2_reflash_and_boot_smoke_test(board: Board, request: pytest.FixtureRequest) -> None:
+def test_real_uf2_reflash_and_boot_smoke_test(board: "Board", bench_device_name: str, request: pytest.FixtureRequest) -> None:
     if not request.config.getoption("--allow-flash-cycle"):
         pytest.skip("this IS a real flash cycle - pass --allow-flash-cycle to deliberately run it")
-
-    # dev, never wozi - wozi is never physically flashed (CLAUDE.md's hard rule), and its
-    # hardcoded pins don't match this bench's real wiring.
-    uf2_path = REPO_ROOT / "build" / "firmware-dev.uf2"
+    # The bench board's image, built from its own TOML (a dev-native proof; sessions flash only the bench board, CLAUDE.md).
+    uf2_path = REPO_ROOT / "build" / f"firmware-{bench_device_name}.uf2"
     build = subprocess.run(
-        ["uv", "run", "scripts/build_firmware.py", "dev", "--output", str(uf2_path)],
+        ["uv", "run", "--no-sync", "scripts/build_firmware.py", bench_device_name, "--output", str(uf2_path)],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
-        timeout=600,
+        timeout=_BUILD_TIMEOUT_S,
         check=False,
     )
     assert build.returncode == 0, f"scripts/build_firmware.py failed (exit {build.returncode}):\n{build.stdout}\n{build.stderr}"
     assert uf2_path.exists(), f"build_firmware.py reported success but {uf2_path} doesn't exist"
-
-    board.enter_bootloader()  # drops the already-running board into BOOTSEL/mass-storage mode
-    # picotool has no internal retry for USB BOOTSEL re-enumeration (calling it immediately after
-    # enter_bootloader() can race it, failing with exit 249) - bounded retry here instead of one
-    # fixed sleep, since the real enumeration delay varies by run.
-    load: subprocess.CompletedProcess[str] | None = None
-    for _attempt in range(5):
-        load = subprocess.run(
-            ["sudo", "picotool", "load", "-x", "-v", str(uf2_path)],
-            cwd=REPO_ROOT,
-            capture_output=True,
-            text=True,
-            timeout=120,
-            check=False,
-        )
-        if load.returncode == 0:
-            break
-        time.sleep(2.0)
-    assert load is not None
-    if load.returncode != 0:
-        raise HardwareTestFailureError(f"picotool load -x -v {uf2_path} failed after 5 attempts (exit {load.returncode}):\n{load.stdout}\n{load.stderr}")
-
-    wait_until(board.is_reachable, timeout_s=30.0, poll_interval_s=1.0, description="board reachable again after real UF2 reflash")
+    assert uf2_path.with_suffix(".json").exists(), f"build_firmware.py wrote no image record beside {uf2_path}"
+    reflash(board, uf2_path)

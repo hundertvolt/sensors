@@ -1,0 +1,10 @@
+PASS kbd + gc stack readback build-u30r-std1024 (1024 entries)
+PASS kbd + gc stack readback build-u30r-std4096 (4096 entries)
+PASS kbd + gc stack readback build-u30r-settrace (1024 entries)
+PASS kbd + gc stack readback build-u30r-lwip (1024 entries)
+REFUSED as wanted - the real standard variant in place of the override, on build-u30r-std1024:
+  unix_gc_stack: this build's GC mark stack is not the rig's 1024 entries - mp_state_mem_t in /root/pico-toolchain/micropython/ports/unix/build-u30r-std1024/unix_mphal.pp declares gc_block_stack ['(64)'], so the generated variant header's MICROPY_ALLOC_GC_STACK_SIZE never reached it (SPECIFICATION.md B.14.6)
+REFUSED as wanted - the stock-config scratch build (base code, 64):
+  unix_gc_stack: this build's GC mark stack is not the rig's 1024 entries - mp_state_mem_t in /root/pico-toolchain/micropython/ports/unix/build-u30r-stock/unix_mphal.pp declares gc_block_stack ['(64)'], so the generated variant header's MICROPY_ALLOC_GC_STACK_SIZE never reached it (SPECIFICATION.md B.14.6)
+REFUSED as wanted - the 4096 build read against the rig's 1024:
+  unix_gc_stack: this build's GC mark stack is not the rig's 1024 entries - mp_state_mem_t in /root/pico-toolchain/micropython/ports/unix/build-u30r-std4096/unix_mphal.pp declares gc_block_stack ['(4096)'], so the generated variant header's MICROPY_ALLOC_GC_STACK_SIZE never reached it (SPECIFICATION.md B.14.6)

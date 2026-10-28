@@ -1,0 +1,36 @@
+ok   test_a_break_like_run_of_nulls_recovers_to_a_working_exchange_crc16 0/16 sleeps=700 clean=745ms
+FLIP test_a_break_like_run_of_nulls_recovers_to_a_working_exchange_nocrc 2/16 k=[17, 113] first=AssertionError: the link never recovered from a break-like null run @ File "../u17h/exp/hz_noclock.py", line 1029, in _check_a_break_like_run_of_nulls_recovers_to_a_working_exchange
+ok   test_a_corrupted_byte_stream_recovers_to_a_working_exchange_crc16 0/16 sleeps=1204 clean=990ms
+ok   test_a_corrupted_byte_stream_recovers_to_a_working_exchange_nocrc 0/16 sleeps=176 clean=148ms
+ok   test_a_dropped_byte_mid_frame_recovers_to_a_working_exchange_crc16 0/16 sleeps=1552 clean=1348ms
+ok   test_a_dropped_byte_mid_frame_recovers_to_a_working_exchange_nocrc 0/16 sleeps=235 clean=197ms
+ok   test_corruption_plus_dropped_bytes_still_converges_crc16 0/16 sleeps=2638 clean=2565ms
+ok   test_corruption_plus_dropped_bytes_still_converges_nocrc 0/16 sleeps=415 clean=362ms
+FLIP test_a_frame_delivered_in_two_fragments_still_assembles_crc16 5/19 k=[17, 19, 25, 27, 31] first=AssertionError:  @ File "../u17h/exp/hz_noclock.py", line 850, in _check_a_frame_delivered_in_two_fragments_still_assembles
+FLIP test_a_frame_delivered_in_two_fragments_still_assembles_nocrc 7/19 k=[19, 21, 23, 25, 27, 29, 31] first=AssertionError:  @ File "../u17h/exp/hz_noclock.py", line 850, in _check_a_frame_delivered_in_two_fragments_still_assembles
+ok   test_a_lost_final_ack_is_reported_as_failure_though_the_peer_acted_crc16 0/16 sleeps=558 clean=626ms
+ok   test_a_lost_final_ack_is_reported_as_failure_though_the_peer_acted_nocrc 0/16 sleeps=92 clean=94ms
+ok   test_a_peer_initiating_mid_transaction_is_detected_and_both_recover_crc16 0/16 sleeps=678 clean=750ms
+FLIP test_a_peer_initiating_mid_transaction_is_detected_and_both_recover_nocrc 2/17 k=[106, 113] first=AssertionError:  @ File "../u17h/exp/hz_noclock.py", line 270, in _check_a_peer_initiating_mid_transaction_is_detected_and_both_recover
+ok   test_a_receive_overrun_recovers_to_a_working_exchange_crc16 0/16 sleeps=1237 clean=990ms
+FLIP test_a_receive_overrun_recovers_to_a_working_exchange_nocrc 1/16 k=[169] first=AssertionError:  @ File "../u17h/exp/hz_noclock.py", line 595, in _check_a_receive_overrun_recovers_to_a_working_exchange
+FLIP test_a_second_call_during_a_transaction_is_refused_with_a_sentinel_crc16 6/18 k=[19, 23, 25, 27, 29, 31] first=AssertionError:  @ File "../u17h/exp/hz_noclock.py", line 200, in _check_a_second_call_during_a_transaction_is_refused_with_a_sentinel
+FLIP test_a_second_call_during_a_transaction_is_refused_with_a_sentinel_nocrc 6/18 k=[17, 19, 23, 25, 27, 29] first=AssertionError:  @ File "../u17h/exp/hz_noclock.py", line 200, in _check_a_second_call_during_a_transaction_is_refused_with_a_sentinel
+ok   test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16 0/16 sleeps=349 clean=384ms
+ok   test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc 0/16 sleeps=61 clean=62ms
+ok   test_a_truncated_frame_recovers_to_a_working_exchange_crc16 0/16 sleeps=1473 clean=988ms
+ok   test_a_truncated_frame_recovers_to_a_working_exchange_nocrc 0/16 sleeps=204 clean=148ms
+ok   test_duplicated_bytes_on_the_wire_recover_to_a_working_exchange_crc16 0/16 sleeps=1564 clean=1353ms
+ok   test_duplicated_bytes_on_the_wire_recover_to_a_working_exchange_nocrc 0/16 sleeps=237 clean=193ms
+ok   test_injected_noise_before_a_real_frame_is_recovered_from_crc16 0/15 sleeps=1185 clean=990ms
+FLIP test_injected_noise_before_a_real_frame_is_recovered_from_nocrc 1/17 k=[177] first=AssertionError:  @ File "../u17h/exp/hz_noclock.py", line 552, in _check_injected_noise_before_a_real_frame_is_recovered_from
+ok   test_one_sided_silence_recovers_once_the_direction_returns_crc16 0/16 sleeps=1458 clean=989ms
+ok   test_one_sided_silence_recovers_once_the_direction_returns_nocrc 0/16 sleeps=204 clean=150ms
+ok   test_a_long_run_of_transactions_retains_no_memory_crc16 0/16 sleeps=4086 clean=1423ms
+ok   test_a_long_run_of_transactions_retains_no_memory_nocrc 0/16 sleeps=3846 clean=1177ms
+FLIP test_the_crc_appears_on_the_wire_big_endian_after_the_payload_crc16 5/18 k=[17, 19, 23, 27, 29] first=AssertionError:  @ File "../u17h/exp/hz_noclock.py", line 1371, in _check_the_crc_appears_on_the_wire_big_endian_after_the_payload
+ok   test_the_crc_appears_on_the_wire_big_endian_after_the_payload_nocrc 0/0 sleeps=0 clean=0ms
+FLIP test_the_probed_payload_offset_lands_on_a_frames_payload_start_crc16 6/19 k=[17, 19, 23, 25, 27, 29] first=AssertionError: the probe GET did not complete, so no offset can be derived from it @ File "../u17h/exp/hz_noclock.py", line 877, in _answer_payload_offset
+FLIP test_the_probed_payload_offset_lands_on_a_frames_payload_start_nocrc 6/17 k=[17, 19, 23, 25, 27, 29] first=AssertionError: the probe GET did not complete, so no offset can be derived from it @ File "../u17h/exp/hz_noclock.py", line 877, in _answer_payload_offset
+ok   test_overrun_plus_duplication_still_converges_crc16 0/16 sleeps=2699 clean=2564ms
+ok   test_overrun_plus_duplication_still_converges_nocrc 0/16 sleeps=425 clean=358ms

@@ -1,0 +1,24 @@
+4460:[test_asy_uart_driver] FAIL test_a_read_retains_nothing:
+4461-[test_asy_uart_driver] Traceback (most recent call last):
+4462-[test_asy_uart_driver]   File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u7g/tests/microtest.py", line 27, in run
+4463-[test_asy_uart_driver]   File "tests/test_asy_uart_driver.py", line 2284, in test_a_read_retains_nothing
+4464-[test_asy_uart_driver] AssertionError: (1024, 0)
+
+5906:== Summary: scripts/test.sh ==
+5907-Commit: fe24d3d
+5908-Levels: L0 FAIL · L1 FAIL · L2 PASS (tests/test_digital_twin_*.py only; run_digital_twin_ci.sh not run)
+5909-GC stage: 32768
+5910-Counts (files): passed 88 · failed 2 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+5911-Counts (tests_scripts tests): passed 2952 · failed 1 · skipped 11 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+5912-Counts (tests): passed 4178 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+5913-Failed:
+5914-  - tests/test_asy_uart_driver.py: 1 of 143 tests failed
+5915-  - tests_scripts/ (pytest): pytest exited nonzero or timed out; 1 failed (listed above)
+5916-Skipped: none
+5917-Deselected: none
+5918-Passed only on retry: none
+5919-Recovery passes: none
+5920-Notes: none
+5921-Checked nothing: none
+5922-Result: FAIL
+5923-Exit code: 1

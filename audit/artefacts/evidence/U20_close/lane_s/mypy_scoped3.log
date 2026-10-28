@@ -1,0 +1,19 @@
+tests/test_asy_system_service.py: note: In function "test_a_raising_setup_propagates_and_nothing_after_it_runs":
+tests/test_asy_system_service.py:3004:61: error: Argument 1 to "run_setups" of
+"SystemService" has incompatible type
+"list[Callable[[], Coroutine[Any, Any, bool]]]"; expected
+"list[Callable[[], Awaitable[bool]]]"  [arg-type]
+            _with_recording_gc(svc, events, wdt, svc.run_setups(setups))
+                                                                ^~~~~~
+tests/test_asy_system_service.py:3004:61: note: "list" is invariant -- see https://mypy.readthedocs.io/en/stable/common_issues.html#variance
+tests/test_asy_system_service.py:3004:61: note: Consider using "Sequence" instead, which is covariant
+tests/test_asy_system_service.py: note: In function "_rest_rig":
+tests/test_asy_system_service.py:3125:37: error: Argument 2 to "RouteSources"
+has incompatible type "dict[str, list[SettingsGroup]]"; expected
+"dict[str, Sequence[SettingsGroup]] | None"  [arg-type]
+        routes = RouteSources([module], groups, None, system_cmd, None, No...
+                                        ^~~~~~
+tests/test_asy_system_service.py:3125:37: note: Error code "arg-type" not covered by "type: ignore[list-item]" comment
+tests/test_asy_system_service.py:3125:37: note: "dict" is invariant -- see https://mypy.readthedocs.io/en/stable/common_issues.html#variance
+tests/test_asy_system_service.py:3125:37: note: Consider using "Mapping" instead, which is covariant in the value type
+Found 2 errors in 1 file (checked 172 source files)

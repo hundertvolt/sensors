@@ -1,0 +1,137 @@
+
+> sensors-website@0.1.0 pretest:coverage
+> npm run build:site && uv run scripts/_archive_evidence.py --runner npm_coverage htmlcov_js
+
+
+> sensors-website@0.1.0 build:site
+> npm run build:definitions && scripts/build_device_websites.sh
+
+
+> sensors-website@0.1.0 build:definitions
+> uv run scripts/_generate_sensortask_modules.py
+
+Generated 6 device module(s) + boot entries + expected facts + wiring plan(s) + definitions + API reference(s) into /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8/build/generated_src
+== Website work dir: build/website/arzi
+== Gzip tree: build/website/arzi/gzipped
+Writing Python file build/generated_html/arzi/frozen_html.py.
+Appended folder build/website/arzi/gzipped as /.
+Appended file   build/website/arzi/gzipped/index.html.gz (13940 bytes) as /index.html.gz
+Appended folder build/website/arzi/gzipped/js as /js
+Appended file   build/website/arzi/gzipped/js/app.js.gz (28533 bytes) as /js/app.js.gz
+Sum of file sizes 42473 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+build/generated_html/arzi/frozen_html.py written successfully.
+Wrote build/generated_html/arzi/frozen_html.py (mounts at /html on import)
+== Website work dir: build/website/dev
+== Gzip tree: build/website/dev/gzipped
+Writing Python file build/generated_html/dev/frozen_html.py.
+Appended folder build/website/dev/gzipped as /.
+Appended file   build/website/dev/gzipped/index.html.gz (16438 bytes) as /index.html.gz
+Appended folder build/website/dev/gzipped/js as /js
+Appended file   build/website/dev/gzipped/js/app.js.gz (28533 bytes) as /js/app.js.gz
+Sum of file sizes 44971 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+build/generated_html/dev/frozen_html.py written successfully.
+Wrote build/generated_html/dev/frozen_html.py (mounts at /html on import)
+== Website work dir: build/website/grkizi
+== Gzip tree: build/website/grkizi/gzipped
+Writing Python file build/generated_html/grkizi/frozen_html.py.
+Appended folder build/website/grkizi/gzipped as /.
+Appended file   build/website/grkizi/gzipped/index.html.gz (13942 bytes) as /index.html.gz
+Appended folder build/website/grkizi/gzipped/js as /js
+Appended file   build/website/grkizi/gzipped/js/app.js.gz (28533 bytes) as /js/app.js.gz
+Sum of file sizes 42475 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+build/generated_html/grkizi/frozen_html.py written successfully.
+Wrote build/generated_html/grkizi/frozen_html.py (mounts at /html on import)
+== Website work dir: build/website/klkizi
+== Gzip tree: build/website/klkizi/gzipped
+Writing Python file build/generated_html/klkizi/frozen_html.py.
+Appended folder build/website/klkizi/gzipped as /.
+Appended file   build/website/klkizi/gzipped/index.html.gz (13942 bytes) as /index.html.gz
+Appended folder build/website/klkizi/gzipped/js as /js
+Appended file   build/website/klkizi/gzipped/js/app.js.gz (28533 bytes) as /js/app.js.gz
+Sum of file sizes 42475 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+build/generated_html/klkizi/frozen_html.py written successfully.
+Wrote build/generated_html/klkizi/frozen_html.py (mounts at /html on import)
+== Website work dir: build/website/schlafzi
+== Gzip tree: build/website/schlafzi/gzipped
+Writing Python file build/generated_html/schlafzi/frozen_html.py.
+Appended folder build/website/schlafzi/gzipped as /.
+Appended file   build/website/schlafzi/gzipped/index.html.gz (13943 bytes) as /index.html.gz
+Appended folder build/website/schlafzi/gzipped/js as /js
+Appended file   build/website/schlafzi/gzipped/js/app.js.gz (28533 bytes) as /js/app.js.gz
+Sum of file sizes 42476 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+build/generated_html/schlafzi/frozen_html.py written successfully.
+Wrote build/generated_html/schlafzi/frozen_html.py (mounts at /html on import)
+== Website work dir: build/website/wozi
+== Gzip tree: build/website/wozi/gzipped
+Writing Python file build/generated_html/wozi/frozen_html.py.
+Appended folder build/website/wozi/gzipped as /.
+Appended file   build/website/wozi/gzipped/index.html.gz (14380 bytes) as /index.html.gz
+Appended folder build/website/wozi/gzipped/js as /js
+Appended file   build/website/wozi/gzipped/js/app.js.gz (28533 bytes) as /js/app.js.gz
+Sum of file sizes 42913 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+build/generated_html/wozi/frozen_html.py written successfully.
+Wrote build/generated_html/wozi/frozen_html.py (mounts at /html on import)
+
+> sensors-website@0.1.0 test:coverage
+> vitest run --coverage --exclude "**/node_modules/**" --exclude "tests_js/live-backend-put-matrix.test.js" tests_js/shell.test.js
+
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8
+      Coverage enabled with v8
+
+ ✓ |chromium| tests_js/shell.test.js (15 tests) 1666ms
+   ✓ startShell (13)
+     ✓ shows ages against the device's clock: unknown until /status carries UnixTime, then tracking it as time passes 690ms
+
+ Test Files  1 passed (1)
+      Tests  15 passed (15)
+   Start at  14:27:33
+   Duration  4.71s (tests 56%, worker 41%, import 2%)
+
+== Summary: npm test ==
+Commit: c6b8a07
+Levels: L0
+Counts (tests): passed 15 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0
+[34m % [39m[2mCoverage report from [22m[33mv8[39m
+-------------------|---------|----------|---------|---------|-------------------
+File               | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s 
+-------------------|---------|----------|---------|---------|-------------------
+All files          |   48.73 |    33.08 |   55.39 |   48.95 |                   
+ js                |   48.93 |    33.11 |   55.22 |   49.16 |                   
+  api-contract.js  |      90 |       75 |     100 |      90 | 25                
+  definitions.js   |    6.74 |     2.22 |    7.69 |    6.93 | ...62-470,484-529 
+  field-format.js  |      50 |       50 |   22.22 |    54.9 | ...05,115,120,123 
+  nav.js           |   71.42 |       40 |      70 |   70.73 | ...58,67-70,75-76 
+  poll-manager.js  |    88.6 |    81.81 |   68.75 |   89.61 | ...-53,98,103,132 
+  render.js        |   68.87 |    43.77 |   82.14 |   68.83 | ...77-683,710,731 
+  shell.js         |   98.75 |    91.17 |     100 |   98.59 | 120               
+  templates.js     |   32.47 |    26.66 |   26.78 |   33.25 | ...01-915,932-933 
+ tests_js          |   30.76 |       25 |   66.66 |   30.76 |                   
+  ..._constants.js |   30.76 |       25 |   66.66 |   30.76 | 23,35-45          
+-------------------|---------|----------|---------|---------|-------------------
+
+=============================== Coverage summary ===============================
+Statements   : 48.73% ( 579/1188 )
+Branches     : 33.08% ( 306/925 )
+Functions    : 55.39% ( 113/204 )
+Lines        : 48.95% ( 561/1146 )
+================================================================================
+
+real	0m13.266s
+user	0m8.666s
+sys	0m3.212s

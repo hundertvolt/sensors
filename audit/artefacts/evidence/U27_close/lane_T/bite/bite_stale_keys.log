@@ -1,0 +1,18 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_______________ test_the_stale_cases_cover_every_recorded_input ________________
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneT/bite/stale_keys/toolchain/setup_toolchain.py'>
+
+    def test_the_stale_cases_cover_every_recorded_input(setup_toolchain: ModuleType) -> None:
+>       assert _reasons(setup_toolchain) == _REASONS, "setup_toolchain.py records other inputs - extend _REASONS and scripts/_unix_port.sh"
+E       AssertionError: setup_toolchain.py records other inputs - extend _REASONS and scripts/_unix_port.sh
+E       assert ['missing bin...ides.py', ...] == ['missing bin...overrides.py']
+E         
+E         Left contains one more item: 'stale manifest.py'
+E         Use -v to get more diff
+
+tests_scripts/test_unix_port_sh.py:243: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_unix_port_sh.py::test_the_stale_cases_cover_every_recorded_input
+1 failed in 0.14s

@@ -1,0 +1,11 @@
+=== /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26w2run/build/device_scripts/fram_pause_unpause_and_gating.py
+FACT setup=true
+FACT allocated=true
+FACT cleared_first=true
+FACT hog_deinit_failures={"first": [], "total": 0}
+FACT ts_cleared_last=true
+FACT cleared_last=true
+FACT failures={"first": [], "total": 0}
+FACT skipped={"first": [], "total": 0}
+DONE
+

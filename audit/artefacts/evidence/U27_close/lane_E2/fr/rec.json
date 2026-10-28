@@ -1,0 +1,1 @@
+{"tests": [{"nodeid": "tests_scripts/test_a.py::test_a", "outcome": "passed", "when": "call", "reason": "", "markers": [], "user_properties": []}], "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": false, "session_notes": [], "exitstatus": 0}

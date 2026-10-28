@@ -1,0 +1,1466 @@
+{
+ "tests_hardware/bench/test_boot_order_and_triggers.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "needs the bench bridge (network, WLAN role-reversal)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "97fa6c90e4da5e093b95b64e0d8bc32833a23eefb372a438aa14ae32763799a8",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/bench/test_bus_concurrency_under_api_load.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "needs the bench bridge (network, WLAN role-reversal)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "7181ad83c3f29c5ffd26eb855678df735dc5e9183186ae1ec02da6c617e523a5",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/bench/test_end_to_end_timing.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "needs the bench bridge (network, WLAN role-reversal)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "5a22e2a65c9009d316c325d126f58d62e53702cde99b56ed5cab25a9155a9022",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/bench/test_heap_under_connection_ceiling.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "needs the bench bridge (network, WLAN role-reversal)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "49faaa9fa30c43526f7b3d40e5964d7d2535e408d24392ac6d5f43c90f0c7908",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/bench/test_hotspot_role_reversal.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "needs the bench bridge (network, WLAN role-reversal)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "41ba535a970c4de05696a7bafa36b771b81d9874413585c17ada2060f712c122",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/bench/test_memory_stress_bench.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "needs the bench bridge (network, WLAN role-reversal)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "5fd172281ba4371b5d8ed6f7475f182ebc0e0509df04d0b2a1131cceb759ffd1",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/bench/test_modlwip_send_stall.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "needs the bench bridge (network, WLAN role-reversal)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "2a677884c2769ac5f18c4e023416b9b4f23e14fdeac55064fe9ff1be9be7f864",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/bench/test_network_resilience.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "needs the bench bridge (network, WLAN role-reversal)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "e16b3cea430eae52bcb7fc2249d31c4dd3ae807b7e3a2cdc9c764b6617dfce16",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/bench/test_reset_reasons.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "needs the bench bridge (network, WLAN role-reversal)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "08acbd5a5980683ee250f23f64e75303a8c7824e8530eabfb1e7d26d2c9ba27f",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/bench/test_rest_endpoints_over_sta.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "needs the bench bridge (network, WLAN role-reversal)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "91d3a98a5ca7e37df67f39e4168242ea2888e9e1aed70574c541bfe55f4028af",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/bench/test_scd30_frc_readiness_baseline.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "needs the bench bridge (network, WLAN role-reversal)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "554ceee5de5ffce122714d1ca9701ba13c8f70b1b7c6258f21e0e28ba5ce9e54",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/bench/test_sensor_config_push_over_real_hardware.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "needs the bench bridge (network, WLAN role-reversal)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "5811979ba921500ba2b895b7b345af27089c20af99d0c082154958c0faf5dcf9",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/bench/test_serving_heap_at_default_gc.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "needs the bench bridge (network, WLAN role-reversal)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "dd83959f46c466954b24cfcde51a9177bfdf087ba30df188e06088ef9a6e8914",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/bench/test_system_commands_over_rest.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "needs the bench bridge (network, WLAN role-reversal)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "752e7ac21c67669bc5d04ee8a12db67ea2b28c4db709c56cd2ca3e9e718d34ec",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/bench/test_ticks_ms_rollover.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "needs the bench bridge (network, WLAN role-reversal)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "8add79e138ef34a782b4296c8f8c068de4d75ace683c845c49d49a165341c493",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/bench/test_uart_link_crc16.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "needs the bench bridge (network, WLAN role-reversal)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "75247a3954fdde9442abc88f464e2288f69ddba9cee454a9190795785820684c",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/bench/test_uart_link_under_api_load.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "needs the bench bridge (network, WLAN role-reversal)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "12b2f74c05909d9a834da2f144e4a07c7740694b4f3fca9418e2e63762ea897f",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/bench/test_wifi_networking.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "needs the bench bridge (network, WLAN role-reversal)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "2259dd62f04f6943e2efc4ecad195c194c64824e4a5aafef912bcfa07d37df5b",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/bench/test_wifi_radio_reinit.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "needs the bench bridge (network, WLAN role-reversal)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "ab4a115fd2b7370036e13a29e2124ecc73bc2459b828f727922369b7acaf8bc6",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/allocation_need_per_source.py": {
+  "api_sha256": "80b66e1770eb78bfc4a540e1d2691ef6e0d87a0dab098f1401f9be30bfd241ca",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "0721a269b25a507e160383739e2817fffc85b3c8b059f51c669bf0916976b5a0",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/bmp3xx_alone_survives_a_general_call.py": {
+  "api_sha256": "3ca4b24b159fa3d45c3502a9441b59975a11268b7436e5d45673ba4c792f1a58",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "606966202ea8978b9ce601a7637341f77c770bcd2a62f9d21e46a6766a7f00a0",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/bmp3xx_conformance_probe.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "e7e04f8341ba01e62f12941e41eebd6d91dde41fbe4d7e807a2bd59f4a8c7801",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/bmp3xx_plausibility_read.py": {
+  "api_sha256": "0b925e8ecb48831c5dc07b8e571a89cfc2902de7583c6a977bd054da0dc061ca",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "eb2977d1bf6a249f4ae32b3abbe0895df7add55703a35e1d37784c9d12730dac",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py": {
+  "api_sha256": "3ca4b24b159fa3d45c3502a9441b59975a11268b7436e5d45673ba4c792f1a58",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "81ddff906dffa5c0e02c62c2d1b570c2ac03c752c308804c07b03d9de9b2a838",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py": {
+  "api_sha256": "3ca4b24b159fa3d45c3502a9441b59975a11268b7436e5d45673ba4c792f1a58",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "96741353d45175fe4c859b9fa87be2de12dd61c4bce606142878fb51426d5a41",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/bus_concurrency_isl29125_write_vs_siblings.py": {
+  "api_sha256": "3ca4b24b159fa3d45c3502a9441b59975a11268b7436e5d45673ba4c792f1a58",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "72be12f203c803c3ceaea40fa147d80ccef3fa21669e4d0fedfe2b2d46b1da68",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py": {
+  "api_sha256": "3ca4b24b159fa3d45c3502a9441b59975a11268b7436e5d45673ba4c792f1a58",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "1fab6239726b8015c105b3874f5b236c14c3a41d6d61b6bd70c952320fdbfa7c",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py": {
+  "api_sha256": "3ca4b24b159fa3d45c3502a9441b59975a11268b7436e5d45673ba4c792f1a58",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "6c9e2fbdeb7323fa058e67eee21fcb5737480fc04d38b757e4acab9bc9e606e1",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/bus_deinit_is_a_noop_on_real_hardware.py": {
+  "api_sha256": "a06f06d993e464aa88c581bb334e4bda39728bfbb4eff7421e14c60b38f6016f",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "d0a3353c208adb93d62b48f7c38ce4eff6e4a9091f5976dda867a7875cf6b490",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py": {
+  "api_sha256": "3ca4b24b159fa3d45c3502a9441b59975a11268b7436e5d45673ba4c792f1a58",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "14b97bc1bef714f01112ca0f9c75df9170fba4fd4daa79a0dd9160efaef6851f",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/c_stack_budget.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "8bc1e0afb9188f5b81bf0c28f3f3661c944126f9fe2b6598cff874aec4aef83f",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/config_files_dump.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "7f4a9efd188bc284881d690786b8502027d479f816c09b39f9208735425488a4",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/config_files_restore.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "510dbfa5fd43505a79417acaf2d1a1cbc45a696d2d72503099d9a30c01dbd58c",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/config_float_round_trip.py": {
+  "api_sha256": "c8b9516d812e7e283d50b4182b081787180b9fef81dfc4cf0f7f8c3f2516ee18",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "f32a83d5063fa4092d123941a961d2496d103c537ee137effa27b3a07e4727b7",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/flash_write_loop_gap.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "ee8e2acd31e54d12c8e0b4ff95922c5c97ebb6bd73d790297d7b96491dc0eecc",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/float_boundary_2pow24.py": {
+  "api_sha256": "c8b9516d812e7e283d50b4182b081787180b9fef81dfc4cf0f7f8c3f2516ee18",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only case of the flash test running it: the 2^24 single-precision float boundary (the Unix port's float is double)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "67e6afad629f46fb12bb06d96dc3599305535cbc5ecdb1e2c4fd1009e252e62d",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/fram_busy_status_lockout.py": {
+  "api_sha256": "a06f06d993e464aa88c581bb334e4bda39728bfbb4eff7421e14c60b38f6016f",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "9bf8d685376d5dce24146816b343314351e1cb94cbaa9adba4a1c21a17f2f587",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/fram_capacity_after_full_system_build.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "a030b36172e27053c313da6b1719f8ea7f81391565af209585d647a8225fdf5c",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/fram_command_hold_timing.py": {
+  "api_sha256": "e5db3f23138816f482d831da8838e2480fd4d245bc1cc073425997e318a44613",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "db91da5b902d3a9b6d11291a52931e266d78bb038932e6fd6ae05fa3ea00ca8d",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/fram_conformance_probe.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "33b69fc67c7eba14f3d7981f8394d0c0e8fc128c2ec24989586e827317400ddd",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py": {
+  "api_sha256": "1822c08bd000abe81ec4c308aa7c839c1fb941769eca217f4c42569a3be8179c",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only case of the flash test running it: the FRAM CS hijack (the FRAM fake frames by write() pairing, ignoring CS)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "88d16f4c2512ef7c371d32c2ec4d516af823c0b6ed4376f68b52d88187ef53d8",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/fram_error_log_reset_during_boot_window.py": {
+  "api_sha256": "c7c6e0385e24ef9d73259c9d102257e4aba8aa20c9a0c1b9c5c5f4f738c17f3b",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "4ac603850294004ee6a7bc687346cc4306a9b99244f4d7aac1a45a0182252e4f",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py": {
+  "api_sha256": "c7c6e0385e24ef9d73259c9d102257e4aba8aa20c9a0c1b9c5c5f4f738c17f3b",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "8d6771a63830a279e1e9ab28b5a1ab9c96e508cdde669d9b13ce90ff0404f1e3",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/fram_error_log_reset_race_verify.py": {
+  "api_sha256": "c7c6e0385e24ef9d73259c9d102257e4aba8aa20c9a0c1b9c5c5f4f738c17f3b",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "c32028728b2f32bd127e0832593cb1a69c5b0fedaec0863a543742d984f21ab5",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/fram_error_log_roundtrip.py": {
+  "api_sha256": "c7c6e0385e24ef9d73259c9d102257e4aba8aa20c9a0c1b9c5c5f4f738c17f3b",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "addf21c734c3bc4f6ce985b78d759991037a24e4ef9d79f07385016a8be58c8a",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/fram_manager_roundtrip.py": {
+  "api_sha256": "a06f06d993e464aa88c581bb334e4bda39728bfbb4eff7421e14c60b38f6016f",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "36ff41c86904204229f10e4009604a7d6e8392909bb8123a0886f57b5a970c35",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/fram_pause_unpause_and_gating.py": {
+  "api_sha256": "461f97b2383bb7f43cbcc1ed0c7198d94f252ee35a6bff7ad076aedf9e20c3c6",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "fd8d2e9e7eecc449077c892547915b544ed70d9e4d7cdc3c4f99bbbb441b81e7",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/fram_raw_dump.py": {
+  "api_sha256": "1822c08bd000abe81ec4c308aa7c839c1fb941769eca217f4c42569a3be8179c",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "04ebd7c48acb7d5c3a2c9fe8dba35e403826cae0c185750073f9d0a284f67cef",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py": {
+  "api_sha256": "1822c08bd000abe81ec4c308aa7c839c1fb941769eca217f4c42569a3be8179c",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "f66cc421727d7dcd1eeea54a67756c9349429930e8701df0ff084bf5f03b6db8",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py": {
+  "api_sha256": "1822c08bd000abe81ec4c308aa7c839c1fb941769eca217f4c42569a3be8179c",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "ce4bc1c2b3ca15e019340086fd1599882334ab95fa4eabb2ffdf06e729153ef5",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/fram_same_device_rw_concurrency.py": {
+  "api_sha256": "1822c08bd000abe81ec4c308aa7c839c1fb941769eca217f4c42569a3be8179c",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "7215f67394c882431b2c362fa2c5608a4e220ab3fdf51aeb369aa5aa843f46fd",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/fram_write_protect_roundtrip.py": {
+  "api_sha256": "a06f06d993e464aa88c581bb334e4bda39728bfbb4eff7421e14c60b38f6016f",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only case of the flash test running it: write protection gating a real write and read (the twin's FRAM fake keeps the data a WP-gated write would not reach on silicon)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "2b3f9e903bee3856b17311794233395fa3c795e17f3d37c3a840ed80bb8eef7f",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/heap_headroom_after_full_system_build.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only case of the flash test running it: the used-heap bound after a full system build (the twin's heap is the Unix port's, not the RP2040's 264 KB)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "af53e1d4115f2382f60e388f8d97faaceffc13015f773e80bc748fd65e0120bc",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py": {
+  "api_sha256": "84a1da34c70c1c0b6372fb5a655ee889dff04e1715ecf0fcb1d601bf49130a73",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only case of the flash test running it: the suppressed arm breaking the high band (in the twin it runs after the state load in one session, on the Unix port's heap, not the RP2040's)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "ddffb5d3d69aa86e55bc29e9b1b78a2dc5882c7412a82877e777bb4b6cc8eb04",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/heap_under_connection_ceiling.py": {
+  "api_sha256": "f737d577806b7aa3d35d552af8c0752c6177998411cca38ae931bb3309a26b63",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "a bench serving script: it boots main() and holds its maps while the host's bench test drives the connection load, so alone in the twin it runs past the record's 60 s bound (its twin runs at -1 and 32768: about 112 s each, READY once, zero allocation failures)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "d94b4a91a069f35a7ac98297d2556855f66a5df668fef7de72e1420e34279210",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/i2c_held_sda_recovery.py": {
+  "api_sha256": "3ca4b24b159fa3d45c3502a9441b59975a11268b7436e5d45673ba4c792f1a58",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only case of the flash test running it: the held-SDA recovery (bit-banged pins hold no SDA in the twin: an open-drain Pin.value() reads only planted levels, and the twin's chips drive no pin)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "e77e29f574e48496cc0f7d2daa13b1254c18e4c37841ef0ee36400e9925628e0",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/isl29125_cross_device_concurrency.py": {
+  "api_sha256": "3ca4b24b159fa3d45c3502a9441b59975a11268b7436e5d45673ba4c792f1a58",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "6d02454810c4749c51667f2db0020c969e310d28d3cd9c7d4323176cebff4247",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/isl29125_lighting_scenarios.py": {
+  "api_sha256": "ff8ff9684d6451ffdbf9131fb22521ab7bb6cce1ec7bed573a5bec4b29289f7d",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only case of the flash test running it: a NeoPixel sweep needing the rig aiming the NeoPixel at the ISL29125 (--allow-neopixel-sweep; the twin's ISL29125 fake is not optically coupled to the NeoPixel)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "3baff50dbb4ca907ffd5f163e9e35ec8ef05841e293c22f46421aa806025a5f9",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/isl29125_mechanism_envelope.py": {
+  "api_sha256": "df2d107b7ad8befeabdb9094058d245cdae977055e2cc08d780d98e0b05c8be8",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only case of the flash test running it: a NeoPixel sweep needing the rig aiming the NeoPixel at the ISL29125 (--allow-neopixel-sweep; the twin's ISL29125 fake is not optically coupled to the NeoPixel)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "16e895f405bc048b60c3d2902a7ed001a4e9634e293f89cb887ea23156fb4afa",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/isl29125_mock_conformance_probe.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "3a31055a6759689b58354430d2dcf7b1954b82c81f110e1a6b7f79e5427e97b4",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/isl29125_plausibility_read.py": {
+  "api_sha256": "7f33bb36fd60a0c6ac1e20d202a95ceda611a15030c1e23a7dc25257f0bfdb39",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "f29c5b83ba1de5b30e12bc47da0797f4602eda168b2e950f5443412d8a1d472f",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/isl29125_real_irq_edge.py": {
+  "api_sha256": "7f33bb36fd60a0c6ac1e20d202a95ceda611a15030c1e23a7dc25257f0bfdb39",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only case of the flash test running it: the ISL29125's real INT edge (the twin drives no INT edge into the reader's IRQ)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "fe62a7c7ccfe921edb3fbe4d8af4a8fa0f50d3660bf3f4ca5596ba9b9f7fee30",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py": {
+  "api_sha256": "3ca4b24b159fa3d45c3502a9441b59975a11268b7436e5d45673ba4c792f1a58",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "9cf72b4cbeab0c5d0a3ba1a00f0c1c9ec70e391e2a5dcf84a5d4a7a6381f353a",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/loop_lag_under_combined_load.py": {
+  "api_sha256": "f737d577806b7aa3d35d552af8c0752c6177998411cca38ae931bb3309a26b63",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "dffb183d65d9810fc0877006220024fdf06715c580b5b3d18f560fbc068d4dc4",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/loop_stretch_timing.py": {
+  "api_sha256": "44ec36598a340a9debf0cb15317fe23f70d30d977e3f4d782f3f4f1a378601b6",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "658f7c1304eca0abb0855baa6270927e7d860c628b8529c7df0feb3e9ac2a996",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/reboot_fallback_starves_the_watchdog.py": {
+  "api_sha256": "5750520121c4f0a93df1a101adb9080570ab2bb803fefd9b94955ecbf7e70b09",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only case of the flash test running it: the reboot's starvation fallback (a blocking starvation never reaches the twin's asyncio watchdog: the run times out)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "fdf4bef83578c3e376bf829fc5195f8d6598b4cfe593d948b039e6617697cfc1",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/reboot_persist_read.py": {
+  "api_sha256": "c8b9516d812e7e283d50b4182b081787180b9fef81dfc4cf0f7f8c3f2516ee18",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "831a4dd0668f578bd42dc0fbfcaf7796e65d5a6d733623709e02e68f9a7bebf4",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/reboot_persist_write.py": {
+  "api_sha256": "c8b9516d812e7e283d50b4182b081787180b9fef81dfc4cf0f7f8c3f2516ee18",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "b646c37b6e616148ade8d29cba1e90da07e2c9979353ad5e81881144522aba99",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/reset_code_boot_phase_hang.py": {
+  "api_sha256": "3e256140f88093cf98688b32a2b5253ffc016f306dec20037be455ca6971aba4",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "680ff2a06da0b04d70c4983b2d526344863c97f263ad59800c377ebecf701518",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/reset_code_command_incomplete.py": {
+  "api_sha256": "ae995990028e45c547b247bfebdfeb6c6ec5fecd98ffdd57d2f63542edc2df8b",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only: the watchdog takeover after an accepted command - the twin reports it as 'starved the watchdog', its form of the reset",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "4eb502c179d3bb13431eece2faaaa454cc348bafa2d0725483ece91fbcc28a55",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/reset_code_invalid_record.py": {
+  "api_sha256": "5750520121c4f0a93df1a101adb9080570ab2bb803fefd9b94955ecbf7e70b09",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "ends in the reset it exists to provoke (exit 3, the twin's simulated reset); its after-boot half reads the reset reason a production boot reports, and the twin boots no production image (bench/test_reset_reasons.py runs both halves on silicon)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "390e62486b49a31455292b37da54a18dad02ddbe755b6cc7cf6e404f133c0088",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/reset_code_stack_exhausted.py": {
+  "api_sha256": "5750520121c4f0a93df1a101adb9080570ab2bb803fefd9b94955ecbf7e70b09",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "ends in the reset it exists to provoke (exit 3, the twin's simulated reset); its after-boot half reads the reset reason a production boot reports, and the twin boots no production image (bench/test_reset_reasons.py runs both halves on silicon)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "1cb16ce4db2687734c67245b1cce663f2474af482a44f8f625d4c0246f0071b2",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/scd30_argument_reaction.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "97034c35211b8264f809a6ef12d57cade765d7037e8caf430214fca0103f8508",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/scd30_conformance_probe.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "0eccc81c02d2d2da35defa022c8dbd0da988fcfc445497eac19d9cf675cf2aa7",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/scd30_data_ready_wait.py": {
+  "api_sha256": "561dbd7e1568bb5ec24e4f9def83ad38a3f46345446682fe4485c619749ccbce",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "fee116a77b333cecd5df1baf004e521a2ca276636fe96a338a5103f3b81a2068",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/scd30_measurement_interval_read.py": {
+  "api_sha256": "561dbd7e1568bb5ec24e4f9def83ad38a3f46345446682fe4485c619749ccbce",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "c57da0e09d96fa7200fa6e45d661f9644a28bc99c08d539b23fcf082e6731bc0",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/scd30_plausibility_read.py": {
+  "api_sha256": "561dbd7e1568bb5ec24e4f9def83ad38a3f46345446682fe4485c619749ccbce",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "b2e745cc6320864e9f093ea67503bef8a8bd316ee364ee449826f8b4bab14c0b",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/scd30_real_irq_edge.py": {
+  "api_sha256": "561dbd7e1568bb5ec24e4f9def83ad38a3f46345446682fe4485c619749ccbce",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "960f952ab534fdb690b2bbe5cc54cc67eac44ecf562ca46dc417bbd8a6eb8e59",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py": {
+  "api_sha256": "3ca4b24b159fa3d45c3502a9441b59975a11268b7436e5d45673ba4c792f1a58",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "6a727842ec2ad794a04d1ff8f63cc736258633c8e8b12450fa61af8079f07949",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/scd30_start_continuous_measurement.py": {
+  "api_sha256": "561dbd7e1568bb5ec24e4f9def83ad38a3f46345446682fe4485c619749ccbce",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "b8ec259d13816f7b611e6c1f852c1e98924d7d163afd6a6a1d91ae00ae583b21",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/scheduler_saturation_drop.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only case of the flash test running it: the timer-callback drop under scheduler saturation (twin Timers are asyncio tasks: no scheduler queue, a synchronous script gives them no turn)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "782dbb7cc53bf96781679be742cc22020e580747d0393d0990066994bef00758",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/serving_at_default_gc.py": {
+  "api_sha256": "9ad8f0898bf456be3d422ae74ed539634f80c283553831d92910c48d2fd8bf8c",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "a bench serving script: it boots main() and waits for the host's request sweep, which only the bench tier sends, so alone in the twin it runs past the record's 60 s bound (its twin runs at -1 and 32768: about 622 s each, webserver built, phases incomplete without the sweep, zero allocation failures)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "9b5be8b07da8be82da213c2edd204ceebebd5092ec5d573901d7c5d80ad5279f",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/sgp40_conformance_probe.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "eb7d5e52fd6a8b9721a80bdeb142aad507edda1958b0d6b2703657c71f82197e",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/sgp40_fram_backup_restore.py": {
+  "api_sha256": "df256d04614a11cc3c379658d510a8704304aeb0df01277378c547d428f88585",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "aaf5585da31c6fbb17f588c846e7a4bbdf4b350ceaabe8029d512167f29a3c76",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/sgp40_general_call_reset_hazard.py": {
+  "api_sha256": "3ca4b24b159fa3d45c3502a9441b59975a11268b7436e5d45673ba4c792f1a58",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "c5ab0280a4e979a327706ac1e86c3c0cdfeeceb6a7edcfb3cf31d8ae45f148fb",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/sgp40_same_device_concurrent_sessions.py": {
+  "api_sha256": "7d8901efe21b504e3958b611373d1f2dd03d7fbf2bf3557631b4f10d34125715",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "7f5e92c438b9c1aa46a2b7b19cff87e9192ef1613760fc8ec4927e679e0c2fef",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/sgp40_sample_cadence.py": {
+  "api_sha256": "5750520121c4f0a93df1a101adb9080570ab2bb803fefd9b94955ecbf7e70b09",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "the flash test running it: the SGP40 cadence is a 600 s soak (--soak-duration)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "97d669b14cb139607a09c4ede7f0d1f346322b3a2ac6a99aaee6b1e173c32e98",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py": {
+  "api_sha256": "d069ec0e3e7eef217634c255f2e7755373d7ee6e98059380240afe33b40a3a28",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "6fc8909914dcf9286fa8bd654b21406381176abaafaaf53edb447190253c9ca8",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/system_command_config_reset.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "01adc58ff3409de1ad9a06de6b440e2965ba40513c2593cd639ffce0cdbf0004",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/system_command_fram_erase.py": {
+  "api_sha256": "5e896a41c26b0f78dc60c6e46d974439e73ac2d0202d59e01064381737741734",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only case of the flash test running it: the 1.0/2.0 s mid-erase resets (the twin erases 256 KB in about 1.0 s, silicon about 2.2 s at 1 MHz, so they land after it)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "1f759d493190259c871baffafc075faa6061a1bd8858056d921c48742300b7d4",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/system_command_hang.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only case of the flash test running it: a hung shutdown step's watchdog takeover (the twin reports 'starved the watchdog', its form of the reset)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "aab3026a7cc659370b507b279d69a6339f5a00e2889765209b2cc327065b003c",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/system_command_reboot.py": {
+  "api_sha256": "1b447242d5e280d4f717e152d2d44935ae524e620d6d97495d69e5a737d696d6",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "fb892a51a7603d87c8bad2e6109928af993711eba5c72351f6550a3e5135508e",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/system_debug_level_set_standard.py": {
+  "api_sha256": "c8b9516d812e7e283d50b4182b081787180b9fef81dfc4cf0f7f8c3f2516ee18",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "needs the per-run extra standard_debug_level that tests_hardware/conftest.py's standard-state repair passes; run alone it has none (KeyError). With it the twin run writes DebugLevel and reports valid (checked 2026-10-14)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "cfb999eb5283f71c03aee15fb25631e7d75191694fd13e63ddf49dcafce325bb",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py": {
+  "api_sha256": "84a1da34c70c1c0b6372fb5a655ee889dff04e1715ecf0fcb1d601bf49130a73",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "e3115eabaaa9a2e9da69ee835eddeaa26b3568fbad24ca1a94624f4c2b93d5b8",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/timer_alarm_pool_exhaustion.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "308ba902dd344bdb418036439b2a69c4e1a96a9858085639398f5218e65e9f9e",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/uart_comm_hazards.py": {
+  "api_sha256": "f5908e42071ee8a7edea0b02a4658eea956dbad3e58ba88d86578ec095b2fe9a",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "c22aaa3ef7d07c80475c64e38c4a0d188caa2435e04870dcfbd15a73d8bbef58",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/uart_crossover_exchange.py": {
+  "api_sha256": "c901d93c8192826365a18be95a25d533684a5c43a0c9f488c14e3d8d2fbe20e3",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "281ab6774817180ed1fe5c0db15bbdb99e4dedd8b850ac9a0f5b79c9216380e4",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/uart_crossover_recovery.py": {
+  "api_sha256": "f5908e42071ee8a7edea0b02a4658eea956dbad3e58ba88d86578ec095b2fe9a",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "0a1011ee5f2bee470ee7a6553295ef434d17df0ecbb6690c3aefdca83974610a",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py": {
+  "api_sha256": "6b8afd54de2bda14f895830608be0876f258a00e7f1e97c05b7107afc2c95ad9",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only case of the flash test running it: interrupts-off windows, the UART break, the DMA ring's soft reset and the config-write window (the twin has no machine.disable_irq()/enable_irq(), no UART.sendbreak() and no rp2.DMA paced by a UART TX DREQ: streamed False)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "e8e3111a3149d5b071388caa5530de5a36856309d7a58c601ab34785c6550e06",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py": {
+  "api_sha256": "94d9087d30e3420222969b6658b2f40d91cbc307d9d7ff7e526c291297b3f470",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only case of the flash test running it: the driver read's control arm (the twin UART serves min(nbytes, queued), so the control span stays about 10 us)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "7392f35d8bca85f2ac2ad073f4f68680703f0c7b7d5c01fe513e8f9024bedce9",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/uart_idle_poll_rate.py": {
+  "api_sha256": "27d791342a281165ec5d6e3437f90daa575c54984be4ca65de31bbfa3335c7c5",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "d96f73c135f784c4593aca3a587f22fd91d3a8e1c26644de9c773083b8e22ca8",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/uart_link_echo_under_serving_load.py": {
+  "api_sha256": "d3f4228c87a7f339d19fdab5a8a7195923bd318730864c67a973923749eed60e",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "a bench serving script: the multi-chunk echo needs the bench board's UART jumper under main()'s own link and the host's reader load, so alone in the twin it runs past the record's 60 s bound (its twin runs at -1 and 32768: about 192 s each, the initiator found, zero allocation failures)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "0d955a3ff5f204cbf3b47c544d8434602a456fd5ea98253e4cde39b8ba1786c3",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py": {
+  "api_sha256": "ebf0c31c97befd5a088359f67c791a2c812de69bceb984326f576150674ecc53",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "30e598cbf1c0a574d7a977517fe83280332907f34a029b937e6a2241192adaa1",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/unretrieved_task_exception_handler.py": {
+  "api_sha256": "5750520121c4f0a93df1a101adb9080570ab2bb803fefd9b94955ecbf7e70b09",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "c12b42083354f34c2ea3485e2e9f394979898cbfdfa72a8b7fff4d5b13a63c57",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/device_scripts/watchdog_starvation_reset.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only case of the flash test running it: a blocking watchdog starvation (a blocking starvation never reaches the twin's asyncio watchdog: the run times out)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "0e8153d438e11188940b5aed3bb012da0a29c51220d8fe0056c0b2abfc089ce8",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/wifi_country_code_reaction.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only case of the flash test running it: the malformed country-code reaction (the twin WLAN has no scan())",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "f4e7fe1d989e548432c790e05457493c757362cb9a783c536087d8b915f9c5b6",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/device_scripts/wifi_radio_reinit_recovery.py": {
+  "api_sha256": "76b427dfb579db9da0d34d65121d8c4c25e62dd368123c605551cd6bb3c649a4",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "7665bf933b3746252b71e5f88211c34c0af9e02ed933a99e07cd97abed84907a",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/flash/test_bus_concurrency.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only cases: the ISL29125's real INT edge (the twin drives no INT edge into the reader's IRQ), the held-SDA recovery (bit-banged pins hold no SDA in the twin) and the FRAM CS hijack (the FRAM fake frames by write() pairing, ignoring CS)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "f0618eecbf85210e565aa1fe46e5d035ffb4b03e2adbead76ef009a616e64c50",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/flash/test_bus_electrical_timing.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only cases: the 2^24 single-precision float boundary (the Unix port's float is double), the malformed country-code reaction (the twin WLAN has no scan()), and the timer-callback drop under scheduler saturation (twin Timers are asyncio tasks: no scheduler queue, a synchronous script gives them no turn); and the SCD30 clock-stretch watch is a soak (--soak-duration: a real stretch comes about once a day)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "5f0d1758c2c9cfcd149b3423621fc6a56fe851d9b458f772cf3b058901727b3a",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/flash/test_chip_conformance.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "03564e6dfce2bd9dc223d36c3a5e33663f33718efc2e63b1db9cfd6517867beb",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/flash/test_config_float_round_trip.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "4a0438d071dbebf26cb0d50bf57e5716cdb881a6d6b2d58bf35af09e3b509f03",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/flash/test_fram_storage.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only case: write protection gating a real write and read (the twin's FRAM fake keeps the data a WP-gated write would not reach on silicon)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "c2bfd75f7e8cb0f7a8d6d154e2670ac2619da707816c24808dc06d72d67ee437",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/flash/test_heap_layout.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only case: the suppressed arm breaking the high band (in the twin it runs after the state load in one session, on the Unix port's heap, not the RP2040's)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "821550c912499124dda343f0b69978d0084877b2a03588b1cf7c36f0371ceb79",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/flash/test_memory_stress.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only case: the used-heap bound after a full system build (the twin's heap is the Unix port's, not the RP2040's 264 KB); and the single-core timing headroom is a passive soak (--soak-duration)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "beedd02c8e26378cab8b2075fd69a3c9db5f8c5511e1b4bdde135d0dcb3211b2",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/flash/test_reboot_persistence.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only case: the boot import after a genuine hard reset (the twin boots no production image, so no boot lines arrive)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "572d16e653156df5c8710c92c77915c1eb4bb1f9608903e221beede7f97062fa",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/flash/test_sensor_accuracy.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only cases: the two NeoPixel sweeps need the rig aiming the NeoPixel at the ISL29125 (--allow-neopixel-sweep; the twin's ISL29125 fake is not optically coupled to the NeoPixel) and the SGP40 cadence is a 600 s soak (--soak-duration); twin fidelity: the SGP40 fake's raw walk (1000 ticks a sample, not datasheet-derived) drives the real VOC algorithm's index to its floor of 1 for all 8 post-blackout samples in about 7% of runs (21 of 300 simulated), which the frozen-algorithm check reads as frozen",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "8547a8070b7c4c9219c9a045eca5f00b0884f320a44c7580d97d9f06f74c6bcf",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/flash/test_system_commands.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only cases: the 1.0/2.0 s mid-erase resets (the twin erases 256 KB in about 1.0 s, silicon about 2.2 s at 1 MHz, so they land after it) and a hung shutdown step's watchdog takeover (the twin reports 'starved the watchdog', its form of the reset)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "4a2dc977a1e746c71e3094209eb33341d4d9dec270b39d58273121d3d3d924fa",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/flash/test_task_supervisor.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "181e7dae86b1eeeda48469424cdc8fa5440f6653e5080ba97fa5109664a9c46c",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/flash/test_toolchain_flash_boot.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "gated, never run in the twin: the UF2 reflash is a real flash cycle (--allow-flash-cycle) and the toolchain re-verification fetches over the network and builds for about 8 min (--allow-toolchain-reverify)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "60e591d0e505d5a33acbf67967cb304973de1eae6d2d33b6bf498c97a7f9e9b8",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/flash/test_uart_crossover.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only cases: interrupts-off windows, the UART break, the DMA ring's soft reset and the config-write window (the twin has no machine.disable_irq()/enable_irq(), no UART.sendbreak() and no rp2.DMA paced by a UART TX DREQ: streamed False), and the driver read's control arm (the twin UART serves min(nbytes, queued), so the control span stays about 10 us)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "5aa60fc35e95f5462fee328f5977d505acc57267ab23002c597fc045bd1c868a",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ },
+ "tests_hardware/flash/test_unretrieved_task_exception_handler.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "",
+  "result": "pass",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "6b28f7e51744b6bb9dc602f137aa45af9f2a544bdff35349387ac2c8e6a55728",
+  "stages": {
+   "-1": "pass",
+   "32768": "pass"
+  }
+ },
+ "tests_hardware/flash/test_watchdog_starvation.py": {
+  "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "date": "2026-10-22T16:11:09Z",
+  "reason": "silicon-only cases: a blocking watchdog starvation and the reboot's starvation fallback (a blocking starvation never reaches the twin's asyncio watchdog: the run times out)",
+  "result": "exception",
+  "runner_sha256": "9ca2da7941cfc3464579e4994de044f4b6d6f96960943cecf0f0cd8f6682aa56",
+  "sha256": "8141b351a8c6997e9402a7464489a22fbe931ca9bc68a5e3c43c800d821abd6a",
+  "stages": {
+   "-1": "exception",
+   "32768": "exception"
+  }
+ }
+}

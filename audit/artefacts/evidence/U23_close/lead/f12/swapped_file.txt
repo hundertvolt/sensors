@@ -1,0 +1,3 @@
+# u23/close/f12/test_api_reference.3d29af9_vs_3c23b1b.diff.txt (40 lines, kept in scratch)
+The swapped file is 3c23b1b's tests_scripts/test_api_reference.py byte for byte, over 3d29af9's.
+git -C <repo> diff 3d29af9 3c23b1b -- tests_scripts/test_api_reference.py reproduces the diff (22 lines added, 1 removed).

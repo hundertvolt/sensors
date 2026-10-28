@@ -1,0 +1,23 @@
+NOTE (standard_state): twin run: the twin's board starts fresh, nothing to check
+NOTE (scd30_measuring): already measuring (no write)
+....s.FF                                                                 [100%]
+=================================== FAILURES ===================================
+_ test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration _
+tests_hardware/flash/test_sensor_accuracy.py:222: in test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration
+    assert not problems, "; ".join(problems)
+E   AssertionError: the envelope only spanned 8160.982681010148->9266.346227206837 lux - the LED never really moved the sensor; the 375 lx range was never used across the envelope; full white did not end on the high range, or ambient did not return to the low one; Overrange is not set at full white - the saturation detector never fired; the same light reads 374.9942778667887 lx on 375 and 1872.129396505684 lx on 10000 (399.2%) - the range gain correction is not applied
+E   assert not ['the envelope only spanned 8160.982681010148->9266.346227206837 lux - the LED never really moved the sensor', 'the 37...ads 374.9942778667887 lx on 375 and 1872.129396505684 lx on 10000 (399.2%) - the range gain correction is not applied']
+________ test_isl29125_survives_recombined_realistic_lighting_scenarios ________
+tests_hardware/flash/test_sensor_accuracy.py:268: in test_isl29125_survives_recombined_realistic_lighting_scenarios
+    assert not problems, "; ".join(problems)
+E   AssertionError: sunrise_white_slow: 0 range switches, expected 1..4; sunrise_white_slow: only range(s) [10000] used - the light never crossed the hysteresis band; dimmer_warm_mid: 0 range switches, expected 2..6; dimmer_warm_mid: only range(s) [10000] used - the light never crossed the hysteresis band; flash_steps: 0 range switches, expected 2..10; flash_steps: only range(s) [10000] used - the light never crossed the hysteresis band; hysteresis_band_dwell_no_chatter: 6 range switches, expected 0..0; mixed_mode_overlapping: 22 range switches, expected 2..10; baseline 1: 749.9809262226291 lux vs reference 4511.024643320364; baseline 2: 6158.84641794461 lux vs reference 4511.024643320364; baseline 4: 2888.227664606699 lux vs reference 4511.024643320364; baseline 5: 2809.0333409628447 lux vs reference 4511.024643320364; baseline 6: 56.88372625314717 lux vs reference 4511.024643320364; baseline 7: 2250.7057297627225 lux vs reference 4511.024643320364; baseline 9: 2174.105439841306 lux vs reference 4511.024643320364; baseline 10: 2556.496528572519 lux vs reference 4511.024643320364
+E   assert not ['sunrise_white_slow: 0 range switches, expected 1..4', 'sunrise_white_slow: only range(s) [10000] used - the light ne...witches, expected 2..10', 'flash_steps: only range(s) [10000] used - the light never crossed the hysteresis band', ...]
+=========================== short test summary info ============================
+FAILED tests_hardware/flash/test_sensor_accuracy.py::test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration
+FAILED tests_hardware/flash/test_sensor_accuracy.py::test_isl29125_survives_recombined_realistic_lighting_scenarios
+2 failed, 5 passed, 1 skipped in 795.78s (0:13:15)
+
+real	13m16.390s
+user	0m16.020s
+sys	0m13.509s
+rc=1

@@ -1,0 +1,17 @@
+tests/test_asy_uart_comm.py@-1
+tests/test_asy_uart_comm.py@32768
+tests_scripts/test_digital_twin_boot_contiguity.py
+tests/test_digital_twin_fram.py@-1
+tests/test_digital_twin_fram.py@32768
+tests/test_digital_twin_hot_replug.py@-1
+tests/test_digital_twin_hot_replug.py@32768
+tests/test_ntp_fram_system_integration.py@-1
+tests/test_ntp_fram_system_integration.py@32768
+tests/test_asy_neopixel_driver.py@-1
+tests/test_asy_neopixel_driver.py@32768
+tests/test_asy_webserver_service.py@-1
+tests/test_asy_webserver_service.py@32768
+tests/test_uart_comm_cancel_sweep.py@-1
+tests/test_uart_comm_cancel_sweep.py@32768
+tests/test_uart_comm_hazard.py@-1
+tests/test_uart_comm_hazard.py@32768

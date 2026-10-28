@@ -1,0 +1,14 @@
+tests_scripts/test_setup_toolchain_env.py rc=0
+tests_scripts/test_test_sh.py rc=0
+installer repeat 1 rc=0
+counter repeat 1 rc=0
+installer repeat 2 rc=0
+counter repeat 2 rc=0
+installer repeat 3 rc=0
+counter repeat 3 rc=0
+installer repeat 4 rc=0
+counter repeat 4 rc=0
+installer repeat 5 rc=0
+counter repeat 5 rc=0
+
+[exited with code 0]

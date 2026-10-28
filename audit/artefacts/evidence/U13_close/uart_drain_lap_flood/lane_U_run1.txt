@@ -1,0 +1,44 @@
+test_asy_uart_driver.py [reactive] rc=0 memerr=0 :: 143/143 passed, 0 failed, 0 skipped
+test_asy_uart_driver.py [32768] rc=0 memerr=0 :: 143/143 passed, 0 failed, 0 skipped
+test_asy_uart_comm.py [reactive] rc=0 memerr=0 :: 151/151 passed, 0 failed, 0 skipped
+test_asy_uart_comm.py [32768] rc=1 memerr=0 :: 148/151 passed, 3 failed, 0 skipped
+FAIL test_a_boot_drain_that_hits_its_bound_persists_nothing:
+AssertionError: 
+FAIL test_a_drain_that_hits_its_bound_persists_the_drain_warning:
+AssertionError: []
+FAIL test_one_fault_hitting_the_drain_bound_adds_the_errno_and_w54:
+AssertionError: ['E81']
+test_asy_uart_link_driver.py [reactive] rc=0 memerr=0 :: 22/22 passed, 0 failed, 0 skipped
+test_asy_uart_link_driver.py [32768] rc=0 memerr=0 :: 22/22 passed, 0 failed, 0 skipped
+test_uart_comm_hazard.py [reactive] rc=0 memerr=0 :: 98/98 passed, 0 failed, 0 skipped
+test_uart_comm_hazard.py [32768] rc=0 memerr=0 :: 98/98 passed, 0 failed, 0 skipped
+test_asy_crc_checks.py [reactive] rc=0 memerr=0 :: 75/75 passed, 0 failed, 0 skipped
+test_asy_crc_checks.py [32768] rc=0 memerr=0 :: 75/75 passed, 0 failed, 0 skipped
+test_asy_framing_codecs.py [reactive] rc=0 memerr=0 :: 18/18 passed, 0 failed, 0 skipped
+test_asy_framing_codecs.py [32768] rc=0 memerr=0 :: 18/18 passed, 0 failed, 0 skipped
+test_readiness_gates.py [reactive] rc=0 memerr=0 :: 14/14 passed, 0 failed, 0 skipped
+test_readiness_gates.py [32768] rc=0 memerr=0 :: 14/14 passed, 0 failed, 0 skipped
+test_ticks_rollover.py [reactive] rc=0 memerr=0 :: 7/7 passed, 0 failed, 0 skipped
+test_ticks_rollover.py [32768] rc=0 memerr=0 :: 7/7 passed, 0 failed, 0 skipped
+test_sensortask_dev.py [reactive] rc=1 memerr=0 :: 0/67 passed, 67 failed, 0 skipped
+FAIL test_webserver_pr_is_fram_backed_when_device_wires_fram:
+ImportError: no module named 'frozen_html'
+FAIL test_fram_chunk_allocation_order_matches_the_documented_sequence:
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_system_put_debug_level_propagates_to_every_logger:
+ImportError: no module named 'frozen_html'
+FAIL test_neopixel_empty_timer_list_reaches_the_generated_collector:
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_notification_put_light_cmd_led_rejects_out_of_range_t:
+ImportError: no module named 'frozen_html'
+test_sensortask_dev.py [32768] rc=1 memerr=0 :: 0/67 passed, 67 failed, 0 skipped
+FAIL test_webserver_pr_is_fram_backed_when_device_wires_fram:
+ImportError: no module named 'frozen_html'
+FAIL test_fram_chunk_allocation_order_matches_the_documented_sequence:
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_system_put_debug_level_propagates_to_every_logger:
+ImportError: no module named 'frozen_html'
+FAIL test_neopixel_empty_timer_list_reaches_the_generated_collector:
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_notification_put_light_cmd_led_rejects_out_of_range_t:
+ImportError: no module named 'frozen_html'

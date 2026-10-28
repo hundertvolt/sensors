@@ -1,0 +1,35 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d
+
+ ✓ |chromium| tests_js/generated-definitions-render.test.js (48 tests) 7785ms
+   ✓ arzi's generated definitions (8)
+     ✓ render the networking section's every group, field and errcount row, with no error 410ms
+   ✓ dev's generated definitions (8)
+     ✓ render the networking section's every group, field and errcount row, with no error 328ms
+     ✓ render the notification section's every group, field and errcount row, with no error 348ms
+   ✓ grkizi's generated definitions (8)
+     ✓ render the networking section's every group, field and errcount row, with no error 328ms
+   ✓ klkizi's generated definitions (8)
+     ✓ render the networking section's every group, field and errcount row, with no error 389ms
+   ✓ schlafzi's generated definitions (8)
+     ✓ render the networking section's every group, field and errcount row, with no error 369ms
+     ✓ render the notification section's every group, field and errcount row, with no error 328ms
+
+ Test Files  1 passed (1)
+      Tests  48 passed (48)
+   Start at  06:46:03
+   Duration  9.05s (tests 96%, worker 2%, import 2%)
+
+== Summary: npm test ==
+Commit: 8fff76f (uncommitted changes)
+Levels: L0
+Counts (tests): passed 48 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

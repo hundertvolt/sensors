@@ -1,0 +1,12 @@
+gcdefault_1 rc=0 71s memerr_lines=0 | 104/104 passed, 0 failed, 0 skipped
+gcdefault_2 rc=0 71s memerr_lines=0 | 104/104 passed, 0 failed, 0 skipped
+gcdefault_3 rc=0 71s memerr_lines=0 | 104/104 passed, 0 failed, 0 skipped
+gc32768_1 rc=0 74s memerr_lines=0 | 104/104 passed, 0 failed, 0 skipped
+gc32768_2 rc=0 74s memerr_lines=0 | 104/104 passed, 0 failed, 0 skipped
+gc32768_3 rc=0 74s memerr_lines=0 | 104/104 passed, 0 failed, 0 skipped
+coverage_1 rc=0 99s memerr_lines=0 | 104/104 passed, 0 failed, 0 skipped
+coverage_2 rc=0 100s memerr_lines=0 | 104/104 passed, 0 failed, 0 skipped
+coverage_3 rc=0 99s memerr_lines=0 | 104/104 passed, 0 failed, 0 skipped
+oldclock_gcdefault rc=1 78s memerr_lines=0 | 100/104 passed, 4 failed, 0 skipped
+oldclock_coverage rc=1 104s memerr_lines=0 | 98/104 passed, 6 failed, 0 skipped
+ALLDONE

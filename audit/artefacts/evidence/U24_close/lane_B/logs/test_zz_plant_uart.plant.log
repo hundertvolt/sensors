@@ -1,0 +1,14 @@
+......................Fs.........                                        [100%]
+=================================== FAILURES ===================================
+____________________ test_a_real_device_builds_a_uart_link _____________________
+
+    def test_a_real_device_builds_a_uart_link() -> None:
+        # The floor of the ring check below, which runs on each of these devices and on no other.
+>       assert _UART_LINK_DEVICES, "no device declares a uart_link, so no receive ring below is ever placed"
+E       AssertionError: no device declares a uart_link, so no receive ring below is ever placed
+E       assert []
+
+tests_scripts/test_zz_plant_uart.py:324: AssertionError
+=========================== short test summary info ============================
+SKIPPED [1] tests_scripts/test_zz_plant_uart.py:327: got empty parameter set for (device)
+1 failed, 31 passed, 1 skipped in 13.71s

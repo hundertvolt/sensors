@@ -1,0 +1,224 @@
+
+######## SubagentHandback 2026-10-13T06:35:57.713Z
+WIP 6f2f221
+
+B1 is committed on audit/u23-b in wt-u23b, as one commit on top of 8fff76f. Nothing is pushed. I have stopped here and am waiting for the API base hash.
+
+## Changes that feed the website (for your rebuild)
+- **`html/index.html`**:
+  - `:7` is now `<link rel="icon" href="favicon.ico">`.
+  - The nav carries `inert`.
+  - The banner no longer has the `hidden` class and carries `data-shown="false"`.
+  - The bootstrap comment is now the packet's two lines.
+  - The `startApp({...})` ids and keys are unchanged. The header comment was not written (it lands later).
+- **`html/favicon.ico`** (new, 1150 B): the 16×16 image from the legacy icon as a one-image ICO (directory 0,1,1; data offset 22; the 1128 image bytes from legacy offset 54). The legacy file was only read.
+- **`scripts/_stage_website.py`** (new) now builds the bundle, and the module order changes:
+  - New order: poll-manager, definitions, field-format, templates, nav, render, main. That is the depth-first post-order from `js/main.js`, so definitions now comes before templates.
+  - Lines 1–3 are the banner. Line 2 reads `// Modules: <a>, <b>, ...`.
+  - Each module still sits under `// ---- js/<file> ----`.
+  - Checked against HEAD: every module section is byte-identical to HEAD's `grep -v` output, and `node --check` parses the bundle.
+- **Staged `index.html`**: the icon is now inlined as a data URI. For wozi, `index.html.gz` is 13456 B. A page load still opens two connections.
+- **Scripts**:
+  - `build_website.sh [--stage-only] <device> [output]`: with `--stage-only`, the stage directory is required (exit 2 without it) and nothing is frozen.
+  - `build_device_websites.sh [--stage-only] [out_root]`: the stage-only default root is `build/staged_html`.
+  - The default build interface is unchanged.
+
+**Until the later lanes land, browser runs will break.** On this commit the drawer starts `inert`, and `js/nav.js` (S) does not clear it yet, so clicks on drawer links fail. The empty top banner also shows, because my `[data-shown]` CSS rule only comes with `style.css` in my final. Keep the cross-browser smoke and the live tier off the merged tree until S's `nav.js` and my `style.css` are in.
+
+## B1 status
+**Green:**
+- `test_stage_website.py` (new): 32/32, 3.3 s wall.
+- `test_build_website_sh.py`: 13/13, 8.5 s (HEAD 6.25 s).
+- `test_build_device_websites_sh.py`: 15/15, 9.4 s (HEAD 4.09 s; the extra time is one `--stage-only` pass over 6 devices).
+- `tests/test_website_build_integration.py`, run against a wozi site I built into a `/tmp` dir and then removed: 7/7 at both -1 and 32768, 0 MemoryError, `unshare -n`. I confirmed `frozen_html` was imported from the temp dir.
+- ruff, shellcheck, mypy host pass and main pass (both scopes, cold cache, temporary typings symlink, now removed).
+- `npm run lint`, `npm run lint:html`, and html-validate over all six devices' staged pages (temp dir, removed).
+- Pre-commit set green: comment_block_cap, tunables_register, legacy_paths, import_placement, code_conventions, error_catalog, host_annotations, lint_ceilings, mypy_any_baseline, memory_error_gate_agreement, tool_help, no_variant_literals, import_graph, lint_sh.
+
+**Red** — only the allow-list rows my rewrites retired; dropping them is yours:
+- `test_decision_vocabulary.py::test_the_allowlist_only_shrinks`:
+  - `_decision_vocab_allowlist.txt:173` (`scripts/build_website.sh`, "Part H.7 owns why bundling and inlining exist at all…")
+  - `:549` (`tests_scripts/test_build_website_sh.py`, "build_website.sh's cp lists are hand-kept…")
+- `test_citations.py::test_the_allowlist_only_shrinks`: `_citation_allowlist.txt:113` (`tests_scripts/test_build_website_sh.py`, `js/app.js.gz`).
+
+**Seen failing first** (record in `u23/laneB/fail_first.md`):
+- `test_stage_website.py`: all 32 cases failed before the stager and icon existed. After the icon existed, the real-tree case still failed on the missing icon tag in `html/index.html`.
+- `test_build_website_sh.py`: both `--stage-only` cases failed with "error: no devices/--stage-only.toml".
+- `test_build_device_websites_sh.py`: the fixture failed with "unknown option --stage-only".
+
+Guards (passed from the start): import text inside comments, strings, templates and regexes is not treated as an import; the prototype-only closure is never bundled.
+
+**Runs:** all were foreground, at nice 19, entered in RUNS.md, and all exited. None are left running and no temp dirs remain:
+- baseline timings of the two script tests (HEAD copies, deleted afterwards)
+- pytest runs of my three files
+- mypy host pass ×3 and main pass ×2
+- the pre-commit set, one file at a time
+- `npm run lint` and `npm run lint:html`
+- `build_device_websites.sh --stage-only` into `/tmp` plus html-validate
+- `build_website.sh wozi` into `/tmp` plus the MicroPython file at both GC stages (`unshare -n`)
+
+## Deviations
+- **Duplicate check covers every top-level name.** The packet asks only for names exported twice. SPEC H.2 states every top-level name must be unique across the bundle, so I check all of them; a private clash would otherwise only show at page load.
+- **Three checks the packet does not list:**
+  - top-level destructuring is refused (so that uniqueness check stays exact);
+  - `</style` inside CSS is refused, since it would silently cut off the inlined stylesheet;
+  - the bootstrap must import `"../js/app.js"`.
+- **Stager location.** It reads the tree its own `scripts/` folder sits in (the REPO_ROOT convention). The temp-tree tests copy it into each tree.
+- **One scratch dir in `build_website.sh`.** The definitions file and the stage are siblings in one temp dir, the same layout U27 ends with. The work dir, flock and checks stay U27's, and I left out the header's work-dir sentence.
+- **Ordering.** The stager and the test helpers follow D.15 order (checked with the conventions test's own key).
+
+## Stale text outside my file set (names `build_website.sh`'s "Inlining" comment or its old staging)
+- `tests/test_digital_twin_real_website_integration.py:126-127` (no owner)
+- `tests_js/main.test.js:49, :127, :144` (S)
+- `tests_scripts/test_build_frozen_html_sh.py:54` (no owner)
+- SPEC H.2's "re-checks that mechanically" and "Cross-checked … by test_build_website_sh.py" (X). Both are now done by `_stage_website.py` and `test_stage_website.py`.
+
+## Silent-failure scan (B1 files)
+Already safe or closed here:
+- **Detection left to chance, now caught at build time** (closed by rows 21.5/44): a top-level name clash, bootstrap id/key drift, and a malformed definitions file used to show only when a browser loaded the page.
+- **First load:** the stager now refuses a malformed definitions file before it reaches the page.
+- **Connection ceiling:** safe by construction, since the inlined icon adds no request.
+- **Swallowed failures:** none; every stager error exits 1 and writes nothing.
+
+New, not a U23 site:
+- **Stale output from a removed device** (tooling mode "re-run over a dirty tree"): `build_device_websites.sh --stage-only build/staged_html` never wipes the root, so `html-validate "build/staged_html/*/index.html"` would also lint a removed device's old page. Proposed fix for U27/U28: wipe `build/staged_html` before staging.
+
+The other section-8 modes are not in B1's files and are scanned at my final.
+
+######## SubagentHandback 2026-10-13T07:15:38.756Z
+## Lane B final: e6a901e (branch audit/u23-b in wt-u23b, fast-forwarded to base 3d29af9, then one commit; not pushed)
+
+Lane B is done: every row assigned to me is applied, and my own files are green. The pre-commit set is red only on three lines that belong to other lanes (D, M, X). The page needs wave 2 before any browser run (see Interim effects). After the merge my tree equalled the base; B1 is 6f2f221.
+
+**Relay (2):** `test_every_real_js_and_html_file_is_accounted_for_by_the_staging_script` is gone (0 matches in `test_build_website_sh.py`; removed in 6f2f221). On the base, `js/api-contract.js` is imported only by `js/mock-server.js`, which is reachable from `js/app.js`. The stager's drift rule therefore allows it, and the real-tree stage case passes (32/32).
+
+### Step table
+| row | M-ID | status | note |
+|---|---|---|---|
+| 8 | M.TEST_UNIT.332 | applied (typing only) | `run(coro: "Coroutine[object, None, T]")`, `Any` import gone; the shared harness and the rest are U24's |
+| 9 | M.TOOL.033 | applied | `"test_website_build_integration"` left pyproject.toml's explicit-Any baseline |
+| 14 | M.TSC.170 | applied (typing only) | `Mapping[str, JsonValue]` (from `buildgen.jsontypes`); a `_dicts()` helper narrows the lists; the two fixture dicts are typed `JsonDict` |
+| 18 | M.WEB.070 | applied (U23 part) | `PRODUCTION_ONLY_RULES` (innerHTML, outerHTML, insertAdjacentHTML, document.write/writeln) in the js and html blocks, with one comment line; the console comment names the section's once-per-episode line and keeps the live-backend skip warning; html block comment now names the stager. Ceilings are yours |
+| 21.3 | M.GEN.060 | applied (B1) | header comment is U27's |
+| 21.4 | M.GEN.062 | applied | every stylesheet hook of plan §3; `:314-316` is one line pointing at H.4; `:411-413` is U36's |
+| 21.5, 21.6, 21.8, 24, 25, 44, X11 | — | applied (B1) | |
+| 21.31 | M.WEB.071 | applied | `lint:html:built` exactly as the packet gives it |
+| 38 | M.TEST_UNIT.333 | applied | `_bundle_modules()` reads the banner; every banner module but main.js 404s at `/js/<name>`; one non-empty section per banner module, in banner order; import/re-export loop kept; comments at `:5-7` (wozi kept) and `:144` follow the stager. The variant sites and strict loads are U24's |
+| 45 | M.TSC.224 | applied | new `test_website_tokens.py` |
+| 59 | M.TOOL.079 | applied | `[mypy-test_request_body_cap_headroom]` removed from `host_typecheck.ini` |
+
+### Deviations (all conservative and reversible; each decided on the owner's behalf, agent, 2026-10-13)
+- **B1:**
+  - The duplicate check covers every top-level name, not only exported ones (SPEC H.2's own invariant).
+  - The stager also refuses top-level destructuring, `</style` inside CSS, and a bootstrap import other than `"../js/app.js"`.
+  - `build_website.sh` uses one scratch dir with the definitions and the stage as siblings (U27's end-state layout).
+- **Stylesheet choices the packet leaves open:**
+  - `[data-worst="none"]` and unavailable values are muted plus italic (one cue for a missing source).
+  - `.code-description` is 13px in the text colour.
+  - `.clear-button` gets `margin-top: 6px`.
+  - The button chrome resets keep the pill and value looks.
+  - `.hidden` gets a one-line comment saying it is a templates-only utility.
+- **`test_website_tokens.py`** additionally checks that the control border is drawn on the five control selectors, and that the dark theme redefines every token (a guard).
+  - It includes the neutral colour on the surface (the neutral code tone).
+  - It leaves out neutral on `--color-neutral-bg` (4.16 in light): no rule draws that pair, and darkening it would change the look.
+- **Row 38** also asserts the banner's last module is `main.js` and that the separators follow the banner's order.
+- **D.15 order:** `tests/test_website_build_integration.py`'s helpers are now in D.15 order (checked by AST: the module body is unchanged apart from the order).
+- **Files outside my set:** none needed.
+
+### Facts owed
+- **To X (SPEC):**
+  - H.1: AA tokens in both themes. Light success `#197f45` (4.53 on its background, 5.04 on surface), danger `#cb2d2d` (4.54/5.31), warn `#8d4cc3` (4.50/5.31). `--color-control-border` light `#8790a0` (3.00 on surface-alt, 3.22 on surface), dark `#6b7482` (3.05/3.42). Also `color-scheme: light dark` and reduced motion for the drawer.
+  - H.2: the stager, the derived module order, and `test_stage_website.py` replacing "cross-checked by `test_build_website_sh.py`"; "re-checks mechanically" is now true.
+  - H.3 hook list: `data-shown`, `data-nav-open`, `data-source-state`, `data-code-tone`, `data-worst` (replaces `data-has-errors`), `[data-clear-for]`, and `.hidden` as a templates-only utility.
+  - H.4 divergence row: the text I removed from `style.css:314-316` ("a left accent stripe rather than legacy's full background recolor, so it reads as a badge and not a flash; two levels as legacy had") moves there, plus the double stripes, the inlined favicon (agent, 2026-09-30), and the "Rendering safety" sink rule.
+  - H.8: `lint:html:built`, the sink rule, and the console comment.
+  - I added, renamed or withdrew no `@tunable` tags.
+- **To Y:**
+  - README's npm table gains `npm run lint:html:built`, and the usage at `README.md:327-328` gains `[--stage-only]`.
+  - BACKLOG chroot entry: new `scripts/_stage_website.py` (CPython ≥3.11, stdlib only, run under bare `python3`); `--stage-only` on both build scripts; one new `package.json` script; one baseline entry fewer in each of `pyproject.toml` and `host_typecheck.ini`; no dependency change.
+- **To you:**
+  - Explicit-Any baselines lose `pyproject.toml` `"test_website_build_integration"` and `host_typecheck.ini` `[mypy-test_request_body_cap_headroom]`.
+  - No new allow-list rows.
+  - ESLint maxima: my linted files (`eslint.config.js`, `html/index.html`) contain no function, so nothing moves and no ceiling is raised.
+  - **Rebuild needed:** `html/style.css` changed; it is inlined into every staged page.
+
+### Interim effects until wave 2 lands
+- Banners and the field warning show only on `data-shown="true"`, so until T, C and S write that attribute no section banner or top banner can appear.
+- The drawer opens only on `[data-nav-open="true"]` and starts `inert`; until S's `nav.js` lands it can neither open nor be clicked.
+- The errcount count colour now follows `data-worst`; the old `data-has-errors` rule is gone, so the count stays uncoloured until T writes `data-worst`.
+- Keep browser runs (the smoke, the live tier) until the wave-2 finals are merged.
+
+### Tests: first failures, results, times
+**Seen failing first:**
+- `test_website_tokens.py`: 5 failed, 2 passed. Light success on its background 3.13 (on surface 3.49), danger on surface 4.38, warn on its background 4.01, control border not defined, no color-scheme, no reduced-motion rule. The control-border selector check also fails on the HEAD stylesheet.
+- mypy with the two baseline entries dropped:
+  - main pass: `tests/test_website_build_integration.py:37` explicit Any;
+  - host pass: `test_request_body_cap_headroom.py:56` and `:75`.
+- Row 38 against a site built from HEAD 8fff76f (in a temp extract): 5/7 passed, 2 failed, with "the bundle's banner names no module list".
+- The sink rule: a planted `innerHTML`/`insertAdjacentHTML`/`document.write` probe in `js/` passed ESLint before the rule (rc 0) and failed after it (rc 1). The same plant in `html/index.html` failed too (rc 1). Both probes were removed.
+- The staged-page lint bites on a planted duplicate id (rc 1) and on an invalid `inert` value (rc 1). It does **not** flag an unknown attribute: html-validate's preset passed a planted `frobnicate-attr`.
+
+**Green:**
+- `test_stage_website.py` 32/32
+- `test_build_website_sh.py` 13/13
+- `test_build_device_websites_sh.py` 15/15
+- `test_website_tokens.py` 7/7
+- `test_request_body_cap_headroom.py` 14/14
+- `tests/test_website_build_integration.py` 7/7 at -1, 32768 and under settrace, 0 MemoryError (`unshare -n`)
+- ruff, shellcheck, and all three mypy scopes (cold cache)
+- `npm run lint`, `lint:css`, `lint:html`
+- `lint:html:built`'s two commands, run into a `/tmp` root (removed afterwards): all six staged pages are clean
+
+Pre-commit set green: comment_block_cap, legacy_paths, import_placement, code_conventions, error_catalog, host_annotations, lint_ceilings, mypy_any_baseline, memory_error_gate_agreement, tool_help, no_variant_literals, import_graph, lint_sh.
+
+**Red, all other lanes' halves on the base (exact lines):**
+- `test_decision_vocabulary`: `tests_js/_source_constants.js` "A top-level `const NAME = <int>;` (an `export` in front accepted) read as its in…" (D).
+- `test_citations`: `js/api-contract.js` cites `tests_scripts/test_js_api_mirrors.py` (M, file not yet written).
+- `test_tunables_register`: `buildgen/definitions.py:39`, `web.default_decimals` has no Part N row (X).
+- `npm run typecheck` (D1 removed `defaultValue`, M1 removed `partial-result`):
+  - `tests_js/live-backend-put-matrix.test.js(54,40)` and `(65,56)`: `defaultValue` (S)
+  - `tests_js/render.test.js(513,134)`: `defaultValue` (C)
+  - `tests_js/render.test.js(1051,9)`: `"partial-result"` (C)
+- `tests_js/lint-ceilings.test.js`: "complexity sits at its measured maximum: expected 0 to be greater than 0" (relay 1, yours).
+
+**Wall times at nice 19, before → after** (the pytest files run under CPython, so they have no GC stages):
+
+| file | before | after |
+|---|---|---|
+| `test_build_website_sh.py` | 6.25 s | 7.26 s |
+| `test_build_device_websites_sh.py` | 4.09 s | 8.28 s (one `--stage-only` pass over 6 devices) |
+| `test_request_body_cap_headroom.py` | 1.51 s | 1.42 s |
+| `test_stage_website.py` | — (new) | 2.9 s |
+| `test_website_tokens.py` | — (new) | 0.28 s |
+| `tests/test_website_build_integration.py`, -1 / 32768 / settrace | 0.22 / 0.26 / 0.21 s | 0.34 / 0.54 / 0.39 s |
+
+**Runs I started** (all foreground, entered in RUNS.md, all exited; no processes, temp dirs or typings link left):
+- HEAD-site build plus the row-38 failure run
+- before/after timing of the integration file at both stages and under settrace
+- npm lint, typecheck, lint:css, lint:html
+- `lint-ceilings.test.js` (`unshare -n`)
+- the staged-page lint and its bites (`/tmp`)
+- the sink probes
+- mypy ×3
+- my pytest files and the pre-commit set, one file at a time
+
+### What you need to run
+- The whole `tests_scripts/` tier.
+- `npm run lint:html:built` (it writes `build/staged_html`, which is yours).
+- `scripts/test.sh` at both stages, and the twin real-website test after the rebuild.
+- `lint-ceilings` at the final, the cross-browser smoke (two connections with the inlined icon), and `npm test`, after wave 2.
+
+### Silent-failure scan (final files)
+- **Closed here:**
+  - Contrast is now pinned by a test (it used to depend on someone noticing).
+  - The sink rule bites in both blocks.
+  - The bundle checks are derived from the banner, so a new module can no longer go unchecked.
+- **Inherently safe:**
+  - The inlined icon adds no connection (connection ceiling mode).
+  - The CSS cues for an unavailable source, a module without data and a saturated counter only style text that T writes.
+- **New, low priority:**
+  - Neutral on `--color-neutral-bg` fails AA (4.16 in light), but no rule draws it today.
+  - The built-page lint does not catch unknown attributes. That is a limit of html-validate's preset, worth knowing at U28 when `lint:html:built` is wired into CI.
+- **Interim, class 7:** banners, drawer and count colours wait on wave-2 attribute writers (rows 21.14, 21.19–21.21 and S's nav). The sink rule's configuration is pinned only once C's layering guard lands (row 42).
+- **Already recorded:** stale stage directories under `build/staged_html` (U27/U28).
+- **Not touched by my files:** a hidden tab, a section switch, reboot/reflash, a stalled body read, a failing-GET episode, the PUT result shapes, a second client, a stopped page, the mock's injected failures, a raising `ResetErrors` source.

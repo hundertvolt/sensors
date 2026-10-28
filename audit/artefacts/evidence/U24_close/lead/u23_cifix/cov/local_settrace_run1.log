@@ -1,0 +1,77 @@
+18:26:09 PASS test_the_notification_window_spanning_midnight_flashes_red
+18:26:26 PASS test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led
+18:26:33 PASS test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chunk
+18:26:35 PASS test_every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly
+18:26:35 PASS test_sgp40_reading_before_scd30_has_measured_yet_logs_no_bogus_error
+18:26:37 PASS test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task_list
+18:26:44 PASS test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanly_to_the_last_flushed_state
+18:26:45 UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+18:26:45 Traceback (most recent call last):
+18:26:45   File "asyncio/core.py", line 1, in run_until_complete
+18:26:45   File "src/asy_system_service.py", line 468, in _status_loop
+18:26:45   File "tests/test_digital_twin_sensortask_integration.py", line 717, in read
+18:26:45 RuntimeError: injected status fault
+18:26:46 UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+18:26:46 Traceback (most recent call last):
+18:26:46   File "asyncio/core.py", line 1, in run_until_complete
+18:26:46   File "src/asy_system_service.py", line 468, in _status_loop
+18:26:46   File "tests/test_digital_twin_sensortask_integration.py", line 717, in read
+18:26:46 RuntimeError: injected status fault
+18:26:46 UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+18:26:46 Traceback (most recent call last):
+18:26:46   File "asyncio/core.py", line 1, in run_until_complete
+18:26:46   File "src/asy_system_service.py", line 468, in _status_loop
+18:26:46   File "tests/test_digital_twin_sensortask_integration.py", line 717, in read
+18:26:46 RuntimeError: injected status fault
+18:26:47 UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+18:26:47 Traceback (most recent call last):
+18:26:47   File "asyncio/core.py", line 1, in run_until_complete
+18:26:47   File "src/asy_system_service.py", line 468, in _status_loop
+18:26:47   File "tests/test_digital_twin_sensortask_integration.py", line 717, in read
+18:26:47 RuntimeError: injected status fault
+18:26:48 UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+18:26:48 Traceback (most recent call last):
+18:26:48   File "asyncio/core.py", line 1, in run_until_complete
+18:26:48   File "src/asy_system_service.py", line 468, in _status_loop
+18:26:48   File "tests/test_digital_twin_sensortask_integration.py", line 717, in read
+18:26:48 RuntimeError: injected status fault
+18:26:49 UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+18:26:49 Traceback (most recent call last):
+18:26:49   File "asyncio/core.py", line 1, in run_until_complete
+18:26:49   File "src/asy_system_service.py", line 468, in _status_loop
+18:26:49   File "tests/test_digital_twin_sensortask_integration.py", line 717, in read
+18:26:49 RuntimeError: injected status fault
+18:26:49 UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+18:26:49 Traceback (most recent call last):
+18:26:49   File "asyncio/core.py", line 1, in run_until_complete
+18:26:49   File "src/asy_system_service.py", line 468, in _status_loop
+18:26:49   File "tests/test_digital_twin_sensortask_integration.py", line 717, in read
+18:26:49 RuntimeError: injected status fault
+18:26:50 UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+18:26:50 Traceback (most recent call last):
+18:26:50   File "asyncio/core.py", line 1, in run_until_complete
+18:26:50   File "src/asy_system_service.py", line 468, in _status_loop
+18:26:50   File "tests/test_digital_twin_sensortask_integration.py", line 717, in read
+18:26:50 RuntimeError: injected status fault
+18:26:51 UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+18:26:51 Traceback (most recent call last):
+18:26:51   File "asyncio/core.py", line 1, in run_until_complete
+18:26:51   File "src/asy_system_service.py", line 468, in _status_loop
+18:26:51   File "tests/test_digital_twin_sensortask_integration.py", line 717, in read
+18:26:51 RuntimeError: injected status fault
+18:26:52 UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+18:26:52 Traceback (most recent call last):
+18:26:52   File "asyncio/core.py", line 1, in run_until_complete
+18:26:52   File "src/asy_system_service.py", line 468, in _status_loop
+18:26:52   File "tests/test_digital_twin_sensortask_integration.py", line 717, in read
+18:26:52 RuntimeError: injected status fault
+18:26:52 PASS test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0
+18:26:54 PASS test_put_round_trips_through_a_real_twin_backed_driver_over_real_http
+18:26:56 PASS test_sensors_put_round_trips_a_real_scd30_field_over_real_http
+18:26:57 PASS test_static_site_is_served_over_real_http
+18:27:02 PASS test_put_pause_time_round_trips_and_counts_down_over_real_http
+18:27:12 PASS test_watchdog_is_never_starved_while_every_real_task_runs_concurrently
+18:27:14 PASS test_mempause_over_real_http_reaches_the_real_fram_manager_and_unpauses
+18:27:16 PASS test_reset_errors_over_real_http_is_not_undone_by_a_fram_loggers_later_setup
+18:27:16 15/15 passed, 0 failed, 0 skipped
+exit 0 wall 68.427030107 s

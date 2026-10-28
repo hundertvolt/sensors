@@ -1,0 +1,262 @@
+........................................................................ [  7%]
+........................................................................ [ 14%]
+........................................................................ [ 21%]
+........................................................................ [ 28%]
+........................................................................ [ 35%]
+...............................................................FFFF..... [ 42%]
+........................................................................ [ 49%]
+........................................................................ [ 56%]
+........................................................................ [ 63%]
+............................................F.F......................... [ 70%]
+........................................................................ [ 78%]
+..........................F............................................. [ 85%]
+........................................................................ [ 92%]
+........................................................................ [ 99%]
+.......                                                                  [100%]
+=================================== FAILURES ===================================
+_________ test_every_code_list_is_ascending_and_comma_space_separated __________
+
+    def test_every_code_list_is_ascending_and_comma_space_separated() -> None:
+>       assert not _of("order"), "\n".join(_of("order"))
+E       AssertionError: digital_twin/run_device_script.py:78: type: ignore codes 'misc, assignment' - expected 'assignment, misc' (ascending, comma-space separated)
+E         tests/_boot_contiguity_probe.py:64: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/_boot_contiguity_probe.py:65: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/_boot_contiguity_probe.py:68: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/_sensortask_scenarios.py:532: type: ignore codes 'valid-type,misc' - expected 'misc, valid-type' (ascending, comma-space separated)
+E         tests/machine.py:530: type: ignore codes 'index,arg-type' - expected 'arg-type, index' (ascending, comma-space separated)
+E         tests/test_asy_captive_dns.py:1195: type: ignore codes 'assignment,misc' - expected 'assignment, misc' (ascending, comma-space separated)
+E         tests/test_asy_config_manager.py:1316: type: ignore codes 'list-item, comparison-overlap' - expected 'comparison-overlap, list-item' (ascending, comma-space separated)
+E         tests/test_asy_fram_driver.py:1209: type: ignore codes 'method-assign,assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_fram_driver.py:1758: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_fram_driver.py:1787: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_i2c_driver.py:1113: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_isl29125_driver.py:1054: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_isl29125_driver.py:1316: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_isl29125_driver.py:2079: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_isl29125_driver.py:2087: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_isl29125_driver.py:2155: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_print_log.py:516: type: ignore codes 'assignment,misc' - expected 'assignment, misc' (ascending, comma-space separated)
+E         tests/test_asy_print_log.py:533: type: ignore codes 'assignment,misc' - expected 'assignment, misc' (ascending, comma-space separated)
+E         tests/test_asy_scd30_driver.py:2072: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_sgp40_driver.py:1378: type: ignore codes 'method-assign,assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_uart_comm.py:138: type: ignore codes 'assignment,arg-type' - expected 'arg-type, assignment' (ascending, comma-space separated)
+E         tests/test_asy_uart_comm.py:168: type: ignore codes 'assignment,arg-type' - expected 'arg-type, assignment' (ascending, comma-space separated)
+E         tests/test_asy_uart_comm.py:194: type: ignore codes 'assignment,arg-type' - expected 'arg-type, assignment' (ascending, comma-space separated)
+E         tests/test_asy_uart_comm.py:205: type: ignore codes 'assignment,arg-type' - expected 'arg-type, assignment' (ascending, comma-space separated)
+E         tests/test_asy_uart_comm.py:231: type: ignore codes 'assignment,arg-type' - expected 'arg-type, assignment' (ascending, comma-space separated)
+E         tests/test_asy_uart_comm.py:242: type: ignore codes 'assignment,arg-type' - expected 'arg-type, assignment' (ascending, comma-space separated)
+E         tests/test_asy_uart_comm.py:246: type: ignore codes 'assignment,arg-type' - expected 'arg-type, assignment' (ascending, comma-space separated)
+E         tests/test_asy_uart_comm.py:254: type: ignore codes 'assignment,arg-type' - expected 'arg-type, assignment' (ascending, comma-space separated)
+E         tests/test_asy_uart_comm.py:279: type: ignore codes 'assignment,arg-type' - expected 'arg-type, assignment' (ascending, comma-space separated)
+E         tests/test_asy_uart_comm.py:290: type: ignore codes 'assignment,arg-type' - expected 'arg-type, assignment' (ascending, comma-space separated)
+E         tests/test_asy_uart_comm.py:296: type: ignore codes 'assignment,arg-type' - expected 'arg-type, assignment' (ascending, comma-space separated)
+E         tests/test_asy_uart_comm.py:336: type: ignore codes 'assignment,arg-type' - expected 'arg-type, assignment' (ascending, comma-space separated)
+E         tests/test_asy_uart_comm.py:401: type: ignore codes 'assignment,arg-type' - expected 'arg-type, assignment' (ascending, comma-space separated)
+E         tests/test_asy_uart_comm.py:612: type: ignore codes 'assignment,arg-type' - expected 'arg-type, assignment' (ascending, comma-space separated)
+E         tests/test_asy_uart_comm.py:871: type: ignore codes 'method-assign,assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_uart_comm.py:2600: type: ignore codes 'assignment,arg-type' - expected 'arg-type, assignment' (ascending, comma-space separated)
+E         tests/test_asy_uart_comm.py:3152: type: ignore codes 'assignment,arg-type' - expected 'arg-type, assignment' (ascending, comma-space separated)
+E         tests/test_asy_uart_driver.py:2394: type: ignore codes 'assignment,misc' - expected 'assignment, misc' (ascending, comma-space separated)
+E         tests/test_asy_uart_driver.py:2436: type: ignore codes 'assignment,misc' - expected 'assignment, misc' (ascending, comma-space separated)
+E         tests/test_asy_webserver_service.py:2555: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_webserver_service.py:2570: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_webserver_service.py:2581: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_webserver_service.py:4119: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_wifi_service.py:274: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_wifi_service.py:2504: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_wifi_service.py:2756: type: ignore codes 'misc, assignment' - expected 'assignment, misc' (ascending, comma-space separated)
+E         tests/test_asy_wifi_service.py:2990: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_wifi_service.py:3812: type: ignore codes 'misc, assignment' - expected 'assignment, misc' (ascending, comma-space separated)
+E         tests/test_asy_wifi_service.py:4046: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_wifi_service.py:4104: type: ignore codes 'misc, assignment' - expected 'assignment, misc' (ascending, comma-space separated)
+E         tests/test_asy_wifi_service.py:4137: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_wifi_service.py:4646: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_wifi_service.py:4671: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_wifi_service.py:4696: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_wifi_service.py:4724: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_asy_wifi_service.py:4987: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests/test_digital_twin_fram.py:462: type: ignore codes 'attr-defined,assignment' - expected 'assignment, attr-defined' (ascending, comma-space separated)
+E         tests/test_digital_twin_poll_prewarm.py:74: type: ignore codes 'attr-defined, assignment' - expected 'assignment, attr-defined' (ascending, comma-space separated)
+E         tests/test_digital_twin_run_generic_integration.py:733: type: ignore codes 'attr-defined, assignment' - expected 'assignment, attr-defined' (ascending, comma-space separated)
+E         tests/test_digital_twin_scd30.py:212: type: ignore codes 'arg-type,return-value' - expected 'arg-type, return-value' (ascending, comma-space separated)
+E         tests/test_digital_twin_sensortask_integration.py:331: type: ignore codes 'attr-defined, assignment' - expected 'assignment, attr-defined' (ascending, comma-space separated)
+E         tests/test_digital_twin_sensortask_integration.py:475: type: ignore codes 'attr-defined, assignment' - expected 'assignment, attr-defined' (ascending, comma-space separated)
+E         tests/test_digital_twin_uart_link.py:514: type: ignore codes 'attr-defined, assignment' - expected 'assignment, attr-defined' (ascending, comma-space separated)
+E         tests/test_digital_twin_unix_port_unretrieved_report.py:65: type: ignore codes 'attr-defined, assignment' - expected 'assignment, attr-defined' (ascending, comma-space separated)
+E         tests/test_digital_twin_wifi_modes.py:147: type: ignore codes 'attr-defined, assignment' - expected 'assignment, attr-defined' (ascending, comma-space separated)
+E         tests/test_fakes.py:284: type: ignore codes 'misc, assignment' - expected 'assignment, misc' (ascending, comma-space separated)
+E         tests_hardware/device_scripts/sgp40_sample_cadence.py:77: type: ignore codes 'method-assign,assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E         tests_hardware/device_scripts/system_command_hang.py:68: type: ignore codes 'method-assign, assignment' - expected 'assignment, method-assign' (ascending, comma-space separated)
+E       assert not ["digital_twin/run_device_script.py:78: type: ignore codes 'misc, assignment' - expected 'assignment, misc' (ascending...hine.py:530: type: ignore codes 'index,arg-type' - expected 'arg-type, index' (ascending, comma-space separated)", ...]
+E        +  where ["digital_twin/run_device_script.py:78: type: ignore codes 'misc, assignment' - expected 'assignment, misc' (ascending...hine.py:530: type: ignore codes 'index,arg-type' - expected 'arg-type, index' (ascending, comma-space separated)", ...] = _of('order')
+
+tests_scripts/test_suppression_form.py:148: AssertionError
+___________________ test_every_inline_noqa_states_its_reason ___________________
+
+    def test_every_inline_noqa_states_its_reason() -> None:
+>       assert not _of("reason"), "\n".join(_of("reason"))
+E       AssertionError: digital_twin/_http_client.py:103: '# noqa: B904' - expected `# noqa: CODES - <why the code stays>`
+E         digital_twin/_http_client.py:127: '# noqa: B904' - expected `# noqa: CODES - <why the code stays>`
+E         src/asy_api_response.py:27: '# noqa: PYI046  # asy_webserver_service.py imports it for its routes' - expected `# noqa: CODES - <why the code stays>`
+E         tests/_coverage_runner.py:112: '# noqa: S102' - expected `# noqa: CODES - <why the code stays>`
+E         tests/_threshold_runner.py:20: '# noqa: S102' - expected `# noqa: CODES - <why the code stays>`
+E         tests/_udp_port_redirect.py:18: '# noqa: N801  # a with-block helper, named like contextlib.redirect_stdout' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_asy_bmp3xx_driver.py:1763: "# noqa: FBT001, FBT002  # machine.I2C's own positional stop" - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_asy_bmp3xx_driver.py:1994: "# noqa: FBT001, FBT002  # machine.I2C's own positional stop" - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_asy_i2c_driver.py:583: "# noqa: FBT001, FBT002  # machine.I2C's own positional stop" - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_asy_i2c_driver.py:1205: "# noqa: FBT001, FBT002  # machine.I2C's own positional stop" - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_asy_i2c_driver.py:1231: "# noqa: FBT001, FBT002  # machine.I2C's own positional stop" - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_asy_i2c_driver.py:1459: "# noqa: A002  # machine.Pin's own parameter name" - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_asy_isl29125_driver.py:165: "# noqa: FBT001, FBT002  # machine.I2C's own positional stop" - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_asy_isl29125_driver.py:183: '# noqa: B905' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_asy_isl29125_driver.py:2401: "# noqa: FBT001, FBT002  # machine.I2C's own positional stop" - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_asy_isl29125_driver.py:2422: "# noqa: FBT001, FBT002  # machine.I2C's own positional stop" - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_asy_isl29125_driver.py:2541: "# noqa: FBT001, FBT002  # machine.I2C's own positional stop" - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_asy_ntp_client.py:261: '# noqa: E731' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_asy_ntp_client.py:263: '# noqa: E731' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_asy_sgp40_driver.py:295: "# noqa: FBT001, FBT002  # machine.I2C's own positional stop" - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_bus_hazard_multi_device.py:404: "# noqa: FBT001, FBT002  # machine.I2C's own positional stop" - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_isl29125_autorange.py:110: '# noqa: B905' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_ntp.py:22: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_ntp.py:23: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_ntp.py:24: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_ntp.py:25: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_ntp.py:26: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_ntp.py:27: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_ntp.py:28: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_ntp.py:29: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_ntp.py:30: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_ntp.py:31: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_ntp.py:32: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_ntp.py:33: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_ntp.py:34: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_ntp.py:35: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_ntp.py:36: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_ntp.py:37: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_ntp.py:38: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_ntp.py:39: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_ntp.py:40: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_ntp.py:42: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_ntp.py:43: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_ntp.py:44: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_run_generic_integration.py:40: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_run_generic_integration.py:41: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_run_generic_integration.py:42: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_run_generic_integration.py:43: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_run_generic_integration.py:44: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_run_generic_integration.py:45: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_run_generic_integration.py:46: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_run_generic_integration.py:47: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_run_generic_integration.py:48: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_run_generic_integration.py:49: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_run_generic_integration.py:50: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_run_generic_integration.py:51: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_run_generic_integration.py:52: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_run_generic_integration.py:53: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_run_generic_integration.py:54: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_run_generic_integration.py:56: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_run_generic_integration.py:57: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_uart_link.py:25: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_uart_link.py:26: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_uart_link.py:27: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_uart_link.py:28: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_uart_link.py:29: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_uart_link.py:30: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_uart_link.py:31: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_uart_link.py:32: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_uart_link.py:33: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_uart_link.py:34: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_uart_link.py:35: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_uart_link.py:36: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_uart_link.py:37: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_uart_link.py:38: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_uart_link.py:40: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_uart_link.py:41: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_uart_link.py:42: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_uart_link.py:43: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_uart_link.py:44: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_uart_link.py:45: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_uart_link.py:710: '# noqa: PERF401' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_wifi_modes.py:24: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_wifi_modes.py:25: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_wifi_modes.py:26: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_wifi_modes.py:27: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_wifi_modes.py:28: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_wifi_modes.py:29: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_wifi_modes.py:30: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_wifi_modes.py:31: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_digital_twin_wifi_modes.py:33: '# noqa: E402' - expected `# noqa: CODES - <why the code stays>`
+E         tests/test_setter_microdot_integration.py:145: "# noqa: FBT001, FBT002  # machine.I2C's own positional stop" - expected `# noqa: CODES - <why the code stays>`
+E       assert not ["digital_twin/_http_client.py:103: '# noqa: B904' - expected `# noqa: CODES - <why the code stays>`", "digital_twin/_... # a with-block helper, named like contextlib.redirect_stdout' - expected `# noqa: CODES - <why the code stays>`", ...]
+E        +  where ["digital_twin/_http_client.py:103: '# noqa: B904' - expected `# noqa: CODES - <why the code stays>`", "digital_twin/_... # a with-block helper, named like contextlib.redirect_stdout' - expected `# noqa: CODES - <why the code stays>`", ...] = _of('reason')
+
+tests_scripts/test_suppression_form.py:152: AssertionError
+___________________________ test_src_carries_no_noqa ___________________________
+
+    def test_src_carries_no_noqa() -> None:
+>       assert not _of("src-noqa"), "\n".join(_of("src-noqa"))
+E       AssertionError: src/asy_api_response.py:27: '# noqa: PYI046  # asy_webserver_service.py imports it for its routes' - src/ takes no inline noqa; its exemption lives in pyproject.toml
+E         src/asy_scd30_driver.py:291: '# noqa: B905 - MicroPython zip() rejects strict=' - src/ takes no inline noqa; its exemption lives in pyproject.toml
+E         src/asy_webserver_service.py:1032: '# noqa: B905 - MicroPython zip() rejects strict=, ErrEntry keeps both lists in step' - src/ takes no inline noqa; its exemption lives in pyproject.toml
+E         src/asy_wifi_service.py:374: '# noqa: B905 - MicroPython zip() rejects strict=' - src/ takes no inline noqa; its exemption lives in pyproject.toml
+E         src/asy_wifi_service.py:651: '# noqa: B905 - MicroPython zip() rejects strict=' - src/ takes no inline noqa; its exemption lives in pyproject.toml
+E       assert not ["src/asy_api_response.py:27: '# noqa: PYI046  # asy_webserver_service.py imports it for its routes' - src/ takes no i...'# noqa: B905 - MicroPython zip() rejects strict=' - src/ takes no inline noqa; its exemption lives in pyproject.toml"]
+E        +  where ["src/asy_api_response.py:27: '# noqa: PYI046  # asy_webserver_service.py imports it for its routes' - src/ takes no i...'# noqa: B905 - MicroPython zip() rejects strict=' - src/ takes no inline noqa; its exemption lives in pyproject.toml"] = _of('src-noqa')
+
+tests_scripts/test_suppression_form.py:156: AssertionError
+____ test_every_src_type_ignore_states_its_reason_beside_or_directly_above _____
+
+    def test_every_src_type_ignore_states_its_reason_beside_or_directly_above() -> None:
+>       assert not _of("src-reason"), "\n".join(_of("src-reason"))
+E       AssertionError: src/asy_scd30_driver.py:276: '# type: ignore[arg-type]' - src/ gives each its reason: a trailing `  # <reason>` or a comment line directly above
+E         src/asy_scd30_driver.py:295: '# type: ignore[arg-type]' - src/ gives each its reason: a trailing `  # <reason>` or a comment line directly above
+E         src/asy_scd30_driver.py:298: '# type: ignore[assignment]' - src/ gives each its reason: a trailing `  # <reason>` or a comment line directly above
+E         src/asy_uart_comm.py:411: '# type: ignore[misc]' - src/ gives each its reason: a trailing `  # <reason>` or a comment line directly above
+E         src/asy_uart_comm.py:632: '# type: ignore[arg-type]' - src/ gives each its reason: a trailing `  # <reason>` or a comment line directly above
+E         src/asy_uart_comm.py:634: '# type: ignore[index]' - src/ gives each its reason: a trailing `  # <reason>` or a comment line directly above
+E         src/asy_uart_comm.py:635: '# type: ignore[index]' - src/ gives each its reason: a trailing `  # <reason>` or a comment line directly above
+E       assert not ["src/asy_scd30_driver.py:276: '# type: ignore[arg-type]' - src/ gives each its reason: a trailing `  # <reason>` or a...'# type: ignore[index]' - src/ gives each its reason: a trailing `  # <reason>` or a comment line directly above", ...]
+E        +  where ["src/asy_scd30_driver.py:276: '# type: ignore[arg-type]' - src/ gives each its reason: a trailing `  # <reason>` or a...'# type: ignore[index]' - src/ gives each its reason: a trailing `  # <reason>` or a comment line directly above", ...] = _of('src-reason')
+
+tests_scripts/test_suppression_form.py:160: AssertionError
+____________________ test_every_dev_tool_is_pinned_exactly _____________________
+
+    def test_every_dev_tool_is_pinned_exactly() -> None:
+        loose = [entry for entry in _dev_group() if _PIN.match(entry) is None]
+>       assert not loose, f"pyproject.toml's dev group must pin every tool as name==version, so no `uv sync` brings a rule or check nobody chose: {loose}"
+E       AssertionError: pyproject.toml's dev group must pin every tool as name==version, so no `uv sync` brings a rule or check nobody chose: ['pytest', 'mpremote']
+E       assert not ['pytest', 'mpremote']
+
+tests_scripts/test_tool_pins.py:38: AssertionError
+______________ test_uv_itself_is_pinned_exactly_and_nowhere_else _______________
+
+    def test_uv_itself_is_pinned_exactly_and_nowhere_else() -> None:
+        with (REPO_ROOT / "pyproject.toml").open("rb") as f:
+            required = tomllib.load(f).get("tool", {}).get("uv", {}).get("required-version")
+>       assert isinstance(required, str), "pyproject.toml's [tool.uv] has no required-version: any uv may sync this tree"
+E       AssertionError: pyproject.toml's [tool.uv] has no required-version: any uv may sync this tree
+E       assert False
+E        +  where False = isinstance(None, str)
+
+tests_scripts/test_tool_pins.py:62: AssertionError
+________________ test_every_entrys_hashes_are_the_current_files ________________
+
+recorder = <module 'record_twin_instrument_runs' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28r/scripts/record_twin_instrument_runs.py'>
+record = {'tests_hardware/bench/test_boot_order_and_triggers.py': {'api_sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b9...2026-10-15T11:03:07Z', 'gc_threshold': -1, 'reason': 'needs the bench bridge (network, WLAN role-reversal)', ...}, ...}
+
+    def test_every_entrys_hashes_are_the_current_files(recorder: ModuleType, record: "dict[str, dict[str, object]]") -> None:
+        stale = [f"{key}: {name}" for key, entry in sorted(record.items()) if (recorder.REPO_ROOT / key).is_file() for name, digest in recorder.entry_hashes(recorder.REPO_ROOT / key).items() if entry.get(name) != digest]
+>       assert not stale, f"changed since their twin run was recorded - re-run scripts/record_twin_instrument_runs.py: {stale}"
+E       AssertionError: changed since their twin run was recorded - re-run scripts/record_twin_instrument_runs.py: ['tests_hardware/bench/test_boot_order_and_triggers.py: runner_sha256', 'tests_hardware/bench/test_bus_concurrency_under_api_load.py: runner_sha256', 'tests_hardware/bench/test_end_to_end_timing.py: runner_sha256', 'tests_hardware/bench/test_heap_under_connection_ceiling.py: runner_sha256', 'tests_hardware/bench/test_hotspot_role_reversal.py: sha256', 'tests_hardware/bench/test_hotspot_role_reversal.py: runner_sha256', 'tests_hardware/bench/test_memory_stress_bench.py: runner_sha256', 'tests_hardware/bench/test_modlwip_send_stall.py: runner_sha256', 'tests_hardware/bench/test_network_resilience.py: runner_sha256', 'tests_hardware/bench/test_reset_reasons.py: sha256', 'tests_hardware/bench/test_reset_reasons.py: runner_sha256', 'tests_hardware/bench/test_rest_endpoints_over_sta.py: runner_sha256', 'tests_hardware/bench/test_scd30_frc_readiness_baseline.py: runner_sha256', 'tests_hardware/bench/test_sensor_config_push_over_real_hardware.py: runner_sha256', 'tests_hardware/bench/test_serving_heap_at_default_gc.py: runner_sha256', 'tests_hardware/bench/test_system_commands_over_rest.py: sha256', 'tests_hardware/bench/test_system_commands_over_rest.py: runner_sha256', 'tests_hardware/bench/test_ticks_ms_rollover.py: runner_sha256', 'tests_hardware/bench/test_uart_link_crc16.py: sha256', 'tests_hardware/bench/test_uart_link_crc16.py: runner_sha256', 'tests_hardware/bench/test_uart_link_under_api_load.py: runner_sha256', 'tests_hardware/bench/test_wifi_networking.py: runner_sha256', 'tests_hardware/bench/test_wifi_radio_reinit.py: runner_sha256', 'tests_hardware/device_scripts/allocation_need_per_source.py: runner_sha256', 'tests_hardware/device_scripts/bmp3xx_alone_survives_a_general_call.py: runner_sha256', 'tests_hardware/device_scripts/bmp3xx_conformance_probe.py: runner_sha256', 'tests_hardware/device_scripts/bmp3xx_plausibility_read.py: runner_sha256', 'tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py: runner_sha256', 'tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py: runner_sha256', 'tests_hardware/device_scripts/bus_concurrency_isl29125_write_vs_siblings.py: runner_sha256', 'tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py: runner_sha256', 'tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py: runner_sha256', 'tests_hardware/device_scripts/bus_deinit_is_a_noop_on_real_hardware.py: runner_sha256', 'tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py: runner_sha256', 'tests_hardware/device_scripts/c_stack_budget.py: runner_sha256', 'tests_hardware/device_scripts/config_files_dump.py: runner_sha256', 'tests_hardware/device_scripts/config_files_restore.py: runner_sha256', 'tests_hardware/device_scripts/config_float_round_trip.py: runner_sha256', 'tests_hardware/device_scripts/float_boundary_2pow24.py: runner_sha256', 'tests_hardware/device_scripts/fram_busy_status_lockout.py: runner_sha256', 'tests_hardware/device_scripts/fram_capacity_after_full_system_build.py: runner_sha256', 'tests_hardware/device_scripts/fram_command_hold_timing.py: runner_sha256', 'tests_hardware/device_scripts/fram_conformance_probe.py: runner_sha256', 'tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py: runner_sha256', 'tests_hardware/device_scripts/fram_error_log_reset_during_boot_window.py: runner_sha256', 'tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py: runner_sha256', 'tests_hardware/device_scripts/fram_error_log_reset_race_verify.py: runner_sha256', 'tests_hardware/device_scripts/fram_error_log_roundtrip.py: runner_sha256', 'tests_hardware/device_scripts/fram_manager_roundtrip.py: runner_sha256', 'tests_hardware/device_scripts/fram_pause_unpause_and_gating.py: runner_sha256', 'tests_hardware/device_scripts/fram_raw_dump.py: runner_sha256', 'tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py: runner_sha256', 'tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py: runner_sha256', 'tests_hardware/device_scripts/fram_same_device_rw_concurrency.py: runner_sha256', 'tests_hardware/device_scripts/fram_write_protect_roundtrip.py: runner_sha256', 'tests_hardware/device_scripts/heap_headroom_after_full_system_build.py: runner_sha256', 'tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py: runner_sha256', 'tests_hardware/device_scripts/heap_under_connection_ceiling.py: runner_sha256', 'tests_hardware/device_scripts/i2c_held_sda_recovery.py: runner_sha256', 'tests_hardware/device_scripts/isl29125_cross_device_concurrency.py: runner_sha256', 'tests_hardware/device_scripts/isl29125_lighting_scenarios.py: runner_sha256', 'tests_hardware/device_scripts/isl29125_mechanism_envelope.py: runner_sha256', 'tests_hardware/device_scripts/isl29125_mock_conformance_probe.py: runner_sha256', 'tests_hardware/device_scripts/isl29125_plausibility_read.py: runner_sha256', 'tests_hardware/device_scripts/isl29125_real_irq_edge.py: runner_sha256', 'tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py: runner_sha256', 'tests_hardware/device_scripts/loop_lag_under_combined_load.py: runner_sha256', 'tests_hardware/device_scripts/loop_stretch_timing.py: runner_sha256', 'tests_hardware/device_scripts/reboot_fallback_starves_the_watchdog.py: runner_sha256', 'tests_hardware/device_scripts/reboot_persist_read.py: runner_sha256', 'tests_hardware/device_scripts/reboot_persist_write.py: runner_sha256', 'tests_hardware/device_scripts/reset_code_boot_phase_hang.py: runner_sha256', 'tests_hardware/device_scripts/reset_code_command_incomplete.py: runner_sha256', 'tests_hardware/device_scripts/reset_code_invalid_record.py: runner_sha256', 'tests_hardware/device_scripts/reset_code_stack_exhausted.py: runner_sha256', 'tests_hardware/device_scripts/scd30_argument_reaction.py: runner_sha256', 'tests_hardware/device_scripts/scd30_conformance_probe.py: runner_sha256', 'tests_hardware/device_scripts/scd30_data_ready_wait.py: runner_sha256', 'tests_hardware/device_scripts/scd30_measurement_interval_read.py: runner_sha256', 'tests_hardware/device_scripts/scd30_plausibility_read.py: runner_sha256', 'tests_hardware/device_scripts/scd30_real_irq_edge.py: runner_sha256', 'tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py: runner_sha256', 'tests_hardware/device_scripts/scd30_start_continuous_measurement.py: runner_sha256', 'tests_hardware/device_scripts/scheduler_saturation_drop.py: runner_sha256', 'tests_hardware/device_scripts/serving_at_default_gc.py: runner_sha256', 'tests_hardware/device_scripts/sgp40_conformance_probe.py: runner_sha256', 'tests_hardware/device_scripts/sgp40_fram_backup_restore.py: runner_sha256', 'tests_hardware/device_scripts/sgp40_general_call_reset_hazard.py: runner_sha256', 'tests_hardware/device_scripts/sgp40_same_device_concurrent_sessions.py: runner_sha256', 'tests_hardware/device_scripts/sgp40_sample_cadence.py: runner_sha256', 'tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py: runner_sha256', 'tests_hardware/device_scripts/system_command_config_reset.py: runner_sha256', 'tests_hardware/device_scripts/system_command_fram_erase.py: runner_sha256', 'tests_hardware/device_scripts/system_command_hang.py: runner_sha256', 'tests_hardware/device_scripts/system_command_reboot.py: runner_sha256', 'tests_hardware/device_scripts/system_debug_level_set_standard.py: runner_sha256', 'tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py: runner_sha256', 'tests_hardware/device_scripts/timer_alarm_pool_exhaustion.py: runner_sha256', 'tests_hardware/device_scripts/uart_comm_hazards.py: runner_sha256', 'tests_hardware/device_scripts/uart_crossover_exchange.py: runner_sha256', 'tests_hardware/device_scripts/uart_crossover_recovery.py: runner_sha256', 'tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py: runner_sha256', 'tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py: runner_sha256', 'tests_hardware/device_scripts/uart_idle_poll_rate.py: runner_sha256', 'tests_hardware/device_scripts/uart_link_echo_under_serving_load.py: runner_sha256', 'tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py: runner_sha256', 'tests_hardware/device_scripts/unretrieved_task_exception_handler.py: runner_sha256', 'tests_hardware/device_scripts/watchdog_starvation_reset.py: runner_sha256', 'tests_hardware/device_scripts/wifi_country_code_reaction.py: runner_sha256', 'tests_hardware/device_scripts/wifi_radio_reinit_recovery.py: runner_sha256', 'tests_hardware/flash/test_bus_concurrency.py: runner_sha256', 'tests_hardware/flash/test_bus_electrical_timing.py: runner_sha256', 'tests_hardware/flash/test_chip_conformance.py: runner_sha256', 'tests_hardware/flash/test_config_float_round_trip.py: runner_sha256', 'tests_hardware/flash/test_fram_storage.py: runner_sha256', 'tests_hardware/flash/test_heap_layout.py: runner_sha256', 'tests_hardware/flash/test_memory_stress.py: runner_sha256', 'tests_hardware/flash/test_reboot_persistence.py: runner_sha256', 'tests_hardware/flash/test_sensor_accuracy.py: runner_sha256', 'tests_hardware/flash/test_system_commands.py: sha256', 'tests_hardware/flash/test_system_commands.py: runner_sha256', 'tests_hardware/flash/test_task_supervisor.py: runner_sha256', 'tests_hardware/flash/test_toolchain_flash_boot.py: runner_sha256', 'tests_hardware/flash/test_uart_crossover.py: runner_sha256', 'tests_hardware/flash/test_unretrieved_task_exception_handler.py: runner_sha256', 'tests_hardware/flash/test_watchdog_starvation.py: runner_sha256']
+E       assert not ['tests_hardware/bench/test_boot_order_and_triggers.py: runner_sha256', 'tests_hardware/bench/test_bus_concurrency_und...bench/test_hotspot_role_reversal.py: sha256', 'tests_hardware/bench/test_hotspot_role_reversal.py: runner_sha256', ...]
+
+tests_scripts/test_twin_record.py:37: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_suppression_form.py::test_every_code_list_is_ascending_and_comma_space_separated
+FAILED tests_scripts/test_suppression_form.py::test_every_inline_noqa_states_its_reason
+FAILED tests_scripts/test_suppression_form.py::test_src_carries_no_noqa - Ass...
+FAILED tests_scripts/test_suppression_form.py::test_every_src_type_ignore_states_its_reason_beside_or_directly_above
+FAILED tests_scripts/test_tool_pins.py::test_every_dev_tool_is_pinned_exactly
+FAILED tests_scripts/test_tool_pins.py::test_uv_itself_is_pinned_exactly_and_nowhere_else
+FAILED tests_scripts/test_twin_record.py::test_every_entrys_hashes_are_the_current_files
+7 failed, 1008 passed in 175.52s (0:02:55)

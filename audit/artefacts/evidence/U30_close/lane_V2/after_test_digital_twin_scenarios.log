@@ -1,0 +1,45 @@
+.........................FF....................                          [100%]
+=================================== FAILURES ===================================
+___ test_every_boot_logs_at_error_level_from_its_build_and_its_stored_level ____
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v2/scripts/_digital_twin_scenarios.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11327/test_every_boot_logs_at_error_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fe6eb54fa10>
+
+    def test_every_boot_logs_at_error_level_from_its_build_and_its_stored_level(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Built at error level by the runner's flag and kept there by a stored DebugLevel planted before the spawn, so a
+        # caught allocation failure's line reaches the memory gate; the scenario's own arguments follow unchanged.
+        level = module_int_const(_REPO_ROOT / "src", "asy_print_log.py", "_LOG_ERR")
+        args, stored = _spawned_boot(harness, tmp_path, monkeypatch)
+>       assert args == ["--debug-level", str(level), "--test-flash-stall-max"], args
+E       AssertionError: ['--debug-level', '1', '--test-kbd-traceback', '--test-flash-stall-max']
+E       assert ['--debug-lev...sh-stall-max'] == ['--debug-lev...sh-stall-max']
+E         
+E         At index 2 diff: '--test-kbd-traceback' != '--test-flash-stall-max'
+E         Left contains one more item: '--test-flash-stall-max'
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_scenarios.py:315: AssertionError
+_______ test_a_stored_level_is_kept_and_a_boot_not_logged_plants_nothing _______
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v2/scripts/_digital_twin_scenarios.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11327/test_a_stored_level_is_kept_an0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fe6eb54e450>
+
+    def test_a_stored_level_is_kept_and_a_boot_not_logged_plants_nothing(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        config = tmp_path / "state_01" / "config"
+        config.mkdir(parents=True)
+        (config / "config_SYSTEM.cfg").write_text('{"DebugLevel": 4}', encoding="utf-8")  # an earlier boot's own
+        assert _spawned_boot(harness, tmp_path, monkeypatch)[1] == '{"DebugLevel": 4}'
+        args, stored = _spawned_boot(harness, tmp_path / "unlogged", monkeypatch, logged=False)
+>       assert (args, stored) == (["--test-flash-stall-max"], None)
+E       AssertionError: assert (['--test-kbd...l-max'], None) == (['--test-fla...l-max'], None)
+E         
+E         At index 0 diff: ['--test-kbd-traceback', '--test-flash-stall-max'] != ['--test-flash-stall-max']
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_scenarios.py:325: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_every_boot_logs_at_error_level_from_its_build_and_its_stored_level
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_a_stored_level_is_kept_and_a_boot_not_logged_plants_nothing
+2 failed, 45 passed in 0.94s

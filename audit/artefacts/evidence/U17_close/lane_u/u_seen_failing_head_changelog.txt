@@ -1,0 +1,100 @@
+no '## Constants the check reads' table with columns Name, Value, Class, Last entry
+no '## Class B' table with columns #, Change and Status (class B)
+CMD_SET: module value 4, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_BACKOFF_MAX_MULT: module value 5, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_BACKOFF_MULT: module value 2, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_CALLBACK_PAIR_LEN: module value 2, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_CHUNKS_MAX: module value 255, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_CMD_ACK: module value 1, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_CMD_GET: module value 2, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_CMD_ID_MAX: module value 255, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_DEFAULT_CHUNK_BYTES: module value 256, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_DEFAULT_MAX_TRANSFER_BYTES: module value 12192, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_DEFAULT_PAYLOAD_SIZE: module value 48, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_DEFAULT_TIMEOUT_MS: module value 1000, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_DIAG_RESYNC_STREAK: module value 2, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_DRAIN_BOUND_MULT: module value 4, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_FLASH_HOLD_MAX_MS: module value 2129, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_GATE_STEP_MS: module value 20, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_GC_PAUSE_WORST_MS: module value 21, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_HEADER_LEN: module value 5, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_MIN_CHUNKS: module value 2, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_MSG_CHUNKS: module value 3, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_MSG_CMD: module value 1, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_MSG_CUR_CHUNK: module value 4, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_MSG_PAYLOAD: module value 5, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_MSG_SIZE: module value 2, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_MSG_UID: module value 0, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_PAYLOAD_MAX: module value 255, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_PAYLOAD_MIN: module value 1, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_POLL_JITTER_MS: module value 5, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_POLL_WAIT_MAX_MS: module value 9, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_RESYNC_DEN: module value 2, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_RESYNC_NUM: module value 3, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_TICKS_HORIZON_MS: module value 536870911, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+_UID_MAX: module value 254, table value none - add a changelog entry naming the constant, then set its row's Value and Last entry
+A4: Status 'applied-python (no-change)' is not one of proposed, applied-python, recorded, reconciled
+A8: Status 'applied-python (invariant)' is not one of proposed, applied-python, recorded, reconciled
+A7: Status 'proposed, owner-decided, interim in force' is not one of proposed, applied-python, recorded, reconciled
+A7 follows A8: Class A rows run in ascending number order
+A11: Status 'proposed, design resolved' is not one of proposed, applied-python, recorded, reconciled
+A6: Status 'applied-python (constraint)' is not one of proposed, applied-python, recorded, reconciled
+A6 follows A13: Class A rows run in ascending number order
+B1: Status '' is not one of proposed, applied-python, recorded, reconciled
+B2: Status '' is not one of proposed, applied-python, recorded, reconciled
+B3: Status '' is not one of proposed, applied-python, recorded, reconciled
+B4: Status '' is not one of proposed, applied-python, recorded, reconciled
+B5: Status '' is not one of proposed, applied-python, recorded, reconciled
+B6: Status '' is not one of proposed, applied-python, recorded, reconciled
+B7: Status '' is not one of proposed, applied-python, recorded, reconciled
+B8: Status '' is not one of proposed, applied-python, recorded, reconciled
+B9: Status '' is not one of proposed, applied-python, recorded, reconciled
+B10: Status '' is not one of proposed, applied-python, recorded, reconciled
+B11: Status '' is not one of proposed, applied-python, recorded, reconciled
+B12: Status '' is not one of proposed, applied-python, recorded, reconciled
+B13: Status '' is not one of proposed, applied-python, recorded, reconciled
+B14: Status '' is not one of proposed, applied-python, recorded, reconciled
+B15: Status '' is not one of proposed, applied-python, recorded, reconciled
+B16: Status '' is not one of proposed, applied-python, recorded, reconciled
+B17: Status '' is not one of proposed, applied-python, recorded, reconciled
+B18: Status '' is not one of proposed, applied-python, recorded, reconciled
+B19: Status '' is not one of proposed, applied-python, recorded, reconciled
+B20: Status '' is not one of proposed, applied-python, recorded, reconciled
+B21: Status '' is not one of proposed, applied-python, recorded, reconciled
+B22: Status '' is not one of proposed, applied-python, recorded, reconciled
+B23: Status '' is not one of proposed, applied-python, recorded, reconciled
+B24: Status '' is not one of proposed, applied-python, recorded, reconciled
+B25: Status '' is not one of proposed, applied-python, recorded, reconciled
+B26: Status '' is not one of proposed, applied-python, recorded, reconciled
+B27: Status '' is not one of proposed, applied-python, recorded, reconciled
+B28: Status '' is not one of proposed, applied-python, recorded, reconciled
+B29: Status '' is not one of proposed, applied-python, recorded, reconciled
+B30: Status '' is not one of proposed, applied-python, recorded, reconciled
+B31: Status '' is not one of proposed, applied-python, recorded, reconciled
+B32: Status '' is not one of proposed, applied-python, recorded, reconciled
+B33: Status '' is not one of proposed, applied-python, recorded, reconciled
+B34: Status '' is not one of proposed, applied-python, recorded, reconciled
+B35: Status '' is not one of proposed, applied-python, recorded, reconciled
+B36: Status '' is not one of proposed, applied-python, recorded, reconciled
+B37: Status '' is not one of proposed, applied-python, recorded, reconciled
+B38: Status '' is not one of proposed, applied-python, recorded, reconciled
+B39: Status '' is not one of proposed, applied-python, recorded, reconciled
+B40: Status '' is not one of proposed, applied-python, recorded, reconciled
+B41: Status '' is not one of proposed, applied-python, recorded, reconciled
+B42: Status '' is not one of proposed, applied-python, recorded, reconciled
+B43: Status '' is not one of proposed, applied-python, recorded, reconciled
+B44: Status '' is not one of proposed, applied-python, recorded, reconciled
+B45: Status '' is not one of proposed, applied-python, recorded, reconciled
+B46: Status '' is not one of proposed, applied-python, recorded, reconciled
+B47: Status '' is not one of proposed, applied-python, recorded, reconciled
+B48: Status '' is not one of proposed, applied-python, recorded, reconciled
+B49: Status '' is not one of proposed, applied-python, recorded, reconciled
+B50: Status '' is not one of proposed, applied-python, recorded, reconciled
+B51: Status '' is not one of proposed, applied-python, recorded, reconciled
+B52: Status '' is not one of proposed, applied-python, recorded, reconciled
+B53: Status '' is not one of proposed, applied-python, recorded, reconciled
+B54: Status '' is not one of proposed, applied-python, recorded, reconciled
+B55: Status '' is not one of proposed, applied-python, recorded, reconciled
+B56: Status '' is not one of proposed, applied-python, recorded, reconciled
+B57: Status '' is not one of proposed, applied-python, recorded, reconciled
+B58: Status '' is not one of proposed, applied-python, recorded, reconciled

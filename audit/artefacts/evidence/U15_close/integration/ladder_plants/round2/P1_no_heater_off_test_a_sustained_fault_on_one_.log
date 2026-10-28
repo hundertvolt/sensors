@@ -1,0 +1,1 @@
+FAIL test_a_sustained_fault_on_one_twin_chip_climbs_to_the_bus_clear_and_recovers_once_cleared the participant rung (heater-off) did not run once before the bus clear: {'ErrType': ['N', 'N', 'W', 'E', 'E', 'E', 'E', 'E', 'E', 'W'], 'ErrCount': 8, 'ErrNum': [0, 0, 65, 11, 1, 11, 1, 11, 1, 15]}

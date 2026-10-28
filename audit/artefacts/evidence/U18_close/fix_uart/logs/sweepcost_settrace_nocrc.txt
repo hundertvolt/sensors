@@ -1,0 +1,10 @@
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_nocrc rep 0 PASS clean_awaits [13] last_k 13 max_ok_wait_vms 20 expired_waits 19 1458 ms
+SUMMARY test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_nocrc plant crc 0 1 / 1 passed 1458 ms
+test_cancelling_a_set_stream_at_every_await_leaves_both_ends_consistent_nocrc rep 0 PASS clean_awaits [11] last_k 12 max_ok_wait_vms 17 expired_waits 16 1195 ms
+SUMMARY test_cancelling_a_set_stream_at_every_await_leaves_both_ends_consistent_nocrc plant crc 0 1 / 1 passed 1195 ms
+test_cancelling_a_set_at_every_await_leaves_both_ends_consistent_nocrc rep 0 PASS clean_awaits [14] last_k 13 max_ok_wait_vms 17 expired_waits 17 1283 ms
+SUMMARY test_cancelling_a_set_at_every_await_leaves_both_ends_consistent_nocrc plant crc 0 1 / 1 passed 1283 ms
+test_cancelling_a_listener_at_every_await_leaves_it_restartable_nocrc rep 0 PASS clean_awaits [11] last_k 11 max_ok_wait_vms 20 expired_waits 18 1963 ms
+SUMMARY test_cancelling_a_listener_at_every_await_leaves_it_restartable_nocrc plant crc 0 1 / 1 passed 1963 ms
+test_clear_at_every_await_leaves_the_transaction_whole_or_failed_nocrc rep 0 PASS clean_awaits [14] last_k 12 max_ok_wait_vms 26 expired_waits 17 989 ms
+SUMMARY test_clear_at_every_await_leaves_the_transaction_whole_or_failed_nocrc plant crc 0 1 / 1 passed 989 ms

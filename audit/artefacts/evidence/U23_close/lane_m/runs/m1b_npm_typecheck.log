@@ -1,0 +1,5 @@
+
+> sensors-website@0.1.0 typecheck
+> tsc --noEmit && tsc --noEmit -p tsconfig.node.json
+
+tests_js/render.test.js(1051,9): error TS2322: Type '"partial-result"' is not assignable to type 'MockFailure | undefined'.

@@ -1,0 +1,299 @@
+........................................................................ [  1%]
+........................................................................ [  2%]
+..................................................................ssssss [  4%]
+........................................................................ [  5%]
+........................................................................ [  7%]
+........................................................................ [  8%]
+........................................................................ [ 10%]
+........................................................................ [ 11%]
+........................................................................ [ 13%]
+........................................................................ [ 14%]
+........................................................................ [ 16%]
+........................................................................ [ 17%]
+........................................................................ [ 19%]
+........................................................................ [ 20%]
+........................................................................ [ 22%]
+........................................................................ [ 23%]
+........................................................................ [ 25%]
+........................................................................ [ 26%]
+........................................................................ [ 28%]
+........................................................................ [ 29%]
+........................................................................ [ 31%]
+........................................................................ [ 32%]
+........................................................................ [ 34%]
+........................................................................ [ 35%]
+........................................................................ [ 37%]
+........................................................................ [ 38%]
+........................................................................ [ 40%]
+........................................................................ [ 41%]
+........................................................................ [ 43%]
+........................................................................ [ 44%]
+........................................................................ [ 46%]
+........................................................................ [ 47%]
+........................................................................ [ 49%]
+........................................................................ [ 50%]
+........................................................................ [ 52%]
+........................................................................ [ 53%]
+........................................................................ [ 55%]
+........................................................................ [ 56%]
+........................................................................ [ 58%]
+........................................................................ [ 59%]
+........................................................................ [ 61%]
+........................................................................ [ 62%]
+........................................................................ [ 63%]
+........................................................................ [ 65%]
+......................FFFFFFFF.......................................... [ 66%]
+........................................................................ [ 68%]
+........................................................................ [ 69%]
+........................................................................ [ 71%]
+........................................................................ [ 72%]
+........................................................................ [ 74%]
+........................................................................ [ 75%]
+........................................................................ [ 77%]
+........................................................................ [ 78%]
+........................................................................ [ 80%]
+........................................................................ [ 81%]
+..............F.F....................................................... [ 83%]
+........................................................................ [ 84%]
+........................................................................ [ 86%]
+........................................................................ [ 87%]
+........................................................................ [ 89%]
+........................................................................ [ 90%]
+........................................................................ [ 92%]
+........................................................................ [ 93%]
+........................................................................ [ 95%]
+.......FFFFFFFFFFFFFFFFFF.......................F....................... [ 96%]
+........................................................................ [ 98%]
+........................................................................ [ 99%]
+...............                                                          [100%]
+=================================== FAILURES ===================================
+E   AssertionError: assert ['twin sessio...e 15 s bound'] == []
+      
+      Left contains 3 more items, first extra item: 'twin session aborted: RuntimeError: digital twin subprocess exited early with code 1 before ever serving - see its output in the failures below'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_digital_twin_generated_boot.py:470: AssertionError: assert ['twin sessio...e 15 s bound'] == []
+E   AssertionError: assert ['twin sessio...e 15 s bound'] == []
+      
+      Left contains 3 more items, first extra item: 'twin session aborted: RuntimeError: digital twin subprocess exited early with code 1 before ever serving - see its output in the failures below'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_digital_twin_generated_boot.py:470: AssertionError: assert ['twin sessio...e 15 s bound'] == []
+E   AssertionError: assert ['twin sessio...e 15 s bound'] == []
+      
+      Left contains 3 more items, first extra item: 'twin session aborted: RuntimeError: digital twin subprocess exited early with code 1 before ever serving - see its output in the failures below'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_digital_twin_generated_boot.py:483: AssertionError: assert ['twin sessio...e 15 s bound'] == []
+E   AssertionError: assert ['twin sessio...e 15 s bound'] == []
+      
+      Left contains 3 more items, first extra item: 'twin session aborted: RuntimeError: digital twin subprocess exited early with code 1 before ever serving - see its output in the failures below'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_digital_twin_generated_boot.py:483: AssertionError: assert ['twin sessio...e 15 s bound'] == []
+E   AssertionError: assert ['twin sessio...e 15 s bound'] == []
+      
+      Left contains 3 more items, first extra item: 'twin session aborted: RuntimeError: digital twin subprocess exited early with code 1 before ever serving - see its output in the failures below'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_digital_twin_generated_boot.py:483: AssertionError: assert ['twin sessio...e 15 s bound'] == []
+E   AssertionError: assert ['twin sessio...e 15 s bound'] == []
+      
+      Left contains 3 more items, first extra item: 'twin session aborted: RuntimeError: digital twin subprocess exited early with code 1 before ever serving - see its output in the failures below'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_digital_twin_generated_boot.py:483: AssertionError: assert ['twin sessio...e 15 s bound'] == []
+E   AssertionError: assert ['twin sessio...e 15 s bound'] == []
+      
+      Left contains 3 more items, first extra item: 'twin session aborted: RuntimeError: digital twin subprocess exited early with code 1 before ever serving - see its output in the failures below'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_digital_twin_generated_boot.py:483: AssertionError: assert ['twin sessio...e 15 s bound'] == []
+E   AssertionError: assert ['twin sessio...e 15 s bound'] == []
+      
+      Left contains 3 more items, first extra item: 'twin session aborted: RuntimeError: digital twin subprocess exited early with code 1 before ever serving - see its output in the failures below'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_digital_twin_generated_boot.py:483: AssertionError: assert ['twin sessio...e 15 s bound'] == []
+E   AssertionError: assert ['test_digita...test trailer'] == []
+      
+      Left contains 5 more items, first extra item: 'test_digital_twin_launch.py: does not end with the canonical microtest trailer'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_microtest.py:292: AssertionError: assert ['test_digita...test trailer'] == []
+E   AssertionError: {'test_asy_base_classes.py': [1457], 'test_asy_config_manager.py': [2381, 2415], 'test_asy_system_service.py': [3060, 3020, 3085], 'test_digital_twin_run_generic_integration.py': [353], ...}
+    assert {'test_asy_ba...n.py': 1, ...} == {'test_asy_ba...t_json.py': 2}
+      
+      Omitting 4 identical items, use -vv to show
+      Left contains 1 more item:
+      {'test_digital_twin_run_generic_integration.py': 1}
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_microtest.py:305: AssertionError: {'test_asy_base_classes.py': [1457], 'test_asy_config_manager.py': [2381, 2415], 'test_asy_system_service.py': [3060, 3020, 3085], 'test_digital_twin_run_generic_integration.py': [353], ...}
+E   AssertionError: assert ['digital_twi..._TICKS_USERS'] == []
+      
+      Left contains one more item: 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_ticks_wrap_scan.py:295: AssertionError: assert ['digital_twi..._TICKS_USERS'] == []
+E   AssertionError: ['src/zz_plant.py:6 elapsed(): `now - t0` is arithmetic on a tick value', 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+    assert ['src/zz_plan..._TICKS_USERS'] == ['src/zz_plan..._TICKS_USERS']
+      
+      At index 1 diff: 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS' != 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Left contains one more item: 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_ticks_wrap_scan.py:301: AssertionError: ['src/zz_plant.py:6 elapsed(): `now - t0` is arithmetic on a tick value', 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+E   AssertionError: ['src/zz_plant.py:9 Gate.expired(): `time.ticks_ms() >= self._deadline` orders a tick value', 'digital_twin/run_generi...ion.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+    assert ['src/zz_plan..._TICKS_USERS'] == ['src/zz_plan..._TICKS_USERS']
+      
+      At index 1 diff: 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS' != 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Left contains one more item: 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_ticks_wrap_scan.py:310: AssertionError: ['src/zz_plant.py:9 Gate.expired(): `time.ticks_ms() >= self._deadline` orders a tick value', 'digital_twin/run_generi...ion.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+E   AssertionError: ['src/zz_plant.py:7 wait(): `start + 100` is arithmetic on a tick value', 'src/zz_plant.py:8 wait(): `start < limit` o...ion.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+    assert ['src/zz_plan..._TICKS_USERS'] == ['src/zz_plan..._TICKS_USERS']
+      
+      At index 2 diff: 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS' != 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Left contains one more item: 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_ticks_wrap_scan.py:316: AssertionError: ['src/zz_plant.py:7 wait(): `start + 100` is arithmetic on a tick value', 'src/zz_plant.py:8 wait(): `start < limit` o...ion.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+E   AssertionError: ['src/zz_plant.py:5 late(): `t0 += 5` is arithmetic on a tick value', 'src/zz_plant.py:6 late(): `min(t0, t1)` orders ...ion.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+    assert ['src/zz_plan..._TICKS_USERS'] == ['src/zz_plan..._TICKS_USERS']
+      
+      At index 3 diff: 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS' != 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Left contains one more item: 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_ticks_wrap_scan.py:329: AssertionError: ['src/zz_plant.py:5 late(): `t0 += 5` is arithmetic on a tick value', 'src/zz_plant.py:6 late(): `min(t0, t1)` orders ...ion.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+E   AssertionError: ['src/zz_plant.py:11 check(): `stamps[0] > limit` orders a tick value', 'src/zz_plant.py:11 check(): `t - limit` is ar...ion.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+    assert ['src/zz_plan..._TICKS_USERS'] == ['src/zz_plan..._TICKS_USERS']
+      
+      At index 2 diff: 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS' != 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Left contains one more item: 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_ticks_wrap_scan.py:343: AssertionError: ['src/zz_plant.py:11 check(): `stamps[0] > limit` orders a tick value', 'src/zz_plant.py:11 check(): `t - limit` is ar...ion.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+E   AssertionError: ['digital_twin/zz_reader.py:2 stale(): `stamp._zz_stamp >= limit` orders a tick value', 'digital_twin/run_generic_inte...ion.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+    assert ['digital_twi..._TICKS_USERS'] == ['digital_twi..._TICKS_USERS']
+      
+      At index 1 diff: 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS' != 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Left contains one more item: 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_ticks_wrap_scan.py:354: AssertionError: ['digital_twin/zz_reader.py:2 stale(): `stamp._zz_stamp >= limit` orders a tick value', 'digital_twin/run_generic_inte...ion.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+E   AssertionError: ['src/zz_plant.py:5 _age(): `t0 > limit` orders a tick value', 'src/zz_plant.py:10 Gate._late(): `t1 - t2` is arithmet...ion.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+    assert ['src/zz_plan..._TICKS_USERS'] == ['src/zz_plan..._TICKS_USERS']
+      
+      At index 2 diff: 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS' != 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Left contains one more item: 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_ticks_wrap_scan.py:363: AssertionError: ['src/zz_plant.py:5 _age(): `t0 > limit` orders a tick value', 'src/zz_plant.py:10 Gate._late(): `t1 - t2` is arithmet...ion.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+E   AssertionError: ['digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+    assert ['digital_twi..._TICKS_USERS'] == ['src/zz_plan..._TICKS_USERS']
+      
+      At index 0 diff: 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS' != 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Left contains one more item: 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_ticks_wrap_scan.py:378: AssertionError: ['digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+E   AssertionError: ['src/zz_plant.py:8 outer.inner(): `t0 * 2` is arithmetic on a tick value', 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+    assert ['src/zz_plan..._TICKS_USERS'] == ['src/zz_plan..._TICKS_USERS']
+      
+      At index 1 diff: 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS' != 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Left contains one more item: 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_ticks_wrap_scan.py:384: AssertionError: ['src/zz_plant.py:8 outer.inner(): `t0 * 2` is arithmetic on a tick value', 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+E   AssertionError: ["src/zz_plant.py:10 arm(): `time.ticks_add(t, 1 << 29)` adds a delta of 536870912 ms, at or past ticks_diff()'s 2**29...ion.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+    assert ['src/zz_plan..._TICKS_USERS'] == ['src/zz_plan..._TICKS_USERS']
+      
+      At index 4 diff: 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS' != 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Left contains one more item: 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_ticks_wrap_scan.py:394: AssertionError: ["src/zz_plant.py:10 arm(): `time.ticks_add(t, 1 << 29)` adds a delta of 536870912 ms, at or past ticks_diff()'s 2**29...ion.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+E   AssertionError: ["src/zz_plant.py:6 Gate.check(): `self._t0` tests a tick value's truth, false at the valid tick 0", "src/zz_plant.py:...ion.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+    assert ['src/zz_plan..._TICKS_USERS'] == ['src/zz_plan..._TICKS_USERS']
+      
+      At index 3 diff: 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS' != 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Left contains one more item: 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_ticks_wrap_scan.py:409: AssertionError: ["src/zz_plant.py:6 Gate.check(): `self._t0` tests a tick value's truth, false at the valid tick 0", "src/zz_plant.py:...ion.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+E   AssertionError: ['digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+    assert ['digital_twi..._TICKS_USERS'] == ['src/zz_plan..._TICKS_USERS']
+      
+      At index 0 diff: 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS' != 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Left contains one more item: 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_ticks_wrap_scan.py:426: AssertionError: ['digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+E   AssertionError: ['digital_twin/zz_plant.py:6 stamp(): `now > t0` orders a tick value', 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'digital_twin/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+    assert ['digital_twi..._TICKS_USERS'] == ['digital_twi..._TICKS_USERS']
+      
+      At index 1 diff: 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS' != 'digital_twin/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Left contains one more item: 'digital_twin/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_ticks_wrap_scan.py:432: AssertionError: ['digital_twin/zz_plant.py:6 stamp(): `now > t0` orders a tick value', 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'digital_twin/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+E   AssertionError: ['digital_twin/unixport/zz_plant.py:6 stamp(): `now > t0` orders a tick value', 'digital_twin/run_generic_integration....s but is not in _KNOWN_TICKS_USERS', 'digital_twin/unixport/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+    assert ['digital_twi..._TICKS_USERS'] == ['digital_twi..._TICKS_USERS']
+      
+      At index 1 diff: 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS' != 'digital_twin/unixport/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Left contains one more item: 'digital_twin/unixport/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_ticks_wrap_scan.py:442: AssertionError: ['digital_twin/unixport/zz_plant.py:6 stamp(): `now > t0` orders a tick value', 'digital_twin/run_generic_integration....s but is not in _KNOWN_TICKS_USERS', 'digital_twin/unixport/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+E   AssertionError: ['generated:sensortask_arzi.py:242 zz_plant(): `time.ticks_ms() - t0` is arithmetic on a tick value', 'digital_twin/ru... ticks but is not in _KNOWN_TICKS_USERS', 'generated:sensortask_arzi.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+    assert ['generated:s..._TICKS_USERS'] == ['generated:s..._TICKS_USERS']
+      
+      At index 1 diff: 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS' != 'generated:sensortask_arzi.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Left contains one more item: 'generated:sensortask_arzi.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_ticks_wrap_scan.py:456: AssertionError: ['generated:sensortask_arzi.py:242 zz_plant(): `time.ticks_ms() - t0` is arithmetic on a tick value', 'digital_twin/ru... ticks but is not in _KNOWN_TICKS_USERS', 'generated:sensortask_arzi.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+E   AssertionError: ['digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/asy_base_classes.py: listed in _KNOWN_TICKS_USERS but reads no ticks']
+    assert ['digital_twi...ads no ticks'] == ['src/asy_bas...ads no ticks']
+      
+      At index 0 diff: 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS' != 'src/asy_base_classes.py: listed in _KNOWN_TICKS_USERS but reads no ticks'
+      Left contains one more item: 'src/asy_base_classes.py: listed in _KNOWN_TICKS_USERS but reads no ticks'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_ticks_wrap_scan.py:463: AssertionError: ['digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS', 'src/asy_base_classes.py: listed in _KNOWN_TICKS_USERS but reads no ticks']
+E   AssertionError: ['src/asy_base_classes.py: reads ticks but binds no tick value - the scan judges nothing there', 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+    assert ['src/asy_bas..._TICKS_USERS'] == ['src/asy_bas...othing there']
+      
+      Left contains one more item: 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_ticks_wrap_scan.py:471: AssertionError: ['src/asy_base_classes.py: reads ticks but binds no tick value - the scan judges nothing there', 'digital_twin/run_generic_integration.py: reads ticks but is not in _KNOWN_TICKS_USERS']
+E   AssertionError: digital_twin/run_generic_integration.py:167: l2.twin_feed_gap_fold_ms is tagged but has no SPECIFICATION.md Part N row
+      digital_twin/unixport/_ntp_responder.py:22: twin.ntp_responder_poll_ms is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_http_client.py:30: l2.http_client_fetch_timeout_s is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_http_client.py:32: l2.http_client_silent_server_s is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_machine.py:88: l2.machine_timer_short_period_ms is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_machine.py:90: l2.machine_timer_rearm_window_ms is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_machine.py:92: l2.machine_spi_wire_time_us_per_byte is tagged but has no SPECIFICATION.md Part N row
+    assert not ['digital_twin/run_generic_integration.py:167: l2.twin_feed_gap_fold_ms is tagged but has no SPECIFICATION.md Part N r...st_digital_twin_machine.py:90: l2.machine_timer_rearm_window_ms is tagged but has no SPECIFICATION.md Part N row', ...]
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_scripts/test_tunables_register.py:253: AssertionError: digital_twin/run_generic_integration.py:167: l2.twin_feed_gap_fold_ms is tagged but has no SPECIFICATION.md Part N row
+=============================== warnings summary ===============================
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_hardware/bench/test_bus_concurrency_under_api_load.py:287: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_hardware/bench/test_bus_concurrency_under_api_load.py:457: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25api/tests_hardware/bench/test_bus_concurrency_under_api_load.py:546: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_synthetic_fixture_boots_and_serves_over_real_http[multi_instance.toml]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_synthetic_fixture_boots_and_serves_over_real_http[novel_combo.toml]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[arzi]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[dev]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[grkizi]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[klkizi]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[schlafzi]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[wozi]
+FAILED tests_scripts/test_microtest.py::test_every_test_file_ends_with_the_canonical_trailer_and_binds_only_functions
+FAILED tests_scripts/test_microtest.py::test_json_loads_reads_no_response_body
+FAILED tests_scripts/test_ticks_wrap_scan.py::test_the_tree_passes - Assertio...
+FAILED tests_scripts/test_ticks_wrap_scan.py::test_a_two_line_subtraction_fails
+FAILED tests_scripts/test_ticks_wrap_scan.py::test_a_stored_attribute_compared_in_another_method_fails
+FAILED tests_scripts/test_ticks_wrap_scan.py::test_an_added_deadline_and_a_name_chain_fail
+FAILED tests_scripts/test_ticks_wrap_scan.py::test_an_annotated_parameter_an_augmented_step_and_min_fail
+FAILED tests_scripts/test_ticks_wrap_scan.py::test_a_tick_returned_by_a_helper_or_stored_in_a_container_is_followed
+FAILED tests_scripts/test_ticks_wrap_scan.py::test_a_tick_attribute_is_followed_into_another_file
+FAILED tests_scripts/test_ticks_wrap_scan.py::test_a_tick_handed_to_a_function_of_the_same_file_is_followed
+FAILED tests_scripts/test_ticks_wrap_scan.py::test_a_method_call_on_another_receiver_is_not_dispatched_by_name
+FAILED tests_scripts/test_ticks_wrap_scan.py::test_a_closure_reads_its_enclosing_ticks
+FAILED tests_scripts/test_ticks_wrap_scan.py::test_a_ticks_add_delta_at_the_horizon_fails
+FAILED tests_scripts/test_ticks_wrap_scan.py::test_a_truth_test_on_a_tick_fails
+FAILED tests_scripts/test_ticks_wrap_scan.py::test_the_correct_forms_pass - A...
+FAILED tests_scripts/test_ticks_wrap_scan.py::test_a_twin_plant_fails - Asser...
+FAILED tests_scripts/test_ticks_wrap_scan.py::test_a_plant_in_a_scope_subdirectory_fails
+FAILED tests_scripts/test_ticks_wrap_scan.py::test_a_generated_module_plant_fails
+FAILED tests_scripts/test_ticks_wrap_scan.py::test_a_listed_user_that_reads_no_ticks_fails
+FAILED tests_scripts/test_ticks_wrap_scan.py::test_a_listed_user_binding_no_tick_fails
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+29 failed, 4804 passed, 6 skipped, 3 warnings in 541.03s (0:09:01)

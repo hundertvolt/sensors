@@ -1,0 +1,6 @@
+E       AssertionError: the MicroPython tier does not cover every real device:
+E           tests/test_sensortask_<device>.py covers [], but devices/ holds ['arzi', 'dev', 'grkizi', 'klkizi', 'schlafzi', 'wozi']
+E           tests/test_digital_twin_construction_<device>.py covers [], but devices/ holds ['arzi', 'dev', 'grkizi', 'klkizi', 'schlafzi', 'wozi']
+E           tests/_sensortask_scenarios.py no longer declares a _DEVICES tuple - update this check with it
+E           tests/_digital_twin_construction_scenarios.py no longer declares a _DEVICES tuple - update this check with it
+E       assert not ["tests/test_sensortask_<device>.py covers [], but devices/ holds ['arzi', 'dev', 'grkizi', 'klkizi', 'schlafzi', 'woz...h it', 'tests/_digital_twin_construction_scenarios.py no longer declares a _DEVICES tuple - update this check with it']

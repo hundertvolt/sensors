@@ -1,0 +1,18 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_______________ test_the_launchs_limit_is_the_python_launchs_own _______________
+
+    def test_the_launchs_limit_is_the_python_launchs_own() -> None:
+        # The JS copy of the qstr limit is scripts/_twin_process.py's, which is checked against the interpreter itself.
+        copies = re.findall(r"^const QSTR_MAX_BYTES = (\d+);", (REPO_ROOT / _LAUNCH).read_text(encoding="utf-8"), re.MULTILINE)
+>       assert copies == [str(_LIMIT)], f"{_LAUNCH} holds the qstr limit {copies}, scripts/_twin_process.py {_LIMIT}"
+E       AssertionError: tests_js/_twin_process.js holds the qstr limit ['256'], scripts/_twin_process.py 255
+E       assert ['256'] == ['255']
+E         
+E         At index 0 diff: '256' != '255'
+E         Use -v to get more diff
+
+tests_scripts/test_twin_process_js_spawn.py:111: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_twin_process_js_spawn.py::test_the_launchs_limit_is_the_python_launchs_own
+1 failed, 7 deselected in 0.05s

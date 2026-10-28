@@ -1,0 +1,7 @@
+u28/laneR/scratch/_pytest_run_record.py:49:57: PLR2004 Magic value used in comparison, consider replacing `3` with a constant variable
+u28/laneR/scratch/_summary_block.py:90:25: PLR2004 Magic value used in comparison, consider replacing `2` with a constant variable
+u28/laneR/scratch/_summary_block.py:96:25: PLR2004 Magic value used in comparison, consider replacing `3` with a constant variable
+u28/laneR/scratch/_summary_block.py:98:25: PLR2004 Magic value used in comparison, consider replacing `4` with a constant variable
+u28/laneR/scratch/_summary_block.py:161:88: PLR2004 Magic value used in comparison, consider replacing `2` with a constant variable
+u28/laneR/scratch/micropython_overrides.py:294:19: PLR2004 Magic value used in comparison, consider replacing `2` with a constant variable
+Found 6 errors.

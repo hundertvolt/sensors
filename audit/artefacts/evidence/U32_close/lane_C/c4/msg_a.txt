@@ -1,0 +1,21 @@
+U32 lane C: the reset and shutdown tasks end in a top of their own
+
+SystemService's two unsupervised tasks, _reset_when_due() and _shutdown_sequence(), now end in the
+top the other unsupervised tasks have: `except Exception` with report_if_fatal() and SYSTEM's
+err_s() under the shared UNEXPECTED code. The outcome is unchanged: no feed follows, so the
+watchdog resets; the record reads the escalation's or the command's code, 9 for a sequence that
+stopped before its arm. FRAM is paused before the reset task runs and after the shutdown's
+quiesce, so those failures reach the console and the RAM log only.
+
+Owner decision (owner, 2026-10-21: "The task logs shall then be handled by their creators in
+general and the caveats are okay as they are inevitable."; the question, paraphrase: whether a
+task's failure is logged by the module creating it, five tasks already doing so and two in
+SystemService needing a small change, with FRAM paused before a reset and the logging call itself
+as the two caveats).
+
+Tests first, each seen failing on the old module: a raise injected into the reset task's last
+flush and into a config reset's delete step escaped the task; now its cause is logged, no reset
+action runs or is armed, and nothing feeds.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

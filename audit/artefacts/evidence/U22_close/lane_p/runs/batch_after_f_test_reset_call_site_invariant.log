@@ -1,0 +1,3 @@
+PASS test_reset_and_bootloader_calls_confined_to_system_service
+PASS test_wdt_constructed_only_in_sensortask_entry_point_files
+2/2 passed, 0 failed, 0 skipped

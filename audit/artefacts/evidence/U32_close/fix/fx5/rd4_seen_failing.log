@@ -1,0 +1,73 @@
+..........FFF.                                                           [100%]
+=================================== FAILURES ===================================
+_ test_the_scan_sees_an_outer_handler_entered_after_a_nested_try[            await pr.wrn_s('w', wrnno=_WRN_A)] _
+
+arm = "            await pr.wrn_s('w', wrnno=_WRN_A)"
+
+    @pytest.mark.parametrize(
+        "arm",
+        [
+            "            await pr.wrn_s('w', wrnno=_WRN_A)",  # the nested try's last statement persists the warning
+            "        except OSError:\n            await pr.wrn_s('w', wrnno=_WRN_A)",  # its handler does
+            "        except OSError:\n            pass\n        else:\n            await pr.wrn_s('w', wrnno=_WRN_A)",  # its else arm does
+        ],
+    )
+    def test_the_scan_sees_an_outer_handler_entered_after_a_nested_try(arm: str) -> None:
+        # The nested finally's release(), or the warning's own call, raises after the warning persisted.
+>       assert _pairs([_parse("src/plant.py", _NESTED.format(arm=arm))]) == {("src/plant.py", "f", ("W", "A"), ("E", "B"))}
+E       AssertionError: assert set() == {('src/plant...., ('E', 'B'))}
+E         
+E         Extra items in the right set:
+E         ('src/plant.py', 'f', ('W', 'A'), ('E', 'B'))
+E         Use -v to get more diff
+
+tests_scripts/test_fault_or_warning_never_both.py:312: AssertionError
+_ test_the_scan_sees_an_outer_handler_entered_after_a_nested_try[        except OSError:\n            await pr.wrn_s('w', wrnno=_WRN_A)] _
+
+arm = "        except OSError:\n            await pr.wrn_s('w', wrnno=_WRN_A)"
+
+    @pytest.mark.parametrize(
+        "arm",
+        [
+            "            await pr.wrn_s('w', wrnno=_WRN_A)",  # the nested try's last statement persists the warning
+            "        except OSError:\n            await pr.wrn_s('w', wrnno=_WRN_A)",  # its handler does
+            "        except OSError:\n            pass\n        else:\n            await pr.wrn_s('w', wrnno=_WRN_A)",  # its else arm does
+        ],
+    )
+    def test_the_scan_sees_an_outer_handler_entered_after_a_nested_try(arm: str) -> None:
+        # The nested finally's release(), or the warning's own call, raises after the warning persisted.
+>       assert _pairs([_parse("src/plant.py", _NESTED.format(arm=arm))]) == {("src/plant.py", "f", ("W", "A"), ("E", "B"))}
+E       AssertionError: assert set() == {('src/plant...., ('E', 'B'))}
+E         
+E         Extra items in the right set:
+E         ('src/plant.py', 'f', ('W', 'A'), ('E', 'B'))
+E         Use -v to get more diff
+
+tests_scripts/test_fault_or_warning_never_both.py:312: AssertionError
+_ test_the_scan_sees_an_outer_handler_entered_after_a_nested_try[        except OSError:\n            pass\n        else:\n            await pr.wrn_s('w', wrnno=_WRN_A)] _
+
+arm = "        except OSError:\n            pass\n        else:\n            await pr.wrn_s('w', wrnno=_WRN_A)"
+
+    @pytest.mark.parametrize(
+        "arm",
+        [
+            "            await pr.wrn_s('w', wrnno=_WRN_A)",  # the nested try's last statement persists the warning
+            "        except OSError:\n            await pr.wrn_s('w', wrnno=_WRN_A)",  # its handler does
+            "        except OSError:\n            pass\n        else:\n            await pr.wrn_s('w', wrnno=_WRN_A)",  # its else arm does
+        ],
+    )
+    def test_the_scan_sees_an_outer_handler_entered_after_a_nested_try(arm: str) -> None:
+        # The nested finally's release(), or the warning's own call, raises after the warning persisted.
+>       assert _pairs([_parse("src/plant.py", _NESTED.format(arm=arm))]) == {("src/plant.py", "f", ("W", "A"), ("E", "B"))}
+E       AssertionError: assert set() == {('src/plant...., ('E', 'B'))}
+E         
+E         Extra items in the right set:
+E         ('src/plant.py', 'f', ('W', 'A'), ('E', 'B'))
+E         Use -v to get more diff
+
+tests_scripts/test_fault_or_warning_never_both.py:312: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_fault_or_warning_never_both.py::test_the_scan_sees_an_outer_handler_entered_after_a_nested_try[            await pr.wrn_s('w', wrnno=_WRN_A)]
+FAILED tests_scripts/test_fault_or_warning_never_both.py::test_the_scan_sees_an_outer_handler_entered_after_a_nested_try[        except OSError:\n            await pr.wrn_s('w', wrnno=_WRN_A)]
+FAILED tests_scripts/test_fault_or_warning_never_both.py::test_the_scan_sees_an_outer_handler_entered_after_a_nested_try[        except OSError:\n            pass\n        else:\n            await pr.wrn_s('w', wrnno=_WRN_A)]
+3 failed, 11 passed in 1.82s

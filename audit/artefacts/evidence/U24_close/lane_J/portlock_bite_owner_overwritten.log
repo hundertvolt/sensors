@@ -1,0 +1,90 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24j
+
+ ❯ |chromium| tests_js/port-lock.test.js (14 tests | 2 failed) 3372ms
+   ❯ the JS port lock (14)
+     ✓ a live node holder refuses a node taker, naming the holder the same way 109ms
+     ✓ a live node holder refuses a bash taker, naming the holder the same way 71ms
+     ✓ a live bash holder refuses a node taker, naming the holder the same way 77ms
+     ✓ a live bash holder refuses a bash taker, naming the holder the same way 41ms
+     ✓ refuses a taker whose inherited chain lists the port but not the holder's pid 99ms
+     × appends the port and its own pid to an inherited chain, once each, and releases the lock when its process exits 226ms
+     ✓ lets a node holder's child (bash, taking another port) and grandchild (node) pass on the held port 129ms
+     × lets a bash holder's child (node, taking another port) and grandchild (bash) pass on the held port 182ms
+     ✓ is re-entrant in one process: an inner release keeps the lock, the outer one removes it 83ms
+     ✓ takes over a lock recording a dead pid, leaving nothing behind 86ms
+     ✓ takes over a lock recording no pid at all, leaving nothing behind 2085ms
+     ✓ refuses port 0 with runner "runner" as a usage error 73ms
+     ✓ refuses port 65536 with runner "runner" as a usage error 53ms
+     ✓ refuses port 53 with runner "" as a usage error 56ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/port-lock.test.js > the JS port lock > appends the port and its own pid to an inherited chain, once each, and releases the lock when its process exits
+AssertionError: expected 'took 2154 held=123 53 owner=2154\n' to match /^took (?<pid>\d+) held=123 53 owner…/mu
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/port-lock.test.js/the-JS-port-lock---appends-the-port-and-its-own-pid-to-an-inherited-chain--once-each--and-releases-the-lock-when-its-process-exits.png
+
+[32m- Expected:[39m
+/^took (?<pid>\d+) held=123 53 owner=1 \k<pid>$/mu
+
+[31m+ Received:[39m
+"took 2154 held=123 53 owner=2154
+"
+
+ ❯ tests_js/port-lock.test.js:46:30
+     44|         const probe = await commands.probePortLock({ taker: actor("nod…
+     45|         expect(probe.code).toBe(0);
+     46|         expect(probe.stdout).toMatch(/^took (?<pid>\d+) held=123 53 ow…
+       |                              ^
+     47|         expect(probe.rootAfterTaker).toEqual([]);
+     48|     });
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  |chromium| tests_js/port-lock.test.js > the JS port lock > lets a bash holder's child (node, taking another port) and grandchild (bash) pass on the held port
+AssertionError: expected [ 1, …(1) ] to deeply equal [ +0, '' ]
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/port-lock.test.js/the-JS-port-lock---lets-a-bash-holder-s-child--node--taking-another-port--and-grandchild--bash--pass-on-the-held-port.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[32m-   0,[39m
+[32m-   "",[39m
+[31m+   1,[39m
+[31m+   "port 53 is held by holder (pid 2189) - run the suites one after the other (CLAUDE.md)[39m
+[31m+ ",[39m
+[2m  ][22m
+
+ ❯ tests_js/port-lock.test.js:52:44
+
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 12 passed (14)
+   Start at  17:04:20
+   Duration  4.58s (tests 94%, worker 6%)
+
+== Summary: npm test ==
+Commit: 032eb4c (uncommitted changes)
+Levels: L0
+Counts (tests): passed 12 · failed 2 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/port-lock.test.js > the JS port lock > appends the port and its own pid to an inherited chain, once each, and releases the lock when its process exits: expected 'took 2154 held=123 53 owner=2154\n' to match /^took (?<pid>\d+) held=123 53 owner…/mu
+  - tests_js/port-lock.test.js > the JS port lock > lets a bash holder's child (node, taking another port) and grandchild (bash) pass on the held port: expected [ 1, …(1) ] to deeply equal [ +0, '' ]
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

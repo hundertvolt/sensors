@@ -1,56 +1,76 @@
-// Exercises the real website's own JS in a real browser against a live digital-twin backend (real
-// REST API over real HTTP) - see SPECIFICATION.md Part H.7. Skips itself with a clear message if
-// the MicroPython toolchain/frozen website aren't built yet, rather than failing the suite.
+// Exercises the real website's own JS in a real browser against a live digital-twin backend for every device (real
+// REST API over real HTTP, SPECIFICATION.md Part H.7). A missing interpreter or build fails the suite; it never skips.
 import { commands } from "vitest/browser";
-import { describe, expect, test } from "vitest";
+import { describe, expect, it } from "vitest";
+import { DEVICE_IDS, GENERATED_DEFINITIONS } from "./_generated_definitions.js";
 
-describe("live digital-twin backend", () => {
-    test(
+// Real subprocess boot, real HTTP, real browser navigation, well past the suite's 20000ms backstop (vitest.config.js).
+// Each command takes its test's timeout and ends its own waits one twin stop before it: Vitest never cancels a command.
+// The boot's 20 s bound, two Applies and the stop; measured 6.2-7.2 s on each of the six devices (agent, 2026-10-14).
+// @tunable l0.live_smoke_timeout_ms = 45000
+const SMOKE_TIMEOUT_MS = 45000;
+// Boot 20 s, the first pass within the page's 15 s request cap plus 5 s, one 20 s reload slot per tab of the six, each
+// slot including its drain (agent, 2026-10-13), the stop.
+// @tunable l0.live_concurrent_tabs_timeout_ms = 200000
+const CONCURRENT_TABS_TIMEOUT_MS = 200000;
+// Two boots of 20 s, the banner, the 60 s back-off cap the page may be waiting out, two stops and their drains.
+// @tunable l0.live_restart_recovery_timeout_ms = 180000
+const RESTART_RECOVERY_TIMEOUT_MS = 180000;
+
+/**
+ * The display name the device's own generated definitions give its page.
+ * @param {string} device
+ * @returns {string}
+ */
+function displayNameOf(device) {
+    return /** @type {import("../js/definitions.js").SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device)).device.displayName;
+}
+
+describe.each(DEVICE_IDS)("live digital-twin backend: %s", (device) => {
+    it(
         "the real website, driven by a real browser, round-trips a real PUT against a live twin",
         async () => {
-            const result = await commands.runLiveBackendSmoke();
+            const result = await commands.runLiveBackendSmoke(device, SMOKE_TIMEOUT_MS);
 
-            if (result.skipped) {
-                console.warn(`Skipping live-backend smoke check: ${result.reason}`);
-                return;
-            }
 
             expect(result.titleHasSensorStation).toBe(true);
-            expect(result.deviceName).toContain("wozi");
-            // "Valid" or "Unchanged" both mean the backend accepted the write, matching every
-            // other tier's acceptance predicate for this field (the twin suite's Run 1, Part
-            // H.4's PUT-result vocabulary as the controller lowercases it on the wire).
-            expect(["valid", "unchanged"]).toContain(result.debugLevelApplyStatus);
+            expect(result.deviceName).toContain(displayNameOf(device));
+            expect([result.firstStatus, result.resubmitStatus]).toEqual(["valid", "unchanged"]);
+            // Every file the twin wrote lies inside its config directory, and its removal leaves nothing on the host.
+            expect(result.config.inside).toContain("config_SYSTEM.cfg");
+            expect(result.config.beside).toEqual([]);
+            expect(result.config.left).toEqual([]);
         },
-        45000, // real subprocess boot + real HTTP + real browser navigation - well past the
-        // suite's default 20000ms backstop (vitest.config.js), same reasoning as that backstop's
-        // own comment, scaled up for a real external process instead of an in-page fetch.
+        SMOKE_TIMEOUT_MS,
     );
 });
 
-// Known harmless quirk: this file prints "close timed out after 10000ms" from Vitest's own
-// teardown, with exit code 0 and no leftover twin. Opening a second page through the Commands
-// API's raw BrowserContext appears to miss Vitest's fast path; no other file here opens one.
-
-describe("live digital-twin backend, concurrent browser sessions", () => {
-    test(
-        "several real browser tabs load the real website at once against one live twin",
+describe.each(DEVICE_IDS)("live digital-twin backend, concurrent browser sessions: %s", (device) => {
+    it(
+        "a full ceiling of browser tabs against one live twin all load, directly or on one reload",
         async () => {
-            const result = await commands.runLiveBackendConcurrentTabs();
+            const result = await commands.runLiveBackendConcurrentTabs(device, CONCURRENT_TABS_TIMEOUT_MS);
 
-            if (result.skipped) {
-                console.warn(`Skipping live-backend concurrent-tab check: ${result.reason}`);
-                return;
-            }
 
-            // Every tab must load - not "at least one". The tab count is derived from the build's
-            // own max_connections, so this bites harder the moment that ceiling is raised.
-            expect(result.loaded).toBe(result.tabs);
-            for (const name of result.deviceNames) {
-                expect(name).toContain("wozi");
-            }
+            const { tabs, loadedFirstPass, loadedAfterRetry } = result;
+            // eslint-disable-next-line no-console -- a pass keeps its evidence: one line of counts per device
+            console.log(`concurrent tabs on ${device}: ${tabs} tabs, ${loadedFirstPass} loaded on the first pass, ${loadedAfterRetry - loadedFirstPass} on their reload, ${tabs - loadedAfterRetry} not at all`);
+            expect(result.loadedFirstPass).toBeGreaterThanOrEqual(1);
+            expect(result.loadedAfterRetry, result.failures.join("\n")).toBe(result.tabs);
         },
-        90000, // real subprocess boot plus several real browser navigations in parallel - the
-        // single-tab check's own 45000ms, doubled for the concurrency.
+        CONCURRENT_TABS_TIMEOUT_MS,
+    );
+});
+
+describe.each(DEVICE_IDS)("live digital-twin backend, device restart: %s", (device) => {
+    it(
+        "the page recovers from a device restart without reloading",
+        async () => {
+            const result = await commands.runLiveBackendRestartRecovery(device, RESTART_RECOVERY_TIMEOUT_MS);
+
+
+            expect(result).toEqual({ bannerShown: true, recovered: true, reloaded: false });
+        },
+        RESTART_RECOVERY_TIMEOUT_MS,
     );
 });

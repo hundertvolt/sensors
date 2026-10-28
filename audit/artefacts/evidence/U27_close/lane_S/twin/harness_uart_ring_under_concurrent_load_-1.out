@@ -1,0 +1,20 @@
+== uart_ring_under_concurrent_load: Both links exercise through a ceiling hammer, FRAM-log writes and config flushes at the typical then the maximum flash stall: no overrun, a train past the cap refused once, the heap unfragmented.
+== Launching: /root/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_dev --wiring-plan /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27s/build/generated_src/sensortask_dev_wiring_plan.json --device dev --host 127.0.0.1 --port 20166 --fram-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_h_uart_ring_under_concurrent_load_-1/uart_ring_under_concurrent_load/state_01/fram_state.json --scd30-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_h_uart_ring_under_concurrent_load_-1/uart_ring_under_concurrent_load/state_01/scd30_state.json --mem-backup-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_h_uart_ring_under_concurrent_load_-1/uart_ring_under_concurrent_load/state_01/mem_backup_state.json --config-dir /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_h_uart_ring_under_concurrent_load_-1/uart_ring_under_concurrent_load/state_01/config/ --gc-threshold -1 --test-conn-status-interval-ms 20 --fault sgp40:readfrom_into:3:260F --test-uart-over-cap (log: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_h_uart_ring_under_concurrent_load_-1/uart_ring_under_concurrent_load/twin_01.log)
+typical stall: the largest free block after the load is 11872 B (floor 32768 B at the threshold stage)
+== Launching: /root/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_dev --wiring-plan /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27s/build/generated_src/sensortask_dev_wiring_plan.json --device dev --host 127.0.0.1 --port 20167 --fram-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_h_uart_ring_under_concurrent_load_-1/uart_ring_under_concurrent_load/state_02/fram_state.json --scd30-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_h_uart_ring_under_concurrent_load_-1/uart_ring_under_concurrent_load/state_02/scd30_state.json --mem-backup-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_h_uart_ring_under_concurrent_load_-1/uart_ring_under_concurrent_load/state_02/mem_backup_state.json --config-dir /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_h_uart_ring_under_concurrent_load_-1/uart_ring_under_concurrent_load/state_02/config/ --gc-threshold -1 --test-conn-status-interval-ms 20 --fault sgp40:readfrom_into:3:260F --test-flash-stall-max (log: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u27/laneS/twin/logs_h_uart_ring_under_concurrent_load_-1/uart_ring_under_concurrent_load/twin_02.log)
+maximum stall: the largest free block after the load is 30080 B (floor 32768 B at the threshold stage)
+PASSED: uart_ring_under_concurrent_load - 64.8s
+== Summary: scripts/_digital_twin_scenarios.py ==
+Commit: 89b37a0 (uncommitted changes)
+Levels: L2 (dev)
+GC stage: -1
+Counts (scenarios): passed 1 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

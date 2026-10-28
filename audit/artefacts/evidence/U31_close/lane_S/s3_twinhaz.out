@@ -1,0 +1,4 @@
+start -1 heavy=3 01:32:48
+test_digital_twin_bus_hazard_concurrency -1 rc=0 t=150.08 mem=0 | 22/22 passed, 0 failed, 0 skipped
+start 32768 heavy=3 01:35:18
+test_digital_twin_bus_hazard_concurrency 32768 rc=0 t=151.62 mem=0 | 22/22 passed, 0 failed, 0 skipped

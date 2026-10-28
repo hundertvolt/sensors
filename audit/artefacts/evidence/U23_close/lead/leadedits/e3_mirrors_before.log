@@ -1,0 +1,86 @@
+...........FF...FF............                                           [100%]
+=================================== FAILURES ===================================
+_ test_a_planted_mismatch_fails_its_pin[js/mock-server.js:js/mock-server.js DNS_LABEL_MAX] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7802/test_a_planted_mismatch_fails_10')
+path = 'js/mock-server.js', text = 'const DNS_LABEL_MAX = 63;'
+planted = 'const DNS_LABEL_MAX = 64;', pin = 'js/mock-server.js DNS_LABEL_MAX'
+
+    @pytest.mark.parametrize(("path", "text", "planted", "pin"), _PLANTS, ids=[f"{plant[0]}:{plant[3]}" for plant in _PLANTS])
+    def test_a_planted_mismatch_fails_its_pin(tmp_path: Path, path: str, text: str, planted: str, pin: str) -> None:
+        for name in _READ_FILES:
+            (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(_REPO_ROOT / name, tmp_path / name)
+        source = (tmp_path / path).read_text(encoding="utf-8")
+        assert source.count(text) == 1, f"{path} no longer holds {text!r} once - the plant would bite nothing"
+        (tmp_path / path).write_text(source.replace(text, planted), encoding="utf-8")
+>       assert [problem for problem in _mirror_problems(tmp_path) if problem.startswith(f"{pin}:")], f"planting {planted!r} in {path} left {pin} silent"
+E       AssertionError: planting 'const DNS_LABEL_MAX = 64;' in js/mock-server.js left js/mock-server.js DNS_LABEL_MAX silent
+E       assert []
+
+tests_scripts/test_js_api_mirrors.py:180: AssertionError
+_ test_a_planted_mismatch_fails_its_pin[js/mock-server.js:js/mock-server.js DNS_FALLBACK_MAX] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7802/test_a_planted_mismatch_fails_11')
+path = 'js/mock-server.js', text = 'const DNS_FALLBACK_MAX = 3;'
+planted = 'const DNS_FALLBACK_MAX = 4;'
+pin = 'js/mock-server.js DNS_FALLBACK_MAX'
+
+    @pytest.mark.parametrize(("path", "text", "planted", "pin"), _PLANTS, ids=[f"{plant[0]}:{plant[3]}" for plant in _PLANTS])
+    def test_a_planted_mismatch_fails_its_pin(tmp_path: Path, path: str, text: str, planted: str, pin: str) -> None:
+        for name in _READ_FILES:
+            (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(_REPO_ROOT / name, tmp_path / name)
+        source = (tmp_path / path).read_text(encoding="utf-8")
+        assert source.count(text) == 1, f"{path} no longer holds {text!r} once - the plant would bite nothing"
+        (tmp_path / path).write_text(source.replace(text, planted), encoding="utf-8")
+>       assert [problem for problem in _mirror_problems(tmp_path) if problem.startswith(f"{pin}:")], f"planting {planted!r} in {path} left {pin} silent"
+E       AssertionError: planting 'const DNS_FALLBACK_MAX = 4;' in js/mock-server.js left js/mock-server.js DNS_FALLBACK_MAX silent
+E       assert []
+
+tests_scripts/test_js_api_mirrors.py:180: AssertionError
+_ test_a_planted_mismatch_fails_its_pin[src/asy_dns_client.py:js/mock-server.js DNS_LABEL_MAX] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7802/test_a_planted_mismatch_fails_15')
+path = 'src/asy_dns_client.py', text = 'DNS_LABEL_MAX = const(63)'
+planted = 'DNS_LABEL_MAX = const(62)', pin = 'js/mock-server.js DNS_LABEL_MAX'
+
+    @pytest.mark.parametrize(("path", "text", "planted", "pin"), _PLANTS, ids=[f"{plant[0]}:{plant[3]}" for plant in _PLANTS])
+    def test_a_planted_mismatch_fails_its_pin(tmp_path: Path, path: str, text: str, planted: str, pin: str) -> None:
+        for name in _READ_FILES:
+            (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(_REPO_ROOT / name, tmp_path / name)
+        source = (tmp_path / path).read_text(encoding="utf-8")
+        assert source.count(text) == 1, f"{path} no longer holds {text!r} once - the plant would bite nothing"
+        (tmp_path / path).write_text(source.replace(text, planted), encoding="utf-8")
+>       assert [problem for problem in _mirror_problems(tmp_path) if problem.startswith(f"{pin}:")], f"planting {planted!r} in {path} left {pin} silent"
+E       AssertionError: planting 'DNS_LABEL_MAX = const(62)' in src/asy_dns_client.py left js/mock-server.js DNS_LABEL_MAX silent
+E       assert []
+
+tests_scripts/test_js_api_mirrors.py:180: AssertionError
+_ test_a_planted_mismatch_fails_its_pin[src/asy_ntp_client.py:js/mock-server.js DNS_FALLBACK_MAX] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7802/test_a_planted_mismatch_fails_16')
+path = 'src/asy_ntp_client.py', text = '_DNS_FALLBACK_MAX = const(3)'
+planted = '_DNS_FALLBACK_MAX = const(2)'
+pin = 'js/mock-server.js DNS_FALLBACK_MAX'
+
+    @pytest.mark.parametrize(("path", "text", "planted", "pin"), _PLANTS, ids=[f"{plant[0]}:{plant[3]}" for plant in _PLANTS])
+    def test_a_planted_mismatch_fails_its_pin(tmp_path: Path, path: str, text: str, planted: str, pin: str) -> None:
+        for name in _READ_FILES:
+            (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(_REPO_ROOT / name, tmp_path / name)
+        source = (tmp_path / path).read_text(encoding="utf-8")
+        assert source.count(text) == 1, f"{path} no longer holds {text!r} once - the plant would bite nothing"
+        (tmp_path / path).write_text(source.replace(text, planted), encoding="utf-8")
+>       assert [problem for problem in _mirror_problems(tmp_path) if problem.startswith(f"{pin}:")], f"planting {planted!r} in {path} left {pin} silent"
+E       AssertionError: planting '_DNS_FALLBACK_MAX = const(2)' in src/asy_ntp_client.py left js/mock-server.js DNS_FALLBACK_MAX silent
+E       assert []
+
+tests_scripts/test_js_api_mirrors.py:180: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_js_api_mirrors.py::test_a_planted_mismatch_fails_its_pin[js/mock-server.js:js/mock-server.js DNS_LABEL_MAX]
+FAILED tests_scripts/test_js_api_mirrors.py::test_a_planted_mismatch_fails_its_pin[js/mock-server.js:js/mock-server.js DNS_FALLBACK_MAX]
+FAILED tests_scripts/test_js_api_mirrors.py::test_a_planted_mismatch_fails_its_pin[src/asy_dns_client.py:js/mock-server.js DNS_LABEL_MAX]
+FAILED tests_scripts/test_js_api_mirrors.py::test_a_planted_mismatch_fails_its_pin[src/asy_ntp_client.py:js/mock-server.js DNS_FALLBACK_MAX]
+4 failed, 26 passed in 2.22s

@@ -1,40 +1,28 @@
-"""Isolated-driver device script: RP2040's real firmware is MICROPY_FLOAT_IMPL_FLOAT (24-bit
-mantissa, SPECIFICATION.md Part F.1) - the Unix-port test rig uses doubles and can't reproduce this.
-Targets coerce_numeric()'s int->float path: always accepted, so the real check is lost precision."""
+"""Isolated-driver device script: the RP2040's firmware is MICROPY_FLOAT_IMPL_FLOAT (24-bit mantissa, SPECIFICATION.md
+Part F.1), which the double-precision Unix-port rig cannot reproduce. Takes ints either side of 2**24 through the
+config layer's float coercion and reports what came back; the host decides."""
 
-import sys
+from asy_config_manager import _coerce_float
 
-sys.path.insert(0, "/")  # frozen src/ modules are already importable without this on real firmware;
-# kept only for parity with how isolated-driver scripts are documented to work
+# @include _shared/facts.py
 
-from config_manager import coerce_numeric
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython
+    TYPE_CHECKING = False
 
-failures = []
+if TYPE_CHECKING:
+    from _shared.facts import done, fact
 
-# Below the boundary: every int up to 2**24 must round-trip exactly through float() on any build.
-below = 2**24 - 1
-ok, coerced = coerce_numeric(below, float)
-if not ok or coerced != float(below):
-    failures.append(f"2**24-1 did not round-trip: ok={ok} coerced={coerced!r} != {float(below)!r}")
+# Below the boundary every int round-trips exactly on any build.
+_BELOW = 2**24 - 1
+# The smallest int a 24-bit mantissa cannot hold: it rounds to 2**24 (round to even). Compared with int(),
+# never with float(above): that is recomputed on the same single-precision hardware and would always match.
+_ABOVE = 2**24 + 1
 
-# At/above the boundary: 2**24+1 is the smallest int a real 24-bit-mantissa float can't represent
-# exactly (rounds to 2**24 or 2**24+2). coerce_numeric() always accepts this by design; the real
-# assertion is whether the stored value silently lost precision.
-above = 2**24 + 1
-ok, coerced = coerce_numeric(above, float)
-if not ok:
-    failures.append(f"coerce_numeric() rejected an int->float coercion it should always accept per its own documented behavior: ok={ok} coerced={coerced!r}")
-elif int(coerced) == above:
-    # Deliberately not `coerced == float(above)` - float(above) is recomputed on this same
-    # single-precision hardware, so it would always match regardless of lost precision.
-    failures.append(
-        f"2**24+1 unexpectedly round-tripped exactly ({coerced!r}) - either this build isn't really "
-        "single-precision float, or MicroPython's own int->float conversion is more precise than assumed here",
-    )
-elif coerced != float(2**24):
-    failures.append(f"2**24+1 coerced to an unexpected value {coerced!r}, expected {float(2**24)!r} (round-to-even)")
-
-if failures:
-    print(f"RESULT: FAIL {'; '.join(failures)}")
-else:
-    print("RESULT: PASS single-precision float boundary at 2**24 confirmed on real hardware")
+below = _coerce_float(_BELOW)
+above = _coerce_float(_ABOVE)
+fact("below_exact", below is not None and below == float(_BELOW) and int(below) == _BELOW)
+fact("above_value", None if above is None else int(above))
+fact("above_rounded_to_2pow24", above is not None and int(above) == 2**24)
+done()

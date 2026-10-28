@@ -1,0 +1,13 @@
+code_conventions	3.909	0	25 passed in 3.21s
+error_catalog	7.361	0	40 passed in 6.12s
+lint_ceilings	8.959	0	19 passed in 8.72s
+mypy_any_baseline	0.407	0	7 passed in 0.20s
+device_tomls	1.243	0	36 passed in 0.73s
+digital_twin_ci_suite_errcount	0.949	0	94 passed in 0.65s
+fake_surface_conformance	0.877	0	17 passed in 0.64s
+radio_shape_corpus	0.433	0	6 passed in 0.18s
+no_variant_literals	7.210	0	19 passed in 7.00s
+ticks_wrap_scan	31.470	0	18 passed in 30.86s
+twin_fake_catalog	0.513	0	16 passed in 0.19s
+src_sleep_forms	0.742	0	20 passed in 0.52s
+READERS_DONE

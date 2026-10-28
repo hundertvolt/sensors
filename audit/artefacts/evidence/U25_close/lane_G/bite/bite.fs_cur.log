@@ -1,0 +1,13 @@
+FAIL test_cur_chunk_boundaries_crc16:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 38, in _call
+  File "_only.py", line 144, in boundaries
+  File "_only.py", line 132, in _sweep
+AssertionError: ['cur_chunk 0x02: acknowledged']
+FAIL test_cur_chunk_sweep_nocrc:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 38, in _call
+  File "_only.py", line 141, in full
+  File "_only.py", line 132, in _sweep
+AssertionError: ['cur_chunk 0x02: acknowledged']
+0/2 passed, 2 failed, 0 skipped

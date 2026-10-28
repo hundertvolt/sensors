@@ -1,0 +1,11 @@
+--- src/asy_system_service.py@d4067a0
++++ plant_seq/asy_system_service.py
+@@ -531,7 +531,7 @@
+         t0 = time.ticks_ms()
+         slot = _TIMER_BASE_PERIOD // (len(triggers) + 1)
+         for k, starter in enumerate(triggers):
+-            wait = time.ticks_diff(time.ticks_add(t0, k * slot), time.ticks_ms())
++            wait = time.ticks_add(t0, k * slot) - time.ticks_ms()
+             if wait > 0:
+                 try:
+                     self._sequencer_timer.init(period=wait, mode=Timer.ONE_SHOT, callback=lambda _b: self._sequencer_flag.set())

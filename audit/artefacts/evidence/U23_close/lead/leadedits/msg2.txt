@@ -1,0 +1,8 @@
+U23 lead: the accessibility test's render wait joins the shared section render tunable
+
+accessibility.test.js waits for a section to paint exactly as generated-definitions-render.test.js
+and site-functions.test.js do, with the same 5000 ms, but under its own tag. One tunable now names
+that wait at all three sites (agent, 2026-10-13), and its constant takes the same name; no value changes.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

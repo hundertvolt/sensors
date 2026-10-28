@@ -1,0 +1,17 @@
+== Generating buildgen device modules into build/generated_src/ (for import resolution)
+Generated 6 device module(s) + boot entries + expected facts + wiring plan(s) + definitions + API reference(s) into /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-lint/build/generated_src
+Success: no issues found in 173 source files
+Success: no issues found in 52 source files
+Success: no issues found in 199 source files
+== Summary: scripts/typecheck.sh ==
+Commit: af2d0fc
+Counts (checks): passed 7 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

@@ -1,0 +1,31 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27s
+
+ ✓ |chromium| tests_js/micropypath.test.js (3 tests) 850ms
+   ✓ the MICROPYPATH layout reader (3)
+     ✓ reads the twin layout of scripts/micropypath.toml exactly as the file states it 818ms
+ ✓ |chromium| tests_js/lint-ceilings.test.js (4 tests) 5423ms
+   ✓ ESLint complexity ceilings (4)
+     ✓ complexity sits at its measured maximum 1958ms
+     ✓ max-depth sits at its measured maximum 1347ms
+     ✓ max-nested-callbacks sits at its measured maximum 1589ms
+     ✓ max-classes-per-file sits at its measured maximum 529ms
+
+ Test Files  2 passed (2)
+      Tests  7 passed (7)
+   Start at  07:43:15
+   Duration  6.69s (tests 93%, worker 7%)
+
+== Summary: npm test ==
+Commit: 89b37a0 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 7 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

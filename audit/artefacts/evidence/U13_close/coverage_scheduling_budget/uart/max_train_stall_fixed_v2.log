@@ -1,0 +1,96 @@
+== FIXEDv2 th=-1 stall role=init k=5 D=1100
+rep 0 PASS elapsed_ms 4693 polls {'resp': 592, 'init': 607} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [758, 12, 0, 1], 'init': [762, 1112, 1, 1]}
+   fault ('STALL', 'init', 5, 1100)
+test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py
+== FIXEDv2 th=-1 stall role=init k=40 D=1100
+rep 0 PASS elapsed_ms 4682 polls {'resp': 574, 'init': 608} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [765, 1111, 1, 1], 'init': [782, 1102, 1, 1]}
+   fault ('STALL', 'init', 40, 1100)
+test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py
+== FIXEDv2 th=-1 stall role=init k=300 D=1100
+rep 0 PASS elapsed_ms 4733 polls {'resp': 600, 'init': 613} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [759, 1110, 1, 1], 'init': [766, 1109, 1, 1]}
+   fault ('STALL', 'init', 300, 1100)
+test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py
+== FIXEDv2 th=-1 stall role=init k=5 D=3000
+rep 0 PASS elapsed_ms 6610 polls {'resp': 581, 'init': 612} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [759, 20, 0, 1], 'init': [776, 3012, 1, 1]}
+   fault ('STALL', 'init', 5, 3000)
+test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py
+== FIXEDv2 th=-1 stall role=init k=40 D=3000
+rep 0 PASS elapsed_ms 6530 polls {'resp': 570, 'init': 594} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [764, 3008, 1, 1], 'init': [768, 3002, 1, 1]}
+   fault ('STALL', 'init', 40, 3000)
+test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py
+== FIXEDv2 th=-1 stall role=init k=300 D=3000
+rep 0 PASS elapsed_ms 6587 polls {'resp': 575, 'init': 597} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [765, 3009, 1, 1], 'init': [768, 3002, 1, 1]}
+   fault ('STALL', 'init', 300, 3000)
+test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py
+== FIXEDv2 th=-1 stall role=resp k=5 D=1100
+rep 0 PASS elapsed_ms 4653 polls {'resp': 574, 'init': 600} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [766, 1112, 1, 1], 'init': [775, 53, 0, 1]}
+   fault ('STALL', 'resp', 5, 1100)
+test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py
+== FIXEDv2 th=-1 stall role=resp k=40 D=1100
+rep 0 PASS elapsed_ms 4659 polls {'resp': 573, 'init': 613} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [769, 1107, 1, 1], 'init': [779, 1109, 1, 1]}
+   fault ('STALL', 'resp', 40, 1100)
+test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py
+== FIXEDv2 th=-1 stall role=resp k=300 D=1100
+rep 0 PASS elapsed_ms 4730 polls {'resp': 578, 'init': 620} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [764, 1107, 1, 1], 'init': [772, 1108, 1, 1]}
+   fault ('STALL', 'resp', 300, 1100)
+test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py
+== FIXEDv2 th=-1 stall role=resp k=5 D=3000
+rep 0 PASS elapsed_ms 6645 polls {'resp': 577, 'init': 611} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [755, 3012, 1, 1], 'init': [760, 53, 0, 1]}
+   fault ('STALL', 'resp', 5, 3000)
+test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py
+== FIXEDv2 th=-1 stall role=resp k=40 D=3000
+rep 0 PASS elapsed_ms 6553 polls {'resp': 562, 'init': 606} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [763, 3008, 1, 1], 'init': [772, 3010, 1, 1]}
+   fault ('STALL', 'resp', 40, 3000)
+test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py
+== FIXEDv2 th=-1 stall role=resp k=300 D=3000
+rep 0 PASS elapsed_ms 6588 polls {'resp': 580, 'init': 602} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [760, 3009, 1, 1], 'init': [774, 3010, 1, 1]}
+   fault ('STALL', 'resp', 300, 3000)
+test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py
+== FIXEDv2 th=32768 stall role=init k=5 D=1100
+rep 0 PASS elapsed_ms 5122 polls {'resp': 435, 'init': 475} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [332, 27, 0, 1], 'init': [342, 1111, 1, 1]}
+   fault ('STALL', 'init', 5, 1100)
+test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py
+== FIXEDv2 th=32768 stall role=init k=40 D=1100
+rep 0 PASS elapsed_ms 5169 polls {'resp': 432, 'init': 472} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [329, 1116, 1, 1], 'init': [349, 1102, 1, 1]}
+   fault ('STALL', 'init', 40, 1100)
+test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py
+== FIXEDv2 th=32768 stall role=init k=300 D=1100
+rep 0 PASS elapsed_ms 5105 polls {'resp': 422, 'init': 484} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [318, 1113, 1, 1], 'init': [348, 1114, 1, 1]}
+   fault ('STALL', 'init', 300, 1100)
+test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py
+== FIXEDv2 th=32768 stall role=init k=5 D=3000
+rep 0 PASS elapsed_ms 6984 polls {'resp': 444, 'init': 480} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [332, 18, 0, 1], 'init': [341, 3012, 1, 1]}
+   fault ('STALL', 'init', 5, 3000)
+test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py
+== FIXEDv2 th=32768 stall role=init k=40 D=3000
+rep 0 PASS elapsed_ms 7046 polls {'resp': 431, 'init': 485} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [331, 3014, 1, 1], 'init': [347, 3016, 1, 1]}
+   fault ('STALL', 'init', 40, 3000)
+test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py
+== FIXEDv2 th=32768 stall role=init k=300 D=3000
+rep 0 PASS elapsed_ms 7015 polls {'resp': 444, 'init': 463} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [339, 3013, 1, 1], 'init': [336, 3013, 1, 1]}
+   fault ('STALL', 'init', 300, 3000)
+test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py
+== FIXEDv2 th=32768 stall role=resp k=5 D=1100
+rep 0 PASS elapsed_ms 5090 polls {'resp': 445, 'init': 481} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [335, 1112, 1, 1], 'init': [340, 56, 0, 1]}
+   fault ('STALL', 'resp', 5, 1100)
+test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py
+== FIXEDv2 th=32768 stall role=resp k=40 D=1100
+rep 0 PASS elapsed_ms 5133 polls {'resp': 412, 'init': 495} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [319, 1102, 1, 1], 'init': [368, 1115, 1, 1]}
+   fault ('STALL', 'resp', 40, 1100)
+test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py
+== FIXEDv2 th=32768 stall role=resp k=300 D=1100
+rep 0 PASS elapsed_ms 5114 polls {'resp': 420, 'init': 483} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [322, 1115, 1, 1], 'init': [353, 1114, 1, 1]}
+   fault ('STALL', 'resp', 300, 1100)
+test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py
+== FIXEDv2 th=32768 stall role=resp k=5 D=3000
+rep 0 PASS elapsed_ms 7029 polls {'resp': 440, 'init': 470} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [330, 3012, 1, 1], 'init': [333, 59, 0, 1]}
+   fault ('STALL', 'resp', 5, 3000)
+test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py
+== FIXEDv2 th=32768 stall role=resp k=40 D=3000
+rep 0 PASS elapsed_ms 7026 polls {'resp': 446, 'init': 481} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [332, 3004, 1, 1], 'init': [344, 3015, 1, 1]}
+   fault ('STALL', 'resp', 40, 3000)
+test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py
+== FIXEDv2 th=32768 stall role=resp k=300 D=3000
+rep 0 PASS elapsed_ms 6972 polls {'resp': 443, 'init': 477} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [329, 3014, 1, 1], 'init': [337, 3012, 1, 1]}
+   fault ('STALL', 'resp', 300, 3000)
+test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py

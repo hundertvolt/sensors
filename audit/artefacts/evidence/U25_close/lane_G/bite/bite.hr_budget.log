@@ -1,0 +1,20 @@
+PASS test_a_power_cycled_bmp3xx_is_reconfigured_without_a_ladder_step
+FAIL test_every_bus_attached_driver_recovers_from_a_replug_without_a_reboot:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25g/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_hot_replug.py", line 161, in test_every_bus_attached_driver_recovers_from_a_replug_without_a_reboot
+  File "tests/test_digital_twin_hot_replug.py", line 154, in _replug
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25g/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25g/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25g/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_hot_replug.py", line 152, in scenario
+  File "tests/test_digital_twin_hot_replug.py", line 111, in _supervised
+  File "tests/test_digital_twin_hot_replug.py", line 149, in body
+AssertionError: dev: the re-plug of bmp3xx armed a reset
+1/2 passed, 1 failed, 0 skipped

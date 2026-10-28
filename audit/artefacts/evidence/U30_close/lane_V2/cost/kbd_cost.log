@@ -1,0 +1,2 @@
+capture_us min/median/max 1 2 15 all caught True
+stdin poll pass us 0.7471 -> per second at 50 ms: 14.942 us

@@ -1,0 +1,92 @@
+........................................................................ [  3%]
+........................................................................ [  7%]
+........................................................................ [ 11%]
+........................................................................ [ 15%]
+........................................................................ [ 18%]
+........................................................................ [ 22%]
+........................................................................ [ 26%]
+........................................................................ [ 30%]
+........................................................................ [ 34%]
+........................................................................ [ 37%]
+........................................................................ [ 41%]
+........................................................................ [ 45%]
+...........................................F............................ [ 49%]
+........................................................................ [ 53%]
+........................................................................ [ 56%]
+........................................................................ [ 60%]
+........................................................................ [ 64%]
+........................................................................ [ 68%]
+........................................................................ [ 72%]
+........................................................................ [ 75%]
+........................................................................ [ 79%]
+........................................................................ [ 83%]
+........................................................................ [ 87%]
+........................................................................ [ 91%]
+........................................................................ [ 94%]
+........................................................................ [ 98%]
+.......................                                                  [100%]
+=================================== FAILURES ===================================
+______ test_devs_build_is_the_same_under_an_ascii_locale_as_in_utf8_mode _______
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20int')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7072/test_devs_build_is_the_same_un0')
+
+    def test_devs_build_is_the_same_under_an_ascii_locale_as_in_utf8_mode(repo_root: Path, tmp_path: Path) -> None:
+>       assert _build(repo_root, tmp_path / "ascii", utf8_mode=False) == _build(repo_root, tmp_path / "utf8", utf8_mode=True)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_buildgen_locale.py:39: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20int')
+out = PosixPath('/tmp/pytest-of-root/pytest-7072/test_devs_build_is_the_same_un0/ascii')
+utf8_mode = False
+
+    def _build(repo_root: Path, out: Path, *, utf8_mode: bool) -> "dict[str, object]":
+        env = {"PATH": "/usr/bin:/bin", "LC_ALL": "C.UTF-8" if utf8_mode else "C", "LANG": "C"}
+        done = subprocess.run([sys.executable, "-I", "-X", f"utf8={int(utf8_mode)}", "-c", _PROBE, str(repo_root), str(out)], env=env, capture_output=True, text=True, encoding="utf-8", check=False, timeout=300)
+>       assert done.returncode == 0, done.stderr
+E       AssertionError: Traceback (most recent call last):
+E           File "<string>", line 10, in <module>
+E           File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20int/buildgen/generate.py", line 107, in generate_device
+E             model = build_model(toml_path, src_dir)
+E                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20int/buildgen/validate.py", line 1508, in build_model
+E             _resolve_instances(model, src_dir)
+E           File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20int/buildgen/validate.py", line 769, in _resolve_instances
+E             info = resolve_driver(spec.driver, src_dir, model.device)
+E                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20int/buildgen/driver_registry.py", line 110, in resolve_driver
+E             tree = _parse(path, device, driver)
+E                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20int/buildgen/driver_registry.py", line 48, in _parse
+E             return parse_source(path.read_text(), str(path))
+E                                 ^^^^^^^^^^^^^^^^
+E           File "/usr/lib/python3.11/pathlib.py", line 1059, in read_text
+E             return f.read()
+E                    ^^^^^^^^
+E           File "/usr/lib/python3.11/encodings/ascii.py", line 26, in decode
+E             return codecs.ascii_decode(input, self.errors)[0]
+E                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E         UnicodeDecodeError: 'ascii' codec can't decode byte 0xc2 in position 2926: ordinal not in range(128)
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/home/user/sensors/.venv/bin/python', '-I', '-X', 'utf8=0', '-c', '\nimport hashlib, json, re,...^^^^^^^^^^\nUnicodeDecodeError: \'ascii\' codec can\'t decode byte 0xc2 in position 2926: ordinal not in range(128)\n').returncode
+
+tests_scripts/test_buildgen_locale.py:33: AssertionError
+============================= slowest 12 durations =============================
+71.62s call     tests_scripts/test_buildgen_fuzz.py::test_a_mutated_device_builds_or_fails_with_a_build_error
+5.36s call     tests_scripts/test_buildgen_source_agreement.py::test_every_driver_has_its_build_table_rows
+4.56s call     tests_scripts/test_buildgen_frozen_modules.py::test_every_frozen_module_is_imported_by_the_generated_module_or_another_member[arzi]
+4.18s call     tests_scripts/test_buildgen_error_contract.py::test_each_rule_aborts_with_one_line_naming_place_and_fix[web.group-without-fields]
+4.09s call     tests_scripts/test_buildgen_error_contract.py::test_each_rule_aborts_with_one_line_naming_place_and_fix[web.quoted-special-off-string]
+3.73s call     tests_scripts/test_buildgen_reproducible.py::test_every_generated_input_is_identical_across_hash_seeds
+3.58s call     tests_scripts/test_buildgen_source_ast.py::test_a_whole_build_of_every_device_leaves_every_shared_tree_as_parsed
+2.56s call     tests_scripts/test_buildgen_error_contract.py::test_each_rule_aborts_with_one_line_naming_place_and_fix[src.default-missing]
+2.21s call     tests_scripts/test_buildgen_validate.py::test_a_setter_wiring_mode_is_refused_as_unknown
+1.95s call     tests_scripts/test_buildgen_error_contract.py::test_each_rule_aborts_with_one_line_naming_place_and_fix[names.label-collision]
+1.85s call     tests_scripts/test_buildgen_locale.py::test_devs_build_reads_every_src_file_that_carries_non_ascii_text
+1.80s call     tests_scripts/test_buildgen_validate.py::test_default_selection_when_the_driver_defines_no_default_class
+=========================== short test summary info ============================
+FAILED tests_scripts/test_buildgen_locale.py::test_devs_build_is_the_same_under_an_ascii_locale_as_in_utf8_mode
+1 failed, 1894 passed in 235.58s (0:03:55)

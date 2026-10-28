@@ -1,0 +1,9 @@
+sf_compose	rc=1	4.33s
+sf_coverage	rc=1	3.24s
+core_render	rc=0	3.58s
+sf2_compose	rc=1	3.97s
+sf2_coverage	rc=1	3.29s
+after_compose	rc=0	3.29s
+after_coverage	rc=0	2.47s
+after_render	rc=0	3.56s
+after_ceilings	rc=0	7.70s

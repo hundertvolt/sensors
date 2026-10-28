@@ -1,0 +1,162 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23fix
+
+stdout | tests_js/live-backend.test.js > live digital-twin backend, device restart: grkizi > the page recovers from a device restart without reloading
+concurrent tabs on wozi: 6 tabs, 3 loaded on the first pass, 3 on their reload, 0 not at all
+ ❯ |chromium| tests_js/live-backend.test.js (18 tests | 3 failed | 11 skipped) 56736ms
+   ↓ live digital-twin backend: arzi (1)
+     ↓ the real website, driven by a real browser, round-trips a real PUT against a live twin
+   ↓ live digital-twin backend: dev (1)
+     ↓ the real website, driven by a real browser, round-trips a real PUT against a live twin
+   ↓ live digital-twin backend: grkizi (1)
+     ↓ the real website, driven by a real browser, round-trips a real PUT against a live twin
+   ↓ live digital-twin backend: klkizi (1)
+     ↓ the real website, driven by a real browser, round-trips a real PUT against a live twin
+   ↓ live digital-twin backend: schlafzi (1)
+     ↓ the real website, driven by a real browser, round-trips a real PUT against a live twin
+   ↓ live digital-twin backend: wozi (1)
+     ↓ the real website, driven by a real browser, round-trips a real PUT against a live twin
+   ↓ live digital-twin backend, concurrent browser sessions: arzi (1)
+     ↓ a full ceiling of browser tabs against one live twin all load, directly or on one reload
+   ↓ live digital-twin backend, concurrent browser sessions: dev (1)
+     ↓ a full ceiling of browser tabs against one live twin all load, directly or on one reload
+   ↓ live digital-twin backend, concurrent browser sessions: grkizi (1)
+     ↓ a full ceiling of browser tabs against one live twin all load, directly or on one reload
+   ↓ live digital-twin backend, concurrent browser sessions: klkizi (1)
+     ↓ a full ceiling of browser tabs against one live twin all load, directly or on one reload
+   ↓ live digital-twin backend, concurrent browser sessions: schlafzi (1)
+     ↓ a full ceiling of browser tabs against one live twin all load, directly or on one reload
+   ❯ live digital-twin backend, concurrent browser sessions: wozi (1)
+     × a full ceiling of browser tabs against one live twin all load, directly or on one reload 3168ms
+   ❯ live digital-twin backend, device restart: arzi (1)
+     × the page recovers from a device restart without reloading 578ms
+   ❯ live digital-twin backend, device restart: dev (1)
+     × the page recovers from a device restart without reloading 18327ms
+   ✓ live digital-twin backend, device restart: grkizi (1)
+     ✓ the page recovers from a device restart without reloading 9755ms
+   ✓ live digital-twin backend, device restart: klkizi (1)
+     ✓ the page recovers from a device restart without reloading 9249ms
+   ✓ live digital-twin backend, device restart: schlafzi (1)
+     ✓ the page recovers from a device restart without reloading 9327ms
+   ✓ live digital-twin backend, device restart: wozi (1)
+     ✓ the page recovers from a device restart without reloading 6328ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: wozi > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+Error: Test timed out in 3000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--concurrent-browser-sessions--wozi---a-full-ceiling-of-browser-tabs-against-one-live-twin-all-load--directly-or-on-one-reload.png
+
+ ❯ task node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:5109:43
+ ❯ Object.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:5126:16
+ ❯ Object.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:4916:28
+ ❯ chain node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:4317:14
+ ❯ tests_js/live-backend.test.js:50:5
+     48|
+     49| describe.each(DEVICE_IDS)("live digital-twin backend, concurrent brows…
+     50|     it(
+       |     ^
+     51|         "a full ceiling of browser tabs against one live twin all load…
+     52|         async () => {
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:5251:64
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:5191:52
+ ❯ runWithSuite node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:5640:8
+ ❯ Object.collect node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:5191:22
+ ❯ Object.collect node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:5196:51
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend, device restart: arzi > the page recovers from a device restart without reloading
+Error: live-backend restart-recovery check for arzi failed: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/
+Call log:
+[2m  - navigating to "http://127.0.0.1:19481/", waiting until "load"[22m
+
+--- twin output ---
+digital_twin/run_generic_integration.py starting - device='arzi' module='sensortask_arzi' host='127.0.0.1' port=19481 fram_state_path=None scd30_state_path=None seed=None duration=None faults=[] hangs=[] wifi_outcomes=[] mem_sample_interval_ms=None
+Serving forever at http://127.0.0.1:19481/ - Ctrl+C to stop
+digital_twin/run_generic_integration.py [arzi] shutdown: would_have_triggered_count=0
+digital_twin/run_generic_integration.py: interrupted
+
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--device-restart--arzi---the-page-recovers-from-a-device-restart-without-reloading.png
+
+ ❯ tests_js/live-backend.test.js:74:43
+     72|         "the page recovers from a device restart without reloading",
+     73|         async () => {
+     74|             const result = await commands.runLiveBackendRestartRecover…
+       |                                           ^
+     75|
+     76|             if (result.skipped) {
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:5684:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend, device restart: dev > the page recovers from a device restart without reloading
+AssertionError: expected { skipped: false, …(3) } to deeply equal { skipped: false, …(3) }
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--device-restart--dev---the-page-recovers-from-a-device-restart-without-reloading.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[32m-   "bannerShown": true,[39m
+[31m+   "bannerShown": false,[39m
+[2m    "recovered": true,[22m
+[2m    "reloaded": false,[22m
+[2m    "skipped": false,[22m
+[2m  }[22m
+
+ ❯ tests_js/live-backend.test.js:81:28
+     79|             }
+     80|
+     81|             expect(result).toEqual({ skipped: false, bannerShown: true…
+       |                            ^
+     82|         },
+     83|         RESTART_RECOVERY_TIMEOUT_MS,
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d3849ff6:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 4 passed | 11 skipped (18)
+   Start at  16:19:39
+   Duration  57.91s (tests 99%)
+
+== Summary: npm test ==
+Commit: 9bf2274 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 4 · failed 3 · skipped 11 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: wozi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: Test timed out in 3000ms.
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: arzi > the page recovers from a device restart without reloading: live-backend restart-recovery check for arzi failed: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: dev > the page recovers from a device restart without reloading: expected { skipped: false, …(3) } to deeply equal { skipped: false, …(3) }
+Skipped:
+  - tests_js/live-backend.test.js > live digital-twin backend: arzi > the real website, driven by a real browser, round-trips a real PUT against a live twin: skip
+  - tests_js/live-backend.test.js > live digital-twin backend: dev > the real website, driven by a real browser, round-trips a real PUT against a live twin: skip
+  - tests_js/live-backend.test.js > live digital-twin backend: grkizi > the real website, driven by a real browser, round-trips a real PUT against a live twin: skip
+  - tests_js/live-backend.test.js > live digital-twin backend: klkizi > the real website, driven by a real browser, round-trips a real PUT against a live twin: skip
+  - tests_js/live-backend.test.js > live digital-twin backend: schlafzi > the real website, driven by a real browser, round-trips a real PUT against a live twin: skip
+  - tests_js/live-backend.test.js > live digital-twin backend: wozi > the real website, driven by a real browser, round-trips a real PUT against a live twin: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: arzi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: dev > a full ceiling of browser tabs against one live twin all load, directly or on one reload: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: grkizi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: klkizi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: schlafzi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: skip
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

@@ -1,0 +1,14 @@
+P	Xf	-1	rc=1	4.73s	f9=FAIL	mem=0	AssertionError: 32.0 bytes kept per cycle (free 16085536, 16083616, 16079776)	217/219 passed, 2 failed, 0 skipped
+P	X	-1	rc=1	4.40s	f9=FAIL	mem=0	AssertionError: 91.46666666666667 bytes kept per cycle (free 16084672, 16082752, 16071776)	217/219 passed, 2 failed, 0 skipped
+Q	Xf	-1	rc=1	4.49s	f9=FAIL	mem=0	AssertionError: 16.0 bytes kept per cycle (free 16091840, 16090880, 16088960)	217/219 passed, 2 failed, 0 skipped
+Q	X	-1	rc=1	4.35s	f9=FAIL	mem=0	AssertionError: 16.0 bytes kept per cycle (free 16090944, 16089824, 16087904)	217/219 passed, 2 failed, 0 skipped
+D	committedf	-1	rc=1	4.48s	f9=FAIL	mem=0	AssertionError: 32.0 bytes kept per cycle (free 16085440, 16083520, 16079680)	218/219 passed, 1 failed, 0 skipped
+D	committed	-1	rc=1	4.39s	f9=FAIL	mem=0	AssertionError: 32.0 bytes kept per cycle (free 16084448, 16082528, 16078688)	218/219 passed, 1 failed, 0 skipped
+E	committedf	-1	rc=1	4.44s	f9=FAIL	mem=0	AssertionError: 16.0 bytes kept per cycle (free 16091712, 16090752, 16088832)	218/219 passed, 1 failed, 0 skipped
+E	committed	-1	rc=1	4.41s	f9=FAIL	mem=0	AssertionError: 16.0 bytes kept per cycle (free 16090752, 16089792, 16087872)	218/219 passed, 1 failed, 0 skipped
+P	Xf	32768	rc=1	7.33s	f9=FAIL	mem=0	AssertionError: 32.0 bytes kept per cycle (free 15874784, 15872864, 15869024)	217/219 passed, 2 failed, 0 skipped
+Q	Xf	32768	rc=1	7.73s	f9=FAIL	mem=0	AssertionError: 16.0 bytes kept per cycle (free 15880960, 15880000, 15878080)	217/219 passed, 2 failed, 0 skipped
+D	committedf	32768	rc=1	7.27s	f9=FAIL	mem=0	AssertionError: 32.0 bytes kept per cycle (free 15874176, 15872256, 15868416)	218/219 passed, 1 failed, 0 skipped
+E	committedf	32768	rc=1	7.30s	f9=FAIL	mem=0	AssertionError: 16.0 bytes kept per cycle (free 15880416, 15879456, 15877536)	218/219 passed, 1 failed, 0 skipped
+D	committed	32768	rc=1	7.45s	f9=FAIL	mem=0	AssertionError: 32.0 bytes kept per cycle (free 15873504, 15871584, 15867744)	218/219 passed, 1 failed, 0 skipped
+E	committed	32768	rc=1	7.32s	f9=FAIL	mem=0	AssertionError: 16.0 bytes kept per cycle (free 15879904, 15878944, 15877024)	218/219 passed, 1 failed, 0 skipped

@@ -1,0 +1,42 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+______________ test_no_temporary_file_outlives_the_run[expected] _______________
+
+script = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/laneW/bite_installer/trap/scripts/setup_cross_browser_toolchain.sh')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10544/test_no_temporary_file_outlive0')
+fingerprint = 'expected'
+
+    @pytest.mark.parametrize("fingerprint", ["expected", _OTHER_FINGERPRINT])
+    def test_no_temporary_file_outlives_the_run(script: Path, tmp_path: Path, fingerprint: str) -> None:
+        expected = _constant(script.read_text(encoding="utf-8"), "EDGE_KEY_FINGERPRINT")
+        stub_bin, _ = _stub_tree(tmp_path, present=("Xvfb", "WebKitWebDriver"), key_fingerprints=(expected if fingerprint == "expected" else fingerprint,))
+        _run(script, tmp_path, stub_bin)
+>       assert list((tmp_path / "tmp").iterdir()) == []
+E       AssertionError: assert [PosixPath('/....M4aiqHwykh')] == []
+E         
+E         Left contains one more item: PosixPath('/tmp/pytest-of-root/pytest-10544/test_no_temporary_file_outlive0/tmp/tmp.M4aiqHwykh')
+E         Use -v to get more diff
+
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:259: AssertionError
+_ test_no_temporary_file_outlives_the_run[0123456789ABCDEF0123456789ABCDEF01234567] _
+
+script = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/laneW/bite_installer/trap/scripts/setup_cross_browser_toolchain.sh')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10544/test_no_temporary_file_outlive1')
+fingerprint = '0123456789ABCDEF0123456789ABCDEF01234567'
+
+    @pytest.mark.parametrize("fingerprint", ["expected", _OTHER_FINGERPRINT])
+    def test_no_temporary_file_outlives_the_run(script: Path, tmp_path: Path, fingerprint: str) -> None:
+        expected = _constant(script.read_text(encoding="utf-8"), "EDGE_KEY_FINGERPRINT")
+        stub_bin, _ = _stub_tree(tmp_path, present=("Xvfb", "WebKitWebDriver"), key_fingerprints=(expected if fingerprint == "expected" else fingerprint,))
+        _run(script, tmp_path, stub_bin)
+>       assert list((tmp_path / "tmp").iterdir()) == []
+E       AssertionError: assert [PosixPath('/....Lbzq1DEZrC')] == []
+E         
+E         Left contains one more item: PosixPath('/tmp/pytest-of-root/pytest-10544/test_no_temporary_file_outlive1/tmp/tmp.Lbzq1DEZrC')
+E         Use -v to get more diff
+
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:259: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_setup_cross_browser_toolchain_sh.py::test_no_temporary_file_outlives_the_run[expected]
+FAILED tests_scripts/test_setup_cross_browser_toolchain_sh.py::test_no_temporary_file_outlives_the_run[0123456789ABCDEF0123456789ABCDEF01234567]
+2 failed, 15 deselected in 0.17s

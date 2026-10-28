@@ -1,0 +1,34 @@
+........................................................................ [ 13%]
+........................................................................ [ 26%]
+........................................................................ [ 40%]
+........................................................................ [ 53%]
+........................................................................ [ 66%]
+........................................................................ [ 80%]
+.........................................F.............................. [ 93%]
+..................................                                       [100%]
+=================================== FAILURES ===================================
+_______________ test_every_citation_resolves_or_is_allow_listed ________________
+
+findings = Counter({('SPECIFICATION.md', 'tests/_uart_comm_hazard_common.py'): 6, ('SPECIFICATION.md', 'tests/test_uart_comm_canc...test_digital_twin_generated_boot.py', 'Session 6'): 1, ('tests_scripts/test_test_sh.py', 'devices/zz_test_*.toml'): 1})
+
+    def test_every_citation_resolves_or_is_allow_listed(findings: Counter[tuple[str, str]]) -> None:
+        new = sorted((findings - read_allowlist(ALLOWLIST)).elements())
+>       assert not new, "unresolved citations (path, token) - point at what exists, or state the fact in place:\n" + "\n".join(f"  {p}: {t}" for p, t in new)
+E       AssertionError: unresolved citations (path, token) - point at what exists, or state the fact in place:
+E           SPECIFICATION.md: tests/_uart_comm_hazard_common.py
+E           SPECIFICATION.md: tests/_uart_comm_hazard_common.py
+E           SPECIFICATION.md: tests/_uart_comm_hazard_common.py
+E           SPECIFICATION.md: tests/_uart_comm_hazard_common.py
+E           SPECIFICATION.md: tests/_uart_comm_hazard_common.py
+E           SPECIFICATION.md: tests/_uart_comm_hazard_common.py
+E           SPECIFICATION.md: tests/test_uart_comm_cancel_sweep.py
+E           SPECIFICATION.md: tests/test_uart_comm_cancel_sweep.py
+E           SPECIFICATION.md: tests/test_uart_comm_cancel_sweep.py
+E           SPECIFICATION.md: tests/test_uart_comm_cancel_sweep.py
+E           SPECIFICATION.md: tests/test_uart_comm_cancel_sweep.py
+E       assert not [('SPECIFICATION.md', 'tests/_uart_comm_hazard_common.py'), ('SPECIFICATION.md', 'tests/_uart_comm_hazard_common.py'),...PECIFICATION.md', 'tests/_uart_comm_hazard_common.py'), ('SPECIFICATION.md', 'tests/_uart_comm_hazard_common.py'), ...]
+
+tests_scripts/test_citations.py:251: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+1 failed, 537 passed in 99.72s (0:01:39)

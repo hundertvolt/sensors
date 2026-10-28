@@ -1,0 +1,6 @@
+a8d4ebb: ruff on the edited test file, actionlint, zizmor --offline (lint.sh needs the worktree's own venv; this worktree has none)
+All checks passed!
+ruff rc=0
+actionlint rc=0
+No findings to report. Good job! (15 suppressed)
+zizmor rc=0

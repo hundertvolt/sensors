@@ -1,0 +1,31 @@
+
+> sensors-website@0.1.0 pretest
+> npm run build:site
+
+
+> sensors-website@0.1.0 build:site
+> scripts/build_website.sh wozi && uv run scripts/_generate_sensortask_modules.py
+
+Writing Python file frozen_modules/frozen_html.py.
+Appended folder /tmp/tmp.nVjJ0FXPsM as /.
+Appended file   /tmp/tmp.nVjJ0FXPsM/index.html.gz (7187 bytes) as /index.html.gz
+Appended folder /tmp/tmp.nVjJ0FXPsM/js as /js
+Appended file   /tmp/tmp.nVjJ0FXPsM/js/app.js.gz (16297 bytes) as /js/app.js.gz
+Sum of file sizes 23484 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+frozen_modules/frozen_html.py written successfully.
+Wrote frozen_modules/frozen_html.py (mounts at /html on import)
+Generated 6 device module(s) + wiring plan(s) into /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u5final/build/generated_src
+
+> sensors-website@0.1.0 test
+> vitest run
+
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u5final
+
+
+ Test Files  13 passed (13)
+      Tests  821 passed (821)
+   Start at  18:14:42
+   Duration  555.08s (tests 70%, worker 29%)
+

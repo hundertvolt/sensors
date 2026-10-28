@@ -1,0 +1,4 @@
+FAILED tests_scripts/test_coverage_runner.py::test_a_missing_unix_port_fails_rather_than_skipping
+FAILED tests_scripts/test_coverage_runner.py::test_a_binary_of_another_flavour_fails_the_suite_naming_it
+FAILED tests_scripts/test_coverage_runner.py::test_the_suite_holds_the_toolchain_lock_shared_and_refuses_while_a_setup_holds_it
+3 failed, 1 passed, 15 deselected in 0.15s

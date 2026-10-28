@@ -1,0 +1,31 @@
+# git -C wt-u20int log --stat 7efb5f2..HEAD --grep='lane E' (af2d0fc)
+
+commit b6fd0db
+subject: U20 lead: merge lane E (docs follow the split boot API, the generated boot entries and the build-environment changes)
+
+
+commit e031502
+subject: U20 lane E: the docs follow the split boot API, the generated boot entries and the build-environment changes
+
+CLAUDE.md: name changes only, no meaning change - the boot-confined collects are
+run_setups() and start_tasks()'s starter loop; the known-hang note names start_tasks()
+and says why the task starters never ran then. UART_C_PORT_CHANGELOG.md A7: the CRC
+is selected per uart_link end by its TOML crc key, agreement checked at build; no row
+for dev's ring (no protocol-module change). BACKLOG.md: the U19 smoke fix's and this
+unit's build-environment paragraphs. tests_hardware/README.md: boot-entry name, the
+supervisor test's new names, the NTP-before-tasks order gone, the FRAM capacity
+section without work labels and with the derived fram_wired list. digital_twin/README.md:
+the runner arms and passes the watchdog, WDT.feed_times, fixed_address(). The heap
+measurement guide's positions read after build_system() and the setup list.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8
+
+
+ BACKLOG.md                         | 31 ++++++++++++++++++++++++
+ CLAUDE.md                          |  9 +++----
+ HEAP_FRAGMENTATION_MEASUREMENTS.md | 22 +++++++++--------
+ UART_C_PORT_CHANGELOG.md           |  2 +-
+ digital_twin/README.md             | 27 +++++++++++++++------
+ tests_hardware/README.md           | 49 ++++++++++++++++++++++----------------
+ 6 files changed, 98 insertions(+), 42 deletions(-)

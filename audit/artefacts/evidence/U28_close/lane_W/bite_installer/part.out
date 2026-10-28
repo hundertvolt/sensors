@@ -1,0 +1,24 @@
+F.                                                                       [100%]
+=================================== FAILURES ===================================
+______________ test_no_temporary_file_outlives_the_run[expected] _______________
+
+script = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/laneW/bite_installer/part/scripts/setup_cross_browser_toolchain.sh')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10545/test_no_temporary_file_outlive0')
+fingerprint = 'expected'
+
+    @pytest.mark.parametrize("fingerprint", ["expected", _OTHER_FINGERPRINT])
+    def test_no_temporary_file_outlives_the_run(script: Path, tmp_path: Path, fingerprint: str) -> None:
+        expected = _constant(script.read_text(encoding="utf-8"), "EDGE_KEY_FINGERPRINT")
+        stub_bin, _ = _stub_tree(tmp_path, present=("Xvfb", "WebKitWebDriver"), key_fingerprints=(expected if fingerprint == "expected" else fingerprint,))
+        _run(script, tmp_path, stub_bin)
+        assert list((tmp_path / "tmp").iterdir()) == []
+>       assert list((tmp_path / "cross-browser").rglob("*.part")) == []
+E       AssertionError: assert [PosixPath('/...omamba.part')] == []
+E         
+E         Left contains one more item: PosixPath('/tmp/pytest-of-root/pytest-10545/test_no_temporary_file_outlive0/cross-browser/bin/micromamba.part')
+E         Use -v to get more diff
+
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:260: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_setup_cross_browser_toolchain_sh.py::test_no_temporary_file_outlives_the_run[expected]
+1 failed, 1 passed, 15 deselected in 0.23s

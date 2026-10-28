@@ -1,0 +1,2 @@
+tests_hardware/harness.py:127: l4.harness_extra_rebinds is a retry count no class holds - classify it in _TABLE
+tests_hardware/bench/test_hotspot_role_reversal.py:35: l4.hotspot_role_reversal_join_attempts = 3, the table holds 5 (event retry, outside the rule)

@@ -1,0 +1,19 @@
+== T tag dropped: rc=1
+FAILED tests_scripts/test_buildgen_definitions.py::test_every_src_schema_field_is_tagged_or_hidden
+1 failed, 447 passed in 35.85s
+== page tag on R: rc=1
+FAILED tests_scripts/test_buildgen_web_tag.py::test_no_other_src_driver_declares_an_unnoticed_web_tag
+FAILED tests_scripts/test_api_reference.py::test_every_tagged_source_is_one_some_device_reads
+FAILED tests_scripts/test_buildgen_definitions.py::test_every_field_codes_table_equals_its_catalog_status_table[arzi]
+FAILED tests_scripts/test_buildgen_definitions.py::test_every_field_codes_table_equals_its_catalog_status_table[dev]
+FAILED tests_scripts/test_buildgen_definitions.py::test_every_field_codes_table_equals_its_catalog_status_table[grkizi]
+FAILED tests_scripts/test_buildgen_definitions.py::test_every_field_codes_table_equals_its_catalog_status_table[klkizi]
+FAILED tests_scripts/test_buildgen_definitions.py::test_every_field_codes_table_equals_its_catalog_status_table[schlafzi]
+FAILED tests_scripts/test_buildgen_definitions.py::test_every_field_codes_table_equals_its_catalog_status_table[wozi]
+FAILED tests_scripts/test_buildgen_definitions.py::test_every_codes_tag_names_a_present_table
+FAILED tests_scripts/test_buildgen_definitions.py::test_every_src_schema_field_is_tagged_or_hidden
+10 failed, 438 passed in 32.81s
+== all hidden tags dropped: rc=1
+FAILED tests_scripts/test_buildgen_web_tag.py::test_no_other_src_driver_declares_an_unnoticed_web_tag
+FAILED tests_scripts/test_buildgen_definitions.py::test_every_src_schema_field_is_tagged_or_hidden
+2 failed, 446 passed in 32.70s

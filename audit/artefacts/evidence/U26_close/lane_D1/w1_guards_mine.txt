@@ -1,0 +1,75 @@
+## test_bench_harness_helpers
+   manual_toolchain.py
+   test_toolchain_flash_boot.py
+## test_bench_no_task_ended_completeness
+   test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write
+## test_device_script_bench_facts
+   fram_busy_status_lockout.py:39 SPI() takes a pin or bus literal
+   fram_capacity_after_full_system_build.py:8 imports sensortask_dev
+   fram_command_hold_timing.py:18 SPI() takes a pin or bus literal
+   fram_error_log_reset_during_boot_window.py:21 SPI() takes a pin or bus literal
+   fram_error_log_reset_race_seed_and_race.py:27 SPI() takes a pin or bus literal
+   fram_error_log_reset_race_verify.py:26 SPI() takes a pin or bus literal
+   fram_error_log_roundtrip.py:17 SPI() takes a pin or bus literal
+   fram_manager_roundtrip.py:16 SPI() takes a pin or bus literal
+   fram_pause_unpause_and_gating.py:175 SPI() takes a pin or bus literal
+   fram_write_protect_roundtrip.py:80 SPI() takes a pin or bus literal
+   heap_headroom_after_full_system_build.py:10 imports sensortask_dev
+   heap_layout_after_full_boot_sequence.py:11 imports sensortask_dev
+   sgp40_fram_backup_restore.py:58 I2C() takes a pin or bus literal
+   sgp40_fram_backup_restore.py:59 SPI() takes a pin or bus literal
+## test_device_script_config_flush
+   reboot_persist_read.py: config_HWTEST_REBOOT.cfg is removed in no finally of its own or of a script its host test runs
+   reboot_persist_write.py: config_HWTEST_REBOOT.cfg is removed in no finally of its own or of a script its host test runs
+   system_debug_level_raise_for_boot_log_check.py: config_HWTEST_DEBUGLEVEL_BACKUP.cfg is removed in no finally of its own or of a script its host test runs
+   system_debug_level_restore_after_boot_log_check.py: config_HWTEST_DEBUGLEVEL_BACKUP.cfg is removed in no finally of its own or of a script its host test runs
+## test_device_script_facts
+   config_float_round_trip.py': ['test_config_floats_round_trip_unchanged runs a script and parses no facts'
+   config_float_round_trip.py': [70
+   fram_busy_status_lockout.py': [42
+   fram_capacity_after_full_system_build.py': [53
+   fram_command_hold_timing.py': [62
+   fram_error_log_reset_during_boot_window.py': [66
+   fram_error_log_reset_race_seed_and_race.py': [73
+   fram_error_log_reset_race_verify.py': [68
+   fram_error_log_roundtrip.py': [68
+   fram_manager_roundtrip.py': [40
+   fram_pause_unpause_and_gating.py': [178
+   fram_write_protect_roundtrip.py': [115
+   heap_headroom_after_full_system_build.py': [142
+   heap_layout_after_full_boot_sequence.py': [214
+   reboot_fallback_starves_the_watchdog.py': [41
+   reboot_persist_read.py': [18
+   reboot_persist_write.py': [25
+   sgp40_fram_backup_restore.py': [122
+   system_debug_level_raise_for_boot_log_check.py': [21
+   system_debug_level_restore_after_boot_log_check.py': [19
+   system_service_restarts_a_real_dead_task.py': [54
+   test_config_float_round_trip.py': ['test_config_floats_round_trip_unchanged runs a script and parses no facts'
+   test_fram_storage.py': ['_run_and_assert_pass runs a script and parses no facts'
+   test_memory_stress.py': ['test_real_gc_heap_headroom_survives_a_full_system_build runs a script and parses no facts'
+   test_reboot_persistence.py': ['test_config_value_survives_a_genuine_hard_reset runs a script and parses no facts'
+   test_task_supervisor.py': ['test_the_supervisor_restarts_a_real_dead_task runs a script and parses no facts'
+   test_unretrieved_task_exception_handler.py': ['test_the_unretrieved_exception_report_is_allocation_free_and_retains_nothing_on_real_hardware runs a script and parses no facts'
+   test_watchdog_starvation.py': ['test_watchdog_starvation_triggers_a_real_hardware_reset runs a script and parses no facts'
+   unretrieved_task_exception_handler.py': ['test_the_unretrieved_exception_report_is_allocation_free_and_retains_nothing_on_real_hardware runs a script and parses no facts'
+   unretrieved_task_exception_handler.py': [186
+## test_device_script_watchdog
+   heap_layout_after_full_boot_sequence.py': ['line 195: sleep_ms(_STARTER_SETTLE_MS)'
+## test_hardware_clones
+   heap_headroom_after_full_system_build.py::_dump_map = device_scripts/heap_layout_after_full_boot_sequence.py::_dump_map
+   heap_headroom_after_full_system_build.py::_largest_block = device_scripts/heap_layout_after_full_boot_sequence.py::_largest_block
+   heap_headroom_after_full_system_build.py::_report_checked = device_scripts/heap_layout_after_full_boot_sequence.py::_report_checked
+   heap_layout_after_full_boot_sequence.py::_dump_map
+   heap_layout_after_full_boot_sequence.py::_largest_block
+   heap_layout_after_full_boot_sequence.py::_report_checked
+   test_reboot_persistence.py::_parse_result
+   test_unretrieved_task_exception_handler.py::_assert_pass
+   unretrieved_task_exception_handler.py::_assert_pass
+## test_persistence_write_marker_completeness
+   fram_capacity_after_full_system_build.py (build_system() over the production config) unmarked
+   heap_headroom_after_full_system_build.py (build_system() over the production config) unmarked
+   heap_layout_after_full_boot_sequence.py (build_system() over the production config) has no runner in tests_hardware/
+   test_fram_storage.py::test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build runs fram_capacity_after_full_system_build.py (build_system() over the production con
+   test_memory_stress.py::test_real_gc_heap_headroom_survives_a_full_system_build runs heap_headroom_after_full_system_build.py (build_system() over the production config) unmarked
+   test_memory_stress.py::test_single_core_timing_headroom_holds_under_normal_full_task_load': ['long_soak'

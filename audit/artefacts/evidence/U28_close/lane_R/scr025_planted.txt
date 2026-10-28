@@ -1,0 +1,4 @@
+build/generated_src/zz_scratch_probe.py:241:1: E402 Module level import not at top of file
+build/generated_src/zz_scratch_probe.py:241:8: F401 [*] `os` imported but unused
+Found 2 errors.
+[*] 1 fixable with the `--fix` option.

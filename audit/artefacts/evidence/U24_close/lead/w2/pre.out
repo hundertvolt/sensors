@@ -1,0 +1,19 @@
+test_comment_block_cap rc=0 484 passed in 3.35s
+test_const_mirrors rc=0 7 passed in 1.86s
+test_decision_vocabulary rc=0 6 passed in 7.37s
+test_tunables_register rc=1 1 failed, 14 passed in 3.24s
+test_digital_twin_machine_uart.py rc=0 wall=4 12/12 passed, 0 failed, 0 skipped mem=0
+test_machine_uart_link.py rc=0 wall=0 18/18 passed, 0 failed, 0 skipped mem=0
+test_asy_bmp3xx_driver.py rc=0 wall=13 134/134 passed, 0 failed, 0 skipped mem=0
+test_asy_fram_driver.py rc=0 wall=0 104/104 passed, 0 failed, 0 skipped mem=0
+test_asy_fram_manager.py rc=0 wall=6 141/141 passed, 0 failed, 0 skipped mem=0
+test_asy_isl29125_driver.py rc=0 wall=3 241/241 passed, 0 failed, 0 skipped mem=0
+test_asy_notification_service.py rc=0 wall=19 66/66 passed, 0 failed, 0 skipped mem=0
+test_asy_scd30_driver.py rc=1 wall=7 25/125 passed, 1 failed, 0 skipped - aborted at test_frc_keys_stay_in_the_file_and_chip_keys_on_the_chip, later tests not run mem=0
+test_asy_sgp40_driver.py rc=0 wall=8 155/155 passed, 0 failed, 0 skipped mem=0
+test_notification_scd30_integration.py rc=0 wall=4 4/4 passed, 0 failed, 0 skipped mem=0
+test_notification_scd30_sgp40_integration.py rc=0 wall=4 2/2 passed, 0 failed, 0 skipped mem=0
+test_notification_sgp40_integration.py rc=0 wall=3 3/3 passed, 0 failed, 0 skipped mem=0
+test_sensortask_dev.py rc=1 wall=8 14/90 passed, 1 failed, 0 skipped - aborted at test_debug_level_survives_a_simulated_reboot_through_build_system, later tests not run mem=0
+test_asy_uart_link_driver.py rc=0 wall=2 36/36 passed, 0 failed, 0 skipped mem=0
+ALL_DONE

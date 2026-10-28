@@ -1,0 +1,7 @@
+FAIL test_500_silent_periods_stay_silent_and_bounded
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 2841, in test_500_silent_periods_stay_silent_and_bounded
+AssertionError: the period was re-armed while it ran
+PASS test_a_dropped_silent_period_fire_is_recovered_by_the_next_period
+selected: 2 failed: 1

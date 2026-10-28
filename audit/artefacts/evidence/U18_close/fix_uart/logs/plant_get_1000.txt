@@ -1,0 +1,10 @@
+## tests/test_uart_comm_hazard.py
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 0 FAIL no recovery within two transactions after step 0 312 ms
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 1 FAIL no recovery within two transactions after step 0 311 ms
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 2 FAIL no recovery within two transactions after step 0 312 ms
+SUMMARY test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 plant_us 1000 0 / 3 passed 935 ms
+## /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18/uart_rca/fixed/test_uart_comm_hazard.py
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 0 PASS 141732 ms
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 1 PASS 160394 ms
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 2 PASS 153208 ms
+SUMMARY test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 plant_us 1000 3 / 3 passed 455334 ms

@@ -1,0 +1,19 @@
+U31 fix FX3 FINAL
+Branch audit/u31-fx3 (S/wt-u31fx3), head 3c8e0ed, from 22541d0. Commits: 7d42392 (item 1), 7287344 (item 2), eb8faa6 (item 3), 3c8e0ed (item 4). Nothing uncommitted, nothing pushed. Logs are in S/u31/fx3/ (the runs are in S/u31/fx3/runs/).
+Items:
+1. Applied. In scripts/_digital_twin_scenarios.py:1060-1069, `boot, load = loaded[:1], loaded[1:]`. The probe opens each window as it prints the last one, so the first line after the load's start closes the window that was open when it started. "Max under load" now covers only the windows that began after the load started. The boot window's figure is printed beside it, and loop_lag.txt records `load_max_us=` and `boot_window_max_us=`. Every window stays held to the bound, the boot one included, because the old check bound every window and the docstring and F.3 say the lag stays under the smallest hard consumer. The window-count check is unchanged.
+2. Applied. SPECIFICATION.md:6383 now reads "17-65 ms max over the windows begun after its start, 238-244 ms in the window open at its start, which holds the end of boot (every device, both GC stages; host speed, not silicon)". No other copy of 237-243 is in SPECIFICATION.md, BACKLOG.md, README.md, digital_twin/README.md or tests_hardware/README.md. test_timing_budget.py is green.
+3. Applied. digital_twin/README.md:465 now says each line ends with `<link key>=<transfers>`, one per wired uart_link.
+4. Applied. In tests_scripts/test_timing_budget.py:50, `_device_terms()` calls `smallest_hard_consumer(replace(model, instances={key: spec}), src)` once per link, so a slack that differs between links or devices still fails; the dev 925 ms and con.watchdog 6000 ms checks are kept. No per-device lag.loop assertion added: the con.watchdog and con.uart_reply rows already pin both values, and the scenario holds each run to the same export. 4.5 ms per call before and after.
+Per-device lag, loop-lag scenario run alone, 12 runs, all PASS, "Passed only on retry: none". Device: load max at -1 / 32768 ms; boot window max -1 / 32768 ms:
+arzi 45.2 / 25.1; 244.5 / 241.0 | dev 35.7 / 41.1; 238.3 / 241.8 | grkizi 17.5 / 33.8; 241.8 / 240.1
+klkizi 22.3 / 35.4; 241.8 / 240.6 | schlafzi 18.4 / 29.0; 237.7 / 242.3 | wozi 65.0 / 31.3; 238.3 / 241.6
+Bounds: dev 925 ms, the others 6000 ms.
+Seen failing first: report test (stub-twin scenario body) `assert 'max 3000 us over 3 windows' in 'loop lag under load: max 240000 us over 4 windows ...'`; boot-window bound case: the message read "the loop lagged 6000001 us under load", not "in the window open when the load began"; the load-window case passed at once, so it is a guard: bite (scratch copy, deleted) with the load-window bound removed failed `AssertionError: []`; item 4 a pure migration, green at both stages.
+Checks: one process of 45 files: 1533 passed, 1 failed, rc=1. ruff clean. Host mypy (cold cache) clean. Zero MemoryError and zero "memory allocation failed".
+Red, for the lead (T3's): test_tunables_register.py "SPECIFICATION.md:12025: l2.loop_lag_load_s: Sites list [('scripts/_digital_twin_scenarios.py', '60.0')], the tags say [('scripts/_digital_twin_scenarios.py', '20.0')]".
+Times, before / after, -1 and 32768, s: test_digital_twin_scenarios 1.32/1.32 → 1.34/1.38 (base 2.60); test_twin_runner_test_flags 0.58/0.54 → 0.61/0.59; test_timing_budget 0.72/0.74 → 0.76-0.93 over three repeats, median 0.79 (about +7 %); host noise, `_device_terms` costs the same.
+Decisions (agent, 2026-10-21): the boot window is `loaded[0]` by construction (the probe's windows run back to back), no timestamps; item 4 narrows the model to one link at a time, to keep the per-link slack check; the private helpers in both test files are in D.15 order (_spawned_boot moved up).
+Modes: host and twin only; no effect in STA, AP, Silent, Off or USB.
+RUNS.md: the 12-run batch (pid 15325, every run rc 0) and the final checks (pid 18944, rc 1, the red above).
+nothing of mine is running

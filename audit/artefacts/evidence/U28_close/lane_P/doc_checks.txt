@@ -1,0 +1,61 @@
+FF...................................................................... [  8%]
+........................................................................ [ 17%]
+........................................................................ [ 26%]
+........................................................................ [ 35%]
+........................................................................ [ 44%]
+........................................................................ [ 53%]
+........................................................................ [ 62%]
+........................................................................ [ 71%]
+........................................................................ [ 80%]
+........................................................................ [ 89%]
+........................................................................ [ 98%]
+............                                                             [100%]
+=================================== FAILURES ===================================
+_________ test_decision_vocabulary_names_its_actor_or_is_allow_listed __________
+
+findings = Counter({('tests/test_asy_wifi_service.py', 'type: ignore[method-assign] # deliberate monkeypatch'): 20, ('tests/test_...toolchain/setup_toolchain.py', 'Deliberately touches neither apt, git remotes, nor the pico-sdk/picotool derivat'): 1})
+
+    def test_decision_vocabulary_names_its_actor_or_is_allow_listed(findings: Counter[tuple[str, str]]) -> None:
+        new = sorted((findings - read_allowlist(ALLOWLIST)).elements())
+>       assert not new, "decision vocabulary with no '(owner|agent, YYYY-MM-DD)' tag or source - tag the sentence:\n" + "\n".join(f"  {p}: {s}" for p, s in new)
+E       AssertionError: decision vocabulary with no '(owner|agent, YYYY-MM-DD)' tag or source - tag the sentence:
+E           tests/test_asy_fram_driver.py: type: ignore[assignment, method-assign] # deliberate monkeypatch
+E           tests/test_asy_fram_driver.py: type: ignore[assignment, method-assign] # deliberate monkeypatch
+E           tests/test_asy_isl29125_driver.py: type: ignore[assignment, method-assign] # deliberate monkeypatch
+E           tests/test_asy_isl29125_driver.py: type: ignore[assignment, method-assign] # deliberate monkeypatch
+E           tests/test_asy_wifi_service.py: type: ignore[assignment, method-assign] # deliberate monkeypatch
+E           tests/test_asy_wifi_service.py: type: ignore[assignment, method-assign] # deliberate monkeypatch
+E           tests/test_asy_wifi_service.py: type: ignore[assignment, method-assign] # deliberate monkeypatch
+E           tests/test_asy_wifi_service.py: type: ignore[assignment, method-assign] # deliberate monkeypatch
+E           tests/test_asy_wifi_service.py: type: ignore[assignment, method-assign] # deliberate monkeypatch
+E           tests/test_asy_wifi_service.py: type: ignore[assignment, method-assign] # deliberate monkeypatch
+E           tests/test_digital_twin_poll_prewarm.py: type: ignore[assignment, attr-defined] # deliberate monkeypatch
+E       assert not [('tests/test_asy_fram_driver.py', 'type: ignore[assignment, method-assign] # deliberate monkeypatch'), ('tests/test_a...eypatch'), ('tests/test_asy_wifi_service.py', 'type: ignore[assignment, method-assign] # deliberate monkeypatch'), ...]
+
+tests_scripts/test_decision_vocabulary.py:89: AssertionError
+_______________________ test_the_allowlist_only_shrinks ________________________
+
+findings = Counter({('tests/test_asy_wifi_service.py', 'type: ignore[method-assign] # deliberate monkeypatch'): 20, ('tests/test_...toolchain/setup_toolchain.py', 'Deliberately touches neither apt, git remotes, nor the pico-sdk/picotool derivat'): 1})
+
+    def test_the_allowlist_only_shrinks(findings: Counter[tuple[str, str]]) -> None:
+        stale = sorted((read_allowlist(ALLOWLIST) - findings).elements())
+>       assert not stale, "allow-list entries that no longer occur - delete these lines (or --regenerate):\n" + "\n".join(f"  {p}\t{s}" for p, s in stale)
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           tests/test_asy_fram_driver.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
+E           tests/test_asy_fram_driver.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
+E           tests/test_asy_isl29125_driver.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
+E           tests/test_asy_isl29125_driver.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
+E           tests/test_asy_wifi_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
+E           tests/test_asy_wifi_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
+E           tests/test_asy_wifi_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
+E           tests/test_asy_wifi_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
+E           tests/test_asy_wifi_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
+E           tests/test_asy_wifi_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
+E           tests/test_digital_twin_poll_prewarm.py	type: ignore[attr-defined, assignment] # deliberate monkeypatch
+E       assert not [('tests/test_asy_fram_driver.py', 'type: ignore[method-assign, assignment] # deliberate monkeypatch'), ('tests/test_a...eypatch'), ('tests/test_asy_wifi_service.py', 'type: ignore[method-assign, assignment] # deliberate monkeypatch'), ...]
+
+tests_scripts/test_decision_vocabulary.py:94: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_decision_vocabulary.py::test_decision_vocabulary_names_its_actor_or_is_allow_listed
+FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+2 failed, 802 passed in 78.94s (0:01:18)

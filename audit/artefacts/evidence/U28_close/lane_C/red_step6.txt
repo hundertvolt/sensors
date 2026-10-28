@@ -1,0 +1,25 @@
+== render anchors
+E       AssertionError: assert 'No raw coverage dumps found in raw' == 2
+E        +  where 'No raw coverage dumps found in raw' = SystemExit('No raw coverage dumps found in raw').code
+E        +    where SystemExit('No raw coverage dumps found in raw') = <ExceptionInfo SystemExit('No raw coverage dumps found in raw') tblen=3>.value
+FAILED tests_scripts/test_render_coverage_anchors.py::test_an_xml_report_is_no_longer_offered
+1 failed, 2 passed in 1.34s
+== test_test_sh render/ci/archive
+E       AssertionError: assert ['run scripts...mat=markdown'] == ['run scripts...mat=markdown']
+E         
+E         At index 0 diff: 'run scripts/_render_coverage.py --raw-dir /tmp/pytest-of-root/pytest-10615/test_a_coverage_run_renders_th0/raw --src-dir src --html-dir htmlcov --xml-file coverage.xml --markdown-file coverage_summary.md' != 'run scripts/_render_coverage.py --raw-dir /tmp/pytest-of-root/pytest-10615/test_a_coverage_run_renders_th0/raw --src-dir src --html-dir htmlcov --markdown-file coverage_summary.md'
+E         Use -v to get more diff
+E       AssertionError: scripts/test.sh --coverage archives ['coverage.xml', 'coverage_digital_twin.xml', 'coverage_summary.md', 'coverage_summary_digital_twin.md', 'coverage_summary_generated.md', 'coverage_summary_host.md', 'htmlcov', 'htmlcov_digital_twin', 'htmlcov_generated', 'htmlcov_host']
+E       assert {'coverage.xm...host.md', ...} == {'coverage_su...al_twin', ...}
+E         
+E         Extra items in the left set:
+E         'coverage.xml'
+E         'coverage_digital_twin.xml'
+E         Use -v to get more diff
+FAILED tests_scripts/test_test_sh.py::test_a_coverage_run_renders_the_four_reports
+FAILED tests_scripts/test_test_sh.py::test_a_coverage_run_archives_exactly_the_four_reports_it_renders
+2 failed, 5 passed, 162 deselected in 2.14s
+== ruff PTH
+
+Found 16 errors.
+== b1fecfb ci.yml unit-tests-coverage report steps 'always() &&' count: 6 (new assertion == 8: red)

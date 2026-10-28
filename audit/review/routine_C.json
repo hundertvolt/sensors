@@ -1,0 +1,482 @@
+{
+ "settled": [
+  {
+   "id": "stall-bounds",
+   "step": "docs",
+   "why": "A garbage-collection pause of up to 21 ms can already happen at any allocation and every timing consumer is sized to absorb it, so a routine stretch no longer than that adds no new worst case; the I2C limit is derived from the same consumer tolerances and every device file passes it today with a wide margin.",
+   "cite": "G4/R64; SPECIFICATION.md J.6 and the measured GC pause (SPECIFICATION.md I, 'up to ~15-21ms'); src/asy_uart_comm.py _GC_PAUSE_WORST_MS; A.U31.01 consumer table; A.U31.08 (200,000 us vs 462,500 us on dev, 3,000,000 us elsewhere)"
+  },
+  {
+   "id": "setup-returns-bool",
+   "step": "rule",
+   "why": "The owner authorised making equivalent methods behave the same without asking, and the owner's FRAM ruling needs a setup result that is no longer thrown away, so every setup() reports True or False.",
+   "cite": "OR24.a (1); OR89.a (5); G5/R14; A.U10.21"
+  },
+  {
+   "id": "initialized-flags",
+   "step": "rule",
+   "why": "Settled with a narrower outcome: the owner's rule removes any public attribute that only a test reads, so the flag stays only where product code reads it (the FRAM, SPI, UART and logging classes) and is not added to the reader base class, web server, NeoPixel driver or notification service, as the specification's readiness-gate section already says.",
+   "cite": "OR36.a (1); G7/R01 (owner); SPECIFICATION.md C.13; M.SRC_CORE.092 (FRAM manager watch_chip reads it); M.SRC_NET.213-.215 exercise loop; M.SRC_NET.119 Resolved ('the flag gates nothing else'); M.SRC_SENS.023/.033 ('no method guards on it'); A.U10.22's L0 check narrows to classes whose flag product code reads"
+  },
+  {
+   "id": "one-timeout-mechanism",
+   "step": "rule",
+   "why": "The owner prioritised one consistent timeout mechanism for every wait that can be bounded, and MicroPython's millisecond helper fits the project's whole-millisecond rule for sleeps.",
+   "cite": "G5/R53 (owner, 2026-09-11, BACKLOG 'PRIORITIZED'); MicroPython v1.29.0 extmod/asyncio/funcs.py wait_for_ms; G10/R23"
+  },
+  {
+   "id": "fram-waits-unbounded",
+   "step": "docs",
+   "why": "FRAM access never waits on the chip itself (each transfer is synchronous and FRAM writes complete at bus speed), so these waits only wait for this program's own lock holders, which always release; a timeout there could only fire on a program bug and changes nothing on a healthy device.",
+   "cite": "G5/R53; SPECIFICATION.md F.2; src/asy_fram_driver.py (no status polling loop; verify_present() keeps its bounded lock wait); A.U10.26"
+  },
+  {
+   "id": "trigger-starters",
+   "step": "style",
+   "why": "The owner's stagger rule needs the boot code to tell bus-read triggers apart from other timers, and a declared list per module is the same shape the project already uses for task and timer starters.",
+   "cite": "G5/R07 (owner, WP7 and OR47.a (3)); OR84.a (same-shape starter lists); A.U10.12"
+  },
+  {
+   "id": "comment-form",
+   "step": "rule",
+   "why": "The owner asked for the whole repo to be one material, and the firmware already explains functions with '#' comments under one module docstring, so every Python scope takes that form.",
+   "cite": "OR24; SPECIFICATION.md D.11; G9/R17; A.U10.34"
+  },
+  {
+   "id": "float-sleep-everywhere",
+   "step": "rule",
+   "why": "One idiom for one job is the owner's one-material rule, and a check without an exception list is what lets a tool enforce it; a one-off sleep in whole milliseconds waits exactly as long.",
+   "cite": "OR24; G10/R07 (a tool-checkable convention gets a check); G10/R23; A.U31.19"
+  },
+  {
+   "id": "private-by-default",
+   "step": "rule",
+   "why": "The owner-ranked conventions requirement already says visibility is private by default and public only for another module or a general-purpose driver API.",
+   "cite": "G10/R07 (owner, OR24); OR36.a (3)"
+  },
+  {
+   "id": "test-only-code-removed",
+   "step": "rule",
+   "why": "Both methods are called only by tests and the flag is written but never read, and the owner's rules remove test-only code and dead state, with the tests rebuilt through the REST path the product uses.",
+   "cite": "OR36.a (1); OR46.a (2); G5/R54; M.SRC_CORE.008 (c); M.SRC_CORE.018"
+  },
+  {
+   "id": "validator-api",
+   "step": "rule",
+   "why": "A check that can never fire is an unreachable branch, which the owner's rule removes, and the owner's strict-typing decision wants the type to carry what a runtime check would otherwise narrow.",
+   "cite": "G5/R54 (owner, OR46.a (2)); OR81.a; AC_NOTES 38; M.SRC_CORE.047"
+  },
+  {
+   "id": "setup-function-type",
+   "step": "rule",
+   "why": "The owner's typing decision asks for one named alias per repeated callback shape, and a setup that returns a bool is such a shape.",
+   "cite": "OR81.a; M.SRC_CORE.003, .015"
+  },
+  {
+   "id": "task-names-required",
+   "step": "rule",
+   "why": "A default that only tests would use is a test artifact under the owner's rule, so the product always passes the names.",
+   "cite": "OR36.a (1); G7/R01; M.SRC_CORE.016"
+  },
+  {
+   "id": "stack-errno-shared",
+   "step": "rule",
+   "why": "The owner's error catalogue gives a condition any module can meet one shared number, and a stack overflow can be caught by any module's handler.",
+   "cite": "OR28.a (2); M.SRC_CORE.005; M.SRC_CORE.034"
+  },
+  {
+   "id": "unpause-waiter",
+   "step": "rule",
+   "why": "Once the shutdown sequence has closed write access to storage nothing may reopen it, so a storage pause that expires during a reset must not resume writes.",
+   "cite": "OR119.a (2); OR120.a (1); M.SRC_CORE.012"
+  },
+  {
+   "id": "cstack-escalation-path",
+   "step": "rule",
+   "why": "The owner fixed exactly two feed call sites, the loop feed and the one budget-escalation feed, so a stack overflow has to reuse that escalation rather than add a third.",
+   "cite": "OR130.a; OR31.a (3); M.SRC_CORE.016"
+  },
+  {
+   "id": "utc-valid-no-argument",
+   "step": "rule",
+   "why": "Only a test would ever pass anything but 'valid', so a bool parameter would be a test seam, which the owner's rule removes; tests reset the flag from outside.",
+   "cite": "OR36.a (1); M.SRC_CORE.032"
+  },
+  {
+   "id": "config-log-ram-attribute",
+   "step": "rule",
+   "why": "The owner wants no extra FRAM chunk for the SCD30 and set the argument limit at eight, and a class attribute is the only way that meets both without new wiring.",
+   "cite": "OR99 / AC_NOTES 13 ('no extra FRAM chunk'); OR46.b (3) (max-args 8); G10/R15; M.SRC_CORE.040"
+  },
+  {
+   "id": "fatal-report-home",
+   "step": "docs",
+   "why": "Putting the helper in the base-classes module would create an import cycle, which the import rules forbid and which fails at runtime on MicroPython, and the logging module is the one module every handler already imports.",
+   "cite": "G10/R22 (no cyclic import); M.SRC_CORE.034"
+  },
+  {
+   "id": "crc-polynomial-parameter",
+   "step": "rule",
+   "why": "The lint gate flags any assert in firmware code, so passing the already-checked value is the way to type-check without an assert or a suppression.",
+   "cite": "pyproject.toml [tool.ruff.lint] select ALL with S101 exempt only in tests and the web server; M.SRC_CORE.116"
+  },
+  {
+   "id": "crc-out-of-range",
+   "step": "docs",
+   "why": "The CRC module's own documented contract already says an invalid configuration degrades to pass-through instead of raising, so the code is made to match it.",
+   "cite": "src/crc_checks.py module comment and CRC_Base constructor comment; AC_NOTES 39; M.SRC_CORE.131"
+  },
+  {
+   "id": "reset-flush-before-pause",
+   "step": "style",
+   "why": "Today's REST reboot path already flushes before it pauses, and pausing first would silently drop the log entry of a flush that fails, because a paused chunk drops writes.",
+   "cite": "buildgen/codegen.py reboot callback then src/system_service.py _reboot() at HEAD; G5/R02 (paused chunk drops writes); OR119.a (2); A.U11.03"
+  },
+  {
+   "id": "reset-errors-invalid",
+   "step": "rule",
+   "why": "The owner defined that content a field does not accept answers Invalid in the per-field result, and the specification documents only true for this field.",
+   "cite": "OR69.a (4); SPECIFICATION.md A.8; A.U11.31"
+  },
+  {
+   "id": "blank-fram-read",
+   "step": "docs",
+   "why": "The busy marker exists to protect a copy's data while it is read, and a blank block returns before any data is read, so skipping the marker keeps the owner's design intent and fixes the second read wrongly reporting the block as invalid.",
+   "cite": "SPECIFICATION.md A.4 busy/idle account (owner, 2026-09-10); OR57.a (legacy/owner intent); A.U16.09; U16 open point 1 and its verifier check"
+  },
+  {
+   "id": "core-wording",
+   "step": "rule",
+   "why": "Comments state current facts and carry no history, and the remaining choices are wording only with nothing to decide.",
+   "cite": "OR27.a; CLAUDE.md 'Documentation contains current state'; M.SRC_CORE.002, .042, .070, .100, .125"
+  },
+  {
+   "id": "no-sync-sleeps-check",
+   "step": "rule",
+   "why": "The owner-ranked conventions requirement says a convention a tool can check is enforced by a check, and the two exceptions are microsecond hardware waits that must be synchronous.",
+   "cite": "G10/R07 (owner, OR24); CLAUDE.md long-blocking rule; SPECIFICATION.md F.3; AC_NOTES 5; M.SRC_SENS.002"
+  },
+  {
+   "id": "annotation-quoting",
+   "step": "rule",
+   "why": "The owner's later one-material ruling overtakes the earlier 'apply only to new code' note in the typing section, so every file follows that section's quoting rule.",
+   "cite": "OR24 and OR24.a (1) (2026-09-25) over SPECIFICATION.md D.6 (owner, 2026-09-24); HARVEST_REQUIREMENTS 3.3; G10/R25"
+  },
+  {
+   "id": "dynamic-import-ban",
+   "step": "net-effect",
+   "why": "The ban holds repo-wide as the owner worded it; its stated purpose is a firmware import graph a build tool can read without running code, which the few host runners that must load a file by path never enter, so naming each of them changes nothing the rule protects.",
+   "cite": "SPECIFICATION.md F.1 (owner's standing rule, 6aed3c9); G10/R22; HARVEST_REQUIREMENTS 3.3; sites tests_scripts/_script_loader.py, buildgen/validate.py, tests/_coverage_runner.py, tests/_threshold_runner.py, the twin/test device loaders"
+  },
+  {
+   "id": "first-boot-print-only",
+   "step": "rule",
+   "why": "The owner decided that a command-only schema has no file to write and its absence stays a printed note, and that a damaged file keeps its persisted warning.",
+   "cite": "OR136.a (3); OR138.a (1); G5/R21"
+  },
+  {
+   "id": "float32-proof",
+   "step": "rule",
+   "why": "The owner ruled that extra-precision twin builds are ad-hoc instruments, never a committed build variant, so single-precision effects are proven on the board.",
+   "cite": "OR89.a (3); OR45.a; HARVEST_REQUIREMENTS 3.3"
+  },
+  {
+   "id": "config-field-naming",
+   "step": "rule",
+   "why": "One name per field, referenced one way, is the owner's one-material rule applied to config fields, and key names are free to harmonise before the release.",
+   "cite": "OR24; OR58.a; G10/R11"
+  },
+  {
+   "id": "naming-conventions",
+   "step": "style",
+   "why": "The owner's one-material rule needs one form, and the forms chosen are the ones most of the code already uses (18 of 26 async modules carry the prefix, which the build generator already enforces for drivers).",
+   "cite": "OR24; G10/R08; G10/R09; buildgen/driver_registry.py driver-name check"
+  },
+  {
+   "id": "sensorreader-logger-removed",
+   "step": "rule",
+   "why": "Nothing passes the parameter and the checks can never fire, so the owner's dead-code rule removes them; an earlier agent note is not an owner decision and its reason no longer holds.",
+   "cite": "OR46.a (2); G5/R54; OR48.a (2) (an agent's own decision does not bind); A.U35.41, A.U35.43, A.U35.45"
+  },
+  {
+   "id": "unreachable-guards-removed",
+   "step": "rule",
+   "why": "No input can reach either guard, and the owner's rule removes unreachable branches.",
+   "cite": "G5/R54 (owner, OR46.a (2)); M.SRC_NET.023, .048"
+  },
+  {
+   "id": "ntp-timing-defaults",
+   "step": "rule",
+   "why": "A value is written once and imported, and a constant nothing reads is a leftover the owner's rule removes.",
+   "cite": "REF/R05 (owner, OR24); OR46.a (2); M.SRC_NET.042"
+  },
+  {
+   "id": "host-label-home",
+   "step": "style",
+   "why": "The helper is written once and imported by both users, and it sits beside the one address parser both name-resolution users already share.",
+   "cite": "REF/R05; G10/R07; M.SRC_NET.018"
+  },
+  {
+   "id": "ntp-malformed-text",
+   "step": "similar",
+   "why": "Settled with a different outcome: an allocation failure has its own shared number that every module uses for it (as the config manager and FRAM manager already do by splitting their handlers), so the NTP parser logs it there and error 69 keeps meaning only 'the reply is malformed'.",
+   "cite": "OR28.a (2) (shared ALLOC 20, 'used by every module that has it'); A.U2.01 catalogue row 20; A.U2.07 (e15 split, MemoryError to 20); M.SRC_CORE.044/.081-.085 _ERR_ALLOC handlers; M.SRC_NET.049"
+  },
+  {
+   "id": "captive-dns-tag-ids",
+   "step": "similar",
+   "why": "Every sleep constant converted to whole milliseconds also renames its tuning tag to the '_ms' unit, and these two follow the same pattern.",
+   "cite": "G10/R14; G10/R23; A.U31 conflict row 1 (A.U31.09-A.U31.16); M.SRC_NET.004"
+  },
+  {
+   "id": "wifi-constructor-cleanup",
+   "step": "rule",
+   "why": "Only tests pass these parameters and no device file or generated call reaches the GPIO-LED branch, so the owner's rules remove them; the board LED still works through the existing LED argument.",
+   "cite": "OR36.a (1); G7/R01; OR46.a (2); G5/R54; A.U18.40"
+  },
+  {
+   "id": "wifi-led-default-unreadable",
+   "step": "style",
+   "why": "Every unreadable config value falls back to its schema default, and the LED setting doing the same also keeps the owner's 'follow the Wi-Fi LED setting' for the new deactivated pattern.",
+   "cite": "SPECIFICATION.md C.7.3; answers.json wifi-off-led-pattern; A.U18.30; M.SRC_NET.084"
+  },
+  {
+   "id": "dnssrv-warning-code",
+   "step": "rule",
+   "why": "A socket teardown warning can occur in several modules, so the owner's catalogue gives it one shared number.",
+   "cite": "OR28.a (2); A.U18.15; M.SRC_NET.004"
+  },
+  {
+   "id": "new-dns-ntp-errnos",
+   "step": "rule",
+   "why": "A failed bind at setup is the shared 'init failed' condition, and a request that was never sent is its own event, which the catalogue keeps apart from 'no reply'.",
+   "cite": "OR28.a (2); OR56.a (1); G6/R23 (RF160); A.U18.06, A.U18.14"
+  },
+  {
+   "id": "kept-branches",
+   "step": "style",
+   "why": "Handling POLLERR defensively without depending on it is the register's fact-ranked UDP rule, and a type-narrowing re-check is kept and stated in place, the same verdict the UART and FRAM re-checks get.",
+   "cite": "G4/R24 (fact); A.U35.41 E.5.1 verdict table; A.U18.17, A.U18.41; M.SRC_NET.092"
+  },
+  {
+   "id": "socket-faults-retry-rung",
+   "step": "rule",
+   "why": "The owner wants abnormal but harmless conditions handled inside the module and reserves escalation toward a reboot for hardware and configuration faults; a socket that cannot be created is simply re-created on the next attempt.",
+   "cite": "OR18 and OR18.a; OR113.a (2); V.U18.A3; A.U18.47"
+  },
+  {
+   "id": "ntp-lock-hold",
+   "step": "rule",
+   "why": "The register requires every hold span of the Wi-Fi lock to be listed and shown harmless, and the owner already accepted name resolution inside the lock.",
+   "cite": "G6/R26 (owner-confirmed parts, 2026-07-28); A.U18.34"
+  },
+  {
+   "id": "hotspot-task-restart",
+   "step": "rule",
+   "why": "Parity is with legacy's evident intent, legacy's own restart leaves the hotspot and starts a fresh streak, and the owner already decided that a permanent deactivation survives restarts.",
+   "cite": "OR57.a; OR48; G6/R25 (owner, 2026-08-11 restart guard); legacy python/CommonDrivers/async_connect.py restart branch; A.U18.29"
+  },
+  {
+   "id": "led-command-validation",
+   "step": "rule",
+   "why": "The owner's result words need 'Invalid' (bad content) told apart from 'Failed' (LED busy), which requires checking the values before the callback, and the web server already checks the pause-time command this way.",
+   "cite": "OR69.a (4); OR102.a (5); OR24; A.U19.02"
+  },
+  {
+   "id": "status-ip-and-ipv4",
+   "step": "rule",
+   "why": "Settled with a different outcome: after the snapshot change both keys carry the identical address, and the owner-confirmed wiring rule says nothing on a page is duplicated, so one key stays, IPv4, legacy's own key and the standard spelling.",
+   "cite": "OR43.a (2) ('nothing missing, duplicated or orphaned'); OR58.a; M.GEN.008 (\"IP\": wifi.IP, \"IPv4\": wifi.IP); legacy modules/sensortask-wozi.py /net/status; buildgen/definitions.py and mockdata rows follow"
+  },
+  {
+   "id": "webserver-start-retry",
+   "step": "rule",
+   "why": "The owner's recovery ladder retries before restarting a task, and three tries five seconds apart span the network stack's ten-second close linger, a value taken from its source.",
+   "cite": "OR113.a (2); MicroPython v1.29.0 extmod/modlwip.c MICROPY_PY_LWIP_TCP_CLOSE_TIMEOUT_MS; A.U19.09"
+  },
+  {
+   "id": "one-utc-primitive",
+   "step": "rule",
+   "why": "One job gets one implementation that every module imports, and taking the time outside a read's error handling stops a clock problem being recorded as a sensor failure.",
+   "cite": "REF/R05 (owner, OR24); REF/R04; OR56.a (1); A.U10.06"
+  },
+  {
+   "id": "voc-handlers-narrow",
+   "step": "style",
+   "why": "The other pure algorithm modules catch named exceptions and import no logging, and a stack overflow still reaches the SGP40 reader's handler, which records it.",
+   "cite": "src/math_helpers.py, src/crc_checks.py; G5/R16 (where broad handlers belong); A.U30.19; M.SRC_SENS.017"
+  },
+  {
+   "id": "tuning-ids-no-default",
+   "step": "net-effect",
+   "why": "These are tag names only, nothing runs differently, and the suffix would describe a constructor default that no longer exists.",
+   "cite": "M.SRC_SENS.021; OR30.a (tag register); CLAUDE.md current-state rule"
+  },
+  {
+   "id": "neopixel-overlay-names",
+   "step": "rule",
+   "why": "One concept with one name is the owner's one-material rule, which the owner authorised applying directly.",
+   "cite": "OR24; OR24.a (1); M.SRC_SENS.023"
+  },
+  {
+   "id": "notification-setup",
+   "step": "similar",
+   "why": "It follows the one setup contract every class takes, returning its config store's validity like every config-backed reader, and the refused signals were already warnings.",
+   "cite": "setup-returns-bool; A.U10.21; M.SRC_SENS.033 (W44/W45 already warnings)"
+  },
+  {
+   "id": "bmp-sealevel-constant",
+   "step": "rule",
+   "why": "Named constants are the project's form, and a guard no input reaches is removed by the owner's rule.",
+   "cite": "G5/R54 (owner, OR46.a (2)); G10/R07; M.SRC_SENS.040"
+  },
+  {
+   "id": "warning-names",
+   "step": "rule",
+   "why": "Shared warnings take the next free numbers in the owner's catalogue, and the names only describe them.",
+   "cite": "OR28.a (2); M.SRC_SENS.043; M.GEN.034"
+  },
+  {
+   "id": "bmp-reapply-code",
+   "step": "rule",
+   "why": "The owner's recovery ladder climbs one rung at a time, so the re-apply used inside the device-recovery rung must not itself fire the next, init-failure rung.",
+   "cite": "OR113.a (2); M.SRC_SENS.044"
+  },
+  {
+   "id": "trigger-loop-name",
+   "step": "style",
+   "why": "Every task coroutine is named after what it loops on, and the shared divider takes the name the base-class change already gives it.",
+   "cite": "A.U10.44; G10/R16; M.SRC_SENS.045, .083"
+  },
+  {
+   "id": "scd30-always-tuple",
+   "step": "docs",
+   "why": "The website tags are build-generator input written as comments that the firmware never reads, so the list the owner's per-field rule needs stays in code, with a host check keeping the two in step.",
+   "cite": "SPECIFICATION.md L.6.4 (tag lines are buildgen input); OR42.c (2); G10/R07 (tool-checked convention); M.SRC_SENS.053"
+  },
+  {
+   "id": "sgp40-backup-type-home",
+   "step": "style",
+   "why": "A driver's own types live next to it in the driver file, as every driver's measurement types already do.",
+   "cite": "G10/R10; M.SRC_SENS.058"
+  },
+  {
+   "id": "isl-int-rearm-reset",
+   "step": "similar",
+   "why": "A task restart already resets every per-episode flag of this driver, including the park flag this one pairs with.",
+   "cite": "A.U15.34 restart reset list; M.SRC_SENS.074"
+  },
+  {
+   "id": "isl-int-park-tested",
+   "step": "docs",
+   "why": "The chip compares against the window it is currently armed with, and a range switch rewrites that window, so the park and re-arm test is only meaningful on a cycle without a switch; one writer keeps the flag and the chip in step.",
+   "cite": "ISL29125 datasheet FN8424 p12 (interrupt outside the programmed window); OR109.a (no races); M.SRC_SENS.075"
+  },
+  {
+   "id": "isl-rung-no-set-lock",
+   "step": "docs",
+   "why": "The settings lock guards re-applying the stored file while a PUT may be half-way through saving it, and this rung re-applies the chip shadow, which every writer already changes inside one device session.",
+   "cite": "SPECIFICATION.md C.8 device-session model; A.U11.27; A.U15.R04; M.SRC_SENS.076"
+  },
+  {
+   "id": "isl-counts-check",
+   "step": "style",
+   "why": "Narrowing an optional return is kept and stated in place, the same verdict the UART and FRAM re-checks get; it is not one of the never-firing value checks that are dropped.",
+   "cite": "A.U35.41 E.5.1 verdict table; M.SRC_SENS.086"
+  },
+  {
+   "id": "isl-comments",
+   "step": "rule",
+   "why": "Comments state current facts in the present tense, not history.",
+   "cite": "OR27.a; CLAUDE.md current-state rule; M.SRC_SENS.092"
+  },
+  {
+   "id": "bmp-conversion-wait",
+   "step": "docs",
+   "why": "The datasheet gives the conversion time as a formula of the oversampling settings, so the wait is computed from it rather than guessed.",
+   "cite": "BMP388 datasheet DS001 section 3.9.2 and Table 22; G3/R43 (fact); A.U15.25"
+  },
+  {
+   "id": "isl-park-int",
+   "step": "rule",
+   "why": "This is the fix for the interrupt that kept firing every persistence window, which the owner approved with a regression test.",
+   "cite": "OR101.a (D4.66); G3/R51 (owner); A.U15.32"
+  },
+  {
+   "id": "meanatmtemp-bound",
+   "step": "rule",
+   "why": "The owner approved fixing the bug where an accepted value below -40 degC silently produced no sea-level pressure, and -40 is the smallest change that keeps every accepted value inside the formula's range, matching the sensor's own operating range.",
+   "cite": "OR101.a (D4.64); BMP390 datasheet operating range -40 to +85 degC; A.U15.23"
+  },
+  {
+   "id": "bmp-altitude-renamed",
+   "step": "rule",
+   "why": "The owner-ranked conventions requirement names exactly this case: one name, one meaning.",
+   "cite": "G10/R07 State (RF260, owner rank OR24); A.U15.27"
+  },
+  {
+   "id": "voc-at-construction",
+   "step": "rule",
+   "why": "Long-lived objects belong at construction so they settle low in the heap, and building it early gives an identical result because its start reads no clock and no bus.",
+   "cite": "G4/R42 (owner-confirmed); MicroPython docs reference/constrained.rst 'instantiate large, permanent buffers early'; A.U30.04"
+  },
+  {
+   "id": "i2c-scratch-view",
+   "step": "rule",
+   "why": "Hot paths must not churn same-shaped objects such as memoryview slices, the bytes on the wire stay the same, and the SPI and UART drivers already pass whole buffers this way.",
+   "cite": "G4/R42 (owner-confirmed); A.U13.02; A.U30.21"
+  },
+  {
+   "id": "led-task-defined-state",
+   "step": "rule",
+   "why": "A task restart is a rung of the owner's recovery ladder and must actually recover, and a signal cancelled mid-ramp may not leave a lit pixel behind.",
+   "cite": "OR113.a (2); G3/R64; A.U22.01"
+  },
+  {
+   "id": "ts-zero-no-timestamp",
+   "step": "rule",
+   "why": "The owner asked for one 'no timestamp' value for both fields, and 0 is what the FRAM chunk already returns and can never be a real timestamp, since timestamps only exist after an NTP sync.",
+   "cite": "OR97.a (16); answers.json timestamps-before-ntp; A.U15.18"
+  }
+ ],
+ "for_owner": [
+  {
+   "id": "voc-literal-port",
+   "kind": "decision",
+   "topic": "sensors-and-drivers",
+   "title": "The VOC algorithm: a literal copy of Sensirion's code, or house style?",
+   "question": "Does the VOC algorithm keep upstream's names and order?",
+   "context": "The VOC index algorithm is a line-by-line port of Sensirion's reference code (through DFRobot's translation), checked against upstream test values. The plan exempts it from the repo's naming rules and from your member-ordering rule so it can still be compared side by side with the original. Your ordering decision named only test functions as an exception, and your one-material rule names none, so this exemption needs your word. The firmware behaves the same either way.",
+   "options": [
+    {
+     "label": "Keep it literal",
+     "consequence": "Upstream names, casing and order stay; it is listed as the one named exception to both rules, and only the class other modules import follows the naming scheme. Easy to diff against Sensirion's code."
+    },
+    {
+     "label": "Literal names, house order",
+     "consequence": "Function bodies and names stay as upstream, but functions are sorted like every other module. Still traceable function by function, harder to diff as a whole file."
+    },
+    {
+     "label": "Full house style",
+     "consequence": "Renamed and reordered like any module. One material everywhere, but tracing a line back to Sensirion's code needs a name map."
+    }
+   ],
+   "recommended": "Keep it literal",
+   "members": [
+    "voc-port-order",
+    "voc-literal-names"
+   ],
+   "refs": [
+    "OR96.a (2) (only test functions exempt)",
+    "OR24 / OR24.a (1)",
+    "G3/R10 (literal-port rule, agent)",
+    "G10/R07 exclusion (L01, agent)",
+    "M.SRC_SENS.018",
+    "M_SRC_SENS GAP-3",
+    "A.U10.33",
+    "A.U12.12, A.U12.15",
+    "CLAUDE.md 'Adafruit-derived driver code is fair game'"
+   ]
+  }
+ ]
+}

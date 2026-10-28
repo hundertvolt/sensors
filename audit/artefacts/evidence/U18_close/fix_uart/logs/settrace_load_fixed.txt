@@ -1,0 +1,9 @@
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 0 PASS clean_awaits [26] last_k 22 max_ok_wait_vms 35 expired_waits 37 22236 ms
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 1 PASS clean_awaits [41] last_k 25 max_ok_wait_vms 55 expired_waits 43 23251 ms
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 2 PASS clean_awaits [24] last_k 27 max_ok_wait_vms 37 expired_waits 48 24761 ms
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 3 PASS clean_awaits [18] last_k 22 max_ok_wait_vms 51 expired_waits 39 20239 ms
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 4 PASS clean_awaits [20] last_k 26 max_ok_wait_vms 51 expired_waits 46 23157 ms
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 5 PASS clean_awaits [21] last_k 24 max_ok_wait_vms 41 expired_waits 43 22681 ms
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 6 PASS clean_awaits [29] last_k 27 max_ok_wait_vms 45 expired_waits 48 26043 ms
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 7 PASS clean_awaits [24] last_k 24 max_ok_wait_vms 45 expired_waits 40 22018 ms
+SUMMARY test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 plant crc 0 8 / 8 passed 184388 ms

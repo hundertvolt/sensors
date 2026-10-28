@@ -1,0 +1,489 @@
+FFFFFFFFFF.                                                              [100%]
+=================================== FAILURES ===================================
+________ test_the_shell_set_equals_the_python_set_over_the_real_devices ________
+
+    def test_the_shell_set_equals_the_python_set_over_the_real_devices() -> None:
+        done = _call(_LIB, "derived_devices")
+>       assert (done.returncode, done.stderr) == (0, ""), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '-c', 'set -euo pipefail
+E         source /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57...user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_devices.sh: No such file or directory
+E         ')
+E       assert (1, '/bin/bas... directory\n') == (0, '')
+E         
+E         At index 0 diff: 1 != 0
+E         Use -v to get more diff
+
+tests_scripts/test_devices_sh.py:36: AssertionError
+____ test_a_fixture_toml_is_never_a_device_and_the_order_is_the_byte_order _____
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9777/test_a_fixture_toml_is_never_a0')
+
+    def test_a_fixture_toml_is_never_a_device_and_the_order_is_the_byte_order(tmp_path: Path) -> None:
+>       lib = _tree(tmp_path, "fixture_b", "Fixture_c", "zz_test_x", "fixture_a")
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_devices_sh.py:41: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_devices_sh.py:27: in _tree
+    shutil.copy2(_LIB, tmp_path / "scripts" / "_devices.sh")
+/usr/lib/python3.11/shutil.py:448: in copy2
+    copyfile(src, dst, follow_symlinks=follow_symlinks)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+src = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_devices.sh')
+dst = PosixPath('/tmp/pytest-of-root/pytest-9777/test_a_fixture_toml_is_never_a0/scripts/_devices.sh')
+follow_symlinks = True
+
+    def copyfile(src, dst, *, follow_symlinks=True):
+        """Copy data from src to dst in the most efficient way possible.
+    
+        If follow_symlinks is not set and src is a symbolic link, a new
+        symlink will be created instead of copying the file it points to.
+    
+        """
+        sys.audit("shutil.copyfile", src, dst)
+    
+        if _samefile(src, dst):
+            raise SameFileError("{!r} and {!r} are the same file".format(src, dst))
+    
+        file_size = 0
+        for i, fn in enumerate([src, dst]):
+            try:
+                st = _stat(fn)
+            except OSError:
+                # File most likely does not exist
+                pass
+            else:
+                # XXX What about other special files? (sockets, devices...)
+                if stat.S_ISFIFO(st.st_mode):
+                    fn = fn.path if isinstance(fn, os.DirEntry) else fn
+                    raise SpecialFileError("`%s` is a named pipe" % fn)
+                if _WINDOWS and i == 0:
+                    file_size = st.st_size
+    
+        if not follow_symlinks and _islink(src):
+            os.symlink(os.readlink(src), dst)
+        else:
+>           with open(src, 'rb') as fsrc:
+                 ^^^^^^^^^^^^^^^
+E           FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_devices.sh'
+
+/usr/lib/python3.11/shutil.py:256: FileNotFoundError
+_______________ test_an_empty_devices_directory_fails_naming_it ________________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9777/test_an_empty_devices_director0')
+
+    def test_an_empty_devices_directory_fails_naming_it(tmp_path: Path) -> None:
+>       lib = _tree(tmp_path, "zz_test_only")
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_devices_sh.py:47: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_devices_sh.py:27: in _tree
+    shutil.copy2(_LIB, tmp_path / "scripts" / "_devices.sh")
+/usr/lib/python3.11/shutil.py:448: in copy2
+    copyfile(src, dst, follow_symlinks=follow_symlinks)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+src = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_devices.sh')
+dst = PosixPath('/tmp/pytest-of-root/pytest-9777/test_an_empty_devices_director0/scripts/_devices.sh')
+follow_symlinks = True
+
+    def copyfile(src, dst, *, follow_symlinks=True):
+        """Copy data from src to dst in the most efficient way possible.
+    
+        If follow_symlinks is not set and src is a symbolic link, a new
+        symlink will be created instead of copying the file it points to.
+    
+        """
+        sys.audit("shutil.copyfile", src, dst)
+    
+        if _samefile(src, dst):
+            raise SameFileError("{!r} and {!r} are the same file".format(src, dst))
+    
+        file_size = 0
+        for i, fn in enumerate([src, dst]):
+            try:
+                st = _stat(fn)
+            except OSError:
+                # File most likely does not exist
+                pass
+            else:
+                # XXX What about other special files? (sockets, devices...)
+                if stat.S_ISFIFO(st.st_mode):
+                    fn = fn.path if isinstance(fn, os.DirEntry) else fn
+                    raise SpecialFileError("`%s` is a named pipe" % fn)
+                if _WINDOWS and i == 0:
+                    file_size = st.st_size
+    
+        if not follow_symlinks and _islink(src):
+            os.symlink(os.readlink(src), dst)
+        else:
+>           with open(src, 'rb') as fsrc:
+                 ^^^^^^^^^^^^^^^
+E           FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_devices.sh'
+
+/usr/lib/python3.11/shutil.py:256: FileNotFoundError
+__________________ test_a_derived_device_is_accepted_silently __________________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9777/test_a_derived_device_is_accep0')
+
+    def test_a_derived_device_is_accepted_silently(tmp_path: Path) -> None:
+>       lib = _tree(tmp_path, "fixture_a", "fixture_b")
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_devices_sh.py:54: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_devices_sh.py:27: in _tree
+    shutil.copy2(_LIB, tmp_path / "scripts" / "_devices.sh")
+/usr/lib/python3.11/shutil.py:448: in copy2
+    copyfile(src, dst, follow_symlinks=follow_symlinks)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+src = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_devices.sh')
+dst = PosixPath('/tmp/pytest-of-root/pytest-9777/test_a_derived_device_is_accep0/scripts/_devices.sh')
+follow_symlinks = True
+
+    def copyfile(src, dst, *, follow_symlinks=True):
+        """Copy data from src to dst in the most efficient way possible.
+    
+        If follow_symlinks is not set and src is a symbolic link, a new
+        symlink will be created instead of copying the file it points to.
+    
+        """
+        sys.audit("shutil.copyfile", src, dst)
+    
+        if _samefile(src, dst):
+            raise SameFileError("{!r} and {!r} are the same file".format(src, dst))
+    
+        file_size = 0
+        for i, fn in enumerate([src, dst]):
+            try:
+                st = _stat(fn)
+            except OSError:
+                # File most likely does not exist
+                pass
+            else:
+                # XXX What about other special files? (sockets, devices...)
+                if stat.S_ISFIFO(st.st_mode):
+                    fn = fn.path if isinstance(fn, os.DirEntry) else fn
+                    raise SpecialFileError("`%s` is a named pipe" % fn)
+                if _WINDOWS and i == 0:
+                    file_size = st.st_size
+    
+        if not follow_symlinks and _islink(src):
+            os.symlink(os.readlink(src), dst)
+        else:
+>           with open(src, 'rb') as fsrc:
+                 ^^^^^^^^^^^^^^^
+E           FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_devices.sh'
+
+/usr/lib/python3.11/shutil.py:256: FileNotFoundError
+_______ test_every_other_name_exits_2_listing_the_valid_devices[unknown] _______
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9777/test_every_other_name_exits_2_0')
+name = 'no_such_device'
+
+    @pytest.mark.parametrize("name", ["no_such_device", "zz_test_x", "", "../devices/fixture_a", "fixture_a.toml"], ids=["unknown", "fixture", "empty", "path", "file-name"])
+    def test_every_other_name_exits_2_listing_the_valid_devices(tmp_path: Path, name: str) -> None:
+>       lib = _tree(tmp_path, "fixture_b", "fixture_a", "zz_test_x")
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_devices_sh.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_devices_sh.py:27: in _tree
+    shutil.copy2(_LIB, tmp_path / "scripts" / "_devices.sh")
+/usr/lib/python3.11/shutil.py:448: in copy2
+    copyfile(src, dst, follow_symlinks=follow_symlinks)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+src = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_devices.sh')
+dst = PosixPath('/tmp/pytest-of-root/pytest-9777/test_every_other_name_exits_2_0/scripts/_devices.sh')
+follow_symlinks = True
+
+    def copyfile(src, dst, *, follow_symlinks=True):
+        """Copy data from src to dst in the most efficient way possible.
+    
+        If follow_symlinks is not set and src is a symbolic link, a new
+        symlink will be created instead of copying the file it points to.
+    
+        """
+        sys.audit("shutil.copyfile", src, dst)
+    
+        if _samefile(src, dst):
+            raise SameFileError("{!r} and {!r} are the same file".format(src, dst))
+    
+        file_size = 0
+        for i, fn in enumerate([src, dst]):
+            try:
+                st = _stat(fn)
+            except OSError:
+                # File most likely does not exist
+                pass
+            else:
+                # XXX What about other special files? (sockets, devices...)
+                if stat.S_ISFIFO(st.st_mode):
+                    fn = fn.path if isinstance(fn, os.DirEntry) else fn
+                    raise SpecialFileError("`%s` is a named pipe" % fn)
+                if _WINDOWS and i == 0:
+                    file_size = st.st_size
+    
+        if not follow_symlinks and _islink(src):
+            os.symlink(os.readlink(src), dst)
+        else:
+>           with open(src, 'rb') as fsrc:
+                 ^^^^^^^^^^^^^^^
+E           FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_devices.sh'
+
+/usr/lib/python3.11/shutil.py:256: FileNotFoundError
+_______ test_every_other_name_exits_2_listing_the_valid_devices[fixture] _______
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9777/test_every_other_name_exits_2_1')
+name = 'zz_test_x'
+
+    @pytest.mark.parametrize("name", ["no_such_device", "zz_test_x", "", "../devices/fixture_a", "fixture_a.toml"], ids=["unknown", "fixture", "empty", "path", "file-name"])
+    def test_every_other_name_exits_2_listing_the_valid_devices(tmp_path: Path, name: str) -> None:
+>       lib = _tree(tmp_path, "fixture_b", "fixture_a", "zz_test_x")
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_devices_sh.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_devices_sh.py:27: in _tree
+    shutil.copy2(_LIB, tmp_path / "scripts" / "_devices.sh")
+/usr/lib/python3.11/shutil.py:448: in copy2
+    copyfile(src, dst, follow_symlinks=follow_symlinks)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+src = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_devices.sh')
+dst = PosixPath('/tmp/pytest-of-root/pytest-9777/test_every_other_name_exits_2_1/scripts/_devices.sh')
+follow_symlinks = True
+
+    def copyfile(src, dst, *, follow_symlinks=True):
+        """Copy data from src to dst in the most efficient way possible.
+    
+        If follow_symlinks is not set and src is a symbolic link, a new
+        symlink will be created instead of copying the file it points to.
+    
+        """
+        sys.audit("shutil.copyfile", src, dst)
+    
+        if _samefile(src, dst):
+            raise SameFileError("{!r} and {!r} are the same file".format(src, dst))
+    
+        file_size = 0
+        for i, fn in enumerate([src, dst]):
+            try:
+                st = _stat(fn)
+            except OSError:
+                # File most likely does not exist
+                pass
+            else:
+                # XXX What about other special files? (sockets, devices...)
+                if stat.S_ISFIFO(st.st_mode):
+                    fn = fn.path if isinstance(fn, os.DirEntry) else fn
+                    raise SpecialFileError("`%s` is a named pipe" % fn)
+                if _WINDOWS and i == 0:
+                    file_size = st.st_size
+    
+        if not follow_symlinks and _islink(src):
+            os.symlink(os.readlink(src), dst)
+        else:
+>           with open(src, 'rb') as fsrc:
+                 ^^^^^^^^^^^^^^^
+E           FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_devices.sh'
+
+/usr/lib/python3.11/shutil.py:256: FileNotFoundError
+________ test_every_other_name_exits_2_listing_the_valid_devices[empty] ________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9777/test_every_other_name_exits_2_2')
+name = ''
+
+    @pytest.mark.parametrize("name", ["no_such_device", "zz_test_x", "", "../devices/fixture_a", "fixture_a.toml"], ids=["unknown", "fixture", "empty", "path", "file-name"])
+    def test_every_other_name_exits_2_listing_the_valid_devices(tmp_path: Path, name: str) -> None:
+>       lib = _tree(tmp_path, "fixture_b", "fixture_a", "zz_test_x")
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_devices_sh.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_devices_sh.py:27: in _tree
+    shutil.copy2(_LIB, tmp_path / "scripts" / "_devices.sh")
+/usr/lib/python3.11/shutil.py:448: in copy2
+    copyfile(src, dst, follow_symlinks=follow_symlinks)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+src = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_devices.sh')
+dst = PosixPath('/tmp/pytest-of-root/pytest-9777/test_every_other_name_exits_2_2/scripts/_devices.sh')
+follow_symlinks = True
+
+    def copyfile(src, dst, *, follow_symlinks=True):
+        """Copy data from src to dst in the most efficient way possible.
+    
+        If follow_symlinks is not set and src is a symbolic link, a new
+        symlink will be created instead of copying the file it points to.
+    
+        """
+        sys.audit("shutil.copyfile", src, dst)
+    
+        if _samefile(src, dst):
+            raise SameFileError("{!r} and {!r} are the same file".format(src, dst))
+    
+        file_size = 0
+        for i, fn in enumerate([src, dst]):
+            try:
+                st = _stat(fn)
+            except OSError:
+                # File most likely does not exist
+                pass
+            else:
+                # XXX What about other special files? (sockets, devices...)
+                if stat.S_ISFIFO(st.st_mode):
+                    fn = fn.path if isinstance(fn, os.DirEntry) else fn
+                    raise SpecialFileError("`%s` is a named pipe" % fn)
+                if _WINDOWS and i == 0:
+                    file_size = st.st_size
+    
+        if not follow_symlinks and _islink(src):
+            os.symlink(os.readlink(src), dst)
+        else:
+>           with open(src, 'rb') as fsrc:
+                 ^^^^^^^^^^^^^^^
+E           FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_devices.sh'
+
+/usr/lib/python3.11/shutil.py:256: FileNotFoundError
+________ test_every_other_name_exits_2_listing_the_valid_devices[path] _________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9777/test_every_other_name_exits_2_3')
+name = '../devices/fixture_a'
+
+    @pytest.mark.parametrize("name", ["no_such_device", "zz_test_x", "", "../devices/fixture_a", "fixture_a.toml"], ids=["unknown", "fixture", "empty", "path", "file-name"])
+    def test_every_other_name_exits_2_listing_the_valid_devices(tmp_path: Path, name: str) -> None:
+>       lib = _tree(tmp_path, "fixture_b", "fixture_a", "zz_test_x")
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_devices_sh.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_devices_sh.py:27: in _tree
+    shutil.copy2(_LIB, tmp_path / "scripts" / "_devices.sh")
+/usr/lib/python3.11/shutil.py:448: in copy2
+    copyfile(src, dst, follow_symlinks=follow_symlinks)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+src = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_devices.sh')
+dst = PosixPath('/tmp/pytest-of-root/pytest-9777/test_every_other_name_exits_2_3/scripts/_devices.sh')
+follow_symlinks = True
+
+    def copyfile(src, dst, *, follow_symlinks=True):
+        """Copy data from src to dst in the most efficient way possible.
+    
+        If follow_symlinks is not set and src is a symbolic link, a new
+        symlink will be created instead of copying the file it points to.
+    
+        """
+        sys.audit("shutil.copyfile", src, dst)
+    
+        if _samefile(src, dst):
+            raise SameFileError("{!r} and {!r} are the same file".format(src, dst))
+    
+        file_size = 0
+        for i, fn in enumerate([src, dst]):
+            try:
+                st = _stat(fn)
+            except OSError:
+                # File most likely does not exist
+                pass
+            else:
+                # XXX What about other special files? (sockets, devices...)
+                if stat.S_ISFIFO(st.st_mode):
+                    fn = fn.path if isinstance(fn, os.DirEntry) else fn
+                    raise SpecialFileError("`%s` is a named pipe" % fn)
+                if _WINDOWS and i == 0:
+                    file_size = st.st_size
+    
+        if not follow_symlinks and _islink(src):
+            os.symlink(os.readlink(src), dst)
+        else:
+>           with open(src, 'rb') as fsrc:
+                 ^^^^^^^^^^^^^^^
+E           FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_devices.sh'
+
+/usr/lib/python3.11/shutil.py:256: FileNotFoundError
+______ test_every_other_name_exits_2_listing_the_valid_devices[file-name] ______
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9777/test_every_other_name_exits_2_4')
+name = 'fixture_a.toml'
+
+    @pytest.mark.parametrize("name", ["no_such_device", "zz_test_x", "", "../devices/fixture_a", "fixture_a.toml"], ids=["unknown", "fixture", "empty", "path", "file-name"])
+    def test_every_other_name_exits_2_listing_the_valid_devices(tmp_path: Path, name: str) -> None:
+>       lib = _tree(tmp_path, "fixture_b", "fixture_a", "zz_test_x")
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_devices_sh.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_devices_sh.py:27: in _tree
+    shutil.copy2(_LIB, tmp_path / "scripts" / "_devices.sh")
+/usr/lib/python3.11/shutil.py:448: in copy2
+    copyfile(src, dst, follow_symlinks=follow_symlinks)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+src = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_devices.sh')
+dst = PosixPath('/tmp/pytest-of-root/pytest-9777/test_every_other_name_exits_2_4/scripts/_devices.sh')
+follow_symlinks = True
+
+    def copyfile(src, dst, *, follow_symlinks=True):
+        """Copy data from src to dst in the most efficient way possible.
+    
+        If follow_symlinks is not set and src is a symbolic link, a new
+        symlink will be created instead of copying the file it points to.
+    
+        """
+        sys.audit("shutil.copyfile", src, dst)
+    
+        if _samefile(src, dst):
+            raise SameFileError("{!r} and {!r} are the same file".format(src, dst))
+    
+        file_size = 0
+        for i, fn in enumerate([src, dst]):
+            try:
+                st = _stat(fn)
+            except OSError:
+                # File most likely does not exist
+                pass
+            else:
+                # XXX What about other special files? (sockets, devices...)
+                if stat.S_ISFIFO(st.st_mode):
+                    fn = fn.path if isinstance(fn, os.DirEntry) else fn
+                    raise SpecialFileError("`%s` is a named pipe" % fn)
+                if _WINDOWS and i == 0:
+                    file_size = st.st_size
+    
+        if not follow_symlinks and _islink(src):
+            os.symlink(os.readlink(src), dst)
+        else:
+>           with open(src, 'rb') as fsrc:
+                 ^^^^^^^^^^^^^^^
+E           FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t/scripts/_devices.sh'
+
+/usr/lib/python3.11/shutil.py:256: FileNotFoundError
+_________________ test_the_library_refuses_to_run_as_a_script __________________
+
+    def test_the_library_refuses_to_run_as_a_script() -> None:
+        done = subprocess.run(["/bin/bash", str(_LIB)], capture_output=True, text=True, check=False, timeout=_TIMEOUT_S)
+>       assert (done.returncode, done.stderr.strip()) == (2, "error: source scripts/_devices.sh, do not run it")
+E       AssertionError: assert (127, '/bin/b...or directory') == (2, 'error: s...o not run it')
+E         
+E         At index 0 diff: 127 != 2
+E         Use -v to get more diff
+
+tests_scripts/test_devices_sh.py:69: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_devices_sh.py::test_the_shell_set_equals_the_python_set_over_the_real_devices
+FAILED tests_scripts/test_devices_sh.py::test_a_fixture_toml_is_never_a_device_and_the_order_is_the_byte_order
+FAILED tests_scripts/test_devices_sh.py::test_an_empty_devices_directory_fails_naming_it
+FAILED tests_scripts/test_devices_sh.py::test_a_derived_device_is_accepted_silently
+FAILED tests_scripts/test_devices_sh.py::test_every_other_name_exits_2_listing_the_valid_devices[unknown]
+FAILED tests_scripts/test_devices_sh.py::test_every_other_name_exits_2_listing_the_valid_devices[fixture]
+FAILED tests_scripts/test_devices_sh.py::test_every_other_name_exits_2_listing_the_valid_devices[empty]
+FAILED tests_scripts/test_devices_sh.py::test_every_other_name_exits_2_listing_the_valid_devices[path]
+FAILED tests_scripts/test_devices_sh.py::test_every_other_name_exits_2_listing_the_valid_devices[file-name]
+FAILED tests_scripts/test_devices_sh.py::test_the_library_refuses_to_run_as_a_script
+10 failed, 1 passed in 0.51s

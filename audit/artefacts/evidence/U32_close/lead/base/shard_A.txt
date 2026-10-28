@@ -1,0 +1,8 @@
+tests/test_digital_twin_bus_hazard_concurrency.py@-1
+tests/test_digital_twin_uart_link.py@-1
+tests/test_asy_system_service.py@-1
+tests/test_asy_system_service.py@32768
+tests/test_asy_uart_link_driver.py@-1
+tests/test_asy_uart_link_driver.py@32768
+tests_scripts/test_buildgen_web_tag.py
+tests_scripts/test_uart_changelog.py

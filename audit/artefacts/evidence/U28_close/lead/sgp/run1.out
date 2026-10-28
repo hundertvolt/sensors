@@ -1,0 +1,7 @@
+== Launching: /root/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_dev --wiring-plan /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28t/build/generated_src/sensortask_dev_wiring_plan.json --device dev --host 127.0.0.1 --port 20166 --fram-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/sgp/run1/state/fram_state.json --scd30-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/sgp/run1/state/scd30_state.json --mem-backup-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/sgp/run1/state/mem_backup_state.json --config-dir /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/sgp/run1/state/config/ --gc-threshold 32768 --test-conn-status-interval-ms 20 (log: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/sgp/run1/twin.log)
+serving at +4.0s
+{"t": 4.0, "counter": 0, "history": [], "BackupTS": null, "NTP": null}
+{"t": 94.0, "counter": 1, "history": [["W", 35]], "BackupTS": null, "NTP": null}
+{"t": 155.1, "counter": 2, "history": [["W", 35]], "BackupTS": null, "NTP": null}
+shutdown exit 0 at +156.2s
+rc=0

@@ -1,0 +1,1086 @@
+{
+ "_about": "Hand inputs levels_walk.py renders: each note or named test is checked against the tree on every run, and a stale one fails the walk (agent, 2026-10-27).",
+ "intent_notes": {
+  "asy_base_classes.py E CFG_SNAPSHOT_RAISED": "closed (OF-245): planted `errno=_ERR_CFG_SNAPSHOT_RAISED` -> `errno=_ERR_CALLBACK` at src/asy_base_classes.py:497 (its log site) fails tests/test_asy_base_classes.py::test_a_raising_pre_write_read_is_logged_as_cfg_snapshot_raised and tests/test_asy_base_classes.py::test_set_dict_cfg_old_value_snapshot_read_exception_falls_back_to_default at gc -1 and 32768, zero memory markers (agent, 2026-10-27)",
+  "asy_base_classes.py E CFG_SET_RAISED": "closed (OF-245): planted `errno=_ERR_CFG_SET_RAISED` -> `errno=_ERR_CALLBACK` at src/asy_base_classes.py:507 (its log site) fails tests/test_asy_base_classes.py::test_a_raising_store_write_is_logged_as_cfg_set_raised at gc -1 and 32768, zero memory markers (agent, 2026-10-27)",
+  "asy_base_classes.py E PUSH_RAISED": "closed (OF-245): planted `errno=_ERR_PUSH_RAISED` -> `errno=_ERR_CALLBACK` at src/asy_base_classes.py:535 (its log site) fails tests/test_asy_base_classes.py::test_a_raising_push_is_logged_as_push_raised at gc -1 and 32768, zero memory markers (agent, 2026-10-27)",
+  "asy_base_classes.py E RECOVERY_READ_RAISED": "closed (OF-245): planted `errno=_ERR_RECOVERY_READ_RAISED` -> `errno=_ERR_CALLBACK` at src/asy_base_classes.py:673 (its log site) fails tests/test_asy_base_classes.py::test_a_raising_recovery_read_back_is_logged_as_recovery_read_raised at gc -1 and 32768, zero memory markers (agent, 2026-10-27)",
+  "asy_base_classes.py E RECOVERY_WRITE_RAISED": "closed (OF-245): planted `errno=_ERR_RECOVERY_WRITE_RAISED` -> `errno=_ERR_CALLBACK` at src/asy_base_classes.py:688 (its log site) fails tests/test_asy_base_classes.py::test_a_raising_recovery_write_is_logged_as_recovery_write_raised and tests/test_asy_base_classes.py::test_set_dict_cfg_recover_failed_push_correction_write_exception_is_caught at gc -1 and 32768, zero memory markers (agent, 2026-10-27)",
+  "asy_uart_comm.py E UART_WRONG_KIND": "closed (OF-245): planted `_validate()`'s `return _ERR_UART_WRONG_KIND` -> `return _ERR_UART_FRAME_INVALID` at src/asy_uart_comm.py:909 (the code the listener's fault logs, :574) fails tests/test_asy_uart_comm.py::test_an_ack_arriving_at_a_listener_is_logged_as_the_wrong_kind and ::test_an_undefined_command_is_distinguished_from_a_valid_but_unexpected_one at gc -1 and 32768, zero memory markers (agent, 2026-10-27)"
+ },
+ "schema_plants": {
+  "int_min": {
+   "site": "src/asy_config_manager.py:179 `val_min <= value` -> `val_min < value` (checked_int)",
+   "classes": [
+    "int:the minimum"
+   ],
+   "rows": {
+    "bmp3xx": [
+     "SampleInterval: the minimum"
+    ],
+    "isl29125": [
+     "IRCompAdjust: the minimum",
+     "SampleInterval: the minimum"
+    ],
+    "scd30": [
+     "Altitude: the minimum",
+     "AmbPres: the minimum",
+     "FRCWindow: the minimum",
+     "ForceCalRef: the minimum",
+     "MeasInterval: the minimum"
+    ]
+   }
+  },
+  "int_max": {
+   "site": "src/asy_config_manager.py:179 `value <= val_max` -> `value < val_max` (checked_int)",
+   "classes": [
+    "int:the maximum"
+   ],
+   "rows": {
+    "bmp3xx": [
+     "SampleInterval: the maximum"
+    ],
+    "isl29125": [
+     "IRCompAdjust: the maximum",
+     "SampleInterval: the maximum"
+    ],
+    "scd30": [
+     "Altitude: the maximum",
+     "AmbPres: the maximum",
+     "FRCWindow: the maximum",
+     "ForceCalRef: the maximum",
+     "MeasInterval: the maximum"
+    ],
+    "sgp40": [
+     "BackupMaxAge: the maximum",
+     "BackupPeriod: the maximum",
+     "WaitTimeNTP: the maximum"
+    ]
+   }
+  },
+  "float_min": {
+   "site": "src/asy_config_manager.py:165 `val_min <= value` -> `val_min < value` (checked_float)",
+   "classes": [
+    "float:the minimum"
+   ],
+   "rows": {
+    "bmp3xx": [
+     "MeanAtmTemp: the minimum",
+     "PresOffset: the minimum",
+     "SeaLevelOffset: the minimum",
+     "TempOffset: the minimum"
+    ],
+    "isl29125": [
+     "AutoRangeDwell: the minimum",
+     "AutoRangeThresh: the minimum",
+     "FiltCoeff: the minimum",
+     "GainRatio: the minimum"
+    ],
+    "scd30": [
+     "FRCNoise: the minimum",
+     "FRCRate: the minimum",
+     "TempOffset: the minimum"
+    ],
+    "sgp40": [
+     "Hum: the minimum",
+     "Temp: the minimum"
+    ]
+   }
+  },
+  "float_max": {
+   "site": "src/asy_config_manager.py:165 `value <= val_max` -> `value < val_max` (checked_float)",
+   "classes": [
+    "float:the maximum"
+   ],
+   "rows": {
+    "bmp3xx": [
+     "MeanAtmTemp: the maximum",
+     "PresOffset: the maximum",
+     "SeaLevelOffset: the maximum",
+     "TempOffset: the maximum"
+    ],
+    "isl29125": [
+     "AutoRangeDwell: the maximum",
+     "AutoRangeThresh: the maximum",
+     "FiltCoeff: the maximum",
+     "GainRatio: the maximum"
+    ],
+    "scd30": [
+     "FRCNoise: the maximum",
+     "FRCRate: the maximum",
+     "TempOffset: the maximum"
+    ],
+    "sgp40": [
+     "Hum: the maximum",
+     "Temp: the maximum"
+    ]
+   }
+  },
+  "int_range_removed": {
+   "site": "src/asy_config_manager.py:179 checked_int's range check -> `True`",
+   "classes": [
+    "int:below the minimum",
+    "int:above the maximum"
+   ],
+   "rows": {
+    "bmp3xx": [
+     "SampleInterval: above the maximum",
+     "SampleInterval: below the minimum"
+    ],
+    "isl29125": [
+     "IRCompAdjust: above the maximum",
+     "IRCompAdjust: below the minimum",
+     "SampleInterval: above the maximum",
+     "SampleInterval: below the minimum"
+    ],
+    "scd30": [
+     "Altitude: above the maximum",
+     "Altitude: below the minimum",
+     "AmbPres: above the maximum",
+     "AmbPres: below the minimum",
+     "FRCWindow: above the maximum",
+     "FRCWindow: below the minimum",
+     "ForceCalRef: above the maximum",
+     "ForceCalRef: below the minimum",
+     "MeasInterval: above the maximum",
+     "MeasInterval: below the minimum"
+    ],
+    "sgp40": [
+     "BackupMaxAge: above the maximum",
+     "BackupMaxAge: below the minimum",
+     "BackupPeriod: above the maximum",
+     "BackupPeriod: below the minimum",
+     "WaitTimeNTP: above the maximum",
+     "WaitTimeNTP: below the minimum"
+    ]
+   }
+  },
+  "float_range_removed": {
+   "site": "src/asy_config_manager.py:165 checked_float's range check -> `True`",
+   "classes": [
+    "float:below the minimum",
+    "float:above the maximum",
+    "float:NaN",
+    "float:+inf",
+    "float:-inf"
+   ],
+   "rows": {
+    "bmp3xx": [
+     "MeanAtmTemp: +inf",
+     "MeanAtmTemp: -inf",
+     "MeanAtmTemp: NaN",
+     "MeanAtmTemp: above the maximum",
+     "MeanAtmTemp: below the minimum",
+     "PresOffset: +inf",
+     "PresOffset: -inf",
+     "PresOffset: NaN",
+     "PresOffset: above the maximum",
+     "PresOffset: below the minimum",
+     "SeaLevelOffset: +inf",
+     "SeaLevelOffset: -inf",
+     "SeaLevelOffset: NaN",
+     "SeaLevelOffset: above the maximum",
+     "SeaLevelOffset: below the minimum",
+     "TempOffset: +inf",
+     "TempOffset: -inf",
+     "TempOffset: NaN",
+     "TempOffset: above the maximum",
+     "TempOffset: below the minimum"
+    ],
+    "isl29125": [
+     "AutoRangeDwell: +inf",
+     "AutoRangeDwell: -inf",
+     "AutoRangeDwell: NaN",
+     "AutoRangeDwell: above the maximum",
+     "AutoRangeDwell: below the minimum",
+     "AutoRangeThresh: +inf",
+     "AutoRangeThresh: -inf",
+     "AutoRangeThresh: NaN",
+     "AutoRangeThresh: above the maximum",
+     "AutoRangeThresh: below the minimum",
+     "FiltCoeff: +inf",
+     "FiltCoeff: -inf",
+     "FiltCoeff: NaN",
+     "FiltCoeff: above the maximum",
+     "FiltCoeff: below the minimum",
+     "GainRatio: +inf",
+     "GainRatio: -inf",
+     "GainRatio: NaN",
+     "GainRatio: above the maximum",
+     "GainRatio: below the minimum"
+    ],
+    "scd30": [
+     "FRCNoise: +inf",
+     "FRCNoise: -inf",
+     "FRCNoise: NaN",
+     "FRCNoise: above the maximum",
+     "FRCNoise: below the minimum",
+     "FRCRate: +inf",
+     "FRCRate: -inf",
+     "FRCRate: NaN",
+     "FRCRate: above the maximum",
+     "FRCRate: below the minimum",
+     "TempOffset: +inf",
+     "TempOffset: -inf",
+     "TempOffset: NaN",
+     "TempOffset: above the maximum",
+     "TempOffset: below the minimum"
+    ],
+    "sgp40": [
+     "Hum: +inf",
+     "Hum: -inf",
+     "Hum: NaN",
+     "Hum: above the maximum",
+     "Hum: below the minimum",
+     "Temp: +inf",
+     "Temp: -inf",
+     "Temp: NaN",
+     "Temp: above the maximum",
+     "Temp: below the minimum"
+    ]
+   }
+  },
+  "set_membership_removed": {
+   "site": "src/asy_config_manager.py:118 a set member's bypass -> `if False:`",
+   "classes": [
+    "set:the set's smallest",
+    "set:the set's largest"
+   ],
+   "rows": {
+    "bmp3xx": [
+     "FiltCoeff: the set's largest",
+     "FiltCoeff: the set's smallest",
+     "PresOvers: the set's largest",
+     "PresOvers: the set's smallest",
+     "TempOvers: the set's largest",
+     "TempOvers: the set's smallest"
+    ],
+    "isl29125": [
+     "IRCompOffset: the set's largest",
+     "IRCompOffset: the set's smallest",
+     "Range: the set's largest",
+     "Range: the set's smallest",
+     "Resolution: the set's largest",
+     "Resolution: the set's smallest"
+    ]
+   }
+  },
+  "set_membership_ignored": {
+   "site": "src/asy_config_manager.py:118 `check_val in val_special` dropped (every value a member)",
+   "classes": [
+    "set:below the set's smallest",
+    "set:above the set's largest",
+    "set:a non-member inside the set's span"
+   ],
+   "rows": {
+    "bmp3xx": [
+     "FiltCoeff: a non-member inside the set's span",
+     "FiltCoeff: above the set's largest",
+     "FiltCoeff: below the set's smallest",
+     "PresOvers: a non-member inside the set's span",
+     "PresOvers: above the set's largest",
+     "PresOvers: below the set's smallest",
+     "TempOvers: a non-member inside the set's span",
+     "TempOvers: above the set's largest",
+     "TempOvers: below the set's smallest"
+    ],
+    "isl29125": [
+     "IRCompOffset: above the set's largest",
+     "IRCompOffset: below the set's smallest",
+     "Range: a non-member inside the set's span",
+     "Range: above the set's largest",
+     "Range: below the set's smallest",
+     "Resolution: a non-member inside the set's span",
+     "Resolution: above the set's largest",
+     "Resolution: below the set's smallest"
+    ]
+   }
+  },
+  "special_scalar_removed": {
+   "site": "src/asy_config_manager.py:123 the scalar special's bypass -> `if False:`",
+   "classes": [
+    "int:the special value",
+    "float:the special value"
+   ],
+   "rows": {
+    "scd30": [
+     "AmbPres: the special value"
+    ]
+   }
+  },
+  "min_and_special": {
+   "site": "src/asy_config_manager.py:179 and :123 together (the minimum that is also the special value)",
+   "classes": [
+    "int:the minimum",
+    "int:the special value"
+   ],
+   "rows": {
+    "sgp40": [
+     "BackupMaxAge: the minimum",
+     "BackupMaxAge: the special value",
+     "BackupPeriod: the minimum",
+     "BackupPeriod: the special value",
+     "WaitTimeNTP: the minimum",
+     "WaitTimeNTP: the special value"
+    ]
+   }
+  },
+  "bool_type_removed": {
+   "site": "src/asy_config_manager.py:310 `type(check_val) is bool` dropped",
+   "classes": [
+    "bool:the int 1",
+    "bool:None"
+   ],
+   "rows": {
+    "isl29125": [
+     "Calibrate: None",
+     "Calibrate: the int 1",
+     "RangeAuto: None",
+     "RangeAuto: the int 1"
+    ],
+    "scd30": [
+     "ContMeas: None",
+     "ContMeas: the int 1",
+     "SelfCal: None",
+     "SelfCal: the int 1"
+    ],
+    "sgp40": [
+     "ResetVOC: None",
+     "ResetVOC: the int 1"
+    ]
+   }
+  },
+  "bool_branch_refuses": {
+   "site": "src/asy_config_manager.py:310 the bool branch refuses every value",
+   "classes": [
+    "bool:True",
+    "bool:False"
+   ],
+   "rows": {
+    "isl29125": [
+     "Calibrate: False",
+     "Calibrate: True",
+     "RangeAuto: False",
+     "RangeAuto: True"
+    ],
+    "scd30": [
+     "ContMeas: False",
+     "ContMeas: True",
+     "SelfCal: False",
+     "SelfCal: True"
+    ],
+    "sgp40": [
+     "ResetVOC: False",
+     "ResetVOC: True"
+    ]
+   }
+  },
+  "none_admitted": {
+   "site": "src/asy_config_manager.py:299 a None input answered as accepted",
+   "classes": [
+    "int:None",
+    "float:None",
+    "set:None"
+   ],
+   "rows": {
+    "bmp3xx": [
+     "FiltCoeff: None",
+     "MeanAtmTemp: None",
+     "PresOffset: None",
+     "PresOvers: None",
+     "SampleInterval: None",
+     "SeaLevelOffset: None",
+     "TempOffset: None",
+     "TempOvers: None"
+    ],
+    "isl29125": [
+     "AutoRangeDwell: None",
+     "AutoRangeThresh: None",
+     "FiltCoeff: None",
+     "GainRatio: None",
+     "IRCompAdjust: None",
+     "IRCompOffset: None",
+     "Range: None",
+     "Resolution: None",
+     "SampleInterval: None"
+    ],
+    "scd30": [
+     "Altitude: None",
+     "AmbPres: None",
+     "FRCNoise: None",
+     "FRCRate: None",
+     "FRCWindow: None",
+     "ForceCalRef: None",
+     "MeasInterval: None",
+     "TempOffset: None"
+    ],
+    "sgp40": [
+     "BackupMaxAge: None",
+     "BackupPeriod: None",
+     "WaitTimeNTP: None"
+    ]
+   }
+  },
+  "sgp_comp_t_removed": {
+   "site": "src/asy_sgp40_driver.py:424 `checked_float(temp_val, _COMP_T_FIELD)` -> `temp_val`",
+   "classes": [
+    "float:below the minimum",
+    "float:above the maximum",
+    "float:NaN",
+    "float:+inf",
+    "float:-inf"
+   ],
+   "rows": {
+    "sgp40": [
+     "Temp: +inf",
+     "Temp: -inf",
+     "Temp: NaN",
+     "Temp: above the maximum",
+     "Temp: below the minimum"
+    ]
+   }
+  },
+  "sgp_comp_h_removed": {
+   "site": "src/asy_sgp40_driver.py:425 `checked_float(hum_val, _COMP_RH_FIELD)` -> `hum_val`",
+   "classes": [
+    "float:below the minimum",
+    "float:above the maximum",
+    "float:NaN",
+    "float:+inf",
+    "float:-inf"
+   ],
+   "rows": {
+    "sgp40": [
+     "Hum: +inf",
+     "Hum: -inf",
+     "Hum: NaN",
+     "Hum: above the maximum",
+     "Hum: below the minimum"
+    ]
+   }
+  },
+  "sgp_comp_none_skip_removed": {
+   "site": "src/asy_sgp40_driver.py:413 the unavailable-sample skip -> `if False:`",
+   "classes": [
+    "float:None"
+   ],
+   "rows": {
+    "sgp40": [
+     "Hum: None",
+     "Temp: None"
+    ]
+   }
+  },
+  "scd_contmeas_removed": {
+   "site": "src/asy_scd30_driver.py:308 ContMeas's type_or_range_error() -> `False, cont_meas`",
+   "classes": [
+    "bool:the int 1",
+    "bool:None"
+   ],
+   "rows": {
+    "scd30": [
+     "ContMeas: None",
+     "ContMeas: the int 1"
+    ]
+   }
+  },
+  "bmp_bound_moved": {
+   "site": "src/asy_bmp3xx_driver.py:102 `_MAX_TRIGGER_S` 3600 -> 3599 (the runtime schema; the test reads the declared one)",
+   "classes": [
+    "int:the maximum"
+   ],
+   "rows": {
+    "bmp3xx": [
+     "SampleInterval: the maximum"
+    ]
+   }
+  },
+  "scd_bound_moved": {
+   "site": "src/asy_scd30_driver.py:115 MeasInterval's minimum 2 -> 3",
+   "classes": [
+    "int:the minimum"
+   ],
+   "rows": {
+    "scd30": [
+     "MeasInterval: the minimum"
+    ]
+   }
+  },
+  "sgp_bound_moved": {
+   "site": "src/asy_sgp40_driver.py:100 BackupPeriod's maximum 1440 -> 1439",
+   "classes": [
+    "int:the maximum"
+   ],
+   "rows": {
+    "sgp40": [
+     "BackupPeriod: the maximum"
+    ]
+   }
+  },
+  "isl_bound_moved": {
+   "site": "src/asy_isl29125_driver.py:157 IRCompAdjust's minimum 0 -> 1",
+   "classes": [
+    "int:the minimum"
+   ],
+   "rows": {
+    "isl29125": [
+     "IRCompAdjust: the minimum"
+    ]
+   }
+  }
+ },
+ "schema_tests": {
+  "bmp3xx": {
+   "put": "tests/test_asy_bmp3xx_driver.py::test_a_put_takes_each_declared_field_inside_its_domain_and_refuses_it_outside"
+  },
+  "scd30": {
+   "put": "tests/test_asy_scd30_driver.py::test_a_put_takes_each_declared_field_inside_its_domain_and_refuses_it_outside"
+  },
+  "sgp40": {
+   "put": "tests/test_asy_sgp40_driver.py::test_a_put_takes_each_declared_field_inside_its_domain_and_refuses_it_outside",
+   "comp": "tests/test_asy_sgp40_driver.py::test_a_compensation_sample_inside_its_declared_domain_is_measured_and_one_outside_is_not",
+   "comp_fields": [
+    "Temp",
+    "Hum"
+   ]
+  },
+  "isl29125": {
+   "put": "tests/test_asy_isl29125_driver.py::test_a_put_takes_each_declared_field_inside_its_domain_and_refuses_it_outside"
+  }
+ },
+ "schema_intro": "Derived by `audit/b3/levels_walk.py` from the four sensor drivers' declared schemas, read by `tests/_schema_cases.py`'s `declared_fields()` and `domain_cases()` (every `_VAL_*` schema and module-level FieldSchema: each bound from below, at it and from above, a set's edges and first gap, both bools and a non-bool, None, and NaN/+inf/-inf for a float field), then each `# @limits` tag of their constructors. A schema row maps to its driver's L1 sweep, which drives every case through the PUT path (`_set_dict_cfg()`, ContMeas/ResetVOC/Calibrate included) or, for SGP40's compensation inputs, the read path, and names every case that answered against its declared domain. A row bites when that sweep is verdicted biting and a plant of the row's own check class (`levels_data.json` `schema_plants`: one check broken in a private copy first on MICROPYPATH) made it report that row at gc -1 and at 32768, zero memory markers (agent, 2026-10-28). The rows of the `# @limits` tags are L0's, where buildgen's validation is the claim. Combinations of fields are CM3's (the config-value dimensions), not this section's.",
+ "limits_tests": {
+  "bmp3xx.address": {
+   "refused": [
+    "tests_scripts/test_buildgen_validate.py::test_bmp3xx_address_outside_legal_set_rejected"
+   ],
+   "taken": [
+    "tests_scripts/test_buildgen_validate.py::test_bmp3xx_address_in_legal_set_is_fine"
+   ],
+   "omitted": [
+    "tests_scripts/test_buildgen_limits.py::test_every_limited_field_defaults_inside_its_own_domain"
+   ],
+   "notes": {
+    "refused": "sent 0x50, 0 and 0x78: the check is set membership, so a non-member below the set stands for 0x75",
+    "omitted": "new; red first in a private tree copy: BMP3XX_Reader's `trigger_s` default 1 -> 0, and its `address` default 0x77 -> 0x78, each fail it (agent, 2026-10-28)"
+   }
+  },
+  "bmp3xx.trigger_s": {
+   "refused": [
+    "tests_scripts/test_buildgen_validate.py::test_bmp3xx_trigger_s_outside_legal_range_rejected"
+   ],
+   "taken": [
+    "tests_scripts/test_buildgen_validate.py::test_bmp3xx_trigger_s_in_legal_range_is_fine"
+   ],
+   "omitted": [
+    "tests_scripts/test_buildgen_limits.py::test_every_limited_field_defaults_inside_its_own_domain"
+   ],
+   "notes": {
+    "refused": "sent 0, 3601 and -1",
+    "taken": "sent 1, 3600 and 60",
+    "omitted": "new; red first in a private tree copy: BMP3XX_Reader's `trigger_s` default 1 -> 0, and its `address` default 0x77 -> 0x78, each fail it (agent, 2026-10-28)"
+   }
+  },
+  "scd30.trigger_s": {
+   "refused": [
+    "tests_scripts/test_buildgen_validate.py::test_scd30_trigger_s_outside_legal_range_rejected"
+   ],
+   "taken": [
+    "tests_scripts/test_buildgen_validate.py::test_scd30_trigger_s_in_legal_range_is_fine"
+   ],
+   "omitted": [
+    "tests_scripts/test_buildgen_limits.py::test_every_limited_field_defaults_inside_its_own_domain"
+   ],
+   "notes": {
+    "refused": "sent 0, 1801 and -1",
+    "taken": "sent 1, 1800 and 3",
+    "omitted": "the same test reads SCD30_Reader's default 3"
+   }
+  },
+  "isl29125.trigger_s": {
+   "refused": [
+    "tests_scripts/test_buildgen_validate.py::test_isl29125_trigger_s_outside_legal_range_rejected"
+   ],
+   "taken": [
+    "tests_scripts/test_buildgen_validate.py::test_isl29125_trigger_s_in_legal_range_is_fine"
+   ],
+   "omitted": [
+    "tests_scripts/test_buildgen_limits.py::test_every_limited_field_defaults_inside_its_own_domain"
+   ],
+   "notes": {
+    "refused": "new (sent 0, 3601 and -1); red first in a private tree copy: the tag removed builds all three (agent, 2026-10-28)",
+    "taken": "new (sent 1, 3600 and 60); red first: the tag moved to 1..3599 refuses 3600, to 2..3600 refuses 1 (agent, 2026-10-28)",
+    "omitted": "the same test reads ISL29125_Reader's default 1"
+   }
+  }
+ },
+ "route_tests": {},
+ "system_rows": [
+  {
+   "area": "sensors",
+   "feature": "each wired sensor reads on its bus and publishes its block on GET /measurements",
+   "source": "SPECIFICATION.md A.2 (Sensor Reader/Driver split)",
+   "tests": [
+    "scripts/_digital_twin_scenarios.py::api_burst_at_the_ceiling_during_bus_load",
+    "scripts/_digital_twin_scenarios.py::get_measurements_and_sensors_are_reachable_and_shaped_correctly"
+   ],
+   "note": "the first waits for every wired sensor's block to carry a value"
+  },
+  {
+   "area": "buses",
+   "feature": "several sensors share one bus behind its lock",
+   "source": "SPECIFICATION.md A.2 (Bus layer)",
+   "tests": [
+    "scripts/_digital_twin_scenarios.py::api_burst_at_the_ceiling_during_bus_load",
+    "tests/test_digital_twin_bus_hazard_concurrency.py::test_the_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call"
+   ]
+  },
+  {
+   "area": "config",
+   "feature": "each module owns its schema and config file: a PUT persists to it and reads back",
+   "source": "SPECIFICATION.md A.2 (Config management), C.5",
+   "tests": [
+    "scripts/_digital_twin_scenarios.py::put_round_trips_through_a_real_twin_backed_driver_over_real_http",
+    "scripts/_digital_twin_scenarios.py::refused_config_write_is_reported_unpersisted",
+    "scripts/_digital_twin_scenarios.py::sensors_put_round_trips_a_real_scd30_field_over_real_http"
+   ]
+  },
+  {
+   "area": "REST",
+   "feature": "one response envelope on every route; a failed config snapshot answers as the unavailable marker",
+   "source": "SPECIFICATION.md A.2 (REST API pipeline), C.5.3",
+   "tests": [
+    "scripts/_digital_twin_scenarios.py::every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly",
+    "scripts/_digital_twin_scenarios.py::failed_config_snapshot_is_sent_as_unavailable"
+   ]
+  },
+  {
+   "area": "FRAM",
+   "feature": "SGP40's VOC baseline backup in a two-copy chunk survives a reboot, and an unflushed write falls back to the last flushed one",
+   "source": "SPECIFICATION.md A.2 (FRAM storage)",
+   "tests": [
+    "tests/test_digital_twin_sensortask_integration.py::test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chunk",
+    "tests/test_digital_twin_sensortask_integration.py::test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanly_to_the_last_flushed_state",
+    "scripts/_digital_twin_scenarios.py::mempause_over_real_http_reaches_the_real_fram_manager"
+   ],
+   "applies": "the chunk layer every device shares",
+   "note": "the backup runs on the first device wiring sgp40 and fram (E.2.1, a device-independent mechanism); the FRAM manager is reached over REST on every device"
+  },
+  {
+   "area": "notification",
+   "feature": "threshold notification drives the shared pixel; a pause counts down",
+   "source": "SPECIFICATION.md A.2 (LED notification signalling)",
+   "tests": [
+    "tests/test_digital_twin_sensortask_integration.py::test_the_notification_window_spanning_midnight_flashes_red",
+    "scripts/_digital_twin_scenarios.py::put_pause_time_round_trips_and_counts_down_over_real_http"
+   ]
+  },
+  {
+   "area": "networking",
+   "feature": "Wi-Fi STA with the captive-portal hotspot fallback and its DNS server",
+   "source": "SPECIFICATION.md A.2 (Networking), A.4 (Wi-Fi state machine)",
+   "tests": [
+    "scripts/_digital_twin_scenarios.py::wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server",
+    "tests/test_digital_twin_sensortask_integration.py::test_hotspot_fallback_drives_the_status_led_and_binds_the_dns_server"
+   ]
+  },
+  {
+   "area": "networking",
+   "feature": "NTP keeps the local time (CET/CEST) and the device serves through an unreachable server",
+   "source": "SPECIFICATION.md A.2 (Networking)",
+   "tests": [
+    "scripts/_digital_twin_scenarios.py::survives_bus_and_api_load_while_ntp_is_unreachable",
+    "tests/test_digital_twin_ntp.py::test_a_booted_device_syncs_at_its_first_sync_with_a_clean_log",
+    "tests/test_digital_twin_clock_jump.py::test_cettime_follows_the_clock_across_the_march_switch_both_ways"
+   ]
+  },
+  {
+   "area": "networking",
+   "feature": "the non-blocking DNS resolver stands in for getaddrinfo()",
+   "source": "SPECIFICATION.md A.2 (Networking), F.2",
+   "tests": [
+    "tests/test_ntp_wifi_dns_integration.py::test_dns_server_ip_flows_from_a_connected_real_wifi_service_into_resolve_ipv4",
+    "tests_hardware/bench/test_wifi_networking.py::test_real_dns_resolution_succeeds_over_genuine_udp"
+   ],
+   "applies": "L1 and L4",
+   "note": "the twin's NTP host is an address literal, so no L2 boot resolves a name: the resolver's chain to its consumer is L1's, its silicon run L4's"
+  },
+  {
+   "area": "supervisor",
+   "feature": "a dead task restarts; past the threshold the supervisor escalates to a reboot",
+   "source": "SPECIFICATION.md A.2 (Task supervisor)",
+   "tests": [
+    "tests/test_digital_twin_sensortask_integration.py::test_the_supervisor_restarts_a_real_dead_task",
+    "scripts/_digital_twin_scenarios.py::watchdog_fault_supervisor_raise",
+    "tests/test_digital_twin_timer_pool.py::test_read_triggers_that_never_arm_end_at_the_budgets_reboot_with_one_entry"
+   ]
+  },
+  {
+   "area": "website",
+   "feature": "the device's own site is served, gzipped, behind every API route",
+   "source": "SPECIFICATION.md A.2 (Frontend)",
+   "tests": [
+    "scripts/_digital_twin_scenarios.py::static_site_is_served_over_real_http",
+    "scripts/_digital_twin_scenarios.py::real_website_root_serves_the_actual_production_index_html",
+    "scripts/_digital_twin_scenarios.py::real_website_static_mount_never_shadows_a_real_api_route"
+   ]
+  },
+  {
+   "area": "commands",
+   "feature": "the status and system commands (Reboot, Bootloader, ResetErrors, mempause, EraseFRAM, SystemCmd) each answer once and act",
+   "source": "SPECIFICATION.md A.4 (system service), H",
+   "tests": [
+    "scripts/_digital_twin_scenarios.py::reboot_and_bootloader_at_once_accept_exactly_one",
+    "scripts/_digital_twin_scenarios.py::a_command_right_after_the_first_answer_resets_cleanly",
+    "scripts/_digital_twin_scenarios.py::erasefram_concurrent_with_a_reboot_accepts_exactly_one",
+    "scripts/_digital_twin_scenarios.py::reset_errors_over_real_http_is_not_undone_by_a_fram_loggers_later_setup"
+   ]
+  },
+  {
+   "area": "notification",
+   "feature": "air-quality LED sequencing: one colour per condition, paused between flashes",
+   "source": "SPECIFICATION.md A.4 confirmed intentional (owner, 2026-07-13)",
+   "tests": [
+    "tests/test_notification_neopixel_integration.py::test_multiple_simultaneous_crossings_produce_sequential_correctly_colored_ramps",
+    "tests/test_digital_twin_sensortask_integration.py::test_the_notification_window_spanning_midnight_flashes_red"
+   ],
+   "applies": "the device tests/_twin_devices.py picks (E.2.1)",
+   "note": "the sequencing is the notification service's and the pixel driver's, the same modules on every device: the L1 chain proves it device-free, the L2 run on the first device wiring notification and scd30; cover: the functional rows of asy_notification_service.py and asy_neopixel_driver.py"
+  },
+  {
+   "area": "FRAM",
+   "feature": "SGP40 backup 0 = disabled: BackupPeriod 0 writes no backup, BackupMaxAge 0 sets no age limit",
+   "source": "SPECIFICATION.md A.4 confirmed intentional (owner, 2026-07-13)",
+   "tests": [
+    "tests/test_asy_sgp40_driver.py::test_a_backup_period_of_zero_never_triggers_a_backup",
+    "tests/test_asy_sgp40_driver.py::test_a_zero_age_limit_accepts_a_future_dated_backup"
+   ],
+   "applies": "module-internal",
+   "note": "module-internal (the driver's own backup cadence and age check): L1 proves it"
+  },
+  {
+   "area": "networking",
+   "feature": "after a second STA failure streak following a hotspot phase Wi-Fi goes silent, never off",
+   "source": "SPECIFICATION.md A.4 confirmed intentional (owner, 2026-10-08)",
+   "tests": [
+    "tests/test_digital_twin_wifi_modes.py::test_stations_rule_settings_change_and_silent_mode_in_one_boot"
+   ],
+   "applies": "one device (E.2.1)",
+   "note": "one boot of the first plan wiring the neopixel and the FRAM walks the modes (E.2.1): the Wi-Fi state machine is the same module on every device"
+  },
+  {
+   "area": "networking",
+   "feature": "STA never falls back to the hotspot once it has connected; only a reconnecting settings change or a task restart resets this",
+   "source": "SPECIFICATION.md A.4 confirmed intentional (owner, 2026-10-08)",
+   "tests": [
+    "tests/test_digital_twin_wifi_modes.py::test_stations_rule_settings_change_and_silent_mode_in_one_boot",
+    "tests/test_asy_wifi_service.py::test_on_sta_disconnected_retries_after_a_minute_when_previously_connected"
+   ],
+   "applies": "one device (E.2.1)",
+   "note": "as the row above"
+  },
+  {
+   "area": "website",
+   "feature": "the web UI shows raw numbers only, no colour coding",
+   "source": "SPECIFICATION.md A.4 confirmed intentional (owner, 2026-07-13)",
+   "tests": [
+    "tests_scripts/test_buildgen_definitions.py::test_every_code_tone_block_equals_its_catalog_tables_tones",
+    "tests_js/render.test.js::renders readonly measurement fields and updates them on poll"
+   ],
+   "applies": "module-internal",
+   "note": "L0 is the website's level: on every device a field with no code table carries no tones (the first), and a reading renders as its bare number (the second)"
+  },
+  {
+   "area": "FRAM",
+   "feature": "every FRAM chunk of a fully built device fits its part, checked once per build per device",
+   "source": "SPECIFICATION.md A.4 confirmed intentional (owner, 2026-09-16)",
+   "tests": [
+    "tests/_sensortask_scenarios.py::fram_chunks_are_all_successfully_allocated_not_out_of_memory"
+   ],
+   "applies": "module-internal",
+   "note": "L1 on every device through tests/test_sensortask.py (PER_DEVICE); the board's own run is the capacity device script's (L3)"
+  },
+  {
+   "area": "sensors",
+   "feature": "SGP40 compensation: skipped while a wired source's value is unavailable, the TOML's constant with no live source",
+   "source": "SPECIFICATION.md A.4 (owner, 2026-09-26)",
+   "tests": [
+    "tests/test_digital_twin_sensortask_integration.py::test_sgp40_reading_before_scd30_has_measured_yet_logs_no_bogus_error",
+    "tests/test_digital_twin_sensortask_integration.py::test_a_stopped_scd30_ends_its_alerts_and_sgp40_compensation",
+    "tests/test_asy_sgp40_driver.py::test_a_compensation_sample_inside_its_declared_domain_is_measured_and_one_outside_is_not"
+   ],
+   "applies": "the device tests/_twin_devices.py picks (E.2.1)",
+   "note": "the skip is the SGP40 driver's own read path, the same on every device wiring a source: L1 proves each sample's case, L2 the wired chain on the first device wiring sgp40 and scd30; cover: the functional row of asy_sgp40_driver.py"
+  },
+  {
+   "area": "uart",
+   "feature": "the UART driver exposes no hardware flow control",
+   "source": "SPECIFICATION.md A.4 confirmed intentional (owner, 2026-07-23)",
+   "tests": [
+    "tests/test_asy_uart_driver.py::test_valid_construction_on_both_real_uart_ports"
+   ],
+   "applies": "module-internal",
+   "note": "tests/machine.py's UART takes no flow argument: a plant adding one to the driver's machine.UART call fails this construction test"
+  },
+  {
+   "area": "sensors",
+   "feature": "SCD30's get_ambient_pressure() reads the set command word",
+   "source": "SPECIFICATION.md A.4 confirmed intentional (owner, 2026-07-22)",
+   "tests": [
+    "tests/test_asy_scd30_driver.py::test_each_config_getter_reads_its_own_word_and_the_ambient_pressure_the_set_word"
+   ],
+   "applies": "module-internal",
+   "note": "module-internal (the driver's register map): L1 proves it"
+  }
+ ],
+ "picking_files": [
+  "tests/test_digital_twin_sensortask_integration.py"
+ ],
+ "dash_reasons": [
+  {
+   "match": "^buildgen/__init__\\.py$",
+   "levels": [
+    "L0",
+    "L1",
+    "L2",
+    "L3",
+    "L4"
+   ],
+   "reason": "the package's docstring alone: no behaviour to test"
+  },
+  {
+   "match": "^buildgen/",
+   "levels": [
+    "L1",
+    "L2",
+    "L3",
+    "L4"
+   ],
+   "reason": "host build tooling (CPython) that runs before any MicroPython level: those levels test its output, the generated modules' rows; L0 is its level (E.6.1)"
+  },
+  {
+   "match": "^toolchain/micropython_overrides\\.py$",
+   "levels": [
+    "L1",
+    "L2"
+   ],
+   "reason": "build-time overrides of the Unix port: every L1/L2 file runs on the binary they shaped, none names them; L0 checks each override's anchor"
+  },
+  {
+   "match": "^toolchain/",
+   "levels": [
+    "L1",
+    "L2",
+    "L4"
+   ],
+   "reason": "the host toolchain builder: L0 tests it and L3 boots the firmware it builds; no MicroPython level runs it"
+  },
+  {
+   "match": "^scripts/",
+   "levels": [
+    "L1",
+    "L2",
+    "L3",
+    "L4"
+   ],
+   "reason": "host scripts: L0 is their level (E.6.1); the runners among them are how L1-L4 execute, not code those levels test"
+  },
+  {
+   "match": "^js/",
+   "levels": [
+    "L1",
+    "L2",
+    "L3",
+    "L4"
+   ],
+   "reason": "website JavaScript: L0 (vitest) is its level; L2's real-website scenarios serve the built bundle on every device without naming each file"
+  },
+  {
+   "match": "^\\.github/",
+   "levels": [
+    "L1",
+    "L2",
+    "L3",
+    "L4"
+   ],
+   "reason": "CI configuration: GitHub Actions runs it and L0 checks it statically; no MicroPython or board level executes it"
+  },
+  {
+   "match": "^digital_twin/run_device_script\\.py$",
+   "levels": [
+    "L1",
+    "L2"
+   ],
+   "reason": "runs a device script on the twin for tests_hardware's twin mode; L0 tests it (test_twin_board.py)"
+  },
+  {
+   "match": "^digital_twin/",
+   "levels": [
+    "L3",
+    "L4"
+   ],
+   "reason": "the twin is L2's stand-in for the hardware; L3 and L4 run the real board in its place"
+  },
+  {
+   "match": "^digital_twin/",
+   "levels": [
+    "L0"
+   ],
+   "reason": "MicroPython twin code: L0 reads a twin file only where a static check needs it; the L2 files that run it are its level"
+  },
+  {
+   "match": "^digital_twin/",
+   "levels": [
+    "L1"
+   ],
+   "reason": "twin code: L2 is its level; L1 runs on tests/'s own fakes"
+  },
+  {
+   "match": "^src/asy_framing_codecs\\.py$",
+   "levels": [
+    "L0"
+   ],
+   "reason": "pure MicroPython codec logic with no tag, schema or constant a host check reads"
+  },
+  {
+   "match": "^src/(asy_api_response|asy_framing_codecs|math_helpers|voc_algorithm|asy_crc_checks|asy_notification_service)\\.py$",
+   "levels": [
+    "L3",
+    "L4"
+   ],
+   "reason": "pure computation, the same on silicon: L1 proves it and L2 runs it in the booted graph; silicon adds no path of its own"
+  },
+  {
+   "match": "^src/(asy_base_classes|asy_config_manager|asy_fram_driver|asy_fram_manager|asy_i2c_driver|asy_spi_driver|asy_neopixel_driver|asy_print_log|asy_uart_driver)\\.py$",
+   "levels": [
+    "L4"
+   ],
+   "reason": "no network-facing behaviour: L4 is L3 plus the WiFi bridge, and this module's silicon behaviour is its L3 cell's"
+  },
+  {
+   "match": "^src/(asy_captive_dns|asy_dns_client|asy_udp_socket)\\.py$",
+   "levels": [
+    "L3"
+   ],
+   "reason": "network-facing: L3 has no radio peer (no bridge), so its silicon behaviour is its L4 cell's"
+  },
+  {
+   "match": "^build/generated_src/sensortask_<device>_main_noautostart\\.py$",
+   "levels": [
+    "L2"
+   ],
+   "reason": "the no-autostart entry starts nothing: L1 proves it; the twin boots the autostart graph"
+  },
+  {
+   "match": "^build/generated_src/sensortask_<device>_main_noautostart\\.py$",
+   "levels": [
+    "L3",
+    "L4"
+   ],
+   "reason": "the flash and bench tiers flash the autostart image; the no-autostart image (build_firmware.py --no-autostart) only starts nothing, proven at L1 and at L0, and a silicon check would cost an extra flash cycle"
+  }
+ ],
+ "curated_cells": {
+  "src/asy_captive_dns.py": {
+   "L4": [
+    "tests_hardware/bench/test_hotspot_role_reversal.py::test_arbitrary_hostname_resolves_to_the_aps_own_ip",
+    "tests_hardware/bench/test_hotspot_role_reversal.py::test_genuine_root_domain_query_is_answered_correctly",
+    "tests_hardware/bench/test_hotspot_role_reversal.py::test_dns_flood_leaves_captive_dns_serving_and_it_recovers"
+   ]
+  },
+  "src/asy_dns_client.py": {
+   "L4": [
+    "tests_hardware/bench/test_wifi_networking.py::test_real_dns_resolution_succeeds_over_genuine_udp"
+   ]
+  },
+  "src/asy_udp_socket.py": {
+   "L4": [
+    "tests_hardware/bench/test_wifi_networking.py::test_real_ntp_sync_succeeds_over_genuine_udp",
+    "tests_hardware/bench/test_wifi_networking.py::test_real_dns_resolution_succeeds_over_genuine_udp"
+   ]
+  },
+  "generated_main": {
+   "L3": [
+    "tests_hardware/flash/test_reboot_persistence.py::test_boot_import_mechanism_actually_boots_the_real_system",
+    "tests_hardware/flash/test_watchdog_starvation.py::test_watchdog_starvation_triggers_a_real_hardware_reset"
+   ],
+   "L4": [
+    "tests_hardware/bench/test_reset_reasons.py::test_a_console_interrupt_is_attributed",
+    "tests_hardware/bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed"
+   ]
+  }
+ },
+ "ladder": [
+  {
+   "level": "L1",
+   "tests": [
+    "tests/test_asy_uart_comm.py::test_a_multi_chunk_payload_arrives_byte_identical",
+    "tests/test_asy_uart_comm.py::test_the_wire_log_of_a_multi_chunk_set_is_byte_exact",
+    "tests/test_asy_uart_comm.py::test_chunk_counts_at_the_payload_size_boundaries",
+    "tests/test_asy_uart_comm.py::test_a_missing_ack_at_each_train_position_aborts_and_resyncs",
+    "tests/test_asy_uart_comm.py::test_an_empty_chunk_is_legal_only_as_a_two_chunk_trains_last"
+   ],
+   "proves": "the train's bytes, its chunk count at each payload-size boundary, and the abort and resync at every position"
+  },
+  {
+   "level": "L2",
+   "tests": [
+    "tests/test_digital_twin_uart_link.py::test_a_payload_larger_than_one_chunk_crosses_the_jumper_intact",
+    "tests/test_digital_twin_uart_link.py::test_the_link_keeps_working_while_the_rest_of_the_graph_runs"
+   ],
+   "proves": "a 140-byte SET crosses the twin jumper, alone and while the booted graph's noise tasks run"
+  },
+  {
+   "level": "L3",
+   "tests": [
+    "tests_hardware/flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper",
+    "tests_hardware/flash/test_uart_crossover.py::test_the_link_keeps_transferring_while_every_other_subsystem_is_busy",
+    "tests_hardware/device_scripts/uart_crossover_exchange.py::uart_crossover_exchange",
+    "tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py::uart_link_under_concurrent_system_load"
+   ],
+   "proves": "the train across the real jumper, unloaded and alternating with its GET while every other subsystem is busy (A.U26.87's load script)",
+   "note": "test_the_link_keeps_transferring_while_every_other_subsystem_is_busy is review.md's CRr2 row (hw_no_log, the flash tier's logs fact), so this cell waits on that lane; its device script's facts are verdicted justified"
+  },
+  {
+   "level": "L4",
+   "tests": [
+    "tests_hardware/bench/test_uart_link_under_api_load.py::test_a_multi_chunk_set_echoes_intact_under_serving_load",
+    "tests_hardware/device_scripts/uart_link_echo_under_serving_load.py::uart_link_echo_under_serving_load"
+   ],
+   "proves": "the initiator's public uart_set() echoes intact while the host drives HTTP load (A.U26.87's bench test and script)"
+  }
+ ],
+ "narrowings": [
+  {
+   "test": "the real-website checks (A.U25.48's file, since moved into the twin CI's `real_website_*` scenarios)",
+   "narrowed_to": "no device any more: each scenario serves the booted device's own built site (`build/generated_html/<device>`)",
+   "covering_row": "the generated module's L2 cell (every device)",
+   "covering_tests": [
+    "scripts/_digital_twin_scenarios.py::real_website_root_serves_the_actual_production_index_html",
+    "scripts/_digital_twin_scenarios.py::real_website_inlined_definitions_matches_the_booted_devices_own"
+   ]
+  },
+  {
+   "test": "tests/test_website_build_integration.py (L1)",
+   "narrowed_to": "the site `scripts/test.sh` built into `frozen_modules/frozen_html.py`, for the first derived device",
+   "covering_row": "js/ and scripts/build_device_websites.sh rows; the generated module's L2 cell",
+   "covering_tests": [
+    "scripts/_digital_twin_scenarios.py::static_site_is_served_over_real_http",
+    "scripts/_digital_twin_scenarios.py::real_website_production_js_entry_is_served_not_the_prototype"
+   ]
+  },
+  {
+   "test": "digital_twin/launch.py's raw-bus demo (tests/test_digital_twin_launch.py)",
+   "narrowed_to": "a device wiring bmp3xx, scd30 and sgp40, read with no `src/` import",
+   "covering_row": "the generated module's L2 cell (every device boots its own graph and reads each wired chip)",
+   "covering_tests": [
+    "scripts/_digital_twin_scenarios.py::api_burst_at_the_ceiling_during_bus_load",
+    "tests/_digital_twin_construction_scenarios.py::build_system_boots_against_the_real_twin_buses_without_exception"
+   ]
+  }
+ ],
+ "functional_intro": "Derived by the walk, one row per `src/` module: its real consumers in the generated graph (the `src/` modules a generated device reaches that import it, and the generated module where that imports it directly), and the L2 functions that drive it in a generated device's graph: a function of its matrix row's L2 cell that is also in the generated module's L2 cell, else the same for its first consumer that has one (named \"through\"). The devices are those the biting ones run on: a twin CI scenario on every device wiring its drivers, a construction scenario or a `PER_DEVICE` file on every device, any other twin test on the device its file picks (SPECIFICATION.md E.2.1). A row bites when such a function is verdicted biting and the module is booted (agent, 2026-10-28).",
+ "system_intro": "First one row per REST route of the generated API reference (`build/generated_src/api/<device>.json`), derived: the L2 functions whose code, or a helper of their file, names the route's method and path, and the devices they run on (as above). Then one row per top-level feature of SPECIFICATION.md A.2 and per item of A.4's \"functional behaviors confirmed intentional\" list, with its tests named by hand (`levels_data.json` `system_rows`); a module-internal item names the lowest level that proves it. Recovery paths are `conformance.md`'s rows (A.U35.52's rungs), cited there, not repeated here (agent, 2026-10-28).",
+ "ladder_intro": "The multi-chunk SET at each level, named by hand and joined with review.md's verdict. A.U26.87's re-home touches no `src/` file: its commit `0c0ad52c` (the U26 close, the commit that added `uart_link_echo_under_serving_load.py`) has an empty `git diff --stat 0c0ad52c^1 0c0ad52c -- src`. The second L2 test already carries a 140-byte, three-chunk SET while the graph's noise tasks run (`tests/test_digital_twin_uart_link.py:750-770`), so it owes no extension; UM4's merge is not in this base either way (agent, 2026-10-28).",
+ "narrowings_intro": "Each test that deliberately runs on one device, the device it takes, and the row whose tests cover the other devices (agent, 2026-10-28)."
+}

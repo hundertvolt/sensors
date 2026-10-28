@@ -1,0 +1,116 @@
+test_device_script_bench_facts: E       bmp3xx_plausibility_read.py:23 I2C() takes a pin or bus literal
+test_device_script_bench_facts: E       bmp3xx_same_device_rw_concurrency.py:31 I2C() takes a pin or bus literal
+test_device_script_bench_facts: E       bus_concurrency_cross_device_scd30_sgp40.py:25 I2C() takes a pin or bus literal
+test_device_script_bench_facts: E       bus_concurrency_isl29125_write_vs_siblings.py:35 I2C() takes a pin or bus literal
+test_device_script_bench_facts: E       bus_concurrency_same_device_scd30.py:38 I2C() takes a pin or bus literal
+test_device_script_bench_facts: E       bus_concurrency_scd30_write_vs_siblings.py:29 I2C() takes a pin or bus literal
+test_device_script_bench_facts: E       fram_cs_hijack_fault_injection_and_recovery.py:89 SPI() takes a pin or bus literal
+test_device_script_bench_facts: E       fram_reset_race_during_write_seed_and_race.py:30 SPI() takes a pin or bus literal
+test_device_script_bench_facts: E       fram_reset_race_during_write_verify_recovery.py:27 SPI() takes a pin or bus literal
+test_device_script_bench_facts: E       fram_same_device_rw_concurrency.py:29 SPI() takes a pin or bus literal
+test_device_script_bench_facts: E       isl29125_cross_device_concurrency.py:52 I2C() takes a pin or bus literal
+test_device_script_bench_facts: E       isl29125_lighting_scenarios.py:322 I2C() takes a pin or bus literal
+test_device_script_bench_facts: E       isl29125_lighting_scenarios.py:323 NeoPixel() takes a pin or bus literal
+test_device_script_bench_facts: E       isl29125_mechanism_envelope.py:215 I2C() takes a pin or bus literal
+test_device_script_bench_facts: E       isl29125_mechanism_envelope.py:216 NeopixelDriver() takes a pin or bus literal
+test_device_script_bench_facts: E       isl29125_mock_conformance_probe.py:17 binds ADDR to a literal
+test_device_script_bench_facts: E       isl29125_mock_conformance_probe.py:76 I2C() takes a pin or bus literal
+test_device_script_bench_facts: E       isl29125_mock_conformance_probe.py:76 Pin() takes a pin or bus literal
+test_device_script_bench_facts: E       isl29125_mock_conformance_probe.py:76 Pin() takes a pin or bus literal
+test_device_script_bench_facts: E       isl29125_plausibility_read.py:32 NeoPixel() takes a pin or bus literal
+test_device_script_bench_facts: E       isl29125_plausibility_read.py:36 I2C() takes a pin or bus literal
+test_device_script_bench_facts: E       isl29125_plausibility_read.py:32 Pin() takes a pin or bus literal
+test_device_script_bench_facts: E       isl29125_real_irq_edge.py:83 NeoPixel() takes a pin or bus literal
+test_device_script_bench_facts: E       isl29125_real_irq_edge.py:87 I2C() takes a pin or bus literal
+test_device_script_bench_facts: E       isl29125_real_irq_edge.py:92 Pin() takes a pin or bus literal
+test_device_script_bench_facts: E       isl29125_real_irq_edge.py:83 Pin() takes a pin or bus literal
+test_device_script_bench_facts: E       isl29125_same_device_rw_concurrency.py:30 I2C() takes a pin or bus literal
+test_device_script_bench_facts: E       scd30_plausibility_read.py:26 I2C() takes a pin or bus literal
+test_device_script_bench_facts: E       scd30_real_irq_edge.py:20 I2C() takes a pin or bus literal
+test_device_script_bench_facts: E       scd30_same_device_rw_concurrency.py:34 I2C() takes a pin or bus literal
+test_device_script_bench_facts: E       sgp40_general_call_reset_hazard.py:52 I2C() takes a pin or bus literal
+test_device_script_bench_facts: E       sgp40_same_device_concurrent_sessions.py:23 I2C() takes a pin or bus literal
+test_device_script_bench_facts: E       sgp40_voc_algorithm_quality.py:52 I2C() takes a pin or bus literal
+test_device_script_bench_facts: E       uart_crossover_exchange.py:90 UART() takes a pin or bus literal
+test_device_script_bench_facts: E       uart_crossover_exchange.py:91 UART() takes a pin or bus literal
+test_device_script_bench_facts: E       uart_crossover_recovery.py:81 UART() takes a pin or bus literal
+test_device_script_bench_facts: E       uart_crossover_recovery.py:82 UART() takes a pin or bus literal
+test_device_script_bench_facts: E       uart_driver_read_never_blocks_the_loop.py:140 UART() takes a pin or bus literal
+test_device_script_bench_facts: E       uart_driver_read_never_blocks_the_loop.py:141 UART() takes a pin or bus literal
+test_device_script_bench_facts: E       uart_driver_read_never_blocks_the_loop.py:140 Pin() takes a pin or bus literal
+test_device_script_bench_facts: E       uart_driver_read_never_blocks_the_loop.py:140 Pin() takes a pin or bus literal
+test_device_script_bench_facts: E       uart_idle_poll_rate.py:65 UART() takes a pin or bus literal
+test_device_script_bench_facts: E       uart_link_under_concurrent_system_load.py:154 UART() takes a pin or bus literal
+test_device_script_bench_facts: E       uart_link_under_concurrent_system_load.py:155 UART() takes a pin or bus literal
+test_device_script_bench_facts: E       uart_link_under_concurrent_system_load.py:163 I2C() takes a pin or bus literal
+test_device_script_bench_facts: E       uart_link_under_concurrent_system_load.py:164 SPI() takes a pin or bus literal
+test_device_script_bench_facts: E       uart_read_never_blocks_the_loop.py:28 UART() takes a pin or bus literal
+test_device_script_bench_facts: E       uart_read_never_blocks_the_loop.py:29 UART() takes a pin or bus literal
+test_device_script_bench_facts: E       uart_read_never_blocks_the_loop.py:28 Pin() takes a pin or bus literal
+test_device_script_bench_facts: E       uart_read_never_blocks_the_loop.py:28 Pin() takes a pin or bus literal
+test_device_script_bench_facts: E       uart_read_never_blocks_the_loop.py:29 Pin() takes a pin or bus literal
+test_device_script_bench_facts: E       uart_read_never_blocks_the_loop.py:29 Pin() takes a pin or bus literal
+test_device_script_bench_facts: E   assert not ['allocation_need_per_source.py:11 imports sensortask_dev', 'bmp3xx_plausibility_read.py:23 I2C() takes a pin or bus l...:35 I2C() takes a pin or bus literal', 'bus_concurrency_same_device_scd30.py:38 I2C() takes a pin or bus literal', ...]
+test_device_script_config_flush: E   AssertionError: these managers hold a staged config write that no flush_pending() call reaches, so asyncio.run() discards the flash write and the file keeps its defaults (MEASUREMENTS archive 7O). A second manager in the same file being flushed does NOT cover these: ['isl29125_mechanism_envelope.py:168 stages on `reader.cfgmgr`, never flushed']
+test_device_script_config_flush: E   assert not ['isl29125_mechanism_envelope.py:168 stages on `reader.cfgmgr`, never flushed']
+test_device_script_config_flush: E       isl29125_mechanism_envelope.py: config_HWTEST_ISL29125.cfg is removed in no finally of its own or of a script its host test runs
+test_device_script_config_flush: E   assert not ['isl29125_mechanism_envelope.py: config_HWTEST_ISL29125.cfg is removed in no finally of its own or of a script its ho...g_check.py: config_HWTEST_DEBUGLEVEL_BACKUP.cfg is removed in no finally of its own or of a script its host test runs']
+test_device_script_facts: E   AssertionError: a device script prints RESULT; it reports facts and the host test decides: {'allocation_need_per_source.py': [165, 171], 'bmp3xx_plausibility_read.py': [53, 57, 69, 71], 'bmp3xx_same_device_rw_concurrency.py': [88, 90], 'bus_concurrency_cross_device_scd30_sgp40.py': [102, 104], 'bus_concurrency_isl29125_write_vs_siblings.py': [113, 115], 'bus_concurren
+test_device_script_facts: E   assert not {'allocation_need_per_source.py': [165, 171], 'bmp3xx_plausibility_read.py': [53, 57, 69, 71], 'bmp3xx_same_device_rw_concurrency.py': [88, 90], 'bus_concurrency_cross_device_scd30_sgp40.py': [102, 104], ...}
+test_device_script_facts: E   AssertionError: a script's output must reach harness.parse_facts(): {'bench/test_heap_under_connection_ceiling.py': ['test_heap_at_peak_while_a_full_ceiling_is_held runs a script and parses no facts'], 'bench/test_serving_heap_at_default_gc.py': ['test_every_source_and_route_fits_a_small_free_run runs a script and parses no facts', 'test_serving_sweep_at_the_reactive_
+test_device_script_facts: E   AssertionError: loops in an async def that can loop back without an await (script: loop lines): {'allocation_need_per_source.py': [149, 155], 'bmp3xx_plausibility_read.py': [44], 'bmp3xx_same_device_rw_concurrency.py': [42], 'bus_concurrency_cross_device_scd30_sgp40.py': [42, 55], 'bus_concurrency_same_device_scd30.py': [60, 80], 'isl29125_cross_device_concurrency.py'
+test_device_script_facts: E   assert not {'allocation_need_per_source.py': [149, 155], 'bmp3xx_plausibility_read.py': [44], 'bmp3xx_same_device_rw_concurrency.py': [42], 'bus_concurrency_cross_device_scd30_sgp40.py': [42, 55], ...}
+test_device_script_fram_regions: E   AssertionError: raw FRAM calls whose address no _SCRATCH_REGIONS/_EVIDENCE_REGIONS declares (script: lines): {'fram_cs_hijack_fault_injection_and_recovery.py': [74, 77, 100, 112, 127, 140, 152], 'fram_reset_race_during_write_seed_and_race.py': [38, 43, 48, 56], 'fram_reset_race_during_write_verify_recovery.py': [38, 45, 53, 66, 69], 'fram_same_device_rw_concurr
+test_device_script_fram_regions: E   assert not {'fram_cs_hijack_fault_injection_and_recovery.py': [74, 77, 100, 112, 127, 140, ...], 'fram_reset_race_during_write_se...et_race_during_write_verify_recovery.py': [38, 45, 53, 66, 69], 'fram_same_device_rw_concurrency.py': [37, 51, 62, 71]}
+test_device_script_rig_parking: E   AssertionError: a NeoPixel constructed outside a try that parks it dark (script: lines): {'isl29125_lighting_scenarios.py': [323], 'isl29125_mechanism_envelope.py': [216], 'isl29125_plausibility_read.py': [32], 'isl29125_real_irq_edge.py': [83]}
+test_device_script_rig_parking: E   assert not {'isl29125_lighting_scenarios.py': [323], 'isl29125_mechanism_envelope.py': [216], 'isl29125_plausibility_read.py': [32], 'isl29125_real_irq_edge.py': [83]}
+test_device_script_watchdog: E   AssertionError: a wait longer than 2000 ms goes through fed_sleep_ms()/fed_wait_ms(): {'heap_layout_after_full_boot_sequence.py': ['line 195: sleep_ms(_STARTER_SETTLE_MS)'], 'heap_under_connection_ceiling.py': ['line 76: sleep(_BOOT_WAIT_S)'], 'serving_at_default_gc.py': ['line 125: sleep(_BOOT_S)'], 'sgp40_sample_cadence.py': ['line 64: sleep(_WINDOW_S)']}
+test_device_script_watchdog: E   assert not {'heap_layout_after_full_boot_sequence.py': ['line 195: sleep_ms(_STARTER_SETTLE_MS)'], 'heap_under_connection_ceiling...'], 'serving_at_default_gc.py': ['line 125: sleep(_BOOT_S)'], 'sgp40_sample_cadence.py': ['line 64: sleep(_WINDOW_S)']}
+test_device_script_watchdog: E   AssertionError: allowed more than 8 s yet never arms and feeds the watchdog (script: timeout_s): {'bus_deinit_is_a_noop_on_real_hardware.py': 60.0, 'scd30_real_irq_edge.py': 30.0}
+test_device_script_watchdog: E   assert not {'bus_deinit_is_a_noop_on_real_hardware.py': 60.0, 'scd30_real_irq_edge.py': 30.0}
+test_hardware_clones: E       bench/test_bus_concurrency_under_api_load.py::_synced = bench/test_network_resilience.py::_synced = bench/test_network_resilience.py::_synced
+test_hardware_clones: E       bench/test_bus_concurrency_under_api_load.py::get_sensors_worker = bench/test_bus_concurrency_under_api_load.py::get_sensors_worker = bench/test_bus_concurrency_under_api_load.py::get_sensors_worker
+test_hardware_clones: E       device_scripts/bus_concurrency_cross_device_scd30_sgp40.py::sgp_loop = device_scripts/isl29125_cross_device_concurrency.py::sgp_loop
+test_hardware_clones: E       device_scripts/bus_concurrency_isl29125_write_vs_siblings.py::scd_loop = device_scripts/isl29125_cross_device_concurrency.py::scd_loop
+test_hardware_clones: E       device_scripts/bus_concurrency_scd30_write_vs_siblings.py::isl_loop = device_scripts/isl29125_cross_device_concurrency.py::isl_loop
+test_hardware_clones: E       device_scripts/uart_crossover_exchange.py::_settled = device_scripts/uart_crossover_recovery.py::_settled
+test_hardware_clones: E       flash/test_bus_concurrency.py::_assert_pass = flash/test_uart_crossover.py::_assert_pass = flash/test_unretrieved_task_exception_handler.py::_assert_pass
+test_hardware_clones: E       flash/test_bus_electrical_timing.py::_parse_result = flash/test_reboot_persistence.py::_parse_result
+test_hardware_clones: E   assert not [['bench/test_bus_concurrency_under_api_load.py::_synced', 'bench/test_network_resilience.py::_synced', 'bench/test_ne...rrency_isl29125_write_vs_siblings.py::scd_loop', 'device_scripts/isl29125_cross_device_concurrency.py::scd_loop'], ...]
+test_persistence_write_marker_completeness: E       scd30_same_device_rw_concurrency.py (set_ambient_pressure()) has no runner in tests_hardware/
+test_persistence_write_marker_completeness: E       flash/test_sensor_accuracy.py::test_sgp40_sample_cadence runs sgp40_sample_cadence.py (build_system() over the production config) unmarked
+test_persistence_write_marker_completeness: E   assert not ['bench/test_serving_heap_at_default_gc.py::test_every_source_and_route_fits_a_small_free_run runs allocation_need_per...uracy.py::test_sgp40_sample_cadence runs sgp40_sample_cadence.py (build_system() over the production config) unmarked']
+test_persistence_write_marker_completeness: E   AssertionError: unregistered markers (a collection error under --strict-markers): {'tests_hardware/bench/test_hotspot_role_reversal.py::test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt': ['long_soak'], 'tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostic
+test_persistence_write_marker_completeness: E   assert not {'tests_hardware/bench/test_hotspot_role_reversal.py::test_a_second_failed_streak_goes_silent_and_links_on_a_later_att...test_bus_electrical_timing.py::test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout': ['long_soak'], ...}
+test_tests_hardware_persistence_write_gating: E     tests_hardware/flash/test_bus_concurrency.py::test_bmp3xx_same_device_read_write_concurrency
+test_tests_hardware_persistence_write_gating: E     tests_hardware/flash/test_bus_concurrency.py::test_isl29125_same_device_read_write_concurrency
+test_tests_hardware_persistence_write_gating: E     tests_hardware/flash/test_bus_concurrency.py::test_sgp40_concurrent_sessions_each_get_a_tick
+test_tests_hardware_persistence_write_gating: E     tests_hardware/flash/test_bus_concurrency.py::test_isl29125_real_irq_edge_beats_the_periodic_fallback
+test_tests_hardware_persistence_write_gating: E     tests_hardware/flash/test_bus_concurrency.py::test_bus_topology_autodetect_address_and_reserved_range_sweep
+test_tests_hardware_persistence_write_gating: E     tests_hardware/flash/test_bus_concurrency.py::test_fram_same_device_read_write_concurrency
+test_tests_hardware_persistence_write_gating: E     tests_hardware/flash/test_bus_concurrency.py::test_fram_cs_pin_hijack_fault_injection_and_recovery
+test_tests_hardware_persistence_write_gating: E     tests_hardware/flash/test_bus_concurrency.py::test_fram_hard_reset_race_during_write_and_recovery
+test_tests_hardware_persistence_write_gating: E     tests_hardware/flash/test_bus_concurrency.py::test_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton
+test_tests_hardware_persistence_write_gating: E   assert '2 deselected' in 'tests_hardware/flash/test_bus_concurrency.py::test_bmp3xx_same_device_read_write_concurrency\ntests_hardware/flash/te...t_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton\n\n9/16 tests collected (7 deselected) in 0.01s\n'
+test_tests_hardware_persistence_write_gating: E     tests_hardware/flash/test_bus_concurrency.py::test_bmp3xx_same_device_read_write_concurrency
+test_tests_hardware_persistence_write_gating: E     tests_hardware/flash/test_bus_concurrency.py::test_isl29125_same_device_read_write_concurrency
+test_tests_hardware_persistence_write_gating: E     tests_hardware/flash/test_bus_concurrency.py::test_sgp40_concurrent_sessions_each_get_a_tick
+test_tests_hardware_persistence_write_gating: E     tests_hardware/flash/test_bus_concurrency.py::test_isl29125_real_irq_edge_beats_the_periodic_fallback
+test_tests_hardware_persistence_write_gating: E     tests_hardware/flash/test_bus_concurrency.py::test_bus_topology_autodetect_address_and_reserved_range_sweep
+test_tests_hardware_persistence_write_gating: E     tests_hardware/flash/test_bus_concurrency.py::test_fram_same_device_read_write_concurrency
+test_tests_hardware_persistence_write_gating: E     tests_hardware/flash/test_bus_concurrency.py::test_fram_cs_pin_hijack_fault_injection_and_recovery
+test_tests_hardware_persistence_write_gating: E     tests_hardware/flash/test_bus_concurrency.py::test_fram_hard_reset_race_during_write_and_recovery
+test_tests_hardware_persistence_write_gating: E     tests_hardware/flash/test_bus_concurrency.py::test_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton
+test_tests_hardware_persistence_write_gating: E   assert '2 deselected' in 'tests_hardware/flash/test_bus_concurrency.py::test_bmp3xx_same_device_read_write_concurrency\ntests_hardware/flash/te...t_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton\n\n9/16 tests collected (7 deselected) in 0.02s\n'
+test_tests_hardware_persistence_write_gating: E   AssertionError: expected the 2 persistence_write deselections, probe saw ['test_cross_device_concurrent_sessions_genuinely_interleave', 'test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads', 'test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours', 'test_same_device_concurrent_sessions_never_corrupt_each_other', 'test_scd3
+test_tests_hardware_persistence_write_gating: E     Left contains 5 more items, first extra item: 'test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours'
+test_bench_no_task_ended_completeness: E   AssertionError: these tests inject a fault but check no task ended (bench: assert_no_task_ended(); flash: the script's SYSTEM fact): bench/test_hotspot_role_reversal.py::test_dut_enters_hotspot_mode_after_ssid_cleared, bench/test_hotspot_role_reversal.py::test_hotspot_ssid_matches_configured_hostname, bench/test_hotspot_role_reversal.py::test_hotspot_pass
+test_bench_harness_helpers: _ test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_bus_concurrency_under_api_load.py] _
+test_bench_harness_helpers: module = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d2/tests_hardware/bench/test_bus_concurrency_under_api_load.py')
+test_bench_harness_helpers: E       AssertionError: test_bus_concurrency_under_api_load.py: call harness.recover_by_reset()/kick_then_reset() instead
+test_bench_harness_helpers: _ test_every_started_hardware_thread_is_joined_on_every_path[bench/test_bus_concurrency_under_api_load.py] _
+test_bench_harness_helpers: module = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d2/tests_hardware/bench/test_bus_concurrency_under_api_load.py')
+test_bench_harness_helpers: E       AssertionError: test_bus_concurrency_under_api_load.py: stop and join the thread in a finally
+test_bench_harness_helpers: FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_bus_concurrency_under_api_load.py]
+test_bench_harness_helpers: FAILED tests_scripts/test_bench_harness_helpers.py::test_every_started_hardware_thread_is_joined_on_every_path[bench/test_bus_concurrency_under_api_load.py]
+test_tunables_register: E     SPECIFICATION.md:10428: wdt.timeout_ms: Sites list [('buildgen/validate.py', '8000'), ('digital_twin/launch.py', '8000'), ('digital_twin/run_generic_integration.py', '8000'), ('tests_hardware/device_scripts/allocation_need_per_source.py', '8000'), ('tests_hardware/device_scripts/bmp3xx_plausibility_read.py', '8000'), ('tests_hardware/device_scripts/bmp3xx_same_device_

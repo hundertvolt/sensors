@@ -1,0 +1,100 @@
+PASS test_a_chip_down_stations_answer_is_32_unfilled_entries
+PASS test_a_connected_sta_reports_a_test_net_address
+PASS test_a_downed_access_point_fails_the_station_until_switched_back
+PASS test_a_joined_link_with_no_address_holds_status_two
+FAIL test_a_power_dip_blanks_what_the_pixel_shows_until_the_next_write:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 480, in test_a_power_dip_blanks_what_the_pixel_shows_until_the_next_write
+AttributeError: 'NeoPixel' object has no attribute 'displayed'
+PASS test_a_status_entry_with_a_parameter_filter_fails_only_those_queries
+FAIL test_config_truncates_as_cyw43_and_reads_the_essid_back:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 116, in test_config_truncates_as_cyw43_and_reads_the_essid_back
+AssertionError: 
+PASS test_connect_refuses_what_the_real_driver_cannot_take
+PASS test_country_and_hostname_enforce_the_real_byte_bounds
+PASS test_country_and_hostname_set_then_get_round_trip
+FAIL test_deinit_powers_the_one_radio_down:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 109, in test_deinit_powers_the_one_radio_down
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_network_neopixel.py", line 106, in scenario
+AssertionError: 
+PASS test_neopixel_fault_injection
+FAIL test_neopixel_records_committed_frames:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 453, in test_neopixel_records_committed_frames
+AssertionError: 
+FAIL test_neopixel_stores_bytes_in_grb_order_as_the_library_does:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 467, in test_neopixel_stores_bytes_in_grb_order_as_the_library_does
+AttributeError: 'NeoPixel' object has no attribute 'buf'
+FAIL test_neopixel_writes_stays_bounded_across_many_writes:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 494, in test_neopixel_writes_stays_bounded_across_many_writes
+AttributeError: 'deque' object has no attribute 'dropped'
+PASS test_one_wlan_object_per_interface_any_other_id_the_access_point
+PASS test_raise_on_with_a_count_raises_that_many_fresh_exceptions
+PASS test_raise_on_without_a_count_raises_until_cleared
+PASS test_reset_interfaces_forgets_both_objects_and_their_counts
+FAIL test_reset_test_state_restores_every_network_knob:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 276, in test_reset_test_state_restores_every_network_knob
+AssertionError: 
+FAIL test_status_answers_by_cyw43s_interface_rules:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 83, in test_status_answers_by_cyw43s_interface_rules
+  File "tests/test_digital_twin_network_neopixel.py", line 77, in _value_error
+AssertionError: expected ValueError
+FAIL test_the_access_point_comes_up_with_its_address_and_the_shared_dns:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 92, in test_the_access_point_comes_up_with_its_address_and_the_shared_dns
+AssertionError: 
+PASS test_the_construction_count_saturates_at_the_counter_cap
+PASS test_wlan_a_second_connect_that_cancels_the_first_pending_attempt_does_not_consume_an_outcome
+PASS test_wlan_a_successful_reconnect_after_an_earlier_scripted_failure_reports_a_real_address
+FAIL test_wlan_config_calls_stays_bounded_across_many_calls:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 125, in test_wlan_config_calls_stays_bounded_across_many_calls
+AttributeError: 'deque' object has no attribute 'dropped'
+FAIL test_wlan_connect_calls_stays_bounded_across_many_calls:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 399, in test_wlan_connect_calls_stays_bounded_across_many_calls
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_network_neopixel.py", line 396, in scenario
+AttributeError: 'deque' object has no attribute 'dropped'
+PASS test_wlan_connect_shows_a_real_connecting_phase_before_got_ip
+PASS test_wlan_deinit_sets_the_deinit_called_flag
+PASS test_wlan_disconnect_before_connecting_finishes_cancels_the_pending_connection
+PASS test_wlan_disconnect_of_a_pending_attempt_does_not_consume_a_scripted_outcome
+PASS test_wlan_disconnect_resets_state
+PASS test_wlan_exhausted_scripted_queue_falls_back_to_always_succeeding
+PASS test_wlan_fault_injection
+PASS test_wlan_script_connect_outcomes_defaults_to_always_succeeding
+PASS test_wlan_scripted_failure_outcome_sets_status_and_stays_disconnected
+PASS test_wlan_scripted_outcomes_are_consumed_in_order_one_per_completed_attempt
+PASS test_wlan_starts_disconnected
+PASS test_wlan_status_rssi_and_stations_read_the_underlying_fields
+28/39 passed, 11 failed, 0 skipped
+RC=1 WALL=16.258640510 FILE=tests/test_digital_twin_network_neopixel.py STAGE=-1

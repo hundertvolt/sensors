@@ -1,0 +1,5 @@
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_ci_suite_errcount.py::test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recorded[pending-exit 1 at once, nothing printed: the first was never consumed]
+FAILED tests_scripts/test_digital_twin_ci_suite_errcount.py::test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recorded[absorbed-a clean exit: the first was raised and absorbed]
+FAILED tests_scripts/test_digital_twin_ci_suite_errcount.py::test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recorded[ignored-still running: neither SIGINT was acted on]
+3 failed, 91 deselected in 1.89s

@@ -1,71 +1,82 @@
-"""Isolated-driver device script: SPECIFICATION.md Part F.5.1's two rp2 claims on a live bus -
-machine.I2C/SPI .deinit() are silent no-ops and each bus id is a static singleton. Both were read
-out of the port's protocol tables and modelled in the fakes, never observed on real silicon."""
+"""Isolated-driver device script: SPECIFICATION.md Part F.5.1's two rp2 claims on a live bus - machine.I2C/SPI
+.deinit() are silent no-ops and each bus id is a static singleton - read from the port's protocol tables and modelled
+in the fakes, here observed on silicon over the bench TOML's buses. Reports facts; the host gives the verdict."""
 
 import asyncio
 
 import machine
 
 import asy_spi_driver
-from asy_fram_manager import AsyFramManager
-from crc_checks import CRC8
+from asy_crc_checks import CRC8
+from asy_fram_manager import FRAMManager
 
-I2C_PORT, I2C_SCL, I2C_SDA = 0, 13, 12  # dev bench wiring, same as the other i2c0 device scripts
-SPI_PORT, SPI_SCK, SPI_MOSI, SPI_MISO, SPI_CS = 0, 2, 3, 4, 5
-CHUNK_SIZE = 32
-PATTERN = bytes((i * 7 + 3) % 256 for i in range(CHUNK_SIZE))
-failures: list[str] = []
+# @include _shared/facts.py
+# @include _shared/watchdog.py
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from _shared.facts import done, fact
+    from _shared.watchdog import arm
+    from bench_facts import BenchFacts, BusFacts
+
+BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
+
+_CHUNK_SIZE = 32
+_RP2_I2C_TIMEOUT_US = 50000  # machine.I2C's own default (ports/rp2/machine_i2c.c:38, v1.29.0)
+_PATTERN = bytes((i * 7 + 3) % 256 for i in range(_CHUNK_SIZE))
 
 
-def check(msg: str, *, condition: bool) -> None:
-    if not condition:
-        failures.append(msg)
+def _i2c(bus: "BusFacts") -> machine.I2C:
+    # A re-construction resets frequency and timeout for every user of the static per-id object
+    # (ports/rp2/machine_i2c.c:38, 50, 72, 87, 110, v1.29.0), so it passes the TOML's own values.
+    timeout = bus.get("timeout", _RP2_I2C_TIMEOUT_US)
+    return machine.I2C(bus["id"], scl=machine.Pin(bus["scl_pin"]), sda=machine.Pin(bus["sda_pin"]), freq=bus["frequency"], timeout=timeout)
+
+
+async def _spi_claims(wdt: machine.WDT) -> None:
+    # The same no-op claim on SPI, proven against real FRAM traffic; the FRAM's first chunk is cleared after setup()
+    # and again on the way out, so no pattern this script wrote survives it.
+    chip = BENCH["instances"]["fram"]
+    bus = BENCH["bus"][chip["bus"]]
+    spi_wrapper = asy_spi_driver.SPI(bus["id"], bus["sck_pin"], bus["mosi_pin"], bus["miso_pin"])
+    fram = FRAMManager(spi_wrapper, chip["cs_pin"], max_size=BENCH["fram_max_size"])
+    fact("fram_setup", await fram.setup())
+    chunk = fram.get_chunk(_CHUNK_SIZE, crc=CRC8(), owner="bus_deinit_is_a_noop_on_real_hardware")
+    if chunk is None:
+        fact("chunk", None)
+        return
+    try:
+        fact("chunk_cleared_after_setup", await chunk.clear())
+        fact("baseline_write", await chunk.write(_PATTERN))
+        raw_spi = spi_wrapper._spi  # the underlying machine.SPI, not the project wrapper's own deinit()
+        fact("raw_spi_present", raw_spi is not None)
+        if raw_spi is not None:
+            again = machine.SPI(bus["id"], sck=machine.Pin(bus["sck_pin"]), mosi=machine.Pin(bus["mosi_pin"]), miso=machine.Pin(bus["miso_pin"]))
+            fact("spi_singleton", again is raw_spi)
+            raw_spi.deinit()
+            wdt.feed()
+            fact("spi_read_after_deinit", bytes(await chunk.read() or b"") == _PATTERN)
+    finally:
+        fact("chunk_cleared", await chunk.clear())
 
 
 async def _main() -> None:
-    # --- machine.I2C: deinit() exists at all (1.29 floor - it raises AttributeError on 1.28) ---
-    check("machine.I2C has no deinit() - this build predates 1.29", condition=hasattr(machine.I2C, "deinit"))
-
-    i2c = machine.I2C(I2C_PORT, scl=machine.Pin(I2C_SCL), sda=machine.Pin(I2C_SDA), freq=50000)
-    before = sorted(i2c.scan())
-    check("no I2C devices found before deinit() - bench wiring problem, not a deinit finding", condition=len(before) > 0)
+    wdt = arm()
+    # deinit() exists on machine.I2C from 1.29 (it raises AttributeError before); the pinned version is 1.29.0.
+    fact("i2c_has_deinit", hasattr(machine.I2C, "deinit"))
+    bus = BENCH["bus"][BENCH["instances"]["bmp3xx"]["bus"]]
+    i2c = _i2c(bus)
+    fact("scan_before", sorted(i2c.scan()))
     i2c.deinit()
-    after = sorted(i2c.scan())
-    check(
-        f"I2C.deinit() actually stopped the bus - scan went from {before!r} to {after!r}; Part F.5.1 says it is a silent no-op on rp2",
-        condition=after == before,
-    )
-
-    # --- machine.I2C/SPI are static per-bus singletons, so re-constructing reconfigures the same
-    #     object rather than allocating a new one (nothing leaks, nothing is reclaimable). ---
-    check("machine.I2C(id) did not return the same singleton object on re-construction", condition=machine.I2C(I2C_PORT, scl=machine.Pin(I2C_SCL), sda=machine.Pin(I2C_SDA), freq=50000) is i2c)
-
-    # --- machine.SPI: the same no-op claim, proven against real FRAM traffic rather than a scan ---
-    spi_wrapper = asy_spi_driver.SPI(SPI_PORT, SPI_SCK, SPI_MOSI, SPI_MISO)
-    fram = AsyFramManager(spi_wrapper, SPI_CS, max_size=0x40000, debug=None)
-    if not await fram.setup():
-        print("RESULT: FAIL fram.setup() failed - real FRAM chip not responding, cannot judge SPI deinit()")
-        return
-    chunk = fram.get_chunk(CHUNK_SIZE, crc=CRC8())
-    if chunk is None:
-        print("RESULT: FAIL get_chunk() returned None")
-        return
-    check("baseline FRAM write before SPI deinit() failed", condition=await chunk.write(PATTERN) is True)
-
-    raw_spi = spi_wrapper._spi  # the underlying machine.SPI, NOT the project wrapper's own deinit()
-    check("asy_spi_driver.SPI has no underlying machine.SPI to test", condition=raw_spi is not None)
-    if raw_spi is not None:
-        check("machine.SPI(id) did not return the same singleton object on re-construction", condition=machine.SPI(SPI_PORT, sck=machine.Pin(SPI_SCK), mosi=machine.Pin(SPI_MOSI), miso=machine.Pin(SPI_MISO)) is raw_spi)
-        raw_spi.deinit()
-        check(
-            "machine.SPI.deinit() actually stopped the bus - a real FRAM read failed afterwards; Part F.5.1 says it is a silent no-op on rp2",
-            condition=bytes(await chunk.read() or b"") == PATTERN,
-        )
-
-    if failures:
-        print(f"RESULT: FAIL {len(failures)} issue(s): {'; '.join(failures[:6])}")
-    else:
-        print(f"RESULT: PASS I2C/SPI deinit() are silent no-ops on a live bus and both buses are per-id singletons (i2c scan {before!r} unchanged)")
+    fact("scan_after", sorted(i2c.scan()))
+    fact("i2c_singleton", _i2c(bus) is i2c)
+    wdt.feed()
+    await _spi_claims(wdt)
+    done()
 
 
 asyncio.run(_main())

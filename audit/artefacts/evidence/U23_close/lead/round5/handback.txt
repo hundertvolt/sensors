@@ -1,0 +1,17 @@
+
+######## SubagentHandback 2026-10-13T14:06:28.742Z
+All three edits are committed on `audit/u23-final` in `S/wt-u23api` and every check is green. Final head is `f25cdda`. Nothing pushed, no hardware.
+1. `cec4c8c` (E1, docs and a comment, no behaviour change): `digital_twin/README.md` and the comment in `digital_twin/_http_client.py` now describe what the code does. `_StaticRoutes.serve()` (`src/asy_webserver_service.py:513-535`) opens the file, sets `Content-Length` from its size, and sets `send_file_buffer_size = chunk_bytes`. That is 256 B on all six generated modules; Microdot's default is 1,024 B (`ext/microdot.py:567, :746`). `Response.complete()` and `_pieces_response()` add `Content-Length` on every other response. So `fetch()` reads `GET /` through `_read_exact()`, or `_drain_exact()` with `read_body=False`. The unsized `_read_until_close()`/`_drain_until_close()` pair is only a fallback for a body that ends at EOF.
+2. `6d67bf2` (E2, comment only): `remountAndReadField`'s JSDoc is now 3 prose lines and cites H.3. It says the control is freshly built and shows the value from the remount's own GET, not the page's state. `js/poll-manager.js` gives each request its own fetch and never shares one. No other comment in `js/` or `tests_js/` cites H.3 for "never touches" or "only number/string captions". The nearest one, `tests_js/live-backend-put-matrix.test.js:182` ("every card updates in place"), matches H.3's current text, so I left it alone.
+3. `f25cdda` (E3, uses `lead5_msg.txt`): before the edit, `test_decision_vocabulary.py` named exactly the three rows you listed (BACKLOG "Low priority: the two entry points…", SPEC "**Contract between them**", SPEC "| Poll coordination |"). Only those were deleted and the rerun passed 6/6. The commit body names the rows.
+4. **H.3 contradicts the code (SPECIFICATION.md is outside my file set, so not edited):** `SPECIFICATION.md:6696-6699` says each poll updates "toggles, selects" in place. `updateFieldGroupValues()` (`js/templates.js:918-944`) only paints readonly values and number/string captions and placeholders. A toggle or select changes only by the user or by `resetControl()` after an Apply, and `tests_js/templates.test.js:780` ("leaves a toggle and a select the user set alone") pins that. This is why the E2 JSDoc makes no claim about what a poll does.
+5. **One more stale comment, outside my file set:** `tests/test_digital_twin_http_client.py:191-192` still calls `_read_until_close()` "the unsized fallback path GET / actually takes".
+6. Checks on `f25cdda`, all rc=0:
+   - `S/u23/rebuild.sh`: all six sites rebuilt.
+   - ruff, 8 scopes: clean.
+   - mypy, cold cache: no-args 187 files, ci 174, twin 53, host 204, all clean; the `typings` symlink is removed.
+   - `npm run lint` and `npm run typecheck`: clean.
+   - The six pytest files in one process in their own netns: 520 passed in 33 s.
+   - Before each commit: E1's check set was 504 passed, 1 failed (only those three rows); E2's lint, typecheck and `lint-ceilings` (4/4) passed.
+   - Logs are in `S/u23/round5/`.
+7. RUNS.md has every run and my agent line closed, ends with a newline, and has no open RUNNING row. `ps` shows no test or tool process left, so it matches.

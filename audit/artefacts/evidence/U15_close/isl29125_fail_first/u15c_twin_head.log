@@ -1,0 +1,46 @@
+PASS test_a_dead_interrupt_line_eventually_warns_rather_than_staying_invisible
+FAIL test_a_muted_interrupt_is_rearmed_once_and_delivers_again:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15c/tests/microtest.py", line 35, in run
+  File "tests/test_digital_twin_isl29125_autorange.py", line 365, in test_a_muted_interrupt_is_rearmed_once_and_delivers_again
+  File "tests/test_digital_twin_isl29125_autorange.py", line 56, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_isl29125_autorange.py", line 356, in scenario
+AttributeError: 'ISL29125_Reader' object has no attribute '_int_rearmed'
+FAIL test_a_calibration_window_without_a_stable_reading_warns_once:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15c/tests/microtest.py", line 35, in run
+  File "tests/test_digital_twin_isl29125_autorange.py", line 414, in test_a_calibration_window_without_a_stable_reading_warns_once
+AssertionError: 
+FAIL test_cal_light_reads_too_dark_suitable_and_too_bright_from_the_light_model:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15c/tests/microtest.py", line 35, in run
+  File "tests/test_digital_twin_isl29125_autorange.py", line 444, in test_cal_light_reads_too_dark_suitable_and_too_bright_from_the_light_model
+  File "tests/test_digital_twin_isl29125_autorange.py", line 56, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_isl29125_autorange.py", line 441, in scenario
+AttributeError: 'ISL29125' object has no attribute 'CalLight'
+PASS test_applying_a_measured_ratio_shrinks_the_high_range_error
+PASS test_a_real_brownout_is_detected_reconfigured_and_recovered_from
+PASS test_reported_lux_is_continuous_and_monotonic_through_a_range_sweep
+PASS test_a_steady_calibration_scene_converges_with_no_entry
+FAIL test_a_red_dominant_scene_does_not_drive_a_read_every_prst_window:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15c/tests/microtest.py", line 35, in run
+  File "tests/test_digital_twin_isl29125_autorange.py", line 274, in test_a_red_dominant_scene_does_not_drive_a_read_every_prst_window
+AssertionError: 11
+PASS test_hue_saturation_and_colour_temperature_hold_still_across_the_switch
+PASS test_a_single_clipped_channel_switches_the_range_up_and_does_not_fall_back
+PASS test_the_range_does_not_oscillate_when_parked_at_the_switch_point
+PASS test_the_applied_ratio_changes_only_by_a_config_push
+PASS test_the_clipped_scene_reports_the_tints_own_hue_once_it_is_on_the_right_range
+PASS test_a_freshly_constructed_chip_is_recovered_from_its_own_power_on_brownout_flag
+PASS test_a_calibration_run_measures_the_chips_own_real_ratio
+PASS test_the_range_still_tracks_when_the_interrupt_line_never_asserts
+PASS test_normalised_rgb_and_brightness_are_continuous_across_the_switch_not_only_lux
+PASS test_a_real_threshold_crossing_drives_the_interrupt_line_into_the_read_event
+15/19 passed, 4 failed, 0 skipped

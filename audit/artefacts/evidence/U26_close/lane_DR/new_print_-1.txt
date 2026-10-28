@@ -1,0 +1,64 @@
+PASS test_a_failing_wlan_status_keeps_the_link_and_warns_once_per_unreadable_tick
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/drift/new_print.py", line 356, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/drift/new_print.py", line 356, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/drift/new_print.py", line 356, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/drift/new_print.py", line 356, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/drift/new_print.py", line 356, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/drift/new_print.py", line 356, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/drift/new_print.py", line 356, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/drift/new_print.py", line 356, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/drift/new_print.py", line 356, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/drift/new_print.py", line 356, in read
+RuntimeError: injected status fault
+DRIFT [1210080, 1209216, 1209216, 1208864, 1208864, 1208864, 1208864, 1208864, 1208864, 1208864] 0
+PASS test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0
+2/2 passed, 0 failed, 0 skipped

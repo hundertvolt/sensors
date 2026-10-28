@@ -1,0 +1,8 @@
+tests/test_asy_uart_comm.py@-1	62.70	0
+tests/test_asy_webserver_service.py@-1	4.47	0
+tests/test_asy_uart_link_driver.py@-1	2.42	0
+tests/test_digital_twin_uart_link.py@-1	0.11	1
+tests/test_asy_uart_comm.py@32768	63.70	0
+tests/test_asy_webserver_service.py@32768	7.54	0
+tests/test_asy_uart_link_driver.py@32768	2.44	0
+tests/test_digital_twin_uart_link.py@32768	0.20	1

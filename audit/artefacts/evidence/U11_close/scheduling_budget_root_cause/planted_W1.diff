@@ -1,0 +1,10 @@
+--- src/asy_webserver_service.py	2026-10-07 11:45:40.808365805 +0000
++++ /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/planted_W1/asy_webserver_service.py	2026-10-07 12:22:44.938100887 +0000
+@@ -269,6 +269,7 @@
+         try:
+             return await asyncio.wait_for(coro, self._timeout_s)
+         except asyncio.TimeoutError as e:
++            self._timed_out[0] = True  # PLANTED: a read timeout flags the connection
+             await self._pr.wrn_s("Connection reclaimed (per-call timeout):", e, wrnno=_WRN_HTTP_CALL_TIMEOUT)
+             raise
+         except OSError:

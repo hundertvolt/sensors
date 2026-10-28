@@ -1,0 +1,12 @@
+09:07:13 tests/test_sensortask.py[arzi]@-1 rc=0
+09:07:46 tests/test_sensortask.py[arzi]@32768 rc=0
+09:08:32 tests/test_sensortask.py[dev]@-1 rc=0
+09:09:26 tests/test_sensortask.py[dev]@32768 rc=0
+09:09:55 tests/test_sensortask.py[grkizi]@-1 rc=0
+09:10:28 tests/test_sensortask.py[grkizi]@32768 rc=0
+09:10:57 tests/test_sensortask.py[klkizi]@-1 rc=0
+09:11:30 tests/test_sensortask.py[klkizi]@32768 rc=0
+09:11:59 tests/test_sensortask.py[schlafzi]@-1 rc=0
+09:12:32 tests/test_sensortask.py[schlafzi]@32768 rc=0
+09:13:04 tests/test_sensortask.py[wozi]@-1 rc=0
+09:13:45 tests/test_sensortask.py[wozi]@32768 rc=0

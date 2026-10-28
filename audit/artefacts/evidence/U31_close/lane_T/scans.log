@@ -1,0 +1,82 @@
+........................................................................ [  8%]
+........................................................................ [ 16%]
+........................................................................ [ 24%]
+........................................................................ [ 33%]
+........................................................................ [ 41%]
+........................................................................ [ 49%]
+........................................................................ [ 57%]
+........................................................................ [ 66%]
+........................................................................ [ 74%]
+.................................F.............F........................ [ 82%]
+........................................................................ [ 90%]
+........................................................................ [ 99%]
+.......                                                                  [100%]
+=================================== FAILURES ===================================
+_________ test_decision_vocabulary_names_its_actor_or_is_allow_listed __________
+
+findings = Counter({('tests/test_asy_wifi_service.py', 'type: ignore[method-assign] # deliberate monkeypatch'): 20, ('scripts/cro...toolchain/setup_toolchain.py', 'Deliberately touches neither apt, git remotes, nor the pico-sdk/picotool derivat'): 1})
+
+    def test_decision_vocabulary_names_its_actor_or_is_allow_listed(findings: Counter[tuple[str, str]]) -> None:
+        new = sorted((findings - read_allowlist(ALLOWLIST)).elements())
+>       assert not new, "decision vocabulary with no '(owner|agent, YYYY-MM-DD)' tag or source - tag the sentence:\n" + "\n".join(f"  {p}: {s}" for p, s in new)
+E       AssertionError: decision vocabulary with no '(owner|agent, YYYY-MM-DD)' tag or source - tag the sentence:
+E           tests_hardware/flash/test_memory_stress.py: the figure feeds F.3's flash stall row and is recorded, never judged: a consumer
+E       assert not [('tests_hardware/flash/test_memory_stress.py', "the figure feeds F.3's flash stall row and is recorded, never judged: a consumer")]
+
+tests_scripts/test_decision_vocabulary.py:89: AssertionError
+___________________ test_the_tags_and_the_part_n_rows_agree ____________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31t')
+real_tags = [Tag(path='vitest.config.js', line=41, id='l0.vitest_test_timeout_ms', literal='20000'), Tag(path='vitest.config.js', ...r_controller_at', literal='4'), Tag(path='src/asy_base_classes.py', line=403, id='module.max_error', literal='5'), ...]
+
+    def test_the_tags_and_the_part_n_rows_agree(repo_root: Path, real_tags: "list[Tag]") -> None:
+        rows, problems = parse_register((repo_root / "SPECIFICATION.md").read_text(encoding="utf-8"))
+        problems += check_register(real_tags, rows)
+>       assert not problems, "\n".join(problems)
+E       AssertionError: digital_twin/run_generic_integration.py:221: l2.twin_loop_lag_report_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/flash/test_memory_stress.py:36: l3.memory_stress_flash_gap_script_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_bite_t.py:119: l2.loop_lag_load_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_bite_t.py:121: l2.loop_lag_settle_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_bite_t.py:123: l2.loop_lag_recovered_ms is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_bite_t.py:125: l2.loop_lag_period_ms is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_scenarios.py:119: l2.loop_lag_load_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_scenarios.py:121: l2.loop_lag_settle_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_scenarios.py:123: l2.loop_lag_recovered_ms is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_scenarios.py:125: l2.loop_lag_period_ms is tagged but has no SPECIFICATION.md Part N row
+E         SPECIFICATION.md:11761: web.connections_per_page_load: Sites list [('scripts/_digital_twin_scenarios.py', '2'), ('scripts/cross_browser_smoke.mjs', '2')], the tags say [('scripts/_bite_t.py', '2'), ('scripts/_digital_twin_scenarios.py', '2'), ('scripts/cross_browser_smoke.mjs', '2')]
+E         SPECIFICATION.md:11795: l2.scenario_request_timeout_s: Sites list [('scripts/_digital_twin_scenarios.py', '10.0')], the tags say [('scripts/_bite_t.py', '10.0'), ('scripts/_digital_twin_scenarios.py', '10.0')]
+E         SPECIFICATION.md:11796: l2.scenario_serving_timeout_s: Sites list [('scripts/_digital_twin_scenarios.py', '30.0')], the tags say [('scripts/_bite_t.py', '30.0'), ('scripts/_digital_twin_scenarios.py', '30.0')]
+E         SPECIFICATION.md:11797: l2.scenario_line_poll_s: Sites list [('scripts/_digital_twin_scenarios.py', '0.05')], the tags say [('scripts/_bite_t.py', '0.05'), ('scripts/_digital_twin_scenarios.py', '0.05')]
+E         SPECIFICATION.md:11798: l2.scenario_conn_status_interval_ms: Sites list [('scripts/_digital_twin_scenarios.py', '20')], the tags say [('scripts/_bite_t.py', '20'), ('scripts/_digital_twin_scenarios.py', '20')]
+E         SPECIFICATION.md:11799: l2.scenario_fault_status_interval_ms: Sites list [('scripts/_digital_twin_scenarios.py', '100')], the tags say [('scripts/_bite_t.py', '100'), ('scripts/_digital_twin_scenarios.py', '100')]
+E         SPECIFICATION.md:11800: l2.scenario_drain_wait_s: Sites list [('scripts/_digital_twin_scenarios.py', '10.0')], the tags say [('scripts/_bite_t.py', '10.0'), ('scripts/_digital_twin_scenarios.py', '10.0')]
+E         SPECIFICATION.md:11801: l2.scenario_shared_boot_deadline_s: Sites list [('scripts/_digital_twin_scenarios.py', '89.0')], the tags say [('scripts/_bite_t.py', '89.0'), ('scripts/_digital_twin_scenarios.py', '89.0')]
+E         SPECIFICATION.md:11802: l2.scenario_shared_boot_budget_s: Sites list [('scripts/_digital_twin_scenarios.py', '30.0')], the tags say [('scripts/_bite_t.py', '30.0'), ('scripts/_digital_twin_scenarios.py', '30.0')]
+E         SPECIFICATION.md:11803: l2.scenario_still_serving_s: Sites list [('scripts/_digital_twin_scenarios.py', '5.0')], the tags say [('scripts/_bite_t.py', '5.0'), ('scripts/_digital_twin_scenarios.py', '5.0')]
+E         SPECIFICATION.md:11804: l2.scenario_flaky_hold_s: Sites list [('scripts/_digital_twin_scenarios.py', '0.05')], the tags say [('scripts/_bite_t.py', '0.05'), ('scripts/_digital_twin_scenarios.py', '0.05')]
+E         SPECIFICATION.md:11805: l2.scenario_slow_put_s: Sites list [('scripts/_digital_twin_scenarios.py', '1.0')], the tags say [('scripts/_bite_t.py', '1.0'), ('scripts/_digital_twin_scenarios.py', '1.0')]
+E         SPECIFICATION.md:11806: l2.scenario_stall_ms: Sites list [('scripts/_digital_twin_scenarios.py', '200')], the tags say [('scripts/_bite_t.py', '200'), ('scripts/_digital_twin_scenarios.py', '200')]
+E         SPECIFICATION.md:11807: l2.scenario_watchdog_window_s: Sites list [('scripts/_digital_twin_scenarios.py', '8.5')], the tags say [('scripts/_bite_t.py', '8.5'), ('scripts/_digital_twin_scenarios.py', '8.5')]
+E         SPECIFICATION.md:11808: l2.scenario_refusal_feed_s: Sites list [('scripts/_digital_twin_scenarios.py', '10.0')], the tags say [('scripts/_bite_t.py', '10.0'), ('scripts/_digital_twin_scenarios.py', '10.0')]
+E         SPECIFICATION.md:11809: l2.scenario_commanded_reset_margin_s: Sites list [('scripts/_digital_twin_scenarios.py', '10.0')], the tags say [('scripts/_bite_t.py', '10.0'), ('scripts/_digital_twin_scenarios.py', '10.0')]
+E         SPECIFICATION.md:11810: l2.scenario_pause_countdown_s: Sites list [('scripts/_digital_twin_scenarios.py', '15.0')], the tags say [('scripts/_bite_t.py', '15.0'), ('scripts/_digital_twin_scenarios.py', '15.0')]
+E         SPECIFICATION.md:11811: l2.scenario_hotspot_wait_s: Sites list [('scripts/_digital_twin_scenarios.py', '90.0')], the tags say [('scripts/_bite_t.py', '90.0'), ('scripts/_digital_twin_scenarios.py', '90.0')]
+E         SPECIFICATION.md:11812: l2.scenario_uart_load_s: Sites list [('scripts/_digital_twin_scenarios.py', '20.0')], the tags say [('scripts/_bite_t.py', '20.0'), ('scripts/_digital_twin_scenarios.py', '20.0')]
+E         SPECIFICATION.md:11813: l2.scenario_uart_load_faults: Sites list [('scripts/_digital_twin_scenarios.py', '3')], the tags say [('scripts/_bite_t.py', '3'), ('scripts/_digital_twin_scenarios.py', '3')]
+E       assert not ['digital_twin/run_generic_integration.py:221: l2.twin_loop_lag_report_ms is tagged but has no SPECIFICATION.md Part N....md Part N row', 'scripts/_bite_t.py:125: l2.loop_lag_period_ms is tagged but has no SPECIFICATION.md Part N row', ...]
+
+tests_scripts/test_tunables_register.py:253: AssertionError
+=============================== warnings summary ===============================
+tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31t/tests_scripts/test_citations.py:236: UserWarning: datasheets/ submodule not initialised - paths under it are not checked
+    datasheets=_datasheets_checked(),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests_scripts/test_decision_vocabulary.py::test_decision_vocabulary_names_its_actor_or_is_allow_listed
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+2 failed, 869 passed, 1 warning in 67.32s (0:01:07)
+
+real	1m8.162s
+user	1m6.019s
+sys	0m1.370s

@@ -1,0 +1,17 @@
+start 20:34:10
+lint rc=0 20:34:11
+typecheck noargs rc=0 20:34:23
+typecheck ci rc=0 20:34:35
+u16 wholetree done 20:38:40
+wozi rc=0 20:47:38
+dev rc=0 20:49:32
+gc32768 rc=0 20:50:02
+gc-1 rc=0 20:50:05
+grkizi rc=0 21:01:54
+schlafzi rc=0 21:01:54
+klkizi rc=0 21:01:54
+arzi rc=0 21:01:54
+npm rc=0 21:03:33
+main done 21:03:33
+coverage rc=0 653s 21:14:26
+done 21:14:26

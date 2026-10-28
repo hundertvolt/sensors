@@ -1,151 +1,213 @@
+// Tests js/app.js's startApp(), the prototype entry: picking the device from ?device= and the manifest, the landing
+// section, the URL hash following the section, the stop handle, and a banner for each failed or torn load.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { startApp } from "../js/app.js";
+import { buildElements } from "./_dom_helpers.js";
 
-/** @type {import("../js/definitions.js").SiteDefinitions} */
-const DEFS = {
-    schemaVersion: "1.0.0",
-    device: { id: "wozi", displayName: "Wozi Test" },
-    landingSection: "measurements",
-    defaultPollIntervalMs: 20,
-    sections: [
-        // pollGroup "none" - startApp() has no stop handle exposed to callers, so a "live" section
-        // here would keep polling (and calling the test's stubbed fetch) forever after each test ends.
-        { key: "measurements", label: "Measurements", rest: { get: "/measurements" }, pollGroup: "none", groups: [] },
-    ],
-};
+const DEVICES = ["fixture-a", "fixture-b"];
+const DEFINITIONS_DIR = "../build/generated_src/definitions";
 
-/** @type {import("../js/definitions.js").MockDeviceData} */
-const MOCK_DATA = {
+/**
+ * @param {string} id
+ * @returns {import("../js/definitions.js").SiteDefinitions}
+ */
+function defsFor(id) {
+    return {
+        schemaVersion: "1.0.0",
+        device: { id, displayName: `Display ${id}` },
+        landingSection: "measurements",
+        defaultPollIntervalMs: 20,
+        sections: [
+            { key: "measurements", label: "Measurements", rest: { get: "/measurements" }, pollGroup: "live", groups: [] },
+            { key: "status", label: "Status", rest: { get: "/status" }, pollGroup: "settings", groups: [] },
+        ],
+    };
+}
+
+/** @type {import("../js/definitions.js").MockSamples} */
+const SAMPLES = {
     measurements: {},
     sensorsConfig: {},
     networkingConfig: {},
     systemConfig: {},
     notificationConfig: {},
-    status: { networking: {}, system: {}, sensors: {}, notification: {}, errcount: {} },
+    status: { networking: {}, system: {}, sensors: {}, notification: {} },
+    errcount: {},
 };
 
 /**
- * @param {{definitionsOk?: boolean, mockDataOk?: boolean}} [options]
- * @returns {typeof fetch}
+ * Serves the build's manifest, each manifest device's definitions and the mock samples; anything
+ * else is a 404. A response given in `overrides` replaces the matching file's.
+ * @param {{manifest?: Response, definitions?: Response, samples?: Response}} [overrides]
  */
-function buildFetchStub({ definitionsOk = true, mockDataOk = true } = {}) {
-    return vi.fn((input) => {
+function buildFetchStub(overrides = {}) {
+    return vi.fn((/** @type {RequestInfo | URL} */ input) => {
         const url = String(input);
-        if (url.includes("definitions/wozi.json")) {
-            return Promise.resolve(definitionsOk ? new Response(JSON.stringify(DEFS), { status: 200 }) : new Response("not found", { status: 404 }));
+        if (url === `${DEFINITIONS_DIR}/index.json`) {
+            return Promise.resolve(overrides.manifest ?? new Response(JSON.stringify({ devices: DEVICES }), { status: 200 }));
         }
-        if (url.includes("mockdata/wozi.json")) {
-            return Promise.resolve(mockDataOk ? new Response(JSON.stringify(MOCK_DATA), { status: 200 }) : new Response("server error", { status: 500 }));
+        const device = DEVICES.find((id) => url === `${DEFINITIONS_DIR}/${id}.json`);
+        if (device !== undefined) {
+            return Promise.resolve(overrides.definitions ?? new Response(JSON.stringify(defsFor(device)), { status: 200 }));
+        }
+        if (url === "../mockdata/samples.json") {
+            return Promise.resolve(overrides.samples ?? new Response(JSON.stringify(SAMPLES), { status: 200 }));
         }
         return Promise.resolve(new Response("not found", { status: 404 }));
     });
 }
 
-function buildElements() {
-    const appShellEl = document.createElement("div");
-    const mainEl = document.createElement("main");
-    const drawerEl = document.createElement("nav");
-    const hamburgerEl = document.createElement("button");
-    const backdropEl = document.createElement("div");
-    const errorBannerEl = document.createElement("p");
-    errorBannerEl.className = "error-banner hidden";
-    const deviceNameEl = document.createElement("span");
-    const elements = { appShellEl, mainEl, drawerEl, hamburgerEl, backdropEl, errorBannerEl, deviceNameEl };
-    for (const el of Object.values(elements)) {
-        document.body.appendChild(el);
-    }
-    return elements;
-}
-
 describe("startApp", () => {
     const originalFetch = window.fetch;
+    const originalUrl = window.location.href;
     /** @type {ReturnType<typeof buildElements> | undefined} */
     let elements;
+    /** @type {(() => void) | undefined} */
+    let stop;
 
     afterEach(() => {
+        stop?.();
+        stop = undefined;
         window.fetch = originalFetch;
         if (elements) {
             for (const el of Object.values(elements)) {
                 el.remove();
             }
         }
-        window.history.pushState(null, "", window.location.pathname);
+        window.history.replaceState(null, "", originalUrl);
     });
 
-    it("loads the default device (wozi) when ?device= is absent, renders its landing section", async () => {
-        window.history.pushState(null, "", "?");
+    it("loads the manifest's first device when ?device= is absent, renders its landing section", async () => {
+        window.history.replaceState(null, "", "?");
         window.fetch = buildFetchStub();
         elements = buildElements();
 
-        await startApp(elements);
+        stop = await startApp(elements);
 
-        expect(elements.deviceNameEl.textContent).toBe("Wozi Test");
-        expect(elements.errorBannerEl.classList.contains("hidden")).toBe(true);
+        expect(elements.deviceNameEl.textContent).toBe("Display fixture-a");
+        expect(elements.errorBannerEl.dataset.shown).toBe("false");
         expect(elements.mainEl.querySelector(".section-heading")?.textContent).toBe("Measurements");
     });
 
-    it("falls back to the default device when ?device= names an unknown device", async () => {
-        window.history.pushState(null, "", "?device=nonexistent");
+    it("falls back to the manifest's first device when ?device= names an unknown device", async () => {
+        window.history.replaceState(null, "", "?device=nonexistent");
         window.fetch = buildFetchStub();
         elements = buildElements();
 
-        await startApp(elements);
+        stop = await startApp(elements);
 
-        expect(elements.deviceNameEl.textContent).toBe("Wozi Test");
+        expect(elements.deviceNameEl.textContent).toBe("Display fixture-a");
+    });
+
+    it("loads the device ?device= names when the manifest lists it", async () => {
+        window.history.replaceState(null, "", "?device=fixture-b");
+        window.fetch = buildFetchStub();
+        elements = buildElements();
+
+        stop = await startApp(elements);
+
+        expect(elements.deviceNameEl.textContent).toBe("Display fixture-b");
     });
 
     it("selects the definitions' landingSection and marks it current in the nav drawer", async () => {
-        window.history.pushState(null, "", "?device=wozi");
+        window.history.replaceState(null, "", "?device=fixture-a");
         window.fetch = buildFetchStub();
         elements = buildElements();
 
-        await startApp(elements);
+        stop = await startApp(elements);
 
         const current = elements.drawerEl.querySelector('[aria-current="page"]');
         expect(current?.textContent).toBe("Measurements");
     });
 
-    it("shows the error banner (and does not throw) when the device's definitions.json fails to load", async () => {
-        window.history.pushState(null, "", "?device=dev");
-        window.fetch = buildFetchStub({ definitionsOk: false });
+    it("keeps ?device= while the URL's hash follows the section: a deep link, a menu selection, then Back", async () => {
+        window.history.replaceState(null, "", "?device=fixture-b#status");
+        window.fetch = buildFetchStub();
         elements = buildElements();
+        stop = await startApp(elements);
+        const { mainEl, drawerEl, deviceNameEl } = elements;
+        const heading = () => mainEl.querySelector(".section-heading")?.textContent;
+        expect(deviceNameEl.textContent).toBe("Display fixture-b");
+        expect(heading()).toBe("Status");
 
-        await startApp(elements);
+        /** @type {HTMLElement} */ (drawerEl.querySelector('[data-section-key="measurements"]')).click();
+        expect([window.location.search, window.location.hash, heading()]).toEqual(["?device=fixture-b", "#measurements", "Measurements"]);
 
-        expect(elements.errorBannerEl.classList.contains("hidden")).toBe(false);
-        expect(elements.errorBannerEl.textContent).toMatch(/dev/);
+        window.history.back();
+        await vi.waitFor(() => expect(heading()).toBe("Status"));
+        expect(window.location.search).toBe("?device=fixture-b");
     });
 
-    it("shows the error banner (and does not throw) when the mock fixture data fails to load", async () => {
-        window.history.pushState(null, "", "?device=wozi");
-        window.fetch = buildFetchStub({ mockDataOk: false });
+    it("returns a stop handle that stops the shell and uninstalls the mock backend", async () => {
+        window.history.replaceState(null, "", "?device=fixture-a");
+        const fetchStub = buildFetchStub();
+        window.fetch = fetchStub;
+        elements = buildElements();
+        const stopApp = await startApp(elements);
+        expect(window.fetch).not.toBe(fetchStub);
+
+        stopApp();
+
+        expect(window.fetch).toBe(fetchStub);
+    });
+
+    it("shows the device-list banner and renders no section when the manifest fails to load", async () => {
+        window.history.replaceState(null, "", "?");
+        window.fetch = buildFetchStub({ manifest: new Response("not found", { status: 404 }) });
         elements = buildElements();
 
-        await startApp(elements);
+        stop = await startApp(elements);
 
-        expect(elements.errorBannerEl.classList.contains("hidden")).toBe(false);
-        expect(elements.errorBannerEl.textContent).toMatch(/wozi/i);
+        expect(elements.errorBannerEl.dataset.shown).toBe("true");
+        expect(elements.errorBannerEl.textContent).toMatch(/^Could not load the device list: Error: HTTP 404/);
+        expect(elements.mainEl.querySelector(".section-heading")).toBeNull();
+    });
+
+    it("shows the device-list banner when the manifest lists no device", async () => {
+        window.history.replaceState(null, "", "?");
+        window.fetch = buildFetchStub({ manifest: new Response(JSON.stringify({ devices: [] }), { status: 200 }) });
+        elements = buildElements();
+
+        stop = await startApp(elements);
+
+        expect(elements.errorBannerEl.dataset.shown).toBe("true");
+        expect(elements.errorBannerEl.textContent).toMatch(/^Could not load the device list/);
+        expect(elements.mainEl.querySelector(".section-heading")).toBeNull();
+    });
+
+    it("shows the error banner (and does not throw) when the device's definitions.json fails to load", async () => {
+        window.history.replaceState(null, "", "?device=fixture-b");
+        window.fetch = buildFetchStub({ definitions: new Response("not found", { status: 404 }) });
+        elements = buildElements();
+
+        stop = await startApp(elements);
+
+        expect(elements.errorBannerEl.dataset.shown).toBe("true");
+        expect(elements.errorBannerEl.textContent).toMatch(/fixture-b/);
+        expect(elements.mainEl.querySelector(".section-heading")).toBeNull();
+    });
+
+    it("shows the error banner (and does not throw) when the mock samples answer HTTP 500", async () => {
+        window.history.replaceState(null, "", "?device=fixture-a");
+        window.fetch = buildFetchStub({ samples: new Response("server error", { status: 500 }) });
+        elements = buildElements();
+
+        stop = await startApp(elements);
+
+        expect(elements.errorBannerEl.dataset.shown).toBe("true");
+        expect(elements.errorBannerEl.textContent).toMatch(/fixture-a/);
         // Never got as far as rendering a section - no stale/half-built page left behind.
         expect(elements.mainEl.querySelector(".section-heading")).toBeNull();
     });
 
-    it("shows a clear error banner (not a crash) when the mock fixture data is torn/truncated JSON", async () => {
-        window.history.pushState(null, "", "?device=wozi");
-        window.fetch = vi.fn((input) => {
-            const url = String(input);
-            if (url.includes("definitions/wozi.json")) {
-                return Promise.resolve(new Response(JSON.stringify(DEFS), { status: 200 }));
-            }
-            if (url.includes("mockdata/wozi.json")) {
-                return Promise.resolve(new Response("{not valid json", { status: 200 }));
-            }
-            return Promise.resolve(new Response("not found", { status: 404 }));
-        });
+    it("shows a clear error banner (not a crash) when the mock samples are torn/truncated JSON", async () => {
+        window.history.replaceState(null, "", "?device=fixture-a");
+        window.fetch = buildFetchStub({ samples: new Response("{not valid json", { status: 200 }) });
         elements = buildElements();
 
-        await startApp(elements);
+        stop = await startApp(elements);
 
-        expect(elements.errorBannerEl.classList.contains("hidden")).toBe(false);
+        expect(elements.errorBannerEl.dataset.shown).toBe("true");
         expect(elements.errorBannerEl.textContent).toMatch(/not valid json/i);
         expect(elements.mainEl.querySelector(".section-heading")).toBeNull();
     });

@@ -1,0 +1,867 @@
+FAIL test_webserver_pr_is_fram_backed_when_device_wires_fram:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1298, in _scenario_webserver_pr_fram_backed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_fram_chunk_allocation_order_matches_the_documented_sequence:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 456, in _scenario_fram_chunk_order
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_notification_put_light_cmd_led_rejects_out_of_range_t:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1515, in _scenario_notification_light_cmd_led_rejects_out_of_range_t
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_neopixel_empty_timer_list_reaches_the_generated_collector:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 833, in _scenario_neopixel_empty_timer_list_reaches_the_collector
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_notification_put_light_cmd_led_accepts_upper_boundary_rgb_and_t:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1534, in _scenario_notification_light_cmd_led_upper_boundary
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_status_publishes_utc_time_only_after_the_first_ntp_sync:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1603, in _scenario_status_utc_time_waits_for_ntp_sync
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_build_system_constructs_every_real_module:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 319, in _scenario_build_system_constructs_every_real_module
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_notification_put_light_cmd_led_rejects_negative_rgb:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1506, in _scenario_notification_light_cmd_led_rejects_negative_rgb
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_networking_put_ssid_group_reconnects_but_led_group_alone_does_not:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1360, in _scenario_networking_put_ssid_group
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_is_hotspot_active_wiring_real_static_root_and_api_route_unaffected_in_hotspot_mode:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1717, in _scenario_hotspot_real_routes_unaffected
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_notification_put_light_cmd_led_dispatches_to_the_real_pixel_driver:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1442, in _scenario_notification_put_light_cmd_led
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_every_build_starts_with_every_dma_channel_free:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 313, in _scenario_every_build_starts_with_every_dma_channel_free
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_debug_level_survives_a_simulated_reboot_through_build_system:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 780, in _scenario_debug_level_survives_reboot
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_is_hotspot_active_wiring_directory_traversal_still_404s_in_hotspot_mode:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1734, in _scenario_hotspot_directory_traversal_404s
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_measurements_and_sensors_get_include_every_real_sensor:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1309, in _scenario_webserver_measurements_and_sensors_get
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_debug_seed_value_is_the_starting_level_before_setup_resolves_the_persisted_one:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 758, in _scenario_debug_seed_value
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_notification_put_light_cmd_led_rejects_missing_field:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1489, in _scenario_notification_light_cmd_led_rejects_missing_field
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_build_system_wires_the_wifi_led_callback_after_both_exist:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 352, in _scenario_wifi_led_wiring
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_main_forwards_web_host_and_port_to_build_system:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 410, in _scenario_main_forwards_web_host_port
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_read_triggers_follow_the_stagger_on_the_real_sequencer:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 942, in _scenario_read_trigger_stagger
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_system_put_debug_level_updates_every_logger_in_the_object_graph:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 770, in _scenario_set_debug_level_updates_every_logger
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_a_fresh_filesystem_boot_writes_each_config_file_once:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 698, in _scenario_fresh_filesystem_writes_once
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_no_get_route_serialises_a_non_finite_float:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1188, in _scenario_no_non_finite_float_on_the_wire
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_is_hotspot_active_wiring_dynamic_phase_switch_is_reflected_live:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1698, in _scenario_hotspot_dynamic_switch
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_notification_put_light_cmd_led_rejects_non_numeric_t:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1482, in _scenario_notification_light_cmd_led_rejects_non_numeric_t
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_notification_put_flat_field_round_trips_through_the_real_coordinator:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1563, in _scenario_notification_put_flat_field
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_build_system_web_host_and_port_are_overridable:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 378, in _scenario_web_host_port_overridable
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_notification_put_pause_time_dispatches_to_the_real_coordinator:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1556, in _scenario_notification_put_pause_time
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_system_put_reboot_cmd_arms_the_real_reset_timer:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1405, in _scenario_system_put_reboot
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_status_get_reflects_the_real_object_graph:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1572, in _scenario_status_get
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_build_system_never_insists_on_fram_hardware_being_available:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 550, in _scenario_fram_never_required
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_sensors_put_round_trips_a_real_field_through_the_real_driver:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1323, in _scenario_sensors_put_sgp40
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_system_put_invalid_cmd_is_rejected_without_side_effects:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1433, in _scenario_system_put_invalid_cmd
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_the_fram_manager_is_the_only_error_source_whose_own_log_is_not_fram_backed:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 527, in _scenario_only_the_fram_manager_logs_in_memory
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_setup_batch_runs_every_unit_in_the_generated_order:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 616, in _scenario_setup_batch_order
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_notification_light_cmd_led_refuses_a_second_flash_at_once:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1543, in _scenario_notification_light_cmd_led_refuses_while_busy
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_collect_level_setters_returns_one_entry_per_logger_in_the_object_graph:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 739, in _scenario_collect_level_setters
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_the_unfed_boot_stretch_after_the_last_setup_feed_stays_within_two_seconds:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1014, in _scenario_unfed_boot_stretch
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_collect_task_starters_never_touches_start_and_check_tasks:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1223, in _scenario_collect_starters_never_blocks
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_notification_put_light_cmd_led_accepts_lower_boundary_rgb_and_t:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1527, in _scenario_notification_light_cmd_led_lower_boundary
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_one_supervisor_pass_over_dead_tasks_persists_at_most_one_entry_per_end:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1072, in _scenario_supervisor_scan_budget
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_collect_timer_starters_includes_every_constructed_module:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 819, in _scenario_collect_timer_starters
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_notification_put_light_cmd_led_rejects_fractional_rgb:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1462, in _scenario_notification_light_cmd_led_rejects_fractional
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_system_put_reboot_flushes_a_still_pending_config_write_first:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1422, in _scenario_system_put_reboot_flushes_pending_write
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_every_logger_is_set_up_by_the_batch_before_any_task_starts:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1161, in _scenario_loggers_set_up_by_the_batch
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_scd30s_own_i2c_bus_uses_a_clock_stretch_timeout_wide_enough_for_it:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 332, in _scenario_scd30_clock_stretch
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_networking_put_ntp_fields_forces_a_resync:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1375, in _scenario_networking_put_ntp
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_build_system_web_host_and_port_default_to_production_values:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 367, in _scenario_web_host_port_defaults
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_status_put_reset_errors_is_not_undone_by_a_fram_loggers_later_setup:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1648, in _scenario_status_reset_errors_not_undone
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_system_put_debug_level_propagates_to_every_logger:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1385, in _scenario_system_put_debug_level
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_notification_put_light_cmd_led_accepts_integral_float_rgb_and_int_t_coerced:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1452, in _scenario_notification_light_cmd_led_integral_float
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_build_system_is_independently_callable_and_returns:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 362, in _scenario_build_system_independently_callable
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_notify_service_cfgmgr_exists_once_build_system_completes:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 670, in _scenario_notify_cfgmgr_exists
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_is_hotspot_active_wiring_put_to_unmatched_path_still_405_in_hotspot_mode:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1745, in _scenario_hotspot_put_unmatched_405
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_notification_put_light_cmd_led_rejects_non_numeric_field:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1472, in _scenario_notification_light_cmd_led_rejects_non_numeric_field
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_system_put_gmt_dst_offset_applies_without_a_reconnect:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1395, in _scenario_system_put_gmt_offset
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_system_get_reports_the_real_build_info:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1621, in _scenario_system_get_build_info
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_every_module_and_logger_reaches_the_fan_in_collectors_exactly_once:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1134, in _scenario_fan_in_inventory
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_every_measurement_starts_none_on_every_sensor:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 680, in _scenario_measurements_start_none
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_status_put_reset_errors_clears_a_real_modules_history:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1633, in _scenario_status_put_reset_errors
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_is_hotspot_active_wiring_default_sta_phase_still_404s:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1686, in _scenario_hotspot_default_sta_404
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_is_hotspot_active_wiring_redirects_when_conn_is_in_hotspot_phase:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1674, in _scenario_hotspot_redirects
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_fram_chunks_are_all_successfully_allocated_not_out_of_memory:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 466, in _scenario_fram_chunks_allocated
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_sensors_put_round_trips_a_real_scd30_field_through_the_real_driver:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1346, in _scenario_sensors_put_scd30
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_webserver_notification_put_light_cmd_led_rejects_out_of_range_rgb:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1499, in _scenario_notification_light_cmd_led_rejects_out_of_range_rgb
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_boot_feeds_the_watchdog_exactly_once_per_setup_call:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 642, in _scenario_boot_feeds_the_watchdog
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_collect_task_starters_includes_every_constructed_module:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 799, in _scenario_collect_task_starters
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 158, in build
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 74, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 152, in _boot
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_main_calls_start_timers_then_force_sync_then_start_and_check_tasks_in_order:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/microtest.py", line 27, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1776, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13i/tests/_sensortask_scenarios.py", line 1267, in _scenario_main_call_order
+  File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+0/68 passed, 68 failed, 0 skipped

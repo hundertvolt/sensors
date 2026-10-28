@@ -1,0 +1,113 @@
+=== test_citations
+E       AssertionError: unresolved citations (path, token) - point at what exists, or state the fact in place:
+E           CLAUDE.md: digital_twin/unix_port_gc_unwedge.py
+E           SPECIFICATION.md: digital_twin/segfault_stress_repro.py
+E           SPECIFICATION.md: digital_twin/unix_port_gc_unwedge.py
+E           SPECIFICATION.md: digital_twin/unix_port_gc_unwedge.py
+E           SPECIFICATION.md: digital_twin/unix_port_gc_unwedge.py
+E           SPECIFICATION.md: tests/_webserver_concurrency_scenarios.py
+E           SPECIFICATION.md: tests/_webserver_concurrency_scenarios.py
+E           SPECIFICATION.md: tests/_webserver_concurrency_scenarios.py
+E           SPECIFICATION.md: tests/_webserver_concurrency_scenarios.py
+E           SPECIFICATION.md: tests/_webserver_concurrency_scenarios.py
+E           SPECIFICATION.md: tests/test_digital_twin_real_website_integration.py
+E           SPECIFICATION.md: tests/test_digital_twin_real_website_integration.py
+E           SPECIFICATION.md: tests/test_digital_twin_real_website_integration.py
+E           SPECIFICATION.md: tests/test_digital_twin_real_website_integration.py
+E           SPECIFICATION.md: tests/test_digital_twin_unix_port_gc_unwedge.py
+E           SPECIFICATION.md: tests/test_sensortask_dev.py
+E           SPECIFICATION.md: tests/test_sensortask_dev.py
+E       assert not [('CLAUDE.md', 'digital_twin/unix_port_gc_unwedge.py'), ('SPECIFICATION.md', 'digital_twin/segfault_stress_repro.py'),...N.md', 'digital_twin/unix_port_gc_unwedge.py'), ('SPECIFICATION.md', 'tests/_webserver_concurrency_scenarios.py'), ...]
+=== test_tunables_register
+E       AssertionError: digital_twin/run_generic_integration.py:181: l2.twin_test_stdin_poll_ms is tagged but has no SPECIFICATION.md Part N row
+E         digital_twin/run_generic_integration.py:186: l2.twin_feed_gap_fold_ms is tagged but has no SPECIFICATION.md Part N row
+E         digital_twin/unixport/_ntp_responder.py:23: twin.ntp_responder_poll_ms is tagged but has no SPECIFICATION.md Part N row
+E         digital_twin/unixport/_ntp_responder.py:25: twin.ntp_responder_take_rounds is tagged but has no SPECIFICATION.md Part N row
+E         tests/_twin_readiness.py:15: l2.twin_readiness_poll_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_bmp3xx.py:15: l2.bmp3xx_probe_hang_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_bus_hazard_concurrency.py:87: l2.bus_hazard_command_wait_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_clock_jump.py:59: l2.clock_jump_wait_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_fram.py:68: l2.fram_booted_until_yields is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_hot_replug.py:60: l2.hot_replug_wait_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_hot_replug.py:62: l2.hot_replug_run_bound_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_http_client.py:32: l2.http_client_fetch_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_http_client.py:34: l2.http_client_silent_server_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_isl29125.py:34: l2.isl29125_probe_hang_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine.py:90: l2.machine_timer_short_period_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine.py:92: l2.machine_timer_rearm_window_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine.py:94: l2.machine_spi_wire_time_us_per_byte is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine_uart.py:31: l2.machine_uart_frame_wire_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine_uart.py:33: l2.machine_uart_frame_timeout_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine_uart.py:37: l2.machine_uart_stall_baud is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine_uart.py:39: l2.machine_uart_stall_pages is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_ntp.py:61: l2.ntp_reply_wait_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_ntp.py:64: l2.ntp_run_bound_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_ntp.py:275: l2.ntp_sync_wait_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_sensortask_integration.py:100: l2.sensortask_integration_idle_window_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_sensortask_integration.py:110: l2.sensortask_integration_heap_floor_reads is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_timer_pool.py:74: l2.timer_pool_wait_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_timer_pool.py:76: l2.timer_pool_run_bound_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_uart_comm_hazard.py:33: l2.uart_comm_hazard_timeout_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_uart_comm_hazard.py:35: l2.uart_comm_hazard_run_limit_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_uart_comm_hazard.py:37: l2.uart_comm_hazard_recovery_attempts is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_uart_field_sweep.py:30: l2.uart_field_sweep_timeout_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_uart_field_sweep.py:33: l2.uart_field_sweep_quiet_window_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_uart_field_sweep.py:35: l2.uart_field_sweep_run_limit_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_uart_link.py:106: l2.uart_link_leak_warmup_rounds is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_uart_link.py:110: l2.uart_link_leak_rate_bytes_per_transfer is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_uart_link.py:112: l2.uart_link_crc16_rounds is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_wifi_modes.py:59: l2.wifi_modes_sleep_scale is tagged but has no SPECIFICATION.md Part N row
+E         tests_scripts/test_digital_twin_generated_boot.py:65: l0.generated_boot_link_poll_gap_s is tagged but has no SPECIFICATION.md Part N row
+E         tests_scripts/test_digital_twin_generated_boot.py:67: l0.generated_boot_reset_wait_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_ci_suite.py:216: l2.escalation_wait_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_ci_suite.py:218: l2.ntp_first_sync_wait_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_ci_suite.py:220: l2.read_cycle_wait_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_ci_suite.py:228: l2.commanded_reset_margin_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_ci_suite.py:230: l2.verbose_poll_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_scenarios.py:74: l2.scenario_request_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_scenarios.py:76: l2.scenario_serving_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_scenarios.py:78: l2.scenario_line_poll_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_scenarios.py:80: l2.scenario_conn_status_interval_ms is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_scenarios.py:82: l2.scenario_fault_status_interval_ms is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_scenarios.py:84: l2.scenario_drain_wait_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_scenarios.py:86: l2.scenario_still_serving_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_scenarios.py:88: l2.scenario_flaky_hold_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_scenarios.py:90: l2.scenario_slow_put_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_scenarios.py:92: l2.scenario_stall_ms is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_scenarios.py:94: l2.scenario_watchdog_window_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_scenarios.py:96: l2.scenario_refusal_feed_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_scenarios.py:98: l2.scenario_commanded_reset_margin_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_scenarios.py:100: l2.scenario_pause_countdown_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_scenarios.py:102: l2.scenario_hotspot_wait_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_scenarios.py:104: l2.scenario_uart_load_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_scenarios.py:106: l2.scenario_uart_load_faults is tagged but has no SPECIFICATION.md Part N row
+E         tests_js/live-backend.test.js:10: l0.live_smoke_timeout_ms is tagged but has no SPECIFICATION.md Part N row
+E         SPECIFICATION.md:10757: web.connections_per_page_load: Sites list [('scripts/cross_browser_smoke.mjs', '2'), ('tests/_webserver_concurrency_scenarios.py', '2')], the tags say [('scripts/_digital_twin_scenarios.py', '2'), ('scripts/cross_browser_smoke.mjs', '2')]
+E         SPECIFICATION.md:10773: l2.mem_paused_wait_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:10776: l2.past_exhaustion_wait_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:10777: l2.in_flight_settle_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:10779: l2.mem_paused_poll_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:10780: l2.serving_poll_s: Sites list [('scripts/_digital_twin_ci_suite.py', '0.25')], the tags say [('scripts/_twin_process.py', '0.25')]
+E         SPECIFICATION.md:10781: l2.serving_probe_timeout_s: Sites list [('scripts/_digital_twin_ci_suite.py', '1.0')], the tags say [('scripts/_twin_process.py', '1.0')]
+E         SPECIFICATION.md:10783: l2.kill_reap_timeout_s: Sites list [('scripts/_digital_twin_ci_suite.py', '5.0')], the tags say [('scripts/_twin_process.py', '5.0')]
+E         SPECIFICATION.md:10790: l2.twin_ready_poll_ms: Sites list [('digital_twin/run_generic_integration.py', '20'), ('digital_twin/segfault_stress_repro.py', '20')], the tags say [('digital_twin/run_generic_integration.py', '20')]
+E         SPECIFICATION.md:10819: l2.sensortask_integration_hotspot_wait_timeout_s: Sites list [('tests/test_digital_twin_sensortask_integration.py', '25.0')], the tags say [('tests/test_digital_twin_sensortask_integration.py', '40.0')]
+E         SPECIFICATION.md:10821: l2.sensortask_integration_hotspot_run_bound_s: Sites list [('tests/test_digital_twin_sensortask_integration.py', '35.0')], the tags say [('tests/test_digital_twin_sensortask_integration.py', '60.0')]
+E         SPECIFICATION.md:10823: l2.machine_wdt_short_timeout_ms: Sites list [('tests/test_digital_twin_machine.py', '150')], the tags say [('tests/test_digital_twin_machine.py', '100')]
+E         SPECIFICATION.md:10842: l2.real_website_integration_run_bound_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:10843: l2.real_website_integration_burst_run_bound_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:10859: l2.uart_link_leak_budget_bytes is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:10867: l2.wifi_modes_wait_poll_s: Sites list [('tests/test_digital_twin_wifi_modes.py', '0.25')], the tags say [('tests/test_digital_twin_wifi_modes.py', '0.1')]
+E       assert not ['digital_twin/run_generic_integration.py:181: l2.twin_test_stdin_poll_ms is tagged but has no SPECIFICATION.md Part N..., 'tests/test_digital_twin_bmp3xx.py:15: l2.bmp3xx_probe_hang_s is tagged but has no SPECIFICATION.md Part N row', ...]
+=== test_level_containment
+E       AssertionError: twin scenarios with neither an L3/L4 counterpart nor an E.6.6 row with a reason: ['ci_suite._run_12_reset_reasons', 'ci_suite._run_13_system_commands', 'clock_jump', 'fram_crash_points', 'hot_replug', 'ntp', 'rp2_constants', 'system_commands', 'timer_pool', 'uart_comm_hazard', 'uart_field_sweep', 'uart_load', 'webserver_requests']
+E       assert not ['ci_suite._run_12_reset_reasons', 'ci_suite._run_13_system_commands', 'clock_jump', 'fram_crash_points', 'hot_replug', 'ntp', ...]
+E       AssertionError: E.6.6 rows name scenarios that do not exist: {'twin-instrument': ['unix_port_gc_unwedge']}
+E       assert not {'twin-instrument': ['unix_port_gc_unwedge']}
+=== test_import_placement
+E       AssertionError: _NAMED_EXCEPTIONS and SPECIFICATION.md F.1's named list differ - one of them moved
+E       assert {'buildgen/va...rios.py', ...} == {'buildgen/va...rios.py', ...}
+E         
+E         Extra items in the right set:
+E         'tests/_webserver_concurrency_scenarios.py'
+E         Use -v to get more diff

@@ -1,0 +1,286 @@
+FAIL test_a_bad_mem_backup_state_file_boots_as_a_power_on:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 1061, in test_a_bad_mem_backup_state_file_boots_as_a_power_on
+AttributeError: module 'machine' has no attribute 'reset_test_state'
+FAIL test_a_bus_needs_an_explicit_wiring_plan:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 994, in test_a_bus_needs_an_explicit_wiring_plan
+AssertionError: 
+FAIL test_a_fired_one_shot_returns_its_alarm:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 1164, in test_a_fired_one_shot_returns_its_alarm
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_machine.py", line 1156, in scenario
+AttributeError: module 'machine' has no attribute 'set_alarm_pool_free'
+FAIL test_a_flushed_mem_backup_reaches_the_next_launch_once:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 1033, in test_a_flushed_mem_backup_reaches_the_next_launch_once
+AttributeError: module 'machine' has no attribute 'configure_mem_backup_state_path'
+FAIL test_a_hard_callback_failure_stops_the_schedule_and_frees_its_alarm:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 1216, in test_a_hard_callback_failure_stops_the_schedule_and_frees_its_alarm
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_machine.py", line 1211, in scenario
+AttributeError: module 'machine' has no attribute 'set_alarm_pool_free'
+FAIL test_a_reset_and_a_power_loss_are_no_exceptions_a_product_can_swallow:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 1072, in test_a_reset_and_a_power_loss_are_no_exceptions_a_product_can_swallow
+AssertionError: 
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "digital_twin/machine.py", line 1159, in _run
+  File "tests/test_digital_twin_machine.py", line 1190, in flaky
+ValueError: planted callback failure
+FAIL test_a_soft_callback_failure_is_printed_and_the_schedule_goes_on:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 1200, in test_a_soft_callback_failure_is_printed_and_the_schedule_goes_on
+AssertionError: 
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "digital_twin/machine.py", line 1159, in _run
+  File "tests/test_digital_twin_machine.py", line 1090, in <lambda>
+  File "digital_twin/machine.py", line 1380, in reset
+SimulatedResetError: machine.reset() called - the twin does not actually restart the process
+FAIL test_a_timer_calling_reset_ends_the_loop_past_an_except_exception_sibling:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 1096, in test_a_timer_calling_reset_ends_the_loop_past_an_except_exception_sibling
+AssertionError: the loop outlived machine.reset()
+PASS test_a_timer_rearming_from_its_own_callback_runs_one_schedule
+FAIL test_an_unplugged_chip_answers_nothing_until_plugged_back_powered_up:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 1254, in test_an_unplugged_chip_answers_nothing_until_plugged_back_powered_up
+AttributeError: 'I2C' object has no attribute 'unplug'
+PASS test_bootloader_also_reads_back_as_a_watchdog_reset
+PASS test_bootloader_increments_the_module_counter_then_raises_simulated_bootloader_entry
+FAIL test_bounded_log_clear_starts_over_at_slot_zero:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 559, in test_bounded_log_clear_starts_over_at_slot_zero
+TypeError: 'NoneType' object isn't callable
+FAIL test_bounded_log_counts_what_it_drops_and_saturates_at_the_cap:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 906, in test_bounded_log_counts_what_it_drops_and_saturates_at_the_cap
+TypeError: 'NoneType' object isn't callable
+FAIL test_bounded_log_reads_oldest_first_before_and_after_it_wraps:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 538, in test_bounded_log_reads_oldest_first_before_and_after_it_wraps
+TypeError: 'NoneType' object isn't callable
+PASS test_configure_random_source_threads_through_to_newly_wired_chips
+FAIL test_configure_scd30_state_path_and_flush_scd30_round_trip_settings:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 137, in wrapper
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_machine.py", line 134, in body
+  File "tests/test_digital_twin_machine.py", line 313, in test_configure_scd30_state_path_and_flush_scd30_round_trip_settings
+AttributeError: module 'machine' has no attribute 'reset_test_state'
+FAIL test_configure_wiring_never_replaces_the_board_it_wired:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 990, in test_configure_wiring_never_replaces_the_board_it_wired
+AssertionError: 
+FAIL test_configure_wiring_never_replaces_the_board_it_wired: left a task parked on the scheduler
+PASS test_dev_wiring_hands_the_isl29125_the_same_pin_object_the_driver_constructs
+PASS test_dev_wiring_puts_the_isl29125_on_i2c1_beside_scd30_and_sgp40
+FAIL test_every_configure_hook_refuses_once_a_bus_exists:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 972, in test_every_configure_hook_refuses_once_a_bus_exists
+AttributeError: module 'machine' has no attribute 'reset_test_state'
+FAIL test_fill_buffer_keeps_a_bytearrays_length_and_writes_into_a_memoryview:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 917, in test_fill_buffer_keeps_a_bytearrays_length_and_writes_into_a_memoryview
+TypeError: 'NoneType' object isn't callable
+PASS test_i2c_address_prefixed_writeto_reaches_the_register_handler
+PASS test_i2c_and_spi_deinit_are_recorded
+PASS test_i2c_general_call_address_is_always_tolerated
+PASS test_i2c_id0_wires_scd30_at_0x61_and_naks_everything_else
+PASS test_i2c_id1_wires_sgp40_and_bmp3xx
+FAIL test_i2c_is_one_object_per_id_keeping_chips_and_log_across_constructions:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 468, in test_i2c_is_one_object_per_id_keeping_chips_and_log_across_constructions
+AttributeError: module 'machine' has no attribute 'reset_peripherals'
+FAIL test_i2c_log_stays_bounded_across_many_transactions:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 406, in test_i2c_log_stays_bounded_across_many_transactions
+TypeError: unsupported types for __add__: 'NoneType', 'int'
+PASS test_i2c_nack_after_returns_the_short_count_and_records_the_stop
+PASS test_i2c_no_stop_address_write_then_readfrom_into_reads_that_register
+PASS test_i2c_readfrom_mem_and_writeto_mem_dispatch_to_the_wired_bmp3xx_device
+PASS test_i2c_register_faults_keep_the_chip_keys
+PASS test_i2c_writeto_and_readfrom_into_dispatch_to_the_wired_sgp40_device
+PASS test_i2c_zero_length_write_to_a_register_chip_is_the_probe
+PASS test_mem32_answers_the_reset_registers_on_each_reset_path
+PASS test_mem_backup_has_rp2s_two_regions_of_four_and_three_words
+PASS test_mem_backup_refuses_any_other_region
+PASS test_mem_backup_returns_the_same_view_each_call_and_both_for_minus_one
+FAIL test_peripheral_answers_the_registered_bus_or_none:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 942, in test_peripheral_answers_the_registered_bus_or_none
+AttributeError: module 'machine' has no attribute 'peripheral'
+PASS test_pin_external_level_callable_sees_the_value_log
+PASS test_pin_init_applies_value_before_the_mode_and_records_alt
+PASS test_pin_irq_fires_on_simulate_edge_rising
+PASS test_pin_open_drain_reads_the_wired_and_of_its_drive_and_the_line
+PASS test_pin_rejects_invalid_id
+PASS test_pin_shares_identity_by_id_matching_real_hardware
+PASS test_pin_simulate_edge_drives_the_line_a_pulled_up_input_reads
+PASS test_pin_simulate_edge_to_the_same_value_does_not_fire_the_irq_handler
+PASS test_pin_toggle_flips_the_current_value
+PASS test_pin_value_setter_form_sets_and_returns_none
+PASS test_power_on_clears_both_regions
+PASS test_reset_cause_reads_power_on_until_a_reset_then_watchdog
+PASS test_reset_increments_the_module_counter_then_raises_simulated_reset
+FAIL test_reset_peripherals_forgets_every_bus:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 956, in test_reset_peripherals_forgets_every_bus
+AttributeError: module 'machine' has no attribute 'reset_peripherals'
+FAIL test_reset_test_state_restores_every_machine_knob:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 137, in wrapper
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_machine.py", line 134, in body
+  File "tests/test_digital_twin_machine.py", line 1007, in test_reset_test_state_restores_every_machine_knob
+AttributeError: module 'machine' has no attribute 'configure_mem_backup_state_path'
+PASS test_rtc_datetime_round_trips
+FAIL test_saturating_add_stops_at_the_shared_counter_cap:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 900, in test_saturating_add_stops_at_the_shared_counter_cap
+AssertionError: 
+PASS test_simulated_reset_and_bootloader_entry_are_both_simulated_reboot
+PASS test_spi_bit_order_numbers_are_rp2s
+PASS test_spi_id0_wires_the_fram_chip
+PASS test_spi_id1_wires_no_device_and_reads_back_zeroed_bytes
+PASS test_spi_init_updates_settings_and_rejects_lsb_first
+FAIL test_spi_log_stays_bounded_across_many_transactions:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 529, in test_spi_log_stays_bounded_across_many_transactions
+TypeError: unsupported types for __add__: 'NoneType', 'int'
+FAIL test_spi_lose_power_after_k_fails_the_next_transaction_with_a_power_loss:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 1228, in test_spi_lose_power_after_k_fails_the_next_transaction_with_a_power_loss
+AttributeError: 'SPI' object has no attribute 'lose_power_after'
+FAIL test_spi_wire_time_blocks_for_each_byte_moved:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 1245, in test_spi_wire_time_blocks_for_each_byte_moved
+AssertionError: 
+PASS test_spi_write_readinto_dispatches_to_the_wired_device
+FAIL test_state_paths_carries_the_mem_backup_path:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 928, in test_state_paths_carries_the_mem_backup_path
+TypeError: StatePaths() takes 2 positional arguments but 3 were given
+PASS test_the_fault_injector_counts_its_pending_entries
+FAIL test_the_fram_table_names_both_chips_and_refuses_an_unknown_size:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 1278, in test_the_fram_table_names_both_chips_and_refuses_an_unknown_size
+AssertionError: 
+FAIL test_the_reset_counters_saturate_at_the_counter_cap:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 1105, in test_the_reset_counters_saturate_at_the_counter_cap
+  File "digital_twin/machine.py", line 1377, in reset
+TypeError: unsupported types for __add__: 'NoneType', 'int'
+FAIL test_the_seventeenth_alarm_raises_enomem_until_one_is_freed:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 1149, in test_the_seventeenth_alarm_raises_enomem_until_one_is_freed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_machine.py", line 1141, in scenario
+AssertionError: a 17th alarm was armed
+FAIL test_the_twin_meets_the_shared_machine_contract_but_for_its_pending_checks:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 154, in test_the_twin_meets_the_shared_machine_contract_but_for_its_pending_checks
+  File "tests/test_digital_twin_machine.py", line 154, in <dictcomp>
+  File "tests/test_digital_twin_machine.py", line 122, in _contract_failure
+AttributeError: module 'machine' has no attribute 'reset_test_state'
+PASS test_timer_deinit_outside_a_running_event_loop_does_not_raise
+PASS test_timer_deinit_stops_further_callbacks
+PASS test_timer_fires_for_real_on_a_short_period
+FAIL test_timer_period_maths_follows_rp2:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 1132, in test_timer_period_maths_follows_rp2
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_machine.py", line 1126, in scenario
+TypeError: unexpected keyword argument 'freq'
+FAIL test_timer_refuses_any_id_but_the_soft_timer:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine.py", line 1119, in test_timer_refuses_any_id_but_the_soft_timer
+AssertionError: Timer(0) constructed
+PASS test_timer_reinit_from_within_its_own_callback_does_not_raise
+PASS test_wdt_accepts_a_timeout_at_exactly_the_hard_cap
+PASS test_wdt_feed_increments_count
+PASS test_wdt_feed_resets_the_countdown_and_prevents_a_notification
+PASS test_wdt_keeps_monitoring_after_a_would_have_triggered_notification
+PASS test_wdt_notifies_once_after_a_feed_free_window
+PASS test_wdt_on_would_trigger_callback_fires_with_the_wdt_instance
+PASS test_wdt_rejects_a_nonzero_id
+PASS test_wdt_rejects_a_timeout_above_the_rp2040_hard_cap
+PASS test_wdt_would_have_triggered_count_and_log_start_at_zero
+PASS test_wdt_would_have_triggered_log_records_the_feed_count_at_each_notification
+PASS test_wozi_wiring_carries_no_isl29125
+57/89 passed, 32 failed, 0 skipped
+RC=1 WALL=8.436602873 FILE=tests/test_digital_twin_machine.py STAGE=-1

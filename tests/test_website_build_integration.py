@@ -2,20 +2,22 @@
 scripts/build_website.sh's staged, recursive merge - html/ + the production js/ module set, for one
 device - imports, mounts and serves correctly through a real WebserverService/Microdot() app."""
 
-# The real chain: html/ and js/ -> scripts/build_website.sh wozi -> frozen_modules/frozen_html.py ->
-# `import frozen_html` (mount on import) -> WebserverService(static_mount=...). scripts/test.sh builds it
-# first; the import mounts /html once per process. The prototype-only files are confirmed absent.
+# The real chain: html/ and js/ -> scripts/build_website.sh <device> (staged by scripts/_stage_website.py) ->
+# frozen_modules/frozen_html.py -> `import frozen_html` (mount on import) -> WebserverService. scripts/test.sh builds it
+# first, for the device it names; the import mounts /html once per process.
 
-import asyncio
-import json
 import sys
 
 sys.path.insert(0, "ext")
 
-import frozen_html  # type: ignore[import-not-found]  # noqa: F401  # mounts /html on import
-from microdot import Microdot, Request  # type: ignore[import-not-found]
+import frozen_html  # mounts /html on import
+from _async_harness import run
+from _generated_tree import devices, require_fresh
+from microdot import Microdot, Request
 
-from asy_webserver_service import WebserverService
+from asy_webserver_service import RouteSources, ServingLimits, StaticSite, WebserverService
+
+require_fresh()  # two tests read the generated definitions
 
 try:
     from typing import TYPE_CHECKING
@@ -23,8 +25,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
-    from typing import Any, Protocol, TypeVar
+    from typing import Protocol, TypeVar
 
     T = TypeVar("T")
 
@@ -34,14 +35,23 @@ if TYPE_CHECKING:
         def read(self) -> bytes: ...
 
 
-def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
+class _NoopHolder:  # Request.sock's stand-in: a static route hands its opened file to the writer's hold()
+    def hold(self, closable: object) -> None:
+        pass
+
+
+def _bundle_modules(body: bytes) -> "list[str]":
+    # The bundle's module list, read from its banner (scripts/_stage_website.py writes it in dependency order).
+    for line in body.split(b"\n")[:3]:
+        if line.startswith(b"// Modules: "):
+            return [name.decode() for name in line[len(b"// Modules: ") :].split(b", ")]
+    raise AssertionError("the bundle's banner names no module list: " + repr(body[:200]))
 
 
 def _decompress(body: "_ResponseBody") -> bytes:
-    # send_file() streams from a file-like object, so .read() first; DeflateIO(AUTO) detects the gzip
-    # header (confirmed on v1.29.0). No `with`: the real object supports it but the stubs don't declare
-    # __enter__/__exit__ (the same stub-gap class as Timer()/I2C.deinit()), and a BytesIO needs no close.
+    # send_file() streams from a file-like object; DeflateIO(AUTO) detects the gzip header (v1.29.0). No `with` (a BytesIO
+    # needs no close) and an ignore: the stub declares neither __enter__/__exit__ nor a typed read() - removal trigger:
+    # SPECIFICATION.md B.15.
     import io
 
     import deflate
@@ -50,14 +60,35 @@ def _decompress(body: "_ResponseBody") -> bytes:
     return d.read()  # type: ignore[no-any-return]
 
 
-def _make_request(app: "Microdot", method: str, path: str) -> Request:
-    return Request(app, ("127.0.0.1", 12345), method, path, "1.1", {"Content-Length": "0"}, body=b"")
-
-
 def _make_app() -> "tuple[WebserverService, Microdot]":
     app = Microdot()
-    service = WebserverService(app, static_mount="/html")
+    # Dispatch only, no server starts: backlog, host and port are never used here.
+    serving = ServingLimits(
+        int(_src_const("_DEFAULT_MAX_CONTENT_LENGTH")), int(_src_const("_DEFAULT_CHUNK_BYTES")), int(_src_const("_DEFAULT_MAX_CONNECTIONS")),
+        None, float(_src_const("_DEFAULT_PER_CALL_TIMEOUT_S")), float(_src_const("_DEFAULT_OUTER_CAP_S")), "0.0.0.0", 80,
+    )
+    routes = RouteSources([], None, None, None, None, None, None, None, [], [])
+    service = WebserverService(app, routes, serving, uptime_s=_uptime_s, static=StaticSite("/html", "index.html", None))
     return service, app
+
+
+def _make_request(app: "Microdot", method: str, path: str) -> Request:
+    sock = (_NoopHolder(), _NoopHolder())
+    return Request(app, ("127.0.0.1", 12345), method, path, "1.1", {"Content-Length": "0"}, body=b"", sock=sock)  # type: ignore[arg-type]  # the stub types sock as asyncio's stream pair; the product reads only _Holder.hold() off it
+
+
+def _src_const(name: str) -> str:
+    # The shipped default's literal, read from the source: a const() is not a module attribute on MicroPython.
+    with open("src/asy_webserver_service.py") as f:
+        for line in f:
+            if line.startswith(name + " = const("):
+                literal: str = line.split("const(", 1)[1].split(")", 1)[0]
+                return literal
+    raise AssertionError(name + " not found in src/asy_webserver_service.py")
+
+
+async def _uptime_s() -> int:  # the drop window's clock; dispatch only, no connection is counted here
+    return 0
 
 
 def test_root_serves_the_real_index_html() -> None:
@@ -72,9 +103,9 @@ def test_root_serves_the_real_index_html() -> None:
 def test_style_css_and_definitions_json_are_not_served_as_separate_files() -> None:
     # Both are inlined directly into index.html at build time now (SPECIFICATION.md Part H.7) instead of
     # being staged as their own files, so a page load needs one fewer connection. The nested dev-preview
-    # path and another device's definitions file were already never shipped this way either.
+    # path and every device's own definitions file were already never shipped this way either.
     _, app = _make_app()
-    for path in ("/style.css", "/definitions.json", "/definitions/wozi.json", "/definitions/dev.json"):
+    for path in ["/style.css", "/definitions.json"] + [f"/definitions/{device}.json" for device in devices()]:
         res = run(app.dispatch_request(_make_request(app, "GET", path)))
         assert res.status_code == 404, path
 
@@ -94,54 +125,57 @@ def test_inlined_definitions_and_stylesheet_replace_the_two_separately_staged_fi
     marker_start = '<script type="application/json" id="inlined-definitions">'
     start = body.index(marker_start) + len(marker_start)
     end = body.index("</script>", start)
-    data = json.loads(body[start:end])
-    assert data["device"]["id"] == "wozi"
+    # Text, not a parse: one generated device's own definitions file, verbatim but for the escaped "<" (the
+    # staging script's own inlining); a strict parse of that much JSON costs seconds on this port.
+    block = body[start:end]
+    matches = []
+    for device in devices():
+        with open(f"build/generated_src/definitions/{device}.json") as f:
+            if f.read().replace("<", "\\u003c") == block:
+                matches.append(device)
+    assert len(matches) == 1, matches
 
 
 def test_production_js_is_served_as_one_bundle_under_js() -> None:
-    # The seven production modules are concatenated into one js/app.js at staging time (Part H.7) rather
-    # than shipped as seven separate files, so each of their own paths must now 404, not 200.
+    # The production modules are concatenated into one js/app.js at staging time (Part H.7), so every
+    # banner module but the entry, main.js, whose content js/app.js is, must 404 at its own path.
     _, app = _make_app()
     res = run(app.dispatch_request(_make_request(app, "GET", "/js/app.js")))
     assert res.status_code == 200
     assert res.headers["Content-Type"].startswith("application/javascript")
+    modules = _bundle_modules(_decompress(res.body))
+    assert modules[-1] == "main.js", modules
 
-    for path in ("/js/definitions.js", "/js/poll-manager.js", "/js/render.js", "/js/templates.js", "/js/nav.js", "/js/field-format.js"):
-        res = run(app.dispatch_request(_make_request(app, "GET", path)))
-        assert res.status_code == 404, path
+    for name in modules[:-1]:
+        res = run(app.dispatch_request(_make_request(app, "GET", "/js/" + name)))
+        assert res.status_code == 404, name
 
 
-def test_bundled_js_contains_every_production_module_with_no_leftover_local_imports() -> None:
+def test_bundled_js_carries_every_banner_module_and_no_local_imports() -> None:
     _, app = _make_app()
     res = run(app.dispatch_request(_make_request(app, "GET", "/js/app.js")))
     body = _decompress(res.body)
+    modules = _bundle_modules(body)
 
-    # Every production module's own distinctive top-level declaration made it into the bundle -
-    # a real, direct check that concatenation didn't silently drop one.
-    for marker in (
-        b"function formatFieldValue",  # field-format.js
-        b"function fetchWithTimeout",  # poll-manager.js
-        b"function buildFieldGroupCard",  # templates.js
-        b"function validateDefinitions",  # definitions.js
-        b"function renderSection",  # render.js
-        b"function initNav",  # nav.js
-        b"function startApp",  # main.js
-    ):
-        assert marker in body, marker
+    # One non-empty `// ---- js/<name> ----` section per banner module, in the banner's order: the
+    # concatenation dropped none and repeated none.
+    sections = [section.split(b" ----\n", 1) for section in body.split(b"\n// ---- js/")[1:]]
+    assert [name.decode() for name, _ in sections] == modules
+    for name, text in sections:
+        assert text.strip(), name
 
     # No `import { ... } from "./local-file.js";` line survived - every such line only worked because the
     # imported name is now already in scope earlier in the same concatenated file.
     #
-    # A leftover `export { ... } from "./local-file.js";` re-export would be just as broken, the bundle
-    # being one file with no such path left to resolve, but is not caught by the import-line check above -
-    # checked directly after a real instance of exactly that was caught only by manually tracing the build.
+    # Nor an `export … from "./x.js"` re-export: the bundle has no such path to resolve (scripts/_stage_website.py
+    # refuses one; this checks the served result).
     for line in body.split(b"\n"):
         assert not line.startswith(b"import "), line
         assert not (line.startswith(b"export ") and b' from "./' in line), line
 
 
 def test_js_app_js_is_the_real_production_entry_not_the_prototype() -> None:
-    # js/main.js's content, staged as js/app.js (see scripts/build_website.sh) - distinguished from
+    # js/main.js's content, staged as js/app.js (scripts/_stage_website.py) - distinguished from
     # the prototype js/app.js by the absence of its mock-install/device-switch machinery.
     _, app = _make_app()
     res = run(app.dispatch_request(_make_request(app, "GET", "/js/app.js")))

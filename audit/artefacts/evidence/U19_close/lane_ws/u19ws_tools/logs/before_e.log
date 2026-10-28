@@ -1,0 +1,1064 @@
+PASS test_a_failing_source_reset_answers_failed_and_the_others_still_reset
+PASS test_system_get_reports_build_info_verbatim_when_supplied
+PASS test_backlog_defaults_to_one_above_max_connections
+PASS test_f1_connections_up_to_ceiling_accepted_beyond_ceiling_silently_closed
+PASS test_b_wrong_top_level_json_type_is_a_clean_rejection_on_every_settings_endpoint
+PASS test_d_status_errcount_includes_one_entry_per_module_and_per_configmanager
+PASS test_notification_get_is_flat_settings_only_no_live_fields
+PASS test_system_put_systemcmd_invalid_value_rejected_without_side_effects
+PASS test_h2_stream_own_webserver_errcount_source_failure_yields_an_error_marker
+PASS test_notification_put_pause_time_reported_invalid_when_out_of_range
+PASS test_h2_a_tuple_value_is_walked_like_a_list_never_dumped_as_one_string
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+PASS test_f6_no_cooldown_gap_between_a_reclaim_and_the_next_accept
+PASS test_g_static_wildcard_serves_a_named_file_with_the_right_content_type
+PASS test_nothing_is_written_to_a_peer_whose_read_saw_a_reset
+PASS test_notification_put_pause_time_reported_invalid_when_no_handler_registered
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+PASS test_a_read_phase_per_call_timeout_logs_the_call_timeout_code
+PASS test_the_server_passes_its_own_backlog_to_start_server
+PASS test_system_put_systemcmd_raising_callback_returns_failed_not_an_exception
+PASS test_f2_content_length_exceeding_max_content_length_returns_413
+PASS test_g2_hotspot_inactive_unmatched_path_still_404s
+PASS test_g2_default_is_hotspot_active_none_preserves_the_pre_existing_404_behavior
+PASS test_system_put_mempause_never_accepts_a_client_supplied_duration
+PASS test_g_static_nested_path_not_found_since_the_stub_mount_is_flat
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+PASS test_repeated_reclaims_spend_one_slot
+PASS test_an_explicit_backlog_is_honoured_when_it_covers_the_ceiling
+PASS test_sensors_put_single_field_for_one_sensor
+PASS test_sensors_put_unknown_field_within_known_sensor_reported_invalid_not_whole_request
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 426, in create
+  File "src/asy_webserver_service.py", line 304, in readexactly
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+PASS test_a_body_that_never_arrives_is_logged_as_a_read_phase_timeout
+PASS test_timeout_stream_proxy_close_and_wait_closed_forward_to_the_wrapped_stream
+PASS test_i4_hammer_measurements_and_sensors_concurrently_with_a_real_config_write_with_gc_threshold_unset
+PASS test_h2_stream_every_source_failing_still_produces_one_complete_valid_json_document
+PASS test_system_get_omits_build_key_when_build_info_not_supplied
+PASS test_a_streamed_bodys_content_length_counts_bytes_not_characters
+PASS test_i1_empty_dict_produces_the_same_valid_empty_object_as_plain_json_dumps
+PASS test_a_close_that_raises_and_whose_wait_fails_keeps_both_warnings
+PASS test_g_static_binary_file_of_an_unmapped_type_falls_back_to_octet_stream
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+PASS test_f9_soak_100_plus_start_wedge_reclaim_cycles_hold_counter_and_memory_flat
+PASS test_networking_get_flattens_a_real_type_name_nested_get_dict_cfg_shape
+PASS test_f2b_all_above_the_cap_are_rejected_without_the_body_ever_being_read
+PASS test_b_missing_field_or_sub_object_left_untouched_on_every_settings_endpoint
+PASS test_h2_piece_writer_flush_is_idempotent_and_an_empty_writer_adds_nothing
+PASS test_networking_get_is_flat_settings_only_no_live_fields
+PASS test_g_static_wildcard_also_serves_the_index_file_by_its_own_name
+PASS test_g_static_routes_never_shadow_a_real_api_endpoint
+PASS test_notification_put_light_cmd_led_round_trips_independently_of_flat_fields
+PASS test_notification_put_pause_time_raising_callback_returns_failed_not_an_exception
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 426, in create
+  File "src/asy_webserver_service.py", line 304, in readexactly
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+PASS test_f2_content_length_larger_than_body_sent_then_silence_times_out
+PASS test_i1_output_is_byte_identical_to_microdots_own_single_json_dumps_path
+PASS test_f5_double_close_paths_dont_raise_or_double_decrement
+PASS test_i2_hammer_concurrent_sensors_requests_stay_valid_with_the_chosen_gc_threshold
+PASS test_g2_put_to_unmatched_path_is_405_regardless_of_hotspot_state
+PASS test_g2_dynamic_is_hotspot_active_value_change_is_reflected_per_request
+PASS test_a_timed_out_proxy_call_sets_the_shared_timed_out_flag
+PASS test_status_get_returns_exact_substructure_no_settings_fields_anywhere
+PASS test_f8_task_starters_exposes_exactly_one_server_task_for_the_supervisor
+PASS test_g_static_directory_traversal_attempt_is_rejected_not_resolved
+PASS test_g2_hotspot_redirect_does_not_log_a_warning_or_error
+PASS test_f2b_hammer_all_oversized_allocates_no_body_at_all
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+PASS test_d_own_errcount_entry_reflects_real_logged_warnings_and_resets_with_the_rest
+PASS test_notification_put_pause_time_reported_invalid_when_not_an_int
+PASS test_measurements_get_returns_merged_per_sensor_dict
+PASS test_f1_a_slot_is_held_until_the_close_completes_not_until_the_response_is_written
+PASS test_e_scd30_bmp3xx_live_readback_torn_read_is_a_known_characterization_not_a_regression
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 536, in _safe_readline
+ValueError: line too long
+PASS test_f7_extremely_long_url_path_is_handled_cleanly_not_a_crash
+PASS test_h2_piece_writer_bounds_every_piece_and_never_splits_a_fragment
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+PASS test_f6_pathological_repeated_rewedging_stays_bounded_never_escalates
+PASS test_h2_stream_maintenance_source_failure_is_isolated_to_that_one_sensor
+PASS test_g3_every_static_file_arrives_whole_with_its_length_in_writes_of_at_most_256_bytes
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+PASS test_f1_a_slot_freed_by_reclaim_accepts_the_next_connection_immediately
+PASS test_i2b_hammer_concurrent_system_requests_stay_valid_with_the_chosen_gc_threshold
+PASS test_f8_start_serving_runs_a_real_asyncio_start_server_backed_task
+PASS test_h2_stream_yields_one_piece_per_top_level_section_not_one_precomputed_buffer
+PASS test_sensors_put_malformed_json_body_is_a_clean_rejection_not_a_crash
+PASS test_notification_put_light_cmd_led_reported_invalid_when_payload_is_not_a_dict
+PASS test_d_status_put_malformed_json_body_is_a_clean_rejection_not_a_crash
+PASS test_setup_readies_the_logger_and_the_serve_task_never_does
+PASS test_f2b_the_two_microdot_caps_are_bound_together_so_the_band_cannot_reopen
+PASS test_status_get_sensors_subkey_omits_sensors_with_no_maintenance_data
+PASS test_system_put_systemcmd_reboot_fires_system_cmd_callback
+PASS test_i4_hammer_measurements_and_sensors_concurrently_with_a_real_config_write_with_the_chosen_gc_threshold
+PASS test_g3_the_header_block_is_one_write_so_a_cut_response_still_carries_its_length
+PASS test_g3_one_chunk_bytes_parameter_bounds_json_pieces_and_static_reads_alike
+PASS test_b_deeply_nested_json_body_degrades_to_a_clean_rejection_not_a_hard_fault
+PASS test_an_outer_cap_timeout_logs_the_request_cap_code
+PASS test_notification_put_pause_time_accepts_integral_float_coerced_to_int
+PASS test_system_get_combines_flat_settings_and_build_info_together
+PASS test_c_one_entry_behaves_identically_to_a_hand_constructed_single_item_list
+PASS test_close_writer_logs_a_persisted_warning_when_wait_closed_raises
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1482, in dispatch_request
+  File "ext/microdot.py", line 45, in invoke_handler
+  File "src/asy_webserver_service.py", line 466, in _get_static
+  File "src/asy_webserver_service.py", line 718, in _serve_static
+  File "tests/test_asy_webserver_service.py", line 2400, in _raise
+RuntimeError: simulated is_hotspot_active failure
+PASS test_g2_is_hotspot_active_raising_gets_the_shaped_500_via_the_existing_catch_all
+PASS test_i3_hammer_every_memory_bounded_get_route_concurrently_with_gc_threshold_unset
+PASS test_measurements_get_does_not_double_wrap_a_real_self_wrapped_sensor_shape
+PASS test_i1_a_key_with_special_characters_is_correctly_escaped_not_hand_concatenated
+PASS test_h2_stream_empty_registration_everywhere_matches_the_old_all_empty_shape
+PASS test_h3_hammer_concurrent_status_requests_stay_valid_with_gc_threshold_unset
+PASS test_f7_wrong_http_method_on_a_known_path_returns_405_shaped_response
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 426, in create
+  File "src/asy_webserver_service.py", line 304, in readexactly
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_asy_webserver_service.py", line 193, in readexactly
+EOFError: 
+PASS test_f2_body_truncated_by_a_clean_peer_close_degrades_via_microdots_own_blanket_catch
+PASS test_c_zero_entries_in_any_registration_group_produces_well_formed_empty_response
+PASS test_g2_hotspot_active_redirects_an_unmatched_path_to_root
+PASS test_serve_absorbs_an_eoferror_raised_directly_by_handle_request
+PASS test_f7_unknown_path_returns_404_shaped_response
+PASS test_system_put_settings_only_body_no_systemcmd_takes_no_lifecycle_action
+PASS test_g_static_root_serves_the_configured_index_file
+PASS test_d_a_module_whose_log_holds_no_entry_of_its_own_still_gets_the_empty_shape
+PASS test_c_duplicate_registration_last_registration_wins
+PASS test_close_writer_logs_a_persisted_warning_when_close_raises
+PASS test_serve_never_swallows_its_own_tasks_cancellation_and_still_frees_the_slot
+PASS test_d_reset_on_one_module_never_affects_another
+PASS test_close_writer_swallows_a_raising_close_and_still_awaits_wait_closed
+PASS test_h2_add_value_is_byte_identical_to_json_dumps
+PASS test_networking_put_raising_post_fct_marks_every_attempted_field_in_that_group_failed
+PASS test_d_reset_errors_calls_reset_error_counter_on_every_registered_module
+PASS test_h2_stream_many_error_sources_are_coalesced_into_size_bounded_batches_not_one_growing_blob
+PASS test_f1_client_opens_then_immediately_closes_before_any_bytes
+PASS test_h2_errcount_entry_is_never_one_string
+PASS test_h2_a_non_finite_float_is_written_as_null
+PASS test_g_static_routes_are_not_registered_at_all_when_static_mount_is_none
+PASS test_sensors_get_does_not_double_wrap_a_real_self_wrapped_sensor_shape
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+PASS test_f6_a_hanging_cleanup_close_path_still_lets_the_connection_task_end
+PASS test_notification_put_light_cmd_led_raising_callback_returns_failed_not_an_exception
+PASS test_g3_a_scalar_at_ntp_hosts_own_bound_fits_one_piece
+PASS test_i2b_hammer_concurrent_system_requests_stay_valid_with_gc_threshold_unset
+PASS test_g2_directory_traversal_still_404s_even_when_hotspot_active
+PASS test_g2_static_mount_none_with_is_hotspot_active_set_registers_no_routes
+PASS test_h2_stream_response_is_a_plain_iterator_with_explicit_json_content_type
+PASS test_g3_a_single_scalar_longer_than_the_cap_is_the_one_piece_allowed_past_it_and_stays_whole
+PASS test_h2_stream_status_source_failure_yields_an_error_marker_not_a_broken_stream
+PASS test_g_static_index_filename_is_configurable
+PASS test_i2_hammer_concurrent_measurements_requests_stay_valid_with_gc_threshold_unset
+PASS test_i1_a_two_level_measurement_value_serialises_correctly_and_is_not_re_wrapped
+PASS test_system_get_is_flat_debug_gmt_dst_only
+PASS test_notification_put_light_cmd_led_reported_invalid_when_no_handler_registered
+PASS test_f5_normal_close_decrements_counter_exactly_once
+PASS test_f2b_none_above_the_cap_every_body_is_buffered_and_applied
+PASS test_b_duplicate_keys_in_raw_json_text_last_wins
+PASS test_i2_hammer_concurrent_sensors_requests_stay_valid_with_gc_threshold_unset
+PASS test_d_get_error_sources_reports_the_service_itself_for_a_uniform_caller
+PASS test_status_get_sensors_subkey_empty_when_no_maintenance_sensors_registered
+PASS test_h2_piece_writer_never_holds_more_than_sixteen_pending_fragments
+PASS test_i1_sets_content_type_and_an_exact_content_length_header
+PASS test_a_close_whose_own_warning_runs_out_of_heap_still_frees_the_slot
+PASS test_h2_stream_two_maintenance_sensors_produce_valid_json_with_no_stray_commas
+PASS test_h2_stream_response_has_an_explicit_correct_content_length_header
+PASS test_status_put_empty_and_false_reset_errors_are_both_noops
+PASS test_e_mutating_a_returned_getter_dict_never_affects_the_modules_own_state
+PASS test_serve_absorbs_an_oserror_raised_directly_by_handle_request
+PASS test_h2_add_value_bounds_every_piece_however_large_the_value
+PASS test_h2_stream_two_error_sources_plus_the_own_entry_produce_valid_json_with_no_stray_commas
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1482, in dispatch_request
+  File "ext/microdot.py", line 45, in invoke_handler
+  File "src/asy_webserver_service.py", line 437, in _get_measurements
+  File "tests/test_asy_webserver_service.py", line 2467, in get_dict_data
+RuntimeError: simulated route-handler bug
+PASS test_h1_unhandled_exception_in_a_route_handler_gets_the_shaped_500_response
+PASS test_f5_connection_close_header_present_on_every_response_including_errors
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1482, in dispatch_request
+  File "ext/microdot.py", line 45, in invoke_handler
+  File "src/asy_webserver_service.py", line 437, in _get_measurements
+  File "tests/test_asy_webserver_service.py", line 2467, in get_dict_data
+RuntimeError: simulated route-handler bug
+PASS test_h1_unhandled_exception_is_logged_via_pr_err_s_not_just_swallowed
+PASS test_g3_a_json_route_mixing_tiny_medium_and_huge_values_is_written_in_bounded_pieces
+PASS test_sensors_put_empty_body_is_noop
+PASS test_h3_hammer_concurrent_status_requests_stay_valid_with_the_chosen_gc_threshold
+PASS test_i2b_hammer_concurrent_networking_requests_stay_valid_with_gc_threshold_unset
+PASS test_i2b_hammer_concurrent_notification_requests_stay_valid_with_gc_threshold_unset
+PASS test_h2_stream_module_names_with_special_characters_are_correctly_escaped
+PASS test_i3_hammer_every_memory_bounded_get_route_concurrently_with_the_chosen_gc_threshold
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+PASS test_a_read_timeout_then_a_capped_400_write_logs_the_request_cap_code
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+PASS test_d_webserver_own_errcount_entry_accumulates_a_warning_on_reclaim
+PASS test_notification_put_pause_time_only_leaves_schedule_fields_untouched
+PASS test_a_backlog_below_the_ceiling_is_clamped_up_never_left_short
+PASS test_f2_trickled_request_line_is_reclaimed_by_the_outer_cap_not_a_single_per_call_timeout
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+PASS test_f7_dedicated_multi_connection_slowloris_simulation_all_reclaimed_and_slots_reused
+PASS test_i2b_hammer_concurrent_networking_requests_stay_valid_with_the_chosen_gc_threshold
+PASS test_i2_hammer_concurrent_measurements_requests_stay_valid_with_the_chosen_gc_threshold
+PASS test_i2b_hammer_concurrent_notification_requests_stay_valid_with_the_chosen_gc_threshold
+PASS test_e_concurrent_put_during_get_never_produces_a_torn_response
+PASS test_measurements_get_empty_sensor_list_returns_empty_dict_not_a_crash
+PASS test_b_malformed_json_body_handled_like_the_legacy_parse_cmd_request_path
+PASS test_d_counter_always_present_history_present_for_both_populated_and_zero_cases
+PASS test_reset_errors_runs_every_source_at_once
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+PASS test_f1_client_sends_nothing_ever_is_reclaimed_by_the_per_call_timeout
+PASS test_sensors_get_mirrors_measurements_structure_with_cfg_fields
+PASS test_status_put_reset_errors_true_resets_every_module_counter_and_history
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1482, in dispatch_request
+  File "ext/microdot.py", line 45, in invoke_handler
+  File "src/asy_webserver_service.py", line 437, in _get_measurements
+  File "tests/test_asy_webserver_service.py", line 2467, in get_dict_data
+RuntimeError: simulated route-handler bug
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1482, in dispatch_request
+  File "ext/microdot.py", line 45, in invoke_handler
+  File "src/asy_webserver_service.py", line 437, in _get_measurements
+  File "tests/test_asy_webserver_service.py", line 2467, in get_dict_data
+RuntimeError: simulated route-handler bug
+PASS test_h1_a_second_unhandled_exception_from_a_different_route_is_logged_independently
+PASS test_networking_put_partial_field_update_triggers_only_relevant_post_hook
+PASS test_h2_stream_errcount_source_failure_is_isolated_to_that_one_module
+PASS test_f2b_a_mixed_stream_handles_each_request_on_its_own_merits
+PASS test_a_write_phase_timeout_is_logged_once_not_twice
+PASS test_b_body_at_and_over_max_content_length_boundary
+PASS test_g_static_missing_file_returns_404_via_the_shaped_error_handler
+PASS test_g2_hotspot_active_does_not_affect_a_real_static_file_hit
+PASS test_sensors_put_unknown_sensor_key_ignored
+PASS test_b_wrong_type_for_a_known_field_is_a_per_field_rejection_others_still_apply
+PASS test_g3_a_zero_chunk_bytes_is_clamped_so_a_static_read_still_ends
+PASS test_f2b_hammer_concurrent_mixed_bodies_bound_the_total_buffered_bytes
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 406, in create
+ValueError: too many values to unpack (expected 3)
+PASS test_f2_malformed_request_line_degrades_safely_via_microdots_own_blanket_catch
+PASS test_b_unknown_top_level_key_silently_ignored_on_every_settings_endpoint
+PASS test_g2_hotspot_active_does_not_shadow_a_real_api_route
+PASS test_i1_many_entries_are_coalesced_into_size_bounded_batches_not_one_growing_blob
+PASS test_h2_piece_writer_keeps_a_piece_that_lands_exactly_on_the_cap_whole
+PASS test_serve_absorbs_an_unexpected_exception_raised_directly_by_handle_request
+PASS test_nothing_is_written_to_a_peer_that_reset_while_its_body_was_read
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 307, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+PASS test_f6_n_simultaneous_wedged_connections_are_each_independently_reclaimed
+PASS test_f1_rapid_connect_disconnect_churn_keeps_counter_accurate
+PASS test_h1_abort_driven_404_is_unaffected_by_the_catch_all
+PASS test_the_three_config_objects_register_the_same_route_table
+PASS test_sensors_put_all_fields_for_all_sensors
+198/198 passed, 0 failed, 0 skipped
+rc=0 elapsed=17.084771932

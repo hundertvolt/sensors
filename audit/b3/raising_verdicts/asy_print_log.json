@@ -1,0 +1,451 @@
+{
+ "conventions": "Read at 36bee227 against v1.29.0 (agent, 2026-10-27). Not repeated per row: RuntimeError from a C-stack overflow (MP_STACK_CHECK) is I.4(d.1)'s design defect, recorded by report_if_fatal() in the handler that catches it, never a per-site raise. Small fixed allocations: a call to a function with a *args parameter packs a heap tuple (py/bc.c:163), an async def call allocates its generator (py/objgenerator.c:53-66) and a star-call its argument array (py/runtime.c:790-812, mp_nonlocal_alloc); each is fixed per call site, so every logging call (err/wrn/evt/one/all, _diag, err_s, wrn_s) can raise MemoryError at entry on an exhausted heap (G.2's task-top caveat). F.2 sends these to I.4(a): a function doomed without memory does not catch, and asyncio primitives are never wrapped as a blanket policy. On a run-time path the task ends and asy_system_service.py:326's except Exception in _log_dead_task() persists it as TASK_RAISED, after which the supervisor restarts the task (I.4(c)). At construction (inside build_system()) and in a setup() (run_setups() catches nothing, asy_system_service.py:738-744) the raise ends asyncio.run(main()), where the generated boot entry's except BaseException catches it (build/generated_src/sensortask_<device>_main.py:38, emitted by buildgen/codegen.py:867), records the loop end and leaves the armed watchdog to reset. An import-time allocation precedes that try (the entry imports at :22) and is the armed watchdog's alone (WDT armed at :6, I.4(d)).",
+ "raises": {},
+ "calls": {
+  "<module>::const": {
+   "can_raise": "nothing at run time: the parser folds `_X = const(v)` (py/parse.c:832-866); a non-constant value is a SyntaxError at compile time (:842)",
+   "verdict": "unreachable",
+   "proof": "no call is left at run time: each const() is replaced by its value while parsing (py/parse.c:864, MICROPY_COMP_CONST) and the underscore names are dropped from the module (:855-858); the frozen build parses them in mpy-cross, so a bad value fails the build, never a boot"
+  },
+  "PrintLog.__init__::self.set_level": {
+   "can_raise": "what set_level() raises: MemoryError from self.err()'s *args tuple (conventions)",
+   "verdict": "handled",
+   "proof": "set_level()'s rows: type() cannot raise (:106), self.err() (:109) allocates only its small fixed tuple; __init__ runs at construction (make_logger() and every direct constructor run inside build_system()), so the boot entry's except BaseException holds it (conventions)"
+  },
+  "PrintLog._line::print": {
+   "can_raise": "MemoryError from the star-call's argument array (py/runtime.c:790-812); TypeError for a non-str sep or end (py/modbuiltins.c:412-413)",
+   "verdict": "handled",
+   "proof": "reached only at or above the logger's level; the array is small and fixed per call site (the caller's argument count): I.4(a), the caller's task top or the supervisor (conventions); sep and end are the `str` parameters every caller leaves at their defaults or passes as literals, so the TypeError cannot occur"
+  },
+  "PrintLog._line::isinstance": {
+   "can_raise": "TypeError for a classinfo that is no class (py/objtype.c:1486, reached from mp_builtin_isinstance :1507)",
+   "verdict": "unreachable",
+   "proof": "classinfo is the builtin MemoryError type; isinstance() allocates nothing"
+  },
+  "PrintLog._line::console": {
+   "can_raise": "what console() raises: nothing (its rows :461, :463)",
+   "verdict": "unreachable",
+   "proof": "a two-argument call of a fixed-arity function: its frame falls back to the C stack (py/objfun.c:268-287), and console()'s print rows cannot raise"
+  },
+  "PrintLog.set_level::type": {
+   "can_raise": "nothing with one argument: type(x) returns x's type (py/objtype.c:1032-1033)",
+   "verdict": "unreachable",
+   "proof": "one argument; no allocation"
+  },
+  "PrintLog.set_level::self.err": {
+   "can_raise": "MemoryError from err()'s *args tuple, and what _line() raises (conventions)",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (the tuple, and _line()'s print at the logger's level): I.4(a); at construction the boot entry's except BaseException, on a run-time level change the calling task's supervisor (conventions)"
+  },
+  "PrintLog.all::self._line": {
+   "can_raise": "what _line() raises: its at-level print's MemoryError",
+   "verdict": "handled",
+   "proof": "a four-argument call of a fixed-arity method allocates nothing itself; _line()'s rows leave only the small fixed print array: I.4(a) (conventions)"
+  },
+  "PrintLog.err::self._line": {
+   "can_raise": "what _line() raises: its at-level print's MemoryError",
+   "verdict": "handled",
+   "proof": "as PrintLog.all at :113"
+  },
+  "PrintLog.evt::self._line": {
+   "can_raise": "what _line() raises: its at-level print's MemoryError",
+   "verdict": "handled",
+   "proof": "as PrintLog.all at :113"
+  },
+  "PrintLog.one::self._line": {
+   "can_raise": "what _line() raises: its at-level print's MemoryError",
+   "verdict": "handled",
+   "proof": "as PrintLog.all at :113"
+  },
+  "PrintLog.wrn::self._line": {
+   "can_raise": "what _line() raises: its at-level print's MemoryError",
+   "verdict": "handled",
+   "proof": "as PrintLog.all at :113"
+  },
+  "PrintLogHistory.__init__::super": {
+   "can_raise": "super() itself nothing: `super().__init__(...)` compiles to a super method call with no super object (py/compile.c:2349-2353); the call runs PrintLog.__init__",
+   "verdict": "handled",
+   "proof": "PrintLog.__init__'s row (:89) is construction-time: the boot entry's except BaseException (conventions)"
+  },
+  "PrintLogHistory.__init__::min": {
+   "can_raise": "TypeError when the arguments do not compare (py/modbuiltins.c:277-289)",
+   "verdict": "unreachable",
+   "proof": "history_length is the `int` parameter and the bounds are int constants; it returns one of its arguments"
+  },
+  "PrintLogHistory.__init__::max": {
+   "can_raise": "TypeError when the arguments do not compare (py/modbuiltins.c:277-289)",
+   "verdict": "unreachable",
+   "proof": "as min at :149"
+  },
+  "PrintLogHistory.__init__::deque": {
+   "can_raise": "MemoryError (the `[0] * n` list, the object and its ring, py/objdeque.c:58-61); ValueError for maxlen < 0 (:54-55); TypeError for a non-int maxlen (:53)",
+   "verdict": "handled",
+   "proof": ":151's MemoryError is caught at :152 (a 0-length ring, its console line); maxlen is the int clamped to 0..0xFFFF at :149, so neither the ValueError nor the TypeError can occur; :154 runs in that handler and allocates a fixed object with a 1-slot ring at construction: the boot entry's except BaseException (conventions)"
+  },
+  "PrintLogHistory.__init__::console": {
+   "can_raise": "nothing (console()'s rows :461, :463)",
+   "verdict": "unreachable",
+   "proof": "a three-argument call of a fixed-arity function (py/objfun.c:268-287)"
+  },
+  "PrintLogHistory._clear::self._since_kept": {
+   "can_raise": "nothing: _since_kept() (:205-207) is int masking, min() and len()",
+   "verdict": "unreachable",
+   "proof": "_kept and kept stay in 0.._WRAP_MAX (0x3FFFFFFF, :72), so their difference stays a small int and allocates nothing; min() and len() rows below cannot raise"
+  },
+  "PrintLogHistory._clear::range": {
+   "can_raise": "nothing here: `for i in range(n)` compiles to a counted loop with no range object (py/compile.c:1430, compile_for_stmt_optimised_range)",
+   "verdict": "unreachable",
+   "proof": "n is an int (len() less an int)"
+  },
+  "PrintLogHistory._clear::len": {
+   "can_raise": "nothing for a deque (deque_unary_op's LEN arm, py/objdeque.c:80-85)",
+   "verdict": "unreachable",
+   "proof": "self.history is always a deque (:151 or :154)"
+  },
+  "PrintLogHistory._clear::self._since_counted": {
+   "can_raise": "nothing: _since_counted() (:202-203) is int masking and min()",
+   "verdict": "unreachable",
+   "proof": "_counted and counted stay in 0.._WRAP_MAX, so the difference is a small int"
+  },
+  "PrintLogHistory._clear::min": {
+   "can_raise": "TypeError when the arguments do not compare (py/modbuiltins.c:277-289)",
+   "verdict": "unreachable",
+   "proof": "two ints; it returns one of them"
+  },
+  "PrintLogHistory._count::self._diag": {
+   "can_raise": "MemoryError from _diag()'s *args tuple and its print (conventions)",
+   "verdict": "handled",
+   "proof": "small fixed allocations, reached only at the 0xFFFF count: I.4(a), the calling task's supervisor or at boot the boot entry (conventions)"
+  },
+  "PrintLogHistory._diag::print": {
+   "can_raise": "MemoryError from the star-call's argument array (py/runtime.c:790-812)",
+   "verdict": "handled",
+   "proof": "reached only at a level above 0; the array is small and fixed per call site: I.4(a) (conventions)"
+  },
+  "PrintLogHistory._keep::len": {
+   "can_raise": "nothing for a deque (py/objdeque.c:80-85)",
+   "verdict": "unreachable",
+   "proof": "self.history is always a deque"
+  },
+  "PrintLogHistory._keep::self.history.append": {
+   "can_raise": "IndexError only for a deque made with the overflow flag (py/objdeque.c:106-108)",
+   "verdict": "unreachable",
+   "proof": "both constructions (:151, :154) pass two arguments, so the flag is clear and append overwrites the oldest item in place (py/objdeque.c:99-117), allocating nothing; a maxlen-0 ring (alloc 1) takes the append and stays empty"
+  },
+  "PrintLogHistory._since_counted::min": {
+   "can_raise": "TypeError when the arguments do not compare (py/modbuiltins.c:277-289)",
+   "verdict": "unreachable",
+   "proof": "two ints"
+  },
+  "PrintLogHistory._since_kept::min": {
+   "can_raise": "TypeError when the arguments do not compare (py/modbuiltins.c:277-289)",
+   "verdict": "unreachable",
+   "proof": "two ints"
+  },
+  "PrintLogHistory._since_kept::len": {
+   "can_raise": "nothing for a deque (py/objdeque.c:80-85)",
+   "verdict": "unreachable",
+   "proof": "self.history is always a deque"
+  },
+  "PrintLogHistory._store_err::self._count": {
+   "can_raise": "what _count() raises: its _diag() at the 0xFFFF count",
+   "verdict": "handled",
+   "proof": "_count()'s row :180: small fixed, I.4(a) (conventions)"
+  },
+  "PrintLogHistory._store_err::self._diag": {
+   "can_raise": "MemoryError from _diag()'s *args tuple and its print",
+   "verdict": "handled",
+   "proof": "small fixed: I.4(a) (conventions)"
+  },
+  "PrintLogHistory._store_err::self._keep": {
+   "can_raise": "nothing: _keep()'s rows (:190, :191, :194) and int arithmetic",
+   "verdict": "unreachable",
+   "proof": "_keep()'s len and append rows cannot raise; _kept wraps at _WRAP_MAX, a small int"
+  },
+  "PrintLogHistory._store_err::self._write_through": {
+   "can_raise": "MemoryError from the call's generator, and what _write_through() raises",
+   "verdict": "handled",
+   "proof": "the generator is small and fixed (conventions); _write_through()'s rows: _write() (the Store's catches every chunk step's MemoryError at :355), _diag/_count/_keep as above: I.4(a)"
+  },
+  "PrintLogHistory._write_through::self._write": {
+   "can_raise": "MemoryError from the call's generator; PrintLogHistory._write returns True, PrintLogHistoryStore._write catches its chunk steps' MemoryError at :355",
+   "verdict": "handled",
+   "proof": "only the small fixed generator and the Store's lock wait remain: I.4(a) (conventions)"
+  },
+  "PrintLogHistory._write_through::self._diag": {
+   "can_raise": "MemoryError from _diag()'s *args tuple and its print",
+   "verdict": "handled",
+   "proof": "small fixed: I.4(a) (conventions)"
+  },
+  "PrintLogHistory._write_through::self._count": {
+   "can_raise": "what _count() raises: its _diag() at the 0xFFFF count",
+   "verdict": "handled",
+   "proof": "as _store_err's at :212"
+  },
+  "PrintLogHistory._write_through::self._keep": {
+   "can_raise": "nothing (_keep()'s rows)",
+   "verdict": "unreachable",
+   "proof": "as _store_err's at :219"
+  },
+  "PrintLogHistory.get_log::err_num.append": {
+   "can_raise": "MemoryError growing the list (mp_obj_list_append's m_renew, py/objlist.c:232)",
+   "verdict": "handled",
+   "proof": "the list grows to len(history), the configured history_length (at most 0xFFFF, :149), on the run-time /status path; get_log() is called only from each module's get_error_counter(), and those only from WebserverService._write_errcount_entry(), whose except Exception at asy_webserver_service.py:1005 writes that module's entry as unavailable (I.4(b)), the layer holding the alternative flow"
+  },
+  "PrintLogHistory.get_log::err_type.append": {
+   "can_raise": "MemoryError growing the list (py/objlist.c:232)",
+   "verdict": "handled",
+   "proof": "as err_num.append at :251: asy_webserver_service.py:1005"
+  },
+  "PrintLogHistory.err_s::self._store_err": {
+   "can_raise": "MemoryError from the call's generator, and what _store_err() raises",
+   "verdict": "handled",
+   "proof": "_store_err()'s rows leave only small fixed allocations (the generator, _diag's tuple and print, _write_through's generator): I.4(a) (conventions)"
+  },
+  "PrintLogHistory.err_s::self._line": {
+   "can_raise": "what _line() raises: its at-level print's MemoryError",
+   "verdict": "handled",
+   "proof": "as PrintLog.all at :113"
+  },
+  "PrintLogHistory.reset::self._clear": {
+   "can_raise": "nothing: _clear()'s rows (:169-173)",
+   "verdict": "unreachable",
+   "proof": "every _clear() row cannot raise and the deque item assignment allocates nothing (its comment, :168)"
+  },
+  "PrintLogHistory.wrn_s::self._store_err": {
+   "can_raise": "MemoryError from the call's generator, and what _store_err() raises",
+   "verdict": "handled",
+   "proof": "as err_s at :262"
+  },
+  "PrintLogHistory.wrn_s::self._line": {
+   "can_raise": "what _line() raises: its at-level print's MemoryError",
+   "verdict": "handled",
+   "proof": "as PrintLog.all at :113"
+  },
+  "PrintLogHistoryStore::struct.calcsize": {
+   "can_raise": "ValueError for a bad format (py/modstruct.c:115, its format scan)",
+   "verdict": "unreachable",
+   "proof": "the format is the literal \"<H\" (:281), a valid one, so calcsize returns 2; it runs once, in the class body at import"
+  },
+  "PrintLogHistoryStore.__init__::super": {
+   "can_raise": "super() itself nothing (py/compile.c:2349-2353); the call runs PrintLogHistory.__init__",
+   "verdict": "handled",
+   "proof": "PrintLogHistory.__init__'s rows (:145-155) are construction-time: the boot entry's except BaseException (conventions)"
+  },
+  "PrintLogHistoryStore.__init__::len": {
+   "can_raise": "nothing for a deque (py/objdeque.c:80-85)",
+   "verdict": "unreachable",
+   "proof": "self.history is always a deque"
+  },
+  "PrintLogHistoryStore.__init__::fram.get_chunk": {
+   "can_raise": "MemoryError, and what FRAMManager.get_chunk() raises (asy_fram_manager.py:692, its own rows)",
+   "verdict": "handled",
+   "proof": "the MemoryError is caught at :294 (no chunk, _heap_failed, its console line); every other raise is get_chunk()'s own row in asy_fram_manager.py; construction runs inside build_system(), under the boot entry's except BaseException (conventions)"
+  },
+  "PrintLogHistoryStore.__init__::CRC8": {
+   "can_raise": "MemoryError for its object: CRCBase.__init__ (asy_crc_checks.py:21-32) is int arithmetic and attribute stores",
+   "verdict": "handled",
+   "proof": "caught at :294 with the get_chunk() call on the same line"
+  },
+  "PrintLogHistoryStore.__init__::console": {
+   "can_raise": "nothing (console()'s rows)",
+   "verdict": "unreachable",
+   "proof": "a three-argument call of a fixed-arity function (py/objfun.c:268-287)"
+  },
+  "PrintLogHistoryStore.__init__::self._diag": {
+   "can_raise": "MemoryError from _diag()'s *args tuple and its print",
+   "verdict": "handled",
+   "proof": "construction-time, small fixed: the boot entry's except BaseException (conventions)"
+  },
+  "PrintLogHistoryStore.__init__::asyncio.Lock": {
+   "can_raise": "MemoryError for the object and its wait queue (extmod/asyncio/lock.py:9-16)",
+   "verdict": "handled",
+   "proof": "small fixed, once at construction: the boot entry's except BaseException (conventions)"
+  },
+  "PrintLogHistoryStore._pack_reset::struct.pack_into": {
+   "can_raise": "ValueError \"buffer too small\" (py/modstruct.c:242, :252); TypeError for a non-int value",
+   "verdict": "unreachable",
+   "proof": "dbuf is the chunk's data view, exactly the requested size (FRAMChunkBuffer gives RegionBuffer data_length = size, asy_fram_manager.py:481-482; asy_base_classes.py:168-171), which is _HDR_SIZE + len(history) (:289), so 2 bytes fit at offset 0; the value is _since_counted()'s int, and struct never range-checks a value (Part F)"
+  },
+  "PrintLogHistoryStore._pack_reset::self._since_counted": {
+   "can_raise": "nothing (:202-203)",
+   "verdict": "unreachable",
+   "proof": "as _clear's at :172"
+  },
+  "PrintLogHistoryStore._pack_reset::len": {
+   "can_raise": "nothing for a deque (py/objdeque.c:80-85)",
+   "verdict": "unreachable",
+   "proof": "self.history is always a deque"
+  },
+  "PrintLogHistoryStore._pack_reset::self._since_kept": {
+   "can_raise": "nothing (:205-207)",
+   "verdict": "unreachable",
+   "proof": "as _clear's at :169"
+  },
+  "PrintLogHistoryStore._pack_reset::range": {
+   "can_raise": "nothing: a counted loop with no range object (py/compile.c:1430)",
+   "verdict": "unreachable",
+   "proof": "an int bound"
+  },
+  "PrintLogHistoryStore._read::self.fram.get_buffer": {
+   "can_raise": "MemoryError, and what FRAMChunk.get_buffer() raises (asy_fram_manager.py:486, its own rows)",
+   "verdict": "handled",
+   "proof": "the MemoryError is caught at :328 (None: unreadable); any other raise is that callee's own row"
+  },
+  "PrintLogHistoryStore._read::buf.get_data_buf": {
+   "can_raise": "MemoryError for the memoryview and its slice (asy_base_classes.py:168-171, its own rows)",
+   "verdict": "handled",
+   "proof": "caught at :328; a failed buffer allocation answers None, refused at :319"
+  },
+  "PrintLogHistoryStore._read::self.fram.read_into": {
+   "can_raise": "MemoryError, and what FRAMChunk.read_into() raises (asy_fram_manager.py, its own rows)",
+   "verdict": "handled",
+   "proof": "the MemoryError is caught at :328; the module header states a chunk operation raises only by allocation, which its own rows carry"
+  },
+  "PrintLogHistoryStore._read::struct.unpack_from": {
+   "can_raise": "MemoryError for the result tuple (1 and len(history) items); ValueError \"buffer too small\" (py/modstruct.c:146, :155)",
+   "verdict": "handled",
+   "proof": "the MemoryError, which grows with the configured history length, is caught at :328 (None: unreadable); the ValueError cannot occur: dbuf holds _HDR_SIZE + len(history) bytes (see _pack_reset's struct.pack_into) and the formats read 2 bytes at 0 and len(history) at _HDR_SIZE"
+  },
+  "PrintLogHistoryStore._read::console": {
+   "can_raise": "nothing (console()'s rows)",
+   "verdict": "unreachable",
+   "proof": "a three-argument call of a fixed-arity function (py/objfun.c:268-287)"
+  },
+  "PrintLogHistoryStore._write::self.fram.get_buffer": {
+   "can_raise": "MemoryError, and what FRAMChunk.get_buffer() raises (its own rows)",
+   "verdict": "handled",
+   "proof": "caught at :355 (False: the write fails)"
+  },
+  "PrintLogHistoryStore._write::buf.get_data_buf": {
+   "can_raise": "MemoryError for the memoryview and its slice (asy_base_classes.py:168-171)",
+   "verdict": "handled",
+   "proof": "caught at :355; a failed buffer allocation answers None, refused at :347"
+  },
+  "PrintLogHistoryStore._write::struct.pack_into": {
+   "can_raise": "MemoryError for :351's star-call array (3 + len(history) arguments, py/runtime.c:790-812); ValueError \"buffer too small\" (py/modstruct.c:242, :252)",
+   "verdict": "handled",
+   "proof": "the MemoryError, which grows with the configured history length, is caught at :355 (False: the write fails); the ValueError cannot occur: :350 packs 2 bytes at 0 and :351 len(history) bytes at _HDR_SIZE into the _HDR_SIZE + len(history) view, with exactly len(history) values for its len(history) codes, and struct never range-checks a value (Part F)"
+  },
+  "PrintLogHistoryStore._write::self._pack_reset": {
+   "can_raise": "nothing: _pack_reset()'s rows (:307-310)",
+   "verdict": "unreachable",
+   "proof": "every _pack_reset() row cannot raise; the memoryview item stores sit inside the view (_HDR_SIZE + i < size)"
+  },
+  "PrintLogHistoryStore._write::bool": {
+   "can_raise": "what a user __bool__ raises (mp_obj_is_true)",
+   "verdict": "unreachable",
+   "proof": "the argument is write_into()'s `bool` result, whose truth test raises nothing"
+  },
+  "PrintLogHistoryStore._write::self.fram.write_into": {
+   "can_raise": "MemoryError, and what FRAMChunk.write_into() raises (asy_fram_manager.py, its own rows)",
+   "verdict": "handled",
+   "proof": "the MemoryError is caught at :355 (False: the write fails); the module header states a chunk operation raises only by allocation, which its own rows carry"
+  },
+  "PrintLogHistoryStore._write::console": {
+   "can_raise": "nothing (console()'s rows)",
+   "verdict": "unreachable",
+   "proof": "a three-argument call of a fixed-arity function (py/objfun.c:268-287)"
+  },
+  "PrintLogHistoryStore.reset::self._paused": {
+   "can_raise": "nothing: FRAMManager.get_pause() returns its flag (asy_fram_manager.py:733-734)",
+   "verdict": "unreachable",
+   "proof": "a call of the bound method stored once at :291; no allocation"
+  },
+  "PrintLogHistoryStore.reset::self._diag": {
+   "can_raise": "MemoryError from _diag()'s *args tuple and its print",
+   "verdict": "handled",
+   "proof": "small fixed: I.4(a) (conventions)"
+  },
+  "PrintLogHistoryStore.reset::self._write": {
+   "can_raise": "MemoryError from the call's generator; _write()'s chunk steps are caught at :355",
+   "verdict": "handled",
+   "proof": "small fixed: I.4(a), the reset's finally (:385-388) still frees its bit (conventions)"
+  },
+  "PrintLogHistoryStore.reset::self._clear": {
+   "can_raise": "nothing (_clear()'s rows)",
+   "verdict": "unreachable",
+   "proof": "as PrintLogHistory.reset's at :266"
+  },
+  "PrintLogHistoryStore.setup::self.err_s": {
+   "can_raise": "what err_s() raises: small fixed allocations",
+   "verdict": "handled",
+   "proof": "setup() runs in run_setups() at boot: the boot entry's except BaseException; a later call returns at :399-400 once initialized, and otherwise runs in its caller's supervised task (conventions)"
+  },
+  "PrintLogHistoryStore.setup::self._read": {
+   "can_raise": "MemoryError from the call's generator; _read() catches its own steps' MemoryError at :328",
+   "verdict": "handled",
+   "proof": "small fixed: as err_s at :405"
+  },
+  "PrintLogHistoryStore.setup::self._diag": {
+   "can_raise": "MemoryError from _diag()'s *args tuple and its print",
+   "verdict": "handled",
+   "proof": "small fixed: as err_s at :405"
+  },
+  "PrintLogHistoryStore.setup::isinstance": {
+   "can_raise": "TypeError for a classinfo that is no class (py/objtype.c:1486)",
+   "verdict": "unreachable",
+   "proof": "classinfo is the builtin tuple type"
+  },
+  "PrintLogHistoryStore.setup::self.history.extend": {
+   "can_raise": "what iterating its argument raises (mp_obj_deque_extend, py/objdeque.c:152-160), each item through append",
+   "verdict": "unreachable",
+   "proof": "the arguments are unpack_from()'s tuple and a list, iterated through the stack iter_buf (:154), and append cannot raise (row :191)"
+  },
+  "PrintLogHistoryStore.setup::list": {
+   "can_raise": "MemoryError for a list of len(history) items",
+   "verdict": "handled",
+   "proof": "it grows with the configured history length, but only in setup(), once at boot inside run_setups(): the boot entry's except BaseException holds it (conventions)"
+  },
+  "PrintLogHistoryStore.setup::len": {
+   "can_raise": "nothing for a deque (py/objdeque.c:80-85)",
+   "verdict": "unreachable",
+   "proof": "self.history is always a deque"
+  },
+  "PrintLogHistoryStore.setup::self._write": {
+   "can_raise": "MemoryError from the call's generator; _write()'s chunk steps are caught at :355",
+   "verdict": "handled",
+   "proof": "small fixed: as err_s at :405"
+  },
+  "PrintLogHistoryStore.setup::self._write_through": {
+   "can_raise": "what _write_through() raises: small fixed allocations",
+   "verdict": "handled",
+   "proof": "as err_s at :405"
+  },
+  "<module>::namedtuple": {
+   "can_raise": "MemoryError for the new type (py/objnamedtuple.c:154); its TypeErrors concern instance construction (:101-135)",
+   "verdict": "handled",
+   "proof": "once at import with literal valid field names: an import-time allocation, the armed watchdog's (conventions)"
+  },
+  "<module>::LogConfig": {
+   "can_raise": "TypeError for a wrong argument count (py/objnamedtuple.c:101-105); MemoryError for the instance",
+   "verdict": "handled",
+   "proof": "three arguments for the three fields, so no TypeError; once at import, small fixed: the armed watchdog's (conventions)"
+  },
+  "console::print": {
+   "can_raise": "nothing: fixed arity, no star and no keyword, so mp_builtin_print (py/modbuiltins.c:387) takes its arguments in place and allocates nothing (SPECIFICATION.md F.1's account)",
+   "verdict": "unreachable",
+   "proof": "every caller passes a str name and a str or exception object, whose print slots raise nothing"
+  },
+  "make_logger::PrintLogHistory": {
+   "can_raise": "what PrintLogHistory.__init__ raises (rows :145-155)",
+   "verdict": "handled",
+   "proof": "make_logger() is called only from constructors (asy_base_classes.py:426 and six services' __init__), all inside build_system(): the boot entry's except BaseException (conventions)"
+  },
+  "make_logger::pr.one": {
+   "can_raise": "MemoryError from one()'s *args tuple",
+   "verdict": "handled",
+   "proof": "construction-time, small fixed: as PrintLogHistory at :474"
+  },
+  "make_logger::PrintLogHistoryStore": {
+   "can_raise": "what PrintLogHistoryStore.__init__ raises (rows :285-300)",
+   "verdict": "handled",
+   "proof": "as PrintLogHistory at :474"
+  },
+  "report_if_fatal::isinstance": {
+   "can_raise": "TypeError for a classinfo that is no class (py/objtype.c:1486)",
+   "verdict": "unreachable",
+   "proof": "classinfo is the builtin RuntimeError type; it allocates nothing, as the function's comment requires"
+  }
+ }
+}

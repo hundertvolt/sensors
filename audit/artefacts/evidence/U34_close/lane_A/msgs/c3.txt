@@ -1,0 +1,17 @@
+U34 lane A: a test pins attribution headers against their entries
+
+tests_scripts/test_third_party_attribution.py reads src/*.py and THIRD_PARTY_LICENSES.md: every
+file opening with an SPDX copyright line has the licence line and a pointer line, then its
+docstring; src/asy_udp_socket.py has its three no-licence lines (karfas, the discussion link, the
+licence file); each such file has exactly one top-level entry whose first code span is its path;
+every src/ path the licence file names exists and carries a header; and each header agrees with
+its entry on licence, holder and year, including the scope sentence of a file under two licences
+and the holder line of the licence file it names.
+
+Seen failing on the tree before the header commits, naming the fram, bmp3xx and isl29125
+headers, the captive-DNS licence expression and the holder line of src/LICENSE-captive_dns. In
+scratch copies, a planted header with no entry, a second ISL29125 entry, the earlier UDP socket
+header, an entry naming a missing file and a changed entry year each fail naming the file.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

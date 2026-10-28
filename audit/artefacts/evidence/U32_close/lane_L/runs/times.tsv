@@ -1,0 +1,47 @@
+new	pytest:test_api_reference.py+59	-	253.08	1	0	1 failed, 3565 passed, 1 warning in 244.14s (0:04:04)
+new	pytest:test_digital_twin_generated_boot.py+0	-	58.26	0	0	22 passed in 57.76s
+new	pytest:test_digital_twin_scenarios.py+0	-	2.06	0	0	60 passed in 1.69s
+new	test_asy_webserver_service.py	-1	4.60	0	0	222/222 passed, 0 failed, 0 skipped
+new	test_asy_webserver_connections.py	-1	1.19	0	0	24/24 passed, 0 failed, 0 skipped
+new	test_setter_microdot_integration.py	-1	0.24	0	0	34/34 passed, 0 failed, 0 skipped
+new	test_digital_twin_http_client.py	-1	0.05	0	0	38/38 passed, 0 failed, 0 skipped
+new	test_digital_twin_run_generic_integration.py	-1	0.12	1	0	
+new	test_sensortask.py[arzi]	-1	0.14	1	0	
+new	test_sensortask.py[dev]	-1	0.12	1	0	
+new	test_sensortask.py[grkizi]	-1	0.10	1	0	
+new	test_sensortask.py[klkizi]	-1	0.10	1	0	
+new	test_sensortask.py[schlafzi]	-1	0.11	1	0	
+new	test_sensortask.py[wozi]	-1	0.13	1	0	
+new	webserver_concurrency[arzi]	-1	62.65	0	0	Counts (scenarios): passed 20 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+new	webserver_concurrency[dev]	-1	73.49	0	0	Counts (scenarios): passed 20 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+new	webserver_concurrency[grkizi]	-1	63.11	0	0	Counts (scenarios): passed 20 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+new	webserver_concurrency[klkizi]	-1	62.60	0	0	Counts (scenarios): passed 20 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+new	webserver_concurrency[schlafzi]	-1	62.76	0	0	Counts (scenarios): passed 20 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+new	webserver_concurrency[wozi]	-1	65.37	0	0	Counts (scenarios): passed 20 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+new	test_asy_webserver_service.py	32768	7.35	0	0	222/222 passed, 0 failed, 0 skipped
+new	test_asy_webserver_connections.py	32768	1.25	0	0	24/24 passed, 0 failed, 0 skipped
+new	test_setter_microdot_integration.py	32768	0.43	0	0	34/34 passed, 0 failed, 0 skipped
+new	test_digital_twin_http_client.py	32768	0.05	0	0	38/38 passed, 0 failed, 0 skipped
+new	test_digital_twin_run_generic_integration.py	32768	0.11	1	0	
+new	test_sensortask.py[arzi]	32768	0.13	1	0	
+new	test_sensortask.py[dev]	32768	0.13	1	0	
+new	test_sensortask.py[grkizi]	32768	0.13	1	0	
+new	test_sensortask.py[klkizi]	32768	0.15	1	0	
+new	test_sensortask.py[schlafzi]	32768	0.14	1	0	
+new	test_sensortask.py[wozi]	32768	0.23	1	0	
+new	webserver_concurrency[arzi]	32768	63.94	0	0	Counts (scenarios): passed 20 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+new	webserver_concurrency[dev]	32768	76.50	0	0	Counts (scenarios): passed 20 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+new	webserver_concurrency[grkizi]	32768	63.00	0	0	Counts (scenarios): passed 20 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+new	webserver_concurrency[klkizi]	32768	63.24	0	0	Counts (scenarios): passed 20 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+new	webserver_concurrency[schlafzi]	32768	64.10	0	0	Counts (scenarios): passed 20 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+new	webserver_concurrency[wozi]	32768	66.88	0	0	Counts (scenarios): passed 20 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+base	test_asy_webserver_connections.py	-1	1.19	0	0	24/24 passed, 0 failed, 0 skipped
+base	test_setter_microdot_integration.py	-1	0.34	0	0	34/34 passed, 0 failed, 0 skipped
+base	test_digital_twin_http_client.py	-1	0.05	0	0	38/38 passed, 0 failed, 0 skipped
+base	test_digital_twin_run_generic_integration.py	-1	1.39	0	0	43/43 passed, 0 failed, 0 skipped
+base	webserver_concurrency[wozi]	-1	65.59	0	0	Counts (scenarios): passed 20 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+base	test_asy_webserver_connections.py	32768	1.24	0	0	24/24 passed, 0 failed, 0 skipped
+base	test_setter_microdot_integration.py	32768	0.36	0	0	34/34 passed, 0 failed, 0 skipped
+base	test_digital_twin_http_client.py	32768	0.04	0	0	38/38 passed, 0 failed, 0 skipped
+base	test_digital_twin_run_generic_integration.py	32768	1.46	0	0	43/43 passed, 0 failed, 0 skipped
+base	webserver_concurrency[wozi]	32768	67.87	0	0	Counts (scenarios): passed 20 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0

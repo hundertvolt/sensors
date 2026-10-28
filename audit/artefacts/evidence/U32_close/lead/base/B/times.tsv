@@ -1,0 +1,5 @@
+tests/test_digital_twin_bus_hazard_concurrency.py@32768	152.79	0
+tests/test_digital_twin_uart_link.py@32768	59.39	0
+tests_scripts/test_buildgen_generate.py	9.71	0
+tests_scripts/test_buildgen_definitions.py	4.76	0
+tests_scripts/test_definitions_js_mirrors.py	0.33	0

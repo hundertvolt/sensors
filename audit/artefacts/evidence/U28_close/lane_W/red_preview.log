@@ -1,0 +1,401 @@
+EEEEEEEEEEEEEEF                                                          [100%]
+==================================== ERRORS ====================================
+____________ ERROR at setup of test_the_preview_binds_loopback_only ____________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w')
+
+    @pytest.fixture(scope="module")
+    def preview_server(repo_root: Path) -> ModuleType:
+>       return load_script_module(repo_root / _SCRIPT, "preview_server")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_preview_server.py:33: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7f37e1f26c90>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+_ ERROR at setup of test_only_the_pages_own_directories_are_served[html/index.html-True] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w')
+
+    @pytest.fixture(scope="module")
+    def preview_server(repo_root: Path) -> ModuleType:
+>       return load_script_module(repo_root / _SCRIPT, "preview_server")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_preview_server.py:33: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7f37e1f26c90>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+_ ERROR at setup of test_only_the_pages_own_directories_are_served[js/app.js-True] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w')
+
+    @pytest.fixture(scope="module")
+    def preview_server(repo_root: Path) -> ModuleType:
+>       return load_script_module(repo_root / _SCRIPT, "preview_server")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_preview_server.py:33: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7f37e1f26c90>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+_ ERROR at setup of test_only_the_pages_own_directories_are_served[mockdata/samples.json-True] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w')
+
+    @pytest.fixture(scope="module")
+    def preview_server(repo_root: Path) -> ModuleType:
+>       return load_script_module(repo_root / _SCRIPT, "preview_server")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_preview_server.py:33: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7f37e1f26c90>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+_ ERROR at setup of test_only_the_pages_own_directories_are_served[build/generated_src/definitions/index.json-True] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w')
+
+    @pytest.fixture(scope="module")
+    def preview_server(repo_root: Path) -> ModuleType:
+>       return load_script_module(repo_root / _SCRIPT, "preview_server")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_preview_server.py:33: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7f37e1f26c90>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+_ ERROR at setup of test_only_the_pages_own_directories_are_served[.git/HEAD-False] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w')
+
+    @pytest.fixture(scope="module")
+    def preview_server(repo_root: Path) -> ModuleType:
+>       return load_script_module(repo_root / _SCRIPT, "preview_server")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_preview_server.py:33: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7f37e1f26c90>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+_ ERROR at setup of test_only_the_pages_own_directories_are_served[config_WIFI.cfg-False] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w')
+
+    @pytest.fixture(scope="module")
+    def preview_server(repo_root: Path) -> ModuleType:
+>       return load_script_module(repo_root / _SCRIPT, "preview_server")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_preview_server.py:33: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7f37e1f26c90>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+_ ERROR at setup of test_only_the_pages_own_directories_are_served[pyproject.toml-False] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w')
+
+    @pytest.fixture(scope="module")
+    def preview_server(repo_root: Path) -> ModuleType:
+>       return load_script_module(repo_root / _SCRIPT, "preview_server")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_preview_server.py:33: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7f37e1f26c90>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+_ ERROR at setup of test_only_the_pages_own_directories_are_served[build/generated_src/sensortask_fixture-device.py-False] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w')
+
+    @pytest.fixture(scope="module")
+    def preview_server(repo_root: Path) -> ModuleType:
+>       return load_script_module(repo_root / _SCRIPT, "preview_server")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_preview_server.py:33: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7f37e1f26c90>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+_ ERROR at setup of test_a_path_that_climbs_or_links_out_of_the_site_is_refused[/html/../pyproject.toml] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w')
+
+    @pytest.fixture(scope="module")
+    def preview_server(repo_root: Path) -> ModuleType:
+>       return load_script_module(repo_root / _SCRIPT, "preview_server")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_preview_server.py:33: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7f37e1f26c90>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+_ ERROR at setup of test_a_path_that_climbs_or_links_out_of_the_site_is_refused[/js/../.git/HEAD] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w')
+
+    @pytest.fixture(scope="module")
+    def preview_server(repo_root: Path) -> ModuleType:
+>       return load_script_module(repo_root / _SCRIPT, "preview_server")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_preview_server.py:33: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7f37e1f26c90>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+_ ERROR at setup of test_a_path_that_climbs_or_links_out_of_the_site_is_refused[/html/leak.cfg] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w')
+
+    @pytest.fixture(scope="module")
+    def preview_server(repo_root: Path) -> ModuleType:
+>       return load_script_module(repo_root / _SCRIPT, "preview_server")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_preview_server.py:33: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7f37e1f26c90>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+_ ERROR at setup of test_a_path_that_climbs_or_links_out_of_the_site_is_refused[/] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w')
+
+    @pytest.fixture(scope="module")
+    def preview_server(repo_root: Path) -> ModuleType:
+>       return load_script_module(repo_root / _SCRIPT, "preview_server")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_preview_server.py:33: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7f37e1f26c90>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+_ ERROR at setup of test_a_path_that_climbs_or_links_out_of_the_site_is_refused[/html/%2e%2e/config_WIFI.cfg] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w')
+
+    @pytest.fixture(scope="module")
+    def preview_server(repo_root: Path) -> ModuleType:
+>       return load_script_module(repo_root / _SCRIPT, "preview_server")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_preview_server.py:33: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/_script_loader.py:22: in load_script_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:936: in exec_module
+    ???
+<frozen importlib._bootstrap_external>:1073: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <_frozen_importlib_external.SourceFileLoader object at 0x7f37e1f26c90>
+path = '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py'
+
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+=================================== FAILURES ===================================
+__________ test_a_taken_port_is_one_line_naming_the_option_and_exit_1 __________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w')
+
+    def test_a_taken_port_is_one_line_naming_the_option_and_exit_1(repo_root: Path) -> None:
+        with socket.socket() as holder:
+            holder.bind(("127.0.0.1", 0))
+            holder.listen()
+            port = holder.getsockname()[1]
+            done = subprocess.run([sys.executable, str(repo_root / _SCRIPT), "--port", str(port)], capture_output=True, text=True, check=False, timeout=60)
+>       assert done.returncode == 1, done.stderr
+E       AssertionError: /home/user/sensors/.venv/bin/python: can't open file '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py': [Errno 2] No such file or directory
+E         
+E       assert 2 == 1
+E        +  where 2 = CompletedProcess(args=['/home/user/sensors/.venv/bin/python', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-879...5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/scripts/preview_server.py': [Errno 2] No such file or directory\n").returncode
+
+tests_scripts/test_preview_server.py:96: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_preview_server.py::test_a_taken_port_is_one_line_naming_the_option_and_exit_1
+ERROR tests_scripts/test_preview_server.py::test_the_preview_binds_loopback_only
+ERROR tests_scripts/test_preview_server.py::test_only_the_pages_own_directories_are_served[html/index.html-True]
+ERROR tests_scripts/test_preview_server.py::test_only_the_pages_own_directories_are_served[js/app.js-True]
+ERROR tests_scripts/test_preview_server.py::test_only_the_pages_own_directories_are_served[mockdata/samples.json-True]
+ERROR tests_scripts/test_preview_server.py::test_only_the_pages_own_directories_are_served[build/generated_src/definitions/index.json-True]
+ERROR tests_scripts/test_preview_server.py::test_only_the_pages_own_directories_are_served[.git/HEAD-False]
+ERROR tests_scripts/test_preview_server.py::test_only_the_pages_own_directories_are_served[config_WIFI.cfg-False]
+ERROR tests_scripts/test_preview_server.py::test_only_the_pages_own_directories_are_served[pyproject.toml-False]
+ERROR tests_scripts/test_preview_server.py::test_only_the_pages_own_directories_are_served[build/generated_src/sensortask_fixture-device.py-False]
+ERROR tests_scripts/test_preview_server.py::test_a_path_that_climbs_or_links_out_of_the_site_is_refused[/html/../pyproject.toml]
+ERROR tests_scripts/test_preview_server.py::test_a_path_that_climbs_or_links_out_of_the_site_is_refused[/js/../.git/HEAD]
+ERROR tests_scripts/test_preview_server.py::test_a_path_that_climbs_or_links_out_of_the_site_is_refused[/html/leak.cfg]
+ERROR tests_scripts/test_preview_server.py::test_a_path_that_climbs_or_links_out_of_the_site_is_refused[/]
+ERROR tests_scripts/test_preview_server.py::test_a_path_that_climbs_or_links_out_of_the_site_is_refused[/html/%2e%2e/config_WIFI.cfg]
+1 failed, 14 errors in 0.18s
