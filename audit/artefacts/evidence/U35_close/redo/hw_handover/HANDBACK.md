@@ -456,6 +456,24 @@ DONE=1
 rc=0 18:00:35
 ```
 
+### probe_scheduler_saturation_drop_20261028
+
+```
+== probe_scheduler_saturation_drop 18:00:51
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FACT n_timers=12
+FACT depth=8
+FACT arming_span_us=1456
+FACT counts_busy=[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+FACT counts_heal=[500, 500, 501, 500, 500, 500, 500, 500, 500, 499, 499, 499]
+FACT dropped=11
+FACT all_self_healed=true
+DONE
+rc=0 18:00:52
+```
+
 ### probe_sgp40_conformance_probe_20261028
 
 ```
