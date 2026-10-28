@@ -13,6 +13,14 @@ Rebuilt by `handback.py` after every step; the newest day is complete up to its 
 ```
 image (name='micropython', version=(1, 29, 0, ''), _machine='Raspberry Pi Pico W with RP2040', _mpy=4870, _build='RPI_PICO_W', _thread='unsafe') v1.29.0 on 2026-10-28 (GNU 14.2.1 MinSizeRel)
 fs_root ['config_BMP3XX.cfg', 'config_HWTEST_DEBUGLEVEL_BACKUP.cfg', 'config_HWTEST_REBOOT.cfg', 'config_ISL29125.cfg', 'config_MQTT.cfg', 'config_NOTIFY.cfg', 'config_NTP.cfg', 'config_SCD30.cfg', 'config_SGP40.cfg', 'config_SYSTEM.cfg', 'config_WIFI.cfg']
+fram spi=SPI(0, baudrate=1000000, polarity=0, phase=0, bits=8, sck=2, mosi=3, miso=4)
+fram rdid=047f4803 mismatches_in_1000=0 status=0x00
+fram_cmd_worst_us rdsr=140 read1=236 read32=628 read256=2720 write1=412
+fram_read256 baud=1000000 actual=SPI(0, baudrate=1000000, polarity=0, phase=0, bits=8, sck=2, mosi=3, miso=4) oserrors=0 wrong=0 of 500 last=
+fram_read256 baud=4000000 actual=SPI(0, baudrate=4000000, polarity=0, phase=0, bits=8, sck=2, mosi=3, miso=4) oserrors=0 wrong=0 of 500 last=
+fram_read256 baud=10000000 actual=SPI(0, baudrate=8000000, polarity=0, phase=0, bits=8, sck=2, mosi=3, miso=4) oserrors=0 wrong=0 of 500 last=
+fram_read256 baud=20000000 actual=SPI(0, baudrate=12000000, polarity=0, phase=0, bits=8, sck=2, mosi=3, miso=4) oserrors=0 wrong=0 of 500 last=
+fram scratch_restored=1
 i2c_scan bus=0 addresses=['0x18', '0x77'] scan_us=35091
 i2c_scan bus=1 addresses=['0x44', '0x59', '0x61'] scan_us=35007
 bmp chip_id=0x50
@@ -256,6 +264,25 @@ Audited 20 packages in 0.61ms
 warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
 SUM image (name='micropython', version=(1, 29, 0, ''), _machine='Raspberry Pi Pico W with RP2040', _mpy=4870, _build='RPI_PICO_W', _thread='unsafe') v1.29.0 on 2026-10-28 (GNU 14.2.1 MinSizeRel)
 SUM fs_root ['config_BMP3XX.cfg', 'config_HWTEST_DEBUGLEVEL_BACKUP.cfg', 'config_HWTEST_REBOOT.cfg', 'config_ISL29125.cfg', 'config_MQTT.cfg', 'config_NOTIFY.cfg', 'config_NTP.cfg', 'config_SCD30.cfg', 'config_SGP40.cfg', 'config_SYSTEM.cfg', 'config_WIFI.cfg']
+```
+
+### fram_20261028
+
+```
+== fram 17:59:25
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM fram spi=SPI(0, baudrate=1000000, polarity=0, phase=0, bits=8, sck=2, mosi=3, miso=4)
+SUM fram rdid=047f4803 mismatches_in_1000=0 status=0x00
+SUM fram_cmd_worst_us rdsr=140 read1=236 read32=628 read256=2720 write1=412
+SUM fram_read256 baud=1000000 actual=SPI(0, baudrate=1000000, polarity=0, phase=0, bits=8, sck=2, mosi=3, miso=4) oserrors=0 wrong=0 of 500 last=
+SUM fram_read256 baud=4000000 actual=SPI(0, baudrate=4000000, polarity=0, phase=0, bits=8, sck=2, mosi=3, miso=4) oserrors=0 wrong=0 of 500 last=
+SUM fram_read256 baud=10000000 actual=SPI(0, baudrate=8000000, polarity=0, phase=0, bits=8, sck=2, mosi=3, miso=4) oserrors=0 wrong=0 of 500 last=
+SUM fram_read256 baud=20000000 actual=SPI(0, baudrate=12000000, polarity=0, phase=0, bits=8, sck=2, mosi=3, miso=4) oserrors=0 wrong=0 of 500 last=
+SUM fram scratch_restored=1
+DONE=1
+rc=0 17:59:29
 ```
 
 ### i2c_20261028
