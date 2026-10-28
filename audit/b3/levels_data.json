@@ -615,14 +615,233 @@
   }
  },
  "route_tests": {},
- "system_rows": [],
- "picking_files": [],
+ "system_rows": [
+  {
+   "area": "sensors",
+   "feature": "each wired sensor reads on its bus and publishes its block on GET /measurements",
+   "source": "SPECIFICATION.md A.2 (Sensor Reader/Driver split)",
+   "tests": [
+    "scripts/_digital_twin_scenarios.py::api_burst_at_the_ceiling_during_bus_load",
+    "scripts/_digital_twin_scenarios.py::get_measurements_and_sensors_are_reachable_and_shaped_correctly"
+   ],
+   "note": "the first waits for every wired sensor's block to carry a value"
+  },
+  {
+   "area": "buses",
+   "feature": "several sensors share one bus behind its lock",
+   "source": "SPECIFICATION.md A.2 (Bus layer)",
+   "tests": [
+    "scripts/_digital_twin_scenarios.py::api_burst_at_the_ceiling_during_bus_load",
+    "tests/test_digital_twin_bus_hazard_concurrency.py::test_the_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call"
+   ]
+  },
+  {
+   "area": "config",
+   "feature": "each module owns its schema and config file: a PUT persists to it and reads back",
+   "source": "SPECIFICATION.md A.2 (Config management), C.5",
+   "tests": [
+    "scripts/_digital_twin_scenarios.py::put_round_trips_through_a_real_twin_backed_driver_over_real_http",
+    "scripts/_digital_twin_scenarios.py::refused_config_write_is_reported_unpersisted",
+    "scripts/_digital_twin_scenarios.py::sensors_put_round_trips_a_real_scd30_field_over_real_http"
+   ]
+  },
+  {
+   "area": "REST",
+   "feature": "one response envelope on every route; a failed config snapshot answers as the unavailable marker",
+   "source": "SPECIFICATION.md A.2 (REST API pipeline), C.5.3",
+   "tests": [
+    "scripts/_digital_twin_scenarios.py::every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly",
+    "scripts/_digital_twin_scenarios.py::failed_config_snapshot_is_sent_as_unavailable"
+   ]
+  },
+  {
+   "area": "FRAM",
+   "feature": "SGP40's VOC baseline backup in a two-copy chunk survives a reboot, and an unflushed write falls back to the last flushed one",
+   "source": "SPECIFICATION.md A.2 (FRAM storage)",
+   "tests": [
+    "tests/test_digital_twin_sensortask_integration.py::test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chunk",
+    "tests/test_digital_twin_sensortask_integration.py::test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanly_to_the_last_flushed_state",
+    "scripts/_digital_twin_scenarios.py::mempause_over_real_http_reaches_the_real_fram_manager"
+   ],
+   "applies": "the chunk layer every device shares",
+   "note": "the backup runs on the first device wiring sgp40 and fram (E.2.1, a device-independent mechanism); the FRAM manager is reached over REST on every device"
+  },
+  {
+   "area": "notification",
+   "feature": "threshold notification drives the shared pixel; a pause counts down",
+   "source": "SPECIFICATION.md A.2 (LED notification signalling)",
+   "tests": [
+    "tests/test_digital_twin_sensortask_integration.py::test_the_notification_window_spanning_midnight_flashes_red",
+    "scripts/_digital_twin_scenarios.py::put_pause_time_round_trips_and_counts_down_over_real_http"
+   ]
+  },
+  {
+   "area": "networking",
+   "feature": "Wi-Fi STA with the captive-portal hotspot fallback and its DNS server",
+   "source": "SPECIFICATION.md A.2 (Networking), A.4 (Wi-Fi state machine)",
+   "tests": [
+    "scripts/_digital_twin_scenarios.py::wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server",
+    "tests/test_digital_twin_sensortask_integration.py::test_hotspot_fallback_drives_the_status_led_and_binds_the_dns_server"
+   ]
+  },
+  {
+   "area": "networking",
+   "feature": "NTP keeps the local time (CET/CEST) and the device serves through an unreachable server",
+   "source": "SPECIFICATION.md A.2 (Networking)",
+   "tests": [
+    "scripts/_digital_twin_scenarios.py::survives_bus_and_api_load_while_ntp_is_unreachable",
+    "tests/test_digital_twin_ntp.py::test_a_booted_device_syncs_at_its_first_sync_with_a_clean_log",
+    "tests/test_digital_twin_clock_jump.py::test_cettime_follows_the_clock_across_the_march_switch_both_ways"
+   ]
+  },
+  {
+   "area": "networking",
+   "feature": "the non-blocking DNS resolver stands in for getaddrinfo()",
+   "source": "SPECIFICATION.md A.2 (Networking), F.2",
+   "tests": [
+    "tests/test_ntp_wifi_dns_integration.py::test_dns_server_ip_flows_from_a_connected_real_wifi_service_into_resolve_ipv4",
+    "tests_hardware/bench/test_wifi_networking.py::test_real_dns_resolution_succeeds_over_genuine_udp"
+   ],
+   "applies": "L1 and L4",
+   "note": "the twin's NTP host is an address literal, so no L2 boot resolves a name: the resolver's chain to its consumer is L1's, its silicon run L4's"
+  },
+  {
+   "area": "supervisor",
+   "feature": "a dead task restarts; past the threshold the supervisor escalates to a reboot",
+   "source": "SPECIFICATION.md A.2 (Task supervisor)",
+   "tests": [
+    "tests/test_digital_twin_sensortask_integration.py::test_the_supervisor_restarts_a_real_dead_task",
+    "scripts/_digital_twin_scenarios.py::watchdog_fault_supervisor_raise",
+    "tests/test_digital_twin_timer_pool.py::test_read_triggers_that_never_arm_end_at_the_budgets_reboot_with_one_entry"
+   ]
+  },
+  {
+   "area": "website",
+   "feature": "the device's own site is served, gzipped, behind every API route",
+   "source": "SPECIFICATION.md A.2 (Frontend)",
+   "tests": [
+    "scripts/_digital_twin_scenarios.py::static_site_is_served_over_real_http",
+    "scripts/_digital_twin_scenarios.py::real_website_root_serves_the_actual_production_index_html",
+    "scripts/_digital_twin_scenarios.py::real_website_static_mount_never_shadows_a_real_api_route"
+   ]
+  },
+  {
+   "area": "commands",
+   "feature": "the status and system commands (Reboot, Bootloader, ResetErrors, mempause, EraseFRAM, SystemCmd) each answer once and act",
+   "source": "SPECIFICATION.md A.4 (system service), H",
+   "tests": [
+    "scripts/_digital_twin_scenarios.py::reboot_and_bootloader_at_once_accept_exactly_one",
+    "scripts/_digital_twin_scenarios.py::a_command_right_after_the_first_answer_resets_cleanly",
+    "scripts/_digital_twin_scenarios.py::erasefram_concurrent_with_a_reboot_accepts_exactly_one",
+    "scripts/_digital_twin_scenarios.py::reset_errors_over_real_http_is_not_undone_by_a_fram_loggers_later_setup"
+   ]
+  },
+  {
+   "area": "notification",
+   "feature": "air-quality LED sequencing: one colour per condition, paused between flashes",
+   "source": "SPECIFICATION.md A.4 confirmed intentional (owner, 2026-07-13)",
+   "tests": [
+    "tests/test_notification_neopixel_integration.py::test_multiple_simultaneous_crossings_produce_sequential_correctly_colored_ramps",
+    "tests/test_digital_twin_sensortask_integration.py::test_the_notification_window_spanning_midnight_flashes_red"
+   ],
+   "applies": "the device tests/_twin_devices.py picks (E.2.1)",
+   "note": "the sequencing is the notification service's and the pixel driver's, the same modules on every device: the L1 chain proves it device-free, the L2 run on the first device wiring notification and scd30; cover: the functional rows of asy_notification_service.py and asy_neopixel_driver.py"
+  },
+  {
+   "area": "FRAM",
+   "feature": "SGP40 backup 0 = disabled: BackupPeriod 0 writes no backup, BackupMaxAge 0 sets no age limit",
+   "source": "SPECIFICATION.md A.4 confirmed intentional (owner, 2026-07-13)",
+   "tests": [
+    "tests/test_asy_sgp40_driver.py::test_a_backup_period_of_zero_never_triggers_a_backup",
+    "tests/test_asy_sgp40_driver.py::test_a_zero_age_limit_accepts_a_future_dated_backup"
+   ],
+   "applies": "module-internal",
+   "note": "module-internal (the driver's own backup cadence and age check): L1 proves it"
+  },
+  {
+   "area": "networking",
+   "feature": "after a second STA failure streak following a hotspot phase Wi-Fi goes silent, never off",
+   "source": "SPECIFICATION.md A.4 confirmed intentional (owner, 2026-10-08)",
+   "tests": [
+    "tests/test_digital_twin_wifi_modes.py::test_stations_rule_settings_change_and_silent_mode_in_one_boot"
+   ],
+   "applies": "one device (E.2.1)",
+   "note": "one boot of the first plan wiring the neopixel and the FRAM walks the modes (E.2.1): the Wi-Fi state machine is the same module on every device"
+  },
+  {
+   "area": "networking",
+   "feature": "STA never falls back to the hotspot once it has connected; only a reconnecting settings change or a task restart resets this",
+   "source": "SPECIFICATION.md A.4 confirmed intentional (owner, 2026-10-08)",
+   "tests": [
+    "tests/test_digital_twin_wifi_modes.py::test_stations_rule_settings_change_and_silent_mode_in_one_boot",
+    "tests/test_asy_wifi_service.py::test_on_sta_disconnected_retries_after_a_minute_when_previously_connected"
+   ],
+   "applies": "one device (E.2.1)",
+   "note": "as the row above"
+  },
+  {
+   "area": "website",
+   "feature": "the web UI shows raw numbers only, no colour coding",
+   "source": "SPECIFICATION.md A.4 confirmed intentional (owner, 2026-07-13)",
+   "tests": [
+    "tests_scripts/test_buildgen_definitions.py::test_every_code_tone_block_equals_its_catalog_tables_tones",
+    "tests_js/render.test.js::renders readonly measurement fields and updates them on poll"
+   ],
+   "applies": "module-internal",
+   "note": "L0 is the website's level: on every device a field with no code table carries no tones (the first), and a reading renders as its bare number (the second)"
+  },
+  {
+   "area": "FRAM",
+   "feature": "every FRAM chunk of a fully built device fits its part, checked once per build per device",
+   "source": "SPECIFICATION.md A.4 confirmed intentional (owner, 2026-09-16)",
+   "tests": [
+    "tests/_sensortask_scenarios.py::fram_chunks_are_all_successfully_allocated_not_out_of_memory"
+   ],
+   "applies": "module-internal",
+   "note": "L1 on every device through tests/test_sensortask.py (PER_DEVICE); the board's own run is the capacity device script's (L3)"
+  },
+  {
+   "area": "sensors",
+   "feature": "SGP40 compensation: skipped while a wired source's value is unavailable, the TOML's constant with no live source",
+   "source": "SPECIFICATION.md A.4 (owner, 2026-09-26)",
+   "tests": [
+    "tests/test_digital_twin_sensortask_integration.py::test_sgp40_reading_before_scd30_has_measured_yet_logs_no_bogus_error",
+    "tests/test_digital_twin_sensortask_integration.py::test_a_stopped_scd30_ends_its_alerts_and_sgp40_compensation",
+    "tests/test_asy_sgp40_driver.py::test_a_compensation_sample_inside_its_declared_domain_is_measured_and_one_outside_is_not"
+   ],
+   "applies": "the device tests/_twin_devices.py picks (E.2.1)",
+   "note": "the skip is the SGP40 driver's own read path, the same on every device wiring a source: L1 proves each sample's case, L2 the wired chain on the first device wiring sgp40 and scd30; cover: the functional row of asy_sgp40_driver.py"
+  },
+  {
+   "area": "uart",
+   "feature": "the UART driver exposes no hardware flow control",
+   "source": "SPECIFICATION.md A.4 confirmed intentional (owner, 2026-07-23)",
+   "tests": [
+    "tests/test_asy_uart_driver.py::test_valid_construction_on_both_real_uart_ports"
+   ],
+   "applies": "module-internal",
+   "note": "tests/machine.py's UART takes no flow argument: a plant adding one to the driver's machine.UART call fails this construction test"
+  },
+  {
+   "area": "sensors",
+   "feature": "SCD30's get_ambient_pressure() reads the set command word",
+   "source": "SPECIFICATION.md A.4 confirmed intentional (owner, 2026-07-22)",
+   "tests": [
+    "tests/test_asy_scd30_driver.py::test_each_config_getter_reads_its_own_word_and_the_ambient_pressure_the_set_word"
+   ],
+   "applies": "module-internal",
+   "note": "module-internal (the driver's register map): L1 proves it"
+  }
+ ],
+ "picking_files": [
+  "tests/test_digital_twin_sensortask_integration.py"
+ ],
  "dash_reasons": [],
  "curated_cells": {},
  "ladder": [],
  "narrowings": [],
- "functional_intro": "Open.",
- "system_intro": "Open.",
+ "functional_intro": "Derived by the walk, one row per `src/` module: its real consumers in the generated graph (the `src/` modules a generated device reaches that import it, and the generated module where that imports it directly), and the L2 functions that drive it in a generated device's graph: a function of its matrix row's L2 cell that is also in the generated module's L2 cell, else the same for its first consumer that has one (named \"through\"). The devices are those the biting ones run on: a twin CI scenario on every device wiring its drivers, a construction scenario or a `PER_DEVICE` file on every device, any other twin test on the device its file picks (SPECIFICATION.md E.2.1). A row bites when such a function is verdicted biting and the module is booted (agent, 2026-10-28).",
+ "system_intro": "First one row per REST route of the generated API reference (`build/generated_src/api/<device>.json`), derived: the L2 functions whose code, or a helper of their file, names the route's method and path, and the devices they run on (as above). Then one row per top-level feature of SPECIFICATION.md A.2 and per item of A.4's \"functional behaviors confirmed intentional\" list, with its tests named by hand (`levels_data.json` `system_rows`); a module-internal item names the lowest level that proves it. Recovery paths are `conformance.md`'s rows (A.U35.52's rungs), cited there, not repeated here (agent, 2026-10-28).",
  "ladder_intro": "Open.",
  "narrowings_intro": "Open."
 }

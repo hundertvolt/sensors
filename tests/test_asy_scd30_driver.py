@@ -858,6 +858,27 @@ def test_nak_propagates_as_oserror_from_every_write_based_command() -> None:
         assert raised
 
 
+def test_each_config_getter_reads_its_own_word_and_the_ambient_pressure_the_set_word() -> None:
+    # The SCD30 documents no read-back word for the ambient pressure, so its getter reads the set word 0x0010
+    # (SPECIFICATION.md A.4 keeps it so): every config getter's register pointer is pinned, that one included.
+    scd, i2c = _make_scd()
+    getters = {
+        "TempOffset": scd.get_temperature_offset,
+        "MeasInterval": scd.get_measurement_interval,
+        "AmbPres": scd.get_ambient_pressure,
+        "Altitude": scd.get_altitude,
+        "ForceCalRef": scd.get_forced_recalibration_reference,
+        "SelfCal": scd.get_self_calibration_enabled,
+    }
+    words: dict[str, list[int]] = {}
+    for name, getter in getters.items():
+        i2c.log.clear()
+        i2c.read_queue.append(register_frame(0))
+        run(getter())
+        words[name] = [(entry[2][0] << 8) | entry[2][1] for entry in i2c.log if entry[0] == "writeto" and len(entry[2]) == 2]
+    assert words == {"TempOffset": [0x5403], "MeasInterval": [0x4600], "AmbPres": [0x0010], "Altitude": [0x5102], "ForceCalRef": [0x5204], "SelfCal": [0x5306]}
+
+
 def test_nak_propagates_as_oserror_from_every_register_read() -> None:
     scd, i2c = _make_scd()
     i2c.nak_addresses.add(_ADDR)

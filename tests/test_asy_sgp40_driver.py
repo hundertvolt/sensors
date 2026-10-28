@@ -1827,6 +1827,30 @@ def test_check_storage_backup_counter_wraps_before_it_could_overflow() -> None:
     assert reader._backup_counter == 0  # wrapped, not left to grow past the cap
 
 
+def test_a_backup_period_of_zero_never_triggers_a_backup() -> None:
+    # BackupPeriod 0 is "Backups off" (SPECIFICATION.md A.4): the count a one-minute period backs up at triggers nothing at 0.
+    serialized: dict[int, bool] = {}
+    for period in (1, 0):
+        cfg_dir = _sgp_cfg_dir(f"backup_period_{period}")
+        _write_sgp_cfg(cfg_dir, {"BackupPeriod": period, "BackupMaxAge": 7200, "WaitTimeNTP": 30})
+        manager, _chip = make_fram_manager()
+        run(manager.setup())
+        reader = SGP40_Reader(
+            _make_i2c(),
+            ValueRef(_FakeCompSource(), "Temp"),
+            ValueRef(_FakeCompSource(), "Hum"),
+            backup=SgpBackup(manager, _ntp_synced),
+            log=LogConfig(manager, 10, None),
+            max_module_error=5,
+            cfg_path=cfg_dir,
+        )
+        run(reader.setup())
+        reader._voc_init = 0  # no restore pending: only the backup half decides
+        reader._backup_counter = 59  # one count short of the 60 a one-minute period backs up at
+        _buf, serialized[period], _deserialize, _cfg = run(reader._check_storage())
+    assert serialized == {1: True, 0: False}
+
+
 def test_init_sgp_sets_verify_to_the_documented_formula() -> None:
     # ceil((10 * _FRAM_VERIFY_MINS) / BackupPeriod) * 0.1 - roughly "verify once per
     # _FRAM_VERIFY_MINS (60min) worth of backups". Confirmed against the real
