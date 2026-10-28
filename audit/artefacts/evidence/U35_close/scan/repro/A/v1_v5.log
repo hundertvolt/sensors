@@ -1,0 +1,6 @@
+V1 read1 None block0 status after read1 (2, 2) read2 None FRAM log {'FRAM': {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', 'E', 'W', 'E', 'W'], 'ErrCount': 4, 'ErrNum': [0, 0, 0, 0, 0, 0, 31, 71, 31, 72]}}
+V5 new L2 chunk reads bytearray(b'L1-history!!')
+V1 read1 None block0 status after read1 (2, 2) read2 None FRAM log {'FRAM': {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', 'E', 'W', 'E', 'W'], 'ErrCount': 4, 'ErrNum': [0, 0, 0, 0, 0, 0, 31, 71, 31, 72]}}
+V5 new L2 chunk reads bytearray(b'L1-history!!')
+V1 read1 None block0 status after read1 (2, 2) read2 None FRAM log {'FRAM': {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', 'E', 'W', 'E', 'W'], 'ErrCount': 4, 'ErrNum': [0, 0, 0, 0, 0, 0, 31, 71, 31, 72]}}
+V5 new L2 chunk reads bytearray(b'L1-history!!')

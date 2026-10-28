@@ -13,12 +13,14 @@ gzip -c $S/u35/lane_plan.md > "$R/lane_plan.md.gz"; gzip -c $S/u21/RUNS.md > "$R
 cp $S/u35/lead/run.sh $S/u35/lead/mc_gen.sh $S/u35/lead/mc_files.sh $S/u35/lead/lint_direct.sh $S/u35/lead/mc_tier.sh \
   $S/u35/lead/snapshot.sh $S/u23/rebuild.sh "$R/tools/"
 cp $S/u35/lead/snap2/README.md "$X/README.md"
+[ -d $S/u35r/scan_pub ] && cp -r $S/u35r/scan_pub "$X/scan"
+[ -d $S/u35r/paused_pub ] && cp -r $S/u35r/paused_pub "$R/paused"
 PAT="1234567[8]|192\.168\.[0-9]+\.[0-9]+|10\.[0-9]+\.[0-9]+\.[0-9]+|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]+\.[0-9]+|ghp_[A-Za-z0-9]{10}|github_pa[t]_|sk-[A-Za-z0-9]{20}|AKIA[0-9A-Z]{12}|BEGIN [A-Z ]*PRIVATE KEY"
-if grep -rlE "$PAT" "$X" --include='*.md' --include='*.sh' --include='*.py' --include='*.tsv'; then echo "scan hit: not committed" >&2; exit 2; fi
-for z in "$R"/*.gz; do if zcat "$z" | grep -qE "$PAT"; then echo "scan hit in $z: not committed" >&2; exit 2; fi; done
+if grep -rlE "$PAT" "$X" --include='*.md' --include='*.sh' --include='*.py' --include='*.tsv' --include='*.log' --include='*.json'; then echo "scan hit: not committed" >&2; exit 2; fi
+for z in $(find "$X" -name '*.gz'); do if zcat "$z" | grep -qE "$PAT"; then echo "scan hit in $z: not committed" >&2; exit 2; fi; done
 export GIT_INDEX_FILE=$X/index
 git read-tree "$TREEISH"
-(cd "$X" && find redo README.md -type f | sort) | while read -r f; do
+(cd "$X" && find redo scan README.md -type f 2>/dev/null | sort) | while read -r f; do
   m=100644; case "$f" in *.sh) m=100755;; esac
   git update-index --add --cacheinfo "$m,$(git hash-object -w "$X/$f"),$P/$f"
 done

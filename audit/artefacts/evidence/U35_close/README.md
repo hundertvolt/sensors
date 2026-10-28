@@ -15,3 +15,16 @@ Q35 tables and the lead's run tools. Scanned before the push: no hotspot default
 pattern. The tree around it is the integration head of the time, with the lanes merged so far; lane work not yet
 merged is not in it, and the next snapshot carries it. Each later preliminary snapshot replaces `redo/` with the
 records of its own time, scanned the same way.
+
+## Thirteenth snapshot (2026-10-28): `scan/` and `redo/paused/`
+
+On 2026-10-28 the owner paused all lanes ("Pause all tasks for now") and ordered a full scan of the audit against the
+pre-audit state ("Now start a full scan what you find and report back to me once you finish."), then asked for it to
+be pushed ("For now, document these findings in detail and push together with the current state."). `scan/` holds it:
+`REPORT.md`, the consolidated report with the owner's mandate, what went wrong, the flash figures, the real gaps
+confirmed in the pre-audit code, the code in doubt, the owner decisions it needs and the hardware-round list; the
+seven parts it is built from (`A.md`-`D.md` firmware and buildgen, one row per change; `E.md` tests and tooling;
+`F.md` docs and repo; `G.md` the audit's course); `L_flash.md`; and `repro/`, the reproduction scripts and their logs
+(the pre-audit source they ran against came from `git archive 25caf528` and is not copied). `redo/paused/` holds the
+three paused lanes' unmerged work as patches against their bases, committed and uncommitted together, so nothing is
+lost; none of it is in the tree, merged or verified. Scanned before the push like `redo/`.

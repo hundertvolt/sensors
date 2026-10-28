@@ -1,0 +1,3 @@
+  err_s: ('Read failed:', OSError(5,)) {'errno': 11}
+restore cycle: SGP40(VOC=None, Raw=None, TS=None) compensated True -> voc_init 0 backup_counter 5
+second 55 : backup due (serialize=True), restore attempts since the failure: 0
