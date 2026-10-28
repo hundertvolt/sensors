@@ -256,7 +256,8 @@ Most R rows are "as landed". The scans named smaller forms for some:
    - Do the 45 "ok" ticks stand as decisions, or are they re-opened under your no-hypotheticals rule? This decides how
      much of section 4 can go.
    - **Answered 2026-10-28:** "The OK in the review stay valid." Every "ok" stands, the C-stack reboot included; the
-     cleanup reduces their form, never their decision.
+     cleanup keeps each one documented; it stays in effect in its smallest form unless what it was about is
+     removed (`PICTURE.md` 8).
 2. **Wi-Fi for a unit nobody configures.**
    - Before the audit, as in legacy, such a unit switches Wi-Fi off after its first hotspot window, until a power
      cycle. The audit changed that.
@@ -269,11 +270,14 @@ Most R rows are "as landed". The scans named smaller forms for some:
    after a reflash"). With no agreement found:
    - the `#section` Back history (corrected: your review note asks for it, `PICTURE.md` 5);
    - the Device Clock row, with `UnixTime` added to every `/status` (corrected: your answer "15 a", `PICTURE.md` 5);
-   - code-button tones;
-   - the section-switch wait;
+   - code-button tones (corrected: the CalLight tone table of your review item `website-display-details`);
+   - the section-switch wait (corrected: it keeps your dropped-connection trace free of navigation noise);
    - the non-object banner.
 5. **The target state**, which is the main decision. Per module: the pre-audit code, plus the section 3 fixes, plus your
    decided features in their smallest form. That means removing most of section 4.
+   - How findings and decisions fare (owner, 2026-10-28; `PICTURE.md` 8): all stay documented. Those tied to a removed
+     cascade become obsolete, and a rare condition that drops out with it no longer matters. Those in scope stay in
+     effect in far less code, with no regression.
    - Removing whole added mechanisms means going back to the pre-audit code with those mechanisms taken out, not
      patching on top of the current code.
    - I'll put forward an approach for that once you've decided the points above. Nothing starts before your go-ahead.

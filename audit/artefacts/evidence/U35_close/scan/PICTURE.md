@@ -284,9 +284,14 @@ Wi-Fi behaviour in full during the audit (section 7); it fits, and it is not re-
   re-flashes", "fingerprinting ... waste of space") and the 2026-10-23 ruling, which names "FRAM image does no longer
   fit the layout" as evidence that may trigger first-boot action.
 
-**M13. Website look changes beyond what the owner asked for.** OR94 says "don't change the current look of the
-website". Button tones, the drawer and the section-switch wait are look or behaviour changes nobody asked for. The
-owner did ask for the contrast fix (OR132 "2a"), the Back history, the decimals and the confirmation dialogs.
+**M13. Website look changes beyond what the owner asked for. Withdrawn (second pass, 2026-10-28).** I had listed
+the code tones, the drawer and the section-switch wait as changes nobody asked for (OR94: "don't change the current
+look of the website"). All three trace to the owner:
+- the tones are the CalLight "fixed tone table" of review item `website-display-details` ("Fine, and ...");
+- the inert closed drawer is in review item `website-accessibility` ("Fine, and ...");
+- the section-switch wait keeps the owner-decided dropped-connection trace (OR102.a (9), OR137) free of navigation
+  noise (commit 9bf22747); it stays, possibly in a smaller form.
+The owner also asked for the contrast fix (OR132 "2a"), the Back history, the decimals and the confirmation dialogs.
 
 ## 5. Corrections to my earlier reports from this pass
 
@@ -320,7 +325,7 @@ Not questions, because they follow from the pieces directly and are marked for t
 ## 7. Answers (owner, 2026-10-28)
 
 - 1, the review page: "The OK in the review stay valid." Every "ok" on the review page stands as an owner decision,
-  the C-stack reboot included; the cleanup reduces their form, never their decision.
+  the C-stack reboot included. How the cleanup treats them: section 8.
 - 2, Wi-Fi: "WiFi stays valid." Read by the lead as: the behaviour as built stays; a unit with no network configured
   returns to its hotspot after every window, and OR151's silent mode applies to a configured unit whose network is
   absent. So M11 fits and is withdrawn.
@@ -328,3 +333,23 @@ Not questions, because they follow from the pieces directly and are marked for t
   re-asked.
 - 3, the FRAM owner seed: "The FRAM idea of yours is good, keep it!" It stays (owner, 2026-10-28); M12 is withdrawn,
   and the layout-shift fix stays on the list of real gaps.
+
+## 8. How the cleanup treats findings and decisions (owner, 2026-10-28)
+
+"now note as background: a verified finding or a taken decision stand for their own and are worth keeping at least
+documented. When cleaning the firmware and the buildgen, some of them may become obsolete, e.g. when removing cascades
+and issues these cascades themselves introduced and are overkill or runaway. They have no more direct meaning to the
+project anymore, but still are worth to know about in general. Others, which stay in scope, stay valid and effective
+as they are, but ideally are resolvable with way more minimal code. Rare but real conditions which drop out through
+the cleanup no longer matter. Rare but real conditions staying in scope still shall be addressed - no regressions, but
+more efficiency."
+
+Read by the lead as three rules:
+- **Everything is kept documented.** Every verified finding and every decision the owner took stands for its own and
+  stays in the records, whatever the cleanup does to the code.
+- **Obsolete with what it was about.** A finding or decision tied to a cascade or runaway mechanism the cleanup
+  removes, including the issues such a mechanism itself introduced, loses its direct meaning for the project. It stays
+  documented as general knowledge. A rare but real condition that drops out with the cleanup no longer matters.
+- **In scope: valid and effective, in far less code.** A finding or decision that stays in scope keeps its full effect,
+  ideally in much more minimal code. A rare but real condition that stays in scope is still addressed: no regression,
+  more efficiency.

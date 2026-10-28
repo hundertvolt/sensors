@@ -93,3 +93,6 @@ started and their exits. Logs, if any, in `S/u24/lane<L>/`; only logs that prove
   file (`S/u35r/recovered/owner_rulings_after_LN118.md`) and the review answers; a question goes to the owner only if
   the record leaves it open (owner, 2026-10-28: "We thoroughly discussed the WiFi issues and I decided everything
   already.").
+- The cleanup keeps every verified finding and every owner decision documented. One tied to a removed cascade or
+  runaway mechanism becomes obsolete with it, and a rare condition dropping out with it no longer matters; one in scope
+  stays in effect in far less code, with no regression (owner, 2026-10-28; `S/u35r/picture/PICTURE.md` section 8).

@@ -141,3 +141,15 @@ BACKLOG.md entry of upstream findings to report later as one bundle, if at all):
   stays (owner, 2026-10-28).
 - (2026-10-28 09:03 UTC) "document and push". Applied as the fifteenth preliminary snapshot: `scan/PICTURE.md` and the
   answers recorded in `scan/REPORT.md`.
+- (2026-10-28 09:07 UTC, background for the cleanup) "now note as background: a verified finding or a taken decision
+  stand for their own and are worth keeping at least documented. When cleaning the firmware and the buildgen, some of
+  them may become obsolete, e.g. when removing cascades and issues these cascades themselves introduced and are
+  overkill or runaway. They have no more direct meaning to the project anymore, but still are worth to know about in
+  general. Others, which stay in scope, stay valid and effective as they are, but ideally are resolvable with way more
+  minimal code. Rare but real conditions which drop out through the cleanup no longer matter. Rare but real conditions
+  staying in scope still shall be addressed - no regressions, but more efficiency." Recorded as PICTURE.md section 8.
+- (2026-10-28 09:10 UTC, go-ahead for a second, read-only pass) "Now with all that background and a sharpened vision,
+  go through the changes since the audit start again and check if you found all such runaways, cascades, overkill
+  places; there might be more hidden or overlaid / higher dimensional occurrences you did not see yet. And if you
+  would remove those you already know, there might be side effects which make more overkill visible. Nevertheless,
+  real features, real findings inside the minimal code, rare but real cases all keep effective."

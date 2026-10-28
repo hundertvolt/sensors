@@ -45,3 +45,17 @@ its three questions, and asked for it to be pushed ("document and push"). `scan/
 lines the owner's decisions draw, where the audit's results do not fit them, and the answers (the review page's "ok"
 ticks stand; the Wi-Fi behaviour stands as decided; the FRAM per-owner seed stays). `scan/REPORT.md` records the same
 answers in its sections 1, 3 and 6, with two website items corrected as the owner's own requests.
+
+## Sixteenth snapshot (2026-10-28): `scan/scan2/`
+
+The owner gave the cleanup's ground rules ("a verified finding or a taken decision stand for their own and are worth
+keeping at least documented. ... Rare but real conditions staying in scope still shall be addressed - no regressions,
+but more efficiency."; `scan/PICTURE.md` section 8), asked for a second pass over everything changed since the audit
+started ("there might be more hidden or overlaid / higher dimensional occurrences you did not see yet"), and asked for
+it to be pushed ("First, commit and push."). `scan/scan2/` holds it: `SCAN2.md`, the consolidated report (the
+patterns, the finds, the removal closure, the keep list, the corrections and the resolved disagreements); its five
+parts (`G1.md` core, storage, drivers and LED; `G2.md` network and UART; `G3.md` buildgen, generated code and the
+website; `G4.md` the cross-module families and the closure; `G4b.md` the crosswalk of the four); the closure data
+(`G4_closure.tsv`, `G4b_closure.tsv`); and the function census (`funcs.tsv`, `families.tsv`, made by
+`tools/census.py` from `git archive` of the two commits, which are not copied). Nothing ran in the pass.
+`scan/PICTURE.md` gains section 8 and withdraws M13; `scan/REPORT.md` records the owner's answers and the corrections.
