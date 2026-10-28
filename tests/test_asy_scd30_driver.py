@@ -1499,7 +1499,7 @@ def test_a_put_takes_each_declared_field_inside_its_domain_and_refuses_it_outsid
     assert sorted(cm.schema_names(reader.get_cfg_schema()) + ["ContMeas"]) == sorted(field[0] for field in fields)
     frc = ["FRCNoise", "FRCRate", "FRCWindow"]
     wrong: list[str] = []  # every case that answered against its declared domain, so one failure names them all
-    with FastAsyncSleep():  # each accepted chip write's settle wait is recorded, not slept
+    with FastAsyncSleep():  # the settle wait after each chip write is recorded, not slept
         for field in fields:
             name = field[0]
             for label, value, inside in domain_cases(field):
