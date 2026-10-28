@@ -99,7 +99,7 @@ class UARTLinkDriver:
         self._transfers = 0
         self._failures = 0
 
-    def _get_callback(self, cmd_id: int) -> tuple[bool, bytes | bytearray | None]:
+    def _get_callback(self, cmd_id: int) -> "tuple[bool, bytes | bytearray | PieceBuffer | None]":
         # Answers a GET across the jumper. Returns (valid, payload); withholding validity is how
         # the responder signals "no such command", which the peer sees as a withheld answer.
         if cmd_id == _CMD_BANNER:
@@ -108,10 +108,8 @@ class UARTLinkDriver:
             stored = self._last_echo
             if stored is None:
                 return True, b""
-            # The stored echo is a PieceBuffer (no buffer protocol): one copy-out, bounded by the receive cap,
-            # answers the GET.
-            echo = bytearray(len(stored))
-            return stored.copy_into(echo), echo
+            # The stored echo is a PieceBuffer, answered from its pieces: no copy-out, no peer-sized allocation (J.8).
+            return True, stored
         return False, None
 
     def _set_callback(self, cmd_id: int) -> tuple[bool, int | None]:
@@ -129,9 +127,9 @@ class UARTLinkDriver:
         return [wrote, crossed, attempts, recovered]
 
     async def _exercise_loop(self) -> None:
-        # Drives one real GET across the jumper per period, so the link carries traffic on a live system instead of only
-        # under a device script. Never raises out (uart_get() answers None); ends, like the responder's listen loop, when
-        # setup() failed: the supervisor's restart escalation is the path to a reboot for a link that cannot come up (C.7.2).
+        # Drives one real GET across the jumper per period: link traffic on a live system, not only under a device script.
+        # A failed transfer never raises out (uart_get() answers None, a failed piece allocation included); ends, like the
+        # listen loop, when setup() failed: the supervisor's restart escalation reboots a link that cannot come up (C.7.2).
         while self.initialized:
             if self._hazard_pending:
                 await self._run_hazards()  # one bounded run in place of a round, then the echo resumes at once

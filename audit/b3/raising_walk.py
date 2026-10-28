@@ -239,7 +239,7 @@ def main():
     if e51_new != e51_old:
         e51.write_text(e51_new, encoding="utf-8")
     print(len(rows), "sites;", len(lines), "groups;", dict(counts))
-    for key in (("asy_base_classes.py", 504), ("asy_base_classes.py", 685), ("asy_fram_manager.py", 828)):
+    for key in (("asy_base_classes.py", 519), ("asy_base_classes.py", 700), ("asy_fram_manager.py", 828)):
         r = by_line.get(key)
         print(key, r and (r["broad"], r["caught"]))
 

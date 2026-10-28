@@ -63,6 +63,8 @@ _TWIN_DURATION_S = 15  # the bound: the run ends on its stop file once the smoke
 # reasoning, confirmed directly by reading that route's implementation).
 _STUB_FROZEN_HTML = '"""Test-only stub - digital_twin/machine.py has no static content of its own; this suite never requests \'/\'."""\n'
 _STOP_SEEN = "stop file seen, ending the run"  # digital_twin/run_generic_integration.py's _serve_until()
+_UART_CLOCK_FLAG = "--test-uart-driven-clock"
+_UART_CLOCK_LINE = re.compile(r"^UART_CLOCK driven modules=[1-9]", re.MULTILINE)  # _test_uart_driven_clock()'s, once lent
 # @tunable l0.generated_boot_link_poll_gap_s = 3.0
 _LINK_POLL_GAP_S = 3.0  # between the two link-counter reads: a few exercise rounds at the link's own pace
 # @tunable l0.generated_boot_reset_wait_s = 120.0
@@ -286,6 +288,8 @@ def _run_twin(cmd: list[str], cwd: Path, env: dict[str, str], session: "Callable
             failures.append("the twin's output never reached end of file after its exit - the output below is incomplete")
         output = "".join(lines)
         failures.extend(_twin_output_failures(proc.returncode, output))
+        if _UART_CLOCK_FLAG in cmd and not _UART_CLOCK_LINE.search(output):
+            failures.append("the runner never lent the UART link its driven clock: no UART_CLOCK line in its output")
     return failures, output
 
 
@@ -408,11 +412,15 @@ def _twin_launch(micropython_bin: Path, generated: "GeneratedDevice", tmp_path: 
         (tmp_path / f"{module_name}.py").write_text(generated.module_source, encoding="utf-8")
         (tmp_path / "frozen_html.py").write_text(_STUB_FROZEN_HTML, encoding="utf-8")
     wiring_plan_path = tmp_path / "wiring_plan.json"
-    wiring_plan_path.write_text(json.dumps(compute_twin_wiring(generated.model)), encoding="utf-8")
+    plan = compute_twin_wiring(generated.model)
+    wiring_plan_path.write_text(json.dumps(plan), encoding="utf-8")
     (tmp_path / "config").mkdir(exist_ok=True)
     env = dict(os.environ)
     env["MICROPYPATH"] = _twin_micropypath(root, image=image)
     env["TZ"] = "UTC"
+    # A UART pair's link on the runner's driven clock: a twin scheduler round costs about 1 ms, so a reply deadline on
+    # the host's clock would judge the host's load, not the link (SPECIFICATION.md J.7; agent, 2026-10-27).
+    clock = [_UART_CLOCK_FLAG] if plan.get("uart") is not None else []
     cmd = [
         str(micropython_bin),
         "digital_twin/run_generic_integration.py",
@@ -423,6 +431,7 @@ def _twin_launch(micropython_bin: Path, generated: "GeneratedDevice", tmp_path: 
         "--port", str(port),
         "--fram-state-path", "", "--scd30-state-path", "", "--mem-backup-state-path", mem_backup,
         "--config-dir", f"{tmp_path / 'config'}/",
+        *clock,
         *args,
     ]
     return cmd, env
@@ -566,7 +575,8 @@ def test_the_uart_link_device_boots_and_exercises_its_link_with_crc16_on_both_en
     repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path,
 ) -> None:
     # Its TOML with crc = "crc16" on both ends, generated and booted like the shipped devices: the link's transfers rise
-    # across two reads a few seconds apart and none fails, so both ends speak the same CRC framing.
+    # across two reads a few seconds apart and none fails, so both ends speak the same CRC framing. On the driven clock
+    # (_twin_launch()): a CRC16 frame and its ACK take about 220 twin rounds, which a loaded host stretches past 1 s.
     device = _uart_link_device()
     text = device_toml_path(device).read_text(encoding="utf-8")
     derived = tmp_path / f"{device}.toml"

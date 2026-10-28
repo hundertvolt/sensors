@@ -4,8 +4,8 @@ method awaits, so no lock), elapsed seconds (TickSeconds) and the UTC timestamp.
 
 The sensor-driver base (SensorReader, SensorReaderConfig) with error bookkeeping and optional JSON config storage.
 
-Every method returns a well-defined value, never raises; PieceBuffer's construction alone may raise, its caller's checks
-bounding size and piece_bytes.
+Every method returns a well-defined value, never raises; PieceBuffer's construction alone may raise MemoryError, after
+its caller's checks bounded size and piece_bytes, and each caller catches it into its own failure result.
 """
 # __init__ never calls self.pr.setup() (sync vs. async): setup() does it first (SensorReader), then the
 # store's (SensorReaderConfig) - both inside the one-time boot batch, never lazily in a task (Part A.7).
@@ -177,7 +177,7 @@ class PieceBuffer:
     def __init__(self, size: int, piece_bytes: int) -> None:
         self._size = size
         self._piece_bytes = piece_bytes
-        # Every piece allocated here, after the caller's cap admitted size; a MemoryError is not caught.
+        # Every piece allocated here, after the caller's cap admitted size; a MemoryError goes to the caller, which catches it.
         self._pieces = [bytearray(min(piece_bytes, size - start)) for start in range(0, size, piece_bytes)]
 
     def __len__(self) -> int:
@@ -200,6 +200,21 @@ class PieceBuffer:
 
     def pieces(self) -> "Iterator[bytearray]":
         return iter(self._pieces)
+
+    def read_at(self, offset: int, dest: bytearray | memoryview) -> bool:
+        # write_at()'s mirror: exactly len(dest) bytes from offset into dest; out of range copies nothing.
+        if offset < 0 or offset + len(dest) > self._size:
+            return False
+        index, at = divmod(offset, self._piece_bytes)
+        done = 0
+        while done < len(dest):
+            piece = self._pieces[index]
+            n = min(len(piece) - at, len(dest) - done)
+            dest[done : done + n] = memoryview(piece)[at : at + n]
+            done += n
+            index += 1
+            at = 0
+        return True
 
     def trim(self, length: int) -> bool:
         # A short train's length: trailing pieces dropped and the last one shortened in place, nothing allocated.

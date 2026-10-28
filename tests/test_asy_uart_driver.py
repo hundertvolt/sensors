@@ -1321,6 +1321,36 @@ def test_a_line_split_across_the_ring_end_reads_whole() -> None:
     assert fake(uart).rx_api_calls == 0
 
 
+class _UnbuildablePieceBuffer(asy_base_classes.PieceBuffer):
+    # Rebound as the module's PieceBuffer: built as on a heap with no room left for one piece.
+    def __init__(self, size: int, piece_bytes: int) -> None:
+        raise MemoryError("simulated allocation failure")
+
+
+def test_a_refused_line_piece_answers_none_prints_its_text_and_consumes_nothing() -> None:
+    # The line's pieces are built before its first byte is read: a heap too short for them answers None with the caught
+    # text through console(), as readline()'s own buffer does, and the line stays in the ring for the next read.
+    uart = _make_uart()
+    fake(uart).feed_rx(b"line\n")
+
+    async def scenario() -> "tuple[PieceBuffer | None, int, PieceBuffer | None]":
+        async with uart:
+            asy_uart_driver.PieceBuffer = _UnbuildablePieceBuffer  # type: ignore[misc]
+            try:
+                refused = await read_line(uart)
+            finally:
+                asy_uart_driver.PieceBuffer = asy_base_classes.PieceBuffer  # type: ignore[misc]
+            return refused, uart.discarded_bytes, await read_line(uart)
+
+    with record_prints() as rec:
+        refused, discarded, line = run(scenario(), _RUN_BOUND_S)
+    assert refused is None
+    assert discarded == 0
+    assert line_bytes(line) == b"line\n"
+    assert [entry[:2] for entry in rec.lines] == [("UART", "line pieces allocation failed:")], rec.lines
+    assert str(rec.lines[0][2]) == "simulated allocation failure"
+
+
 def test_a_line_over_the_cap_is_discarded_and_logged_once() -> None:
     # Read to its end round by round, its pieces dropped, counted and logged once; the next line is intact.
     uart = _make_uart()

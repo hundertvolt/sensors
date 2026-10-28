@@ -182,6 +182,25 @@ def test_settle_waits_out_the_wire_time_in_a_bounded_number_of_steps() -> None:
     assert steps[0] <= 3, steps
 
 
+def test_settle_still_delivers_when_its_deadline_passes_before_its_first_check() -> None:
+    # A stall between settle()'s first advance and its deadline check (a loaded host) leaves no byte in flight.
+    a, _b, link = _make_link(baudrate=9600)
+    advance = link._advance
+    calls = [0]
+
+    def stalled() -> None:
+        advance()
+        calls[0] += 1
+        if calls[0] == 1:
+            time.sleep_ms(8 * 10 * 1000 // 9600 + 2)  # past the last byte's due time
+
+    a.write(bytes(8))
+    link._advance = stalled  # type: ignore[method-assign]
+    link.settle()
+    assert not link.a_to_b.in_flight
+    assert link.a_to_b.delivered == 8
+
+
 def test_a_real_poll_over_a_uart_is_counted_and_fails_the_test() -> None:
     # A real select.poll() over a fake is CLAUDE.md's CI hang: the after-each check fails the test that made one.
     _a, b, _link = _make_link()

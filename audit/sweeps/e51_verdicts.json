@@ -128,13 +128,19 @@
  "src/asy_uart_comm.py::UARTComm._min_rx_ring::`bus is None` true::return 0": {
   "action": "comment in place owed (src, the next block): 'Unreachable: ... - kept to narrow the Optional for the type checker'",
   "class": "c",
-  "proof": "_min_rx_ring() is called only from _validate_receive(self._uart), after setup's `self._uart is None` refusal (:927)",
+  "proof": "_min_rx_ring() is called only from _validate_receive(self._uart), after setup's `self._uart is None` refusal (:941)",
   "verdict": "kept: type narrowing; its comment is owed"
+ },
+ "src/asy_uart_comm.py::UARTComm._send_train::`region is None or not pieces.read_at(sent, region[0:size])` true::await self._fault(device, _ERR_ALLOC, \"no TX data region\")": {
+  "action": "none (comment in place)",
+  "class": "c",
+  "proof": "a missing TX buffer refuses construction (_buffers_ready()), so no answer is ever sent without one; read_at() cannot refuse, sent + size never passing total, the PieceBuffer's own length",
+  "verdict": "kept: type narrowing, stated in place (agent, 2026-10-27)"
  },
  "src/asy_uart_comm.py::UARTComm._take_discarded::`bus is None` true::return 0": {
   "action": "comment in place owed (src, the next block)",
   "class": "c",
-  "proof": "_take_discarded() runs only inside _resync() during a transaction, and no transaction runs without the bus setup refused at :927",
+  "proof": "_take_discarded() runs only inside _resync() during a transaction, and no transaction runs without the bus setup refused at :941",
   "verdict": "kept: type narrowing; its comment is owed"
  },
  "src/asy_uart_comm.py::UARTComm._write_frame_with_ack::`buf is None` true::await self._err(_ERR_ALLOC, \"no TX buffer\")": {
@@ -179,12 +185,6 @@
   "proof": "with CRCBase.add_into() the size guard above leaves no None case",
   "verdict": "kept: type narrowing, stated in place"
  },
- "src/asy_uart_link_driver.py::UARTLinkDriver._get_callback::`stored is None` true::return True, b\"\"": {
-  "action": "tests/test_asy_uart_link_driver.py::test_an_echo_get_before_any_echo_set_answers_valid_and_empty (agent, 2026-10-27)",
-  "class": "a",
-  "proof": "reached when the peer GETs the echo command before any echo SET",
-  "verdict": "covered: direct test"
- },
  "src/asy_uart_link_driver.py::UARTLinkDriver._read_raw::`bus is None` true::return None": {
   "action": "none (comment in place)",
   "class": "c",
@@ -194,19 +194,13 @@
  "src/asy_uart_link_driver.py::UARTLinkDriver._run_hazards::`bus is None` true::return": {
   "action": "comment in place owed (src, the next block)",
   "class": "c",
-  "proof": "_run_hazards() runs only from _exercise_loop() while initialized, and setup() refuses a None bus (asy_uart_comm.py:927)",
+  "proof": "_run_hazards() runs only from _exercise_loop() while initialized, and setup() refuses a None bus (asy_uart_comm.py:941)",
   "verdict": "kept: type narrowing; its comment is owed"
- },
- "src/asy_uart_link_driver.py::UARTLinkDriver._two_initiations::the `finally` body runs::for task in (first, second):": {
-  "action": "tests/test_asy_uart_link_driver.py::test_a_double_initiation_cancelled_at_its_first_await_leaves_no_transaction_behind (agent, 2026-10-27)",
-  "class": "a",
-  "proof": "reached when the double initiation is cancelled while the first initiation awaits (a supervisor restart mid-run)",
-  "verdict": "covered: direct test"
  },
  "src/asy_uart_link_driver.py::UARTLinkDriver._write_raw::`bus is None` true::return False": {
   "action": "none (comment in place)",
   "class": "c",
-  "proof": "as :166",
+  "proof": "as :164",
   "verdict": "kept: type narrowing, stated in place (\"as _read_raw()\")"
  },
  "src/asy_webserver_service.py::WebserverService._run_system_cmd::`self._system_cmd is None` true::return INVALID": {

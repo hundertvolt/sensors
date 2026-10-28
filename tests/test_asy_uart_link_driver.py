@@ -32,7 +32,7 @@ import asy_uart_comm
 import asy_uart_driver
 import asy_uart_link_driver
 import asy_webserver_service
-from asy_base_classes import COUNTER_CAP, RegionBuffer
+from asy_base_classes import COUNTER_CAP, PieceBuffer, RegionBuffer
 from asy_config_manager import FAILED, INVALID, VALID
 from asy_crc_checks import CRC16
 from asy_print_log import LogConfig, PrintLogHistory, PrintLogHistoryStore, make_logger
@@ -52,7 +52,7 @@ if TYPE_CHECKING:
 
     from _uart_comm_hazard_common import CrcMaker
 
-    from asy_base_classes import JsonDict, PieceBuffer
+    from asy_base_classes import JsonDict
     from asy_crc_checks import CRCBase
 
     T = TypeVar("T")
@@ -439,6 +439,30 @@ def _check_echo_round_trip_across_a_real_responder_via_set_and_get_callbacks(crc
                 pass
 
     run(go(), RUN_LIMIT_S)
+
+
+def test_the_echo_answers_a_get_from_its_stored_pieces_without_a_copy() -> None:
+    # Structural, never by filling the heap: a stored echo at the receive cap is answered as its own pieces, so the
+    # callback allocates no bytearray and nothing a GET costs is peer-sized (J.8).
+    pair = run(build_pair(), RUN_LIMIT_S)
+    comm = pair.responder._comm
+    stored = PieceBuffer(comm._max_transfer_bytes, comm._chunk_bytes)
+    pair.responder._message_callback(0x02, CMD_SET, stored)
+    sizes: list[int] = []
+
+    def recording(*args: object) -> bytearray:
+        made = bytearray(*args)
+        sizes.append(len(made))
+        return made
+
+    asy_uart_link_driver.bytearray = recording  # type: ignore[attr-defined]
+    try:
+        valid, payload = pair.responder._get_callback(0x02)
+    finally:
+        del asy_uart_link_driver.bytearray  # type: ignore[attr-defined]
+    assert sizes == [], sizes
+    assert valid is True
+    assert payload is stored
 
 
 def _check_exercise_loop_counts_a_failure_when_nothing_answers(crc: "CrcMaker") -> None:
