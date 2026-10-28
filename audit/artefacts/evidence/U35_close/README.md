@@ -59,3 +59,18 @@ website; `G4.md` the cross-module families and the closure; `G4b.md` the crosswa
 (`G4_closure.tsv`, `G4b_closure.tsv`); and the function census (`funcs.tsv`, `families.tsv`, made by
 `tools/census.py` from `git archive` of the two commits, which are not copied). Nothing ran in the pass.
 `scan/PICTURE.md` gains section 8 and withdraws M13; `scan/REPORT.md` records the owner's answers and the corrections.
+
+## Seventeenth snapshot (2026-10-28): `scan/decrev/`
+
+The owner asked for the decisions the agents took on the owner's behalf to be re-checked against the refined picture
+("revisit the decisions you took on my behalf, and check if you would answer differently with the new knowledge. Only
+check, and see them in a global context, also not contradicting each other, and document your findings.") and then
+for the result to be pushed ("push the findings"). `scan/decrev/` holds it: `DECREV.md`, the consolidated report (the
+verdict per decision, the different answers by kind, where what was built differs from the owner's words, agent text
+credited to the owner, the different answers as one set, the corrections and the checks still owed); its eight parts
+(`DR1.md` the review page; `DR2.md`-`DR6.md` the register's owner-review rows by unit range, `DR6.md` also the parked
+changes and the redo's lead decisions; `DR7.md` SPECIFICATION.md Part N; `DR8.md` agent-tagged text elsewhere); the
+crosswalk `DRX.md`; and `inputs/owner_words_lane_plan.md`, the owner's words that had been recorded only in the lead's
+lane plan (the other inputs are copies of repo files and are not copied). `redo/recovered/` gains those words and the
+morning of 2026-10-28; `redo/CHECKLIST.md` gains the rule that every owner word is recorded as it is given. Nothing
+ran in the check.

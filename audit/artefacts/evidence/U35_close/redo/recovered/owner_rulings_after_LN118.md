@@ -153,3 +153,58 @@ BACKLOG.md entry of upstream findings to report later as one bundle, if at all):
   places; there might be more hidden or overlaid / higher dimensional occurrences you did not see yet. And if you
   would remove those you already know, there might be side effects which make more overkill visible. Nevertheless,
   real features, real findings inside the minimal code, rare but real cases all keep effective."
+- (2026-10-28 11:15 UTC, push, then a read-only check of the agents' decisions) "First, commit and push. Then, with
+  the updated big picture about the project and its shape, revisit the decisions you took on my behalf, and check if
+  you would answer differently with the new knowledge. Only check, and see them in a global context, also not
+  contradicting each other, and document your findings." Pushed as snapshot 16 (11b66cd8); the check is
+  S/u35r/decrev/.
+
+## Record gap found 2026-10-28 (lead)
+Owner words given during the redo (2026-10-26 to 2026-10-28) and during U35's first run (2026-10-22) were recorded in
+S/u35/lane_plan.md's LEAD NOTES only, not here: among them the CI apt fix ("What about option 3 plus cache? Is there
+something adversarial to using the cache?", then "Yes do it like you proposed", 2026-10-27, LN322), the listener-close
+patch handling (OF-122, 2026-10-26, LN155), OF-107 ("There should be no uncaught exceptions. That's a hard pillar. ...",
+"Event loop fallback: option b is fine.", LN156-166), the UART link module exception (2026-10-22), "Test duration is to
+be fixed by efficiency, not by cutting strictness" (LN307). The complete extract, with each quote's LEAD NOTE and
+context, is S/u35r/decrev/inputs/owner_words_lane_plan.md (56 entries; some are the lead's own questions, marked by
+their context). From now on every owner word is appended here as it is given.
+
+### The morning of 2026-10-28, added from LEAD NOTES 357-367 (verbatim, times UTC)
+- 05:30 (LN357, the closing ledger): "I don't actually want to cut back or trade anything, I just want to make sure
+  that you set up the process such that it can finished and is not designed self-sustaining / will never end"
+- 05:58 (LN358, NeoPixel): "The Neopixel issue seems strange to me. Where do the hardcoded 5 minutes come from? And it
+  seems such deep down into Micropython items that I doubt it's real. If it is and a closer look still holds, it's
+  rather a structural issue and not something to patch over like that. Check this first, especially if it is real at
+  all"
+- 06:13 (LN360): "Pause all tasks for now"
+- 06:37 (LN362): "I completely don't understand what lead you to implementing a pattern like that arbitrary 5 minutes
+  check. That's high complexity on a limited device, undesirable as such. At least as far as I understand, it patches a
+  rather hypothetical issue instead of cleanly and minimally implementing something clean. And anyhow, hardcoded delay
+  checks like this are a very bad, very awkward pattern. Multiple issues we have in our pillars to strictly avoid.
+  Looking at the immense effort you put into certain activities, including trying to debug the Micropython
+  sources,which could not be more out of our scope , I wonder if the whole audit drifted into a wrong direction." and,
+  on the lead's drift assessment: "Your findings and suggestions at least address my largest concerns, so you found
+  that by your own. And I agree with wour conclusions about scope and effort. The verification machinery never was the
+  goal of "perfection". The firmware shall be the main target, the buildgen as well. The unit tests shall have good
+  quality, but don't need deep dives. The audit verification machinery is just a temporary tool. So we will have to
+  find a distinction where to put the effort."
+- 06:43 (LN363): "One of my biggest concerns is that much complexity was added to the firmware. Patching things was
+  never an option, clean and minimal code always was the target. And building upon hypothetical findings is a clear
+  no-go, especially if it leads to cascading effects like the one we stumbled upon."
+- 06:59 (LN364): "Just to clarify what my expectations for the audit were from the very beginning: - A deep analysis
+  of the big picture - Consolidation over the whole project - Agreed on new features being added - Docs to be
+  consolidated - Repo cleanup - firmware quality already was high. So I expected some details changed due to findings,
+  but in the dimension of a few lines per module, very minimal and clever. Not missing anything, but being smart and
+  lean. Surely not by patching multiple loops over another. - The audit exceeded my expected time budget by a factor of
+  4 and token usage by a factor of 15 and is not even done yet"
+- 07:02 (LN365): "Stop, I didn't give ANY go ahead yet"
+- 07:34 (LN366): "Just to clarify. Firmware state at the beginning was already quite solid. We gained substantial
+  knowledge ever since. The mistake was how that went into the project. My expectation is that no real, verified gap is
+  re-introduced. But the way it flows into the firmware and buildgen is *really* minimal change." and "Now start a full
+  scan what you find and report back to me once you finish."
+- 07:37 (LN367): "While,you scan, check for violations of our project scheme and pillars, much of the excessive
+  additions do violate them"
+
+## 2026-10-28: after the decision review
+- (2026-10-28 12:55 UTC, push of the decision review) "push the findings" Pushed as snapshot 17 (on 11b66cd8); the
+  evidence folder's `scan/decrev/`.
