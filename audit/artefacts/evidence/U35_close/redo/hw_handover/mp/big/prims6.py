@@ -21,13 +21,18 @@ async def lag():
     while True:
         t = time.ticks_ms(); await asyncio.sleep_ms(10); d = time.ticks_diff(time.ticks_ms(), t) - 10
         lagw[0] = max(lagw[0], d); mb1[1] = max(mb1[1], d)
-async def echo(s):
+errs = {}
+async def echo(s):  # yields after every packet, so only the system below Python can starve the loop
     p = select.poll(); p.register(s, select.POLLIN)
     while True:
-        if p.poll(0):
+        ev = p.poll(0)
+        if ev:
+            k = "ev%d" % ev[0][1]; errs[k] = errs.get(k, 0) + 1
             try:
                 data, addr = s.recvfrom(512); rx[0] += 1; s.sendto(data, addr)
-            except OSError: pass
+            except OSError as e:
+                k = "err%s" % e.args[0]; errs[k] = errs.get(k, 0) + 1
+            await asyncio.sleep_ms(0)
             continue
         await asyncio.sleep_ms(2)
 def step(n, name, fn):
@@ -46,7 +51,7 @@ async def main():
     await asyncio.sleep(1)
     print("FLOOD_START IP=%s" % wlan.ifconfig()[0])
     for sec in range(30):
-        lagw[0] = 0; await asyncio.sleep(1); print("SUM prims6 t", sec, "lag_max_ms", lagw[0], "udp_rx", rx[0], "at_ms", now())
+        lagw[0] = 0; await asyncio.sleep(1); print("SUM prims6 t", sec, "lag_max_ms", lagw[0], "udp_rx", rx[0], "at_ms", now(), sorted(errs.items()))
     print("SUM prims6 isconnected", wlan.isconnected(), "status", wlan.status(), "rssi", wlan.status("rssi"))
     step(11, "close echo socket", s.close)
     step(12, "new udp socket", lambda: socket.socket(socket.AF_INET, socket.SOCK_DGRAM).close())
