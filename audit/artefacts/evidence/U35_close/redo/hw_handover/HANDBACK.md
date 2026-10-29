@@ -1502,6 +1502,19 @@ D01_heater_off_acked=yes
 DONE=1
 Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
 rc=0 15:16:15
+### isl29125_real_irq_edge 15:16:24
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.65ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FACT config1_restart={"before": [8, 11, 2], "immediately": [8, 11, 2], "after_one_cycle": [202, 286, 48], "restarted": true}
+FACT persist_unit={"fired_ms": 1102, "rgb_cycles_ms": 1212, "channel_integrations_ms": 404, "unit": "rgb_cycles"}
+FACT died=[]
+FACT trigger_s=30
+FACT fast_path_ms=2726
+FACT deadline_ms=6000
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 15:16:35
 ```
 
 ### i2c_rerun_20261029
