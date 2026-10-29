@@ -1395,6 +1395,70 @@ FACT errno=12
 DONE
 Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
 rc=0 15:15:21
+### unretrieved_task_exception_handler 15:15:28
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FACT gc_threshold=[-1, 32768]
+FACT installed=true
+FACT bounds={"deaths": 1000, "large_local": 2048, "drift_bytes": 512}
+SYSTEM Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "<stdin>", line 266, in _raised
+ValueError: probe
+SYSTEM Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "<stdin>", line 266, in _raised
+ValueError: probe
+SYSTEM Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "<stdin>", line 266, in _raised
+_ExhaustionError: simulated allocation failure
+SYSTEM Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "<stdin>", line 266, in _raised
+_ExhaustionError: simulated allocation failure
+SYSTEM Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "<stdin>", line 266, in _raised
+ValueError: probe
+Task exception wasn't retrieved
+future: <Task> coro= <generator object '_dies' at 20013ea0>
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "<stdin>", line 176, in _dies
+ValueError: ('probe', 2048)
+FACT stage_0={"drift": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "settled": true, "baseline_alloc": 71488, "hammer_ms": 1014, "default_handler_kept": 2480, "free_after": 116368, "free_before": 116416, "reports": [{"us": 83, "case": "raised", "level": 0, "cleared": true, "alloc_delta": 0}, {"us": 72, "case": "locked_heap", "level": 0, "cleared": true, "alloc_delta": 0}, {"us": 517, "case": "raised", "level": 1, "cleared": true, "alloc_delta": 0}, {"us": 534, "case": "exhaustion_subclass", "level": 1, "cleared": true, "alloc_delta": 0}], "gc_threshold": -1, "context_held": false, "console_allocates": false}
+SYSTEM Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "<stdin>", line 266, in _raised
+ValueError: probe
+SYSTEM Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "<stdin>", line 266, in _raised
+ValueError: probe
+SYSTEM Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "<stdin>", line 266, in _raised
+_ExhaustionError: simulated allocation failure
+SYSTEM Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "<stdin>", line 266, in _raised
+_ExhaustionError: simulated allocation failure
+SYSTEM Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "<stdin>", line 266, in _raised
+ValueError: probe
+Task exception wasn't retrieved
+future: <Task> coro= <generator object '_dies' at 20013ea0>
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "<stdin>", line 176, in _dies
+ValueError: ('probe', 2048)
+FACT stage_1={"drift": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "settled": true, "baseline_alloc": 71488, "hammer_ms": 1301, "default_handler_kept": 2480, "free_after": 116368, "free_before": 116416, "reports": [{"us": 84, "case": "raised", "level": 0, "cleared": true, "alloc_delta": 0}, {"us": 75, "case": "locked_heap", "level": 0, "cleared": true, "alloc_delta": 0}, {"us": 499, "case": "raised", "level": 1, "cleared": true, "alloc_delta": 0}, {"us": 537, "case": "exhaustion_subclass", "level": 1, "cleared": true, "alloc_delta": 0}], "gc_threshold": 32768, "context_held": false, "console_allocates": false}
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 15:15:36
 ```
 
 ### i2c_rerun_20261029
