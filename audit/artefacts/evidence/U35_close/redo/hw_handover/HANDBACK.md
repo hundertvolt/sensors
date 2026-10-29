@@ -147,6 +147,12 @@ idle_poll host_phase answered=69
 idle_poll_host after_silence n=25 lost=0 min_ms=30.4 median_ms=131.2 p90_ms=167.0 max_ms=206.0
 idle_poll_host busy_10ms_gap n=40 lost=0 min_ms=87.6 median_ms=90.8 p90_ms=91.7 max_ms=94.7
 idle_poll_host burst_of_5 answered=4 reply_ms=[105.3, 105.4, 105.6, 105.6]
+dev18 raw4=40000000
+dev18 reg06=6000
+dev18 reg07=60f1
+dev18 reg0f=60
+deinit i2c0 then scan=['0x18', '0x77'] (a list means deinit was a no-op)
+deinit spi0 then rdid=047f4803 (an answer means deinit was a no-op)
 json_floats n=18 not_round_tripping=0 examples=[]
 float_repr 0.1=0.1 1013.25=1013.25 21.37=21.37 12345.678=12345.678
 heap free=181584 alloc=6320
@@ -1987,6 +1993,23 @@ SUM L uart dir=0to1 threshold=32768 bytes_ok=3631744 mismatches=0 max_backlog=84
 SUM L uart dir=1to0 threshold=32768 bytes_ok=3631744 mismatches=0 max_backlog=83 worst_reader_gap_us=12611
 DONE=1
 rc=0 12:23:25
+```
+
+### misc_raw_20261029
+
+```
+== misc_raw 13:39:43
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM dev18 raw4=40000000
+SUM dev18 reg06=6000
+SUM dev18 reg07=60f1
+SUM dev18 reg0f=60
+SUM deinit i2c0 then scan=['0x18', '0x77'] (a list means deinit was a no-op)
+SUM deinit spi0 then rdid=047f4803 (an answer means deinit was a no-op)
+DONE=1
+rc=0 13:39:44
 ```
 
 ### quick_20261029
