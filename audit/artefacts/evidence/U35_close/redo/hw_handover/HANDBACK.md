@@ -1534,6 +1534,18 @@ FACT bounds={"bit_depth_rel_max": 0.5, "periodic_only": 32, "min_span_ratio": 10
 DONE
 Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
 rc=0 15:18:40
+### wifi_country_code_reaction 15:18:48
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FACT country_before="XX"
+FACT value_0={"radio_on": true, "value": "ZZ", "readback": "ZZ", "set": true, "scan_count": 8}
+FACT value_1={"radio_on": true, "value": "12", "readback": "12", "set": true, "scan_count": 8}
+FACT value_2={"radio_on": true, "value": "\u0001\u0002", "readback": "\u0001\u0002", "set": true, "scan_count": 7}
+FACT restored="ok"
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 15:18:55
 ```
 
 ### i2c_rerun_20261029
