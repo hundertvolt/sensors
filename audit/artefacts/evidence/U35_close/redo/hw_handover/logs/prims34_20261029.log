@@ -1,0 +1,39 @@
+### prims3 16:58:39
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM prims3 baseline ('ok50', 1277)
+SUM prims3 scl_hold timeout_us 50000 hold_ms 2 result ok50 call_us 3165 after same_object
+SUM prims3 scl_hold timeout_us 50000 hold_ms 20 result ok50 call_us 21125 after same_object
+SUM prims3 scl_hold timeout_us 50000 hold_ms 45 result ok50 call_us 46124 after same_object
+SUM prims3 scl_hold timeout_us 50000 hold_ms 60 result OSError(110) call_us 50938 after same_object
+SUM prims3 scl_hold timeout_us 50000 hold_ms 150 result OSError(110) call_us 50882 after same_object
+SUM prims3 scl_hold timeout_us 50000 hold_ms 400 result OSError(110) call_us 50862 after same_object
+SUM prims3 scl_hold timeout_us 50000 hold_ms 3000 result OSError(110) call_us 50880 after same_object
+SUM prims3 scl_hold timeout_us 200000 hold_ms 2 result ok50 call_us 3132 after same_object
+SUM prims3 scl_hold timeout_us 200000 hold_ms 20 result ok50 call_us 21108 after same_object
+SUM prims3 scl_hold timeout_us 200000 hold_ms 45 result ok50 call_us 46130 after same_object
+SUM prims3 scl_hold timeout_us 200000 hold_ms 60 result ok50 call_us 61125 after same_object
+SUM prims3 scl_hold timeout_us 200000 hold_ms 150 result ok50 call_us 151126 after same_object
+SUM prims3 scl_hold timeout_us 200000 hold_ms 400 result OSError(110) call_us 200859 after same_object
+SUM prims3 scl_hold timeout_us 200000 hold_ms 3000 result OSError(110) call_us 200852 after same_object
+SUM prims3 scl_mid timeout_us 50000 hold_ms 20 result ok50 call_us 21128 after same_object
+SUM prims3 scl_mid timeout_us 50000 hold_ms 100 result OSError(110) call_us 50855 after reconstruct(ok50 first)
+SUM prims3 scl_mid timeout_us 50000 hold_ms 1000 result OSError(110) call_us 50860 after reconstruct(ok50 first)
+SUM prims3 scl_mid timeout_us 200000 hold_ms 20 result ok50 call_us 20999 after same_object
+SUM prims3 scl_mid timeout_us 200000 hold_ms 100 result ok50 call_us 101007 after same_object
+SUM prims3 scl_mid timeout_us 200000 hold_ms 1000 result OSError(110) call_us 200854 after reconstruct(ok50 first)
+SUM prims3 sda_mid timeout_us 50000 result OSError(5) call_us 5850 after same_object
+SUM prims3 sda_mid timeout_us 200000 result OSError(5) call_us 5831 after same_object
+SUM prims3 sda_stuck transfer ('OSError(110)', 50842)
+SUM prims3 sda_stuck scan [24, 119] us 34431
+SUM prims3 sda_stuck clear_while_held status 0 us 329
+SUM prims3 sda_stuck after_release_remux_only ('ok50', 1226)
+SUM prims3 free_bus clear status 0 old_object_pins_still_sio ('OSError(110)', 50760)
+SUM prims3 free_bus remux_only old_object ('ok50', 1181)
+SUM prims3 driver_recover scl_held True sda_held False status,ms,max_lag_ms,status_after_release,xfer (0, 1, 0, 0, ('ok50', 1225))
+SUM prims3 driver_recover scl_held False sda_held True status,ms,max_lag_ms,status_after_release,xfer (0, 0, 0, 0, ('ok50', 1203))
+SUM prims3 driver_recover scl_held False sda_held False status,ms,max_lag_ms,status_after_release,xfer (0, 0, 0, 0, ('ok50', 1202))
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 16:58:55
