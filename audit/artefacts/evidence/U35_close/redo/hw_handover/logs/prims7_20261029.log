@@ -1,0 +1,112 @@
+### prims7 fw bound=True 17:26:13
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FLOOD_START IP=192.168.85.57 PORT=5005
+SUM prims7 fw bound t 0 window_ms 1003 lag_max_ms 2 udp_rx 153 hard_per_s 1000 soft_per_s 99
+SUM prims7 fw bound t 1 window_ms 1001 lag_max_ms 2 udp_rx 348 hard_per_s 1000 soft_per_s 99
+SUM prims7 fw bound t 2 window_ms 1000 lag_max_ms 4 udp_rx 541 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw bound t 3 window_ms 1056 lag_max_ms 442 udp_rx 604 hard_per_s 1000 soft_per_s 52
+SUM prims7 fw bound t 4 window_ms 1056 lag_max_ms 93 udp_rx 632 hard_per_s 1000 soft_per_s 106
+SUM prims7 fw bound t 5 window_ms 1024 lag_max_ms 221 udp_rx 662 hard_per_s 999 soft_per_s 86
+SUM prims7 fw bound t 6 window_ms 1018 lag_max_ms 70 udp_rx 720 hard_per_s 1002 soft_per_s 100
+SUM prims7 fw bound t 7 window_ms 1024 lag_max_ms 561 udp_rx 735 hard_per_s 1000 soft_per_s 52
+SUM prims7 fw bound t 8 window_ms 3061 lag_max_ms 2931 udp_rx 740 hard_per_s 1003 soft_per_s 8
+SUM prims7 fw bound t 9 window_ms 1000 lag_max_ms 1 udp_rx 744 hard_per_s 1000 soft_per_s 100
+SUM prims7 fw bound t 10 window_ms 1000 lag_max_ms 2 udp_rx 744 hard_per_s 1000 soft_per_s 100
+SUM prims7 fw bound t 11 window_ms 1000 lag_max_ms 1 udp_rx 744 hard_per_s 1000 soft_per_s 100
+SUM prims7 fw bound t 12 window_ms 1000 lag_max_ms 1 udp_rx 744 hard_per_s 1000 soft_per_s 100
+SUM prims7 fw bound t 13 window_ms 1001 lag_max_ms 1 udp_rx 745 hard_per_s 999 soft_per_s 99
+SUM prims7 fw bound t 14 window_ms 1000 lag_max_ms 1 udp_rx 750 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw bound t 15 window_ms 1000 lag_max_ms 1 udp_rx 754 hard_per_s 1000 soft_per_s 100
+SUM prims7 fw bound t 16 window_ms 1000 lag_max_ms 2 udp_rx 759 hard_per_s 1001 soft_per_s 101
+SUM prims7 fw bound t 17 window_ms 1000 lag_max_ms 1 udp_rx 764 hard_per_s 1000 soft_per_s 100
+SUM prims7_host storm sent=46161 port=5005; paced rtt answered 20/20 median_ms 6.3 max_ms 8.3
+SUM prims7 fw bound t 18 window_ms 1000 lag_max_ms 1 udp_rx 764 hard_per_s 1000 soft_per_s 100
+SUM prims7 fw bound t 19 window_ms 1000 lag_max_ms 1 udp_rx 764 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw bound t 20 window_ms 1000 lag_max_ms 1 udp_rx 764 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw bound t 21 window_ms 1000 lag_max_ms 1 udp_rx 764 hard_per_s 1000 soft_per_s 100
+SUM prims7 fw bound t 22 window_ms 1000 lag_max_ms 2 udp_rx 764 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw bound t 23 window_ms 1000 lag_max_ms 1 udp_rx 764 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw bound t 24 window_ms 1000 lag_max_ms 0 udp_rx 764 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw bound t 25 window_ms 1001 lag_max_ms 2 udp_rx 764 hard_per_s 1000 soft_per_s 100
+SUM prims7 fw bound t 26 window_ms 1001 lag_max_ms 1 udp_rx 764 hard_per_s 1000 soft_per_s 99
+SUM prims7 fw bound t 27 window_ms 1000 lag_max_ms 1 udp_rx 764 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw isconnected True rssi -39
+DONE
+rc=0 17:26:50
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.59ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM resets after reset_cause 3 wd_reason 0x2 chip_reset 0x100 region0 ['0x8a2a', '0x2fc', '0x7a3e', '0xaac'] region1 ['0x1', '0xb73', '0x0']
+### prims7 fw bound=False 17:26:59
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FLOOD_START IP=0.0.0.0 PORT=5006
+SUM prims7 fw unbound t 0 window_ms 1001 lag_max_ms 1 udp_rx 0 hard_per_s 1000 soft_per_s 99
+SUM prims7 fw unbound t 1 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 2 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 3 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 4 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 5 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 6 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 7 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 101
+SUM prims7 fw unbound t 8 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 9 window_ms 1000 lag_max_ms 0 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 10 window_ms 1000 lag_max_ms 0 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 11 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 12 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 13 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 14 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 15 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 16 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 17 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 101
+SUM prims7 fw unbound t 18 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 19 window_ms 1000 lag_max_ms 0 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 20 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 21 window_ms 1000 lag_max_ms 0 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 22 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 23 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 24 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 25 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 26 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 27 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 101
+SUM prims7 fw isconnected False rssi 0
+DONE
+SUM prims7_host storm sent=308165 port=5006; paced rtt answered 0/20 median_ms None max_ms None
+rc=0 17:27:57
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.68ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM resets after reset_cause 3 wd_reason 0x1 chip_reset 0x100 region0 ['0xafe3', '0x0', '0x7103', '0xb4d'] region1 ['0x1', '0x1', '0x0']
+### prims7 performance bound=True 17:28:06
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+### prims7 fw bound= 17:28:56
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+Traceback (most recent call last):
+  File "<stdin>", line 6
+SyntaxError: invalid syntax
+SUM prims7_host storm sent=309027 port=5006; paced rtt answered 0/20 median_ms None max_ms None
+rc=0 17:30:37
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM resets after reset_cause 3 wd_reason 0x1 chip_reset 0x100 region0 ['0x80e7', '0x0', '0x70fe', '0xb4c'] region1 ['0x1', '0x4', '0x0']
+### prims7 False bound= 17:30:46
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+Traceback (most recent call last):
+  File "<stdin>", line 6
+SyntaxError: invalid syntax
+SUM prims7_host storm sent=308057 port=5006; paced rtt answered 0/20 median_ms None max_ms None
+rc=0 17:32:26
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM resets after reset_cause 3 wd_reason 0x2 chip_reset 0x100 region0 ['0x80e7', '0x0', '0x70fe', '0xb4c'] region1 ['0x1', '0x4', '0x0']
