@@ -116,6 +116,24 @@ cstack_await depth=28 entry_use=7076 resumed_use=7076 plain_headroom=3
 cstack_await depth=30 entry_use=7476 resumed_use=7476 plain_headroom=1
 cstack_await max_ok_depth=31 failed_at=32 error=RuntimeError('maximum recursion depth exceeded',)
 cstack_await per_level_bytes=200 (resumed use, depth 1 to 31)
+i2c_scan bus=0 addresses=['0x18', '0x77'] scan_us=35095
+i2c_scan bus=1 addresses=['0x44', '0x59', '0x61'] scan_us=34985
+bmp chip_id=0x50
+bmp_forced osr_p=x1 osr_t=x1 worst_us=5838 (includes the polling reads)
+bmp_forced osr_p=x2 osr_t=x1 worst_us=8372 (includes the polling reads)
+bmp_forced osr_p=x4 osr_t=x1 worst_us=11803 (includes the polling reads)
+bmp_forced osr_p=x8 osr_t=x1 worst_us=20365 (includes the polling reads)
+sgp40 measure_to_ready_worst_us=24729 (datasheet max 30 ms)
+sgp40 unknown_cmd=acked next_measure_us=24663 crc_ok=1 recovered_after_ms=528 tries=3 last_error=OSError(110,) bus1_scan=['0x44', '0x59', '0x61']
+scd30 timeout_us=200000 write_worst_us=793 read_worst_us=843 errors=0 bad_crc=0 last_error=
+scd30 timeout_us=50000 write_worst_us=810 read_worst_us=829 errors=0 bad_crc=0 last_error=
+scd30 timeout_us=20000 write_worst_us=786 read_worst_us=828 errors=0 bad_crc=0 last_error=
+scd30 timeout_us=5000 write_worst_us=815 read_worst_us=830 errors=0 bad_crc=0 last_error=
+scd30 timeout_us=1000 write_worst_us=791 read_worst_us=828 errors=0 bad_crc=0 last_error=
+general_call bmp_regs_before 1b,1c,1f=000000
+general_call bmp_regs_after 1b,1c,1f=000300 (1c was set to 03)
+general_call bus=0 result=raised OSError(5,) before=['0x18', '0x77'] after=['0x18', '0x77']
+general_call bus=1 result=acked (1) before=['0x44', '0x59', '0x61'] after=['0x44', '0x59', '0x61']
 idle_poll phase=counter_alone poll_ms=0 counter_per_s=3498
 idle_poll phase=with_listener poll_ms=100 counter_per_s=3502
 idle_poll share poll_ms=100 loop_share_permille=-2
@@ -1268,6 +1286,35 @@ SUM cstack_await max_ok_depth=31 failed_at=32 error=RuntimeError('maximum recurs
 SUM cstack_await per_level_bytes=200 (resumed use, depth 1 to 31)
 DONE=1
 rc=0 13:08:54
+```
+
+### i2c_rerun_20261029
+
+```
+== i2c_rerun 13:20:09
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM i2c_scan bus=0 addresses=['0x18', '0x77'] scan_us=35095
+SUM i2c_scan bus=1 addresses=['0x44', '0x59', '0x61'] scan_us=34985
+SUM bmp chip_id=0x50
+SUM bmp_forced osr_p=x1 osr_t=x1 worst_us=5838 (includes the polling reads)
+SUM bmp_forced osr_p=x2 osr_t=x1 worst_us=8372 (includes the polling reads)
+SUM bmp_forced osr_p=x4 osr_t=x1 worst_us=11803 (includes the polling reads)
+SUM bmp_forced osr_p=x8 osr_t=x1 worst_us=20365 (includes the polling reads)
+SUM sgp40 measure_to_ready_worst_us=24729 (datasheet max 30 ms)
+SUM sgp40 unknown_cmd=acked next_measure_us=24663 crc_ok=1 recovered_after_ms=528 tries=3 last_error=OSError(110,) bus1_scan=['0x44', '0x59', '0x61']
+SUM scd30 timeout_us=200000 write_worst_us=793 read_worst_us=843 errors=0 bad_crc=0 last_error=
+SUM scd30 timeout_us=50000 write_worst_us=810 read_worst_us=829 errors=0 bad_crc=0 last_error=
+SUM scd30 timeout_us=20000 write_worst_us=786 read_worst_us=828 errors=0 bad_crc=0 last_error=
+SUM scd30 timeout_us=5000 write_worst_us=815 read_worst_us=830 errors=0 bad_crc=0 last_error=
+SUM scd30 timeout_us=1000 write_worst_us=791 read_worst_us=828 errors=0 bad_crc=0 last_error=
+SUM general_call bmp_regs_before 1b,1c,1f=000000
+SUM general_call bmp_regs_after 1b,1c,1f=000300 (1c was set to 03)
+SUM general_call bus=0 result=raised OSError(5,) before=['0x18', '0x77'] after=['0x18', '0x77']
+SUM general_call bus=1 result=acked (1) before=['0x44', '0x59', '0x61'] after=['0x44', '0x59', '0x61']
+DONE=1
+rc=0 13:20:21
 ```
 
 ### idle_poll_20261029
