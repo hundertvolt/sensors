@@ -153,6 +153,11 @@ class DMA:
             if value:
                 self._trigger()
             else:
+                # A real abort completes a busy channel and fires its chain, which can restart it, and the abort's wait
+                # for an idle channel then spins forever: an error here stands for that hang (dev bench, 2026-10-29).
+                chain_to = _field(self._ctrl, "chain_to")
+                if self._busy and chain_to != self.channel and chain_to in DMA._registry:
+                    raise RuntimeError("DMA abort of a busy chained channel: hangs on real hardware")
                 self._busy = False
         return self._busy
 
@@ -205,6 +210,11 @@ class DMA:
     def ctrl(self) -> int:
         self._check_open()
         return self._ctrl | (0x01000000 if self._busy else 0)
+
+    @ctrl.setter
+    def ctrl(self, value: int) -> None:  # the AL1_CTRL alias: no trigger; BUSY is read-only
+        self._check_open()
+        self._ctrl = value & ~0x01000000
 
     def pack_ctrl(self, **fields: int) -> int:
         value = fields.pop("default", _DEFAULT_CTRL | ((self.channel & 0xF) << 11))

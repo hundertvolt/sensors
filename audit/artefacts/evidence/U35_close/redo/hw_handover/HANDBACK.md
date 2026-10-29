@@ -196,6 +196,14 @@ uart_diag reset_cause 3
 uart_diag idle_poll_rate_plain no_done
 uart_diag reset_cause 3
 uart_diag uart_idle_poll_rate_nowdt no_done
+uart_fixed reset_cause 3
+uart_fixed reset_cause 3
+uart_fixed reset_cause 3
+uart_fixed reset_cause 3
+uart_fixed reset_cause 3
+uart_fixed reset_cause 3
+uart_fixed reset_cause 3
+uart_fixed reset_cause 3
 wifi_call sta_active_false us=578146 timer_ticks=56 expected=57
 wifi_call sta_active_true us=394169 timer_ticks=41 expected=39
 wifi_call connect_call us=6741 timer_ticks=0 expected=0
@@ -2305,6 +2313,179 @@ FACT nowdt=true
 rc=124 14:07:57
 SUM uart_diag uart_idle_poll_rate_nowdt no_done
 board not back
+```
+
+### uart_fixed_20261029
+
+```
+### uart_idle_poll_rate 15:08:16
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FACT setup=[true, true, true, true]
+FACT fast_rounds=[1233, 1227]
+FACT idle_rounds=[59, 59]
+FACT listener_cancelled=[false, false, false, false]
+FACT sample_ms=3000
+FACT expected_idle_rounds=60
+FACT expected_rounds_factor=2
+FACT min_ratio=5
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 15:08:46
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM uart_fixed reset_cause 3
+### uart_crossover_recovery_none 15:08:51
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.59ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FACT crc_mode="none"
+FACT resync_bound_ms=7000
+FACT setup={"initiator": true, "responder": true}
+FACT silence_failed=true
+FACT silence_recovery_ms=1508
+FACT desync_failed=true
+FACT desync_log={"slots": 10, "count": 1, "entries": [["E", 81]]}
+FACT desync_recovery_ms=1510
+FACT mismatch_setup={"initiator": true, "responder": true}
+FACT mismatch_failed=true
+FACT mismatch_log={"slots": 10, "count": 1, "entries": [["E", 81]]}
+FACT system_task_exceptions=[]
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 15:09:10
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.59ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM uart_fixed reset_cause 3
+### uart_crossover_recovery_crc16 15:09:15
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FACT crc_mode="crc16"
+FACT resync_bound_ms=7000
+FACT setup={"initiator": true, "responder": true}
+FACT silence_failed=true
+FACT silence_recovery_ms=1710
+FACT desync_failed=true
+FACT desync_log={"slots": 10, "count": 1, "entries": [["E", 81]]}
+FACT desync_recovery_ms=1808
+FACT mismatch_setup={"initiator": true, "responder": true}
+FACT mismatch_failed=true
+FACT mismatch_log={"slots": 10, "count": 1, "entries": [["E", 81]]}
+FACT system_task_exceptions=[]
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 15:09:34
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM uart_fixed reset_cause 3
+### uart_dma_ring_interrupts_off_none 15:09:39
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FACT crc_mode="none"
+FACT state="sweep"
+FACT gc_threshold=-1
+FACT ring_bound_us=44444
+FACT setup=true
+FACT heap={"heap_after": 77520, "largest_before": 12112, "largest_after": 12112, "ring_bytes": 512, "heap_before": 80288}
+FACT windows=[{"window_us": 3000, "streamed": true, "frames_sent": 23, "frames_intact": 0, "overrun_detected": 1, "uartrsr_oe": false, "after_sent": 4, "after_intact": 4}, {"window_us": 45000, "streamed": true, "frames_sent": 32, "frames_intact": 0, "overrun_detected": 1, "uartrsr_oe": false, "after_sent": 4, "after_intact": 4}, {"window_us": 400000, "streamed": true, "frames_sent": 109, "frames_intact": 0, "overrun_detected": 1, "uartrsr_oe": false, "after_sent": 4, "after_intact": 4}, {"window_us": 100000, "streamed": true, "frames_sent": 44, "frames_intact": 0, "overrun_detected": 1, "uartrsr_oe": false, "after_sent": 4, "after_intact": 4}]
+FACT rxdmae_setup={"initiator": true, "responder": true}
+FACT rxdmae_window={"streamed": true, "next_ok": true, "oe_set": true, "first_failed": true}
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 15:09:53
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM uart_fixed reset_cause 3
+### uart_dma_ring_interrupts_off_crc16 15:09:59
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FACT crc_mode="crc16"
+FACT state="sweep"
+FACT gc_threshold=-1
+FACT ring_bound_us=44444
+FACT setup=true
+FACT heap={"heap_after": 77536, "largest_before": 11968, "largest_after": 11968, "ring_bytes": 512, "heap_before": 80304}
+FACT windows=[{"window_us": 3000, "streamed": true, "frames_sent": 22, "frames_intact": 0, "overrun_detected": 1, "uartrsr_oe": false, "after_sent": 4, "after_intact": 4}, {"window_us": 45000, "streamed": true, "frames_sent": 31, "frames_intact": 0, "overrun_detected": 1, "uartrsr_oe": false, "after_sent": 4, "after_intact": 4}, {"window_us": 400000, "streamed": true, "frames_sent": 105, "frames_intact": 0, "overrun_detected": 1, "uartrsr_oe": false, "after_sent": 4, "after_intact": 4}, {"window_us": 100000, "streamed": true, "frames_sent": 42, "frames_intact": 0, "overrun_detected": 1, "uartrsr_oe": false, "after_sent": 4, "after_intact": 4}]
+FACT rxdmae_setup={"initiator": true, "responder": true}
+FACT rxdmae_window={"streamed": true, "next_ok": true, "oe_set": true, "first_failed": true}
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 15:10:16
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM uart_fixed reset_cause 3
+### uart_crossover_exchange_none 15:10:21
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FACT crc_mode="none"
+FACT gc_threshold=-1
+FACT setup={"initiator": true, "responder": true}
+FACT get_answer_ok=true
+FACT set_ok=true
+FACT train_bytes=103
+FACT empty_set_ok=true
+FACT max_train_bytes=12192
+FACT max_set_ok=true
+FACT max_set_intact=true
+FACT max_get_intact=true
+FACT error_counts={"UART_INIT": {"slots": 10, "count": 0, "entries": []}, "UART_RESP": {"slots": 10, "count": 0, "entries": []}}
+FACT capped_setup=true
+FACT largest_block_before=2512
+FACT largest_block_after=2512
+FACT over_cap_refused=true
+FACT over_cap_log={"slots": 10, "count": 1, "entries": [["E", 93]]}
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 15:10:47
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.64ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM uart_fixed reset_cause 3
+### uart_comm_hazards_crc16 15:10:53
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FACT crc_mode="crc16"
+FACT part="all"
+FACT setup={"initiator": true, "responder": true}
+FACT h1a={"frames_whole": 4, "log": {"slots": 10, "count": 1, "entries": [["E", 85]]}, "frames_seen": 4, "results": [true, false]}
+FACT h1b=[{"result": true, "next_ok": true, "point": "clear_before_first_frame"}, {"result": false, "next_ok": true, "point": "clear_mid_train"}, {"result": true, "next_ok": true, "point": "clear_after_last_ack"}, {"result": false, "next_ok": false, "point": "cancel_read_timeout_mid_train"}]
+FACT h2={"log": {"slots": 10, "count": 1, "entries": [["E", 88]]}, "attempts": 1, "recovered": true, "raw_get_written": true, "failed": true}
+FACT h3=[{"verdicts": [[0, false], [1, false], [2, false], [3, false], [4, true], [5, false], [255, false]], "field": "cmd", "clean_after": false}, {"verdicts": [[0, false], [1, true], [2, false], [8, false], [9, false], [255, false]], "field": "size", "clean_after": true}, {"verdicts": [[0, false], [1, false], [2, true], [255, true]], "field": "chunks", "clean_after": true}, {"verdicts": [[0, false], [1, true], [2, false], [255, false]], "field": "cur_chunk", "clean_after": true}, {"verdicts": [[0, true], [254, true], [255, false]], "field": "uid", "clean_after": true}]
+FACT stalled_tx={"log": {"slots": 10, "count": 1, "entries": [["E", 82]]}, "attempts": 2, "recovered": true, "filled": true, "failed": true}
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 15:11:21
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM uart_fixed reset_cause 3
+### uart_dma_ring_interrupts_off_none_break 15:11:26
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FACT crc_mode="none"
+FACT state="break"
+FACT gc_threshold=-1
+FACT setup={"initiator": true, "responder": true}
+FACT break={"first_ok": true, "break_frame_failed": true, "rsr_error_counted": 0, "next_frame_ok": true}
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 15:11:39
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM uart_fixed reset_cause 3
 ```
 
 ### uart_mount_20261029

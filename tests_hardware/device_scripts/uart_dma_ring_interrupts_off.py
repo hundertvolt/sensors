@@ -391,13 +391,16 @@ async def _window(wdt: "machine.WDT", sender: _Sender, driver: "asy_uart_driver.
     laps = driver.rx_overruns
     gc.collect()  # before the window: no collection inside the record
     wdt.feed()
+    # The reader drains while the stream runs, as the shipped listener does: only the window itself stops it, so the
+    # ring has to hold the window's bytes alone (a reader started after the stream overran the ring at every window).
+    reader = asyncio.create_task(_drain(driver))
     sender.start(0, frames)
-    time.sleep_us(_STREAM_MARGIN_US)
+    await asyncio.sleep_ms(_STREAM_MARGIN_US // 1000)
     _hold_irqs_off(window_us)
     oe = _oe(bus)
     wdt.feed()
     streamed = await sender.finished(wdt)
-    intact = await _drain(driver)
+    intact = await reader
     sender.start(frames, _AFTER_FRAMES)
     streamed = await sender.finished(wdt) and streamed
     after = await _drain(driver)

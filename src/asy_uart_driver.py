@@ -83,6 +83,8 @@ _RSR_ERRORS = const(0x0D)
 _DMA_BASE = const(0x50000000)  # each channel's TRANS_COUNT trigger alias sits at 0x40 * channel + 0x1C (2.5.7)
 _DMA_CH_STRIDE = const(0x40)
 _DMA_TRANS_COUNT_TRIG = const(0x1C)
+_CTRL_CHAIN_TO_LSB = const(11)  # CTRL_TRIG.CHAIN_TO, bits 14:11 (2.5.7)
+_CTRL_CHAIN_TO_MASK = const(0x7800)
 
 
 class UART(Lockable):
@@ -181,8 +183,7 @@ class UART(Lockable):
         data, reload, ring = self._rx_dma, self._rx_reload, self._ring
         if data is None or reload is None or ring is None:  # Unreachable: both callers run with the ring and both channels set, which setup_rx_ring() sets and clears together - kept to narrow the Optional for the type checker
             return
-        data.active(False)
-        reload.active(False)
+        self._rx_stop(data, reload)
         bits = 1
         while (1 << bits) < len(ring):
             bits += 1
@@ -197,6 +198,15 @@ class UART(Lockable):
         mem32[self._reg_rsr] = 0  # UARTECR: any write clears OE, BE, PE and FE
         self._rx_pos = 0
         self._rx_overrun_pending = False
+
+    @staticmethod
+    def _rx_stop(data: DMA, reload: DMA) -> None:
+        # An abort completes the data channel and fires its chain, so the reload restarts it and active(False)'s wait
+        # for an idle channel never ends (dev bench, 2026-10-29: the board hangs until the watchdog). Unchained first,
+        # both stop at once; AL1_CTRL (the ctrl attribute) does not trigger.
+        data.ctrl = (data.ctrl & ~_CTRL_CHAIN_TO_MASK) | (data.channel << _CTRL_CHAIN_TO_LSB)
+        reload.active(False)
+        data.active(False)
 
     def _buffered(self, want: int) -> int:
         # Every read goes through here: clamped to the ring's fill level, so no read ever waits for a byte that
@@ -424,8 +434,7 @@ class UART(Lockable):
         ok = True
         if self._rx_dma is not None and self._rx_reload is not None:
             try:  # stopped, never closed: init() re-arms them on the same ring
-                self._rx_dma.active(False)
-                self._rx_reload.active(False)
+                self._rx_stop(self._rx_dma, self._rx_reload)
             except (OSError, ValueError):
                 ok = False
         if self.poller is not None:

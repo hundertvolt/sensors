@@ -2488,6 +2488,15 @@ class _ChannelProbe:
         return count
 
     @property
+    def ctrl(self) -> int:
+        ctrl: int = self._real.ctrl
+        return ctrl
+
+    @ctrl.setter
+    def ctrl(self, value: int) -> None:
+        self._real.ctrl = value
+
+    @property
     def write(self) -> int:
         self.write_reads += 1
         address: int = self._real.write
