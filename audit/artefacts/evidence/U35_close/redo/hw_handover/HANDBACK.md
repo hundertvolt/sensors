@@ -113,6 +113,12 @@ dma_soft deinit True busy_after False
 dma_soft channels_busy_or_enabled (ch, busy, en, treq, count): []
 dma_soft fresh_claim_gets_channel 0
 bigq reset_cause 3
+resets armed reset
+resets after reset_cause 3 wd_reason 0x2 chip_reset 0x100 region0 ['0xa0', '0xa1', '0xa2', '0xa3'] region1 ['0xb0', '0xb1', '0xb2']
+resets armed soft
+resets after reset_cause 3 wd_reason 0x2 chip_reset 0x100 region0 ['0xa0', '0xa1', '0xa2', '0xa3'] region1 ['0xb0', '0xb1', '0xb2']
+resets armed wdt
+resets after reset_cause 3 wd_reason 0x1 chip_reset 0x100 region0 ['0xa0', '0xa1', '0xa2', '0xa3'] region1 ['0xb0', '0xb1', '0xb2']
 crc CRC8 round=0 bytes=256 us=118240 us_per_byte=461 alloc_bytes=160
 crc CRC8 round=1 bytes=256 us=118954 us_per_byte=464 alloc_bytes=144
 crc CRC16 round=0 bytes=256 us=118286 us_per_byte=462 alloc_bytes=144
@@ -1416,6 +1422,128 @@ Resolved 22 packages in 3ms
 Audited 20 packages in 0.61ms
 warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
 SUM bigq reset_cause 3
+### resets reset 16:53:23
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.65ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM resets armed reset
+Traceback (most recent call last):
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/main.py", line 622, in main
+    handler_func(state, args)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/commands.py", line 515, in do_run
+    _do_execbuffer(state, buf, args.follow)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/commands.py", line 489, in _do_execbuffer
+    ret, ret_err = state.transport.follow(timeout=None, data_consumer=stdout_write_bytes)
+                   ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 220, in follow
+    data = self.read_until(1, b"\x04", timeout=timeout, data_consumer=data_consumer)
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 158, in read_until
+    if self.is_pty or self.serial.inWaiting() > 0:
+                      ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialutil.py", line 594, in inWaiting
+    return self.in_waiting
+           ^^^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialposix.py", line 549, in in_waiting
+    s = fcntl.ioctl(self.fd, TIOCINQ, TIOCM_zero_str)
+OSError: [Errno 5] Input/output error
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/nico/programming/sensors-bench/.venv/bin/mpremote", line 10, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/main.py", line 644, in main
+    do_disconnect(state)
+    ~~~~~~~~~~~~~^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/commands.py", line 89, in do_disconnect
+    state.transport.close()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 132, in close
+    raise er
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 125, in close
+    self.serial.rts = False
+    ^^^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialutil.py", line 463, in rts
+    self._update_rts_state()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialposix.py", line 708, in _update_rts_state
+    fcntl.ioctl(self.fd, TIOCMBIC, TIOCM_RTS_str)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: [Errno 5] Input/output error
+rc=1 16:53:24
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM resets after reset_cause 3 wd_reason 0x2 chip_reset 0x100 region0 ['0xa0', '0xa1', '0xa2', '0xa3'] region1 ['0xb0', '0xb1', '0xb2']
+### resets soft 16:53:31
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.66ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM resets armed soft
+rc=0 16:53:32
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.68ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM resets after reset_cause 3 wd_reason 0x2 chip_reset 0x100 region0 ['0xa0', '0xa1', '0xa2', '0xa3'] region1 ['0xb0', '0xb1', '0xb2']
+### resets wdt 16:53:38
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM resets armed wdt
+Traceback (most recent call last):
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/main.py", line 622, in main
+    handler_func(state, args)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/commands.py", line 515, in do_run
+    _do_execbuffer(state, buf, args.follow)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/commands.py", line 489, in _do_execbuffer
+    ret, ret_err = state.transport.follow(timeout=None, data_consumer=stdout_write_bytes)
+                   ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 220, in follow
+    data = self.read_until(1, b"\x04", timeout=timeout, data_consumer=data_consumer)
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 158, in read_until
+    if self.is_pty or self.serial.inWaiting() > 0:
+                      ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialutil.py", line 594, in inWaiting
+    return self.in_waiting
+           ^^^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialposix.py", line 549, in in_waiting
+    s = fcntl.ioctl(self.fd, TIOCINQ, TIOCM_zero_str)
+OSError: [Errno 5] Input/output error
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/nico/programming/sensors-bench/.venv/bin/mpremote", line 10, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/main.py", line 644, in main
+    do_disconnect(state)
+    ~~~~~~~~~~~~~^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/commands.py", line 89, in do_disconnect
+    state.transport.close()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 132, in close
+    raise er
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 125, in close
+    self.serial.rts = False
+    ^^^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialutil.py", line 463, in rts
+    self._update_rts_state()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialposix.py", line 708, in _update_rts_state
+    fcntl.ioctl(self.fd, TIOCMBIC, TIOCM_RTS_str)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: [Errno 5] Input/output error
+rc=1 16:53:40
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.68ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM resets after reset_cause 3 wd_reason 0x1 chip_reset 0x100 region0 ['0xa0', '0xa1', '0xa2', '0xa3'] region1 ['0xb0', '0xb1', '0xb2']
 ```
 
 ### crc_voc_20261029
