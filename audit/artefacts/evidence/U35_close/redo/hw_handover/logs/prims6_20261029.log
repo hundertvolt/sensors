@@ -56,3 +56,53 @@ Resolved 22 packages in 3ms
 Audited 20 packages in 0.67ms
 warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
 SUM resets after reset_cause 3 wd_reason 0x1 chip_reset 0x100 region0 ['0x1ee9', '0x4', '0x0', '0x0'] region1 ['0x0', '0x1f25', '0x0']
+### prims6 17:15:53
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.65ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM prims6_host unthrottled_15s sent=309726
+FLOOD_START IP=0.0.0.0
+SUM prims6 t 0 lag_max_ms 1 udp_rx 0 at_ms 18074 []
+SUM prims6 t 1 lag_max_ms 1 udp_rx 0 at_ms 19075 []
+SUM prims6 t 2 lag_max_ms 1 udp_rx 0 at_ms 20076 []
+SUM prims6 t 3 lag_max_ms 1 udp_rx 0 at_ms 21076 []
+SUM prims6 t 4 lag_max_ms 1 udp_rx 0 at_ms 22077 []
+SUM prims6 t 5 lag_max_ms 1 udp_rx 0 at_ms 23078 []
+SUM prims6 t 6 lag_max_ms 1 udp_rx 0 at_ms 24079 []
+SUM prims6 t 7 lag_max_ms 1 udp_rx 0 at_ms 25080 []
+SUM prims6 t 8 lag_max_ms 1 udp_rx 0 at_ms 26081 []
+SUM prims6 t 9 lag_max_ms 2 udp_rx 0 at_ms 27082 []
+SUM prims6 t 10 lag_max_ms 1 udp_rx 0 at_ms 28083 []
+SUM prims6 t 11 lag_max_ms 1 udp_rx 0 at_ms 29084 []
+SUM prims6 t 12 lag_max_ms 1 udp_rx 0 at_ms 30085 []
+SUM prims6 t 13 lag_max_ms 1 udp_rx 0 at_ms 31086 []
+SUM prims6 t 14 lag_max_ms 1 udp_rx 0 at_ms 32087 []
+SUM prims6 t 15 lag_max_ms 1 udp_rx 0 at_ms 33088 []
+SUM prims6 t 16 lag_max_ms 1 udp_rx 0 at_ms 34090 []
+SUM prims6 t 17 lag_max_ms 1 udp_rx 0 at_ms 35090 []
+SUM prims6 t 18 lag_max_ms 1 udp_rx 0 at_ms 36091 []
+SUM prims6 t 19 lag_max_ms 1 udp_rx 0 at_ms 37092 []
+SUM prims6 t 20 lag_max_ms 1 udp_rx 0 at_ms 38093 []
+SUM prims6 t 21 lag_max_ms 1 udp_rx 0 at_ms 39094 []
+SUM prims6 t 22 lag_max_ms 1 udp_rx 0 at_ms 40095 []
+SUM prims6 t 23 lag_max_ms 1 udp_rx 0 at_ms 41096 []
+SUM prims6 t 24 lag_max_ms 1 udp_rx 0 at_ms 42096 []
+SUM prims6 t 25 lag_max_ms 1 udp_rx 0 at_ms 43097 []
+SUM prims6 t 26 lag_max_ms 1 udp_rx 0 at_ms 44098 []
+SUM prims6 t 27 lag_max_ms 1 udp_rx 0 at_ms 45099 []
+SUM prims6 t 28 lag_max_ms 1 udp_rx 0 at_ms 46100 []
+SUM prims6 t 29 lag_max_ms 1 udp_rx 0 at_ms 47101 []
+SUM prims6 isconnected False status -1 rssi 0
+SUM prims6 step 11 close echo socket us 173 -> None
+SUM prims6 step 12 new udp socket us 185 -> None
+SUM prims6 step 13 ap.config us 160 -> None
+SUM prims6 step 14 ap.active(True) us 99376 -> None
+SUM prims6 step 15 udp sockets with ap+sta us 634 -> 2 opened, OSError(12,)
+SUM prims6 step 16 ap.active(False) us 157175 -> None
+SUM prims6 step 17 sta isconnected us 142 -> False
+DONE
+rc=0 17:16:43
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.59ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM resets after reset_cause 3 wd_reason 0x2 chip_reset 0x100 region0 ['0xbdea', '0x0', '0x0', '0x0'] region1 ['0x11', '0x62', '0x0']
