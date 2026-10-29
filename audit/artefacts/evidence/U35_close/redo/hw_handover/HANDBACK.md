@@ -155,6 +155,14 @@ memoryerror exhaust=MemoryError('memory allocation failed, allocating 1024 bytes
 irq_alloc_above hard=0 emergency_buf=0 (the traceback is the console text above)
 irq_alloc_above hard=1 emergency_buf=0 (the traceback is the console text above)
 irq_alloc_above hard=1 emergency_buf=256 (the traceback is the console text above)
+json_floats n=18 not_round_tripping=0 examples=[]
+float_repr 0.1=0.1 1013.25=1013.25 21.37=21.37 12345.678=12345.678
+heap free=181584 alloc=6320
+memoryerror big_alloc=MemoryError('memory allocation failed, allocating 10000000 bytes',)
+memoryerror exhaust=MemoryError('memory allocation failed, allocating 1024 bytes',) after_kib=171
+irq_alloc_above hard=0 emergency_buf=0 (the traceback is the console text above)
+irq_alloc_above hard=1 emergency_buf=0 (the traceback is the console text above)
+irq_alloc_above hard=1 emergency_buf=256 (the traceback is the console text above)
 scd30_state temp_offset=400 raw=01904c
 scd30_state interval=2 raw=0002e3
 scd30_state altitude=0 raw=000081
@@ -1989,6 +1997,29 @@ MemoryError: memory allocation failed, heap is locked
 SUM irq_alloc_above hard=1 emergency_buf=256 (the traceback is the console text above)
 DONE=1
 rc=0 05:35:26
+== quick 13:30:30
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM json_floats n=18 not_round_tripping=0 examples=[]
+SUM float_repr 0.1=0.1 1013.25=1013.25 21.37=21.37 12345.678=12345.678
+SUM heap free=181584 alloc=6320
+SUM memoryerror big_alloc=MemoryError('memory allocation failed, allocating 10000000 bytes',)
+SUM memoryerror exhaust=MemoryError('memory allocation failed, allocating 1024 bytes',) after_kib=171
+Traceback (most recent call last):
+  File "<stdin>", line 39, in _alloc
+MemoryError: memory allocation failed, allocating 10000000 bytes
+SUM irq_alloc_above hard=0 emergency_buf=0 (the traceback is the console text above)
+Uncaught exception in IRQ callback handler
+MemoryError: 
+SUM irq_alloc_above hard=1 emergency_buf=0 (the traceback is the console text above)
+Uncaught exception in IRQ callback handler
+Traceback (most recent call last):
+  File "<stdin>", line 39, in _alloc
+MemoryError: memory allocation failed, heap is locked
+SUM irq_alloc_above hard=1 emergency_buf=256 (the traceback is the console text above)
+DONE=1
+rc=0 13:30:32
 ```
 
 ### scd30_state_20261029
