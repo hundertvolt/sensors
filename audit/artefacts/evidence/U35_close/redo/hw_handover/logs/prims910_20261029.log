@@ -1,0 +1,24 @@
+### prims9 18:10:12
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.59ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM prims9 ring True ctrl9 0x2
+Task exception wasn't retrieved
+future: <Task> coro= <generator object 'reader' at 2002d6a0>
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "<stdin>", line 43, in reader
+TypeError: can't convert 'int' object to str implicitly
+SUM prims9 baseline pre [('lag_max', 1), ('lag_over20', 0), ('sent', 113)] fault_and_after [('lag_max', 1), ('lag_over20', 0), ('overruns', 0), ('rsr_at_release', -1), ('sent', 224)]
+SUM prims9 low_1ms pre [('lag_max', 3), ('lag_over20', 0), ('sent', 112)] fault_and_after [('lag_max', 1), ('lag_over20', 0), ('overruns', 0), ('rsr_at_release', 5), ('sent', 225)]
+SUM prims9 low_100ms pre [('lag_max', 3), ('lag_over20', 0), ('sent', 112)] fault_and_after [('lag_max', 1), ('lag_over20', 0), ('overruns', 0), ('rsr_at_release', 5), ('sent', 237)]
+SUM prims9 low_10s pre [('lag_max', 1), ('lag_over20', 0), ('sent', 113)] fault_and_after [('lag_max', 1), ('lag_over20', 0), ('overruns', 0), ('rsr_at_release', 5), ('sent', 1349)]
+SUM prims9 glitch_1bit_1khz pre [('lag_max', 1), ('lag_over20', 0), ('sent', 113)] fault_and_after [('lag_max', 1), ('lag_over20', 0), ('overruns', 0), ('rsr_at_release', 0), ('sent', 446)]
+SUM prims9 glitch_250us_2khz pre [('lag_max', 1), ('lag_over20', 0), ('sent', 112)] fault_and_after [('lag_max', 1), ('lag_over20', 0), ('overruns', 0), ('rsr_at_release', 5), ('sent', 446)]
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 18:10:49
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM resets after reset_cause 3 wd_reason 0x2 chip_reset 0x100 region0 ['0x813d', '0x0', '0x0', '0x0'] region1 ['0x6', '0x1', '0x0']
