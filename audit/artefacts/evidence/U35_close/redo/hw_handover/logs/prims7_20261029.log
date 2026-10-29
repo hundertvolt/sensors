@@ -110,3 +110,52 @@ Resolved 22 packages in 3ms
 Audited 20 packages in 0.61ms
 warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
 SUM resets after reset_cause 3 wd_reason 0x2 chip_reset 0x100 region0 ['0x80e7', '0x0', '0x70fe', '0xb4c'] region1 ['0x1', '0x4', '0x0']
+### prims7 fw bound=False 17:32:55
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FLOOD_START IP=192.168.85.57 PORT=5006
+SUM prims7 fw unbound t 0 window_ms 1000 lag_max_ms 2 udp_rx 0 hard_per_s 1000 soft_per_s 100
+SUM prims7 fw unbound t 1 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1000 soft_per_s 100
+SUM prims7 fw unbound t 2 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1000 soft_per_s 100
+[CYW43] STALL(0;194-194): timeout
+[CYW43] send_ethernet failed: -110
+[CYW43] STALL(0;194-194): timeout
+[CYW43] send_ethernet failed: -110
+SUM prims7 fw unbound t 3 window_ms 3427 lag_max_ms 3104 udp_rx 0 hard_per_s 1000 soft_per_s 12
+[CYW43] STALL(0;157-157): timeout
+[CYW43] send_ethernet failed: -110
+SUM prims7 fw unbound t 4 window_ms 2125 lag_max_ms 1850 udp_rx 0 hard_per_s 1000 soft_per_s 8
+SUM prims7 fw unbound t 5 window_ms 1000 lag_max_ms 0 udp_rx 0 hard_per_s 1000 soft_per_s 100
+[CYW43] STALL(0;177-177): timeout
+[CYW43] send_ethernet failed: -110
+SUM prims7 fw unbound t 6 window_ms 1000 lag_max_ms 1789 udp_rx 0 hard_per_s 2780 soft_per_s 108
+SUM prims7 fw unbound t 7 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1000 soft_per_s 100
+SUM prims7 fw unbound t 8 window_ms 1000 lag_max_ms 0 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 9 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 10 window_ms 1000 lag_max_ms 1 udp_rx 1 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 11 window_ms 1000 lag_max_ms 1 udp_rx 5 hard_per_s 1000 soft_per_s 100
+SUM prims7 fw unbound t 12 window_ms 1000 lag_max_ms 1 udp_rx 10 hard_per_s 1000 soft_per_s 100
+SUM prims7 fw unbound t 13 window_ms 1000 lag_max_ms 1 udp_rx 15 hard_per_s 1000 soft_per_s 100
+SUM prims7 fw unbound t 14 window_ms 1000 lag_max_ms 0 udp_rx 20 hard_per_s 1000 soft_per_s 100
+SUM prims7_host storm sent=149069 port=5006; paced rtt answered 20/20 median_ms 6.3 max_ms 7.0
+SUM prims7 fw unbound t 15 window_ms 1000 lag_max_ms 1 udp_rx 20 hard_per_s 1000 soft_per_s 100
+SUM prims7 fw unbound t 16 window_ms 1000 lag_max_ms 1 udp_rx 20 hard_per_s 1000 soft_per_s 101
+SUM prims7 fw unbound t 17 window_ms 1000 lag_max_ms 0 udp_rx 20 hard_per_s 1000 soft_per_s 100
+SUM prims7 fw unbound t 18 window_ms 1001 lag_max_ms 0 udp_rx 20 hard_per_s 1000 soft_per_s 99
+SUM prims7 fw unbound t 19 window_ms 1000 lag_max_ms 0 udp_rx 20 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 20 window_ms 1001 lag_max_ms 0 udp_rx 20 hard_per_s 1000 soft_per_s 99
+SUM prims7 fw unbound t 21 window_ms 1000 lag_max_ms 1 udp_rx 20 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 22 window_ms 1001 lag_max_ms 0 udp_rx 20 hard_per_s 1000 soft_per_s 99
+SUM prims7 fw unbound t 23 window_ms 1001 lag_max_ms 0 udp_rx 20 hard_per_s 1000 soft_per_s 99
+SUM prims7 fw unbound t 24 window_ms 1000 lag_max_ms 0 udp_rx 20 hard_per_s 1001 soft_per_s 100
+SUM prims7 fw unbound t 25 window_ms 1001 lag_max_ms 0 udp_rx 20 hard_per_s 1000 soft_per_s 99
+SUM prims7 fw unbound t 26 window_ms 1000 lag_max_ms 1 udp_rx 20 hard_per_s 1001 soft_per_s 101
+SUM prims7 fw unbound t 27 window_ms 1000 lag_max_ms 1 udp_rx 20 hard_per_s 1000 soft_per_s 100
+SUM prims7 fw isconnected True rssi -39
+DONE
+rc=0 17:33:34
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM resets after reset_cause 3 wd_reason 0x2 chip_reset 0x100 region0 ['0x95bc', '0x14', '0x85d6', '0xac8'] region1 ['0x1', '0xc20', '0x0']
