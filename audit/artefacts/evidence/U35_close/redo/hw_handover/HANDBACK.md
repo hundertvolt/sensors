@@ -103,6 +103,14 @@ uart_frame53 whole_read_worst_us=4546 clamped_call_worst_us=51 clamped_frame_wor
 uart_any_latency_1byte best_us=117 worst_us=131 (wire time 87 us)
 uart_stream 1to0 dur_s=120 bytes_ok=891200 mismatches=0 max_backlog=76 of 512
 uart_stream 0to1 dur_s=120 bytes_ok=891200 mismatches=0 max_backlog=77 of 512
+json_floats n=18 not_round_tripping=0 examples=[]
+float_repr 0.1=0.1 1013.25=1013.25 21.37=21.37 12345.678=12345.678
+heap free=181584 alloc=6320
+memoryerror big_alloc=MemoryError('memory allocation failed, allocating 10000000 bytes',)
+memoryerror exhaust=MemoryError('memory allocation failed, allocating 1024 bytes',) after_kib=171
+irq_alloc_above hard=0 emergency_buf=0 (the traceback is the console text above)
+irq_alloc_above hard=1 emergency_buf=0 (the traceback is the console text above)
+irq_alloc_above hard=1 emergency_buf=256 (the traceback is the console text above)
 ```
 
 ## Day 20261028
@@ -1206,6 +1214,38 @@ SUM uart_stream 1to0 dur_s=120 bytes_ok=891200 mismatches=0 max_backlog=76 of 51
 SUM uart_stream 0to1 dur_s=120 bytes_ok=891200 mismatches=0 max_backlog=77 of 512
 DONE=1
 rc=0 17:59:15
+```
+<!-- end day -->
+
+## Day 20261029
+
+<!-- day 20261029 -->
+### quick_20261029
+
+```
+== quick 05:35:25
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.66ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM json_floats n=18 not_round_tripping=0 examples=[]
+SUM float_repr 0.1=0.1 1013.25=1013.25 21.37=21.37 12345.678=12345.678
+SUM heap free=181584 alloc=6320
+SUM memoryerror big_alloc=MemoryError('memory allocation failed, allocating 10000000 bytes',)
+SUM memoryerror exhaust=MemoryError('memory allocation failed, allocating 1024 bytes',) after_kib=171
+Traceback (most recent call last):
+  File "<stdin>", line 39, in _alloc
+MemoryError: memory allocation failed, allocating 10000000 bytes
+SUM irq_alloc_above hard=0 emergency_buf=0 (the traceback is the console text above)
+Uncaught exception in IRQ callback handler
+MemoryError: 
+SUM irq_alloc_above hard=1 emergency_buf=0 (the traceback is the console text above)
+Uncaught exception in IRQ callback handler
+Traceback (most recent call last):
+  File "<stdin>", line 39, in _alloc
+MemoryError: memory allocation failed, heap is locked
+SUM irq_alloc_above hard=1 emergency_buf=256 (the traceback is the console text above)
+DONE=1
+rc=0 05:35:26
 ```
 <!-- end day -->
 
