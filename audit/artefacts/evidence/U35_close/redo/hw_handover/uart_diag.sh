@@ -40,7 +40,7 @@ open(sys.argv[2], "w").write(s)
 PY
 }
 
-while pgrep -f '^bash audit/.*run_all.sh' >/dev/null; do sleep 10; done
+while pgrep -f '^bash (/.*/)?audit/.*run_all.sh' >/dev/null; do sleep 10; done
 rm -f "$H/STOP"
 up 60 || exit 1
 cause
