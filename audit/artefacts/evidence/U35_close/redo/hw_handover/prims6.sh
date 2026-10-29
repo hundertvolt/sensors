@@ -12,14 +12,16 @@ for _ in $(seq 1 60); do grep -q '^FLOOD_START' "$L" && break; sleep 1; done
 ip=$(grep '^FLOOD_START' "$L" | tail -1 | sed 's/.*IP=//' | tr -d '\r')
 [ -n "$ip" ] && python3 - "$ip" >> "$L" 2>&1 <<'PY'
 import socket, sys, time
-s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.setblocking(False); sent = 0; t_end = time.time() + 15; p = bytes(200)
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.setblocking(False); sent = 0; p = bytes(200)
+for i in range(600): s.sendto(p, (sys.argv[1], 5005)); time.sleep(0.005)
+t_end = time.time() + 12
 while time.time() < t_end:
     try: s.sendto(p, (sys.argv[1], 5005)); sent += 1
     except BlockingIOError: pass
     try:
         while True: s.recv(512)
     except BlockingIOError: pass
-print("SUM prims6_host unthrottled_15s sent=%d" % sent)
+print("SUM prims6_host 200pps_3s_then_unthrottled_12s sent=%d" % (sent + 600))
 PY
 wait; echo "rc=$? $(date -u +%T)" >> "$L"
 sleep 2; up && timeout 15 $MPC resume run "$H/mp/big/resets_read.py" >> "$L" 2>&1
