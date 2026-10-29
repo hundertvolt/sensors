@@ -1,6 +1,6 @@
 """Long network run with the board's stored Wi-Fi config (never printed): link drops seen by isconnected() each second,
 getaddrinfo() every 60 s (wall time, failures, and whether a 10 ms soft Timer advanced: the VM held), an NTP query
-every 120 s, and a full reconnect every 15 min, each counted with its worst time. DUR_S per run."""
+every 120 s, and a full reconnect every 4 min, each counted with its worst time. DUR_S per run."""
 
 import json
 import os
@@ -69,7 +69,7 @@ q = bytearray(48)
 q[0] = 0x1B
 now = time.ticks_ms()
 end = time.ticks_add(now, DUR_S * 1000)
-due_dns, due_ntp, due_rc = now, time.ticks_add(now, 5000), time.ticks_add(now, 900000)
+due_dns, due_ntp, due_rc = now, time.ticks_add(now, 5000), time.ticks_add(now, 240000)
 up = wlan.isconnected()
 while time.ticks_diff(end, time.ticks_ms()) > 0:
     now = time.ticks_ms()
@@ -81,7 +81,7 @@ while time.ticks_diff(end, time.ticks_ms()) > 0:
     up = c
     if time.ticks_diff(now, due_rc) >= 0:
         reconnect()
-        due_rc = time.ticks_add(now, 900000)
+        due_rc = time.ticks_add(now, 240000)
     elif time.ticks_diff(now, due_dns) >= 0:
         due_dns = time.ticks_add(now, 60000)
         if not c:

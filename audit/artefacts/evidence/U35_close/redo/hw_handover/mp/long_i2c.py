@@ -71,7 +71,7 @@ end = time.ticks_add(time.ticks_ms(), DUR_S * 1000)
 scd_due = sgp_due = time.ticks_ms()
 scd_read_at = sgp_read_at = 0
 idle_until, first_pending, i = 0, False, 0
-next_idle = time.ticks_add(time.ticks_ms(), 600000)
+next_idle = time.ticks_add(time.ticks_ms(), 120000)
 while time.ticks_diff(end, time.ticks_ms()) > 0:
     now = time.ticks_ms()
     id_read(b0, BMP, "bmp_id", "bmp")
@@ -94,7 +94,7 @@ while time.ticks_diff(end, time.ticks_ms()) > 0:
         sgp_read_at, first_pending = 0, False
     elif time.ticks_diff(now, next_idle) >= 0:
         b1.writeto(SGP40, b"\x36\x15")  # heater off for an idle minute
-        idle_until, next_idle, first_pending = time.ticks_add(now, 60000), time.ticks_add(now, 600000), True
+        idle_until, next_idle, first_pending = time.ticks_add(now, 60000), time.ticks_add(now, 180000), True
         sgp_due = idle_until
     elif time.ticks_diff(now, sgp_due) >= 0:
         idle_until = 0
