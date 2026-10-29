@@ -103,6 +103,16 @@ uart_frame53 whole_read_worst_us=4546 clamped_call_worst_us=51 clamped_frame_wor
 uart_any_latency_1byte best_us=117 worst_us=131 (wire time 87 us)
 uart_stream 1to0 dur_s=120 bytes_ok=891200 mismatches=0 max_backlog=76 of 512
 uart_stream 0to1 dur_s=120 bytes_ok=891200 mismatches=0 max_backlog=77 of 512
+dma_soft leave ring True data 2 reload 3 busy True
+dma_soft channels_busy_or_enabled (ch, busy, en, treq, count): [(0, 0, 1, 8, 0), (1, 0, 1, 12, 0)]
+dma_soft fresh_claim_gets_channel 2
+dma_soft old_channel_counts_before [0, 0] after_64_bytes [0, 0] uart1_any 64
+bigq reset_cause 3
+dma_soft deinit ring True data 0 reload 1 busy True
+dma_soft deinit True busy_after False
+dma_soft channels_busy_or_enabled (ch, busy, en, treq, count): []
+dma_soft fresh_claim_gets_channel 0
+bigq reset_cause 3
 crc CRC8 round=0 bytes=256 us=118240 us_per_byte=461 alloc_bytes=160
 crc CRC8 round=1 bytes=256 us=118954 us_per_byte=464 alloc_bytes=144
 crc CRC16 round=0 bytes=256 us=118286 us_per_byte=462 alloc_bytes=144
@@ -1361,6 +1371,53 @@ rc=0 17:59:15
 ## Day 20261029
 
 <!-- day 20261029 -->
+### bigq_20261029
+
+```
+### dma_soft leave: the ring script 16:52:38
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM dma_soft leave ring True data 2 reload 3 busy True
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 16:52:41
+### dma_soft leave: soft reset, then the dump 16:52:41
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.67ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM dma_soft channels_busy_or_enabled (ch, busy, en, treq, count): [(0, 0, 1, 8, 0), (1, 0, 1, 12, 0)]
+SUM dma_soft fresh_claim_gets_channel 2
+SUM dma_soft old_channel_counts_before [0, 0] after_64_bytes [0, 0] uart1_any 64
+DONE
+rc=0 16:52:42
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM bigq reset_cause 3
+### dma_soft deinit: the ring script 16:52:59
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM dma_soft deinit ring True data 0 reload 1 busy True
+SUM dma_soft deinit True busy_after False
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 16:53:03
+### dma_soft deinit: soft reset, then the dump 16:53:03
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM dma_soft channels_busy_or_enabled (ch, busy, en, treq, count): []
+SUM dma_soft fresh_claim_gets_channel 0
+DONE
+rc=0 16:53:03
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM bigq reset_cause 3
+```
+
 ### crc_voc_20261029
 
 ```
