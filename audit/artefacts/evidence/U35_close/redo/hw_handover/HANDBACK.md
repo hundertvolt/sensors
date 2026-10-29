@@ -192,6 +192,10 @@ scd30_state asc=0 raw=000081
 scd30_ready n=280 interval_ms min=648 median=2143 max=2250 worst_not_ready_run=20 polls=5601 errors=0
 sda_hold armed ack=0 bits_clocked=0 sda_now=0
 sda_hold after_reset sda=0 scl=1 scan_before_clear=['0x8', '0x18', '0x77'] clocks_to_free=0 sda_after_clear=1 scan_after=['0x18', '0x77'] bmp_chip_id=0x50
+uart_diag reset_cause 3
+uart_diag idle_poll_rate_plain no_done
+uart_diag reset_cause 3
+uart_diag uart_idle_poll_rate_nowdt no_done
 wifi_call sta_active_false us=578146 timer_ticks=56 expected=57
 wifi_call sta_active_true us=394169 timer_ticks=41 expected=39
 wifi_call connect_call us=6741 timer_ticks=0 expected=0
@@ -2243,6 +2247,64 @@ rc=0 13:39:54
 STOP found: ending before long_uart
 STOP found: ending before long_fram
 STOP found: ending before long_fram
+```
+
+### uart_diag_20261029
+
+```
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.59ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM uart_diag reset_cause 3
+### idle_poll_rate_plain 13:57:32
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.59ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+Traceback (most recent call last):
+  File "/home/nico/programming/sensors-bench/.venv/bin/mpremote", line 10, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/main.py", line 622, in main
+    handler_func(state, args)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/commands.py", line 515, in do_run
+    _do_execbuffer(state, buf, args.follow)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/commands.py", line 489, in _do_execbuffer
+    ret, ret_err = state.transport.follow(timeout=None, data_consumer=stdout_write_bytes)
+                   ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 220, in follow
+    data = self.read_until(1, b"\x04", timeout=timeout, data_consumer=data_consumer)
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 158, in read_until
+    if self.is_pty or self.serial.inWaiting() > 0:
+                      ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 1068, in inWaiting
+    self._check_input(False)
+    ~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 1043, in _check_input
+    if blocking or self.orig_serial.inWaiting() > 0:
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialutil.py", line 594, in inWaiting
+    return self.in_waiting
+           ^^^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialposix.py", line 549, in in_waiting
+    s = fcntl.ioctl(self.fd, TIOCINQ, TIOCM_zero_str)
+OSError: [Errno 5] Input/output error
+rc=1 13:57:51
+SUM uart_diag idle_poll_rate_plain no_done
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.59ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM uart_diag reset_cause 3
+### uart_idle_poll_rate_nowdt 13:57:57
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FACT nowdt=true
+rc=124 14:07:57
+SUM uart_diag uart_idle_poll_rate_nowdt no_done
+board not back
 ```
 
 ### uart_mount_20261029
