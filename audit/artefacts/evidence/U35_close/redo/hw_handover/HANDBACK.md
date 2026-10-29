@@ -1578,6 +1578,29 @@ FACT died=null
 DONE
 Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
 rc=0 15:20:42
+### isl29125_lighting_scenarios 15:20:51
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.59ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FACT scenario_sunrise_white_slow={"ranges_used": [375, 10000], "lux": [57.392996, 10000.0], "max_gap_ms": 1244, "log": {"slots": 10, "count": 0, "entries": []}, "max_switches": 4, "switches": 1, "samples": 55, "both_ranges": true, "parked": true, "min_switches": 1}
+FACT scenario_sunset_white_slow={"ranges_used": [10000, 375], "lux": [0.9155413, 10000.0], "max_gap_ms": 1234, "log": {"slots": 10, "count": 0, "entries": []}, "max_switches": 4, "switches": 1, "samples": 68, "both_ranges": true, "parked": true, "min_switches": 1}
+FACT scenario_dimmer_warm_mid={"ranges_used": [375, 10000], "lux": [41.19936, 2064.6982], "max_gap_ms": 1249, "log": {"slots": 10, "count": 0, "entries": []}, "max_switches": 6, "switches": 3, "samples": 56, "both_ranges": true, "parked": true, "min_switches": 2}
+FACT scenario_bulb_fast_on_off={"ranges_used": [375, 10000], "lux": [0.9155413, 10000.0], "max_gap_ms": 1227, "log": {"slots": 10, "count": 0, "entries": []}, "max_switches": 8, "switches": 3, "samples": 28, "both_ranges": true, "parked": true, "min_switches": 2}
+FACT scenario_flash_steps={"ranges_used": [375, 10000], "lux": [48.371096, 10000.0], "max_gap_ms": 1225, "log": {"slots": 10, "count": 0, "entries": []}, "max_switches": 10, "switches": 3, "samples": 36, "both_ranges": true, "parked": true, "min_switches": 2}
+FACT scenario_threshold_oscillation_crossing={"ranges_used": [375, 10000], "lux": [48.52369, 612.19196], "max_gap_ms": 1232, "log": {"slots": 10, "count": 0, "entries": []}, "max_switches": 12, "switches": 5, "samples": 52, "both_ranges": true, "parked": true, "min_switches": 4}
+FACT scenario_hysteresis_band_dwell_no_chatter={"ranges_used": [375, 10000], "lux": [150.75914, 307.1641], "max_gap_ms": 1241, "log": {"slots": 10, "count": 0, "entries": []}, "max_switches": 0, "switches": 1, "samples": 46, "both_ranges": false, "parked": true, "min_switches": 0}
+FACT scenario_ambient_blue_plus_dynamic_red={"ranges_used": [375, 10000], "lux": [110.94644, 795.6054], "max_gap_ms": 1243, "log": {"slots": 10, "count": 0, "entries": []}, "max_switches": 6, "switches": 1, "samples": 49, "both_ranges": false, "parked": true, "min_switches": 0}
+FACT scenario_colour_walk_constant_level={"ranges_used": [375, 10000], "lux": [238.241032, 2981.6128], "max_gap_ms": 1232, "log": {"slots": 10, "count": 0, "entries": []}, "max_switches": 8, "switches": 1, "samples": 36, "both_ranges": false, "parked": true, "min_switches": 0}
+FACT scenario_mixed_mode_overlapping={"ranges_used": [375, 10000], "lux": [48.676276, 7857.9384], "max_gap_ms": 1229, "log": {"slots": 10, "count": 0, "entries": []}, "max_switches": 10, "switches": 2, "samples": 61, "both_ranges": true, "parked": true, "min_switches": 2}
+FACT baselines=[1017.9293, 1000.53408, 1006.9428, 1006.9428, 1008.62136, 1007.7058, 1005.5695, 1009.68948, 1014.7249, 1012.4361, 1011.06268]
+FACT span=[0.9155413, 10000.0]
+FACT total_switches=23
+FACT sample_failures={"first": [], "total": 0}
+FACT died=[]
+FACT bounds={"baseline_tol": 0.35, "periodic_only_warn_at": 5, "max_sample_gap_ms": 8000, "min_span_ratio": 100.0, "periodic_only": 32, "min_samples": 3}
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 15:30:16
 ```
 
 ### i2c_rerun_20261029
