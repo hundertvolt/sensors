@@ -22,3 +22,24 @@ Resolved 22 packages in 3ms
 Audited 20 packages in 0.61ms
 warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
 SUM resets after reset_cause 3 wd_reason 0x2 chip_reset 0x100 region0 ['0x813d', '0x0', '0x0', '0x0'] region1 ['0x6', '0x1', '0x0']
+### prims10 18:11:02
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM prims10 idle levels gpio6 0 gpio11 1
+SUM prims10 control_no_irq edges_per_s 5000 edges 25000 callbacks 0 wakeups 0 soft_timer 500 of 500 lag_max 2 lag_over20 0 lag_n 520 window_ms 5001
+SUM prims10 gpio6_isl edges_per_s 50 edges 250 callbacks 0 wakeups 0 soft_timer 500 of 500 lag_max 1 lag_over20 0 lag_n 550 window_ms 5001
+SUM prims10 gpio6_isl edges_per_s 500 edges 2500 callbacks 0 wakeups 0 soft_timer 500 of 500 lag_max 1 lag_over20 0 lag_n 550 window_ms 5000
+SUM prims10 gpio6_isl edges_per_s 2500 edges 12499 callbacks 0 wakeups 0 soft_timer 500 of 500 lag_max 0 lag_over20 0 lag_n 550 window_ms 5000
+SUM prims10 gpio6_isl edges_per_s 5000 edges 25000 callbacks 0 wakeups 0 soft_timer 500 of 500 lag_max 2 lag_over20 0 lag_n 526 window_ms 5001
+SUM prims10 gpio11_scd edges_per_s 50 edges 249 callbacks 0 wakeups 0 soft_timer 500 of 500 lag_max 0 lag_over20 0 lag_n 550 window_ms 5000
+SUM prims10 gpio11_scd edges_per_s 500 edges 2500 callbacks 0 wakeups 0 soft_timer 500 of 500 lag_max 1 lag_over20 0 lag_n 550 window_ms 5000
+SUM prims10 gpio11_scd edges_per_s 2500 edges 12499 callbacks 0 wakeups 0 soft_timer 500 of 500 lag_max 1 lag_over20 0 lag_n 550 window_ms 5000
+SUM prims10 gpio11_scd edges_per_s 5000 edges 25000 callbacks 0 wakeups 0 soft_timer 500 of 500 lag_max 2 lag_over20 0 lag_n 525 window_ms 5001
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 18:11:53
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM resets after reset_cause 3 wd_reason 0x2 chip_reset 0x100 region0 ['0x9', '0xc350', '0x1355', '0x0'] region1 ['0x0', '0x2', '0x0']
