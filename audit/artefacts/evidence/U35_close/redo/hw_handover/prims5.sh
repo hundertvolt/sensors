@@ -4,7 +4,7 @@
 set -uo pipefail
 H=$(cd "$(dirname "$0")" && pwd)
 B=$H/mp/big
-L=$H/logs/prims5_$(date -u +%Y%m%d).log
+L=$H/logs/prims5${RUN:-}_$(date -u +%Y%m%d).log
 BRANCH=${BENCH_BRANCH:-claude/u35-bench-campaign}
 MPC=scripts/mpremote_connect.sh
 MNT=$PWD/build/mountstage/mpy
@@ -39,10 +39,8 @@ for label, rate, secs in (("rate_200pps", 200, 13), ("rate_1000pps", 1000, 13), 
 print("SUM prims4_host", "; ".join(res))
 PY
 }
-echo "### prims5 $(date -u +%T)" >> "$L"
-timeout 120 $MPC mount "$MNT" run "$B/prims5.py" >> "$L" 2>&1; echo "rc=$? $(date -u +%T)" >> "$L"
-settle; push "the I2C bus clear under injected faults"
-for v in no_wifi no_uart no_fram full; do
+up || exit 1
+for v in ${VARIANTS:-full no_wifi}; do
   sed "s/^VARIANT = .*/VARIANT = \"$v\"/" "$B/prims4.py" > "$H/logs/prims4_$v.py"
   echo "### prims4 $v $(date -u +%T)" >> "$L"
   timeout 240 $MPC mount "$MNT" run "$H/logs/prims4_$v.py" >> "$L" 2>&1 &

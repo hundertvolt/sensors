@@ -1,0 +1,150 @@
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.63ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+11 ring True
+19 sync 0 level 65
+27 sync 1 level 129
+35 sync 2 level 193
+43 sync 3 level 257
+51 sync 4 level 321
+59 sync 5 level 385
+67 sync 6 level 449
+75 sync 7 level -1
+83 sync 8 level -1
+91 sync 9 level -1
+92 reader alone
+92 r> 0
+93 r< 0 None
+93 r> 1
+93 r< 1 None
+93 r> 2
+94 r< 2 None
+94 writer alone
+94 w 0
+102 w 1
+111 w 2
+119 w 3
+127 w 4
+135 both
+135 r> 0
+136 r< 0 None
+136 r> 1
+136 r< 1 None
+137 r> 2
+137 r< 2 None
+137 r> 3
+137 r< 3 None
+138 r> 4
+138 r< 4 None
+138 r> 5
+138 r< 5 None
+139 r> 6
+139 r< 6 None
+139 r> 7
+140 r< 7 None
+140 r> 8
+140 r< 8 None
+140 r> 9
+141 r< 9 None
+141 r> 10
+141 r< 10 None
+142 r> 11
+142 r< 11 None
+142 r> 12
+142 r< 12 None
+143 r> 13
+143 r< 13 None
+143 r> 14
+143 r< 14 None
+144 r> 15
+144 r< 15 None
+144 r> 16
+145 r< 16 None
+145 r> 17
+145 r< 17 None
+145 r> 18
+146 r< 18 None
+146 r> 19
+146 r< 19 None
+146 r> 20
+147 r< 20 None
+147 r> 21
+147 r< 21 None
+148 r> 22
+148 r< 22 None
+148 r> 23
+148 r< 23 None
+149 r> 24
+149 r< 24 None
+149 r> 25
+150 r< 25 None
+150 r> 26
+150 r< 26 None
+150 r> 27
+151 r< 27 None
+151 r> 28
+151 r< 28 None
+151 r> 29
+152 r< 29 None
+152 r> 30
+152 r< 30 None
+153 r> 31
+153 r< 31 None
+153 r> 32
+153 r< 32 None
+154 r> 33
+154 r< 33 None
+154 r> 34
+155 r< 34 None
+155 r> 35
+155 r< 35 None
+155 r> 36
+156 r< 36 None
+156 r> 37
+156 r< 37 None
+156 r> 38
+157 r< 38 None
+157 r> 39
+157 r< 39 None
+158 w 0
+166 w 1
+174 w 2
+182 w 3
+190 w 4
+199 w 5
+208 w 6
+217 w 7
+226 w 8
+235 w 9
+243 w 10
+251 w 11
+260 w 12
+269 w 13
+277 w 14
+286 w 15
+295 w 16
+303 w 17
+312 w 18
+321 w 19
+330 w 20
+339 w 21
+347 w 22
+355 w 23
+363 w 24
+372 w 25
+380 w 26
+388 w 27
+397 w 28
+406 w 29
+415 w 30
+424 w 31
+433 w 32
+442 w 33
+451 w 34
+460 w 35
+469 w 36
+478 w 37
+486 w 38
+494 w 39
+503 DONE
+Local directory build/mountstage/mpy is mounted at /remote

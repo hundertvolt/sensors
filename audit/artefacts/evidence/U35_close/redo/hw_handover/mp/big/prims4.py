@@ -51,7 +51,8 @@ async def writer(tx):
         for k in range(3, 64): f[k] = (seq + k) & 0xFF
         tx.write(f); seq = (seq + 1) & 0xFFFF; bump("uart_sent")
         await asyncio.sleep_ms(8)
-async def reader(u):
+async def reader(u):  # holds the session lock for good, as UARTComm does: read() returns None at once without it
+    await u.session_lock.acquire()
     acc = bytearray(); last = -1
     while True:
         chunk = await u.read(128, 200)
