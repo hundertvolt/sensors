@@ -2553,6 +2553,7 @@ rc=0 13:39:54
 STOP found: ending before long_uart
 STOP found: ending before long_fram
 STOP found: ending before long_fram
+STOP found: ending before long_runtime
 ```
 
 ### uart_diag_20261029
