@@ -1257,6 +1257,27 @@ DONE=1
 rc=0 13:08:54
 ```
 
+### listener_close_20261029
+
+```
+== listener_close 13:09:00
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FACT platform="rp2"
+FACT pools={"listen": [72, 8, 536924418, 536903312], "conn": [196, 9, 536924997, 536903308]}
+FACT pools_matched=true
+FACT listener_closed=true
+FACT listen_refused=true
+FACT port_held_errno=null
+FACT round_trip=113
+FACT free={"listen": [[7, 6, 5, 4, 3, 2, 1, 0], [7, 6, 5, 4, 3, 2, 1, 0], [7, 6, 5, 4, 3, 2, 1, 0]], "conn": [[8, 7, 6, 5, 4, 3, 2, 1, 0], [8, 7, 6, 5, 4, 3, 2, 1, 0], [7, 8, 6, 5, 4, 3, 2, 1, 0]]}
+FACT used={"listen": 7, "conn": 8}
+FACT changed={"first": [], "total": 0}
+DONE
+rc=0 13:09:01
+```
+
 ### long_fram_20261029
 
 ```
