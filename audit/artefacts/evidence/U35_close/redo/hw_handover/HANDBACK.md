@@ -20,14 +20,14 @@ i2c chip=scd30 phase=data runs=5 n=52627 eio=0 etimedout=0 other=0 bad=0 worst_u
 i2c chip=sgp40 phase=cmd runs=5 n=2700 eio=0 etimedout=0 other=0 bad=0 worst_us=1828 eio_rate<1.1e-03 etimedout_rate<1.1e-03 other_rate<1.1e-03 bad_rate<1.1e-03
 i2c chip=sgp40 phase=data runs=5 n=2700 eio=1 etimedout=0 other=0 bad=0 worst_us=5368 eio_rate=3.70e-04 etimedout_rate<1.1e-03 other_rate<1.1e-03 bad_rate<1.1e-03
 i2c chip=sgp40 phase=first runs=5 n=0 eio=0 etimedout=0 other=0 bad=0 worst_us=0
-lagbins threshold=-1 runs=2 lt500=63994 lt1000=17180 lt2000=865 lt5000=55 lt10000=13248 lt20000=58 lt50000=0 ge50000=0
+lagbins threshold=-1 runs=3 lt500=93480 lt1000=27622 lt2000=1107 lt5000=72 lt10000=20351 lt20000=97 lt50000=0 ge50000=0
 lagbins threshold=32768 runs=1 lt500=25540 lt1000=15714 lt2000=8645 lt5000=474 lt10000=273 lt20000=0 lt50000=0 ge50000=0
-loop threshold=-1 runs=2 probes=95400 worst_lag_us=10565 memoryerrors=0
+loop threshold=-1 runs=3 probes=142729 worst_lag_us=10565 memoryerrors=0
 loop threshold=32768 runs=1 probes=50646 worst_lag_us=8170 memoryerrors=0
-neopixel runs=3 blind_windows=0 persistent_windows=0 no_wifi=0 samples_in_burst=9914 dev_in_burst=0 pkts=198280 samples_outside=12264 dev_outside=0 windows=3 send_errors=0 dev_in_burst_rate<3.0e-04 dev_outside_rate<2.4e-04
-net runs=3 dns=27 dns_worst_ms=37 connects=3 connect_fail=0 connect_worst_ms=2728 drops=0 down_s=0 ntp_fail=0 ntp_worst_ms=68 ntp=15 dns_vm_held=0 ntp_sum_ms=360 skipped_down=0 dns_fail=0 dns_fail_rate<1.1e-01 ntp_fail_rate<2.0e-01 connect_fail_rate<1.0e+00
-timer threshold=-1 period_ms=100 runs=2 fires=10800 expected=10800 worst_jitter_us=9028 dropped=0
-timer threshold=-1 period_ms=1000 runs=2 fires=1080 expected=1080 worst_jitter_us=8747 dropped=0
+neopixel runs=4 blind_windows=0 persistent_windows=0 no_wifi=0 samples_in_burst=13225 dev_in_burst=0 pkts=264500 samples_outside=16352 dev_outside=0 windows=4 send_errors=0 dev_in_burst_rate<2.3e-04 dev_outside_rate<1.8e-04
+net runs=4 dns=36 dns_worst_ms=37 connects=4 connect_fail=0 connect_worst_ms=2728 drops=0 down_s=0 ntp_fail=0 ntp_worst_ms=68 ntp=20 dns_vm_held=0 ntp_sum_ms=500 skipped_down=0 dns_fail=0 dns_fail_rate<8.3e-02 ntp_fail_rate<1.5e-01 connect_fail_rate<7.5e-01
+timer threshold=-1 period_ms=100 runs=3 fires=16200 expected=16200 worst_jitter_us=9028 dropped=0
+timer threshold=-1 period_ms=1000 runs=3 fires=1620 expected=1620 worst_jitter_us=8779 dropped=0
 timer threshold=32768 period_ms=100 runs=1 fires=5400 expected=5400 worst_jitter_us=6591 dropped=0
 timer threshold=32768 period_ms=1000 runs=1 fires=540 expected=540 worst_jitter_us=6347 dropped=0
 uart dir=0to1 threshold=-1 runs=3 bytes_ok=11860672 mismatches=0 max_backlog=79 worst_reader_gap_us=15184 mismatches_rate<2.5e-07
@@ -1256,6 +1256,45 @@ SUM L i2c chip=bmp phase=data n=146271 eio=0 etimedout=0 other=0 bad=0 worst_us=
 SUM L i2c chip=sgp40 phase=first n=0 eio=0 etimedout=0 other=0 bad=0 worst_us=0
 DONE=1
 rc=0 05:44:32
+```
+
+### long_neopixel_20261029
+
+```
+== long_neopixel 06:20:47
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L neopixel blind_windows=0 persistent_windows=0 no_wifi=0 samples_in_burst=3311 dev_in_burst=0 pkts=66220 samples_outside=4088 dev_outside=0 windows=1 send_errors=0
+DONE=1
+rc=0 06:29:51
+```
+
+### long_net_20261029
+
+```
+== long_net 06:11:41
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.67ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L net dns=9 dns_worst_ms=24 connects=1 connect_fail=0 connect_worst_ms=2707 drops=0 down_s=0 ntp_fail=0 ntp_worst_ms=53 ntp=5 dns_vm_held=0 ntp_sum_ms=140 skipped_down=0 dns_fail=0
+DONE=1
+rc=0 06:20:46
+```
+
+### long_runtime_20261029
+
+```
+== long_runtime 06:02:39
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L loop threshold=-1 probes=47329 worst_lag_us=10395 memoryerrors=0
+SUM L lagbins threshold=-1 lt500=29486 lt1000=10442 lt2000=242 lt5000=17 lt10000=7103 lt20000=39 lt50000=0 ge50000=0
+SUM L timer period_ms=1000 threshold=-1 fires=540 expected=540 worst_jitter_us=8779
+SUM L timer period_ms=100 threshold=-1 fires=5400 expected=5400 worst_jitter_us=9020
+DONE=1
+rc=0 06:11:40
 ```
 
 ### long_uart_20261029
