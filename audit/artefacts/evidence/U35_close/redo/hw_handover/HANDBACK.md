@@ -1459,6 +1459,16 @@ FACT stage_1={"drift": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "settled": true, "baselin
 DONE
 Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
 rc=0 15:15:36
+### system_service_restarts_a_real_dead_task 15:15:45
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FACT mode="restart"
+FACT starter_calls=3
+FACT system={"ErrCount": 2, "ErrType": ["N", "N", "N", "N", "N", "N", "N", "N", "N", "E"], "ErrNum": [0, 0, 0, 0, 0, 0, 0, 0, 0, 44]}
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 15:15:54
 ```
 
 ### i2c_rerun_20261029
