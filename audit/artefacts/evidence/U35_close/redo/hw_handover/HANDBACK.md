@@ -177,6 +177,22 @@ scd30_state asc=0 raw=000081
 scd30_ready n=280 interval_ms min=648 median=2143 max=2250 worst_not_ready_run=20 polls=5601 errors=0
 sda_hold armed ack=0 bits_clocked=0 sda_now=0
 sda_hold after_reset sda=0 scl=1 scan_before_clear=['0x8', '0x18', '0x77'] clocks_to_free=0 sda_after_clear=1 scan_after=['0x18', '0x77'] bmp_chip_id=0x50
+wifi_call sta_active_false us=578146 timer_ticks=56 expected=57
+wifi_call sta_active_true us=394169 timer_ticks=41 expected=39
+wifi_call connect_call us=6741 timer_ticks=0 expected=0
+wifi connected_after_ms=2940
+wifi rssi_call avg_us=278 worst_us=515
+wifi_call disconnect_call us=491 timer_ticks=0 expected=0
+wifi isconnected_cleared_after_ms=2 polls=2 status=0
+wifi_call sta_active_false_2 us=156529 timer_ticks=15 expected=15
+wifi_call ap_active_true us=376498 timer_ticks=35 expected=37
+wifi ap_active_after_ms=0
+wifi_call ap_active_false us=157010 timer_ticks=16 expected=15
+wifi_call sta_active_true_after_ap us=323373 timer_ticks=33 expected=32
+wifi sta_back_connected_after_ms=2940
+wifi_call deinit us=155606 timer_ticks=16 expected=15
+wifi_call sta_active_true_after_deinit us=970795 timer_ticks=97 expected=97
+wifi connected_after_deinit_ms=2950
 ```
 
 ## Day 20261028
@@ -2151,6 +2167,33 @@ rc=0 13:39:54
 ```
 STOP found: ending before long_uart
 STOP found: ending before long_fram
+```
+
+### wifi_switch_20261029
+
+```
+== wifi_switch 13:40:01
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM wifi_call sta_active_false us=578146 timer_ticks=56 expected=57
+SUM wifi_call sta_active_true us=394169 timer_ticks=41 expected=39
+SUM wifi_call connect_call us=6741 timer_ticks=0 expected=0
+SUM wifi connected_after_ms=2940
+SUM wifi rssi_call avg_us=278 worst_us=515
+SUM wifi_call disconnect_call us=491 timer_ticks=0 expected=0
+SUM wifi isconnected_cleared_after_ms=2 polls=2 status=0
+SUM wifi_call sta_active_false_2 us=156529 timer_ticks=15 expected=15
+SUM wifi_call ap_active_true us=376498 timer_ticks=35 expected=37
+SUM wifi ap_active_after_ms=0
+SUM wifi_call ap_active_false us=157010 timer_ticks=16 expected=15
+SUM wifi_call sta_active_true_after_ap us=323373 timer_ticks=33 expected=32
+SUM wifi sta_back_connected_after_ms=2940
+SUM wifi_call deinit us=155606 timer_ticks=16 expected=15
+SUM wifi_call sta_active_true_after_deinit us=970795 timer_ticks=97 expected=97
+SUM wifi connected_after_deinit_ms=2950
+DONE=1
+rc=0 13:40:20
 ```
 <!-- end day -->
 
