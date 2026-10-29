@@ -2562,6 +2562,49 @@ Traceback (most recent call last):
     s = fcntl.ioctl(self.fd, TIOCINQ, TIOCM_zero_str)
 OSError: [Errno 5] Input/output error
 rc=1 13:46:15
+### uart_dma_ring_interrupts_off.py CRC_MODE=none
+== uart_mount 13:46:24
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.59ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FACT crc_mode="none"
+FACT state="sweep"
+FACT gc_threshold=-1
+FACT ring_bound_us=44444
+FACT setup=true
+FACT heap={"heap_after": 77648, "largest_before": 13152, "largest_after": 13152, "ring_bytes": 512, "heap_before": 80416}
+FACT windows=[{"window_us": 3000, "streamed": true, "frames_sent": 23, "frames_intact": 0, "overrun_detected": 1, "uartrsr_oe": false, "after_sent": 4, "after_intact": 4}, {"window_us": 45000, "streamed": true, "frames_sent": 32, "frames_intact": 0, "overrun_detected": 1, "uartrsr_oe": false, "after_sent": 4, "after_intact": 4}, {"window_us": 400000, "streamed": true, "frames_sent": 109, "frames_intact": 0, "overrun_detected": 1, "uartrsr_oe": false, "after_sent": 4, "after_intact": 4}, {"window_us": 100000Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+Traceback (most recent call last):
+  File "/home/nico/programming/sensors-bench/.venv/bin/mpremote", line 10, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/main.py", line 622, in main
+    handler_func(state, args)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/commands.py", line 515, in do_run
+    _do_execbuffer(state, buf, args.follow)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/commands.py", line 489, in _do_execbuffer
+    ret, ret_err = state.transport.follow(timeout=None, data_consumer=stdout_write_bytes)
+                   ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 220, in follow
+    data = self.read_until(1, b"\x04", timeout=timeout, data_consumer=data_consumer)
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 158, in read_until
+    if self.is_pty or self.serial.inWaiting() > 0:
+                      ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 1068, in inWaiting
+    self._check_input(False)
+    ~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 1043, in _check_input
+    if blocking or self.orig_serial.inWaiting() > 0:
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialutil.py", line 594, in inWaiting
+    return self.in_waiting
+           ^^^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialposix.py", line 549, in in_waiting
+    s = fcntl.ioctl(self.fd, TIOCINQ, TIOCM_zero_str)
+OSError: [Errno 5] Input/output error
+rc=1 13:46:42
 ```
 
 ### wifi_switch_20261029
