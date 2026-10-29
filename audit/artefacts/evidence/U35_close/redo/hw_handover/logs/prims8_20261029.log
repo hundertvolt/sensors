@@ -82,3 +82,45 @@ Resolved 22 packages in 3ms
 Audited 20 packages in 0.62ms
 warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
 SUM resets after reset_cause 3 wd_reason 0x1 chip_reset 0x100 region0 ['0xafd9', '0x0', '0x7101', '0xb4c'] region1 ['0x1', '0x4', '0x0']
+### prims8 filter=negate 17:37:32
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM prims8 filter negate installed
+FLOOD_START IP=192.168.85.57 PORT=5006
+SUM prims8 negate unbound t 0 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims8 negate unbound t 1 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1000 soft_per_s 100
+SUM prims8 negate unbound t 2 window_ms 1000 lag_max_ms 2 udp_rx 0 hard_per_s 1000 soft_per_s 100
+SUM prims8 negate unbound t 3 window_ms 1001 lag_max_ms 3 udp_rx 0 hard_per_s 1000 soft_per_s 99
+SUM prims8 negate unbound t 4 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims8 negate unbound t 5 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims8 negate unbound t 6 window_ms 1000 lag_max_ms 2 udp_rx 0 hard_per_s 1001 soft_per_s 101
+SUM prims8 negate unbound t 7 window_ms 1001 lag_max_ms 1 udp_rx 0 hard_per_s 999 soft_per_s 99
+SUM prims8 negate unbound t 8 window_ms 1000 lag_max_ms 0 udp_rx 0 hard_per_s 1000 soft_per_s 100
+SUM prims8 negate unbound t 9 window_ms 1000 lag_max_ms 5 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims8 negate unbound t 10 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1000 soft_per_s 100
+SUM prims8 negate unbound t 11 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims8 negate unbound t 12 window_ms 1000 lag_max_ms 0 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims8 negate unbound t 13 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims8 negate unbound t 14 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims8 negate unbound t 15 window_ms 1000 lag_max_ms 1 udp_rx 0 hard_per_s 1000 soft_per_s 100
+SUM prims8 negate unbound t 16 window_ms 1000 lag_max_ms 0 udp_rx 0 hard_per_s 1001 soft_per_s 101
+SUM prims8 negate unbound t 17 window_ms 1000 lag_max_ms 0 udp_rx 0 hard_per_s 1001 soft_per_s 100
+SUM prims8 negate unbound t 18 window_ms 1000 lag_max_ms 0 udp_rx 4 hard_per_s 1001 soft_per_s 100
+SUM prims8 negate unbound t 19 window_ms 1000 lag_max_ms 1 udp_rx 9 hard_per_s 999 soft_per_s 100
+SUM prims8 negate unbound t 20 window_ms 1000 lag_max_ms 4 udp_rx 14 hard_per_s 1001 soft_per_s 100
+SUM prims8 negate unbound t 21 window_ms 1000 lag_max_ms 1 udp_rx 18 hard_per_s 1000 soft_per_s 100
+SUM prims8_host storm sent=153588 port=5006; paced rtt answered 20/20 median_ms 6.1 max_ms 8.2
+SUM prims8 negate unbound t 22 window_ms 1000 lag_max_ms 2 udp_rx 20 hard_per_s 1001 soft_per_s 100
+SUM prims8 negate unbound t 23 window_ms 1000 lag_max_ms 0 udp_rx 20 hard_per_s 1000 soft_per_s 100
+SUM prims8 negate unbound t 24 window_ms 1000 lag_max_ms 1 udp_rx 20 hard_per_s 1001 soft_per_s 100
+SUM prims8 negate unbound t 25 window_ms 1000 lag_max_ms 1 udp_rx 20 hard_per_s 1001 soft_per_s 101
+SUM prims8 negate unbound t 26 window_ms 1000 lag_max_ms 1 udp_rx 20 hard_per_s 1001 soft_per_s 100
+SUM prims8 negate unbound t 27 window_ms 1000 lag_max_ms 1 udp_rx 20 hard_per_s 1001 soft_per_s 100
+SUM prims8 negate isconnected True rssi -38
+DONE
+rc=0 17:38:06
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.65ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM resets after reset_cause 3 wd_reason 0x2 chip_reset 0x100 region0 ['0x80f1', '0x14', '0x7105', '0xb4d'] region1 ['0x1', '0x5', '0x0']
