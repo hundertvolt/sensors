@@ -155,6 +155,12 @@ memoryerror exhaust=MemoryError('memory allocation failed, allocating 1024 bytes
 irq_alloc_above hard=0 emergency_buf=0 (the traceback is the console text above)
 irq_alloc_above hard=1 emergency_buf=0 (the traceback is the console text above)
 irq_alloc_above hard=1 emergency_buf=256 (the traceback is the console text above)
+scd30_state temp_offset=400 raw=01904c
+scd30_state interval=2 raw=0002e3
+scd30_state altitude=0 raw=000081
+scd30_state frc=400 raw=01904c
+scd30_state asc=0 raw=000081
+scd30_ready n=280 interval_ms min=648 median=2143 max=2250 worst_not_ready_run=20 polls=5601 errors=0
 ```
 
 ## Day 20261028
@@ -1983,6 +1989,23 @@ MemoryError: memory allocation failed, heap is locked
 SUM irq_alloc_above hard=1 emergency_buf=256 (the traceback is the console text above)
 DONE=1
 rc=0 05:35:26
+```
+
+### scd30_state_20261029
+
+```
+== scd30_state 13:20:24
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM scd30_state temp_offset=400 raw=01904c
+SUM scd30_state interval=2 raw=0002e3
+SUM scd30_state altitude=0 raw=000081
+SUM scd30_state frc=400 raw=01904c
+SUM scd30_state asc=0 raw=000081
+SUM scd30_ready n=280 interval_ms min=648 median=2143 max=2250 worst_not_ready_run=20 polls=5601 errors=0
+DONE=1
+rc=0 13:30:25
 ```
 
 ### stop_20261029
