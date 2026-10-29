@@ -1,0 +1,47 @@
+### prims4 full 17:10:58
+Resolved 22 packages in 5ms
+Audited 20 packages in 0.86ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM prims4 ring True connected True
+SUM prims4 quiet [('fram_bad', 0), ('fram_reads', 5951), ('lag_max', 17), ('lag_n', 3895), ('lag_over20', 0), ('lag_over44', 0), ('mem_free_end', 21280), ('mem_free_start', 117456), ('uart_good', 4170), ('uart_overruns', 0), ('uart_sent', 4171), ('uart_seq_gap', 0)]
+FLOOD_START IP=192.168.85.57
+[CYW43] STALL(0;217-217): timeout
+[CYW43] send_ethernet failed: -110
+SUM prims4_host rate_200pps sent=2600 echoed=2599; rate_1000pps sent=13001 echoed=8723; unthrottled sent=83572 echoed=152
+SUM prims4 flood [('fram_bad', 0), ('fram_reads', 2136), ('lag_max', 6113), ('lag_n', 1491), ('lag_over20', 17), ('lag_over44', 16), ('mem_free_end', 85376), ('mem_free_start', 115952), ('uart_good', 1530), ('uart_overruns', 0), ('uart_sent', 1530), ('uart_seq_gap', 0), ('udp_rx', 11477), ('udp_tx', 11476), ('udp_tx_err-1', 1)]
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+Traceback (most recent call last):
+  File "/home/nico/programming/sensors-bench/.venv/bin/mpremote", line 10, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/main.py", line 622, in main
+    handler_func(state, args)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/commands.py", line 515, in do_run
+    _do_execbuffer(state, buf, args.follow)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/commands.py", line 489, in _do_execbuffer
+    ret, ret_err = state.transport.follow(timeout=None, data_consumer=stdout_write_bytes)
+                   ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 220, in follow
+    data = self.read_until(1, b"\x04", timeout=timeout, data_consumer=data_consumer)
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 158, in read_until
+    if self.is_pty or self.serial.inWaiting() > 0:
+                      ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 1068, in inWaiting
+    self._check_input(False)
+    ~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 1043, in _check_input
+    if blocking or self.orig_serial.inWaiting() > 0:
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialutil.py", line 594, in inWaiting
+    return self.in_waiting
+           ^^^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialposix.py", line 549, in in_waiting
+    s = fcntl.ioctl(self.fd, TIOCINQ, TIOCM_zero_str)
+OSError: [Errno 5] Input/output error
+rc=0 17:12:45
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM resets after reset_cause 3 wd_reason 0x1 chip_reset 0x100 region0 ['0x15f95', '0x855', '0x5f8', '0x2cd5'] region1 ['0x2', '0x17e1', '0x5f7']
