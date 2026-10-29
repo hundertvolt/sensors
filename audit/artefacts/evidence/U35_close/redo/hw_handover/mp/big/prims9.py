@@ -40,7 +40,7 @@ async def reader(u):  # holds the session lock for good, as UARTComm does
     while True:
         chunk = await u.read(128, 200)
         if chunk is None: bump("read_none"); continue
-        bump("zero_bytes", chunk.count(0)); acc += chunk
+        bump("zero_bytes", chunk.count(b"\x00")); acc += chunk
         while len(acc) >= 64:
             if acc[0] != 0xA5:
                 acc = acc[1:]; bump("skipped"); continue

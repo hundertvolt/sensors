@@ -43,3 +43,21 @@ Resolved 22 packages in 3ms
 Audited 20 packages in 0.61ms
 warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
 SUM resets after reset_cause 3 wd_reason 0x2 chip_reset 0x100 region0 ['0x9', '0xc350', '0x1355', '0x0'] region1 ['0x0', '0x2', '0x0']
+### prims9 18:13:17
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.64ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM prims9 ring True ctrl9 0x2
+SUM prims9 baseline pre [('good', 103), ('lag_max', 16), ('lag_over20', 0), ('sent', 103), ('zero_bytes', 119)] fault_and_after [('first_good_ms', 2), ('good', 208), ('lag_max', 11), ('lag_over20', 0), ('overruns', 0), ('rsr_at_release', -1), ('sent', 208), ('zero_bytes', 95)]
+SUM prims9 low_1ms pre [('good', 104), ('lag_max', 11), ('lag_over20', 0), ('sent', 104), ('zero_bytes', 62)] fault_and_after [('bad', 1), ('first_good_ms', 17), ('good', 208), ('lag_max', 12), ('lag_over20', 0), ('overruns', 0), ('rsr_at_release', 5), ('sent', 209), ('skipped', 52), ('zero_bytes', 25)]
+SUM prims9 low_100ms pre [('good', 104), ('lag_max', 8), ('lag_over20', 0), ('sent', 104), ('zero_bytes', 38)] fault_and_after [('first_good_ms', 17), ('good', 207), ('lag_max', 14), ('lag_over20', 0), ('overruns', 1), ('read_none', 1), ('rsr_at_release', 0), ('sent', 218), ('skipped', 29), ('zero_bytes', 62)]
+SUM prims9 low_10s pre [('good', 104), ('lag_max', 10), ('lag_over20', 0), ('sent', 105), ('zero_bytes', 0)] fault_and_after [('first_good_ms', 17), ('good', 206), ('lag_max', 10), ('lag_over20', 0), ('overruns', 1), ('read_none', 50), ('rsr_at_release', 0), ('sent', 1223), ('skipped', 29), ('zero_bytes', 62)]
+SUM prims9 glitch_1bit_1khz pre [('good', 105), ('lag_max', 12), ('lag_over20', 0), ('sent', 105), ('zero_bytes', 0)] fault_and_after [('bad', 134), ('first_good_ms', 21), ('good', 223), ('lag_max', 16), ('lag_over20', 0), ('overruns', 8), ('read_none', 8), ('rsr_at_release', 0), ('sent', 373), ('skipped', 10318), ('zero_bytes', 128)]
+SUM prims9 glitch_250us_2khz pre [('good', 105), ('lag_max', 3), ('lag_over20', 0), ('sent', 105), ('zero_bytes', 0)] fault_and_after [('bad', 2), ('first_good_ms', 26), ('good', 203), ('lag_max', 13), ('lag_over20', 0), ('overruns', 574), ('read_none', 574), ('rsr_at_release', 5), ('sent', 381), ('skipped', 45), ('zero_bytes', 62)]
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 18:13:54
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM resets after reset_cause 3 wd_reason 0x2 chip_reset 0x100 region0 ['0x815b', '0xc7', '0x0', '0x0'] region1 ['0x6', '0xd', '0x0']
