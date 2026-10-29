@@ -95,6 +95,8 @@ for s in ${STEPS:-cstack idle_poll listener_close}; do  # listener_close last: i
   [ -f "$H/STOP" ] && break
   case $s in
     cstack) run cstack "$H/mp/cstack_await.py" 300 ;;
+    i2c) run i2c_rerun "$H/mp/i2c_timing.py" 300 ;;
+    scd30) run scd30_state "$H/mp/scd30_state.py" 900 ;;
     *) $s ;;
   esac
   up 60 || { timeout 15 $MPC reset >/dev/null 2>&1; up 120 || break; }

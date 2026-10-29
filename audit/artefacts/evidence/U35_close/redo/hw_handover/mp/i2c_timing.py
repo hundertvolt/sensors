@@ -99,15 +99,32 @@ def sgp40() -> None:
     except OSError as e:
         unknown = "raised %r" % e
     time.sleep_ms(5)
-    ready, crc_ok = measure()
-    print("SUM sgp40 unknown_cmd=%s next_measure_us=%d crc_ok=%d" % (unknown, ready, crc_ok))
-    i2c.writeto(SGP40, b"\x36\x15")  # heater off, its power-up idle mode
+    t0, tries, last = time.ticks_ms(), 0, ""
+    while time.ticks_diff(time.ticks_ms(), t0) < 10000:  # until a measure succeeds again, at most 10 s
+        tries += 1
+        try:
+            ready, crc_ok = measure()
+            if ready >= 0:
+                break
+        except OSError as e:
+            last = repr(e)
+        time.sleep_ms(50)
+    else:
+        ready, crc_ok = -1, False
+    print("SUM sgp40 unknown_cmd=%s next_measure_us=%d crc_ok=%d recovered_after_ms=%d tries=%d last_error=%s bus1_scan=%s" % (unknown, ready, crc_ok, time.ticks_diff(time.ticks_ms(), t0), tries, last, [hex(a) for a in i2c.scan()]))
+    try:
+        i2c.writeto(SGP40, b"\x36\x15")  # heater off, its power-up idle mode
+    except OSError as e:
+        print("SUM sgp40 heater_off_after raised %r" % e)
 
 
 def general_call() -> None:
     for n in (0, 1):
         i2c = bus(n)
         before = i2c.scan()
+        if n == 0:
+            print("SUM general_call bmp_regs_before 1b,1c,1f=%s" % bytes(i2c.readfrom_mem(BMP, r, 1)[0] for r in (0x1B, 0x1C, 0x1F)).hex())
+            i2c.writeto_mem(BMP, 0x1C, b"\x03")  # OSR set off its default, so a reset shows
         try:
             acks = i2c.writeto(0x00, b"\x06")
             res = "acked (%s)" % acks
@@ -115,6 +132,8 @@ def general_call() -> None:
             res = "raised %r" % e
         time.sleep_ms(50)
         after = i2c.scan()
+        if n == 0:
+            print("SUM general_call bmp_regs_after 1b,1c,1f=%s (1c was set to 03)" % bytes(i2c.readfrom_mem(BMP, r, 1)[0] for r in (0x1B, 0x1C, 0x1F)).hex())
         print("SUM general_call bus=%d result=%s before=%s after=%s" % (n, res, [hex(a) for a in before], [hex(a) for a in after]))
 
 
