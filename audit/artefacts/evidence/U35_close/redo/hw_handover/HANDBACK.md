@@ -1490,6 +1490,18 @@ C04_por_after_second_read=0
 DONE=1
 Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
 rc=0 15:16:04
+### sgp40_conformance_probe 15:16:13
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+A01_serial=000081030b46c40de4
+A02_serial_stable=yes
+B01_self_test=d400c6
+C01_raw_signal=0002e3
+D01_heater_off_acked=yes
+DONE=1
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 15:16:15
 ```
 
 ### i2c_rerun_20261029
