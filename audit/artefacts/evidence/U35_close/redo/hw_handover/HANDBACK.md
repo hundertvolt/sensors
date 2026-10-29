@@ -20,14 +20,14 @@ i2c chip=scd30 phase=data runs=11 n=115784 eio=0 etimedout=0 other=0 bad=0 worst
 i2c chip=sgp40 phase=cmd runs=11 n=5940 eio=0 etimedout=0 other=0 bad=0 worst_us=1829 eio_rate<5.1e-04 etimedout_rate<5.1e-04 other_rate<5.1e-04 bad_rate<5.1e-04
 i2c chip=sgp40 phase=data runs=11 n=5940 eio=1 etimedout=0 other=0 bad=0 worst_us=5368 eio_rate=1.68e-04 etimedout_rate<5.1e-04 other_rate<5.1e-04 bad_rate<5.1e-04
 i2c chip=sgp40 phase=first runs=11 n=0 eio=0 etimedout=0 other=0 bad=0 worst_us=0
-lagbins threshold=-1 runs=5 lt500=161711 lt1000=41750 lt2000=2259 lt5000=128 lt10000=32710 lt20000=164 lt50000=0 ge50000=0
+lagbins threshold=-1 runs=6 lt500=196108 lt1000=48645 lt2000=2801 lt5000=166 lt10000=38855 lt20000=182 lt50000=0 ge50000=0
 lagbins threshold=32768 runs=4 lt500=101390 lt1000=63067 lt2000=34750 lt5000=2076 lt10000=1140 lt20000=0 lt50000=0 ge50000=0
-loop threshold=-1 runs=5 probes=238722 worst_lag_us=10565 memoryerrors=0
+loop threshold=-1 runs=6 probes=286757 worst_lag_us=10565 memoryerrors=0
 loop threshold=32768 runs=4 probes=202423 worst_lag_us=8313 memoryerrors=0
-neopixel runs=9 blind_windows=0 persistent_windows=0 no_wifi=0 samples_in_burst=29794 dev_in_burst=0 pkts=595880 samples_outside=36792 dev_outside=0 windows=9 send_errors=0 dev_in_burst_rate<1.0e-04 dev_outside_rate<8.2e-05
-net runs=9 dns=81 dns_worst_ms=45 connects=9 connect_fail=0 connect_worst_ms=2728 drops=0 down_s=0 ntp_fail=0 ntp_worst_ms=68 ntp=45 dns_vm_held=0 ntp_sum_ms=890 skipped_down=0 dns_fail=0 dns_fail_rate<3.7e-02 ntp_fail_rate<6.7e-02 connect_fail_rate<3.3e-01
-timer threshold=-1 period_ms=100 runs=5 fires=27000 expected=27000 worst_jitter_us=9028 dropped=0
-timer threshold=-1 period_ms=1000 runs=5 fires=2700 expected=2700 worst_jitter_us=8930 dropped=0
+neopixel runs=10 blind_windows=0 persistent_windows=0 no_wifi=0 samples_in_burst=33103 dev_in_burst=0 pkts=662060 samples_outside=40880 dev_outside=0 windows=10 send_errors=0 dev_in_burst_rate<9.1e-05 dev_outside_rate<7.3e-05
+net runs=10 dns=90 dns_worst_ms=45 connects=10 connect_fail=0 connect_worst_ms=2728 drops=0 down_s=0 ntp_fail=0 ntp_worst_ms=68 ntp=50 dns_vm_held=0 ntp_sum_ms=973 skipped_down=0 dns_fail=0 dns_fail_rate<3.3e-02 ntp_fail_rate<6.0e-02 connect_fail_rate<3.0e-01
+timer threshold=-1 period_ms=100 runs=6 fires=32400 expected=32400 worst_jitter_us=9105 dropped=0
+timer threshold=-1 period_ms=1000 runs=6 fires=3240 expected=3240 worst_jitter_us=8980 dropped=0
 timer threshold=32768 period_ms=100 runs=4 fires=21600 expected=21600 worst_jitter_us=6620 dropped=0
 timer threshold=32768 period_ms=1000 runs=4 fires=2160 expected=2160 worst_jitter_us=6598 dropped=0
 uart dir=0to1 threshold=-1 runs=6 bytes_ok=23683008 mismatches=0 max_backlog=79 worst_reader_gap_us=15184 mismatches_rate<1.3e-07
@@ -1471,6 +1471,13 @@ warning: `--no-sync` is a no-op for Python scripts with inline metadata, which a
 SUM L neopixel blind_windows=0 persistent_windows=0 no_wifi=0 samples_in_burst=3310 dev_in_burst=0 pkts=66200 samples_outside=4088 dev_outside=0 windows=1 send_errors=0
 DONE=1
 rc=0 11:01:53
+== long_neopixel 11:47:12
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L neopixel blind_windows=0 persistent_windows=0 no_wifi=0 samples_in_burst=3309 dev_in_burst=0 pkts=66180 samples_outside=4088 dev_outside=0 windows=1 send_errors=0
+DONE=1
+rc=0 11:56:17
 ```
 
 ### long_net_20261029
@@ -1518,6 +1525,13 @@ warning: `--no-sync` is a no-op for Python scripts with inline metadata, which a
 SUM L net dns=9 dns_worst_ms=12 connects=1 connect_fail=0 connect_worst_ms=2727 drops=0 down_s=0 ntp_fail=0 ntp_worst_ms=16 ntp=5 dns_vm_held=0 ntp_sum_ms=66 skipped_down=0 dns_fail=0
 DONE=1
 rc=0 10:52:48
+== long_net 11:38:07
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L net dns=9 dns_worst_ms=12 connects=1 connect_fail=0 connect_worst_ms=2727 drops=0 down_s=0 ntp_fail=0 ntp_worst_ms=20 ntp=5 dns_vm_held=0 ntp_sum_ms=83 skipped_down=0 dns_fail=0
+DONE=1
+rc=0 11:47:12
 ```
 
 ### long_runtime_20261029
@@ -1583,6 +1597,16 @@ SUM L timer period_ms=1000 threshold=32768 fires=540 expected=540 worst_jitter_u
 SUM L timer period_ms=100 threshold=32768 fires=5400 expected=5400 worst_jitter_us=6601
 DONE=1
 rc=0 10:43:42
+== long_runtime 11:29:05
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.65ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L loop threshold=-1 probes=48035 worst_lag_us=10335 memoryerrors=0
+SUM L lagbins threshold=-1 lt500=34397 lt1000=6895 lt2000=542 lt5000=38 lt10000=6145 lt20000=18 lt50000=0 ge50000=0
+SUM L timer period_ms=1000 threshold=-1 fires=540 expected=540 worst_jitter_us=8980
+SUM L timer period_ms=100 threshold=-1 fires=5400 expected=5400 worst_jitter_us=9105
+DONE=1
+rc=0 11:38:06
 ```
 
 ### long_uart_20261029
