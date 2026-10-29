@@ -2518,6 +2518,50 @@ Traceback (most recent call last):
     s = fcntl.ioctl(self.fd, TIOCINQ, TIOCM_zero_str)
 OSError: [Errno 5] Input/output error
 rc=1 13:45:35
+### uart_comm_hazards.py CRC_MODE=crc16
+== uart_mount 13:45:44
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.65ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FACT crc_mode="crc16"
+FACT part="all"
+FACT setup={"initiator": true, "responder": true}
+FACT h1a={"frames_whole": 4, "log": {"slots": 10, "count": 1, "entries": [["E", 85]]}, "frames_seen": 4, "results": [true, false]}
+FACT h1b=[{"result": true, "next_ok": true, "point": "clear_before_first_frame"}, {"result": false, "next_ok": true, "point": "clear_mid_train"}, {"result": true, "next_ok": false, "point": "clear_after_last_ack"}, {"result": false, "next_ok": true, "point": "cancel_read_timeout_mid_train"}]
+FACT h2={"log": {"slots": 10, "count": 1, "entries": [["E", 88]]}, "attempts": 1, "recovered": true, "raw_get_written": true, "failed": true}
+FACT h3=[{"verdicts": [[0, false], [1, false], [2, false], [3, false], [4, true], [5, false], [255, false]], "field": "cmd", "clean_after": false}, {"verdicts": [[0, false], [1, true], [2, false], [8, false], [9, false], [255, false]], "field": "size", "clean_after": true}, {"verdicts": [[0, false], [1, false], [2, true], [255, true]], "field": "chunks", "clean_after": true}, {"verdicts": [[0, false], [1, true], [2, false], [255, false]], "field": "cur_chunk", "clean_after": true}, {"verdicts": [[0, true], [254, true], [255, false]], "field": "uid", "clean_after": true}]
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+Traceback (most recent call last):
+  File "/home/nico/programming/sensors-bench/.venv/bin/mpremote", line 10, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/main.py", line 622, in main
+    handler_func(state, args)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/commands.py", line 515, in do_run
+    _do_execbuffer(state, buf, args.follow)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/commands.py", line 489, in _do_execbuffer
+    ret, ret_err = state.transport.follow(timeout=None, data_consumer=stdout_write_bytes)
+                   ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 220, in follow
+    data = self.read_until(1, b"\x04", timeout=timeout, data_consumer=data_consumer)
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 158, in read_until
+    if self.is_pty or self.serial.inWaiting() > 0:
+                      ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 1068, in inWaiting
+    self._check_input(False)
+    ~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 1043, in _check_input
+    if blocking or self.orig_serial.inWaiting() > 0:
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialutil.py", line 594, in inWaiting
+    return self.in_waiting
+           ^^^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialposix.py", line 549, in in_waiting
+    s = fcntl.ioctl(self.fd, TIOCINQ, TIOCM_zero_str)
+OSError: [Errno 5] Input/output error
+rc=1 13:46:15
 ```
 
 ### wifi_switch_20261029
