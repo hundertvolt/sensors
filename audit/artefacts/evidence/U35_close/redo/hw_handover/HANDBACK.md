@@ -1372,6 +1372,21 @@ DONE=1
 rc=0 13:08:54
 ```
 
+### extras2_20261029
+
+```
+### float_boundary_2pow24 15:15:09
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FACT below_exact=true
+FACT above_value=16777216
+FACT above_rounded_to_2pow24=true
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 15:15:12
+```
+
 ### i2c_rerun_20261029
 
 ```
