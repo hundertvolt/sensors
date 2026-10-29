@@ -103,6 +103,19 @@ uart_frame53 whole_read_worst_us=4546 clamped_call_worst_us=51 clamped_frame_wor
 uart_any_latency_1byte best_us=117 worst_us=131 (wire time 87 us)
 uart_stream 1to0 dur_s=120 bytes_ok=891200 mismatches=0 max_backlog=76 of 512
 uart_stream 0to1 dur_s=120 bytes_ok=891200 mismatches=0 max_backlog=77 of 512
+cstack top_level_use=1276 plain_headroom_in_task=24
+cstack_await depth=1 entry_use=1676 resumed_use=1676 plain_headroom=22
+cstack_await depth=2 entry_use=1876 resumed_use=1876 plain_headroom=22
+cstack_await depth=5 entry_use=2476 resumed_use=2476 plain_headroom=19
+cstack_await depth=10 entry_use=3476 resumed_use=3476 plain_headroom=16
+cstack_await depth=15 entry_use=4476 resumed_use=4476 plain_headroom=12
+cstack_await depth=20 entry_use=5476 resumed_use=5476 plain_headroom=8
+cstack_await depth=24 entry_use=6276 resumed_use=6276 plain_headroom=6
+cstack_await depth=26 entry_use=6676 resumed_use=6676 plain_headroom=4
+cstack_await depth=28 entry_use=7076 resumed_use=7076 plain_headroom=3
+cstack_await depth=30 entry_use=7476 resumed_use=7476 plain_headroom=1
+cstack_await max_ok_depth=31 failed_at=32 error=RuntimeError('maximum recursion depth exceeded',)
+cstack_await per_level_bytes=200 (resumed use, depth 1 to 31)
 json_floats n=18 not_round_tripping=0 examples=[]
 float_repr 0.1=0.1 1013.25=1013.25 21.37=21.37 12345.678=12345.678
 heap free=181584 alloc=6320
@@ -1220,6 +1233,30 @@ rc=0 17:59:15
 ## Day 20261029
 
 <!-- day 20261029 -->
+### cstack_20261029
+
+```
+== cstack 13:08:54
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.66ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM cstack top_level_use=1276 plain_headroom_in_task=24
+SUM cstack_await depth=1 entry_use=1676 resumed_use=1676 plain_headroom=22
+SUM cstack_await depth=2 entry_use=1876 resumed_use=1876 plain_headroom=22
+SUM cstack_await depth=5 entry_use=2476 resumed_use=2476 plain_headroom=19
+SUM cstack_await depth=10 entry_use=3476 resumed_use=3476 plain_headroom=16
+SUM cstack_await depth=15 entry_use=4476 resumed_use=4476 plain_headroom=12
+SUM cstack_await depth=20 entry_use=5476 resumed_use=5476 plain_headroom=8
+SUM cstack_await depth=24 entry_use=6276 resumed_use=6276 plain_headroom=6
+SUM cstack_await depth=26 entry_use=6676 resumed_use=6676 plain_headroom=4
+SUM cstack_await depth=28 entry_use=7076 resumed_use=7076 plain_headroom=3
+SUM cstack_await depth=30 entry_use=7476 resumed_use=7476 plain_headroom=1
+SUM cstack_await max_ok_depth=31 failed_at=32 error=RuntimeError('maximum recursion depth exceeded',)
+SUM cstack_await per_level_bytes=200 (resumed use, depth 1 to 31)
+DONE=1
+rc=0 13:08:54
+```
+
 ### long_fram_20261029
 
 ```
