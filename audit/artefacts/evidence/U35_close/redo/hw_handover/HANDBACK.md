@@ -1566,6 +1566,18 @@ Traceback (most recent call last):
 ImportError: no module named 'frozen_html'
 Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
 rc=1 15:19:13
+### sgp40_voc_algorithm_quality 15:19:21
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.64ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FACT samples=[[24, 30158], [27, 30166], [31, 30175], [34, 30191], [37, 30199], [40, 30206], [42, 30198], [44, 30231]]
+FACT max_step_jump=4
+FACT max_step_jump_bound=300
+FACT blackout_s=60.0
+FACT died=null
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 15:20:42
 ```
 
 ### i2c_rerun_20261029
