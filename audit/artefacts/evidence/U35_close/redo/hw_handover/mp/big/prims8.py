@@ -48,7 +48,7 @@ async def main():
         wdt.feed(); await asyncio.sleep_ms(100)
     mb1[0] = 1
     if FILTER != "none":  # id 200, type 0 (pattern), negate 0, offset 36 (UDP destination port, IPv4 without options), 2 bytes
-        iovar(wlan, "pkt_filter_add", struct.pack("<IIIII", 200, 0, 0, 36, 2) + b"\xff\xff" + b"\x13\x8e")
+        iovar(wlan, "pkt_filter_add", struct.pack("<IIIII", 200, 0, 1 if FILTER == "negate" else 0, 36, 2) + b"\xff\xff" + b"\x13\x8e")
         iovar(wlan, "pkt_filter_enable", struct.pack("<II", 200, 1))
         if FILTER == "mode1": iovar(wlan, "pkt_filter_mode", struct.pack("<I", 1))
         print("SUM prims8 filter", FILTER, "installed")
