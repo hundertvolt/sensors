@@ -5,21 +5,21 @@ Rebuilt by `handback.py` after every step; the newest day is complete up to its 
 ## Aggregate over every day's long runs
 
 ```
-fram runs=7 scratch_restored=7
-fram op=rdid runs=7 n=1091145 oserrors=0 bad=0 worst_us=10249 bad_rate<2.7e-06 oserrors_rate<2.7e-06
-fram op=read256 runs=7 n=1091145 oserrors=0 bad=0 worst_us=12702 bad_rate<2.7e-06 oserrors_rate<2.7e-06
-fram op=write1 runs=7 n=1091145 oserrors=0 bad=0 worst_us=10482 bad_rate<2.7e-06 oserrors_rate<2.7e-06
-i2c chip=bmp phase=data runs=8 n=1170281 eio=0 etimedout=0 other=0 bad=0 worst_us=553 eio_rate<2.6e-06 etimedout_rate<2.6e-06 other_rate<2.6e-06 bad_rate<2.6e-06
-i2c chip=bmp phase=reg runs=8 n=1170281 eio=0 etimedout=0 other=0 bad=0 worst_us=566 eio_rate<2.6e-06 etimedout_rate<2.6e-06 other_rate<2.6e-06 bad_rate<2.6e-06
-i2c chip=bmp phase=write runs=8 n=117026 eio=0 etimedout=0 other=0 bad=0 worst_us=5021 eio_rate<2.6e-05 etimedout_rate<2.6e-05 other_rate<2.6e-05 bad_rate<2.6e-05
-i2c chip=isl phase=data runs=8 n=1170281 eio=0 etimedout=0 other=0 bad=0 worst_us=503 eio_rate<2.6e-06 etimedout_rate<2.6e-06 other_rate<2.6e-06 bad_rate<2.6e-06
-i2c chip=isl phase=reg runs=8 n=1170281 eio=0 etimedout=0 other=0 bad=0 worst_us=469 eio_rate<2.6e-06 etimedout_rate<2.6e-06 other_rate<2.6e-06 bad_rate<2.6e-06
-i2c chip=isl phase=write runs=8 n=117026 eio=0 etimedout=0 other=0 bad=0 worst_us=4989 eio_rate<2.6e-05 etimedout_rate<2.6e-05 other_rate<2.6e-05 bad_rate<2.6e-05
-i2c chip=scd30 phase=cmd runs=8 n=84206 eio=0 etimedout=0 other=0 bad=0 worst_us=834 eio_rate<3.6e-05 etimedout_rate<3.6e-05 other_rate<3.6e-05 bad_rate<3.6e-05
-i2c chip=scd30 phase=data runs=8 n=84205 eio=0 etimedout=0 other=0 bad=0 worst_us=5380 eio_rate<3.6e-05 etimedout_rate<3.6e-05 other_rate<3.6e-05 bad_rate<3.6e-05
-i2c chip=sgp40 phase=cmd runs=8 n=4320 eio=0 etimedout=0 other=0 bad=0 worst_us=1828 eio_rate<6.9e-04 etimedout_rate<6.9e-04 other_rate<6.9e-04 bad_rate<6.9e-04
-i2c chip=sgp40 phase=data runs=8 n=4320 eio=1 etimedout=0 other=0 bad=0 worst_us=5368 eio_rate=2.31e-04 etimedout_rate<6.9e-04 other_rate<6.9e-04 bad_rate<6.9e-04
-i2c chip=sgp40 phase=first runs=8 n=0 eio=0 etimedout=0 other=0 bad=0 worst_us=0
+fram runs=8 scratch_restored=8
+fram op=rdid runs=8 n=1246999 oserrors=0 bad=0 worst_us=10249 bad_rate<2.4e-06 oserrors_rate<2.4e-06
+fram op=read256 runs=8 n=1246999 oserrors=0 bad=0 worst_us=12702 bad_rate<2.4e-06 oserrors_rate<2.4e-06
+fram op=write1 runs=8 n=1246999 oserrors=0 bad=0 worst_us=10482 bad_rate<2.4e-06 oserrors_rate<2.4e-06
+i2c chip=bmp phase=data runs=9 n=1316594 eio=0 etimedout=0 other=0 bad=0 worst_us=553 eio_rate<2.3e-06 etimedout_rate<2.3e-06 other_rate<2.3e-06 bad_rate<2.3e-06
+i2c chip=bmp phase=reg runs=9 n=1316594 eio=0 etimedout=0 other=0 bad=0 worst_us=566 eio_rate<2.3e-06 etimedout_rate<2.3e-06 other_rate<2.3e-06 bad_rate<2.3e-06
+i2c chip=bmp phase=write runs=9 n=131657 eio=0 etimedout=0 other=0 bad=0 worst_us=5025 eio_rate<2.3e-05 etimedout_rate<2.3e-05 other_rate<2.3e-05 bad_rate<2.3e-05
+i2c chip=isl phase=data runs=9 n=1316594 eio=0 etimedout=0 other=0 bad=0 worst_us=503 eio_rate<2.3e-06 etimedout_rate<2.3e-06 other_rate<2.3e-06 bad_rate<2.3e-06
+i2c chip=isl phase=reg runs=9 n=1316594 eio=0 etimedout=0 other=0 bad=0 worst_us=469 eio_rate<2.3e-06 etimedout_rate<2.3e-06 other_rate<2.3e-06 bad_rate<2.3e-06
+i2c chip=isl phase=write runs=9 n=131657 eio=0 etimedout=0 other=0 bad=0 worst_us=4989 eio_rate<2.3e-05 etimedout_rate<2.3e-05 other_rate<2.3e-05 bad_rate<2.3e-05
+i2c chip=scd30 phase=cmd runs=9 n=94731 eio=0 etimedout=0 other=0 bad=0 worst_us=834 eio_rate<3.2e-05 etimedout_rate<3.2e-05 other_rate<3.2e-05 bad_rate<3.2e-05
+i2c chip=scd30 phase=data runs=9 n=94730 eio=0 etimedout=0 other=0 bad=0 worst_us=5380 eio_rate<3.2e-05 etimedout_rate<3.2e-05 other_rate<3.2e-05 bad_rate<3.2e-05
+i2c chip=sgp40 phase=cmd runs=9 n=4860 eio=0 etimedout=0 other=0 bad=0 worst_us=1829 eio_rate<6.2e-04 etimedout_rate<6.2e-04 other_rate<6.2e-04 bad_rate<6.2e-04
+i2c chip=sgp40 phase=data runs=9 n=4860 eio=1 etimedout=0 other=0 bad=0 worst_us=5368 eio_rate=2.06e-04 etimedout_rate<6.2e-04 other_rate<6.2e-04 bad_rate<6.2e-04
+i2c chip=sgp40 phase=first runs=9 n=0 eio=0 etimedout=0 other=0 bad=0 worst_us=0
 lagbins threshold=-1 runs=4 lt500=127562 lt1000=34741 lt2000=1684 lt5000=99 lt10000=26526 lt20000=126 lt50000=0 ge50000=0
 lagbins threshold=32768 runs=3 lt500=75986 lt1000=47301 lt2000=26164 lt5000=1541 lt10000=843 lt20000=0 lt50000=0 ge50000=0
 loop threshold=-1 runs=4 probes=190738 worst_lag_us=10565 memoryerrors=0
@@ -30,9 +30,9 @@ timer threshold=-1 period_ms=100 runs=4 fires=21600 expected=21600 worst_jitter_
 timer threshold=-1 period_ms=1000 runs=4 fires=2160 expected=2160 worst_jitter_us=8779 dropped=0
 timer threshold=32768 period_ms=100 runs=3 fires=16200 expected=16200 worst_jitter_us=6620 dropped=0
 timer threshold=32768 period_ms=1000 runs=3 fires=1620 expected=1620 worst_jitter_us=6550 dropped=0
-uart dir=0to1 threshold=-1 runs=4 bytes_ok=15801664 mismatches=0 max_backlog=79 worst_reader_gap_us=15184 mismatches_rate<1.9e-07
+uart dir=0to1 threshold=-1 runs=5 bytes_ok=19743616 mismatches=0 max_backlog=79 worst_reader_gap_us=15184 mismatches_rate<1.5e-07
 uart dir=0to1 threshold=32768 runs=3 bytes_ok=10897920 mismatches=0 max_backlog=86 worst_reader_gap_us=12861 mismatches_rate<2.8e-07
-uart dir=1to0 threshold=-1 runs=4 bytes_ok=15801536 mismatches=0 max_backlog=79 worst_reader_gap_us=14972 mismatches_rate<1.9e-07
+uart dir=1to0 threshold=-1 runs=5 bytes_ok=19743488 mismatches=0 max_backlog=79 worst_reader_gap_us=14972 mismatches_rate<1.5e-07
 uart dir=1to0 threshold=32768 runs=3 bytes_ok=10897728 mismatches=0 max_backlog=85 worst_reader_gap_us=12818 mismatches_rate<2.8e-07
 ```
 
@@ -1263,6 +1263,16 @@ SUM L fram op=write1 n=155854 oserrors=0 bad=0 worst_us=10473
 SUM L fram scratch_restored=1
 DONE=1
 rc=0 08:36:46
+== long_fram 09:22:10
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L fram op=rdid n=155854 oserrors=0 bad=0 worst_us=10249
+SUM L fram op=read256 n=155854 oserrors=0 bad=0 worst_us=12696
+SUM L fram op=write1 n=155854 oserrors=0 bad=0 worst_us=10481
+SUM L fram scratch_restored=1
+DONE=1
+rc=0 09:31:11
 ```
 
 ### long_i2c_20261029
@@ -1340,6 +1350,24 @@ SUM L i2c chip=bmp phase=data n=146322 eio=0 etimedout=0 other=0 bad=0 worst_us=
 SUM L i2c chip=sgp40 phase=first n=0 eio=0 etimedout=0 other=0 bad=0 worst_us=0
 DONE=1
 rc=0 08:27:44
+== long_i2c 09:13:09
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+REF {'bmp_id': 80, 'isl_id': 125, 'isl_c1': 5, 'bmp_osr': 0}
+SUM L i2c chip=isl phase=data n=146313 eio=0 etimedout=0 other=0 bad=0 worst_us=502
+SUM L i2c chip=sgp40 phase=cmd n=540 eio=0 etimedout=0 other=0 bad=0 worst_us=1829
+SUM L i2c chip=sgp40 phase=data n=540 eio=0 etimedout=0 other=0 bad=0 worst_us=1073
+SUM L i2c chip=isl phase=write n=14631 eio=0 etimedout=0 other=0 bad=0 worst_us=4985
+SUM L i2c chip=isl phase=reg n=146313 eio=0 etimedout=0 other=0 bad=0 worst_us=469
+SUM L i2c chip=scd30 phase=data n=10525 eio=0 etimedout=0 other=0 bad=0 worst_us=5372
+SUM L i2c chip=bmp phase=reg n=146313 eio=0 etimedout=0 other=0 bad=0 worst_us=563
+SUM L i2c chip=scd30 phase=cmd n=10525 eio=0 etimedout=0 other=0 bad=0 worst_us=833
+SUM L i2c chip=bmp phase=write n=14631 eio=0 etimedout=0 other=0 bad=0 worst_us=5025
+SUM L i2c chip=bmp phase=data n=146313 eio=0 etimedout=0 other=0 bad=0 worst_us=541
+SUM L i2c chip=sgp40 phase=first n=0 eio=0 etimedout=0 other=0 bad=0 worst_us=0
+DONE=1
+rc=0 09:22:10
 ```
 
 ### long_neopixel_20261029
@@ -1488,6 +1516,14 @@ SUM L uart dir=0to1 threshold=32768 bytes_ok=3632704 mismatches=0 max_backlog=86
 SUM L uart dir=1to0 threshold=32768 bytes_ok=3632640 mismatches=0 max_backlog=85 worst_reader_gap_us=12818
 DONE=1
 rc=0 08:45:48
+== long_uart 09:31:12
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L uart dir=1to0 threshold=-1 bytes_ok=3941952 mismatches=0 max_backlog=78 worst_reader_gap_us=14893
+SUM L uart dir=0to1 threshold=-1 bytes_ok=3941952 mismatches=0 max_backlog=78 worst_reader_gap_us=14779
+DONE=1
+rc=0 09:40:13
 ```
 
 ### quick_20261029
