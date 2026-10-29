@@ -1,0 +1,170 @@
+### prims11 18:31:23
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+READY IP=192.168.85.57 pcb_room 9
+STAT t=5 accepted=0 errors=0 open=0 served=0 timeouts=0 room=-1 mem=126272
+HOST t=4.2 board mac d8:3a:dd:25:0e:0b free addresses 51 of 54
+STAT t=10 accepted=1 errors=0 open=0 served=1 timeouts=0 room=-1 mem=122512
+STAT t=15 accepted=3 errors=0 open=0 served=3 timeouts=0 room=-1 mem=116544
+STAT t=20 accepted=5 errors=0 open=0 served=5 timeouts=0 room=-1 mem=110576
+STAT t=25 accepted=9 errors=0 open=1 served=8 timeouts=0 room=-1 mem=99904
+HOST t=23.0 phase head opened 6 of 6
+STAT t=30 accepted=16 errors=0 open=5 served=10 timeouts=1 room=3 mem=82496
+STAT t=35 accepted=19 errors=0 open=0 served=13 timeouts=6 room=-1 mem=70096
+STAT t=40 accepted=21 errors=0 open=0 served=15 timeouts=6 room=-1 mem=64112
+STAT t=45 accepted=24 errors=0 open=0 served=18 timeouts=6 room=-1 mem=55472
+STAT t=50 accepted=26 errors=0 open=0 served=20 timeouts=6 room=-1 mem=49488
+STAT t=55 accepted=29 errors=0 open=0 served=23 timeouts=6 room=-1 mem=40848
+STAT t=60 accepted=31 errors=0 open=0 served=25 timeouts=6 room=9 mem=34096
+STAT t=65 accepted=33 errors=0 open=0 served=27 timeouts=6 room=-1 mem=28112
+STAT t=70 accepted=36 errors=0 open=0 served=30 timeouts=6 room=-1 mem=19472
+STAT t=75 accepted=38 errors=0 open=0 served=32 timeouts=6 room=-1 mem=13488
+STAT t=80 accepted=41 errors=0 open=0 served=35 timeouts=6 room=-1 mem=4848
+STAT t=85 accepted=43 errors=0 open=0 served=37 timeouts=6 room=-1 mem=152752
+STAT t=90 accepted=46 errors=0 open=0 served=40 timeouts=6 room=9 mem=143344
+STAT t=95 accepted=48 errors=0 open=0 served=42 timeouts=6 room=-1 mem=137360
+STAT t=100 accepted=50 errors=0 open=0 served=44 timeouts=6 room=-1 mem=131376
+STAT t=105 accepted=53 errors=0 open=0 served=47 timeouts=6 room=-1 mem=122736
+STAT t=110 accepted=55 errors=0 open=0 served=49 timeouts=6 room=-1 mem=116752
+STAT t=115 accepted=58 errors=0 open=0 served=52 timeouts=6 room=-1 mem=108112
+STAT t=120 accepted=60 errors=0 open=0 served=54 timeouts=6 room=9 mem=101360
+STAT t=125 accepted=63 errors=0 open=0 served=57 timeouts=6 room=-1 mem=92720
+STAT t=130 accepted=65 errors=0 open=0 served=59 timeouts=6 room=-1 mem=86736
+STAT t=135 accepted=68 errors=0 open=0 served=62 timeouts=6 room=-1 mem=78096
+STAT t=140 accepted=70 errors=0 open=0 served=64 timeouts=6 room=-1 mem=72112
+STAT t=145 accepted=72 errors=0 open=0 served=66 timeouts=6 room=-1 mem=66128
+STAT t=150 accepted=80 errors=0 open=5 served=69 timeouts=6 room=3 mem=9712
+HOST t=150.3 phase big_noack opened 9 of 10
+STAT t=155 accepted=84 errors=0 open=4 served=69 timeouts=11 room=-1 mem=78960
+HOST t=150.8 probe TimeoutError 4.00s
+STAT t=160 accepted=84 errors=0 open=0 served=69 timeouts=15 room=-1 mem=97680
+HOST t=156.8 probe TimeoutError 4.00s
+STAT t=165 accepted=85 errors=0 open=0 served=70 timeouts=15 room=-1 mem=94352
+STAT t=170 accepted=88 errors=0 open=0 served=73 timeouts=15 room=-1 mem=85712
+STAT t=175 accepted=90 errors=0 open=0 served=75 timeouts=15 room=-1 mem=79728
+STAT t=180 accepted=93 errors=0 open=0 served=78 timeouts=15 room=9 mem=70320
+STAT t=185 accepted=95 errors=0 open=0 served=80 timeouts=15 room=-1 mem=64336
+STAT t=190 accepted=97 errors=0 open=0 served=82 timeouts=15 room=-1 mem=58352
+STAT t=195 accepted=100 errors=0 open=0 served=85 timeouts=15 room=-1 mem=49712
+STAT t=200 accepted=102 errors=0 open=0 served=87 timeouts=15 room=-1 mem=43728
+STAT t=205 accepted=105 errors=0 open=0 served=90 timeouts=15 room=-1 mem=35088
+STAT t=210 accepted=107 errors=0 open=0 served=92 timeouts=15 room=9 mem=28336
+STAT t=215 accepted=110 errors=0 open=0 served=95 timeouts=15 room=-1 mem=19696
+STAT t=220 accepted=112 errors=0 open=0 served=97 timeouts=15 room=-1 mem=13712
+STAT t=225 accepted=114 errors=0 open=0 served=99 timeouts=15 room=-1 mem=7728
+STAT t=230 accepted=117 errors=0 open=0 served=102 timeouts=15 room=-1 mem=153232
+STAT t=235 accepted=119 errors=0 open=0 served=104 timeouts=15 room=-1 mem=147232
+STAT t=240 accepted=122 errors=0 open=0 served=107 timeouts=15 room=9 mem=137808
+STAT t=245 accepted=124 errors=0 open=0 served=109 timeouts=15 room=-1 mem=131808
+STAT t=250 accepted=127 errors=0 open=0 served=112 timeouts=15 room=-1 mem=123152
+STAT t=255 accepted=129 errors=0 open=0 served=114 timeouts=15 room=-1 mem=117152
+STAT t=260 accepted=132 errors=0 open=1 served=116 timeouts=15 room=-1 mem=110336
+STAT t=265 accepted=134 errors=0 open=0 served=119 timeouts=15 room=-1 mem=102496
+STAT t=270 accepted=136 errors=0 open=0 served=121 timeouts=15 room=9 mem=95728
+STAT t=275 accepted=139 errors=0 open=0 served=124 timeouts=15 room=-1 mem=87088
+STAT t=280 accepted=141 errors=0 open=0 served=126 timeouts=15 room=-1 mem=81088
+STAT t=285 accepted=144 errors=0 open=0 served=129 timeouts=15 room=-1 mem=72432
+STAT t=290 accepted=146 errors=0 open=0 served=131 timeouts=15 room=-1 mem=66432
+STAT t=295 accepted=148 errors=0 open=0 served=133 timeouts=15 room=-1 mem=60432
+STAT t=300 accepted=151 errors=0 open=0 served=136 timeouts=15 room=9 mem=51008
+STAT t=305 accepted=153 errors=0 open=0 served=138 timeouts=15 room=-1 mem=45024
+HOST t=302.0 phase syn_only opened 8 of 8
+STAT t=310 accepted=154 errors=0 open=0 served=139 timeouts=15 room=-1 mem=41680
+HOST t=307.1 probe TimeoutError 4.00s
+STAT t=315 accepted=154 errors=0 open=0 served=139 timeouts=15 room=-1 mem=40992
+HOST t=313.1 probe TimeoutError 4.00s
+STAT t=320 accepted=154 errors=0 open=0 served=139 timeouts=15 room=-1 mem=40304
+HOST t=319.2 probe TimeoutError 4.00s
+STAT t=325 accepted=154 errors=0 open=0 served=139 timeouts=15 room=-1 mem=39616
+STAT t=330 accepted=157 errors=0 open=0 served=142 timeouts=15 room=9 mem=30192
+STAT t=335 accepted=159 errors=0 open=0 served=144 timeouts=15 room=-1 mem=24208
+STAT t=340 accepted=161 errors=0 open=0 served=146 timeouts=15 room=-1 mem=18208
+STAT t=345 accepted=164 errors=0 open=0 served=149 timeouts=15 room=-1 mem=9552
+STAT t=350 accepted=166 errors=0 open=0 served=151 timeouts=15 room=-1 mem=3568
+STAT t=355 accepted=169 errors=0 open=0 served=154 timeouts=15 room=-1 mem=148576
+STAT t=360 accepted=171 errors=0 open=0 served=156 timeouts=15 room=9 mem=141808
+STAT t=365 accepted=174 errors=0 open=0 served=159 timeouts=15 room=-1 mem=133152
+STAT t=370 accepted=176 errors=0 open=0 served=161 timeouts=15 room=-1 mem=127152
+STAT t=375 accepted=179 errors=0 open=0 served=164 timeouts=15 room=-1 mem=118496
+STAT t=380 accepted=181 errors=0 open=0 served=166 timeouts=15 room=-1 mem=112496
+STAT t=385 accepted=183 errors=0 open=0 served=168 timeouts=15 room=-1 mem=106496
+STAT t=390 accepted=186 errors=0 open=0 served=171 timeouts=15 room=9 mem=97072
+STAT t=395 accepted=188 errors=0 open=0 served=173 timeouts=15 room=-1 mem=91088
+STAT t=400 accepted=191 errors=0 open=0 served=176 timeouts=15 room=-1 mem=82432
+STAT t=405 accepted=193 errors=0 open=0 served=178 timeouts=15 room=-1 mem=76432
+STAT t=410 accepted=196 errors=0 open=0 served=181 timeouts=15 room=-1 mem=67776
+STAT t=415 accepted=198 errors=0 open=0 served=183 timeouts=15 room=-1 mem=61776
+STAT t=420 accepted=200 errors=0 open=0 served=185 timeouts=15 room=9 mem=55008
+STAT t=425 accepted=203 errors=0 open=0 served=188 timeouts=15 room=-1 mem=46368
+STAT t=430 accepted=205 errors=0 open=0 served=190 timeouts=15 room=-1 mem=40368
+STAT t=435 accepted=208 errors=0 open=0 served=193 timeouts=15 room=-1 mem=31712
+STAT t=440 accepted=210 errors=0 open=0 served=195 timeouts=15 room=-1 mem=25712
+STAT t=445 accepted=212 errors=0 open=0 served=197 timeouts=15 room=-1 mem=19712
+STAT t=450 accepted=215 errors=0 open=0 served=200 timeouts=15 room=9 mem=10288
+STAT t=455 accepted=217 errors=0 open=0 served=202 timeouts=15 room=-1 mem=4304
+SUM prims11_host baseline probes 7 ok 7 failed 0 worst_ok_s 0.06 failed_span_t -
+SUM prims11_host head probes 60 ok 60 failed 0 worst_ok_s 0.33 failed_span_t -
+SUM prims11_host big_noack probes 72 ok 70 failed 2 worst_ok_s 0.30 failed_span_t 147-153
+SUM prims11_host syn_only probes 68 ok 65 failed 3 worst_ok_s 0.31 failed_span_t 303-315
+SUM prims11_host fake 192.168.85.200 head open pkts_after 4 data_pkts 0 flags ['FA', 'RA'] last_pkt_after_s 14.5 arp_asks 0
+SUM prims11_host fake 192.168.85.202 head open pkts_after 4 data_pkts 0 flags ['FA', 'RA'] last_pkt_after_s 14.6 arp_asks 0
+SUM prims11_host fake 192.168.85.205 head open pkts_after 4 data_pkts 0 flags ['FA', 'RA'] last_pkt_after_s 14.6 arp_asks 0
+SUM prims11_host fake 192.168.85.206 head open pkts_after 4 data_pkts 0 flags ['FA', 'RA'] last_pkt_after_s 14.7 arp_asks 0
+SUM prims11_host fake 192.168.85.207 head open pkts_after 4 data_pkts 0 flags ['FA', 'RA'] last_pkt_after_s 14.7 arp_asks 0
+SUM prims11_host fake 192.168.85.208 head open pkts_after 4 data_pkts 0 flags ['FA', 'RA'] last_pkt_after_s 14.7 arp_asks 0
+SUM prims11_host fake 192.168.85.209 big_noack open pkts_after 3 data_pkts 2 flags ['PA', 'RA'] last_pkt_after_s 14.6 arp_asks 0
+SUM prims11_host fake 192.168.85.210 big_noack open pkts_after 5 data_pkts 2 flags ['FA', 'PA', 'RA'] last_pkt_after_s 14.6 arp_asks 0
+SUM prims11_host fake 192.168.85.211 big_noack open pkts_after 5 data_pkts 2 flags ['FA', 'PA', 'RA'] last_pkt_after_s 14.7 arp_asks 0
+SUM prims11_host fake 192.168.85.212 big_noack open pkts_after 5 data_pkts 2 flags ['FA', 'PA', 'RA'] last_pkt_after_s 14.7 arp_asks 0
+SUM prims11_host fake 192.168.85.213 big_noack open pkts_after 5 data_pkts 2 flags ['FA', 'PA', 'RA'] last_pkt_after_s 14.8 arp_asks 0
+SUM prims11_host fake 192.168.85.214 big_noack open pkts_after 5 data_pkts 2 flags ['FA', 'PA', 'RA'] last_pkt_after_s 14.8 arp_asks 0
+SUM prims11_host fake 192.168.85.215 big_noack open pkts_after 5 data_pkts 2 flags ['FA', 'PA', 'RA'] last_pkt_after_s 14.9 arp_asks 0
+SUM prims11_host fake 192.168.85.216 big_noack open pkts_after 5 data_pkts 2 flags ['FA', 'PA', 'RA'] last_pkt_after_s 14.9 arp_asks 0
+SUM prims11_host fake 192.168.85.217 big_noack open pkts_after 5 data_pkts 2 flags ['FA', 'PA', 'RA'] last_pkt_after_s 14.5 arp_asks 0
+SUM prims11_host fake 192.168.85.218 big_noack no_synack pkts_after 0 data_pkts 0 flags [] last_pkt_after_s 0.0 arp_asks 0
+SUM prims11_host fake 192.168.85.219 syn_only open pkts_after 2 data_pkts 0 flags ['SA'] last_pkt_after_s 8.7 arp_asks 0
+SUM prims11_host fake 192.168.85.220 syn_only open pkts_after 2 data_pkts 0 flags ['SA'] last_pkt_after_s 9.0 arp_asks 0
+SUM prims11_host fake 192.168.85.221 syn_only open pkts_after 2 data_pkts 0 flags ['SA'] last_pkt_after_s 8.7 arp_asks 0
+SUM prims11_host fake 192.168.85.222 syn_only open pkts_after 2 data_pkts 0 flags ['SA'] last_pkt_after_s 8.5 arp_asks 0
+SUM prims11_host fake 192.168.85.223 syn_only open pkts_after 2 data_pkts 0 flags ['SA'] last_pkt_after_s 8.8 arp_asks 0
+SUM prims11_host fake 192.168.85.224 syn_only open pkts_after 0 data_pkts 0 flags [] last_pkt_after_s 0.0 arp_asks 0
+SUM prims11_host fake 192.168.85.225 syn_only open pkts_after 0 data_pkts 0 flags [] last_pkt_after_s 0.0 arp_asks 0
+SUM prims11_host fake 192.168.85.226 syn_only open pkts_after 0 data_pkts 0 flags [] last_pkt_after_s 0.0 arp_asks 0
+host rc=0 18:39:09
+STAT t=460 accepted=218 errors=0 open=0 served=203 timeouts=15 room=-1 mem=976
+STAT t=465 accepted=218 errors=0 open=0 served=203 timeouts=15 room=-1 mem=304
+STAT t=470 accepted=218 errors=0 open=0 served=203 timeouts=15 room=-1 mem=153840
+STAT t=475 accepted=218 errors=0 open=0 served=203 timeouts=15 room=-1 mem=153152
+STAT t=480 accepted=218 errors=0 open=0 served=203 timeouts=15 room=9 mem=151696
+STAT t=485 accepted=218 errors=0 open=0 served=203 timeouts=15 room=-1 mem=151008
+STAT t=490 accepted=218 errors=0 open=0 served=203 timeouts=15 room=-1 mem=150320
+STAT t=495 accepted=218 errors=0 open=0 served=203 timeouts=15 room=-1 mem=149632
+STAT t=500 accepted=218 errors=0 open=0 served=203 timeouts=15 room=-1 mem=148944
+STAT t=505 accepted=218 errors=0 open=0 served=203 timeouts=15 room=-1 mem=148256
+STAT t=510 accepted=218 errors=0 open=0 served=203 timeouts=15 room=9 mem=146800
+STAT t=515 accepted=218 errors=0 open=0 served=203 timeouts=15 room=-1 mem=146112
+STAT t=520 accepted=218 errors=0 open=0 served=203 timeouts=15 room=-1 mem=145424
+STAT t=525 accepted=218 errors=0 open=0 served=203 timeouts=15 room=-1 mem=144736
+STAT t=530 accepted=218 errors=0 open=0 served=203 timeouts=15 room=-1 mem=144048
+STAT t=535 accepted=218 errors=0 open=0 served=203 timeouts=15 room=-1 mem=143360
+STAT t=540 accepted=218 errors=0 open=0 served=203 timeouts=15 room=9 mem=141904
+STAT t=545 accepted=218 errors=0 open=0 served=203 timeouts=15 room=-1 mem=141216
+STAT t=550 accepted=218 errors=0 open=0 served=203 timeouts=15 room=-1 mem=140528
+STAT t=555 accepted=218 errors=0 open=0 served=203 timeouts=15 room=-1 mem=139840
+STAT t=560 accepted=218 errors=0 open=0 served=203 timeouts=15 room=-1 mem=139152
+STAT t=565 accepted=218 errors=0 open=0 served=203 timeouts=15 room=-1 mem=138464
+STAT t=570 accepted=218 errors=0 open=0 served=203 timeouts=15 room=9 mem=137008
+STAT t=575 accepted=218 errors=0 open=0 served=203 timeouts=15 room=-1 mem=136320
+STAT t=581 accepted=218 errors=0 open=0 served=203 timeouts=15 room=-1 mem=135632
+STAT t=586 accepted=218 errors=0 open=0 served=203 timeouts=15 room=-1 mem=134944
+STAT t=591 accepted=218 errors=0 open=0 served=203 timeouts=15 room=-1 mem=134256
+STAT t=596 accepted=218 errors=0 open=0 served=203 timeouts=15 room=-1 mem=133568
+STAT t=601 accepted=218 errors=0 open=0 served=203 timeouts=15 room=9 mem=132112
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 18:41:30
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM resets after reset_cause 3 wd_reason 0x2 chip_reset 0x100 region0 ['0x258', '0xda', '0x0', '0x0'] region1 ['0x0', '0x0', '0x0']
