@@ -160,6 +160,30 @@ dev18 reg07=60f1
 dev18 reg0f=60
 deinit i2c0 then scan=['0x18', '0x77'] (a list means deinit was a no-op)
 deinit spi0 then rdid=047f4803 (an answer means deinit was a no-op)
+prims timer_unreferenced_after_gc ticks_first_500ms 0 next_500ms 0 (an orphan keeps a 20 ms tick for the rest of the run)
+prims bare_timer_deinit_twice ok
+prims timer_reinit_running ticks_in_1s 100 expected ~100
+prims timer_10ms_during_300ms_busy delivered_by_end 31 due 30
+prims soft_timers_armed 16 then OSError(12,)
+prims tsf five_sets_then_wait us 83 second_wait timeout
+prims tsf timer_to_task_us median 262 p90 267 max 351
+prims tsf timer_to_task_us_with_20ms_hog median 32881 max 33197
+prims jumper GP0->GP9 levels_seen 3 (3 = both: wired)
+prims pin_irq hard=False 200Hz idle_500ms 100 during_500ms_busy 100 by_20ms_after 104 gc_window_ms 7 edges_over_it 6
+prims pin_irq hard=True 200Hz idle_500ms 100 during_500ms_busy 100 by_20ms_after 104 gc_window_ms 11 edges_over_it 6
+prims pin_irq registered_twice edges_in_500ms 100 expected ~100
+prims pin_irq soft_latency_us median 39 max 70
+prims neopixel n=1 write_us 129 writes_in_200ms 2123 1ms_timer_ticks 199 of ~200
+prims neopixel n=8 write_us 337 writes_in_200ms 646 1ms_timer_ticks 199 of ~200
+prims neopixel n=60 write_us 1876 writes_in_200ms 106 1ms_timer_ticks 106 of ~200
+json_floats n=18 not_round_tripping=0 examples=[]
+float_repr 0.1=0.1 1013.25=1013.25 21.37=21.37 12345.678=12345.678
+heap free=181584 alloc=6320
+memoryerror big_alloc=MemoryError('memory allocation failed, allocating 10000000 bytes',)
+memoryerror exhaust=MemoryError('memory allocation failed, allocating 1024 bytes',) after_kib=171
+irq_alloc_above hard=0 emergency_buf=0 (the traceback is the console text above)
+irq_alloc_above hard=1 emergency_buf=0 (the traceback is the console text above)
+irq_alloc_above hard=1 emergency_buf=256 (the traceback is the console text above)
 json_floats n=18 not_round_tripping=0 examples=[]
 float_repr 0.1=0.1 1013.25=1013.25 21.37=21.37 12345.678=12345.678
 heap free=181584 alloc=6320
@@ -2369,6 +2393,33 @@ DONE=1
 rc=0 13:39:44
 ```
 
+### prims_20261029
+
+```
+== prims 15:57:52
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.66ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM prims timer_unreferenced_after_gc ticks_first_500ms 0 next_500ms 0 (an orphan keeps a 20 ms tick for the rest of the run)
+SUM prims bare_timer_deinit_twice ok
+SUM prims timer_reinit_running ticks_in_1s 100 expected ~100
+SUM prims timer_10ms_during_300ms_busy delivered_by_end 31 due 30
+SUM prims soft_timers_armed 16 then OSError(12,)
+SUM prims tsf five_sets_then_wait us 83 second_wait timeout
+SUM prims tsf timer_to_task_us median 262 p90 267 max 351
+SUM prims tsf timer_to_task_us_with_20ms_hog median 32881 max 33197
+SUM prims jumper GP0->GP9 levels_seen 3 (3 = both: wired)
+SUM prims pin_irq hard=False 200Hz idle_500ms 100 during_500ms_busy 100 by_20ms_after 104 gc_window_ms 7 edges_over_it 6
+SUM prims pin_irq hard=True 200Hz idle_500ms 100 during_500ms_busy 100 by_20ms_after 104 gc_window_ms 11 edges_over_it 6
+SUM prims pin_irq registered_twice edges_in_500ms 100 expected ~100
+SUM prims pin_irq soft_latency_us median 39 max 70
+SUM prims neopixel n=1 write_us 129 writes_in_200ms 2123 1ms_timer_ticks 199 of ~200
+SUM prims neopixel n=8 write_us 337 writes_in_200ms 646 1ms_timer_ticks 199 of ~200
+SUM prims neopixel n=60 write_us 1876 writes_in_200ms 106 1ms_timer_ticks 106 of ~200
+DONE
+rc=0
+```
+
 ### quick_20261029
 
 ```
@@ -2464,6 +2515,29 @@ MemoryError: memory allocation failed, heap is locked
 SUM irq_alloc_above hard=1 emergency_buf=256 (the traceback is the console text above)
 DONE=1
 rc=0 15:30:27
+== quick 15:58:06
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM json_floats n=18 not_round_tripping=0 examples=[]
+SUM float_repr 0.1=0.1 1013.25=1013.25 21.37=21.37 12345.678=12345.678
+SUM heap free=181584 alloc=6320
+SUM memoryerror big_alloc=MemoryError('memory allocation failed, allocating 10000000 bytes',)
+SUM memoryerror exhaust=MemoryError('memory allocation failed, allocating 1024 bytes',) after_kib=171
+Traceback (most recent call last):
+  File "<stdin>", line 39, in _alloc
+MemoryError: memory allocation failed, allocating 10000000 bytes
+SUM irq_alloc_above hard=0 emergency_buf=0 (the traceback is the console text above)
+Uncaught exception in IRQ callback handler
+MemoryError: 
+SUM irq_alloc_above hard=1 emergency_buf=0 (the traceback is the console text above)
+Uncaught exception in IRQ callback handler
+Traceback (most recent call last):
+  File "<stdin>", line 39, in _alloc
+MemoryError: memory allocation failed, heap is locked
+SUM irq_alloc_above hard=1 emergency_buf=256 (the traceback is the console text above)
+DONE=1
+rc=0 15:58:08
 ```
 
 ### scd30_state_20261029
