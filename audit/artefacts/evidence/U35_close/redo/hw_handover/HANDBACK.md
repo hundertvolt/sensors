@@ -1515,6 +1515,25 @@ FACT deadline_ms=6000
 DONE
 Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
 rc=0 15:16:35
+### isl29125_mechanism_envelope 15:16:44
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FACT reset_error_counter=true
+FACT up=[{"lux": 0.9384299, "level": 0, "range": 375, "rgb": [0.00016021974, 9.384299e-05, 2.6321814e-05], "hsb": [30.256408, 0.83571432, 0.00016021974]}, {"lux": 97.08172, "level": 2, "range": 375, "rgb": [0.007029641, 0.009708172, 0.012421607], "hsb": [210.19422, 0.4340796, 0.012421607]}, {"lux": 179.61776, "level": 4, "range": 375, "rgb": [0.011732662, 0.017961776, 0.023367476], "hsb": [207.87684, 0.4979063, 0.023367476]}, {"lux": 408.331432, "level": 8, "range": 10000, "rgb": [0.025284198, 0.04083314, 0.05500877], "hsb": [208.61396, 0.5403606, 0.05500877]}, {"lux": 819.4095, "level": 16, "range": 10000, "rgb": [0.05085832, 0.08194095, 0.10875105], "hsb": [207.78596, 0.53234184, 0.10875105]}, {"lux": 2009.6132, "level": 40, "range": 10000, "rgb": [0.12539864, 0.20096132, 0.2373083], "hsb": [199.48732, 0.471579232, 0.2373083]}, {"lux": 4744.9452, "level": 100, "range": 10000, "rgb": [0.30453956, 0.47449452, 0.479194336], "hsb": [181.61456, 0.36447588, 0.479194336]}, {"lux": 10000.0, "level": 255, "range": 10000, "rgb": [0.71717408, 1.0, 1.0], "hsb": [180.0, 0.28282596, 1.0]}]
+FACT overrange_at_full=true
+FACT ascending_log={"slots": 10, "count": 0, "entries": []}
+FACT down=[{"lux": 10000.0, "level": 255, "range": 10000, "rgb": [0.7065385, 1.0, 1.0], "hsb": [180.0, 0.2934615, 1.0]}, {"lux": 4737.0108, "level": 100, "range": 10000, "rgb": [0.29422448, 0.473701068, 0.47844664], "hsb": [181.545616, 0.38504224, 0.47844664]}, {"lux": 1993.8964, "level": 40, "range": 10000, "rgb": [0.12022583, 0.19938964, 0.2336614], "hsb": [198.12754, 0.48546984, 0.2336614]}, {"lux": 808.1178, "level": 16, "range": 10000, "rgb": [0.04899672, 0.080811776, 0.10769817], "hsb": [207.48116, 0.5450552, 0.10769817]}, {"lux": 403.75372, "level": 8, "range": 10000, "rgb": [0.02449073, 0.04037537, 0.05423056], "hsb": [207.952784, 0.5483961, 0.05423056]}, {"lux": 202.792384, "level": 4, "range": 10000, "rgb": [0.0122072176, 0.020279238, 0.026871138], "hsb": [206.971908, 0.54571264, 0.026871138]}, {"lux": 96.49806, "level": 2, "range": 375, "rgb": [0.0069661256, 0.009649807, 0.01236553], "hsb": [210.17804, 0.43664964, 0.01236553]}, {"lux": 0.9327077, "level": 0, "range": 375, "rgb": [0.00016021974, 9.327077e-05, 2.6321814e-05], "hsb": [29.999992, 0.83571432, 0.00016021974]}]
+FACT fixed_range={"restored": true, "ambient": {"lux": 0.9155413, "level": 0, "range": 10000, "rgb": [0.00015259022, 9.155413e-05, 3.0518044e-05], "hsb": [30.0, 0.8, 0.00015259022]}, "pinned": true, "bright": {"lux": 10000.0, "level": 255, "range": 10000, "rgb": [0.710246436, 1.0, 1.0], "hsb": [180.0, 0.28975356, 1.0]}}
+FACT bit_depth={"at_12": {"lux": 803.23484, "level": 16, "range": 10000, "rgb": [0.04882887, 0.08032349, 0.10693522], "hsb": [207.478992, 0.54337892, 0.10693522]}, "at_16": {"lux": 809.1859, "level": 16, "range": 10000, "rgb": [0.04928664, 0.08091859, 0.1079881], "hsb": [207.66832, 0.5435919, 0.1079881]}, "pushed_12": true, "pushed_16": true}
+FACT continuity={"low": {"lux": 176.9112, "level": 4, "range": 375, "rgb": [0.30385292, 0.4717632, 0.6163577], "hsb": [207.76172, 0.5070185, 0.6163577]}, "pinned_high": true, "high": {"lux": 202.792384, "level": 4, "range": 10000, "rgb": [0.0123445484, 0.020279238, 0.027069504], "hsb": [207.6684, 0.54396844, 0.027069504]}, "pinned_low": true, "restored": true}
+FACT calibrate={"pushed": true, "applied_before": 26.666668, "measured_ratio": null, "applied_after": 26.666668, "calibrating": true}
+FACT full_log={"slots": 10, "count": 0, "entries": []}
+FACT died=[]
+FACT bounds={"bit_depth_rel_max": 0.5, "periodic_only": 32, "min_span_ratio": 10.0, "max_switches": 4, "min_step_ratio": 0.75, "max_range_step": 0.25}
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 15:18:40
 ```
 
 ### i2c_rerun_20261029
