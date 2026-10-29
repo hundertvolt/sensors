@@ -1385,6 +1385,16 @@ FACT above_rounded_to_2pow24=true
 DONE
 Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
 rc=0 15:15:12
+### timer_alarm_pool_exhaustion 15:15:19
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+FACT constructed=16
+FACT raised=true
+FACT errno=12
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 15:15:21
 ```
 
 ### i2c_rerun_20261029
