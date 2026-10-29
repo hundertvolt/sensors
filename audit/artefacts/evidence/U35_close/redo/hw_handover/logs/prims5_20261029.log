@@ -61,3 +61,16 @@ Resolved 22 packages in 3ms
 Audited 20 packages in 0.62ms
 warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
 SUM resets after reset_cause 3 wd_reason 0x1 chip_reset 0x100 region0 ['0x0', '0x0', '0x0', '0x0'] region1 ['0x1', '0x0', '0x0']
+### prims4 no_uart 17:05:15
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.63ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM prims4 ring True connected True
+SUM prims4 quiet [('fram_bad', 0), ('fram_reads', 6640), ('lag_max', 45), ('lag_n', 4225), ('lag_over20', 1), ('lag_over44', 1), ('mem_free_end', 41632), ('mem_free_start', 117712), ('uart_overruns', 0)]
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 17:06:08
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM resets after reset_cause 3 wd_reason 0x2 chip_reset 0x100 region0 ['0xaf80', '0x19e5', '0x0', '0x0'] region1 ['0x1', '0x2d', '0x0']
