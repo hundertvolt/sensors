@@ -1546,6 +1546,26 @@ FACT restored="ok"
 DONE
 Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
 rc=0 15:18:55
+### loop_lag_under_combined_load 15:19:04
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+Traceback (most recent call last):
+  File "<stdin>", line 10, in <module>
+  File "sensortask_dev.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=1 15:19:06
+### loop_lag_under_combined_load_nowdt 15:19:11
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+Traceback (most recent call last):
+  File "<stdin>", line 10, in <module>
+  File "sensortask_dev.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=1 15:19:13
 ```
 
 ### i2c_rerun_20261029
