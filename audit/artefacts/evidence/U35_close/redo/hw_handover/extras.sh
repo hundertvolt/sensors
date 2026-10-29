@@ -91,7 +91,7 @@ EOF
 }
 
 up 30 || exit 1
-for s in cstack listener_close idle_poll; do
+for s in ${STEPS:-cstack idle_poll listener_close}; do  # listener_close last: its watchdog stays armed
   [ -f "$H/STOP" ] && break
   case $s in
     cstack) run cstack "$H/mp/cstack_await.py" 300 ;;
