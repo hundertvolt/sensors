@@ -103,6 +103,13 @@ uart_frame53 whole_read_worst_us=4546 clamped_call_worst_us=51 clamped_frame_wor
 uart_any_latency_1byte best_us=117 worst_us=131 (wire time 87 us)
 uart_stream 1to0 dur_s=120 bytes_ok=891200 mismatches=0 max_backlog=76 of 512
 uart_stream 0to1 dur_s=120 bytes_ok=891200 mismatches=0 max_backlog=77 of 512
+crc CRC8 round=0 bytes=256 us=118240 us_per_byte=461 alloc_bytes=160
+crc CRC8 round=1 bytes=256 us=118954 us_per_byte=464 alloc_bytes=144
+crc CRC16 round=0 bytes=256 us=118286 us_per_byte=462 alloc_bytes=144
+crc CRC16 round=1 bytes=256 us=118909 us_per_byte=464 alloc_bytes=144
+crc CRC32 round=0 bytes=256 us=127348 us_per_byte=497 alloc_bytes=432
+crc CRC32 round=1 bytes=256 us=127269 us_per_byte=497 alloc_bytes=432
+voc process n=200 avg_us=16245 worst_us=31877 alloc_bytes_per_sample=352
 cstack top_level_use=1276 plain_headroom_in_task=24
 cstack_await depth=1 entry_use=1676 resumed_use=1676 plain_headroom=22
 cstack_await depth=2 entry_use=1876 resumed_use=1876 plain_headroom=22
@@ -1302,6 +1309,25 @@ rc=0 17:59:15
 ## Day 20261029
 
 <!-- day 20261029 -->
+### crc_voc_20261029
+
+```
+== crc_voc 13:40:27
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.59ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM crc CRC8 round=0 bytes=256 us=118240 us_per_byte=461 alloc_bytes=160
+SUM crc CRC8 round=1 bytes=256 us=118954 us_per_byte=464 alloc_bytes=144
+SUM crc CRC16 round=0 bytes=256 us=118286 us_per_byte=462 alloc_bytes=144
+SUM crc CRC16 round=1 bytes=256 us=118909 us_per_byte=464 alloc_bytes=144
+SUM crc CRC32 round=0 bytes=256 us=127348 us_per_byte=497 alloc_bytes=432
+SUM crc CRC32 round=1 bytes=256 us=127269 us_per_byte=497 alloc_bytes=432
+SUM voc process n=200 avg_us=16245 worst_us=31877 alloc_bytes_per_sample=352
+DONE=1
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 13:40:33
+```
+
 ### cstack_20261029
 
 ```
