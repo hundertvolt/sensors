@@ -119,6 +119,26 @@ resets armed soft
 resets after reset_cause 3 wd_reason 0x2 chip_reset 0x100 region0 ['0xa0', '0xa1', '0xa2', '0xa3'] region1 ['0xb0', '0xb1', '0xb2']
 resets armed wdt
 resets after reset_cause 3 wd_reason 0x1 chip_reset 0x100 region0 ['0xa0', '0xa1', '0xa2', '0xa3'] region1 ['0xb0', '0xb1', '0xb2']
+prims2 spi baud 1000000 actual SPI(0, baudrate=1000000, polarity=0, phase=0, bits=8, sck=2, mosi=3, miso=4) reads 100 mismatched 0 oserror 0 ms 220
+prims2 spi baud 8000000 actual SPI(0, baudrate=8000000, polarity=0, phase=0, bits=8, sck=2, mosi=3, miso=4) reads 100 mismatched 0 oserror 0 ms 47
+prims2 spi baud 20000000 actual SPI(0, baudrate=12000000, polarity=0, phase=0, bits=8, sck=2, mosi=3, miso=4) reads 100 mismatched 0 oserror 0 ms 38
+prims2 spi baud 40000000 actual SPI(0, baudrate=24000000, polarity=0, phase=0, bits=8, sck=2, mosi=3, miso=4) reads 100 mismatched 0 oserror 0 ms 35
+prims2 spi with all 12 free DMA channels claimed: 64-byte read correct True
+prims2 gc fill_pct 25 objects 1014 collect_us [9668, 9561, 9561]
+prims2 gc fill_pct 50 objects 2034 collect_us [15743, 15727, 15726]
+prims2 gc fill_pct 75 objects 2944 collect_us [21775, 21765, 21764]
+prims2 gc fill_pct 90 objects 3614 collect_us [25511, 25500, 25499]
+prims2 sockets udp opened 4 stopped_by OSError(12,) new_after_close True
+prims2 sockets tcp opened 9 stopped_by OSError(12,) new_after_close True
+prims2 tcp listeners opened 8 stopped_by OSError(12,)
+prims2 getaddrinfo start pool.ntp.org
+prims2 getaddrinfo pool.ntp.org ms 23 result ok 1 10ms_ticks 2 of 2
+prims2 getaddrinfo start pool.ntp.org
+prims2 getaddrinfo pool.ntp.org ms 1 result ok 1 10ms_ticks 0 of 0
+prims2 getaddrinfo start nonexistent-host.invalid
+prims2 getaddrinfo nonexistent-host.invalid ms 15 result OSError(-2,) 10ms_ticks 2 of 1
+prims2 getaddrinfo start xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+prims2 getaddrinfo xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx ms 6945 result OSError(-2,) 10ms_ticks 694 of 694
 crc CRC8 round=0 bytes=256 us=118240 us_per_byte=461 alloc_bytes=160
 crc CRC8 round=1 bytes=256 us=118954 us_per_byte=464 alloc_bytes=144
 crc CRC16 round=0 bytes=256 us=118286 us_per_byte=462 alloc_bytes=144
@@ -1544,6 +1564,32 @@ Resolved 22 packages in 3ms
 Audited 20 packages in 0.68ms
 warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
 SUM resets after reset_cause 3 wd_reason 0x1 chip_reset 0x100 region0 ['0xa0', '0xa1', '0xa2', '0xa3'] region1 ['0xb0', '0xb1', '0xb2']
+### prims2 16:53:55
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM prims2 spi baud 1000000 actual SPI(0, baudrate=1000000, polarity=0, phase=0, bits=8, sck=2, mosi=3, miso=4) reads 100 mismatched 0 oserror 0 ms 220
+SUM prims2 spi baud 8000000 actual SPI(0, baudrate=8000000, polarity=0, phase=0, bits=8, sck=2, mosi=3, miso=4) reads 100 mismatched 0 oserror 0 ms 47
+SUM prims2 spi baud 20000000 actual SPI(0, baudrate=12000000, polarity=0, phase=0, bits=8, sck=2, mosi=3, miso=4) reads 100 mismatched 0 oserror 0 ms 38
+SUM prims2 spi baud 40000000 actual SPI(0, baudrate=24000000, polarity=0, phase=0, bits=8, sck=2, mosi=3, miso=4) reads 100 mismatched 0 oserror 0 ms 35
+SUM prims2 spi with all 12 free DMA channels claimed: 64-byte read correct True
+SUM prims2 gc fill_pct 25 objects 1014 collect_us [9668, 9561, 9561]
+SUM prims2 gc fill_pct 50 objects 2034 collect_us [15743, 15727, 15726]
+SUM prims2 gc fill_pct 75 objects 2944 collect_us [21775, 21765, 21764]
+SUM prims2 gc fill_pct 90 objects 3614 collect_us [25511, 25500, 25499]
+SUM prims2 sockets udp opened 4 stopped_by OSError(12,) new_after_close True
+SUM prims2 sockets tcp opened 9 stopped_by OSError(12,) new_after_close True
+SUM prims2 tcp listeners opened 8 stopped_by OSError(12,)
+SUM prims2 getaddrinfo start pool.ntp.org
+SUM prims2 getaddrinfo pool.ntp.org ms 23 result ok 1 10ms_ticks 2 of 2
+SUM prims2 getaddrinfo start pool.ntp.org
+SUM prims2 getaddrinfo pool.ntp.org ms 1 result ok 1 10ms_ticks 0 of 0
+SUM prims2 getaddrinfo start nonexistent-host.invalid
+SUM prims2 getaddrinfo nonexistent-host.invalid ms 15 result OSError(-2,) 10ms_ticks 2 of 1
+SUM prims2 getaddrinfo start xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+SUM prims2 getaddrinfo xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx ms 6945 result OSError(-2,) 10ms_ticks 694 of 694
+DONE
+rc=0 16:54:18
 ```
 
 ### crc_voc_20261029
