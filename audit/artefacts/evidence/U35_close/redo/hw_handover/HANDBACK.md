@@ -116,6 +116,19 @@ cstack_await depth=28 entry_use=7076 resumed_use=7076 plain_headroom=3
 cstack_await depth=30 entry_use=7476 resumed_use=7476 plain_headroom=1
 cstack_await max_ok_depth=31 failed_at=32 error=RuntimeError('maximum recursion depth exceeded',)
 cstack_await per_level_bytes=200 (resumed use, depth 1 to 31)
+idle_poll phase=counter_alone poll_ms=0 counter_per_s=3498
+idle_poll phase=with_listener poll_ms=100 counter_per_s=3502
+idle_poll share poll_ms=100 loop_share_permille=-2
+idle_poll phase=with_listener poll_ms=20 counter_per_s=3453
+idle_poll share poll_ms=20 loop_share_permille=12
+idle_poll phase=with_listener poll_ms=500 counter_per_s=3513
+idle_poll share poll_ms=500 loop_share_permille=-5
+idle_poll phase=with_listener poll_ms=10 counter_per_s=3404
+idle_poll share poll_ms=10 loop_share_permille=26
+idle_poll host_phase answered=69
+idle_poll_host after_silence n=25 lost=0 min_ms=30.4 median_ms=131.2 p90_ms=167.0 max_ms=206.0
+idle_poll_host busy_10ms_gap n=40 lost=0 min_ms=87.6 median_ms=90.8 p90_ms=91.7 max_ms=94.7
+idle_poll_host burst_of_5 answered=4 reply_ms=[105.3, 105.4, 105.6, 105.6]
 json_floats n=18 not_round_tripping=0 examples=[]
 float_repr 0.1=0.1 1013.25=1013.25 21.37=21.37 12345.678=12345.678
 heap free=181584 alloc=6320
@@ -1311,6 +1324,31 @@ Traceback (most recent call last):
     ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 OSError: [Errno 5] Input/output error
 rc=1 13:09:09
+== idle_poll 13:14:34
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.59ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM idle_poll phase=counter_alone poll_ms=0 counter_per_s=3498
+SUM idle_poll phase=with_listener poll_ms=100 counter_per_s=3502
+SUM idle_poll share poll_ms=100 loop_share_permille=-2
+SUM idle_poll phase=with_listener poll_ms=20 counter_per_s=3453
+SUM idle_poll share poll_ms=20 loop_share_permille=12
+SUM idle_poll phase=with_listener poll_ms=500 counter_per_s=3513
+SUM idle_poll share poll_ms=500 loop_share_permille=-5
+SUM idle_poll phase=with_listener poll_ms=10 counter_per_s=3404
+SUM idle_poll share poll_ms=10 loop_share_permille=26
+READY
+SUM idle_poll host_phase answered=69
+DONE=1
+rc=0 13:18:49
+```
+
+### idle_poll_host_20261029
+
+```
+SUM idle_poll_host after_silence n=25 lost=0 min_ms=30.4 median_ms=131.2 p90_ms=167.0 max_ms=206.0
+SUM idle_poll_host busy_10ms_gap n=40 lost=0 min_ms=87.6 median_ms=90.8 p90_ms=91.7 max_ms=94.7
+SUM idle_poll_host burst_of_5 answered=4 reply_ms=[105.3, 105.4, 105.6, 105.6]
 ```
 
 ### listener_close_20261029
