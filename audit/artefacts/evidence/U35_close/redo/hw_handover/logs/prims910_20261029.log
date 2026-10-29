@@ -61,3 +61,28 @@ Resolved 22 packages in 3ms
 Audited 20 packages in 0.62ms
 warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
 SUM resets after reset_cause 3 wd_reason 0x2 chip_reset 0x100 region0 ['0x815b', '0xc7', '0x0', '0x0'] region1 ['0x6', '0xd', '0x0']
+### prims10 18:14:05
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM prims10 idle levels gpio6 0 gpio11 1
+SUM prims10 inover_on_gpio6 four_forced_edges callbacks 0 intr0_gpio6 0x1
+SUM prims10 floating pin 22
+SUM prims10 control_no_irq edges_per_s 10000 edges 50000 callbacks 0 wakeups 0 soft_timer 500 of 500 lag_max 2 lag_over20 0 lag_n 491 window_ms 5000
+SUM prims10 isl_shape_falling edges_per_s 50 edges 250 callbacks 250 wakeups 250 soft_timer 500 of 500 lag_max 2 lag_over20 0 lag_n 550 window_ms 5001
+SUM prims10 isl_shape_falling edges_per_s 500 edges 2499 callbacks 2499 wakeups 2497 soft_timer 500 of 500 lag_max 1 lag_over20 0 lag_n 549 window_ms 5000
+SUM prims10 isl_shape_falling edges_per_s 2500 edges 12500 callbacks 12486 wakeups 4364 soft_timer 498 of 500 lag_max 3 lag_over20 0 lag_n 512 window_ms 5001
+SUM prims10 isl_shape_falling edges_per_s 5000 edges 25000 callbacks 24907 wakeups 3328 soft_timer 498 of 500 lag_max 30 lag_over20 1 lag_n 481 window_ms 5001
+SUM prims10 isl_shape_falling edges_per_s 10000 edges 50000 callbacks 8555 wakeups 4053 soft_timer 18 of 500 lag_max 1223 lag_over20 10 lag_n 59 window_ms 5007
+SUM prims10 scd_shape_rising edges_per_s 50 edges 250 callbacks 250 wakeups 250 soft_timer 500 of 500 lag_max 3 lag_over20 0 lag_n 547 window_ms 5000
+SUM prims10 scd_shape_rising edges_per_s 500 edges 2500 callbacks 2500 wakeups 2496 soft_timer 500 of 500 lag_max 4 lag_over20 0 lag_n 549 window_ms 5000
+SUM prims10 scd_shape_rising edges_per_s 2500 edges 12500 callbacks 12485 wakeups 4084 soft_timer 500 of 500 lag_max 2 lag_over20 0 lag_n 515 window_ms 5002
+SUM prims10 scd_shape_rising edges_per_s 5000 edges 25000 callbacks 24968 wakeups 3178 soft_timer 500 of 500 lag_max 8 lag_over20 0 lag_n 441 window_ms 5001
+SUM prims10 scd_shape_rising edges_per_s 10000 edges 50000 callbacks 8284 wakeups 3324 soft_timer 96 of 500 lag_max 481 lag_over20 30 lag_n 87 window_ms 5008
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 18:15:07
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM resets after reset_cause 3 wd_reason 0x2 chip_reset 0x100 region0 ['0xb', '0x186a0', '0x142a', '0x0'] region1 ['0x0', '0x1e1', '0x0']
