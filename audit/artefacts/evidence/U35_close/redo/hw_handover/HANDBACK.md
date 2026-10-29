@@ -5,21 +5,21 @@ Rebuilt by `handback.py` after every step; the newest day is complete up to its 
 ## Aggregate over every day's long runs
 
 ```
-fram runs=11 scratch_restored=11
-fram op=rdid runs=11 n=1714576 oserrors=0 bad=0 worst_us=10249 bad_rate<1.7e-06 oserrors_rate<1.7e-06
-fram op=read256 runs=11 n=1714576 oserrors=0 bad=0 worst_us=12702 bad_rate<1.7e-06 oserrors_rate<1.7e-06
-fram op=write1 runs=11 n=1714576 oserrors=0 bad=0 worst_us=10482 bad_rate<1.7e-06 oserrors_rate<1.7e-06
-i2c chip=bmp phase=data runs=12 n=1755542 eio=0 etimedout=0 other=0 bad=0 worst_us=553 eio_rate<1.7e-06 etimedout_rate<1.7e-06 other_rate<1.7e-06 bad_rate<1.7e-06
-i2c chip=bmp phase=reg runs=12 n=1755542 eio=0 etimedout=0 other=0 bad=0 worst_us=566 eio_rate<1.7e-06 etimedout_rate<1.7e-06 other_rate<1.7e-06 bad_rate<1.7e-06
-i2c chip=bmp phase=write runs=12 n=175550 eio=0 etimedout=0 other=0 bad=0 worst_us=5025 eio_rate<1.7e-05 etimedout_rate<1.7e-05 other_rate<1.7e-05 bad_rate<1.7e-05
-i2c chip=isl phase=data runs=12 n=1755542 eio=0 etimedout=0 other=0 bad=0 worst_us=503 eio_rate<1.7e-06 etimedout_rate<1.7e-06 other_rate<1.7e-06 bad_rate<1.7e-06
-i2c chip=isl phase=reg runs=12 n=1755542 eio=0 etimedout=0 other=0 bad=0 worst_us=469 eio_rate<1.7e-06 etimedout_rate<1.7e-06 other_rate<1.7e-06 bad_rate<1.7e-06
-i2c chip=isl phase=write runs=12 n=175550 eio=0 etimedout=0 other=0 bad=0 worst_us=4989 eio_rate<1.7e-05 etimedout_rate<1.7e-05 other_rate<1.7e-05 bad_rate<1.7e-05
-i2c chip=scd30 phase=cmd runs=12 n=126313 eio=0 etimedout=0 other=0 bad=0 worst_us=834 eio_rate<2.4e-05 etimedout_rate<2.4e-05 other_rate<2.4e-05 bad_rate<2.4e-05
-i2c chip=scd30 phase=data runs=12 n=126312 eio=0 etimedout=0 other=0 bad=0 worst_us=5380 eio_rate<2.4e-05 etimedout_rate<2.4e-05 other_rate<2.4e-05 bad_rate<2.4e-05
-i2c chip=sgp40 phase=cmd runs=12 n=6480 eio=0 etimedout=0 other=0 bad=0 worst_us=1829 eio_rate<4.6e-04 etimedout_rate<4.6e-04 other_rate<4.6e-04 bad_rate<4.6e-04
-i2c chip=sgp40 phase=data runs=12 n=6480 eio=1 etimedout=0 other=0 bad=0 worst_us=5368 eio_rate=1.54e-04 etimedout_rate<4.6e-04 other_rate<4.6e-04 bad_rate<4.6e-04
-i2c chip=sgp40 phase=first runs=12 n=0 eio=0 etimedout=0 other=0 bad=0 worst_us=0
+fram runs=12 scratch_restored=12
+fram op=rdid runs=12 n=1870432 oserrors=0 bad=0 worst_us=10249 bad_rate<1.6e-06 oserrors_rate<1.6e-06
+fram op=read256 runs=12 n=1870432 oserrors=0 bad=0 worst_us=12702 bad_rate<1.6e-06 oserrors_rate<1.6e-06
+fram op=write1 runs=12 n=1870432 oserrors=0 bad=0 worst_us=10482 bad_rate<1.6e-06 oserrors_rate<1.6e-06
+i2c chip=bmp phase=data runs=13 n=1901824 eio=0 etimedout=0 other=0 bad=0 worst_us=553 eio_rate<1.6e-06 etimedout_rate<1.6e-06 other_rate<1.6e-06 bad_rate<1.6e-06
+i2c chip=bmp phase=reg runs=13 n=1901824 eio=0 etimedout=0 other=0 bad=0 worst_us=566 eio_rate<1.6e-06 etimedout_rate<1.6e-06 other_rate<1.6e-06 bad_rate<1.6e-06
+i2c chip=bmp phase=write runs=13 n=190178 eio=0 etimedout=0 other=0 bad=0 worst_us=5025 eio_rate<1.6e-05 etimedout_rate<1.6e-05 other_rate<1.6e-05 bad_rate<1.6e-05
+i2c chip=isl phase=data runs=13 n=1901824 eio=0 etimedout=0 other=0 bad=0 worst_us=503 eio_rate<1.6e-06 etimedout_rate<1.6e-06 other_rate<1.6e-06 bad_rate<1.6e-06
+i2c chip=isl phase=reg runs=13 n=1901824 eio=0 etimedout=0 other=0 bad=0 worst_us=469 eio_rate<1.6e-06 etimedout_rate<1.6e-06 other_rate<1.6e-06 bad_rate<1.6e-06
+i2c chip=isl phase=write runs=13 n=190178 eio=0 etimedout=0 other=0 bad=0 worst_us=4989 eio_rate<1.6e-05 etimedout_rate<1.6e-05 other_rate<1.6e-05 bad_rate<1.6e-05
+i2c chip=scd30 phase=cmd runs=13 n=136840 eio=0 etimedout=0 other=0 bad=0 worst_us=834 eio_rate<2.2e-05 etimedout_rate<2.2e-05 other_rate<2.2e-05 bad_rate<2.2e-05
+i2c chip=scd30 phase=data runs=13 n=136839 eio=0 etimedout=0 other=0 bad=0 worst_us=5380 eio_rate<2.2e-05 etimedout_rate<2.2e-05 other_rate<2.2e-05 bad_rate<2.2e-05
+i2c chip=sgp40 phase=cmd runs=13 n=7020 eio=0 etimedout=0 other=0 bad=0 worst_us=1829 eio_rate<4.3e-04 etimedout_rate<4.3e-04 other_rate<4.3e-04 bad_rate<4.3e-04
+i2c chip=sgp40 phase=data runs=13 n=7020 eio=1 etimedout=0 other=0 bad=0 worst_us=5368 eio_rate=1.42e-04 etimedout_rate<4.3e-04 other_rate<4.3e-04 bad_rate<4.3e-04
+i2c chip=sgp40 phase=first runs=13 n=0 eio=0 etimedout=0 other=0 bad=0 worst_us=0
 lagbins threshold=-1 runs=6 lt500=196108 lt1000=48645 lt2000=2801 lt5000=166 lt10000=38855 lt20000=182 lt50000=0 ge50000=0
 lagbins threshold=32768 runs=5 lt500=126607 lt1000=78854 lt2000=43511 lt5000=2604 lt10000=1436 lt20000=0 lt50000=0 ge50000=0
 loop threshold=-1 runs=6 probes=286757 worst_lag_us=10565 memoryerrors=0
@@ -1303,6 +1303,16 @@ SUM L fram op=write1 n=155859 oserrors=0 bad=0 worst_us=10474
 SUM L fram scratch_restored=1
 DONE=1
 rc=0 12:14:23
+== long_fram 12:59:46
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L fram op=rdid n=155856 oserrors=0 bad=0 worst_us=10244
+SUM L fram op=read256 n=155856 oserrors=0 bad=0 worst_us=12698
+SUM L fram op=write1 n=155856 oserrors=0 bad=0 worst_us=10478
+SUM L fram scratch_restored=1
+DONE=1
+rc=0 13:08:47
 ```
 
 ### long_i2c_20261029
@@ -1452,6 +1462,24 @@ SUM L i2c chip=bmp phase=data n=146315 eio=0 etimedout=0 other=0 bad=0 worst_us=
 SUM L i2c chip=sgp40 phase=first n=0 eio=0 etimedout=0 other=0 bad=0 worst_us=0
 DONE=1
 rc=0 12:05:21
+== long_i2c 12:50:44
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+REF {'bmp_id': 80, 'isl_id': 125, 'isl_c1': 5, 'bmp_osr': 0}
+SUM L i2c chip=isl phase=data n=146282 eio=0 etimedout=0 other=0 bad=0 worst_us=501
+SUM L i2c chip=sgp40 phase=cmd n=540 eio=0 etimedout=0 other=0 bad=0 worst_us=1825
+SUM L i2c chip=sgp40 phase=data n=540 eio=0 etimedout=0 other=0 bad=0 worst_us=1072
+SUM L i2c chip=isl phase=write n=14628 eio=0 etimedout=0 other=0 bad=0 worst_us=709
+SUM L i2c chip=isl phase=reg n=146282 eio=0 etimedout=0 other=0 bad=0 worst_us=468
+SUM L i2c chip=scd30 phase=data n=10527 eio=0 etimedout=0 other=0 bad=0 worst_us=5372
+SUM L i2c chip=bmp phase=reg n=146282 eio=0 etimedout=0 other=0 bad=0 worst_us=566
+SUM L i2c chip=scd30 phase=cmd n=10527 eio=0 etimedout=0 other=0 bad=0 worst_us=834
+SUM L i2c chip=bmp phase=write n=14628 eio=0 etimedout=0 other=0 bad=0 worst_us=755
+SUM L i2c chip=bmp phase=data n=146282 eio=0 etimedout=0 other=0 bad=0 worst_us=551
+SUM L i2c chip=sgp40 phase=first n=0 eio=0 etimedout=0 other=0 bad=0 worst_us=0
+DONE=1
+rc=0 12:59:45
 ```
 
 ### long_neopixel_20261029
@@ -1756,6 +1784,12 @@ MemoryError: memory allocation failed, heap is locked
 SUM irq_alloc_above hard=1 emergency_buf=256 (the traceback is the console text above)
 DONE=1
 rc=0 05:35:26
+```
+
+### stop_20261029
+
+```
+STOP found: ending before long_uart
 ```
 <!-- end day -->
 
