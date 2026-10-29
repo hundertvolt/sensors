@@ -7,7 +7,7 @@ L=$H/logs/prims7_$(date -u +%Y%m%d).log
 MPC=scripts/mpremote_connect.sh
 up() { for _ in $(seq 1 60); do timeout 15 $MPC resume exec "print('up')" >/dev/null 2>&1 && return 0; sleep 1; done; echo "board not back" >> "$L"; return 1; }
 for case in ${CASES:-"fw True" "fw False" "performance True" "powersave True"}; do
-  read -r pm bound <<< "$case"
+  IFS=": " read -r pm bound <<< "$case"
   up || exit 1
   sed -e "s/^PM = .*/PM = \"$pm\"/" -e "s/^BOUND = .*/BOUND = $bound/" "$H/mp/big/prims7.py" > "$H/logs/prims7_case.py"
   n=$(grep -c '^FLOOD_START' "$L" 2>/dev/null); n=${n:-0}
