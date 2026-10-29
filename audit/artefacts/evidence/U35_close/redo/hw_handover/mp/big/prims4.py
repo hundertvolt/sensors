@@ -2,7 +2,11 @@
 512-byte ring on UART1 fed from UART0, 1 KB FRAM reads over SPI DMA, a UDP echo over CYW43, a 10 ms loop-lag probe."""
 import gc, json, os, time, select, socket, network, asyncio, machine, asy_uart_driver
 from machine import Pin, SPI, UART
+VARIANT = "full"
 wdt = machine.WDT(timeout=8000)
+mb0, mb1 = machine.mem_backup(0), machine.mem_backup(1)
+for i in range(4): mb0[i] = 0
+for i in range(3): mb1[i] = 0
 def say(*a): print("SUM prims4", *a)
 def creds():
     for name in os.listdir("/"):
@@ -21,8 +25,12 @@ for a in range(0, 1024, 16): ref += rd(16, a)
 spi.init(baudrate=8000000)
 st = {}
 def bump(k, n=1): st[k] = st.get(k, 0) + n
-async def feeder():
-    while True: wdt.feed(); await asyncio.sleep_ms(500)
+async def feeder():  # markers survive a reset: ms since start, FRAM reads, UART frames, UDP rx; phase, lag max, sent
+    t0 = time.ticks_ms()
+    while True:
+        wdt.feed(); mb0[0] = time.ticks_diff(time.ticks_ms(), t0); mb0[1] = st.get("fram_reads", 0); mb0[2] = st.get("uart_good", 0)
+        mb0[3] = st.get("udp_rx", 0); mb1[1] = st.get("lag_max", 0); mb1[2] = st.get("uart_sent", 0)
+        await asyncio.sleep_ms(100)
 async def lag():
     while True:
         t0 = time.ticks_ms(); await asyncio.sleep_ms(10); d = time.ticks_diff(time.ticks_ms(), t0) - 10
@@ -71,8 +79,8 @@ async def echo(s):
         await asyncio.sleep_ms(2)
 async def main():
     c = creds(); wlan = network.WLAN(network.STA_IF); wlan.active(True)
-    if c: wlan.connect(c[0], c[1])
-    for _ in range(150):
+    if c and VARIANT != "no_wifi": wlan.connect(c[0], c[1])
+    for _ in range(150 if VARIANT != "no_wifi" else 0):
         if wlan.isconnected(): break
         wdt.feed(); await asyncio.sleep_ms(100)
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -80,13 +88,15 @@ async def main():
     tx = UART(0, 115200, tx=Pin(0), rx=Pin(1), txbuf=512)
     u = asy_uart_driver.UART(1, 8, 9, baudrate=115200, rxbuf=512, txbuf=512, rx_ring=512)
     say("ring", u._rx_dma is not None or u.setup_rx_ring(), "connected", wlan.isconnected())
-    for f in (feeder(), lag(), fram(), writer(tx), reader(u), echo(s)): asyncio.create_task(f)
-    for phase in ("quiet", "flood"):
-        st.clear(); o0 = u.rx_overruns; gc.collect(); m0 = gc.mem_free()
+    tasks = [feeder(), lag()] + ([fram()] if VARIANT in ("full", "no_uart", "no_wifi") else []) + ([writer(tx), reader(u)] if VARIANT in ("full", "no_fram", "no_wifi") else []) + ([echo(s)] if VARIANT in ("full", "no_fram", "no_uart") else [])
+    for f in tasks: asyncio.create_task(f)
+    for phase in (("quiet", "flood") if VARIANT == "full" else ("quiet",)):
+        mb1[0] = 1 if phase == "quiet" else 2; st.clear(); o0 = u.rx_overruns; gc.collect(); m0 = gc.mem_free()
         if phase == "flood": print("FLOOD_START IP=%s" % wlan.ifconfig()[0])
         await asyncio.sleep(45)
         st["uart_overruns"] = u.rx_overruns - o0; st["mem_free_end"] = gc.mem_free(); st["mem_free_start"] = m0
         say(phase, sorted(st.items()))
+    if VARIANT != "full": return
     # the UDP pcb pool with the hotspot's AP interface up beside the station (its DHCP server takes one more)
     s.close(); ap = network.WLAN(network.AP_IF); ap.config(ssid="bench-probe", key="probe-1234567"); ap.active(True)
     await asyncio.sleep_ms(1500); socks = []
