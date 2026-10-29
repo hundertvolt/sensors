@@ -1,0 +1,22 @@
+### prims5 17:04:37
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.59ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM prims5 clear sda_stuck release_after_pulse 0 status 3 scl_low_pulses 10 us 3373
+SUM prims5 clear sda_lets_go release_after_pulse 1 status 1 scl_low_pulses 2 us 1794
+SUM prims5 clear sda_lets_go release_after_pulse 2 status 1 scl_low_pulses 3 us 1887
+SUM prims5 clear sda_lets_go release_after_pulse 5 status 1 scl_low_pulses 6 us 2573
+SUM prims5 clear sda_lets_go release_after_pulse 8 status 1 scl_low_pulses 9 us 3325
+SUM prims5 clear sda_lets_go release_after_pulse 9 status 1 scl_low_pulses 10 us 3556
+SUM prims5 clear sda_lets_go release_after_pulse 10 status 3 scl_low_pulses 10 us 3442
+SUM prims5 clear scl_stuck release_after_pulse 0 status 4 scl_low_pulses 0 us 50676
+SUM prims5 clear both_stuck release_after_pulse 0 status 4 scl_low_pulses 0 us 50893
+SUM prims5 clear_awaiting scl_stuck status,ms,max_lag_ms (4, 52, 1)
+SUM prims5 wedged rung retry first ('OSError(110)', 51100) then [('OSError(110)', 50720)] fresh_check ('ok50', 1120)
+SUM prims5 wedged rung retry_x3 first ('OSError(110)', 50889) then [('OSError(110)', 50705), ('ok50', 1100), ('ok50', 1032)] fresh_check ('ok50', 1035)
+SUM prims5 wedged rung clear_remux first ('OSError(110)', 50909) then [0, ('OSError(110)', 50716)] fresh_check ('ok50', 1093)
+SUM prims5 wedged rung reinit first ('OSError(110)', 50863) then [('ok50', 1128)] fresh_check ('ok50', 1043)
+SUM prims5 wedged rung scan_then_retry first ('OSError(110)', 50866) then [[24, 119], ('OSError(110)', 50669)] fresh_check ('ok50', 1102)
+DONE
+Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+rc=0 17:04:42
