@@ -803,10 +803,7 @@ class WebserverService:
         if exc is self._read_traced[0]:  # the proxy's read arm traced this very timeout already: one line, not two
             self._read_traced[0] = None
             return
-        if isinstance(exc, MemoryError):
-            self.pr.err_nomem("Microdot caught:", exc)
-        else:
-            self.pr.err("Microdot caught:", exc)
+        self.pr.err_nomem("Microdot caught:", exc)  # allocates nothing, so a caught MemoryError prints as any other
 
     async def _put_networking(self, request: "_RequestLike") -> "ResponseEnvelope":
         body = _body_as_dict(request)
