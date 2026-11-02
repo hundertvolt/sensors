@@ -126,3 +126,11 @@ complete, consistent, according to our discussions, coherent and correct."). `re
 plan; its previous state is `PLAN_before_rewrite.md`. `redo/plancheck/final/` holds the version checked
 (`PLAN_as_checked.md`) and the two independent checks (`C1.md`, completeness; `C2.md`, falsification);
 `redo/plancheck/CHANGES.md` lists every change with the owner's words behind it.
+
+## Twenty-third snapshot (2026-11-02): R0, settling
+
+The owner's go-ahead for R0 ("Go ahead with R0, and resume watching CI"). `redo/r0/BASELINE.md` is the "before" column
+of every later report; `redo/r0/R0_CHECKS.md` holds the three checks that decide items of the firmware batches;
+`redo/knowledge/` starts the knowledge list, `redo/findings/` the findings list (empty); `redo/tools/review_hunks.py`
+is the throwaway review aid of the plan's section 2, step 4. The tree drops the twin record's committed copy and its
+staleness test, and this snapshot runs the full CI.

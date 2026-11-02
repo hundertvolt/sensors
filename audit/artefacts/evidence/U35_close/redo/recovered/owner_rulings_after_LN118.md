@@ -402,3 +402,6 @@ their context). From now on every owner word is appended here as it is given.
   of PLAN.md (read-only on the repository; edits to the plan only), ending with independent falsification (rule 11).
 - (2026-11-02 19:16 UTC, push go-ahead) "Push the plan" Recorded as: go-ahead to push the rewritten and checked plan
   with its change list, the check's hand-backs and the rulings as snapshot 22 (evidence only, `[skip ci]`).
+- (2026-11-02 19:20 UTC, go-ahead: R0; CI watching) "Go ahead with R0, and resume watching CI" Recorded as: the
+  go-ahead for R0 as PLAN.md section 3 states it (the lead alone, no product code), and CI watching resumed (the
+  pause of 2026-10-28 ends).
