@@ -405,3 +405,10 @@ their context). From now on every owner word is appended here as it is given.
 - (2026-11-02 19:20 UTC, go-ahead: R0; CI watching) "Go ahead with R0, and resume watching CI" Recorded as: the
   go-ahead for R0 as PLAN.md section 3 states it (the lead alone, no product code), and CI watching resumed (the
   pause of 2026-10-28 ends).
+- (2026-11-02 20:13 UTC, status question) "Everything still as expected?" Recorded as: a status question on R0's
+  CI run; no go-ahead.
+- (2026-11-02 20:27 UTC, question on R0's report) "What and where is the exception handler guard?" Recorded as: a
+  question on item 6 of R0's report; no decision, no go-ahead.
+- (2026-11-02 20:30 UTC, item 6 confirmed; go-ahead: the CI fix) "That's okay. And fix CI right now." Recorded as:
+  the exception-handler guard stays, now on the owner's word (it was a decision taken on the owner's behalf); and the
+  go-ahead to fix the red coverage test in R0, now, instead of R2: the byte check on `build-standard` only.

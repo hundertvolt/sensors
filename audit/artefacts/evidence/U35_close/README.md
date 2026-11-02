@@ -134,3 +134,11 @@ of every later report; `redo/r0/R0_CHECKS.md` holds the three checks that decide
 `redo/knowledge/` starts the knowledge list, `redo/findings/` the findings list (empty); `redo/tools/review_hunks.py`
 is the throwaway review aid of the plan's section 2, step 4. The tree drops the twin record's committed copy and its
 staleness test, and this snapshot runs the full CI.
+
+## Twenty-fourth snapshot (2026-11-02): R0's CI fix
+
+The owner's go-ahead ("And fix CI right now."). The first full CI run, on the twenty-third snapshot, was green on 45 of
+46 jobs; the coverage job failed one test whose exact-zero byte check cannot hold on the settrace binary. The test now
+checks bytes on the settrace-free binary only. `redo/r0/R0_CHECKS.md`'s last section has the root cause and the fix,
+`redo/r0/BASELINE.md` the CI time per job (`redo/r0/ci/jobs.tsv`). The owner also confirmed the exception-handler
+guard ("That's okay."). This snapshot runs the full CI.

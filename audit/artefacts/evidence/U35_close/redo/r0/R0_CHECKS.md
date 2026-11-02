@@ -40,4 +40,22 @@ revert, anything else keep.
   records what was built under that answer: "installed by `start_and_check_tasks()` only when no handler is set".
 - Decision taken on the owner's behalf (agent, 2026-11-02), shown in R0's report: keep the guard. It is the smaller
   change (none), the same-day record pairs it with the owner's answer, and leaving a handler someone installed in
-  place is a library's ordinary manners ("Always regard the modules as libraries"). The owner can reverse it.
+  place is a library's ordinary manners ("Always regard the modules as libraries").
+- The owner's word (2026-11-02 20:30 UTC), on the guard shown at `src/asy_system_service.py:778`: "That's okay." It
+  stays, now an owner decision.
+
+## The first full CI run (`c901f111`, run 41512927022)
+
+- Red: `unit-tests-coverage`, one test of 5,669: `tests/test_digital_twin_machine.py`'s
+  `test_wdt_feeds_build_no_task_and_allocate_nothing` ("0 tasks built and 640000 B allocated by 200 feeds").
+- Root cause: the test holds 200 feeds, each with `await asyncio.sleep(0)`, to exactly 0 B by `gc.mem_alloc()`.
+  `build-settrace` allocates a frame and a code object per call and per resume whether or not a tracer is set
+  (SPECIFICATION.md E.5.2). Reproduced through the run wrapper (2026-11-02 20:17 UTC): `build-standard` 0 B, pass;
+  `build-settrace`, no tracer, 512,000 B; under `tests/_coverage_runner.py` 640,000 B. Deterministic; no product code.
+- Why only now: the test came on 2026-10-27, while coverage was skipped behind the red unit jobs (since 2026-10-21).
+- Fixed in R0, not R2, on the owner's word (2026-11-02 20:30 UTC): "And fix CI right now." The byte check runs
+  where `sys.settrace` is absent (both plain unit-test jobs); the no-task check runs on both binaries. Integration
+  commit `4516e60e`. Checked through the run wrapper: the file passes 116/116 on `build-standard` at both GC stages,
+  on `build-settrace` untraced and under the coverage runner; lint, the main and twin mypy passes and the
+  comment-cap test clean.
+- PR comment posted (2026-11-02 20:18 UTC).

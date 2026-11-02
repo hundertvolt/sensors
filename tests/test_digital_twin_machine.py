@@ -975,7 +975,8 @@ def test_wdt_feeds_build_no_task_and_allocate_nothing() -> None:
         grown, allocated = run(scenario(counting), _RUN_BOUND_S)
     finally:
         machine.asyncio = asyncio  # type: ignore[attr-defined]
-    assert (grown, allocated) == (0, 0), f"{grown} tasks built and {allocated} B allocated by {LOG_MAXLEN} feeds"
+    settrace_build = hasattr(sys, "settrace")  # allocates per call and resume, traced or not (SPECIFICATION.md E.5.2)
+    assert grown == 0 and (settrace_build or allocated == 0), f"{grown} tasks built and {allocated} B allocated by {LOG_MAXLEN} feeds"
 
 
 def test_reset_increments_the_module_counter_then_raises_simulated_reset() -> None:

@@ -53,5 +53,22 @@ Test and tool lines (`tests`, `tests_scripts`, `tests_js`, `tests_hardware`, `di
 `.github`): 105,942 at `25caf528`, 232,891 at `497b3eda`, 231,286 in 653 files after R0 (the twin record's copy and
 its test removed, 1,605 lines).
 
-CI time per job: from R0's first full CI run (below, once it ends).
+CI time per job, from R0's first full CI run (`c901f111`, run 41512927022, the pull-request run; the push run on the
+same commit was cancelled by the workflow's concurrency group). 46 jobs, 45 green; the one red is `R0_CHECKS.md`'s
+last section. Wall clock 33:14 (19:45:43 to 20:18:57 UTC); runner time 322:20 summed over jobs. Per job, min:s
+(`ci/jobs.tsv` has every row):
+
+| job | time | result |
+|---|---|---|
+| lint-and-typecheck / shellcheck / actionlint / zizmor / devices | 0:40 / 0:17 / 0:15 / 0:14 / 0:09 | green |
+| web-changes / web-lint-and-typecheck | 0:29 / 0:31 | green |
+| web-unit-tests / web-coverage | 3:25 / 3:37 | green |
+| web-put-matrix (1) / (2) / (3) / web-cross-browser-smoke | 5:14 / 5:17 / 5:04 / 5:57 | green |
+| unit-tests / Unit tests (shipped gc.threshold) | 11:55 / 12:46 | green |
+| unit-tests-coverage | 16:54 | red (one test) |
+| firmware-build-verify, six devices | 1:37 to 2:04 | green |
+| digital-twin-e2e, 24 jobs (6 devices x 2 GC stages x suite/harness) | 8:39 to 12:46, median 9:57, sum 238:21 | green |
+
+The twin jobs are 74 % of the runner time; the critical path is unit-tests (11:55), then the slowest twin started
+behind its queue (it ends 20:18:57).
 
