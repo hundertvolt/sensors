@@ -651,9 +651,8 @@ the UDP shim; a plan naming a UART pair (`dev`) gets the bench's crossover jumpe
 FRAM, SCD30 and `mem_backup()` state and its filesystem (each run's working directory) in one
 directory kept across its runs, so nothing a script writes lands in the checkout.
 `scripts/record_twin_instrument_runs.py` writes the twin record (twin_record.json in
-`tests_hardware/`); `tests_scripts/test_twin_record.py` fails when a script, the runner or the `src/`
-API a script imports changed since its entry. A script that cannot run here is an `exception` entry
-with its reason in the record, never listed in this file.
+`tests_hardware/`), each instrument's twin run at both GC stages. A script that cannot run here is an
+`exception` entry with its reason in the record, never listed in this file.
 
 ## Automated CI suite
 

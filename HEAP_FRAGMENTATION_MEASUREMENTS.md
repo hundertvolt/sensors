@@ -279,7 +279,7 @@ call logs empty, so only the firmware's own blocks are measured (`SPECIFICATION.
 | `device_scripts/serving_at_default_gc.py`, `heap_under_connection_ceiling.py` | serving at `-1`; heap with the connection ceiling held open |
 | `bench/test_serving_heap_at_default_gc.py`, `bench/test_heap_under_connection_ceiling.py`, `flash/test_memory_stress.py` | the host sides, with `sweep_levels()`, tallies and the derived assertions |
 | `tests_scripts/test_device_script_gc_threshold.py`, `test_device_script_config_flush.py` | §M3.8's and the config-flush habit's static enforcement |
-| `digital_twin/run_device_script.py` + `scripts/record_twin_instrument_runs.py` (+ `tests_hardware/twin_board.py`) | runs a device script unchanged in the twin, and the flash tier's tests against `TwinBoard` (`pytest --twin`); the recorder writes the twin record (twin_record.json in `tests_hardware/`: every instrument's twin run, the bench tier's as needing the bridge), which `tests_scripts/test_twin_record.py` keeps current. **Always do this before silicon**: it found three instrument defects the board would otherwise have |
+| `digital_twin/run_device_script.py` + `scripts/record_twin_instrument_runs.py` (+ `tests_hardware/twin_board.py`) | runs a device script unchanged in the twin, and the flash tier's tests against `TwinBoard` (`pytest --twin`); the recorder writes the twin record (twin_record.json in `tests_hardware/`: every instrument's twin run, the bench tier's as needing the bridge). **Always do this before silicon**: it found three instrument defects the board would otherwise have |
 
 ### M5.2 Interpreter builds
 

@@ -1,6 +1,6 @@
 """Runs every hardware instrument in the twin at each GC stage and writes the twin record (twin_record.json in
 tests_hardware): the flash tier under `pytest --twin`, each device script no flash test runs through TwinBoard, the
-bench tier as needing the bridge. test_twin_record.py keeps it current."""
+bench tier as needing the bridge."""
 
 # Usage: .venv/bin/python scripts/record_twin_instrument_runs.py [--reasons FILE]
 # FILE is JSON {"tests_hardware/<path>": "<why it cannot run in the twin>"}. Never builds the Unix port: exit 1 without it.
