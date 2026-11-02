@@ -928,7 +928,8 @@ def test_a_logger_over_its_written_chunk_on_a_protected_chip_stays_uninitialised
     path = _tmp_path("fram_protected.json")
     manager, _bus, chip = _twin_manager()
     first = PrintLogHistoryStore(manager, name="T3")
-    assert run(first.setup()) is True
+    run(first.setup())
+    assert first.initialized is True
     run(first.err_s("planted", errno=code("E", "UNEXPECTED")))
     chip.state_path = path
     chip.save_state()

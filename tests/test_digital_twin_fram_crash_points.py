@@ -151,7 +151,8 @@ def test_a_logger_write_cut_after_every_transaction_restores_the_old_or_the_new_
         _configure(plan)
         board = _Board(plan, None)
         store = PrintLogHistoryStore(board.manager, name=_LOGGER)
-        assert run(store.setup()) is True
+        run(store.setup())
+        assert store.initialized is True
         run(store.err_s("history A", errno=code("E", "TEST_SEED_A")))
         old_image, old = board.image(), _logger_state(store)
 
@@ -170,7 +171,8 @@ def test_a_logger_write_cut_after_every_transaction_restores_the_old_or_the_new_
             kept = [bytes(page) for page in board.chip.memory._pages]
             board = _Board(plan, board.chip.memory)
             store = PrintLogHistoryStore(board.manager, name=_LOGGER)
-            assert run(store.setup()) is True, f"cut after {k}: the restored logger did not set up"
+            run(store.setup())
+            assert store.initialized is True, f"cut after {k}: the restored logger did not set up"
             restored, traces = _logger_state(store), board.traces()
             # Not at all is allowed only with its trace: two valid but differing copies are never guessed between.
             assert restored in (old, new) or (restored == _blank(store) and _COPIES_DIFFER in traces), f"cut after {k} of {count}: restored {restored} with {traces}, neither the old {old} nor the new {new}"

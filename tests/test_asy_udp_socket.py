@@ -25,6 +25,7 @@ from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 import asy_print_log
 import asy_udp_socket
 from asy_dns_client import DNS_UDP_MAX
+from asy_print_log import PrintLog
 from asy_udp_socket import UDPSocket
 
 # UDPSocket takes plain (host, port) tuples; on this Unix build the shim resolves them (once, class-wide).
@@ -102,17 +103,17 @@ _HOST = "127.0.0.1"
 _PORTS = PortAllocator("asy_udp_socket")
 
 
-def _arms_off_target(make_exc: "Callable[[str], BaseException]", *, expect_line: bool) -> "list[tuple[str, object, list[str]]]":
+def _arms_off_target(make_exc: "Callable[[str], BaseException]", logger: "PrintLog | None", *, expect_line: bool) -> "list[tuple[str, object, list[str]]]":
     # Every arm whose result is not its sentinel, or whose console lines are not the one expected line (or none),
-    # as (name, result, lines); each arm runs from this synchronous scope.
+    # as (name, result, lines); each arm runs from this synchronous scope, its socket given `logger`.
     wrong = []
     for arm, scenario, sentinel in _ARMS:
         recorder = _PrintRecorder()
         try:
-            got = run(scenario(make_exc(arm)))
+            got = run(scenario(make_exc(arm), logger))
         finally:
             recorder.restore()
-        if got != sentinel or recorder.lines != (["UDPSocket injected for " + arm] if expect_line else []):
+        if got != sentinel or recorder.lines != (["DNS UDPSocket: injected for " + arm] if expect_line else []):
             wrong.append((arm, got, recorder.lines))
     return wrong
 
@@ -869,14 +870,14 @@ def test_recvfrom_returns_none_sentinel_on_memoryerror() -> None:
 
 
 # ---------------------------------------------------------------------------
-# A caught MemoryError's own text reaches the console: the class has no logger, and the memory gates
-# read console output (CLAUDE.md), so every arm prints it once and still returns its sentinel.
+# A caught MemoryError's own text goes out through the logger its builder gives the socket, so the memory gates
+# read it from level 1 up (CLAUDE.md); without one, or at level 0, nothing prints. Every arm keeps its sentinel.
 # ---------------------------------------------------------------------------
 
 
 class _PrintRecorder:
-    # Local stand-in for a shared print recorder: shadows print() inside asy_print_log only, where
-    # console() prints, so each console line is captured as its joined text; restore() removes the shadow.
+    # Local stand-in for a shared print recorder: shadows print() inside asy_print_log only, where every
+    # logger prints, so each console line is captured as its joined text; restore() removes the shadow.
     def __init__(self) -> None:
         self.lines: list[str] = []
         asy_print_log.print = self  # type: ignore[attr-defined]
@@ -951,9 +952,9 @@ class _FailingPoller:
         self._real.unregister(*args)
 
 
-async def _connect_arm(exc: BaseException) -> object:
+async def _connect_arm(exc: BaseException, logger: "PrintLog | None") -> object:
     # socket() raises: the attempt fails, the backoff still runs, and the object stays torn down.
-    sock = UDPSocket(_make_addr(), mode="server")
+    sock = UDPSocket(_make_addr(), mode="server", logger=logger)
     original = asy_udp_socket.socket
     asy_udp_socket.socket = _FailingSocketModule(exc)  # type: ignore[assignment]
     try:
@@ -965,8 +966,8 @@ async def _connect_arm(exc: BaseException) -> object:
     return sock.connected, sock._sock is None, backoff_waited
 
 
-async def _unregister_arm(exc: BaseException) -> object:
-    sock = UDPSocket(_make_addr(), mode="server")
+async def _unregister_arm(exc: BaseException, logger: "PrintLog | None") -> object:
+    sock = UDPSocket(_make_addr(), mode="server", logger=logger)
     await sock._connect()
     assert sock.poller is not None
     sock.poller = _FailingPoller(sock.poller, "unregister", exc)  # type: ignore[assignment]
@@ -974,8 +975,8 @@ async def _unregister_arm(exc: BaseException) -> object:
     return ok, sock._sock is None, sock.connected
 
 
-async def _close_arm(exc: BaseException) -> object:
-    sock = UDPSocket(_make_addr(), mode="server")
+async def _close_arm(exc: BaseException, logger: "PrintLog | None") -> object:
+    sock = UDPSocket(_make_addr(), mode="server", logger=logger)
     await sock._connect()
     real = sock._sock
     assert real is not None
@@ -985,8 +986,8 @@ async def _close_arm(exc: BaseException) -> object:
     return ok, sock._sock is None, sock.connected
 
 
-async def _ready_arm(exc: BaseException) -> object:
-    sock = UDPSocket(_make_addr(), mode="server")
+async def _ready_arm(exc: BaseException, logger: "PrintLog | None") -> object:
+    sock = UDPSocket(_make_addr(), mode="server", logger=logger)
     try:
         await sock._connect()
         assert sock.poller is not None
@@ -996,9 +997,9 @@ async def _ready_arm(exc: BaseException) -> object:
         await sock.disconnect()
 
 
-async def _sendto_arm(exc: BaseException) -> object:
+async def _sendto_arm(exc: BaseException, logger: "PrintLog | None") -> object:
     addr = _make_addr()
-    sock = UDPSocket(addr, mode="server")
+    sock = UDPSocket(addr, mode="server", logger=logger)
     try:
         await sock._connect()
         assert sock._sock is not None
@@ -1008,8 +1009,8 @@ async def _sendto_arm(exc: BaseException) -> object:
         await sock.disconnect()
 
 
-async def _write_arm(exc: BaseException) -> object:
-    sock = UDPSocket(_make_addr(), mode="client")
+async def _write_arm(exc: BaseException, logger: "PrintLog | None") -> object:
+    sock = UDPSocket(_make_addr(), mode="client", logger=logger)
     try:
         await sock._connect()
         assert sock._sock is not None
@@ -1019,9 +1020,9 @@ async def _write_arm(exc: BaseException) -> object:
         await sock.disconnect()
 
 
-async def _recvfrom_arm(exc: BaseException) -> object:
+async def _recvfrom_arm(exc: BaseException, logger: "PrintLog | None") -> object:
     addr = _make_addr()
-    sock = UDPSocket(addr, mode="server")
+    sock = UDPSocket(addr, mode="server", logger=logger)
     try:
         await sock._connect()
         assert await sock.sendto(b"x", addr) == 1  # a pending datagram, so recvfrom() reaches the socket call
@@ -1035,7 +1036,7 @@ async def _recvfrom_arm(exc: BaseException) -> object:
 
 # (arm, scenario, the arm's sentinel): _connect() also reports that its backoff ran, the two teardown arms
 # disconnect()'s False with the state cleared.
-_ARMS: "tuple[tuple[str, Callable[[BaseException], Coroutine[object, object, object]], object], ...]" = (
+_ARMS: "tuple[tuple[str, Callable[[BaseException, PrintLog | None], Coroutine[object, object, object]], object], ...]" = (
     ("_connect", _connect_arm, (False, True, True)),
     ("unregister", _unregister_arm, (False, True, False)),
     ("close", _close_arm, (False, True, False)),
@@ -1046,14 +1047,20 @@ _ARMS: "tuple[tuple[str, Callable[[BaseException], Coroutine[object, object, obj
 )
 
 
-def test_an_allocation_failure_in_each_arm_prints_its_text_and_keeps_the_sentinel() -> None:
+def test_an_allocation_failure_in_each_arm_prints_its_text_through_the_logger_at_level_1() -> None:
     # Injected text worded clear of the memory gates' markers; a real failure's own text is meant to trip them.
-    wrong = _arms_off_target(lambda arm: MemoryError("injected for " + arm), expect_line=True)
+    wrong = _arms_off_target(lambda arm: MemoryError("injected for " + arm), PrintLog(1, name="DNS"), expect_line=True)
     assert not wrong, wrong
 
 
+def test_an_allocation_failure_in_each_arm_prints_nothing_without_a_logger_or_at_level_0() -> None:
+    for logger in (None, PrintLog(0, name="DNS")):
+        wrong = _arms_off_target(lambda arm: MemoryError("injected for " + arm), logger, expect_line=False)
+        assert not wrong, (logger, wrong)
+
+
 def test_an_os_error_in_each_arm_prints_nothing_and_keeps_the_sentinel() -> None:
-    wrong = _arms_off_target(lambda arm: OSError("injected for " + arm), expect_line=False)
+    wrong = _arms_off_target(lambda arm: OSError("injected for " + arm), PrintLog(5, name="DNS"), expect_line=False)
     assert not wrong, wrong
 
 

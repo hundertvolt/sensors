@@ -624,20 +624,30 @@ class _RaisingOsModule:
         raise MemoryError("simulated allocation failure")
 
 
-def test_resolve_ipv4_memoryerror_building_the_query_prints_its_text_and_answers_not_sent() -> None:
-    # The allocation failure's own text reaches the console at every level (the memory gates read it), and the cause
-    # is local: nothing was sent, so the caller never blames the DNS servers.
+def test_resolve_ipv4_memoryerror_building_the_query_prints_its_text_at_level_1_and_answers_not_sent() -> None:
+    # The allocation failure's own text goes out through the caller's logger from level 1 up (the memory gates read it),
+    # nothing at level 0; the cause is local: nothing was sent, so the caller never blames the DNS servers.
     original_os = asy_dns_client.os
     asy_dns_client.os = _RaisingOsModule()  # type: ignore[assignment]
-    pr = _make_pr()  # level off
     try:
-        with record_prints() as recorder:
-            result = run(resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=50, tries=1, pr=pr))
+        for level in (0, 1):
+            pr = _make_pr()
+            pr.set_level(level)
+            with record_prints() as recorder:
+                result = run(resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=50, tries=1, pr=pr))
+            assert result == (None, DNS_NOT_SENT)
+            assert len(recorder.lines) == level, recorder.lines
     finally:
         asy_dns_client.os = original_os
-    assert result == (None, DNS_NOT_SENT)
-    assert len(recorder.lines) == 1 and recorder.lines[0][0] == "DNSTEST", recorder.lines
+    assert recorder.lines[0][0] == "DNSTEST", recorder.lines
     assert "simulated allocation failure" in recorder.text(), recorder.lines
+
+
+def test_resolve_ipv4_hands_its_logger_to_each_socket() -> None:
+    pr = _make_pr()
+    with redirect_udp_port(asy_dns_client, _DNS_PORT, _make_port()) as redirect:
+        run(resolve_ipv4("pool.ntp.org", dns_servers=(_HOST, _HOST), timeout_ms=_NO_REPLY_TIMEOUT_MS, tries=1, pr=pr))
+    assert redirect.loggers == [pr, pr], redirect.loggers
 
 
 def test_resolve_ipv4_overlong_dns_label_returns_none_not_an_exception() -> None:

@@ -52,7 +52,7 @@ if TYPE_CHECKING:
     # `# @wiring`/`# @value-wiring`/`# @limits` comment tags, so nothing the firmware reads becomes
     # frozen bytecode just to serve the generator (SPECIFICATION.md Part L.6.4).
 
-from asy_print_log import DEFAULT_LOG, make_logger, report_if_fatal
+from asy_print_log import DEFAULT_LOG, make_logger
 
 # Codes from the global catalog (buildgen/error_catalog.json): the shared ones and CFGMGR's band.
 _ERR_ALLOC = const(20)
@@ -415,7 +415,6 @@ class ConfigManager:
                     if self._pending_flush is asyncio.current_task():
                         self._pending_flush = None
         except Exception as e:  # an unsupervised task's top: its end is persisted, never left unretrieved
-            report_if_fatal(e)
             self.unpersisted = True  # the finally above already made the unwritten snapshot the cache
             await self.pr.err_s(self._config_file, "- flush task failed:", e, errno=_ERR_UNEXPECTED)
 

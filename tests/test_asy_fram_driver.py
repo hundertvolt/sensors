@@ -8,8 +8,10 @@ from _error_codes import code
 from _fake_time import DrivenTime
 from _fram_chip_fake import FakeMB85RS2MTA, FakeMB85RS64V
 from _src_const import src_const
+from _stack_overflow import stack_overflow
 
 import asy_fram_driver
+import asy_print_log
 import asy_spi_driver
 from asy_fram_driver import FRAM_SPI
 from asy_print_log import PrintLogHistory
@@ -1806,6 +1808,21 @@ def test_aexit_tolerates_a_bus_lock_that_was_already_released() -> None:
     assert not fram.session_lock.locked(), "the driver's own lock leaked after the inner double release"
     assert not fram._bus_lock.locked()
 
+
+
+class _OverflowingRelease:
+    # A bus lock whose release() meets the C-stack overflow.
+    def release(self) -> None:
+        raise stack_overflow()
+
+
+def test_the_exit_records_a_stack_overflow_its_bus_release_meets() -> None:
+    # No logger sees this handler's exception: its explicit record is what the supervisor's reboot reads.
+    fram, _chip = _make_fram()
+    fram._bus_lock = _OverflowingRelease()  # type: ignore[assignment]
+    run(fram.__aexit__(None, None, None))
+    assert asy_print_log.fatal_reported() is True
+    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
 
 if __name__ == "__main__":
     import microtest

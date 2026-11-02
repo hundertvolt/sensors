@@ -24,7 +24,7 @@ from micropython import const
 
 from asy_base_classes import UNAVAILABLE, LockedValue, TickSeconds, arm_tick_timer, utc_now
 from asy_config_manager import FAILED, UNCHANGED, VALID, ConfigManager, config_filename, instance_name, name_cfg, schema_names
-from asy_print_log import DEFAULT_LOG, LogConfig, console, fatal_reported, make_logger, report_if_fatal
+from asy_print_log import DEFAULT_LOG, LogConfig, fatal_reported, make_logger
 
 try:
     from typing import TYPE_CHECKING
@@ -191,7 +191,7 @@ class SystemService:
         asy_ntp_callback: "NtpSyncFct",
         watchdog: WDT | None = None,
         storage: "FRAMManager | None" = None,
-        level_setters: "Callable[[], list[Callable[[int], bool]]] | None" = None,
+        level_setters: "Callable[[], list[Callable[[int], None]]] | None" = None,
         config_stores: "Callable[[], list[ConfigManager]] | None" = None,
         reset_reason: int = _RR_UNKNOWN,
         cfg_path: str = "",
@@ -230,7 +230,7 @@ class SystemService:
         self.cfgmgr = ConfigManager(config_filename(cfg_path, instance_name(_NAME, "")), self._cfg_schema, _NAME, log=log)
         # Every logger's own set_level(), resolved once from the provider in setup() and called on every level change.
         self._level_setters_provider = level_setters
-        self._level_setters: list[Callable[[int], bool]] = []
+        self._level_setters: list[Callable[[int], None]] = []
         # Every module's config store, resolved once from the provider in setup(); every reset flushes them.
         self._config_stores_provider = config_stores
         self._config_stores: list[ConfigManager] = []
@@ -281,7 +281,6 @@ class SystemService:
             try:
                 setter(value)
             except Exception as e:
-                report_if_fatal(e)
                 await self.pr.err_s("Level setter failed:", e, errno=_ERR_CALLBACK)
 
     def _charge_task_budget(self, budget: int) -> int:
@@ -305,7 +304,6 @@ class SystemService:
                     async with store.owner_lock:
                         await store.flush_pending()
             except Exception as e:
-                report_if_fatal(e)
                 await self.pr.err_s("Config flush before reset failed:", store.name, e, errno=_ERR_CALLBACK)
                 ok = False
             ok = not store.unpersisted and ok
@@ -324,7 +322,6 @@ class SystemService:
         except asyncio.CancelledError:
             await self.pr.err_s("Task", name, "ended: was cancelled", errno=_ERR_TASK_CANCELLED)
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("Task", name, "ended with exception:", e, errno=_ERR_TASK_RAISED)
         else:
             await self.pr.err_s("Task", name, "ended: returned", errno=_ERR_TASK_RETURNED)
@@ -336,7 +333,6 @@ class SystemService:
             synced = await self._ntp_is_synced()
         except Exception as e:  # caller-supplied callback, typed as any Callable - guarded broadly
             # since it isn't guaranteed to be a specific, known-safe implementation
-            report_if_fatal(e)
             await self.pr.err_s("NTP sync callback failed:", e, errno=_ERR_CALLBACK)
             return None
         if not synced:
@@ -427,14 +423,12 @@ class SystemService:
             await self._flush_config_stores(close=True)
             action()
         except Exception as e:  # an unsupervised task's top, FRAM paused: nothing feeds after it, so the watchdog resets
-            report_if_fatal(e)
             await self.pr.err_s("Reset task failed:", e, errno=_ERR_UNEXPECTED)
 
     async def _run_timer_starter(self, starter: "TimerStarter", n: int) -> None:
         try:
             starter()
         except Exception as e:  # driver-supplied starter - could misbehave; persisted, and sequencing continues
-            report_if_fatal(e)
             await self.pr.err_s("Timer starter", n, "failed:", e, errno=_ERR_TASK_STARTER_RAISED)
         else:
             self.pr.evt("Timer started:", n)
@@ -470,8 +464,8 @@ class SystemService:
                 if t is not None:
                     try:
                         await t
-                    except (asyncio.CancelledError, Exception) as e:  # how a stopped task ended changes nothing here
-                        report_if_fatal(e)
+                    except (asyncio.CancelledError, Exception):  # how a stopped task ended changes nothing here
+                        pass
                     self._own_feed()
             self.pr.evt("Shutdown: supervised tasks stopped")
             done = True
@@ -497,14 +491,12 @@ class SystemService:
             await self._reboot(code, message, system_bootloader if purpose == _RR_BOOTLOADER else system_reset, fed=True)
         except Exception as e:  # an unsupervised task's top: no reset is armed and nothing feeds, so the watchdog resets
             # with the record the sequence left; past the quiesce FRAM is paused, so the entry stays in RAM.
-            report_if_fatal(e)
             await self.pr.err_s("Shutdown sequence failed:", e, errno=_ERR_UNEXPECTED)
 
     async def _start_task(self, starter: "TaskStarter", n: int) -> asyncio.Task[None] | None:
         try:
             return starter()
         except Exception as e:  # driver-supplied starter (get_task_starters()) - could legitimately misbehave
-            report_if_fatal(e)
             await self.pr.err_s("Task starter", self._task_names[n], "failed to start:", e, errno=_ERR_TASK_STARTER_RAISED)
             return None
 
@@ -596,7 +588,7 @@ class SystemService:
                     except asyncio.TimeoutError:
                         self.pr.err(message, "- its entry write did not finish within", _ESCALATION_ENTRY_WAIT_MS, "ms and was cancelled")
                     except MemoryError as e:  # building the entry, its wait or its write found no room: the reset still arms
-                        console(self.pr.name, "Reboot entry not written:", e)
+                        self.pr.err_nomem("Reboot entry not written:", e)
                     # Re-checked after the log write, which yields: a system command that passed the gate meanwhile owns
                     # the reset now, and nothing awaits from here until _reboot() marks it armed.
                     if self._feed_owned:
@@ -616,7 +608,6 @@ class SystemService:
                 self.feed_watchdog()
                 await asyncio.sleep(_TASK_CHECK_TIME)
         except Exception as e:  # the loop's own fault: recorded and persisted once; it ends unfed, so the watchdog resets
-            report_if_fatal(e)
             self._reset_decided = True  # a reset follows, so ResetErrors is refused as for every reset decision
             await self.pr.err_s("Supervisor ended with exception:", e, errno=_ERR_SUPERVISOR_RAISED)
 

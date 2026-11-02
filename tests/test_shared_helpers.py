@@ -30,7 +30,7 @@ from machine import Timer
 
 import asy_print_log
 import asy_spi_driver
-from asy_print_log import PrintLogHistory, console
+from asy_print_log import PrintLog, PrintLogHistory
 
 try:
     from typing import TYPE_CHECKING
@@ -605,7 +605,7 @@ def test_record_prints_captures_every_logger_line_and_restores_print() -> None:
     pr = PrintLogHistory(level=1, name="T")
     with record_prints() as recorded:
         pr.err("refused", 5)
-        console("LAYER", "lost", 7)
+        PrintLog(1, name="LAYER").err("lost", 7)
     assert recorded.lines == [("T", "refused", 5), ("LAYER", "lost", 7)]
     assert recorded.text() == "T refused 5\nLAYER lost 7"
     assert not hasattr(asy_print_log, "print")

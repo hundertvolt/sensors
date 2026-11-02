@@ -730,7 +730,7 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
     async def scenario(clock: DrivenTime) -> None:
         watchdog = await _driven(clock, "the boot", _boot(_ports.next()))
         sysfunct: SystemService = module.sysfunct
-        assert sysfunct.pr.set_level(0)
+        sysfunct.pr.set_level(0)
         # A linked station, its link awaited below: with no SSID the hotspot fallback would switch the radio and bind the
         # captive DNS instead (agent, 2026-10-14).
         persisted, _results = await module.conn.cfgmgr.write_config({"SSID": "TestNet"})

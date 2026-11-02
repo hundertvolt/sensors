@@ -13,7 +13,7 @@ from micropython import const
 from asy_base_classes import RegionBuffer, utc_now
 from asy_crc_checks import CRCBase, CRCPass
 from asy_fram_driver import FRAM_SPI
-from asy_print_log import DEFAULT_LOG, PrintLogHistory, console, report_if_fatal
+from asy_print_log import DEFAULT_LOG, PrintLogHistory
 from asy_spi_driver import SPI
 
 try:
@@ -106,9 +106,9 @@ class _FRAMBaseChunk:
         try:  # check_length is a caller-supplied int (get_chunk's own param), not hardware-bounded
             self._check_buf: bytearray | None = bytearray(self._check_length)
         except (MemoryError, OverflowError) as e:
-            # Synchronous, so no persisted entry here: one ungated line keeps the failure visible to the memory gates
-            # (CLAUDE.md memory rule); a read then returns block 0 unchecked, a verified write fails (_compare_with()).
-            console(_NAME, "check buffer allocation failed:", e)
+            # Synchronous, so no persisted entry here; a read then returns block 0 unchecked, a verified write fails
+            # (_compare_with()).
+            self.pr.err_nomem("check buffer allocation failed:", e)
             self._check_buf = None
         self._check_mv = None if self._check_buf is None else memoryview(self._check_buf)
         self._no_check_logged = False  # True once a missing check buffer's one ALLOC entry is persisted: it never comes back
@@ -166,7 +166,6 @@ class _FRAMBaseChunk:
                     await self.pr.err_s("FRAM write failed in _clear_chunk!", errno=_ERR_FRAM_CLEAR_WRITE)
                     return False
             except Exception as e:
-                report_if_fatal(e)
                 await self.pr.err_s("General write error in _clear_chunk:", e, errno=_ERR_UNEXPECTED)
                 return False
         return True
@@ -195,8 +194,7 @@ class _FRAMBaseChunk:
         try:
             return bytearray(data)
         except MemoryError as e:
-            console(_NAME, "chunk read: no buffer for the data copy:", e)  # ungated: the memory gates read this text (CLAUDE.md)
-            await self.pr.err_s("No buffer for the chunk read", errno=_ERR_ALLOC)
+            await self.pr.err_s("No buffer for the chunk read:", e, errno=_ERR_ALLOC)
             return None
 
     async def _handle_status_bytes(
@@ -336,7 +334,6 @@ class _FRAMBaseChunk:
                     return False, 0
                 self._read_progress(last_position, last_span, num_iterations)
             except Exception as e:
-                report_if_fatal(e)
                 await self.pr.err_s("General read error in _read_chunk:", e, errno=_ERR_UNEXPECTED)
                 self._read_fault = True
                 self._read_progress(0, -1, 0)
@@ -431,7 +428,6 @@ class _FRAMBaseChunk:
                 if await self._handle_status_bytes(fram, addr, _STATUS_IDLE, check_idle=False) is None:
                     return False
             except Exception as e:
-                report_if_fatal(e)
                 await self.pr.err_s("General write error in _write_chunk:", e, errno=_ERR_UNEXPECTED)
                 return False
         return True
@@ -478,13 +474,13 @@ class _FRAMBaseChunk:
 
 
 class FRAMChunkBuffer(RegionBuffer):
-    def __init__(self, data_size: int, crc_size: int) -> None:
-        super().__init__(data_size + crc_size, data_start=0, data_length=data_size)
+    def __init__(self, data_size: int, crc_size: int, logger: PrintLogHistory | None = None) -> None:
+        super().__init__(data_size + crc_size, data_start=0, data_length=data_size, logger=logger)
 
 
 class FRAMChunk(_FRAMBaseChunk):
     def get_buffer(self) -> FRAMChunkBuffer:
-        return FRAMChunkBuffer(self.size, self.crc.length())
+        return FRAMChunkBuffer(self.size, self.crc.length(), self.pr)
 
     async def read(self) -> bytearray | None:
         buf = self.get_buffer()  # preallocate buffer for payload and crc length
@@ -526,8 +522,8 @@ class FRAMChunk(_FRAMBaseChunk):
 
 
 class FRAMChunkTimestampedBuffer(RegionBuffer):
-    def __init__(self, ts_size: int, data_size: int, crc_size: int) -> None:
-        super().__init__(ts_size + data_size + crc_size, data_start=ts_size, data_length=data_size)
+    def __init__(self, ts_size: int, data_size: int, crc_size: int, logger: PrintLogHistory | None = None) -> None:
+        super().__init__(ts_size + data_size + crc_size, data_start=ts_size, data_length=data_size, logger=logger)
 
     def get_ts_buf(self) -> memoryview | None:
         if self._buf is None:
@@ -552,7 +548,7 @@ class FRAMTimestampedChunk(_FRAMBaseChunk):
 
     def get_buffer(self) -> FRAMChunkTimestampedBuffer:
         return FRAMChunkTimestampedBuffer(
-            struct.calcsize(_TS_FMT), self.size - struct.calcsize(_TS_FMT), self.crc.length(),
+            struct.calcsize(_TS_FMT), self.size - struct.calcsize(_TS_FMT), self.crc.length(), self.pr,
         )  # uses ts size and data size separately
 
     async def read(self) -> tuple[int | None, int | None, bytearray | None]:
@@ -591,7 +587,6 @@ class FRAMTimestampedChunk(_FRAMBaseChunk):
             # guaranteed to be a specific, known-safe implementation
             ntp_synced = await self._ntp_sync_callback()
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("NTP sync callback failed:", e, errno=_ERR_CALLBACK)
             ntp_synced = False
         now = utc_now() if ntp_synced else None
@@ -626,7 +621,6 @@ class FRAMTimestampedChunk(_FRAMBaseChunk):
             # guaranteed to be a specific, known-safe implementation
             ntp_synced = await self._ntp_sync_callback()
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("NTP sync callback failed:", e, errno=_ERR_CALLBACK)
             ntp_synced = False
         now = utc_now() if ntp_synced else None
@@ -793,7 +787,7 @@ class FRAMManager:
         try:
             unit = bytearray(_ERASE_UNIT)
         except MemoryError as e:
-            console(_NAME, "FRAM erase: no buffer, chunks blanked only:", e)  # ungated: the memory gates read this text (CLAUDE.md)
+            self.pr.err_nomem("FRAM erase: no buffer, chunks blanked only:", e)
             return False
         size = await self.fram.get_size()
         for addr in range(0, size, _ERASE_UNIT):
@@ -827,7 +821,6 @@ class FRAMManager:
         try:
             await self.fram.setup()
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("FRAM Setup failed:", e, errno=_ERR_INIT)
             return False
         self.initialized = True

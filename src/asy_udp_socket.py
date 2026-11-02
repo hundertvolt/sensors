@@ -17,8 +17,6 @@ import time
 
 from micropython import const
 
-from asy_print_log import console
-
 try:
     from typing import TYPE_CHECKING
 except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
@@ -26,6 +24,8 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from typing import Literal
+
+    from asy_print_log import PrintLog
 
 _ADDR_TUPLE_LEN = const(2)  # a plain (host, port) address tuple
 # @tunable udp.retry_backoff_ms = 500
@@ -37,12 +37,13 @@ _POLL_IDLE_MS = const(100)  # a wait with no deadline: the captive DNS listen
 
 
 class UDPSocket:
-    def __init__(self, addr: tuple[str, int], mode: 'Literal["client", "server"]' = "client") -> None:
+    def __init__(self, addr: tuple[str, int], mode: 'Literal["client", "server"]' = "client", logger: "PrintLog | None" = None) -> None:
         # Fail fast, at construction - see module docstring's __init__ exception. mode is mypy's Literal (D.2).
         if not (isinstance(addr, tuple) and len(addr) == _ADDR_TUPLE_LEN and isinstance(addr[0], str) and isinstance(addr[1], int)):
             raise TypeError(f"addr must be a (host: str, port: int) tuple, got {addr!r}")
 
         self._addr = addr
+        self.logger = logger  # its builder's, not one of its own: a caught MemoryError prints through it; none, silent
         self._sock: socket.socket | None = None
         self.poller: select.poll | None = None
         self._mode = mode
@@ -66,8 +67,7 @@ class UDPSocket:
                         self._sock.bind(self._addr)
                     self.connected = True
                 except (MemoryError, OSError, TypeError) as e:
-                    if isinstance(e, MemoryError):
-                        console("UDPSocket", e)  # the class has no logger; the memory gates read this text (CLAUDE.md)
+                    self._nomem(e)
                     # setup, connect or bind failed
                     await asyncio.sleep_ms(_RETRY_BACKOFF_MS)
                 finally:
@@ -89,16 +89,18 @@ class UDPSocket:
             if poller is not None:
                 poller.unregister(sock)
         except (MemoryError, OSError) as e:
-            if isinstance(e, MemoryError):
-                console("UDPSocket", e)  # the class has no logger; the memory gates read this text (CLAUDE.md)
+            self._nomem(e)
             ok = False
         try:
             sock.close()
         except (MemoryError, OSError) as e:
-            if isinstance(e, MemoryError):
-                console("UDPSocket", e)  # the class has no logger; the memory gates read this text (CLAUDE.md)
+            self._nomem(e)
             ok = False
         return ok
+
+    def _nomem(self, e: BaseException) -> None:  # a caught MemoryError's line, through its builder's logger; none, silent
+        if isinstance(e, MemoryError) and self.logger is not None:
+            self.logger.err_nomem("UDPSocket:", e)
 
     async def _poll(self, mask: int, wait_ms: int, timeout_ms: int) -> bool:
         # ipoll(0), then sleep_ms(wait_ms), until mask (or a real POLLERR/POLLHUP) is set or a timeout_ms > 0 has passed, the
@@ -132,8 +134,7 @@ class UDPSocket:
         try:
             return await self._poll(mask, _POLL_WAIT_MS if timeout_ms > 0 else _POLL_IDLE_MS, timeout_ms)
         except (MemoryError, OSError) as e:
-            if isinstance(e, MemoryError):
-                console("UDPSocket", e)  # the class has no logger; the memory gates read this text (CLAUDE.md)
+            self._nomem(e)
             return False
 
     async def recvfrom(self, buf: int, timeout_ms: int = -1) -> tuple[bytes | None, tuple[str, int] | None]:
@@ -144,8 +145,7 @@ class UDPSocket:
                 # Remove the ignore once the stub narrows it (warn_unused_ignores then flags it).
                 return self._sock.recvfrom(buf)  # type: ignore[return-value]
             except (MemoryError, OSError) as e:
-                if isinstance(e, MemoryError):
-                    console("UDPSocket", e)  # the class has no logger; the memory gates read this text (CLAUDE.md)
+                self._nomem(e)
         return None, None
 
     async def sendto(
@@ -158,8 +158,7 @@ class UDPSocket:
             try:
                 return self._sock.sendto(msg, addr)
             except (MemoryError, OSError, TypeError) as e:  # TypeError: an address form the port refuses (docs/library/socket.rst)
-                if isinstance(e, MemoryError):
-                    console("UDPSocket", e)  # the class has no logger; the memory gates read this text (CLAUDE.md)
+                self._nomem(e)
         return None
 
     async def write(self, msg: bytes | bytearray, timeout_ms: int = -1) -> int | None:
@@ -167,6 +166,5 @@ class UDPSocket:
             try:
                 return self._sock.write(msg)
             except (MemoryError, OSError) as e:
-                if isinstance(e, MemoryError):
-                    console("UDPSocket", e)  # the class has no logger; the memory gates read this text (CLAUDE.md)
+                self._nomem(e)
         return None

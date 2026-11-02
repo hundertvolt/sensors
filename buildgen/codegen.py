@@ -320,8 +320,8 @@ def _emit_collectors(lines: "list[str]", construction_order: "list[str | tuple[s
     lines.append("        sources.extend(module.get_error_sources())")
     lines.append("    return sources")
     lines.append("")
-    lines.append('def _collect_level_setters() -> "list[Callable[[int], bool]]":')
-    lines.append("    setters: list[Callable[[int], bool]] = []")
+    lines.append('def _collect_level_setters() -> "list[Callable[[int], None]]":')
+    lines.append("    setters: list[Callable[[int], None]] = []")
     lines.append(f"    for module in ({', '.join(modules)}, webserver):")
     lines.append("        setters.extend(logger.set_level for logger in module.get_loggers())")
     lines.append("    return setters")
@@ -853,7 +853,7 @@ def generate_boot_entry_source(device: str, *, autostart: bool = True) -> str:
         + "from machine import WDT\n\n"
         + f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})\n\n"
         + head
-        + "\nfrom asy_print_log import console, report_if_fatal\nfrom asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record\n"
+        + "\nfrom asy_print_log import report_if_fatal\nfrom asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record\n"
         + threshold
         + "# bound before the loop, so the handler's binding replaces a slot and never grows the globals dict\n"
         "ended: BaseException | None = None\n"
@@ -870,7 +870,6 @@ def generate_boot_entry_source(device: str, *, autostart: bool = True) -> str:
         "    # at once with no I2C or SPI controller reset (SPECIFICATION.md F.5.4).\n"
         "    report_if_fatal(ended)\n"
         "    record_loop_end()\n"
-        '    console("SYSTEM", "event loop ended with an exception:")\n'
         "    sys.print_exception(ended)\n"
         "finally:\n"
         "    asyncio.new_event_loop()\n"

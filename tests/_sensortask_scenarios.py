@@ -2562,7 +2562,7 @@ class _SilentNtpPeer:
         self.closed += 1
         return True
 
-    def make(self, addr: "tuple[str, int]", mode: str = "client") -> "_SilentNtpPeer":
+    def make(self, addr: "tuple[str, int]", mode: str = "client", logger: object = None) -> "_SilentNtpPeer":
         assert mode == "client", mode
         self.peers.append(addr)
         return self

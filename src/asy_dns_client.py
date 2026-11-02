@@ -11,7 +11,6 @@ import os
 
 from micropython import const
 
-from asy_print_log import console
 from asy_udp_socket import UDPSocket
 
 try:
@@ -151,7 +150,7 @@ async def resolve_ipv4(
     try:
         query = _build_query(host.lower().encode(), os.urandom(2))  # DNS names are case-insensitive (RFC 1035 SS2.3.3)
     except MemoryError as e:
-        console(pr.name, "DNS query not built:", e)  # the memory gates read its text at every level (CLAUDE.md)
+        pr.err_nomem("DNS query not built:", e)
         return None, DNS_NOT_SENT
     except ValueError:  # a name RFC 1035 cannot encode - nothing to resolve
         return None, DNS_NOT_SENT
@@ -159,7 +158,7 @@ async def resolve_ipv4(
     for server in dns_servers:
         if server == "0.0.0.0" or ipv4_to_int(server) is None:
             continue  # an unset/placeholder or malformed DNS server value - not worth a network attempt
-        cli = UDPSocket((server, _DNS_PORT), mode="client")
+        cli = UDPSocket((server, _DNS_PORT), mode="client", logger=pr)
         rsp = None
         try:
             # write() is checked itself, as NTP's fetch does: a try whose send failed waits for no reply.

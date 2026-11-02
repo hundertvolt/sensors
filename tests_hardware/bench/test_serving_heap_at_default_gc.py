@@ -57,10 +57,8 @@ _DRIVER_JOIN_S = 90.0
 
 @pytest.mark.provokes_log(
     "each probe runs on heaps shaped below its need, over a scratch-config boot that logs CONFIG_LOST: a streamed source"
-    " that fails there logs CALLBACK, a config read logs its module's CHIP_GET or config-read entry, and a history write"
-    " whose own buffers do not fit logs LOG_RAM_ONLY",
+    " that fails there logs CALLBACK, and a config read logs its module's CHIP_GET or config-read entry",
     ("WEBSERVER", "E", "CALLBACK"),
-    ("WEBSERVER", "E", "LOG_RAM_ONLY"),
     ("SYSTEM", "W", "CONFIG_LOST"),
     ("BMP3XX", "E", "CHIP_GET"),
     ("ISL29125", "E", "CHIP_GET"),

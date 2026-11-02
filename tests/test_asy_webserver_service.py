@@ -4387,6 +4387,20 @@ def test_a_webserver_built_without_a_system_command_handler_answers_invalid() ->
     assert _obj(_at(_json(res.body), "result")).get("SystemCmd") == "Invalid"
 
 
+
+class _OverflowingJson:
+    # A request whose body decoding meets the C-stack overflow.
+    @property
+    def json(self) -> object:
+        raise stack_overflow()
+
+
+def test_a_body_whose_decoding_meets_a_stack_overflow_records_it_and_reads_as_none() -> None:
+    # The body reader's broad catch logs nothing: its explicit record is what the supervisor's reboot reads.
+    assert asy_webserver_service._body_as_dict(_OverflowingJson()) is None  # type: ignore[arg-type]
+    assert fatal_reported() is True
+    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
+
 if __name__ == "__main__":
     import microtest
 

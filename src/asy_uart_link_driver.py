@@ -10,7 +10,7 @@ from micropython import const
 
 from asy_base_classes import COUNTER_CAP
 from asy_config_manager import instance_name
-from asy_print_log import DEFAULT_LOG, report_if_fatal
+from asy_print_log import DEFAULT_LOG
 from asy_uart_comm import CMD_SET, DEFAULT_LIMITS, ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, UARTComm
 
 try:
@@ -146,7 +146,6 @@ class UARTLinkDriver:
         try:
             return await self._comm.uart_set(_CMD_ECHO, payload)
         except Exception as e:  # an unsupervised task's top: never raises, so the run goes on to its next hazard
-            report_if_fatal(e)
             await self.pr.err_s("Hazard initiation failed:", e, errno=_ERR_UNEXPECTED)
             return None
 

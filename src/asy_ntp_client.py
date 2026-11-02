@@ -20,7 +20,7 @@ from micropython import const
 from asy_base_classes import SensorReaderConfig, TickSeconds, arm_tick_timer, set_utc_valid, utc_now
 from asy_config_manager import INVALID, make_dict
 from asy_dns_client import DNS_LABEL_MAX, DNS_NOT_SENT, DNS_NXDOMAIN, host_label_ok, ipv4_to_int, resolve_ipv4
-from asy_print_log import DEFAULT_LOG, LogConfig, report_if_fatal
+from asy_print_log import DEFAULT_LOG, LogConfig
 from asy_udp_socket import UDPSocket
 
 try:
@@ -262,7 +262,7 @@ class NTPClient(SensorReaderConfig):
         return True
 
     async def _fetch_ntp_reply(self, addr: tuple[str, int]) -> bytes | None:
-        cli = UDPSocket(addr, mode="client")
+        cli = UDPSocket(addr, mode="client", logger=self.pr)
         # Only the connected server's replies reach this socket (lwIP udp_input()); no origin check (SPECIFICATION.md C.7.2).
         # write()/recvfrom()/disconnect() never raise: each returns its None-shaped sentinel (asy_udp_socket.py).
         try:
@@ -428,7 +428,6 @@ class NTPClient(SensorReaderConfig):
         try:
             network_ok = self._network_available_locked()
         except Exception as e:  # caller-supplied callback - could legitimately misbehave
-            report_if_fatal(e)
             await self.pr.err_s("network_available_locked() callback failed:", e, errno=_ERR_CALLBACK)
             network_ok = False
         if not network_ok:
@@ -461,7 +460,6 @@ class NTPClient(SensorReaderConfig):
         try:
             return self._get_dns_server()
         except Exception as e:  # caller-supplied callback - could legitimately misbehave
-            report_if_fatal(e)
             await self.pr.err_s("get_dns_server() callback failed:", e, errno=_ERR_CALLBACK)
             return None
 

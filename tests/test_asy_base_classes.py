@@ -18,12 +18,14 @@ from _fake_time import DrivenTime
 from _fake_timer_arm import RaiseOnArm
 from _fram_builders import make_fram_manager
 from _recording_print import record_prints
+from _stack_overflow import stack_overflow
 from _ticks30 import TICKS_PERIOD
 from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen
 
 import asy_base_classes
 import asy_config_manager
+import asy_print_log
 from asy_base_classes import (
     COUNTER_CAP,
     UNAVAILABLE,
@@ -44,7 +46,7 @@ from asy_base_classes import (
 )
 from asy_config_manager import schema_dict
 from asy_i2c_driver import I2C, I2CDevice
-from asy_print_log import LogConfig, PrintLogHistory, PrintLogHistoryStore
+from asy_print_log import LogConfig, PrintLog, PrintLogHistory, PrintLogHistoryStore
 from asy_uart_comm import DEFAULT_LIMITS
 
 try:
@@ -453,10 +455,10 @@ def test_regionbuffer_huge_size_yields_none_not_memoryerror() -> None:
     # A valid, non-negative size can still exhaust the heap - confirmed directly against the real
     # MicroPython interpreter that bytearray(2**62) raises MemoryError, not a negative-input error.
     with record_prints() as rec:  # the real allocation text stays off this file's output, where the memory gates read
-        buf = RegionBuffer(2**62)
+        buf = RegionBuffer(2**62, logger=PrintLog(1, name="FRAM"))
     assert buf.get_buf() is None
     assert buf.get_data_buf() is None
-    assert [(line[:2], type(line[2])) for line in rec.lines] == [(("RegionBuffer", "buffer allocation failed:"), MemoryError)]
+    assert [(line[:2], type(line[2])) for line in rec.lines] == [(("FRAM", "RegionBuffer: buffer allocation failed:"), MemoryError)]
 
 
 def test_regionbuffer_astronomical_size_yields_none_not_overflowerror() -> None:
@@ -464,15 +466,15 @@ def test_regionbuffer_astronomical_size_yields_none_not_overflowerror() -> None:
     # OverflowError instead of MemoryError once n hits the signed-64-bit machine-word boundary
     # (2**63) - both must degrade the same way, not just the smaller-magnitude one.
     with record_prints() as rec:
-        buf = RegionBuffer(2**63)
+        buf = RegionBuffer(2**63, logger=PrintLog(1, name="FRAM"))
     assert buf.get_buf() is None
     assert buf.get_data_buf() is None
-    assert [(line[:2], type(line[2])) for line in rec.lines] == [(("RegionBuffer", "buffer allocation failed:"), OverflowError)]
+    assert [(line[:2], type(line[2])) for line in rec.lines] == [(("FRAM", "RegionBuffer: buffer allocation failed:"), OverflowError)]
 
 
-def test_a_failed_region_allocation_prints_its_own_text_once() -> None:
-    # No logger in RegionBuffer: a caught allocation failure prints one console line with its own text, while a
-    # size or region guard's None is a caller mistake and prints nothing.
+def test_a_failed_region_allocation_prints_its_own_text_once_through_its_builders_logger() -> None:
+    # A caught allocation failure prints one line with its own text through the logger its builder gives it, from level
+    # 1 up; without one, or at level 0, nothing. A size or region guard's None is a caller mistake and prints nothing.
     err = MemoryError("injected for the region buffer")  # worded clear of the memory gates' markers
 
     def failing(*_args: object) -> bytearray:
@@ -481,15 +483,19 @@ def test_a_failed_region_allocation_prints_its_own_text_once() -> None:
     asy_base_classes.bytearray = failing  # type: ignore[attr-defined]
     try:
         with record_prints() as rec:
-            buf = RegionBuffer(8)
+            buf = RegionBuffer(8, logger=PrintLog(1, name="UART"))
+        with record_prints() as silent:
+            quiet = [RegionBuffer(8), RegionBuffer(8, logger=PrintLog(0, name="UART"))]
     finally:
         del asy_base_classes.bytearray  # type: ignore[attr-defined]
     assert buf.get_buf() is None
     assert buf.get_data_buf() is None
-    assert rec.lines == [("RegionBuffer", "buffer allocation failed:", err)]
-    assert " ".join(str(a) for a in rec.lines[0]) == "RegionBuffer buffer allocation failed: injected for the region buffer"
+    assert rec.lines == [("UART", "RegionBuffer: buffer allocation failed:", err)]
+    assert " ".join(str(a) for a in rec.lines[0]) == "UART RegionBuffer: buffer allocation failed: injected for the region buffer"
+    assert ([b.get_buf() for b in quiet], silent.lines) == ([None, None], [])
     with record_prints() as rec:
-        guarded = [RegionBuffer(-1), RegionBuffer(10, data_start=-3), RegionBuffer(4, data_start=2, data_length=10)]
+        log = PrintLog(5, name="UART")
+        guarded = [RegionBuffer(-1, logger=log), RegionBuffer(10, data_start=-3, logger=log), RegionBuffer(4, data_start=2, data_length=10, logger=log)]
     assert [b.get_buf() for b in guarded] == [None, None, None]
     assert rec.lines == []
     assert RegionBuffer(8).get_buf() == bytearray(8)  # the module's own bytearray is back
@@ -1060,9 +1066,9 @@ def test_arm_tick_timer_arms_a_periodic_one_second_timer() -> None:
 
 
 def test_arm_tick_timer_reports_a_failed_arm_with_one_line() -> None:
-    # An alarm-pool refusal prints at the error level; an allocation failure prints its own text at every level, the
-    # line the memory gates read.
-    for exc, level, head in ((OSError, 1, ("T", "Could not arm", "test")), (OSError, 0, None), (MemoryError, 0, ("T", "Could not arm a 1 s tick timer:"))):
+    # An alarm-pool refusal prints at the error level, and so does an allocation failure with its own text, the line
+    # the memory gates read; level 0 prints neither.
+    for exc, level, head in ((OSError, 1, ("T", "Could not arm", "test")), (OSError, 0, None), (MemoryError, 0, None), (MemoryError, 1, ("T", "Could not arm a 1 s tick timer:"))):
         with RaiseOnArm(exc), record_prints() as recorder:
             timer = machine.Timer()
             pr = PrintLogHistory(level=level, name="T")
@@ -1931,11 +1937,11 @@ def test_sensorreader_fram_write_into_raising_is_caught_during_error_check() -> 
     reader = SensorReader(Meas(None, 50), "", max_module_error=5, log=LogConfig(fake_manager, 4, None))
     assert isinstance(reader.pr, PrintLogHistoryStore)
     assert run(reader.setup()) is True
-    assert reader.pr.initialized is True  # set up first: setup() writes the merged ring too
+    assert reader.pr.initialized is True  # set up first: setup() writes the ring too
     chunk.raise_on_write = True
     assert run(reader._error_check(Meas(None, 50))) is True
-    assert reader.pr._err_count == 2  # the entry and the failed write's LOG_RAM_ONLY, both kept in RAM
-    assert list(reader.pr.history)[-1] == code("E", "LOG_RAM_ONLY")
+    assert reader.pr._err_count == 1  # the entry, kept in RAM; the failed write adds none
+    assert code("E", "LOG_RAM_ONLY") not in reader.pr.history
 
 
 def test_sensorreader_fram_write_returns_false_is_surfaced_during_error_check() -> None:
@@ -1947,8 +1953,8 @@ def test_sensorreader_fram_write_returns_false_is_surfaced_during_error_check() 
     assert run(reader.setup()) is True
     chip.drop_wren = True
     assert run(reader._error_check(Meas(None, 50))) is True
-    assert reader.pr._err_count == 2  # the entry and the failed write's LOG_RAM_ONLY
-    assert list(reader.pr.history)[-1] == code("E", "LOG_RAM_ONLY")
+    assert reader.pr._err_count == 1  # the entry; the failed write adds none
+    assert code("E", "LOG_RAM_ONLY") not in reader.pr.history
 
 
 def test_sensorreader_fram_read_into_raising_leaves_the_logger_ram_only() -> None:
@@ -1972,9 +1978,9 @@ def test_sensorreader_fram_setup_fails_cleanly_when_both_read_and_write_fail() -
     chip.drop_wren = True
     assert run(reader.setup()) is True  # the reader is ready; its logger runs in RAM
     assert reader.pr.initialized is False
-    assert reader.pr._err_count == 1  # the store's one LOG_RAM_ONLY entry
+    assert reader.pr._err_count == 0  # a failed setup write records nothing
     assert run(reader._error_check(Meas(None, 50))) is True  # still tracks in-memory
-    assert reader.pr._err_count == 2
+    assert reader.pr._err_count == 1
 
 
 # ---------------------------------------------------------------------------
@@ -3517,6 +3523,21 @@ def test_a_raising_recovery_read_back_is_logged_as_recovery_read_raised() -> Non
 def test_a_raising_recovery_write_is_logged_as_recovery_write_raised() -> None:
     assert _logged_by_a_put("recovery_write", push="fails") == [code("E", "RECOVERY_WRITE_RAISED")]
 
+
+
+class _OverflowingRelease:
+    # A session lock whose release() meets the C-stack overflow.
+    def release(self) -> None:
+        raise stack_overflow()
+
+
+def test_lockable_exit_records_a_stack_overflow_its_release_meets() -> None:
+    # The one handler here no logger sees: its explicit record is what the supervisor's reboot reads.
+    lockable = Lockable()
+    lockable.session_lock = _OverflowingRelease()  # type: ignore[assignment]
+    assert run(lockable.__aexit__(None, None, None)) is False
+    assert asy_print_log.fatal_reported() is True
+    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
 
 if __name__ == "__main__":
     import microtest

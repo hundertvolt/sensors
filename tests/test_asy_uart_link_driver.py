@@ -141,6 +141,7 @@ def test_name_resolution_matches_instance_name_convention() -> None:
     extended = UARTLinkDriver(driver, ROLE_INITIATOR, name_ext="init")
     assert extended.name == "UART_init"
     assert extended.pr.name == "UART_init"
+    assert driver.logger is extended.pr  # the bus's console lines go out through its user's logger
 
 
 def test_initiator_task_starters_include_exercise_loop() -> None:

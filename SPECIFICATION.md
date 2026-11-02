@@ -129,7 +129,7 @@ scripts/                 lint.sh/typecheck.sh/test.sh, the build and runner scri
   the threshold, the supervisor feeds the watchdog once, then feeding stops one-way and it reboots
   through `SystemService._reboot()` (reset reason recorded, the config stores it is handed flushed,
   FRAM paused, reset `_RESET_DELAY` later); a reset timer that cannot be armed leaves the watchdog to reset the device.
-  A C-stack overflow a handler recorded (`report_if_fatal()`, C.7) skips the pass's scan and takes the
+  A C-stack overflow a logger call or a handler recorded (`report_if_fatal()`, C.7) skips the pass's scan and takes the
   same escalation, with its own reset code (20, F.1). Units run years unattended.
 - **Frontend** — hand-written HTML/CSS/vanilla JS, gzipped and packed into `frozen_html.py` via
   `freezefs` at build time, served through Microdot's `send_file(..., compressed=True)`.
@@ -243,14 +243,12 @@ features as today's deployed units, not a feature change.
   is re-initialised. A read that faulted after marking its block leaves the busy marker set: the
   next boot reads that block as invalid, like any interrupted operation, so a fault on both copies
   keeps the stored history for the current boot only — the next boot re-initialises the chunk. A
-  logger left RAM-only at setup (its chunk unreadable, its first write failed, or its chunk's heap
-  allocation failed) records one `LOG_RAM_ONLY` entry in its own history, so `/status` names it.
-  After `setup()`, a failed history write starts a run: its first failure keeps one counted
-  `LOG_RAM_ONLY` entry in RAM with no retry, and the next write that lands, a landed reset included,
-  persists that entry and ends the run; a failed reset adds none. A
+  logger whose chunk is unreadable at setup records one `LOG_RAM_ONLY` entry in its own history, so
+  `/status` names it; a failed history write, a failed setup write and a heap failure building the
+  chunk record nothing, the entry stays in RAM and the next write carries it. A
   chunk the allocator refused records nothing: the declared chunks exceed the chip, a build fact the
   capacity checks catch (this section's list; owner, 2026-09-16: 'we do not even add errno/wrnno
-  for the out of FRAM memory … Handle via mpremote.'), and the manager prints it to the console.
+  for the out of FRAM memory … Handle via mpremote.'), and the manager prints it from level 1.
   **Write protection gates reads too, and that is intended** (project owner, 2026-09-11):
   `_read_chunk()` must WRITE the transient busy marker before it may read a written block (a blank
   block is not read and takes no marker, so it reports uninitialised even when protected), so a
@@ -564,9 +562,8 @@ annotates `get`/`put` (then `tests/test_setter_microdot_integration.py`'s decora
   handler (the read phase, a handler, a failing handler; `ext/microdot.py` at the pinned tag).
   `WebserverService` rebinds that module name to its level-gated logger at construction, the file
   itself untouched (CLAUDE.md's vendoring rule), so `DebugLevel` 0 keeps it off the console, and the
-  catch-all `errorhandler(Exception)` persists the entry (agent, 2026-10-06). A `MemoryError` alone
-  bypasses the gate: its text goes through the ungated `console()` line (G.2), so the memory gates
-  see it (I.4(e); agent, 2026-10-08). A read timeout the stream proxy already traced is not printed
+  catch-all `errorhandler(Exception)` persists the entry (agent, 2026-10-06). A `MemoryError` is gated
+  like every other line (I.4(e)). A read timeout the stream proxy already traced is not printed
   again, so a silent client leaves one console line, not two; a handler exception keeps its two. The
   rebind is process-wide: the last service constructed owns it.
 - Microdot's request read phase passes a muted socket `OSError`, re-raises any other `OSError` and
@@ -3217,7 +3214,7 @@ concurrent `deinit()` is seen at the next `ready()` exit, which re-checks the bu
 yield; `discarded_bytes` counts the bytes a failed `*_until_complete()` read consumed and dropped
 (masked to 2**30 − 1). `readline_until_complete()` takes the same receive cap as a transfer
 (`max_bytes`) and never grows by concatenation: the line lands in pieces of `chunk_bytes`, allocated
-when the call starts (a `MemoryError` there answers `None` with its text through `console()`, the
+when the call starts (a `MemoryError` there answers `None` with its text through its user's logger, the
 line left in the ring; owner, 2026-10-27), and a line over the cap is read
 to its end, discarded and counted, the call returns `None` and the case is logged (J.8). This layer
 keeps no logger of its own, so the caller passes its `log` and the driver writes the one
@@ -3563,23 +3560,19 @@ owner's history shifted onto it included, fails its owner-seeded CRC and restart
 persisted entry is therefore no proof that it came from *this* run: read and save the log first
 (CLAUDE.md's FRAM rule), then clear it (`PUT /status {"ResetErrors": true}`). Every logger store is
 set up in the boot batch, first in its module's setup (A.7). `setup()` re-initialises a blank or
-invalid chunk; after a valid read the stored ring comes first and entries logged before `setup()`
-follow as the newest, written back only when there were any (a slot or a count), so a clean read
-of a valid store sets up with no write. A FRAM chip declared in the device TOML that fails
+invalid chunk; a valid read restores the stored ring and count in place of anything logged before
+`setup()`, with no write. A FRAM chip declared in the device TOML that fails
 `setup()` escalates like any declared chip (owner, 2026-09-29: 'the same as all other chips'): one
 supervised task that ends at once, so the supervisor reboots past its budget; modules log in RAM
 until then. Where no chip is declared, every module runs RAM-only (owner, 2026-08-11). A chunk that
 cannot be read is left untouched and its owner logs in RAM until the next boot; only a chunk proven
 blank or invalid is re-initialised. A FRAM chunk operation raises only by allocation: a read that
-raises counts as unreadable, a write that raises as a failed write. A logger that runs RAM-only for
-the boot (its chunk unreadable at setup, its first write failed, or its chunk's heap allocation
-failed) records one `LOG_RAM_ONLY` entry in its own history; a chunk the allocator refused records
-none (A.4). After `setup()`, a failed history write starts a run: its first failure keeps one
-counted `LOG_RAM_ONLY` entry in RAM with no retry, and the next write that lands, a landed reset
-included, persists that entry and ends the run; a failed reset adds none. The logging layer's own
-caught allocation failures (the history ring, the chunk allocation, the history read and write)
-each print one ungated console line with the error's text through `console()`; an allocator
-refusal (`None`, no heap failure) keeps its level-gated line.
+raises counts as unreadable, a write that raises as a failed write. A logger whose chunk is
+unreadable at setup records one `LOG_RAM_ONLY` entry in its own history and runs RAM-only for the
+boot; a chunk the allocator refused or the heap could not build, a failed setup write and a failed
+history write record none (A.4). The logging layer's own caught allocation failures (the history
+ring, the chunk allocation, the history read and write) each print one line with the error's text
+from level 1 up, as an allocator refusal (`None`, no heap failure) does.
 
 **`reset()` writes unconditionally; `_store_err()` does not.** The asymmetry is deliberate.
 `_store_err()` refuses to touch FRAM before `setup()` has run — a half-filled ring written over a
@@ -3642,15 +3635,16 @@ info/trace; `pr.err_s`/`pr.wrn_s` (async, persist to history/FRAM) for anything 
 `get_error_counter()`; `pr.err`/`pr.wrn` (sync, non-persisting) for a genuinely sync call site
 (e.g. a `Timer.init()` failure handler) or a routine observation that shouldn't count at all.
 The print methods read the logger's `level` attribute (`DebugLevel` 0 off … 5 all); `set_level()`
-refuses an invalid level (out of range, `None`, a float or a bool), never clamps it, and answers
-`False`.
+clamps a level into that range (`None` is off) and answers nothing; the REST path's own schema
+range-checks `DebugLevel` first. Level 0 prints nothing, ever (owner, 2026-11-02).
 
 Codes are integers 1-127 (warnings stored with a `0x80` offset, 0 = nothing to record), numbered
 by one global catalog (`buildgen/error_catalog.json`, C.7.1), so a code means the same thing on
 every logger. Base 1-9/1-2 are `asy_base_classes.py`'s, reusable only for the identical condition; the
 shared band holds conditions common to many modules, one number each; module-specific codes sit in
 the owner's non-overlapping band. One number per condition: the same condition reached from several
-methods keeps one number. Retired numbers are never reused. The catalog test
+methods keeps one number. From the release on, a removed code keeps its number unused (a `retired`
+row); numbers removed before the release left no row (owner, 2026-10-28). The catalog test
 (`tests_scripts/test_error_catalog.py`) enforces all of it. Codes are `_ERR_<NAME>`/`_WRN_<NAME>`
 `const()`s passed by keyword.
 
@@ -3712,22 +3706,24 @@ logger (owner, 2026-08-07, `74cfa7f`) so its history can be shown with the netwo
 its caller can log the failure — `UDPSocket.disconnect()` (every user checks it and persists a
 failure, `SOCKET_TEARDOWN`), `UART.deinit()`, `I2C.deinit()`, `SPI.deinit()` (C.13); one on a class
 with a logger persists its own failure instead (`WebserverService._close_writer()`). A re-`init()`
-is its own teardown's caller: `UART.init()` prints `re-init teardown failed` through `console()` when
-its `deinit()` returns `False`, then re-initialises as before, while `I2C.deinit()` and
+is its own teardown's caller: `UART.init()` prints `re-init teardown failed` through its user's
+logger when its `deinit()` returns `False`, then re-initialises as before, while `I2C.deinit()` and
 `SPI.deinit()` always return `True`, their forwarded `deinit()` being a no-op on rp2 (F.5.1).
 
-**Every broad handler first calls `report_if_fatal()`** (`asy_print_log.py`): a C-stack overflow is
-recorded by the handler that catches it and the supervisor reboots (reset code 20, F.1). A broad
-handler is one that can catch a `RuntimeError`: an `except Exception`/`BaseException`/`RuntimeError`,
-a bare `except`, or a tuple naming any of them. Its first statement is `report_if_fatal(<its
-binding>)` unless it ends in a bare `raise`, the two lock-release exits that catch a `RuntimeError`
-around `release()` (`Lockable.__aexit__()`, `FRAM_SPI.__aexit__()`) included, and so is the first
-statement of each function Microdot hands an exception it caught (`ext/microdot.py`): the one
-`errorhandler(Exception)` registers and the `_print_exception()` rebound over its `print_exception`,
-which its own catches call. The handler then logs and degrades as
-before; the call allocates and prints nothing. `tests_scripts/test_fatal_report_sites.py` walks
-`src/` and every generated module for it; `PrintLog.report_unretrieved()` alone keeps its `except
-Exception: pass` (`tests_scripts/test_exception_handler_contract.py`).
+**Every broad handler records a C-stack overflow** (`asy_print_log.py`), so the supervisor reboots
+(reset code 20, F.1; owner, 2026-10-01). A broad handler is one that can catch a
+`RuntimeError`: an `except Exception`/`BaseException`/`RuntimeError`, a bare `except`, or a tuple
+naming any of them. Every logger entry point (`err`, `err_nomem`, `wrn`, `one`, `evt`, `all`, `err_s`,
+`wrn_s`) first runs `report_if_fatal()` over its arguments, at every level and ahead of any FRAM write, so a
+handler that logs its exception records it. A handler no logger sees starts with
+`report_if_fatal(<its binding>)`: the lock-release exits `Lockable.__aexit__()` and
+`FRAM_SPI.__aexit__()`, `DNSQuery`'s parse, `_body_as_dict()`, and the `_print_exception()` rebound
+over Microdot's `print_exception` (`ext/microdot.py`), which may return unlogged. The call allocates
+and prints nothing; a handler too deep to log raises afresh, and the first outer handler that logs
+records it. `tests_scripts/test_fatal_report_sites.py` walks `src/` and every generated module for
+it; `PrintLog.report_unretrieved()` keeps its `except Exception: pass`
+(`tests_scripts/test_exception_handler_contract.py`), and the shutdown's await of a stopped task
+records nothing, the supervisor, the record's one reader, having stopped first.
 
 `WifiService`'s radio observations (`status()`, `isconnected()`, `ifconfig()`, the stations query,
 the LED helpers) stay print-only as routine observations, except a failed stations check — a raise,
@@ -3743,7 +3739,7 @@ the query not built, or every send failed), `DNS_NXDOMAIN` (a server answered th
 (sent, but no A record came back). It checks each `write()` itself, so a send failure waits for no
 reply. NTP persists the first two failures under their own codes, `NTP_DNS_NOT_SENT` and
 `NTP_DNS_NXDOMAIN`, and every other one under `NTP_DNS`; a heap failure building the query prints
-its text through `console()`.
+its text through the caller's logger.
 
 ### C.7.1 Running `errno`/`wrnno` table
 
@@ -3799,9 +3795,10 @@ drivers (`asy_i2c_driver.py`, `asy_spi_driver.py`), `asy_udp_socket.py`, `asy_dn
 failure surfaces to its one upstream owner. Neither `asy_udp_socket.py` nor `asy_dns_client.py` owns
 a logger (agent, 2026-10-08): the resolver writes its two warnings, `SOCKET_TEARDOWN` (`wrnno` 12)
 and `DNS_REPLY_TRUNCATED` (`wrnno` 16), into the logger its caller passes (`pr=`, the upstream
-owner's), so its failures still surface to that one owner. A layer with no logger prints a caught
-`MemoryError`'s own text once through `asy_print_log.py`'s fixed-arity `console(name, what,
-err=None)`, a console line and no entry, so the memory gates see it (I.4(e)).
+owner's), so its failures still surface to that one owner. A layer with no logger of its own prints a
+caught `MemoryError`'s own text once through the logger its builder or user hands it (`UDPSocket`'s
+and `RegionBuffer`'s `logger=`, `FramingCOBS`'s, the `logger` `UARTComm` sets on its `UART`): from level
+1 up a console line and no entry, so the memory gates see it (I.4(e)); with none, nothing prints.
 
 ### C.7.2 Which failures may end a task
 
@@ -4292,7 +4289,7 @@ logger (G.2's task top), checked by `tests_scripts/test_task_tops.py`. The FRAM 
 | Supervisor | `SystemService.supervise_tasks()` (`asy_system_service.py`), which then waits for good | it supervises the starters' tasks, so it cannot be one of them | the program's life; a system command's shutdown sequence cancels it once it parked and awaits it (A.8); cancelling the call that spawned it cancels it too | `_supervise()`: one SYSTEM entry per task end, `TASK_BUDGET_REBOOT` or `STACK_EXHAUSTED` at the escalation, its write bounded by Part N's `system.escalation_entry_wait_ms`, a timeout or a `MemoryError` there still arming the reset; its own fault persists one `SUPERVISOR_RAISED` entry, then it ends unfed and the watchdog resets (`ResetReason` 2, A.8) |
 | Shutdown | `SystemService._request_shutdown()` (`asy_system_service.py`), once per system command that passes the gate | it exists only from a system command's acceptance to its reset (A.8) | from acceptance until `_reboot()` arms the reset; never cancelled: a hung step is never fed, so the watchdog ends it | `_shutdown_sequence()`: a step's own failure is logged where it happens (a flush's `CALLBACK` entry), any other persists `UNEXPECTED`; past the quiesce FRAM is paused, so an entry from there on reaches the console and the RAM log only; no reset is armed and nothing feeds, so the watchdog resets with the record the sequence left, and the next boot's `ResetReason` carries the outcome |
 | Reset | `SystemService._reboot()` (`asy_system_service.py`), once per boot | it exists only between an armed reset and the reset itself | from the arm until the reset timer's flag wakes it `_RESET_DELAY` later and it resets the device; cancelled only when that timer cannot be armed | `_reset_when_due()`: its last flush logs a failing store's `CALLBACK` entry, any other failure `UNEXPECTED`; FRAM is paused by then, so either reaches the console and the RAM log only; nothing feeds after it, so the watchdog resets |
-| Hazard initiations | `UARTLinkDriver._two_initiations()` (`asy_uart_link_driver.py`), in each hazard run of dev's initiator | two initiations at once on one instance are the hazard under test (J.2), so each runs as its own task beside the other; on demand from `PUT /status`'s `UartHazards`, never at boot (agent, 2026-10-22) | two per hazard run, each one `UARTComm.uart_set()`; the run awaits both, and its `finally` cancels one not yet done when the run itself is cancelled | `UARTLinkDriver._initiate()`: `except Exception` → `report_if_fatal()` → `err_s` with `UNEXPECTED`, and that initiation's verdict reads None |
+| Hazard initiations | `UARTLinkDriver._two_initiations()` (`asy_uart_link_driver.py`), in each hazard run of dev's initiator | two initiations at once on one instance are the hazard under test (J.2), so each runs as its own task beside the other; on demand from `PUT /status`'s `UartHazards`, never at boot (agent, 2026-10-22) | two per hazard run, each one `UARTComm.uart_set()`; the run awaits both, and its `finally` cancels one not yet done when the run itself is cancelled | `UARTLinkDriver._initiate()`: `except Exception` → `err_s` with `UNEXPECTED`, and that initiation's verdict reads None |
 <!-- tasks:end -->
 
 A task that ends raising with nobody awaiting it, a row's or a starter's that dies between two
@@ -6470,8 +6467,10 @@ fails the check at any depth; a chain is memoised with the stack's members on it
 top's chain depends on which top reached a shared function first; one await holding a project
 coroutine or an asyncio awaitable counts the deeper. The board's peak is
 `tests_hardware/device_scripts/c_stack_budget.py`'s reading, held to half the limit (agent, 2026-09-27; owner-reviewed, 2026-10-02) and owed to the flash tier. A
-stack-check error is recorded by the handler that catches it (`report_if_fatal()`, G.2) and the
-supervisor reboots (reset code 20, A.8). A fault of the supervisor's own loop persists one SYSTEM
+stack-check error is recorded by the logger call of the handler that catches it, or by that handler's
+own `report_if_fatal()` where no logger sees it (C.7, G.2), and the supervisor reboots (reset code 20,
+A.8); a handler too deep to log raises afresh and the first outer handler that logs records it
+(measured on the pinned Unix port, sync and inside a task, 2026-11-02). A fault of the supervisor's own loop persists one SYSTEM
 `SUPERVISOR_RAISED` entry (E115), refuses `ResetErrors` from then on and ends it unfed, so the
 watchdog resets with no record (reset code 2), or with the escalation's code once one was recorded.
 
@@ -7674,24 +7673,22 @@ backend-only or frontend-only validation/coercion policy change in this project.
   `PrintLogHistory`/`PrintLogHistoryStore`, never a bespoke print-based counter. `PrintLog`'s
   `report_unretrieved()` is asyncio's exception handler (F.1); the PC tiers' counterpart is
   `digital_twin/unix_port_unretrieved_report.py`.
-- **Console line of a layer with no logger** — `asy_print_log.py`'s `console(name: str, what:
-  object, err: object = None)`: one unconditional console line, never level-gated and never kept in
-  a history; its fixed arity and plain `print()` allocate nothing, the frame falling back to the C
-  stack (`py/objfun.c:268-287`, F.1), so it cannot raise inside a `MemoryError` arm (agent,
-  2026-10-08). A layer with no logger prints a caught `MemoryError`'s text through it once, and so
-  does the logging layer for its own caught allocation failures, so the memory gates see it (C.7,
-  C.7.1, I.4(e)).
+- **A caught `MemoryError`'s line** — `PrintLog.err_nomem(what, e)`: `err()` with a fixed arity and
+  no star-call, so it allocates nothing on a full heap and cannot raise inside a `MemoryError` arm (a
+  frame falls back to the C stack, `py/objfun.c:268-287`, F.1); every arm that caught one prints
+  through it, from level 1 up, so the memory gates see it (C.7, I.4(e)), and level 0 prints nothing,
+  ever (owner, 2026-11-02). A layer with no logger of its own (`UDPSocket`, `RegionBuffer`,
+  `FramingCOBS`, `UART`) takes its builder's or user's logger for it, optional and silent without one.
 - **Fatal-error report** — `asy_print_log.py`'s `report_if_fatal(e)`/`fatal_reported()`: the first
-  statement of every broad handler in `src/` and the generated modules, and of the function
-  `errorhandler(Exception)` registers and the one rebound over Microdot's `print_exception`; it sets a one-way flag only for a `RuntimeError` carrying the
+  step of every logger entry point, over its arguments, and the first statement of each broad
+  handler no logger sees (C.7); it sets a one-way flag only for a `RuntimeError` carrying the
   interpreter's C-stack text, allocating and printing nothing, and the supervisor's next pass reboots
   (C.7, F.1; `tests_scripts/test_fatal_report_sites.py`).
 - **Task top** — every task the supervisor does not watch, each `create_task()` target outside the
   task starters (`get_task_starters()`) and each `asyncio.start_server()` callback (C.9's table, the
   per-connection `_serve()` among them; the generated modules create none), ends in a top of its
-  own: a `try` with no `else:` or `finally:` whose `except Exception as e:` calls
-  `report_if_fatal(e)`, logs `e` through its own object's logger (`self.pr.err_s()`) and raises
-  nothing. That logger is the creator's, so the module that creates a task logs its failure (owner,
+  own: a `try` with no `else:` or `finally:` whose `except Exception as e:` logs `e` through its own
+  object's logger (`self.pr.err_s()`, which records a C-stack overflow) and raises nothing. That logger is the creator's, so the module that creates a task logs its failure (owner,
   2026-10-21: "The task logs shall then be handled by their creators in general and the caveats are
   okay as they are inevitable."; the question, paraphrase: whether a task's failure is logged by the
   module creating it, with FRAM paused before a reset and the logging call itself as the two
@@ -7752,7 +7749,7 @@ backend-only or frontend-only validation/coercion policy change in this project.
     at the trigger.
   - **A failed allocation degrades to a `None` buffer, never an exception** — `RegionBuffer` catches
     `MemoryError`/`OverflowError` in its own constructor, leaves `self._buf = None` and prints the
-    error's text once through `console()`, and every consumer's first act is to check for `None` and
+    error's text once through its builder's logger, and every consumer's first act is to check for `None` and
     fail its call. `FRAMChunk.get_buffer()` builds one per operation, deliberately: a store is used
     rarely, and a buffer per store would add permanent survivors worth more placement than the churn
     it saves (agent, 2026-09-29, from the 2026-09-18 measurement,
@@ -8872,7 +8869,7 @@ locks and lists, `SensorReaderConfig`'s `ConfigManager`, and the **hourly window
 (`HourlyWindowCounter`): 24 small-int bins, no allocation per event, read or hour change (G.2,
 A.8). `RegionBuffer` (per FRAM chunk operation, transient, fixed by its owner's size; allocated per
 operation by decision, agent, 2026-09-18): its bytearray; a failed allocation prints its text
-through `console()` and the buffer reads as `None`. `PieceBuffer` (G.2): every piece of at most
+through its builder's logger and the buffer reads as `None`. `PieceBuffer` (G.2): every piece of at most
 `piece_bytes` allocated at construction, after the caller's cap admitted the size; its copy-out,
 read and write slice views, transient. `_get_dict_cfg()`/`_set_dict_cfg()`: the result and staging dicts,
 per config GET/PUT, transient, bounded by the schema, `schema_dict()` built once per PUT; `_republish()`:
@@ -8909,7 +8906,7 @@ figure is owed to the bench); the ~5.8x wall-time cost is accepted, and the yiel
 **`asy_dns_client.py`** — per resolution: the query (`_build_query()`, at most 255 octets of name),
 one `UDPSocket` per server tried, the reply of at most 513 B (512 asked plus one to detect a cut,
 RFC 1035 §4.2.1) and the dotted-quad string, transient, client-controlled by the server and bounded
-before allocation. A heap failure building the query prints its text through `console()` (C.7).
+before allocation. A heap failure building the query prints its text through the caller's logger (C.7).
 
 **`asy_fram_driver.py`** — construction, long-lived, fixed: the command, address, status and ID
 buffers (`_id_buf`/`_status_buf`/`_addr_buf`) and the chip-lost event; per operation nothing (every
@@ -8918,7 +8915,7 @@ transfer uses them), `verify_present()`'s `wait_for_ms()` per presence check.
 **`asy_fram_manager.py`** — construction, long-lived, fixed: per chunk its status-byte buffer and
 check buffer (`check_length`, with one held view), and `FRAMManager._chunks` grows once per
 allocation at construction, never at run time; `_allocated_size` tracks FRAM address space, not RAM. A check buffer whose allocation failed prints its
-text through `console()`; a read then returns block 0's valid data without rewriting block 1, the
+text through the FRAM logger; a read then returns block 0's valid data without rewriting block 1, the
 missing buffer persists one `ALLOC` entry per run, and a verified write fails with its own entry.
 Per chunk operation: its `FRAMChunkBuffer`/`FRAMChunkTimestampedBuffer` (a `RegionBuffer`), transient,
 fixed; `_compare_with()`'s view of the caller's buffer, cleared in `finally`. Their concurrent peak
@@ -8980,7 +8977,7 @@ its own `setup()` holds that error only in RAM, losing exactly the evidence CLAU
 read-the-FRAM-logs rule depends on; its measured layout gain predates measures A and B and was never
 shown to add anything on top of them. Per history write: the chunk buffer and the `*history`
 argument tuple, transient, fixed; per `get_log()` (an `errcount` read): its dict and lists, bounded
-by `history_length`. Its own caught allocation failures print their text through `console()` (C.7).
+by `history_length`. Its own caught allocation failures print their text from level 1 up (C.7).
 
 **`asy_scd30_driver.py`** — construction, long-lived, fixed: the 18-byte read buffer and a 12-byte
 word buffer the six data words are copied into without their CRC bytes. Per read: one
@@ -9029,7 +9026,7 @@ test asserts where they land (I.4(f.1)). A larger ring costs twice its size, whi
 the bench's continuous-sender window is sized on the bench with its heap cost measured (J.6).
 `readline_until_complete()` is capped by `max_transfer_bytes` and assembles a `PieceBuffer`, never
 growing by concatenation, a heap too short for its pieces answering `None` with the caught text
-through `console()` (owner, 2026-10-27); `read_until_complete()` is bounded by its `n`.
+through its user's logger (owner, 2026-10-27); `read_until_complete()` is bounded by its `n`.
 
 **`asy_uart_link_driver.py`** — construction, long-lived, fixed: the role's `UARTComm`, its callbacks
 and the bench payload buffer. Per GET served: no copy — the stored echo is answered from its own
@@ -9042,7 +9039,7 @@ four values, one entry per swept field), replacing the last run's: long-lived, b
 
 **`asy_udp_socket.py`** — per construction: one socket (its lwIP pcb, `extmod/modlwip.c`) and lock;
 per receive the datagram bytes, cut at the caller's size; a caught `MemoryError` prints its text
-through `console()` and the call returns its `None` sentinel (C.7).
+through its builder's logger and the call returns its `None` sentinel (C.7).
 
 **`asy_webserver_service.py`** — the GET routes whose responses grow with device configuration (
 `/status`, `/sensors`, `/measurements`, `/networking`, `/system`, `/notification`) needed a
@@ -9266,14 +9263,11 @@ line carries neither gate word; only the printed exception may. On the board at 
 supervised task that ends raising leaves SYSTEM's persisted `TASK_RAISED` entry, and the console
 shows nothing, so every console-tail hardware gate also reads that log around its window, and a
 device script running the firmware's `main()` installs an always-printing report first
-(`tests_hardware/README.md`). **A caught one reaches a gate in one of two ways.** A class with no
-logger, and the logging layer itself, prints the caught `MemoryError`'s text once through the
-ungated `console()` (G.2) at every level — `asy_udp_socket.py`, `asy_uart_driver.py` (its read,
-frame and line buffers, the CRC check and frame, the receive ring, the readiness poll and the
-teardown's unregister), the region buffer, the log history's own allocations, the FRAM check and
-erase buffers, the COBS scratch, the DNS query, a tick-timer arm and Microdot's caught one. A
-logger-bearing class logs it through its level-gated `err()`/
-`err_s()`, which prints only at a `DebugLevel` of at least 1 (ERR): the board's standard state
+(`tests_hardware/README.md`). **A caught one reaches a gate through a logger.** Level 0 prints
+nothing, ever (owner, 2026-11-02): a logger-bearing class logs the caught `MemoryError` through its
+level-gated `err()`/`err_s()`, and a class with no logger of its own (`asy_udp_socket.py`,
+`asy_uart_driver.py`, the region buffer, the COBS scratch) through the one its builder or user hands
+it (C.7, G.2), each printing only at a `DebugLevel` of at least 1 (ERR): the board's standard state
 holds 5 (`tests_hardware/README.md`) and the twin suite's Run 1 sets 5 for the runs on its state.
 The unit tests that can run out of memory log at ERR (owner, 2026-10-20, asked, paraphrase, whether
 to turn logging on at error level or above in the unit tests that can actually run out of memory, in

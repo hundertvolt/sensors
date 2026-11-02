@@ -21,7 +21,7 @@ from asy_base_classes import DeviceSession, SensorReaderConfig, utc_now
 from asy_config_manager import checked_float, make_dict, name_cfg
 from asy_crc_checks import CRC8, CRC32
 from asy_i2c_driver import I2CDevice
-from asy_print_log import DEFAULT_LOG, LogConfig, report_if_fatal
+from asy_print_log import DEFAULT_LOG, LogConfig
 from voc_algorithm import VOCAlgorithm
 
 try:
@@ -318,7 +318,6 @@ class SGP40_Reader(SensorReaderConfig):
             temp_data = await self._temperature.source.get_data()
             hum_data = await self._humidity.source.get_data()
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("Compensation data read failed:", e, errno=_ERR_SOURCE)
             return None, None
         return _current_value(temp_data, self._temperature.field, now), _current_value(hum_data, self._humidity.field, now)
@@ -333,7 +332,6 @@ class SGP40_Reader(SensorReaderConfig):
         try:
             await self._sgp.setup()
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("Error in initial setup:", e, errno=_ERR_INIT)
             await self._init_failed()
             return False  # error
@@ -464,7 +462,6 @@ class SGP40_Reader(SensorReaderConfig):
             voc_state = self._voc_state(voc_index, fresh=reset_for_measure, restored=deserialized)
 
         except Exception as e:
-            report_if_fatal(e)
             # I2C failed, but a pending reset_for_measure already completed above regardless.
             if reset_now and self._reset_algo_applied and self._reset_fram_cleared:
                 self._reset_pending = False
@@ -482,7 +479,6 @@ class SGP40_Reader(SensorReaderConfig):
         try:
             await self._sgp.turn_heater_off()
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("Heater-off failed:", e, errno=_ERR_CHIP_SET)
             return False
         return True
@@ -550,7 +546,6 @@ class SGP40_Reader(SensorReaderConfig):
             try:
                 synced = await ntp_synced()
             except Exception as e:  # counts as not synced, as the FRAM layer treats the same callback
-                report_if_fatal(e)
                 await self.pr.err_s("NTP sync callback failed:", e, errno=_ERR_CALLBACK)
                 return False
             if not synced:

@@ -375,12 +375,14 @@ _feed_gaps = _FeedGaps()
 
 
 def _debug_level(text: str) -> int:
-    # --debug-level's value, refused unless the product's own validator takes it (PrintLog.set_level()).
+    # --debug-level's value, refused when the product's own clamp (PrintLog.set_level()) would change it.
     try:
         level = int(text)
     except ValueError as e:
         raise ValueError(f"--debug-level {text!r} is not an integer") from e
-    if not PrintLog().set_level(level):
+    pr = PrintLog()
+    pr.set_level(level)
+    if pr.level != level:
         raise ValueError(f"--debug-level {level} is no level the product's loggers take")
     return level
 

@@ -24,15 +24,15 @@ def _is_self(node: ast.expr) -> bool:
 
 
 def _is_top(stmt: ast.stmt) -> bool:
-    # A top: a `try` with no else/finally whose `except Exception as e:` calls report_if_fatal(e) and awaits
-    # self.pr.err_s() with e, raising nothing.
+    # A top: a `try` with no else/finally whose `except Exception as e:` awaits self.pr.err_s() with e, raising nothing
+    # (the logger's entry records a C-stack overflow, SPECIFICATION.md F.1).
     if not isinstance(stmt, ast.Try) or stmt.orelse or stmt.finalbody:  # either arm runs outside the handler
         return False
     for handler in stmt.handlers:
         raises = any(isinstance(node, ast.Raise) for s in handler.body for node in ast.walk(s))
         if isinstance(handler.type, ast.Name) and handler.type.id == "Exception" and handler.name:
             name = handler.name
-            return not raises and any(_reports(s, name) for s in handler.body) and any(_logs(s, name) for s in handler.body)
+            return not raises and any(_logs(s, name) for s in handler.body)
         if raises and not (isinstance(handler.type, ast.Attribute) and handler.type.attr == "CancelledError"):
             return False  # an earlier arm re-raising lets its exception past the top; only a cancellation may pass
     return False
@@ -129,14 +129,6 @@ def _modules(src: Path) -> "list[Module]":
         text = path.read_text(encoding="utf-8")
         found.append((path.name, text, parse_source(text, path.name)))  # buildgen's read-only trees: one parse per text
     return found
-
-
-def _reports(stmt: ast.stmt, name: str) -> bool:
-    if not (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)):
-        return False
-    call = stmt.value
-    arg = call.args[0] if len(call.args) == 1 else None
-    return isinstance(call.func, ast.Name) and call.func.id == "report_if_fatal" and isinstance(arg, ast.Name) and arg.id == name
 
 
 def _resolve(classes: Classes, cls: str, ref: "ast.expr | None") -> "tuple[str, str, Function] | None":
@@ -264,16 +256,14 @@ def test_a_supervised_loop_started_outside_its_starter_fails(src_copy: Path, nam
     [
         ("asy_config_manager.py", "        except Exception as e:  # an unsupervised task's top", "        except OSError as e:  # an unsupervised task's top"),
         ("asy_config_manager.py", '"- flush task failed:", e, errno=', '"- flush task failed:", errno='),
-        ("asy_config_manager.py", "            report_if_fatal(e)\n            self.unpersisted = True  # the finally", "            self.unpersisted = True  # the finally"),
         ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'),
         ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        else:\n            self._led_off()\n'),
         ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        finally:\n            self._led_off()\n'),
         ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n            raise\n'),
         ("asy_wifi_service.py", "        except Exception as e:  # unsupervised task's top", "        except OSError:\n            raise\n        except Exception as e:  # unsupervised task's top"),
         ("asy_captive_dns.py", "            while True:\n                try:\n", "            while True:\n                await asyncio.sleep(0)\n                try:\n"),
-        ("asy_webserver_service.py", '                report_if_fatal(e)\n                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n', '                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'),
     ],
-    ids=["narrowed", "cause-not-logged", "fatal-not-reported", "work-after-the-top", "work-in-its-else", "work-in-its-finally", "raised-after-the-log", "an-earlier-arm-re-raises", "loop-pass-outside-the-top", "callback-fatal-not-reported"],
+    ids=["narrowed", "cause-not-logged", "work-after-the-top", "work-in-its-else", "work-in-its-finally", "raised-after-the-log", "an-earlier-arm-re-raises", "loop-pass-outside-the-top"],
 )
 def test_a_top_that_does_not_cover_its_task_fails(src_copy: Path, name: str, old: str, new: str) -> None:
     _edit(src_copy, name, old, new)
@@ -286,7 +276,6 @@ def test_a_connection_callback_whose_top_is_removed_fails(src_copy: Path) -> Non
         "            except Exception as e:  # the connection task's top: its creator logs what escaped the request (the count, a\n"
         "                # proxy, a release, a trace); the task raises out only via a failing logging call (SPECIFICATION.md A.5, G.2)\n"
         "                # or the finally's own calls on an exhausted heap: _close_writer() catches every Exception, decrement() cannot raise\n"
-        "                report_if_fatal(e)\n"
         '                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'
     )
     _edit(src_copy, "asy_webserver_service.py", top, "")  # only the cancellation arm is left

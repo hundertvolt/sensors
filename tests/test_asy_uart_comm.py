@@ -36,6 +36,7 @@ from _uart_comm_harness import (
 from machine import LinkPoller, UARTLink
 from rp2 import DMA
 
+import asy_base_classes
 import asy_print_log
 import asy_uart_comm
 from asy_base_classes import COUNTER_CAP, PieceBuffer, RegionBuffer
@@ -285,6 +286,26 @@ def test_construction_performs_no_bus_call() -> None:
     before = len(driver._uart.log)  # type: ignore[union-attr]
     UARTComm(driver, ROLE_INITIATOR, limits=transfer_limits())
     assert len(driver._uart.log) == before  # type: ignore[union-attr]
+
+
+def test_the_comm_hands_its_logger_to_its_bus_and_frame_buffers() -> None:
+    # The bus and the TX/RX RegionBuffers have no logger of their own: a caught MemoryError's line goes out through the
+    # comm's, which from level 1 prints the buffer's failure under the comm's name.
+    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
+    comm = UARTComm(driver, ROLE_INITIATOR, limits=transfer_limits(), log=LogConfig(None, 10, 1))
+    assert driver.logger is comm.pr
+    err = MemoryError("injected for the frame buffer")  # worded clear of the memory gates' markers
+
+    def failing(*_args: object) -> bytearray:
+        raise err
+
+    asy_base_classes.bytearray = failing  # type: ignore[attr-defined]
+    try:
+        with record_prints(comm.pr) as rec:
+            comm._allocate()
+    finally:
+        del asy_base_classes.bytearray  # type: ignore[attr-defined]
+    assert rec.lines[:2] == [(comm.pr.name, "RegionBuffer: buffer allocation failed:", err)] * 2, rec.lines
 
 
 def test_maximum_payload_size_against_the_default_rxbuf_is_refused() -> None:
