@@ -131,3 +131,51 @@ What changed the plan's substance:
 
 Under section 6 no decision's basis changed: D1's fact gains the owner's later word, D3's stale options went, D5's
 budgets follow its own rule, D6's reason is attributed to the scan. Decision 4's "keeps every row's bar" now holds.
+
+## The bench campaign folded in (2026-11-02, owner 15:21: "Fold into the plan now.")
+
+Source: `bench/READING_20261029.md` (branch `claude/u35-bench-campaign` at `ec97953d`); backup `PLAN_before_bench.md`.
+- Header, section 0 and section 1: the campaign, its one firmware defect, the answered round-1 items, the owner's
+  decisions of 2026-10-29 (power save, storms) and 2026-11-02 (the storm stays unless a clean, lean Python-only fix
+  exists; the hotspot's 2 UDP sockets are fine while the global config stays); seven clarifications, not six.
+- R0: the findings list starts with two improvement items (FRAM SPI at 8 MHz; the lock-less `read()` spin).
+- B1-B8: the silicon facts each batch's ledger uses. B6 admits the receive-ring teardown hang (4.2 (a)) with the bench
+  branch's fix carried in test first (B93), corrects the UARTRSR comment, and reproduces the two crc16 results first.
+- R3's round-1 preparation: the two hardware-test corrections, the twin fidelity inputs, the chip facts at the desk.
+- Round 1: shortened to what needs the final firmware. Kept after checking `audit/review/decisions.json`:
+  `scd30-calibration-readiness`'s provisional values (not measured by the bench) and `sgp40-chip-identity`'s serial read
+  through the firmware. Removed: items 3, 5, 7, 9, 10, the W29 read, the DMA ring proof (unless B6 changes the ring),
+  the HAD_POR check.
+- R4: the bench's F.3 stall rows, Part F facts and the CLAUDE.md read-loop wording, placed by decision 7.
+- Decision 3 item 4: answered (W29 cannot be in the FRAM: its log is RAM-only by design).
+- Section 7: (c) gains the measured flash-write windows; (k) added, reset code 4 after a BOOTSEL round trip.
+- Section 5: no hour changes. Appendix A item 21, Appendix C sources.
+- Not adopted from FINDINGS: its prims11 caveat that the bare image lacked `modlwip_eagain` (`build_firmware()` always
+  applies it). This fold-in has had the five checks by the lead but no falsification run (P's fifth run is unspent).
+
+## The owner's answers on the open items (2026-11-02 15:39)
+
+- Rule 11 extended: a falsification agent at the end of each R1 batch; section 5 and decision 5: R1 20 runs, 26-35 h,
+  budget 35 h; totals before round 1 39 runs, about 44-62 h.
+- B3: the FRAM's SPI clock to 4 MHz (the owner's choice), test first, one value at `asy_fram_driver.py:134`; round 1
+  gains one overnight `long_fram.py` run at 4 MHz.
+- The findings list starts empty again: both bench items settled. The R4 line on CLAUDE.md's UART read-loop wording
+  is dropped (the lock-less early return is pre-audit design; no firmware caller reads without the lock).
+- (15:51) B3's FRAM clock is 8 MHz, not 4 (owner: "Then let's take the 8mhz as initially suggested"), with its basis
+  (24 MHz ceiling from the 48 MHz `clk_peri`; 20,741 1 KB reads at 8 MHz under load); round 1's overnight run at 8 MHz.
+
+## The bench's open questions researched (2026-11-02, owner 15:53; `bench/RESEARCH_20261102.md`)
+
+- Decision 3 item 4: the dump's entries named by their owner-seeded CRCs (WIFI W81 x2, CFGMGR_WIFI E21, SGP40 W34).
+- B2: the BOOTSEL loss explained by the bootrom's `reset_usb_boot()` (scratch 0, 1 and the watchdog-boot vector 4-7).
+- B4: the SGP40 NACKs are the bench script's timing; the bus-1 general call is the SGP40's soft reset; the SCD30's
+  documented clock stretching (30 ms per ACK, 150 ms daily) keeps dev's 200 ms bus-1 timeout.
+- B5: corrected: `network.country()`'s readback is MicroPython's own variable, and the country ioctl's result is
+  discarded; the bench's "the chip accepts any string" was never measured.
+- B6: the crc16 results did not reproduce in the twin, with or without silicon's CRC cost; knowledge until round 1.
+- R3 and round 1: `loop_lag_under_combined_load` belongs to the flash tier; item 8 read by scanning channels; the
+  crc16 diagnostic added.
+- The storm: a Python-only disconnect from a soft callback is possible in principle by the source, unproven; not put
+  into the plan (the owner decides).
+- (16:25) Owner: "Live with the udp storm and defer the CRC until the next hardware run". Section 1 records the storm
+  decision with the Python-only idea not adopted; B6 and round 1 carry the crc16 results as deferred by the owner.

@@ -303,3 +303,52 @@ their context). From now on every owner word is appended here as it is given.
   The sessions shall be interruptible anytime without losses (max 10 minutes wait time)" Recorded as: the bench
   sessions write one hand-back file with every detail and push it regularly; any step lasts at most 10 minutes, so a
   stop loses nothing beyond waiting for the current step; go-ahead to push the finished handover (snapshot 20).
+- (2026-10-28 16:57 UTC, the session) "Now pause all activity in this session unless I tell you." Recorded as: nothing runs, is
+  started or pushed in this session until the owner says so.
+- (2026-11-02 15:02 UTC, the bench campaign's results; ends the pause for reading) "On a dedicated branch, the real
+  hardware test recordings were stored. Many more interesting and decisive details than originally requested were
+  investigated. Read this in and understand it." Recorded as: read the bench branch's recordings and understand them;
+  no run, push or other work is started by this.
+- (imported 2026-11-02 15:10 UTC from the bench branch's FINDINGS_20261029.md, ec97953d; given 2026-10-29 in the bench
+  session, times as that file and its commits place them) Session scope: "measure as many values and situations as
+  possible which might be valuable for the planned audit steps"; "There are many open hardware questions in the repo. I
+  want to find as many answers as possible reasonably with the current state."; "Save all the details, push, and then
+  do run what you held back."
+  Radio power save (~17:26): "Power save mode is not an option"
+  LAN/UDP storms (~17:51): "C changes are clearly out of scope." and "If there is no official Micropython way to handle
+  it, we'll have to accept it as is. No patching or tinkering." Recorded there as: a storm stalling the loop is an
+  accepted limitation, the watchdog its backstop; neither the CYW43 packet filter nor a C patch.
+  GPIO interrupt storms (~18:28): "Interrupt storms are not really an issue. That only can happen on a board which is
+  already defective." No mitigation planned.
+  Real flash writes (~18:56): "Try that flash write test once"; under TCP (~19:05): "Try TCP with real flash once".
+  Both run once each (three writes and one remove of one scratch file).
+- (2026-11-02 15:21 UTC, the bench results; plan go-ahead) "The Mac and the IP addresses are no real hassle. The socket
+  cap in Hotspot mode seems to be nothing new and no issues as long as everything stays like now from the global config
+  point of view. The UDP  storm is not nice, but so far any research came up with "can't be fixed easily, especially
+  needs a Micropython patch". If you have better ideas that would be nice, but would have to be a clean and lean Python
+  only solution; otherwise we'll have to live with it. Fold into the plan now." Recorded as: the pushed LAN addresses
+  and MAC stay; the hotspot's 2 UDP sockets are known and fine while the global config stays as it is; the storm stays
+  accepted unless a clean, lean Python-only fix exists; go-ahead to fold the bench results into PLAN.md (no push named).
+- (2026-11-02 15:33 UTC, after the plan fold-in) "So any open questions so far?" A question; answered with the open
+  items that need the owner.
+- (2026-11-02 15:39 UTC, the open items) "Falsification agent at the end: yes.
+  Why not take 4 MHZ and we're on the safer side and still faster?
+  I don't know anything about a uart guard, probably introduced by one of the excess excursions?" Recorded as: a
+  falsification agent at the end of each R1 batch (the 2026-10-28 offer, 8 runs), run counts adapted; the FRAM's SPI
+  clock goes to 4 MHz in B3 (the owner's choice over the offered 8 MHz); the UART guard is not in the code (a bench
+  session suggestion after its own probe called `read()` without the lock; the lock-less early return is pre-audit),
+  so it is dropped.
+- (2026-11-02 15:42 UTC, the UART clock) "What is the MHz uart limit for the rp2?" A question; answered from the
+  pinned source, the SDK and the RP2040 datasheet (3 Mbaud with MicroPython's 48 MHz peripheral clock).
+- (2026-11-02 15:44 UTC, the SPI clock) "Sorry I meant the SPI" The question above was about SPI; answered from the
+  pinned SDK, the datasheet and the bench (24 MHz with MicroPython's 48 MHz peripheral clock).
+- (2026-11-02 15:51 UTC, the FRAM's SPI clock) "Then let's take the 8mhz as initially suggested" Recorded as: the FRAM's
+  SPI clock goes to 8 MHz in B3 (24 MHz / 3, exact), replacing the 15:39 choice of 4 MHz.
+- (2026-11-02 15:53 UTC, the bench's open technical questions) "Try to answer the other deep detail questions by proper
+  research" Recorded as: research the open technical questions from the bench reading (source, datasheets, the
+  recorded data, host-side reproduction); no hardware, no product code change, nothing pushed.
+- (2026-11-02 16:25 UTC, the storm and the crc16 results) "Live with the udp storm and defer the CRC until the next
+  hardware run" Recorded as: the LAN UDP storm stays an accepted limitation with the watchdog as backstop, the
+  Python-only disconnect idea not adopted; the crc16 hazard results are deferred to the next hardware run (round 1).
+- (2026-11-02 16:27 UTC, push go-ahead) "Push the plan" Recorded as: go-ahead to push the updated plan with the bench
+  reading and research as snapshot 21.

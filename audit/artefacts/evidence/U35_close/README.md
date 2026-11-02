@@ -109,3 +109,11 @@ the FRAM on the current firmware, flashes a bare pinned MicroPython image, then 
 probes and hours of long runs that count rare events. Later days add long runs. `mp/` holds the board-side scripts,
 `aggregate.py` and `handback.py` the host side. Every step lasts at most about 10 minutes, and the runner pushes
 `HANDBACK.md` to its own bench branch. Nothing has run.
+
+## Twenty-first snapshot (2026-11-02): `redo/bench/`
+
+The bench campaign ran on 2026-10-28/29 (branch `claude/u35-bench-campaign`). The owner asked for it to be read in
+("Read this in and understand it."), folded into the plan ("Fold into the plan now.") and its open questions researched
+("Try to answer the other deep detail questions by proper research"). `redo/bench/READING_20261029.md` is the reading,
+`redo/bench/RESEARCH_20261102.md` the research; `redo/plan/PLAN.md` carries both (its previous state is
+`PLAN_before_bench.md`), and `redo/plancheck/CHANGES.md` lists every change with the owner's words behind it.
