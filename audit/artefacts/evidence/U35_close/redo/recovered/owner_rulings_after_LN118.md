@@ -352,3 +352,53 @@ their context). From now on every owner word is appended here as it is given.
   Python-only disconnect idea not adopted; the crc16 hazard results are deferred to the next hardware run (round 1).
 - (2026-11-02 16:27 UTC, push go-ahead) "Push the plan" Recorded as: go-ahead to push the updated plan with the bench
   reading and research as snapshot 21.
+- (2026-11-02 16:37 UTC, working practices) "Now, do you still remember our best practices about parallel work,
+  efficiency and possibility?" Recorded as: a question, no go-ahead; answered from the rulings of 2026-10-23 and
+  2026-10-27, LEAD NOTES 260-261, `redo_common.md` "Efficiency" and PLAN.md's batch order.
+- (2026-11-02 16:42 UTC, working practices in the plan) "this also applies to our new plan, wherever it is
+  appropriate, as soon as we go for it" Recorded as: the parallel-work and efficiency practices bind every phase of
+  PLAN.md once it runs (section 4.5); not a go-ahead.
+- (2026-11-02 16:42 UTC, working practices in the plan) "if the new plan has no more lanes, adapt the gist of the
+  ideas to it" Recorded as: the plan still has lanes in R1-R5; for the phases without them (R0, the lead alone; round
+  1, the bench session) section 4.5 carries the gist adapted.
+- (2026-11-02 16:49 UTC, the plan against the owner's aims) "By now, we should have a plan which:
+  * takes the audit ideas back to the roots
+  * simplifies workflow drastically
+  * keeps our high quality
+  * avoids excursions and excessive / hypothetical excursions
+  * will finish the audit well inside a week's budget
+  * tries to minimize the changes in src and codegen
+  * keeps all discussed features
+  * closes all gaps we found which are still relevant
+  can you confirm these ideas?" Recorded as: a question; answered criterion by criterion; not a go-ahead.
+- (2026-11-02 16:57 UTC, the spirit of the first units) "the audit's machinery was, as I already mentioned, good at the
+  first like 10 units, and then gradually, exponentially, increased into something way too large. The first 10 passes
+  took one small "Max" plan. Unit 25 alone took 2 large "Max" plans and did not even finish. That is over 40x budget
+  for ONE unit compared to the first TEN. We need to get back to the spirit of the first rounds, where the big picture
+  of the audit was still clearer" Recorded as: direction for the plan (the shape of U1-U10); not a go-ahead.
+- (2026-11-02 17:01 UTC, quality and effort) "Still, keep our valuable findings in mind, and keep the targeted quality.
+  The ever-raising effort you invested did actually not lead to higher quality, only to bloated code. So keeping
+  quality, closing gaps and saving on effort are not contradictory, but go into the same direction - agreed?"
+  Recorded as: a principle for the plan's rewrite; answered "agreed"; not a go-ahead.
+- (2026-11-02 17:03 UTC, go-ahead: the plan's rewrite) "rewrite the plan, and target that we are done with 50...60% of
+  weekly budget (still a large Max plan)" Recorded as: go-ahead to rewrite PLAN.md in the first units' spirit, the
+  whole remaining audit sized to finish within 50-60 % of one weekly budget of the large Max plan. Not a go-ahead for
+  R0 or any run.
+- (2026-11-02 17:31 UTC, the rewritten plan against the aims) "So by now it fulfills the criteria list I gave you
+  recently?" Recorded as: a question; answered aim by aim; not a go-ahead.
+- (2026-11-02 18:01 UTC, the goal) "The original goals from the audit and all discussed features all hold. No
+  regressions, nothing bad reintroduced. Actually, the goal is how it was initially intended, only before the drift
+  happened." Recorded as: the plan's goal is the audit's original goals (PROJECT_AUDIT_PLAN.md 1.1, OR1, OR12) as
+  first meant; written into PLAN.md section 0 with the no-regression safeguards in section 2.
+- (2026-11-02 18:03 UTC, what stays) "Also, nothing proven good shall be removed, but checked if it can be leaner"
+  Recorded as: anything with proof that it is good stays and is checked for a leaner form; only what lacks that proof
+  goes. Written into PLAN.md sections 0 and 2.
+- (2026-11-02 18:04 UTC, knowledge) "In any case, no knowledge may be lost, and existing knowledge shall be smartly
+  used wherever appropriate" Recorded as: every removed item keeps a knowledge line, nothing of knowledge value is
+  left only in the session's scratch or lost with `audit/`, and established facts are used, never re-derived.
+  Written into PLAN.md sections 0, 2, 3 (D) and 4.2.
+- (2026-11-02 18:16 UTC, go-ahead: the plan's final check) "Now ensure the plan is complete, consistent, according to
+  our discussions, coherent and correct. Target final quality of the plan itself." Recorded as: go-ahead for a check
+  of PLAN.md (read-only on the repository; edits to the plan only), ending with independent falsification (rule 11).
+- (2026-11-02 19:16 UTC, push go-ahead) "Push the plan" Recorded as: go-ahead to push the rewritten and checked plan
+  with its change list, the check's hand-backs and the rulings as snapshot 22 (evidence only, `[skip ci]`).

@@ -179,3 +179,70 @@ Source: `bench/READING_20261029.md` (branch `claude/u35-bench-campaign` at `ec97
   into the plan (the owner decides).
 - (16:25) Owner: "Live with the udp storm and defer the CRC until the next hardware run". Section 1 records the storm
   decision with the Python-only idea not adopted; B6 and round 1 carry the crc16 results as deferred by the owner.
+
+## The working practices (2026-11-02, owner 16:42)
+
+- Section 4.5 states them for every phase (owner: "this also applies to our new plan, wherever it is appropriate, as
+  soon as we go for it"): fresh agents, slots kept full where the work allows, the lane efficiency rules, quality
+  never cut. Applied: writing lanes stay at two (disjoint `src/` files, the shared files merged by the lead); the free
+  slots take read-only work and machine runs.
+- (16:42) Owner: "if the new plan has no more lanes, adapt the gist of the ideas to it". R1-R5 keep lanes; for R0
+  (the lead alone) and round 1 (the bench session) section 4.5 states the gist adapted.
+
+## The rewrite in the first units' spirit (2026-11-02, owner 17:03)
+
+Owner: "rewrite the plan, and target that we are done with 50...60% of weekly budget (still a large Max plan)". The
+2026-10-28 plan is kept as `plan/PLAN_before_rewrite.md`. PLAN.md went from 822 lines (13,125 words) to 343 (4,551).
+- Kept: the target state, every owner decision and row, the 17 gaps, the UART ring fix, the bench's facts (cited, not
+  repeated), the order (decision 1), test first, the gates, the falsification check per unit, the clarifications.
+- Changed: phases and batches run as units like U1-U10 (one-page action list, one commit, one gate, a few report
+  lines); the per-hunk six-column ledger gives way to the action list plus a throwaway script proving removals and
+  restorations, the lead reading only the rest; the full gate runs once per unit; no follow-up lanes planned; no
+  per-phase state ledgers; R3's rows are met mostly by R1 and R2's outputs (test reviews in the unit that changes a
+  test); the budget is the owner's 50-60 % of a week, planned at 50 % with 23-24 agent runs instead of 55.
+- Added: B8's unrecorded website items are named to the owner before they go (the aim "keeps all discussed
+  features"); CI watching resumes with R0 (agent).
+- (17:31, on the owner's "So by now it fulfills the criteria list I gave you recently?") Section 2, step 1: the
+  safeguard of B8's website items widened to every user-visible removal without a recorded owner agreement (a REST
+  or `/status` key, a website element), so the aim "keeps all discussed features" holds in every unit.
+- (18:01) Owner: "The original goals from the audit and all discussed features all hold. No regressions, nothing bad
+  reintroduced. Actually, the goal is how it was initially intended, only before the drift happened." Section 0 states
+  the goal as `PROJECT_AUDIT_PLAN.md` 1.1's eight goals as first meant, with where each is met; section 2 adds that a
+  test is read before it goes and a real defect's fix stays, that an original feature's test changes only
+  mechanically (OR12), and that the falsification check also looks for a lost feature or a reintroduced defect.
+- (18:03) Owner: "Also, nothing proven good shall be removed, but checked if it can be leaner". Section 0 defines
+  proven good (fixes or prevents an observed or reproduced failure, measurably improves the device or the build, or
+  owner-approved): it stays in its leanest form; the closure lists candidates, not verdicts. Section 2, step 1: each
+  root marked to go is checked for proof first and, proven good, becomes a shrink item.
+- (18:04) Owner: "In any case, no knowledge may be lost, and existing knowledge shall be smartly used wherever
+  appropriate". Section 0: every removed item keeps a knowledge line in the evidence (decision 7 adds the doc lines);
+  established facts are used, never re-derived. Section 2: action lists start from what is already known. D: findings
+  with forward value placed, the last commit holding `audit/` tagged and named before it goes. 4.2: the knowledge list
+  is a record, and scratch-only knowledge is summarised into the evidence by each phase end.
+
+## The final check of the rewritten plan (2026-11-02, owner 18:16)
+
+Owner: "Now ensure the plan is complete, consistent, according to our discussions, coherent and correct. Target final
+quality of the plan itself." The version checked is `plancheck/final/PLAN_as_checked.md`; two independent agents
+read it: C1 for completeness and accordance with the old plan, the rulings and the register (`final/C1.md`, 30
+findings: 7 lost, 17 weakened, 3 contradicting, 3 unclear), C2 for falsification of every factual claim
+(`final/C2.md`, 21 entries; no number wrong, the rest imprecise, misattributed or inconsistent). The lead verified
+each at the source (the old plan, the rulings, the register, SCAN2, DECREV, git: 172 distinct closure roots,
+`asy_uart_driver.py:80` unchanged at `916fb878`, three paused patches, REPORT 1's pinned compile figures) and applied
+all of them, with a coherence pass of its own. The main changes:
+- restored: the old 2.1's per-unit cleanups with `UARTDriver.deinit()`'s kept bool; the closure's five-item proviso
+  (the Q6 handler kept in B1); the owner's bench decisions (power save, the storm, GPIO storms) as not admitted; the
+  done-criteria of R2-R5; R0's register repointing and the open findings as input; (g) in R4; R2's classification
+  detail and Part N's accuracy check; R3's B3 additions, OR49.a (1)'s load tests, U35's 09, the gap-gets-a-test and
+  matrix-cell bars; round 1's channel-13 access point, the ring proof's repeat condition, C.md's four owner rows; the
+  D.15 exclusion of test functions, OR11's link migration, U37's 14; rule 7's ".a" sentence; the owner's review of
+  decisions taken on their behalf (OR2.c); "a failure on a kept behaviour is fixed in the code"; the removed tests
+  listed; the action list shown at a unit's start; the bench sessions' interruptibility; the clarifications' both
+  sides;
+- corrected: the target formula with "proven good"; the unreachable-check rule in the owner's two-condition words and
+  the library rule; the budget overrun now a stop and a report, never a cut; CI watching resumes only on the owner's
+  word; the goal map (release, concept, parity with OR48.a's legacy check); B6's comment fix is written, not carried
+  in, and its 66 B named an admitted fix; 172 roots; the bytecode figures' source; the unit-history figures (U8C, U15);
+  rule 10 and 11's attribution (R2-R5's falsification is the agent's extension); decisions 2 and 3's wording;
+  per-unit budgets summed per phase; one path scheme; DECREV 4's ninth place in R5.
+PLAN.md: 434 lines (343 after the rewrite; the growth is restored content). No product file was touched.

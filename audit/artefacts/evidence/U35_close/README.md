@@ -117,3 +117,12 @@ The bench campaign ran on 2026-10-28/29 (branch `claude/u35-bench-campaign`). Th
 ("Try to answer the other deep detail questions by proper research"). `redo/bench/READING_20261029.md` is the reading,
 `redo/bench/RESEARCH_20261102.md` the research; `redo/plan/PLAN.md` carries both (its previous state is
 `PLAN_before_bench.md`), and `redo/plancheck/CHANGES.md` lists every change with the owner's words behind it.
+
+## Twenty-second snapshot (2026-11-02): the plan rewritten and checked
+
+The owner asked for the finishing plan to return to the spirit of the audit's first units ("rewrite the plan, and
+target that we are done with 50...60% of weekly budget") and then for its final check ("Now ensure the plan is
+complete, consistent, according to our discussions, coherent and correct."). `redo/plan/PLAN.md` is the rewritten
+plan; its previous state is `PLAN_before_rewrite.md`. `redo/plancheck/final/` holds the version checked
+(`PLAN_as_checked.md`) and the two independent checks (`C1.md`, completeness; `C2.md`, falsification);
+`redo/plancheck/CHANGES.md` lists every change with the owner's words behind it.
