@@ -197,15 +197,6 @@ class UART(Lockable):
         self._rx_pos = 0
         self._rx_overrun_pending = False
 
-    @staticmethod
-    def _rx_stop(data: DMA, reload: DMA) -> None:
-        # An abort completes the data channel and fires its chain, so the reload restarts it and active(False)'s wait
-        # for an idle channel never ends (dev bench, 2026-10-29: the board hangs until the watchdog). Unchained first,
-        # both stop at once; AL1_CTRL (the ctrl attribute) does not trigger.
-        data.ctrl = (data.ctrl & ~_CTRL_CHAIN_TO_MASK) | (data.channel << _CTRL_CHAIN_TO_LSB)
-        reload.active(False)
-        data.active(False)
-
     def _buffered(self, want: int) -> int:
         # Every read goes through here: clamped to the ring's fill level, so no read ever waits for a byte that
         # has not arrived (F.5.8), and never below zero. -1 reports a receive overrun once, to the read that sees
@@ -362,6 +353,15 @@ class UART(Lockable):
         # The i-th buffered byte, unconsumed.
         ring: memoryview = self._ring  # type: ignore[assignment]  # set: called after a positive _buffered(), as _rx_copy() is
         return ring[(self._rx_pos + i) & (len(ring) - 1)]
+
+    @staticmethod
+    def _rx_stop(data: DMA, reload: DMA) -> None:
+        # An abort completes the data channel and fires its chain, so the reload restarts it and active(False)'s wait
+        # for an idle channel never ends (dev bench, 2026-10-29: the board hangs until the watchdog). Unchained first,
+        # both stop at once; AL1_CTRL (the ctrl attribute) does not trigger.
+        data.ctrl = (data.ctrl & ~_CTRL_CHAIN_TO_MASK) | (data.channel << _CTRL_CHAIN_TO_LSB)
+        reload.active(False)
+        data.active(False)
 
     async def _write_all(self, uart: _UART, buf: bytearray | memoryview) -> bool:
         # Write only into an empty TX ring, at most txbuf bytes: POLLOUT means one free byte, and a longer
