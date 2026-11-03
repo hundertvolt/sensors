@@ -3701,8 +3701,8 @@ still own an independent, uniquely-named logger** (agent, 2026-08-07, generalisi
 owner decided): `asy_captive_dns.py`'s `CaptiveDNS` (owned by `WifiService`) gets its own `"DNSSRV"`
 logger (owner, 2026-08-07, `74cfa7f`) so its history can be shown with the networking data (owner,
 2026-09-26). **A teardown/cleanup method on a class with no logger of its own returns `bool`**, so
-its caller can log the failure — `UDPSocket.disconnect()` (every user checks it and persists a
-failure, `SOCKET_TEARDOWN`), `UART.deinit()`, `I2C.deinit()`, `SPI.deinit()` (C.13); one on a class
+its caller can log the failure — `UDPSocket.disconnect()` (the captive DNS checks it and persists a
+failure, `SOCKET_TEARDOWN`; the resolver and the NTP fetch call it unchecked), `UART.deinit()`, `I2C.deinit()`, `SPI.deinit()` (C.13); one on a class
 with a logger persists its own failure instead (`WebserverService._close_writer()`). A re-`init()`
 is its own teardown's caller: `UART.init()` prints `re-init teardown failed` through its user's
 logger when its `deinit()` returns `False`, then re-initialises as before, while `I2C.deinit()` and
@@ -3733,15 +3733,10 @@ or the chip-down 32-entry answer, counted as no client (owner, 2026-10-08) — a
 read in the uptime loop, unknown and the last state kept, each persisted once per failure; the
 persisted ones are also the connect-attempt tier (a poll that ends without a verdict and every
 silent-mode attempt included), the fallback to the hotspot, the entry into the silent mode and the
-timer arms (agent, 2026-10-06; the silent mode, owner, 2026-10-08). The resolver resolves only
-names RFC 1035 can encode (one name of at most 255 octets on the wire, no empty label); anything
-else resolves to no address. `resolve_ipv4()` never raises and returns `(address | None, cause)`:
-`DNS_RESOLVED`, `DNS_NOT_SENT` (no query left the device: no usable server, a malformed `tries`,
-the query not built, or every send failed), `DNS_NXDOMAIN` (a server answered that the name does not exist) or `DNS_FAILED`
-(sent, but no A record came back). It checks each `write()` itself, so a send failure waits for no
-reply. NTP persists the first two failures under their own codes, `NTP_DNS_NOT_SENT` and
-`NTP_DNS_NXDOMAIN`, and every other one under `NTP_DNS`; a heap failure building the query prints
-its text through the caller's logger.
+timer arms (agent, 2026-10-06; the silent mode, owner, 2026-10-08). The resolver refuses a name
+with a label over 63 octets (RFC 1035 §3.1) before any query. `resolve_ipv4()` never raises and
+returns the address or `None`; NTP persists every failed lookup as `NTP_DNS`. A heap failure
+building the query prints its text through the caller's optional logger.
 
 ### C.7.1 Running `errno`/`wrnno` table
 
@@ -3795,11 +3790,10 @@ wrong password.
 drivers (`asy_i2c_driver.py`, `asy_spi_driver.py`), `asy_udp_socket.py`, `asy_dns_client.py` and
 `asy_uart_driver.py` (whose `cancel_unacknowledged` its owner reads and logs, `wrnno` 55). Every
 failure surfaces to its one upstream owner. Neither `asy_udp_socket.py` nor `asy_dns_client.py` owns
-a logger (agent, 2026-10-08): the resolver writes its two warnings, `SOCKET_TEARDOWN` (`wrnno` 12)
-and `DNS_REPLY_TRUNCATED` (`wrnno` 16), into the logger its caller passes (`pr=`, the upstream
-owner's), so its failures still surface to that one owner. A layer with no logger of its own prints a
-caught `MemoryError`'s own text once through the logger its builder or user hands it (`UDPSocket`'s
-and `RegionBuffer`'s `logger=`, `FramingCOBS`'s, the `logger` `UARTComm` sets on its `UART`): from level
+a logger (agent, 2026-10-08): the resolver answers `None` for every failure and its caller logs it. A
+layer with no logger of its own prints a
+caught `MemoryError`'s own text once through the logger its builder or user hands it (`UDPSocket`'s,
+`resolve_ipv4()`'s and `RegionBuffer`'s `logger=`, `FramingCOBS`'s, the `logger` `UARTComm` sets on its `UART`): from level
 1 up a console line and no entry, so the memory gates see it (I.4(e)); with none, nothing prints.
 
 ### C.7.2 Which failures may end a task
@@ -3833,9 +3827,7 @@ about every four minutes (owner, 2026-09-24). The legacy client never gave up.
   only while the last success is less than three intervals old; a failed resync does not extend it,
   and a PUT of an NTP setting clears it until the next successful sync (owner, 2026-09-29). A
   request that could not be sent and a reply that never came are two local codes (`NTP_NOT_SENT`,
-  `NTP_NO_REPLY`), and so are a server-name query that never left the device and a name the DNS
-  server says does not exist (`NTP_DNS_NOT_SENT`, `NTP_DNS_NXDOMAIN`; every other lookup failure is
-  `NTP_DNS`, C.7).
+  `NTP_NO_REPLY`); every failed server-name lookup is `NTP_DNS` (C.7).
 - **Notification** (`asy_notification_service.py`) keeps no streak either: a failed read of its own
   config is re-read every cycle anyway, and a restart re-reads nothing more.
 
@@ -3966,9 +3958,9 @@ with `BAD_ARG` and the hostname left unchanged.
 ### C.7.5 Captive DNS
 
 `asy_captive_dns.py` answers every on-subnet A/ANY query with the AP's IP and every other type with
-an empty NOERROR reply (owner, 2026-09-29). A datagram that is a response (QR), declares other than
-one question, uses a compressed or reserved label or a name over 255 octets is dropped (agent,
-2026-09-28); a reply is at most 287 B. lwIP queues at most four datagrams per UDP socket and frees
+an empty NOERROR reply (owner, 2026-09-29). A datagram whose one question does not parse (cut short,
+not UTF-8, no QTYPE/QCLASS) is dropped, a heap failure while parsing included; a socket that returns
+no datagram logs `DNS_RECV_FAILED` and backs off. lwIP queues at most four datagrams per UDP socket and frees
 any further one in its receive callback, with no counter Python could read (`extmod/modlwip.c:299`
 `LWIP_INCOMING_PACKET_QUEUE_LEN`, `:456-468` `udp_raw_incoming()`, v1.29.0). The server reads every
 queued datagram before its socket sleeps again, so a burst loses only what exceeds four per idle
@@ -8880,9 +8872,9 @@ the 21-byte calibration block, the largest register read any driver issues, and 
 tuples it decodes into (`_temp_calib`, `_pressure_calib`), replacing the last.
 
 **`asy_captive_dns.py`** — run, in the hotspot mode only: one `DNSQuery` per datagram, transient,
-client-controlled: the receive is cut at 512 B (`DNS_UDP_MAX`, RFC 1035 §4.2.1), one question of at
-most 255 octets is parsed, the reply is at most 287 B. A heap failure while parsing is persisted as
-`UNEXPECTED` (C.7.5).
+client-controlled: the receive is cut at 512 B (`DNS_UDP_MAX`, RFC 1035 §4.2.1), so the one parsed
+question and the reply echoing it are bounded by it. A heap failure while parsing drops the query
+(C.7.5).
 
 **`asy_config_manager.py`** — construction: the store's lock, event and cache. Per config read: the
 returned values list, bounded by the keys asked for; per accepted PUT (`write_config()`): the staged
@@ -8900,10 +8892,10 @@ figure is owed to the bench); the ~5.8x wall-time cost is accepted, and the yiel
 (a 256 B CRC must not stall other tasks) stands. A CRC wider than 16 bits runs as two 16-bit words
 (G.2), so its bit loop stays inside small ints on rp2 as well.
 
-**`asy_dns_client.py`** — per resolution: the query (`_build_query()`, at most 255 octets of name),
-one `UDPSocket` per server tried, the reply of at most 513 B (512 asked plus one to detect a cut,
-RFC 1035 §4.2.1) and the dotted-quad string, transient, client-controlled by the server and bounded
-before allocation. A heap failure building the query prints its text through the caller's logger (C.7).
+**`asy_dns_client.py`** — per resolution: the query (`_build_query()`, labels of at most 63 octets),
+one `UDPSocket` per server tried, the reply of at most 512 B (RFC 1035 §4.2.1; a longer one arrives
+cut and parses as no usable answer) and the dotted-quad string, transient, client-controlled by the
+server and bounded before allocation. A heap failure building the query prints its text through the caller's logger (C.7).
 
 **`asy_fram_driver.py`** — construction, long-lived, fixed: the command, address, status and ID
 buffers (`_id_buf`/`_status_buf`/`_addr_buf`) and the chip-lost event; per operation nothing (every

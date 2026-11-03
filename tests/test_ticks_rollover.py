@@ -735,9 +735,9 @@ def test_the_uart_cancel_ack_wait_crosses_the_ticks_wrap() -> None:
 
 
 def test_the_udp_ready_deadline_crosses_the_ticks_wrap() -> None:
-    # Started 20 ms before the wrap: no datagram ends the wait at its 50 ms bound with no poll there, and one ready after
+    # Started 20 ms before the wrap: no datagram ends the wait at the first poll past its 50 ms bound, and one ready after
     # the wrap is reported, as away from it.
-    for arrive_at, expected in ((None, (False, 6)), (3, (True, 3)), (5, (True, 5))):
+    for arrive_at, expected in ((None, (False, 7)), (3, (True, 3)), (5, (True, 5))):
         wrapped = _udp_ready_wait(TICKS_PERIOD - 20, arrive_at)
         assert wrapped == _udp_ready_wait(_REFERENCE_NOW, arrive_at), (arrive_at, wrapped)
         assert wrapped == expected, (arrive_at, wrapped)

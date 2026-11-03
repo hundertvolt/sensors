@@ -19,7 +19,7 @@ from micropython import const
 
 from asy_base_classes import SensorReaderConfig, TickSeconds, arm_tick_timer, set_utc_valid, utc_now
 from asy_config_manager import INVALID, make_dict
-from asy_dns_client import DNS_LABEL_MAX, DNS_NOT_SENT, DNS_NXDOMAIN, host_label_ok, ipv4_to_int, resolve_ipv4
+from asy_dns_client import DNS_LABEL_MAX, host_label_ok, ipv4_to_int, resolve_ipv4
 from asy_print_log import DEFAULT_LOG, LogConfig
 from asy_udp_socket import UDPSocket
 
@@ -48,10 +48,6 @@ _ERR_NTP_MALFORMED = const(69)
 _ERR_NTP_RETRIES = const(70)
 _ERR_NTP_NO_REPLY = const(71)
 _ERR_NTP_NOT_SENT = const(72)
-_ERR_NTP_DNS_NOT_SENT = const(73)
-_ERR_NTP_DNS_NXDOMAIN = const(74)
-_WRN_STORED_DEFAULT = const(10)
-_WRN_SOCKET_TEARDOWN = const(12)
 _WRN_NTP_UNSYNC_REPLY = const(40)
 
 # @tunable ntp.async_intervals = 3
@@ -215,12 +211,6 @@ class NTPClient(SensorReaderConfig):
         if values is None or offs is None or len(values) != _NTP_STR_COUNT or len(offs) != 1:
             return None
         host, fallback = values
-        if not _ntp_host_ok(host):
-            await self.pr.wrn_s("Stored NTPHost is not a host name, using its default", wrnno=_WRN_STORED_DEFAULT)
-            host = _VAL_NTP_HOST[0][2]
-        if not _dns_fallback_ok(fallback):  # a file written outside the PUT path; four servers would break the C.8 bound
-            await self.pr.wrn_s("Stored DNSFallback is not a list of up to three IPv4 addresses, using its default", wrnno=_WRN_STORED_DEFAULT)
-            fallback = _VAL_DNS_FALLBACK[0][2]
         return host, fallback, offs[0]
 
     async def _set_last_sync_age(self, *, value: int | None) -> None:
@@ -271,8 +261,7 @@ class NTPClient(SensorReaderConfig):
                 return None
             msg, _ = await cli.recvfrom(_NTP_PACKET_LEN, timeout_ms=self._ntp_fetch_timeout_ms)
         finally:
-            if not await cli.disconnect():
-                await self.pr.wrn_s("NTP socket teardown did not complete cleanly.", wrnno=_WRN_SOCKET_TEARDOWN)
+            await cli.disconnect()
         if msg is None:
             await self.pr.err_s("No reply from NTP server:", addr[0], errno=_ERR_NTP_NO_REPLY)
         return msg
@@ -412,17 +401,11 @@ class NTPClient(SensorReaderConfig):
 
     async def _resolve_ntp_server(self, ntp_host: str, dns_server: str | None, fallback: str) -> tuple[str, int] | None:
         servers = (() if dns_server is None else (dns_server,)) + tuple(s for s in fallback.split(",") if s)
-        ip, cause = await resolve_ipv4(ntp_host, servers, timeout_ms=self._dns_timeout_ms, tries=self._dns_tries, pr=self.pr)
-        if ip is not None:
-            return ip, _NTP_UDP_PORT
-        # The resolver's cause names what failed: this device's send, the name itself, or the servers (no reply or answer).
-        if cause == DNS_NOT_SENT:
-            await self.pr.err_s("NTP server name not looked up - DNS query not sent:", ntp_host, errno=_ERR_NTP_DNS_NOT_SENT)
-        elif cause == DNS_NXDOMAIN:
-            await self.pr.err_s("NTP server name does not exist (NXDOMAIN):", ntp_host, errno=_ERR_NTP_DNS_NXDOMAIN)
-        else:
+        ip = await resolve_ipv4(ntp_host, servers, timeout_ms=self._dns_timeout_ms, tries=self._dns_tries, logger=self.pr)
+        if ip is None:
             await self.pr.err_s("No valid NTP server:", ntp_host, errno=_ERR_NTP_DNS)
-        return None
+            return None
+        return ip, _NTP_UDP_PORT
 
     async def _run_ntp_sync_attempt(self, dns_server: str | None) -> tuple[tuple[int, ...] | None, bool]:
         try:

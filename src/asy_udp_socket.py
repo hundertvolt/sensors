@@ -52,7 +52,7 @@ class UDPSocket:
 
     async def _connect(self) -> None:
         # Lazy, one-shot-per-socket setup, serialized against disconnect() via self._connect_lock.
-        # Self-heals via _disconnect_locked() on any failure, a cancel in the backoff included, so the next call gets a fresh attempt.
+        # Self-heals via _disconnect_locked() on any failure so the next call gets a fresh attempt.
         async with self._connect_lock:
             if self._sock is None:
                 try:
@@ -70,9 +70,9 @@ class UDPSocket:
                     self._nomem(e)
                     # setup, connect or bind failed
                     await asyncio.sleep_ms(_RETRY_BACKOFF_MS)
-                finally:
-                    if not self.connected:
-                        await self._disconnect_locked()
+
+                if not self.connected:
+                    await self._disconnect_locked()
 
     async def _disconnect_locked(self) -> bool:
         # Actual teardown, assuming self._connect_lock is already held - split out so _connect()'s
@@ -102,21 +102,6 @@ class UDPSocket:
         if isinstance(e, MemoryError) and self.logger is not None:
             self.logger.err("UDPSocket:", e)
 
-    async def _poll(self, mask: int, wait_ms: int, timeout_ms: int) -> bool:
-        # ipoll(0), then sleep_ms(wait_ms), until mask (or a real POLLERR/POLLHUP) is set or a timeout_ms > 0 has passed, the
-        # last sleep cut to end there. Never wait_for_ms(): it took a cancel landing after its timeout for it (SPECIFICATION.md F.2).
-        t0 = time.ticks_ms()
-        while True:
-            if self.poller is None:  # a concurrent disconnect() can null this mid-loop
-                return False
-            left = (timeout_ms - time.ticks_diff(time.ticks_ms(), t0)) if timeout_ms > 0 else wait_ms
-            if left <= 0:
-                return False
-            for _, event in self.poller.ipoll(0):
-                if event & (mask | select.POLLERR | select.POLLHUP):
-                    return True
-            await asyncio.sleep_ms(min(wait_ms, left))
-
     async def disconnect(self) -> bool:
         # Serialized against _connect() through the same lock - a concurrent disconnect() could
         # otherwise crash an in-flight retry. Returns False if teardown raised (state is cleared
@@ -125,17 +110,27 @@ class UDPSocket:
             return await self._disconnect_locked()
 
     async def ready(self, mask: int, timeout_ms: int = -1) -> bool:
-        # Polls ipoll(0), sleeping _POLL_WAIT_MS in an exchange (a deadline is set) and _POLL_IDLE_MS while listening with none
-        # (SPECIFICATION.md F.5.9's shape). A real POLLERR/POLLHUP is always reported; returning True lets the caller's socket
-        # call surface it.
+        # Polls ipoll(0) until mask or timeout_ms, sleeping _POLL_WAIT_MS with a deadline, _POLL_IDLE_MS with none (F.5.9's
+        # shape). A real POLLERR/POLLHUP is always reported; returning True lets the caller's socket call surface it.
         await self._connect()
         if not self.connected or self.poller is None:
             return False
-        try:
-            return await self._poll(mask, _POLL_WAIT_MS if timeout_ms > 0 else _POLL_IDLE_MS, timeout_ms)
-        except (MemoryError, OSError) as e:
-            self._nomem(e)
-            return False
+        wait_ms = _POLL_WAIT_MS if timeout_ms > 0 else _POLL_IDLE_MS
+        t0 = time.ticks_ms()
+        while True:
+            if self.poller is None:  # a concurrent disconnect() can null this mid-loop
+                return False  # type: ignore[unreachable]  # mypy can't see the mutation
+            try:
+                res = self.poller.ipoll(0)
+                for _, event in res:
+                    if event & (mask | select.POLLERR | select.POLLHUP):
+                        return True
+                if (timeout_ms > 0) and (time.ticks_diff(time.ticks_ms(), t0) > timeout_ms):
+                    return False
+                await asyncio.sleep_ms(wait_ms)
+            except (MemoryError, OSError) as e:
+                self._nomem(e)
+                return False
 
     async def recvfrom(self, buf: int, timeout_ms: int = -1) -> tuple[bytes | None, tuple[str, int] | None]:
         if await self.ready(select.POLLIN, timeout_ms=timeout_ms) and self._sock is not None:

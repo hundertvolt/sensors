@@ -157,7 +157,6 @@ _CEILING_TRACES = (code("W", "HTTP_REFUSED"), code("W", "HTTP_PEER_RESET"))
     " already past its network check when the AP drops, or its whole retry chain where the link still reads as up",
     ("WIFI", "W", "WLAN_NO_AP"),
     ("WIFI", "W", "WLAN_AUTH_FAILED"),
-    ("NTP", "E", "NTP_DNS_NOT_SENT"),
     ("NTP", "E", "NTP_DNS"),
     ("NTP", "E", "NTP_NOT_SENT"),
     ("NTP", "E", "NTP_NO_REPLY"),
@@ -182,7 +181,6 @@ def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, be
     " attempt already past its network check when the AP drops, or its whole retry chain where the link still reads as up",
     ("WIFI", "W", "WLAN_NO_AP"),
     ("WIFI", "W", "WLAN_AUTH_FAILED"),
-    ("NTP", "E", "NTP_DNS_NOT_SENT"),
     ("NTP", "E", "NTP_DNS"),
     ("NTP", "E", "NTP_NOT_SENT"),
     ("NTP", "E", "NTP_NO_REPLY"),
@@ -374,7 +372,7 @@ _GARBAGE_NTP_HOST = "this-host-will-never-resolve.invalid"
 
 
 @pytest.mark.persistence_write
-@pytest.mark.provokes_log("the .invalid host's lookup answers NXDOMAIN, which the test waits for", ("NTP", "E", "NTP_DNS_NXDOMAIN"))
+@pytest.mark.provokes_log("the .invalid host's lookup never resolves, which the test waits for", ("NTP", "E", "NTP_DNS"))
 def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     original_host = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("NTPHost")
     if original_host == _GARBAGE_NTP_HOST:
@@ -390,8 +388,8 @@ def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: B
         # _VAL_NTP_HOST bounds the length and the RFC 1035 label shape, so this host is "Valid"; the failure is the DNS
         # resolution its post function triggers.
         assert _load.as_object(res.json().get("result"), "result").get("NTPHost") == "Valid", f"garbage NTPHost was rejected at the schema level, not what this test exercises: {res.body!r}"
-        # A resolver answers NXDOMAIN for .invalid (RFC 6761 section 6.4), which NTP persists as its own code.
-        wait_until(lambda: _load._ntp_error_log_contains(dut_ip, code("E", "NTP_DNS_NXDOMAIN")), timeout_s=_WAIT_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description="NTP to log NTP_DNS_NXDOMAIN for the garbage NTPHost")
+        # A resolver answers NXDOMAIN for .invalid (RFC 6761 section 6.4): the name does not resolve, which NTP persists as NTP_DNS.
+        wait_until(lambda: _load._ntp_error_log_contains(dut_ip, code("E", "NTP_DNS")), timeout_s=_WAIT_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description="NTP to log NTP_DNS for the garbage NTPHost")
         # Degrading cleanly means the rest stays healthy, not merely that the error got logged.
         assert _load.serving(dut_ip), "webserver unresponsive while NTPHost was garbage"
         assert_no_task_ended(dut_ip, "a garbage NTPHost")

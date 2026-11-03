@@ -33,7 +33,6 @@ from machine import RTC, Timer
 import asy_base_classes
 import asy_ntp_client as ntpmod
 import asy_udp_socket
-from asy_dns_client import DNS_FAILED, DNS_NOT_SENT, DNS_NXDOMAIN, DNS_RESOLVED
 from asy_ntp_client import NTPClient, NtpTiming
 from asy_print_log import DEFAULT_LOG, LogConfig, PrintLogHistoryStore
 
@@ -1110,22 +1109,6 @@ def test_get_ntp_config_returns_the_stored_fallback_list() -> None:
     assert run(client._get_ntp_config()) == ("time.example.org", "192.0.2.1,192.0.2.2", 0)
 
 
-def test_a_stored_host_that_is_not_a_host_name_uses_its_default() -> None:
-    # A file written by hand or by an older firmware: within the schema's length, outside the hostName shape.
-    client = _make_client_with_json('{"NTPHost": "-bad-.example", "DNSFallback": ""}')
-    assert run(client._get_ntp_config()) == ("pool.ntp.org", "", 0)
-    assert _slots(client) == (1, [code("W", "STORED_DEFAULT")])
-    assert run(client.get_error_counter())["NTP"]["ErrType"][-1] == "W"
-
-
-def test_a_stored_fallback_that_is_not_an_ipv4_list_uses_its_default() -> None:
-    # Only a file written outside the PUT path can hold one; four servers would also break the lock-hold bound (C.8).
-    for stored in ("8.8.8.8,x", "1.1.1.1,1.0.0.1,9.9.9.9,8.8.8.8"):
-        client = _make_client_with_json('{"NTPHost": "time.example.org", "DNSFallback": "' + stored + '"}')
-        assert run(client._get_ntp_config()) == ("time.example.org", "8.8.8.8,1.1.1.1", 0), stored
-        assert _slots(client) == (1, [code("W", "STORED_DEFAULT")])
-
-
 def test_get_ntp_config_single_invalid_field_falls_back_to_default_for_that_field_only() -> None:
     # NTPHost too short (min length 3) - falls back to its own default; NTPOffset stays real.
     json_text = '{"NTPHost": "ab", "NTPOffset": 5, "NTPInterval": 6, "GMTOffset": 7200, "DSTOffset": 3600}'
@@ -1250,20 +1233,19 @@ def test_resolve_ntp_server_literal_ip_returns_immediately() -> None:
 
 class _RecordingResolver:
     # Stands in for asy_dns_client.resolve_ipv4() - proves _resolve_ntp_server()'s orchestration
-    # (server order, tuple building, error handling, timeout_ms/tries/pr forwarding) independent of
+    # (server order, tuple building, error handling, timeout_ms/tries/logger forwarding) independent of
     # resolve_ipv4()'s own network behavior, which tests/test_asy_dns_client.py covers exhaustively.
-    def __init__(self, return_value: "str | None", cause: int = DNS_FAILED) -> None:
+    def __init__(self, return_value: "str | None") -> None:
         self.calls: list[tuple[str, tuple[str, ...], int, int]] = []
         self.loggers: list[object] = []
         self.return_value = return_value
-        self.cause = DNS_RESOLVED if return_value is not None else cause
 
     async def __call__(
-        self, host: str, dns_servers: "tuple[str, ...]" = (), timeout_ms: int = 0, tries: int = 0, *, pr: object = None,
-    ) -> "tuple[str | None, int]":
+        self, host: str, dns_servers: "tuple[str, ...]" = (), timeout_ms: int = 0, tries: int = 0, *, logger: object = None,
+    ) -> "str | None":
         self.calls.append((host, dns_servers, timeout_ms, tries))
-        self.loggers.append(pr)
-        return self.return_value, self.cause
+        self.loggers.append(logger)
+        return self.return_value
 
 
 def test_resolve_ntp_server_passes_the_given_dns_server_through() -> None:
@@ -1320,17 +1302,6 @@ def test_resolve_ntp_server_dns_failure_persists_an_error() -> None:
     assert _last_err(counter, "ErrType") == "E"
 
 
-def test_the_resolvers_cause_picks_the_persisted_code() -> None:
-    # A query that never left the device and a name the server says does not exist each keep their own code; every
-    # other failure keeps the generic one. One entry per failed resolution.
-    for cause, name in ((DNS_NOT_SENT, "NTP_DNS_NOT_SENT"), (DNS_NXDOMAIN, "NTP_DNS_NXDOMAIN"), (DNS_FAILED, "NTP_DNS")):
-        client = _make_client()
-        assert _resolve_with(_RecordingResolver(None, cause), client, "bogus.invalid", "192.0.2.53", "") is None
-        counter = run(client.get_error_counter())
-        assert counter["NTP"]["ErrCount"] == 1, name
-        assert _last_err(counter, "ErrNum") == code("E", name), name
-
-
 # No real-network end-to-end test through _resolve_ntp_server() itself: resolve_ipv4()'s `port`
 # has no override here, and binding a fake DNS peer to port 53 needs root and is
 # environment-dependent, unlike every other loopback test in this suite.
@@ -1356,7 +1327,7 @@ class _FakeUDPSocket:
 
     async def disconnect(self) -> bool:
         self.disconnected = True
-        return self.script.teardown_ok
+        return True
 
     async def recvfrom(self, buf: int, timeout_ms: int = -1) -> "tuple[bytes | None, tuple[str, int] | None]":
         self.calls.append(("recvfrom", buf, timeout_ms))
@@ -1388,8 +1359,8 @@ _SOCKET_CLOCK = _Clocked()  # the real modules, but inside a cancel sweep's bloc
 class _SocketScript:
     # What every _FakeUDPSocket it makes answers; its make() replaces asy_ntp_client.UDPSocket. `gate_ms`: each send and
     # receive first waits that long on _SOCKET_CLOCK.
-    def __init__(self, *, sent: "int | None" = 48, reply: "bytes | None" = None, teardown_ok: bool = True, park: bool = False, gate_ms: int = 0) -> None:
-        self.sent, self.reply, self.teardown_ok = sent, reply, teardown_ok
+    def __init__(self, *, sent: "int | None" = 48, reply: "bytes | None" = None, park: bool = False, gate_ms: int = 0) -> None:
+        self.sent, self.reply = sent, reply
         self.gate_ms = gate_ms
         self.park = asyncio.Event() if park else None
         self.parked = asyncio.Event()
@@ -1434,15 +1405,6 @@ def test_a_never_connected_socket_logs_not_sent_and_returns_before_the_fetch_tim
     assert sock.calls == [("write", 48, _FETCH_TIMEOUT_MS)]  # no recvfrom() at all
     assert sock.disconnected is True
     assert _slots(client) == (1, [code("E", "NTP_NOT_SENT")])
-
-
-def test_a_failed_teardown_leaves_one_socket_teardown_warning() -> None:
-    client = _make_client()
-    reply = make_ntp_reply(int(time.time()))
-    assert _fetch_with(client, _SocketScript(reply=reply, teardown_ok=False)) == reply
-    assert _slots(client) == (1, [code("W", "SOCKET_TEARDOWN")])
-    log = run(client.get_error_counter())["NTP"]
-    assert log["ErrType"][-1] == "W"
 
 
 def test_a_clean_exchange_logs_nothing() -> None:

@@ -255,7 +255,7 @@ _SLOT_RELEASE_WAIT_S = 1.0  # a readiness probe would occupy a max_connections s
 # apart from an echo of the query itself; the header prefix is _try_dns_query()'s own ">HH" unpack.
 _DNS_QUERY_ID = 0x1234
 _DNS_RESPONSE_HEADER_LEN = 4
-_DNS_BIND_ERROR_TEXT = "Captive DNS socket could not bind port 53."  # asy_captive_dns.py's own error line
+_DNS_RECV_FAILED_TEXT = "Receiving a DNS request failed."  # asy_captive_dns.py's own warning line, a failed port-53 bind included
 
 # The run names --only takes, in run_suite()'s order, and the run each consumes the state or result of.
 RUN_NAMES = ("1", "2", "3", "4", "5", "5b", "5c", "6", "7", "8", "9", "10", "11", "11b", "12", "13")
@@ -1461,8 +1461,8 @@ def _run_7_wifi_hotspot_dns(ctx: RunContext) -> None:
         logged = _error_type_count(entry, type_char="W")
         _check(condition=logged == _WIFI_PERSISTED_WARNINGS, msg=f"Run 7: those {_WIFI_SCRIPTED_FAILURES} identical verdicts spent one history slot, not one each, and the fallback one more ({_WIFI_PERSISTED_WARNINGS}) - the ring still holds what preceded the outage ({entry!r})")
         answered = _wait_for_dns_answer(HOST, timeout_s=_LONG_WAIT_S)
-        bind_failed = _DNS_BIND_ERROR_TEXT in read_log(log7) or code("E", "INIT") in [num for kind, num in _error_codes(_errcount_required("DNSSRV")) if kind == "E"]
-        _check(condition=answered, msg="Run 7: the real CaptiveDNS answered a real UDP DNS query after WiFi hotspot fallback" + ("" if answered else f" - {'the DNS server logged its port-53 bind failure' if bind_failed else 'no bind failure was logged'}"))
+        recv_failed = _DNS_RECV_FAILED_TEXT in read_log(log7) or code("W", "DNS_RECV_FAILED") in [num for kind, num in _error_codes(_errcount_required("DNSSRV")) if kind == "W"]
+        _check(condition=answered, msg="Run 7: the real CaptiveDNS answered a real UDP DNS query after WiFi hotspot fallback" + ("" if answered else f" - {'the DNS server logged a failed receive (a port-53 bind failure among its causes)' if recv_failed else 'no failed receive was logged'}"))
         status, _ = _http("GET", "/status")
         _check(condition=status == _HTTP_OK, msg="Run 7: webserver stayed reachable throughout the WiFi hotspot-fallback transition")
     except Exception as exc:
