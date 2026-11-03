@@ -1428,9 +1428,11 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
         status = _put_reset_errors_timed("Run 5c")
         _check(condition=status == _HTTP_OK, msg=f"Run 5c: PUT /status ResetErrors accepted (status {status})")
         cleared_table = _errcount_all()
+        # An SGP40's first restore after the reboot may land after the reset: its blank chunk's one W SGP_NO_BACKUP.
+        owed = {inst.errcount_name: [("W", code("W", "SGP_NO_BACKUP"))] for inst in ctx.instances if inst.driver == "sgp40"}
         for name in recorded:
             entry = cleared_table.get(name, {})
-            _check(condition=_error_type_count(entry) == 0 and entry.get("counter", -1) == 0, msg=f"Run 5c: {name}'s restored history was actually cleared by ResetErrors, not just masked ({entry!r})")
+            _check(condition=(entry.get("counter", -1), _error_codes(entry)) in ((0, []), (1, owed.get(name))), msg=f"Run 5c: {name}'s restored history was actually cleared by ResetErrors, not just masked ({entry!r})")
     except Exception as exc:
         _fail(f"Run 5c (history survived the commanded reboot): {exc!r}")
     finally:

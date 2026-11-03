@@ -177,3 +177,11 @@ the lead's check of each refutation (`FALSIFY_VERIFIED.md`) and the fix brief; `
 sizes; `redo/r1/MERGE_B4B5_NOTES.md` the one merge conflict. The Stull (2011) paper moved to the private datasheets
 repository (owner, 2026-11-03). `redo/r1/B3/` and `redo/r1/B6/` hold the next two units' action lists with their drafts
 and briefs (storage; UART), started after this gate.
+
+## Twenty-eighth snapshot (2026-11-03): the twin CI suite's ResetErrors check
+
+CI on the twenty-seventh snapshot failed one check in nine of the ten non-dev twin suite jobs: Run 5c wanted every
+recorded error source empty right after a ResetErrors, but an SGP40 on FRAM logs its blank-chunk warning (W65) at its
+first restore after the reboot, and on those devices that restore can land after the reset. The check now admits exactly
+that one warning for an SGP40 and nothing else; test-only, no firmware byte changes. `redo/r1/B45/GATE.md` records the
+failure and the fix.
