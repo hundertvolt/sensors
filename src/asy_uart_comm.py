@@ -21,13 +21,11 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from typing import NamedTuple, ParamSpec, Protocol
+    from typing import NamedTuple, Protocol
 
     from asy_base_classes import TaskStarter, TimerStarter
     from asy_print_log import ErrorLog, LogConfig
     from asy_uart_driver import UART
-
-    _P = ParamSpec("_P")  # _call()'s callback arguments, typed per call site
 
     # Every callback may be sync or async, so each returns `object`: the result is either the
     # value itself or a coroutine yielding it, and _call() below is what tells the two apart.
@@ -146,7 +144,6 @@ _ERR_UART_TRANSFER_CAP = const(93)
 _WRN_UART_DRAIN_BOUND = const(54)
 _WRN_UART_CANCEL_UNACKED = const(55)
 _WRN_UART_CMD_DECLINED = const(56)
-_WRN_UART_RX_OVERRUN = const(57)
 
 # A responder's get/set callbacks (both required) and its optional message callback, passed as one object.
 # One link's limits: payload_size and timeout are agreed out of band with the peer (Part J.6);
@@ -234,7 +231,7 @@ class UARTComm:
         self._blind_resyncs = 0  # resyncs that saw bytes but never a valid frame
         self._drain_bound_hit = False  # set by _drain(), read by the resync that called it
         self._cancel_unacked_seen = 0  # the driver's counter is cumulative; only a rise is news
-        self._discarded_seen = 0  # the driver's discarded_bytes at the last resync, read by _peek_discarded()
+        self._discarded_seen = 0  # the driver's discarded_bytes at the last resync, read by _take_discarded()
         self._init_errno = self._validate_config()
         # Re-checked locally, never the caller's raw values: `5 + "48"` raises, and __init__ is the
         # one entry point with no object yet to answer through a sentinel. _validate_config() stops
@@ -409,12 +406,12 @@ class UARTComm:
             and len(self._cmd_buf) >= 1
         )
 
-    async def _call(self, callback: "Callable[_P, object]", *args: "_P.args", **kwargs: "_P.kwargs") -> object:
+    async def _call(self, callback: "Callable[..., object]", *args: object) -> object:  # type: ignore[explicit-any]  # every callback shape; a ParamSpec's **kwargs would build a dict per call
         # The established guarded-dispatch shape: caller code runs inside the protocol's critical
         # section, so a raise or a wrong return shape must not escape into it.
         # A coroutine and a plain value are both accepted - a generator-like result is awaited.
         try:
-            result = callback(*args, **kwargs)
+            result = callback(*args)
             # MicroPython has no inspect/iscoroutine, and a coroutine is structurally a generator
             # here - `send` is what distinguishes one from a plain returned value. mypy sees only
             # `object` at this point, which is the honest type of an arbitrary callback's result.
@@ -430,15 +427,6 @@ class UARTComm:
         # assignment, after the peer is acknowledged. The buffer's type is its caller's signature's (D.2).
         if writable and isinstance(buf, (bytearray, memoryview)) and not _is_writable(buf):
             await self._err(_ERR_BAD_ARG, "destination buffer is read-only")
-            return False
-        return True
-
-    async def _check_cap(self, size: int) -> bool:
-        # Counted past the one CHUNKS byte, so a size over the cap is the cap's refusal at every cap the build allows
-        # (254 payloads at most). Under a larger cap, which only a direct construction sets, a size past 254 payloads is
-        # _send_train()'s refusal (83) as a total, the answer's as a GET: 84 here, 81 at the peer, logged at both ends.
-        if self._over_cap(self._chunks_for(size)):
-            await self._err(_ERR_UART_TRANSFER_CAP, "a train of", size, "bytes declares more than the cap", self._max_transfer_bytes)
             return False
         return True
 
@@ -464,16 +452,12 @@ class UARTComm:
         return False
 
     def _chunk_count(self, total: int) -> int | None:
-        # The train's CHUNKS, or None when it does not fit the one byte the header gives it.
-        chunks = self._chunks_for(total)
+        # ceil(total / payload_size) + 1, floored at 2: even a payload-less command has one data
+        # chunk to acknowledge. -(-a // b) is the integer ceiling - no float division, no math import.
+        chunks = max(-(-total // self._payload_size) + 1, _MIN_CHUNKS)
         if chunks > _CHUNKS_MAX:
             return None
         return chunks
-
-    def _chunks_for(self, total: int) -> int:
-        # ceil(total / payload_size) + 1, floored at 2: even a payload-less command has one data
-        # chunk to acknowledge. -(-a // b) is the integer ceiling - no float division, no math import.
-        return max(-(-total // self._payload_size) + 1, _MIN_CHUNKS)
 
     def _dest_size(self, chunks: int, exp_size: int) -> int | None:
         # The upper bound is known the moment CHUNKS is, and an exp_size the train
@@ -566,11 +550,8 @@ class UARTComm:
             backoff = min(backoff * _BACKOFF_MULT, self._backoff_max_ms)
 
     async def _listen_unlocked(self, device: "UART", get_cb: "_GetCallback", set_cb: "_SetCallback") -> ListenResult:
-        pending = self._peek_discarded(device)
         if not await self._read_frame(device, -1):  # the one legitimate unbounded wait
-            # A frame dropped inside the read (its CRC, framing or length) is named apart from a silence or a cancel (J.6).
-            dropped = self._peek_discarded(device) != pending
-            await self._fault(device, _ERR_TIMEOUT, "listen read dropped a corrupted or incomplete frame" if dropped else "listen read failed or was cancelled")
+            await self._fault(device, _ERR_TIMEOUT, "listen read failed or was cancelled")
             return _LISTEN_FAILED
         rx = self._rx.get_buf()
         if rx is None:  # Unreachable: _read_frame() already failed on a missing RX buffer - kept to narrow the Optional for the type checker
@@ -597,9 +578,7 @@ class UARTComm:
         # The ring holds what the stop-and-wait peer can send while one config flush holds the loop: its one
         # unacknowledged frame, plus one per re-initiation its timeout, drain and hold-off fit in _FLASH_HOLD_MAX_MS
         # (J.5), rounded up to a power of two (owner, 2026-10-05).
-        bus = self._uart
-        if bus is None:  # Unreachable: called only from _validate_receive(self._uart), after _validate_config() refused a missing bus - kept to narrow the Optional for the type checker
-            return 0
+        bus: UART = self._uart  # type: ignore[assignment]  # set: only _validate_receive() calls it, after _validate_config() refused a missing bus
         wire = bus.framing.max_encoded(_HEADER_LEN + self._payload_size + bus.crc.length())
         floor = max(self._min_rxbuf(), wire * (1 + _FLASH_HOLD_MAX_MS // (4 * self._timeout)))
         size = 1
@@ -654,11 +633,6 @@ class UARTComm:
             return None
         return valid, payload
 
-    def _peek_discarded(self, device: "UART") -> int:
-        # Bytes the driver dropped since the last resync, a wrong-length frame _read_frame() counts included; a rise
-        # across a failed read names the drop apart from a silence (J.6).
-        return (device.discarded_bytes - self._discarded_seen) & COUNTER_CAP
-
     def _prepare_tx(self, uid: int, cmd: int, chunks: int, cur_chunk: int, data: "Readable | None", size: int) -> bool:
         # Written by index with an explicit range check, never struct.pack()'d: pack() truncates
         # silently on this platform, so an out-of-range CHUNKS would become a plausible wrong value.
@@ -703,10 +677,8 @@ class UARTComm:
         return written
 
     async def _read_answer_header(self, device: "UART", get_id: int) -> tuple[int, int] | None:
-        pending = self._peek_discarded(device)
         if not await self._read_frame(device, self._timeout):
-            dropped = self._peek_discarded(device) != pending
-            await self._fault(device, _ERR_TIMEOUT, "answer read dropped a corrupted or incomplete frame for GET" if dropped else "no answer to GET", get_id)
+            await self._fault(device, _ERR_TIMEOUT, "no answer to GET", get_id)
             return None
         rx = self._rx.get_buf()
         err = self._validate(rx, CMD_SET, 1, None, None)
@@ -724,7 +696,6 @@ class UARTComm:
         buf = self._rx.get_buf()
         if buf is None:
             return False
-        overruns = device.rx_overruns
         size = await device.readinto_until_complete(
             buf, self._frame_size, start_timeout_ms=timeout_ms, timeout_ms=self._timeout,
         )
@@ -732,8 +703,6 @@ class UARTComm:
             return True
         if size is not None:  # a delimited frame that decoded to the wrong length: dropped, so counted (J.6)
             self._discarded_seen = (self._discarded_seen - size) & COUNTER_CAP
-        if device.rx_overruns != overruns:  # named beside the frame's own code, which the caller logs
-            await self.pr.wrn_s("receive overrun during a frame read", wrnno=_WRN_UART_RX_OVERRUN)
         return False
 
     async def _ready(self) -> bool:
@@ -749,10 +718,8 @@ class UARTComm:
         cur = 1
         while cur < chunks:
             cur += 1
-            pending = self._peek_discarded(device)
             if not await self._read_frame(device, self._timeout):
-                dropped = self._peek_discarded(device) != pending
-                await self._fault(device, _ERR_TIMEOUT, "train read dropped a corrupted or incomplete frame at chunk" if dropped else "train stalled at chunk", cur)
+                await self._fault(device, _ERR_TIMEOUT, "train stalled at chunk", cur)
                 return None
             rx = self._rx.get_buf()
             err = self._validate(rx, CMD_SET, cur, chunks, _next_uid(prev_uid))
@@ -845,8 +812,6 @@ class UARTComm:
         # uart_get() has to care about its length, and the _into/stream forms never allocate at all.
         if not await self._check_size(exp_size, allow_none=True):
             return None
-        if exp_size is not None and not await self._check_cap(exp_size):
-            return None
         bus = self._uart
         if bus is None:
             return None
@@ -864,7 +829,7 @@ class UARTComm:
         if len(self._ack) < self._frame_size:
             return False
         self._ack[_MSG_UID] = uid
-        return await device.writefrom(self._ack, self._frame_size, timeout_ms=self._timeout)
+        return await device.writefrom(self._ack, self._frame_size)
 
     async def _send_train(self, device: "UART", cmd_id: int, payload: "Readable | PieceBuffer | None", total: int, pull: "_PullCallback | None") -> bool:
         chunks = self._chunk_count(total)
@@ -892,10 +857,7 @@ class UARTComm:
                 continue
             data = view[sent : sent + size] if (view is not None and size) else None
             if pieces is not None:  # copied by index into the TX data region, which data=None then leaves in place
-                region = self._tx.get_data_buf()
-                if region is None or not pieces.read_at(sent, region[0:size]):  # Unreachable: a refused TX buffer refuses construction, and size stays within the answer - kept to narrow the Optional
-                    await self._fault(device, _ERR_ALLOC, "no TX data region")
-                    return False
+                pieces.read_at(sent, self._tx.get_data_buf()[0:size])  # type: ignore[index]  # a refused TX buffer refuses construction; size stays within the answer
             if not await self._write_frame_with_ack(device, CMD_SET, chunks, cur, data, size):
                 return False
             sent += size
@@ -904,10 +866,8 @@ class UARTComm:
     def _take_discarded(self) -> int:
         # Bytes a failed frame read swallowed since the last resync: without them a peer that only speaks when
         # spoken to never shows the mismatch signature (J.6).
-        bus = self._uart
-        if bus is None:  # Unreachable: runs only inside a transaction's resync, and no transaction runs once setup refused a missing bus - kept to narrow the Optional for the type checker
-            return 0
-        n = self._peek_discarded(bus)
+        bus: UART = self._uart  # type: ignore[assignment]  # set: no transaction, so no resync, runs once setup refused a missing bus
+        n = (bus.discarded_bytes - self._discarded_seen) & COUNTER_CAP
         self._discarded_seen = bus.discarded_bytes
         return n
 
@@ -1014,13 +974,11 @@ class UARTComm:
         if buf is None:  # Unreachable: _prepare_tx() returned False if the TX buffer were missing - kept to narrow the Optional for the type checker
             await self._err(_ERR_ALLOC, "no TX buffer")
             return False
-        if not await device.writefrom(buf, self._frame_size, timeout_ms=self._timeout):
+        if not await device.writefrom(buf, self._frame_size):
             await self._fault(device, _ERR_UART_WRITE_FAILED, "frame write failed")
             return False
-        pending = self._peek_discarded(device)
         if not await self._read_frame(device, self._timeout):
-            dropped = self._peek_discarded(device) != pending
-            await self._fault(device, _ERR_UART_NO_ACK, "ACK read dropped a corrupted or incomplete frame after sending frame" if dropped else "no ACK for frame", cur_chunk)
+            await self._fault(device, _ERR_UART_NO_ACK, "no ACK for frame", cur_chunk)
             return False
         err = self._validate(self._rx.get_buf(), _CMD_ACK, 1, 1, uid)
         if err:
@@ -1185,8 +1143,6 @@ class UARTComm:
         if total < 0 or (buf is None and total) or (buf is not None and total > len(buf)):
             await self._err(_ERR_UART_SIZE_MISMATCH, "size", total, "does not fit the supplied buffer")
             return False
-        if not await self._check_cap(total):
-            return False
         self._busy = True
         try:
             async with bus as device:
@@ -1205,7 +1161,7 @@ class UARTComm:
             # total_size bytes of padding while the call reported success.
             await self._err(_ERR_BAD_ARG, "uart_set_stream needs a pull callback")
             return False
-        if not await self._check_size(total_size, allow_none=False) or not await self._check_cap(total_size):
+        if not await self._check_size(total_size, allow_none=False):
             return False
         bus = self._uart
         if bus is None:

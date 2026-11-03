@@ -182,20 +182,9 @@ class PieceBuffer:
     def __len__(self) -> int:
         return self._size
 
-    def copy_into(self, dest: bytearray | memoryview, start: int = 0) -> bool:
-        # The bytes from start to the end into the front of dest; a short dest gets nothing, never a partial copy.
-        if start < 0 or start > self._size or len(dest) < self._size - start:
-            return False
-        index, at = divmod(start, self._piece_bytes)
-        pos = 0
-        while index < len(self._pieces):
-            piece = self._pieces[index]
-            n = len(piece) - at
-            dest[pos : pos + n] = memoryview(piece)[at:]
-            pos += n
-            index += 1
-            at = 0
-        return True
+    def copy_into(self, dest: bytearray | memoryview) -> bool:
+        # The whole buffer into the front of dest; a short dest gets nothing, never a partial copy.
+        return len(dest) >= self._size and self.read_at(0, memoryview(dest)[0 : self._size])
 
     def pieces(self) -> "Iterator[bytearray]":
         return iter(self._pieces)

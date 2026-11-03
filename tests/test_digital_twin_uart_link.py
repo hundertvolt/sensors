@@ -283,7 +283,9 @@ def _crc16_pair() -> "tuple[UARTLinkDriver, UARTLinkDriver, TwinLink]":
     buses[0].poller = LinkPoller(fake_a)  # type: ignore[assignment]
     buses[1].poller = LinkPoller(fake_b)  # type: ignore[assignment]
     initiator, responder = ends
-    assert _run(initiator.setup()) is True and _run(responder.setup()) is True
+    _run(initiator.setup())
+    _run(responder.setup())
+    assert initiator.initialized and responder.initialized
     return initiator, responder, link
 
 

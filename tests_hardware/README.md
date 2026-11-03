@@ -1111,7 +1111,8 @@ a live question:
 - **The UART link's coverage on silicon is 11 flash-tier tests and 5 bench-tier tests**
   (`flash/test_uart_crossover.py`; `bench/test_uart_link_under_api_load.py`,
   `bench/test_uart_link_crc16.py`), none run since the receive path moved onto the DMA ring. Each
-  crossover script that runs the link runs with no CRC and with CRC16; the bench link suite runs
+  crossover script that runs the link runs with no CRC and with CRC16, the exchange script also with
+  COBS framing (`cobs`, no CRC; owner, 2026-11-02); the bench link suite runs
   once per mode, the CRC16 run behind `--allow-flash-cycle` (two reflashes: the CRC16 image built
   with `--device-toml` from a copy setting `crc = "crc16"`, and back to the round's image).
   - Two platform findings are asserted rather than documented: F.5.8's clamped read

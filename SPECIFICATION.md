@@ -3195,11 +3195,8 @@ region**, published through request/ack sequences masked to 2**30 − 1 and comp
 bounded so the call is provably terminating; **raise contract** (re-verified against
 `ports/rp2/machine_uart.c` at v1.29.0; rp2's raise surface is F.1's): a hardware
 framing/parity/overrun error is never raised — delivered corrupted, dropped, or skipped silently
-instead, and `write()` can short-write, so `write()`/`writefrom()` retry the rest under
-`timeout_ms`, one deadline for the whole write (≤ 0 waits on), and a transmitter that never drains
-fails the write. A zero-length payload is transferred as nothing, in every CRC and codec mode; a
-concurrent `deinit()` is seen at the next `ready()` exit, which re-checks the bus after its closing
-yield; `discarded_bytes` counts the bytes a failed `*_until_complete()` read consumed and dropped
+instead, and `write()` can short-write, so `write()`/`writefrom()` retry the rest, each round
+waiting on `ready(POLLOUT)` and an idle transmitter; `discarded_bytes` counts the bytes a failed `*_until_complete()` read consumed and dropped
 (masked to 2**30 − 1). `readline_until_complete()` takes the same receive cap as a transfer
 (`max_bytes`) and never grows by concatenation: the line lands in pieces of `chunk_bytes`, allocated
 when the call starts (a `MemoryError` there answers `None` with its text through its user's logger, the
@@ -3214,15 +3211,17 @@ index (F.5.8); transmit stays on `machine.UART`, whose receive buffer is held at
 `setup_rx_ring()` allocates the ring once and returns a bool, recording why it failed in
 `rx_ring_refusal` (no bus, ring size, allocation or DMA channel); its size is the public `rx_ring`,
 which the protocol checks against its floor (J.6). The ring's fill level is the one choke point
-every read passes; reading `DMA.count` raises only on a closed channel (`ValueError`,
-`ports/rp2/rp2_dma.c:372-376, 390-392`, v1.29.0), so the choke point's catch guards that case and a
-future port: a closed channel reads as a silent line, so a listener waits out its timeout instead of
-failing and relistening at once (agent, 2026-10-07). A lap of the ring is the receive overrun J.7
-names. The fill-level choke point also reads UARTRSR (RP2040 datasheet 4.2.8, Table 427): an overrun
-(OE), a framing error (FE) or a break (BE), each a received byte that is not what was sent, is
-cleared through UARTECR and handed to the caller as the receive overrun J.7 names, so the frame
-fails and the sender's transaction fails with it (owner, 2026-10-06, for the overrun; framing errors
-and breaks the same way, agent, 2026-10-06). Parity is not tested while no link configures it. A
+every read passes; its channels close only in `setup_rx_ring()`'s failure arm, which drops both
+references (`ports/rp2/rp2_dma.c:372-375`, v1.29.0), so no read meets a closed channel. A lap of
+the ring is the receive overrun J.7 names. The fill-level choke point also reads UARTRSR (RP2040
+datasheet 4.2.8, Table 427): an overrun (OE), a framing error (FE) or a break (BE), each a received
+byte that is not what was sent, is cleared through UARTECR and handed to the caller as the receive
+overrun J.7 names, so the frame fails and the sender's transaction fails with it (owner,
+2026-10-06, for the overrun; framing errors and breaks the same way, agent, 2026-10-06). UARTRSR
+holds the error bits of the byte the DMA read last, so the check fails a frame only when the line
+goes quiet after the bad byte; a mid-stream error is left to the CRC or the frame length, and `dev`
+runs `crc = "none"` (dev bench, 2026-10-29: 8 of 134 corrupted frames flagged under glitches). The
+ring's two channels stop through `_rx_stop()` (F.5.8). Parity is not tested while no link configures it. A
 re-init restarts the ring's stream and fails the next read as an overrun, so the caller resyncs
 rather than reading a frame with a byte the handler took before the interrupts were masked. Every
 method returns a sentinel, `readline_until_complete()`'s piece allocation included — a third
@@ -7266,7 +7265,13 @@ level, never `uart.any()`; every read copies from the ring by index, never throu
 ring adds no allocation (`readinto()` and the `*_until_complete()` frame reads allocate nothing);
 half 2's yield in `ready()` and its wait and idle rates stay. Soft reset is safe: the UART block is
 reset first, so the RX DREQ stops pacing the channel, and `gc_sweep_all()` then runs `rp2.DMA`'s
-finaliser, which aborts it (`ports/rp2/main.c:287, 303`; `rp2_dma.c:365, 637-673`). The per-byte
+finaliser, which aborts it (`ports/rp2/main.c:287, 303`; `rp2_dma.c:365, 637-673`). A `deinit()` or
+re-init stops the ring through `_rx_stop()`: an abort completes the busy data channel and fires its
+chain (RP2040-E13, 2.5.5.3), so the reload restarts it and `active(False)`'s wait for an idle channel
+never ends (dev bench, 2026-10-29: the board hung until the watchdog); the data channel's CHAIN_TO is
+first pointed at itself, which disables chaining (2.5.7), through the non-triggering AL1_CTRL alias
+that the `ctrl` attribute writes (`rp2_dma.c:427-430`), then the reload and the data channel are
+aborted. The per-byte
 wait measured above stays a fact of `machine.UART`'s receive calls, which this driver no longer
 makes.
 
@@ -7756,7 +7761,7 @@ backend-only or frontend-only validation/coercion policy change in this project.
   size (a `MemoryError` there goes to the caller, which catches it into its own failure result: J.8,
   C.3.2; owner, 2026-10-27), with its length (`len()`), iteration (`pieces()`), a
   write at an offset (`write_at()`), its mirror (`read_at(offset, dest)`, exactly `len(dest)` bytes)
-  and a copy-out (`copy_into(dest, start)`, never a partial copy:
+  and a copy-out of the whole buffer (`copy_into(dest)`, never a partial copy:
   a short destination gets nothing), so no single allocation exceeds `chunk_bytes`; `trim(length)`
   shortens a short train's result without allocating. It is never joined into one buffer: no
   `__eq__`, no buffer protocol. `UARTComm` assembles every train without a caller destination in it
@@ -9805,17 +9810,6 @@ The diagnostic needs a link that has not validated one frame since boot: `ResetE
 history and the resync streak but never the valid-frame count, so a reset cannot re-arm it on a link
 that has worked (agent, 2026-10-06).
 
-**A failed read names a frame it dropped apart from a silence.** The listen and the three bounded
-waits compare `discarded_bytes` across the read (`_peek_discarded()`), so a rise means a frame was
-dropped inside it (its CRC, framing or length): the listen logs "listen read dropped a corrupted or
-incomplete frame" against "listen read failed or was cancelled", the GET's answer wait "answer read
-dropped a corrupted or incomplete frame for GET" against "no answer to GET", a train's chunk wait
-"train read dropped a corrupted or incomplete frame at chunk" against "train stalled at chunk", and
-a frame's ACK wait "ACK read dropped a corrupted or incomplete frame after sending frame" against
-"no ACK for frame". The errnos stay (22 `TIMEOUT` for the first three, 81 `UART_NO_ACK` for the
-ACK), so only the text tells the two apart: a log-text change with no C impact
-(`UART_C_PORT_CHANGELOG.md` B78, B85).
-
 `payload_size` must be in `1 … 255` (`SIZE`/`CHUNKS` are single bytes; a zero-width payload has no
 room for the command ID). A mismatch desyncs the link outright, so an out-of-range value must never
 be silently clamped — C.13's readiness-gate treatment instead. A delimited frame codec must carry one
@@ -9932,8 +9926,7 @@ is lost uncounted.
 **The receive limits are pinned at L1** (J.8). In `tests/test_asy_uart_comm.py`: a don't-care GET
 and a don't-care SET arrive in pieces of at most `chunk_bytes`, a caller-supplied destination is
 still filled in place, a declared size or an `exp_size` above `max_transfer_bytes` is refused before
-any allocation while a train at the cap completes, a transfer over the sender's own cap is refused
-before anything is sent, repeated maximum-size and over-cap trains keep the collect-bracketed heap
+any allocation while a train at the cap completes, repeated maximum-size and over-cap trains keep the collect-bracketed heap
 flat, refusals retain nothing measured against an ambient control awaiting a no-op as often, a ring
 below its floor is refused, one at its floor holds a config flush's hold with no lap, and a lapped
 ring is a receive overrun the link resyncs from. In `tests/test_asy_uart_driver.py`: the readline
@@ -9979,7 +9972,7 @@ reclaimed request's trace), each timer late by at most one flash hold.
 **At L3** the pair runs across the bench board's permanent crossover jumper
 (`tests_hardware/flash/test_uart_crossover.py`, each crossover script in both CRC modes): a GET, a
 SET and a multi-chunk train with a maximum-size transfer intact and an over-cap one refused
-(`uart_crossover_exchange.py`); recovery from silence and from a baud desync, each timed against the
+(`uart_crossover_exchange.py`, also framed by COBS: owner, 2026-11-02); recovery from silence and from a baud desync, each timed against the
 protocol's resync bound (`uart_crossover_recovery.py`); the comm hazards - two initiations on one
 instance, `clear()` racing a transaction, both ends transmitting, the first-chunk field boundaries
 and a stalled TX (`uart_comm_hazards.py`); the shipped driver's read never holding the loop and the
@@ -9989,7 +9982,8 @@ idle poll rate (F.5.8, F.5.9); the link beside every other subsystem's load; and
 DREQ-paced transmit DMA - every frame within the bound intact with UARTRSR's overrun bit clear, the
 over-bound window read as an overrun - a soft reset during traffic leaving no DMA channel running,
 a break the other UART sends mid-frame failing that transaction only and recording whether UARTRSR's
-error bits follow a DMA read, and a real config write during traffic, only with
+error bits follow a DMA read (they do: they hold the byte the DMA read last, C.3.2; dev bench,
+2026-10-29), and a real config write during traffic, only with
 `--allow-persistence-write` (owner, 2026-10-05). The results are owed until the first bench run.
 **At L4** the link runs under the bench's API load (`tests_hardware/bench/test_uart_link_under_api_load.py`),
 a multi-chunk SET echoing intact through the serving board's own exerciser
@@ -10131,8 +10125,7 @@ The module therefore follows Part G.2's buffer-ownership primitive, in the same 
   size, and `uart.max_transfer_bytes`, the largest train at the default `payload_size`, so no
   default train is refused), as `WebserverService`'s `chunk_bytes` is a `ServingLimits` field, and
   `max_transfer_bytes` is declared in the link's device TOML beside the receive ring's size (J.6),
-  the generated `TransferLimits` carrying it. A sender refuses a total or an `exp_size` over its own
-  cap at its argument checks, sending nothing. The cap is per instance, so a sender whose cap is
+  the generated `TransferLimits` carrying it. The cap is per instance, so a sender whose cap is
   above its peer's learns of the peer's refusal only as the withheld ACK (`UART_NO_ACK`), while the
   peer logs `UART_TRANSFER_CAP`: J.4 has no NAK to carry the cause. `readline_until_complete()`
   takes the same cap (C.3.2). A caller that declares its size caps it — the form to prefer in a new
@@ -11981,7 +11974,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `uart.poll_jitter_ms` | 5 ms | `src/asy_uart_comm.py` — `5` | `uart.rxbuf_floor` (its scheduling-slack term) | estimated (agent, `c63ef97`) — measurement owed: the scheduling gap of a polling task under load on the dev bench, L3 | unknown until measured | any value change is logged in `UART_C_PORT_CHANGELOG.md` (Class A by definition for an `asy_uart_comm.py` const, CLAUDE.md UART rule) |
 | `uart.diag_resync_streak` | 2 | `src/asy_uart_comm.py` — `2` | the never-valid diagnostic (J.6); `tests/test_uart_comm_hazard.py`'s 4 exchanges in a row, several past the streak | estimated (agent, `c63ef97`) — measurement owed: resync streaks on a sound link under load, L3 | unknown until measured | any value change is logged in `UART_C_PORT_CHANGELOG.md` (Class A by definition for an `asy_uart_comm.py` const, CLAUDE.md UART rule) |
 | `uart.chunk_bytes` | 256 B | `src/asy_uart_comm.py` — `256` | `DEFAULT_LIMITS.chunk_bytes`: the largest single receive allocation of a train with no caller destination (`PieceBuffer` pieces, J.8); `tests/test_asy_uart_comm.py`'s piece-size tests | the webserver's piece size `web.chunk_bytes` (owner, 2026-09-26), reused so the two receive paths share one allocation bound (agent, 2026-10-07) | a 256 B piece against the ~105,000 B free after boot (I.6), as `web.chunk_bytes` | `web.chunk_bytes` changes, or a heap-placement measurement favours another piece size |
-| `uart.max_transfer_bytes` | 12192 B | `src/asy_uart_comm.py` — `12192` | `DEFAULT_LIMITS.max_transfer_bytes`: a declared train above it is refused before its ACK and at the sender's argument checks (J.8); a construction refusal below `payload_size`; `l1.asy_uart_comm_hammer_rounds`' trains at and one byte over the cap | estimated (agent, 2026-10-07): `(_CHUNKS_MAX − 1) × _DEFAULT_PAYLOAD_SIZE` = 254 × 48, the largest train at the default `payload_size` and the twin's maximum-length train, so no train accepted at the defaults is refused — measurement owed: the largest free block after boot on `dev` against a train at the cap held in pieces, L3 | none at the default `payload_size`, exactly its largest train; a larger `payload_size` (up to 64,770 B at 255) is capped | the default `payload_size` changes, or a link needs a larger transfer |
+| `uart.max_transfer_bytes` | 12192 B | `src/asy_uart_comm.py` — `12192` | `DEFAULT_LIMITS.max_transfer_bytes`: a declared train above it is refused before its ACK (J.8); a construction refusal below `payload_size`; `l1.asy_uart_comm_hammer_rounds`' trains at and one byte over the cap | estimated (agent, 2026-10-07): `(_CHUNKS_MAX − 1) × _DEFAULT_PAYLOAD_SIZE` = 254 × 48, the largest train at the default `payload_size` and the twin's maximum-length train, so no train accepted at the defaults is refused — measurement owed: the largest free block after boot on `dev` against a train at the cap held in pieces, L3 | none at the default `payload_size`, exactly its largest train; a larger `payload_size` (up to 64,770 B at 255) is capped | the default `payload_size` changes, or a link needs a larger transfer |
 | `uart.exercise_period_ms` | 1000 ms | `src/asy_uart_link_driver.py` — `1000` | the bench exerciser's transfer rate | estimated (agent, `4f8caf5`) — measurement owed: the link's sustained transfer rate on the dev bench, L3 | unknown until measured | the exerciser's traffic changes |
 | `uart.hazard_quiet_timeouts` | 3 | `src/asy_uart_link_driver.py` — `3` | the hazard mode's wait after a raw frame the peer answered, in reply budgets (× the link's `timeout`, 3 s at dev's 1000 ms): the peer's train timeout and resync window pass before the next frame | the peer's train timeout and resync window, 2.5 budgets (J.5, J.6), as the bench hazard script's `l3.uart_comm_hazards_quiet_window_ms` (300 ms at its 100 ms timeout) (agent, 2026-10-21) | half a budget over the 2.5 | the comm's train timeout or resync window changes |
 | `uart.hazard_window_timeouts` | 8 | `src/asy_uart_link_driver.py` — `8` | the hazard mode's raw ACK window and its wait before each recovery exchange, in reply budgets (8 s at dev's 1000 ms) | the peer's longest listen backoff, 5 budgets (`asy_uart_comm.py`'s `_BACKOFF_MAX_MULT`, J.5), plus its timeout and resync window, 2.5, rounded up (agent, 2026-10-21) | half a budget over the 7.5 | the comm's listen backoff, train timeout or resync window changes |
