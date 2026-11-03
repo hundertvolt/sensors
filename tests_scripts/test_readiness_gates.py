@@ -17,6 +17,7 @@ _CARRY_NONE = ("SystemService", "SensorReader", "WebserverService", "NeopixelDri
 _TEARDOWN_RE = re.compile(r"^(?:deinit|close|disconnect|stop_\w+|cleanup)$")
 _CHIP_CLASS_RE = re.compile(r"^\w+_I2C$")  # a stop_* there is a chip command, not a teardown
 _MIRRORS = frozenset({("_TimeoutStreamProxy", "close")})  # the asyncio stream's own close(), mirrored
+_NO_OPS = frozenset({("I2C", "deinit"), ("SPI", "deinit")})  # rp2's own deinit() is a no-op (F.5.1): nothing to answer
 # Teardowns that answer None until their rework lands; an entry that answers bool fails. Empty: the list only shrinks.
 _PENDING_TEARDOWNS: dict[tuple[str, str], str] = {}
 
@@ -122,7 +123,7 @@ def teardown_findings(classes: Classes) -> list[str]:
     for cls, node in classes.nodes.items():
         has_logger = any(isinstance(n, ast.Attribute) and n.attr == "pr" and isinstance(n.ctx, ast.Store) for owner in classes.mro(cls) for n in ast.walk(classes.nodes[owner]))
         for fn in (f for f in node.body if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)) and _TEARDOWN_RE.match(f.name)):
-            if has_logger or (cls, fn.name) in _MIRRORS or (fn.name.startswith("stop_") and _CHIP_CLASS_RE.match(cls)):
+            if has_logger or (cls, fn.name) in _MIRRORS | _NO_OPS or (fn.name.startswith("stop_") and _CHIP_CLASS_RE.match(cls)):
                 continue
             answer = ast.unparse(fn.returns).strip("'\"") if fn.returns is not None else "<none>"
             if (cls, fn.name) in _PENDING_TEARDOWNS:
@@ -189,9 +190,9 @@ def test_a_teardown_not_answering_bool_fails(src_copy: Path) -> None:
 
 
 def test_a_pending_teardown_that_answers_bool_must_leave_the_list(src_copy: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(_PENDING_TEARDOWNS, ("I2C", "deinit"), "a later unit")
+    monkeypatch.setitem(_PENDING_TEARDOWNS, ("UART", "deinit"), "a later unit")
     findings = all_findings(src_copy)
-    assert len(findings) == 1 and "I2C.deinit() answers bool now: drop it from the pending teardowns" in findings[0], findings
+    assert len(findings) == 1 and "UART.deinit() answers bool now: drop it from the pending teardowns" in findings[0], findings
 
 
 def test_config_manager_gating_on_anything_but_valid_fails(src_copy: Path) -> None:

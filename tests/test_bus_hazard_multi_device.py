@@ -94,7 +94,6 @@ def test_cross_device_bmp3xx_and_sgp40_interleave_and_both_stay_correct() -> Non
 
         async def bmp_loop(bmp: BMP3XX_I2C = bmp, bmp_results: "list[tuple[float, float]]" = bmp_results) -> None:
             for _ in range(bmp_iterations):
-                assert await bmp.take_por_detected() is False  # the reader's per-cycle EVENT read, then the conversion
                 pressure, temperature = await bmp.get_pressure_and_temperature()
                 bmp_results.append((pressure, temperature))
                 await asyncio.sleep(0)
@@ -115,8 +114,7 @@ def test_cross_device_bmp3xx_and_sgp40_interleave_and_both_stay_correct() -> Non
             assert abs(temperature - BMP_EXPECTED_TEMPERATURE) < 1e-6
         assert all(raw == 0x8000 for raw in sgp_results)
         log = list(fake_bus.log)
-        assert _register_reads_unbroken(log, _BMP_ADDR) > 0  # every register read, the EVENT read included, atomic
-        assert sum(1 for entry in log if entry[:3] == ("writeto", _BMP_ADDR, b"\x10")) == bmp_iterations  # one EVENT read per cycle
+        assert _register_reads_unbroken(log, _BMP_ADDR) > 0  # every register read atomic
 
         # Genuine interleaving proof: a BMP3xx transfer lands between an SGP40 command and its reply, the conversion
         # wait the driver frees the bus for.
@@ -354,16 +352,16 @@ def test_a_recovery_between_a_split_session_still_returns_a_valid_value() -> Non
         adapter = I2C_HAZARD_CATALOG[driver]
         i2c = make_i2c(1)
         instance = adapter.construct(i2c, address)
+        adapter.seed(fake(i2c), address, 1)
         after = None
         if isinstance(instance, BMP3XX_I2C):
             with FastAsyncSleep():
                 run(instance.setup())
-            fake(i2c).registers[(address, 0x03)] = bytearray([0x00])  # STATUS not ready: the poll yields
+            fake(i2c).registers[(address, 0x03)] = bytearray([0x00])  # STATUS not ready, after the seed: the poll yields
 
             def after(i2c: I2C = i2c, address: int = address) -> None:  # bound now: the loop moves on
                 fake(i2c).registers[(address, 0x03)] = bytearray([0x10 | 0x60])
 
-        adapter.seed(fake(i2c), address, 1)
         with FastAsyncSleep():
             run(_recover_between_halves(i2c, address, trigger, adapter.read_once(instance), after))
         try:
@@ -508,32 +506,6 @@ def test_an_isl29125_reapply_mid_read_leaves_every_sibling_read_valid() -> None:
         writes = [entry[2] for entry in fake(i2c).log if entry[0] == "writeto" and entry[1] == _ISL_ADDR and entry[3]]
         assert any(w[:1] == b"\x01" and len(w) == 4 for w in writes), f"no whole CONFIG1-3 burst: {writes}"
         assert any(w[:1] == b"\x04" for w in writes), f"the thresholds were not re-armed: {writes}"  # auto-range's thresholds
-        assert bytes(fake(i2c).registers[(_ISL_ADDR, 0x01)]) == reader._isl.encode_shadow(), "the chip's CONFIG1-3 differ from the shadow"
-
-    _across_offsets(scenario)
-
-
-def test_an_isl29125_interrupt_rearm_mid_read_leaves_every_sibling_read_valid() -> None:
-    # The dead-line rung: five periodic-only range decisions warn once and re-arm the interrupt (CONFIG1-3 and the
-    # thresholds re-written) beside the SCD30 and SGP40 loops on the shared i2c1; every sibling read stays valid.
-    def scenario(offset: int) -> None:
-        i2c, instances = _shared_i2c1()
-        reader = ISL29125_Reader(i2c, 15, cfg_path=_scratch.dir())
-        seed_isl_ready(i2c, _ISL_ADDR)
-        run(reader.setup())
-        fake(i2c).log.clear()
-
-        async def rung() -> None:
-            for _ in range(5):
-                await reader._note_decision_source(threshold_fired=False)
-
-        with FastAsyncSleep():
-            run(_rung_beside_sibling_reads(i2c, instances, ("scd30", "sgp40"), rung, offset))
-        log = run(reader.get_error_counter())["ISL29125"]
-        assert [(log["ErrType"][i], log["ErrNum"][i]) for i in range(len(log["ErrNum"])) if log["ErrType"][i] != "N"] == [("W", code("W", "ISL_PERIODIC_ONLY"))], log
-        writes = [entry[2] for entry in fake(i2c).log if entry[0] == "writeto" and entry[1] == _ISL_ADDR and entry[3]]
-        assert [w for w in writes if w[:1] == b"\x01" and len(w) == 4], f"no whole CONFIG1-3 burst: {writes}"
-        assert any(w[:1] == b"\x04" for w in writes), f"the thresholds were not re-armed: {writes}"
         assert bytes(fake(i2c).registers[(_ISL_ADDR, 0x01)]) == reader._isl.encode_shadow(), "the chip's CONFIG1-3 differ from the shadow"
 
     _across_offsets(scenario)

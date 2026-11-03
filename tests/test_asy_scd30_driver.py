@@ -63,43 +63,6 @@ def _arg_words(i2c: FakeI2C) -> "list[int]":
     return [(entry[2][0] << 8) | entry[2][1] for entry in i2c.log if entry[0] == "writeto" and len(entry[2]) == 5]
 
 
-def _arm_failure_then_restart(exc: "type[BaseException]") -> None:
-    reader = _make_reader(trigger_s=1)  # two ticks with the pin high force a read
-    reader._irq_pin.value(1)
-
-    async def first_run() -> bool:
-        task = asyncio.create_task(reader._irq_loop())
-        await _settle(3)
-        with RaiseOnArm(exc):
-            reader.start_timer()
-        await _settle(5)
-        if not task.done():
-            task.cancel()
-            return False
-        await task  # ended on its own: a return, not a raise
-        return True
-
-    assert run(first_run()) is True, exc
-    log = run(reader.get_error_counter())["SCD30"]
-    assert log["ErrCount"] == 1 and log["ErrNum"][-1] == code("E", "TIMER"), exc
-
-    async def restart() -> bool:
-        task = asyncio.create_task(reader._irq_loop())
-        await _settle(3)
-        for _ in range(2):
-            reader._start_trigger_timer.trigger()
-            await _settle(3)
-        fired = reader._read_event.state
-        await cancel(task)
-        return bool(fired)
-
-    assert run(restart()) is True, exc
-    assert [arm[1] for arm in reader._start_trigger_timer.arms] == [_START_TRIGGER_PERIOD_MS]
-    log = run(reader.get_error_counter())["SCD30"]
-    assert log["ErrCount"] == 2, exc  # counted again
-    assert [n for n in log["ErrNum"] if n] == [code("E", "TIMER")], exc  # in one slot
-
-
 def _contmeas_put(body: "CfgValue") -> "tuple[WriteValidity, ErrorLog, FakeI2C]":
     reader = _make_reader()
     i2c = _reader_fake_i2c(reader)
@@ -135,8 +98,8 @@ def _entries(reader: SCD30_Reader) -> "list[tuple[str, int]]":
     return [(t, n) for t, n in zip(log["ErrType"], log["ErrNum"]) if t != "N"]
 
 
-async def _fake_chip_setup() -> bool:
-    return True
+async def _fake_chip_setup() -> None:
+    return
 
 
 def _fake_init(reader: SCD30_Reader) -> None:
@@ -402,20 +365,6 @@ def test_read_measurement_decodes_every_word_like_struct_unpack() -> None:
         assert run(scd.read_measurement()) is True
         expected = [struct.unpack(">f", frame[6 * k : 6 * k + 2] + frame[6 * k + 3 : 6 * k + 5])[0] for k in range(3)]
         assert [scd._co2, scd._temperature, scd._relative_humidity] == expected, frame
-
-
-def test_read_measurement_drops_the_crc_bytes_into_one_reused_word_buffer() -> None:
-    # The six data words land in place in the reader's own buffer, the same one every read: no slice copies per read.
-    scd, i2c = _make_scd()
-    words = scd._words
-    for values in ((400.0, 20.0, 50.0), (512.5, -3.25, 99.5)):
-        frame = data_frame(*values)
-        i2c.read_queue.append(register_frame(1))
-        i2c.read_queue.append(frame)
-        assert run(scd.read_measurement()) is True
-        assert scd._words is words
-        assert bytes(words) == bytes(frame[i] for i in range(18) if i % 3 != 2)
-        assert (scd._co2, scd._temperature, scd._relative_humidity) == values
 
 
 def test_asc_deactivate_matches_datasheet_example() -> None:
@@ -760,25 +709,6 @@ def test_read_measurement_not_ready_leaves_cached_values_untouched_and_issues_no
     assert ops == ["writeto", "readfrom_into"]  # only the data-ready probe, no measurement read
 
 
-def test_a_deinitialised_bus_fails_the_read_without_checking_a_stale_buffer() -> None:
-    # A no-op transfer would leave the previous frame in the buffer, whose CRCs pass: the bus result
-    # is tested before any CRC, so the stale frame is never decoded as a fresh reading.
-    scd, i2c = _make_scd()
-    i2c.read_queue.append(register_frame(1))
-    i2c.read_queue.append(data_frame(400.0, 20.0, 50.0))
-    run(scd.read_measurement())
-    assert (scd._co2, scd._temperature, scd._relative_humidity) == (400.0, 20.0, 50.0)
-    scd._buffer[:] = data_frame(800.0, 25.0, 60.0)  # a valid frame left behind, first word non-zero
-    scd._i2c_scd30.i2c_device.i2c.deinit()
-    try:
-        run(scd.read_measurement())
-        message = ""
-    except OSError as e:
-        message = str(e)
-    assert message == "I2C bus not initialized"
-    assert (scd._co2, scd._temperature, scd._relative_humidity) == (400.0, 20.0, 50.0)
-
-
 def test_read_measurement_never_ran_yet_leaves_getters_at_their_initial_none() -> None:
     # The untouched-on-not-ready behavior must not be confused with "always returns stale data" -
     # before the first successful read_measurement() ever runs, the cache is still None (__init__'s
@@ -948,7 +878,7 @@ def test_setup_probes_reads_firmware_version_then_soft_resets_and_reads_the_temp
     i2c.read_queue.append(register_frame(0x0301))
     i2c.read_queue.append(register_frame(450))
     with FastAsyncSleep() as sleeps:
-        assert run(scd.setup()) is True
+        run(scd.setup())
     assert [seconds for _task, seconds, _ms in sleeps.slept].count(_SOFT_RESET_WAIT_MS / 1000) == 1
     ops = [entry[0] for entry in i2c.log]
     assert ops == ["writeto", "writeto", "readfrom_into", "writeto", "writeto", "readfrom_into"]
@@ -1022,10 +952,7 @@ def test_reader_start_timer_degrades_gracefully_when_the_trigger_timer_cannot_be
         reader.start_timer()  # must not raise despite the timer failing to arm
     assert reader._start_trigger_timer.period == -1  # never actually armed
     assert reader._start_trigger_timer.callback is None  # nothing wired to _base_trigger_event
-    # start_timer() is synchronous and persists nothing itself; the waiting _irq_loop() records the TIMER
-    # error and ends (see the test below).
-    assert run(reader.get_error_counter())["SCD30"]["ErrCount"] == 0
-    assert reader._base_trigger_event.state  # the waiter is woken
+    assert run(reader.get_error_counter())["SCD30"]["ErrCount"] == 0  # a console line, never a persisted entry
 
     # The pin IRQ is wired after the guarded try/except, so a timer that failed to arm must not
     # cost the sensor its data-ready interrupt as well - that IRQ, not the timer, is what actually
@@ -1049,36 +976,6 @@ def test_reader_start_timer_degrades_gracefully_on_a_memory_error_while_arming()
     assert reader._start_trigger_timer.period == -1  # never actually armed
     assert reader._start_trigger_timer.callback is None
     assert reader._irq_pin.irq_trigger == FakePin.IRQ_RISING
-    assert reader._base_trigger_event.state  # the waiter is woken
-
-
-def test_a_failed_trigger_arm_ends_the_irq_task_with_one_timer_entry_and_a_restart_rearms() -> None:
-    # The arm fails after the task started (tasks start before timers at boot): the woken task persists a TIMER
-    # entry and ends; its restart counts it again in the same slot, re-arms, and a tick drives the stuck-pin read.
-    for exc in (OSError, MemoryError):
-        _arm_failure_then_restart(exc)
-
-
-def test_an_arm_failure_stored_before_the_irq_task_starts_is_persisted_once_then_re_armed() -> None:
-    reader = _make_reader()
-    with RaiseOnArm(OSError):
-        reader.start_timer()
-    assert run(reader.get_error_counter())["SCD30"]["ErrCount"] == 0  # the starter only stores it
-
-    async def run_briefly() -> bool:
-        task = asyncio.create_task(reader._irq_loop())
-        await _settle(3)
-        ended = task.done()
-        await cancel(task)
-        return ended
-
-    assert run(run_briefly()) is False
-    log = run(reader.get_error_counter())["SCD30"]
-    assert log["ErrCount"] == 1 and log["ErrNum"][-1] == code("E", "TIMER")
-    assert [arm[1] for arm in reader._start_trigger_timer.arms] == [_START_TRIGGER_PERIOD_MS]  # one arm, at the start
-    assert run(run_briefly()) is False  # a later start with nothing stored persists and arms nothing
-    assert run(reader.get_error_counter())["SCD30"]["ErrCount"] == 1
-    assert len(reader._start_trigger_timer.arms) == 1
 
 
 def test_reader_stop_timer_deinits_the_periodic_timer_only() -> None:
@@ -2152,52 +2049,9 @@ def test_a_not_ready_cycle_republishes_the_cached_reading_with_a_fresh_ts_and_no
     assert run(reader.get_error_counter())["SCD30"]["ErrCount"] == 0
 
 
-def test_five_not_ready_reads_warn_once_and_new_data_clears() -> None:
-    reader = _make_reader()
-    outcome: list[bool | None] = [False]
-
-    async def read_measurement() -> bool:
-        if outcome[0] is None:
-            raise OSError(5, "nak")
-        return outcome[0]
-
-    async def fake_value() -> float:
-        return 21.0
-
-    reader._scd.read_measurement = read_measurement  # type: ignore[method-assign]
-    reader._scd.get_CO2 = fake_value  # type: ignore[method-assign]
-    reader._scd.get_temperature = fake_value  # type: ignore[method-assign]
-    reader._scd.get_relative_humidity = fake_value  # type: ignore[method-assign]
-
-    def cycles(*outcomes: "bool | None") -> "list[int]":
-        warned = []
-        for value in outcomes:
-            outcome[0] = value
-            run(reader._read_scd())
-            warned.append(sum(1 for e in _entries(reader) if e == ("W", code("W", "SCD_NOT_READY"))))
-        return warned
-
-    assert cycles(False, False, False, False, False, False) == [0, 0, 0, 0, 1, 1]
-    assert reader._not_ready_reads == 5  # held at the threshold
-    assert cycles(True) == [1] and reader._not_ready_reads == 0
-    cycles(False, False, False, False, False)
-    log = run(reader.get_error_counter())["SCD30"]
-    assert log["ErrCount"] == 2 and log["ErrNum"].count(code("W", "SCD_NOT_READY")) == 1  # one slot, newest-entry rule
-    reader = _make_reader()
-    reader._scd.read_measurement = read_measurement  # type: ignore[method-assign]
-    reader._scd.get_CO2 = fake_value  # type: ignore[method-assign]
-    reader._scd.get_temperature = fake_value  # type: ignore[method-assign]
-    reader._scd.get_relative_humidity = fake_value  # type: ignore[method-assign]
-    assert cycles(False, False, False, None, False)[-1] == 0  # a raised read counts nothing toward it
-    assert reader._not_ready_reads == 4
-    _fake_init(reader)
-    assert run(reader._init_scd()) is True
-    assert reader._not_ready_reads == 0
-
-
-def test_an_unreadable_frc_config_is_logged_once_per_episode() -> None:
-    # The store refuses every read while it is invalid: one entry and its console line, not one per cycle; each cycle
-    # still publishes settling, and the next good read ends the episode.
+def test_an_unreadable_frc_config_is_logged_once_per_failed_read() -> None:
+    # The store refuses every read while it is invalid, and each refusal is its entry (the logger keeps one slot for
+    # the repeat); each cycle still publishes settling, and the next good read ends the run.
     reader = _make_reader()
     store = reader.cfgmgr
 
@@ -2211,14 +2065,11 @@ def test_an_unreadable_frc_config_is_logged_once_per_episode() -> None:
     for _ in range(5):
         run(reader._capture_frc_config())
         assert reader._frc_cfg_ok is False
-    assert store_errors() == before + 1
+    assert store_errors() == before + 5  # one refusal per capture: the int read is never made after a failed float one
     store.valid = True
     run(reader._capture_frc_config())
     assert reader._frc_cfg_ok is True
-    store.valid = False
-    for _ in range(3):
-        run(reader._capture_frc_config())
-    assert store_errors() == before + 2
+    assert store_errors() == before + 5
 
 
 def test_frc_readiness_reaches_ready_after_the_settle_count_and_one_closed_window() -> None:
@@ -2487,71 +2338,6 @@ def test_never_touches_any_address_but_its_own() -> None:
 
     touched = {entry[1] for entry in i2c.log if entry[0] in ("writeto", "readfrom_into", "readfrom_mem", "writeto_mem")}
     assert touched == {_ADDR}, f"SCD30_I2C touched unexpected address(es): {touched - {_ADDR}}"
-
-
-def test_contmeas_false_with_the_bus_down_after_the_snapshot_comes_back_failed() -> None:
-    # The snapshot read, then the bus down: the stop command's write is refused, _send_dev_command() raises and
-    # stop_continuous_measurement() answers False, so the key fails in a body the snapshot let through.
-    reader = _make_reader()
-    _queue_snapshot(_reader_fake_i2c(reader))
-    real = reader._config_snapshot
-
-    async def snapshot_then_down() -> "dict[str, CfgValue] | None":
-        got = await real()
-        reader._scd._i2c_scd30.i2c_device.i2c.deinit()
-        return got
-
-    reader._config_snapshot = snapshot_then_down  # type: ignore[method-assign]
-    persisted, results = run(reader._set_mgr_cfg({"ContMeas": False}, reader.get_cfg_schema()))
-    assert results == {"ContMeas": "Failed"}, (persisted, results)
-    assert _entries(reader)[-1] == ("E", code("E", "CHIP_SET"))
-
-
-def test_a_command_write_the_bus_refuses_raises_oserror() -> None:
-    scd, i2c = _make_scd()
-    scd._i2c_scd30.i2c_device.i2c.deinit()
-    try:
-        run(scd.stop_continuous_measurement())
-        message = ""
-    except OSError as e:
-        message = str(e)
-    assert message == "I2C bus not initialized"
-    assert not any(entry[0] == "writeto" for entry in i2c.log), i2c.log
-
-
-class _ReadRefusingSession:
-    # An I2C session whose write lands and whose read is refused, as a bus cleared between them would answer.
-    def __init__(self) -> None:
-        self.calls: list[str] = []
-
-    async def write(self, _buf: bytearray, end: int) -> bool:
-        self.calls.append(f"write {end}")
-        return True
-
-    async def readinto(self, _buf: bytearray, end: int) -> bool:
-        self.calls.append(f"readinto {end}")
-        return False
-
-
-def test_a_register_read_the_session_refuses_raises_before_the_crc_check() -> None:
-    scd, _i2c = _make_scd()
-    session = _ReadRefusingSession()
-    checked: list[int] = []
-    real = scd.crc.check_from
-
-    async def check_from(buf: bytearray, size: int) -> "int | None":
-        checked.append(size)
-        return await real(buf, size)
-
-    scd.crc.check_from = check_from  # type: ignore[assignment, method-assign]
-    try:
-        run(scd._read_dev_register(session, 0x0202))  # type: ignore[arg-type]
-        message = ""
-    except OSError as e:
-        message = str(e)
-    assert message == "I2C bus not initialized"
-    assert session.calls == ["write 2", "readinto 3"]
-    assert checked == []
 
 
 if __name__ == "__main__":

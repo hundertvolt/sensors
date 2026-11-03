@@ -169,9 +169,6 @@
       "63": {"owner": "fram", "name": "FRAM_BLOCK_INVALID", "text": "a chunk block held invalid data; it is repaired from the other copy"},
       "65": {"owner": "sgp40", "name": "SGP_NO_BACKUP", "text": "no algorithm-state backup was found"},
       "67": {"owner": "notify", "name": "NOTIFY_SIGNAL_DROPPED", "text": "a requested LED signal was refused (LED busy) and dropped"},
-      "71": {"owner": "bmp3xx", "name": "BMP_CHIP_RESET", "text": "a chip self-reset was read (EVENT por_detected); the stored configuration is re-applied"},
-      "73": {"owner": "scd30", "name": "SCD_NOT_READY", "text": "five consecutive data-ready signals brought no new measurement (a data-ready line stuck high?)"},
-      "75": {"owner": "isl29125", "name": "ISL_CAL_TIMEOUT", "text": "a gain-ratio calibration window closed without a stable reading"},
       "77": {"owner": "wifi", "name": "WLAN_STATIONS_UNKNOWN", "text": "the hotspot's station list could not be read (the query raised, or the chip-down 32-entry answer); counted as no client"},
       "78": {"owner": "wifi", "name": "WLAN_STATUS_UNREADABLE", "text": "the WLAN status could not be read; the last link state and uptime are kept"},
       "79": {"owner": "wifi", "name": "WLAN_TO_HOTSPOT", "text": "repeated STA connect failures reached the limit; the unit falls back to its hotspot"},
@@ -202,7 +199,7 @@
     "VOCState": {
       "0": {"text": "blackout (first 46 samples, index 0)"},
       "1": {"text": "learning (fresh start, first 24 h)"},
-      "2": {"text": "learned (past the 24 h learning time)"},
+      "2": {"text": "settled (past the 24 h learning time)"},
       "3": {"text": "restored from backup (first 24 h after the restore)"}
     },
     "FRCState": {

@@ -17,7 +17,6 @@ _SLEEPS = {"asyncio": frozenset({"sleep", "sleep_ms", "wait_for", "wait_for_ms"}
 _SYNC_WAITS = frozenset(
     {
         ("asy_i2c_driver.py", "_clear_bus", "_CLEAR_HALF_PERIOD_US"),
-        ("asy_i2c_driver.py", "_clear_bus_awaiting", "_CLEAR_HALF_PERIOD_US"),
         ("asy_spi_driver.py", "session_begin", "_CS_SETTLE_US"),
         ("asy_spi_driver.py", "session_end", "_CS_SETTLE_US"),
     },

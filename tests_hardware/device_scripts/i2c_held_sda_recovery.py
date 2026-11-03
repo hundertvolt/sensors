@@ -83,7 +83,9 @@ def _pick(i2c: asy_i2c_driver.I2C, scan: "list[int]") -> "int | None":
     reply = bytearray(1)
     for address in scan:
         try:
-            if i2c.writeto(address, bytes((_START_POINTER,))) and i2c.readfrom_into(address, reply) and not reply[0] & 0x80:
+            i2c.writeto(address, bytes((_START_POINTER,)))
+            i2c.readfrom_into(address, reply)
+            if not reply[0] & 0x80:
                 return address
         except OSError:  # a device that refuses a pointer read (a command-based part) is not the one to hold
             continue

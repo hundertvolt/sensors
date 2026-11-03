@@ -187,7 +187,6 @@ async def _main() -> None:
     for key in keys:
         fact(key, found[key])
     fact("write_eio", sweep.write_eio)
-    fact("por_after_setup", sweep.por_after_setup)
     fact("isl_divergences", sweep.isl_divergences)
     errors("errors", sweep.total, sweep.first)
     done()

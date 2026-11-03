@@ -34,17 +34,13 @@ if TYPE_CHECKING:
         _rssi: int
 
 
-def _arm_one_construction_failure() -> None:
-    I2C.raise_on_construct = OSError(errno.EIO, "planted")
-
-
 def _assert_every_machine_knob_at_its_default() -> None:
     assert (Timer.raise_on_arm, Timer.raise_on_arm_exc, Timer.clock_ms, Timer.all_timers) == (False, OSError, 0, [])
     assert RTC.raise_exc is None
     assert RTC().datetime() == (2021, 1, 1, 4, 0, 0, 0, 0)  # rp2's boot value (ports/rp2/main.c:143), a Friday
     assert (UART.would_have_blocked_bytes, UART.real_poll_queries, len(UART._live)) == (0, 0, 0)
     assert (Pin(5).mode, Pin(5).pull, len(Pin.value_log(5))) == (None, None, 0)
-    assert (I2C.raise_on_construct, I2C(1, scl=Pin(3), sda=Pin(2)).registers) == (None, {})
+    assert I2C(1, scl=Pin(3), sda=Pin(2)).registers == {}
     assert (machine.reset_count, machine.bootloader_count, machine.reset_cause()) == (0, 0, machine.PWRON_RESET)
     assert (machine.watchdog_reason_value, machine.chip_reset_value) == (0, 0x100)
     assert (list(machine.mem_backup(0)), list(machine.mem_backup(1)), len(machine.mem32.log)) == ([0] * 4, [0] * 3, 0)
@@ -86,7 +82,6 @@ def _leave_every_machine_knob_set() -> None:
     Pin.set_external_level(5, 0)
     Pin(5, Pin.OUT, Pin.PULL_UP).value(1)
     I2C(1, scl=Pin(3), sda=Pin(2)).registers[(0x44, 0x01)] = bytearray([1])
-    _arm_one_construction_failure()
     machine.reset_count = machine.bootloader_count = 2
     machine.reset_cause_value = machine.WDT_RESET
     machine.watchdog_reason_value = 2
@@ -457,14 +452,6 @@ def test_reset_id_power_cycles_one_bus() -> None:
     second = _bus()
     assert second is not first
     assert second.registers == {}
-
-
-def test_raise_on_construct_raises_once() -> None:
-    # Guard: the knob a recovery test uses to fail one re-construction.
-    _arm_one_construction_failure()
-    assert _errno(lambda: I2C(0, scl=Pin(1), sda=Pin(0))) == errno.EIO
-    assert I2C.raise_on_construct is None
-    I2C(0, scl=Pin(1), sda=Pin(0))
 
 
 def test_an_i2c_id_outside_the_two_controllers_raises() -> None:

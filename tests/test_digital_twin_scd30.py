@@ -217,37 +217,6 @@ def _silent_scd30_on(device: str) -> None:
     assert (streak, after) == (0, errors), f"silence stepped the streak to {streak} or logged {after - errors} entr(ies)"
 
 
-def _stuck_rdy_on(device: str) -> None:
-    # The test below on one device.
-    reader, chip = _reader_on_the_twin_bus(device, cfg_path=_scratch.dir())
-
-    async def warnings() -> int:
-        log = (await reader.get_error_counter())["SCD30"]
-        return sum(1 for kind, number in zip(log["ErrType"], log["ErrNum"]) if (kind, number) == ("W", code("W", "SCD_NOT_READY")))
-
-    async def scenario() -> "tuple[list[int], int]":
-        await reader.setup()
-        assert reader.cfgmgr.valid is True
-        chip.rdy_stuck_high = True
-        seen = []
-        for _ in range(5):
-            chip._produce_new_reading()  # the line reads high, but no measurement completes
-            _results, new_data = await reader._read_scd()
-            assert new_data is False
-            seen.append(await warnings())
-        chip.rdy_stuck_high = False
-        for _ in range(3):
-            chip._produce_new_reading()
-            _results, new_data = await reader._read_scd()
-            assert new_data is True
-        return seen, await warnings()
-
-    with FastAsyncSleep():
-        seen, after = run(scenario())
-    assert seen == [0, 0, 0, 0, 1]
-    assert after == 1  # new data ended the episode: no further entry
-
-
 def _tmp_path(name: str) -> str:
     return _scratch.path(name)
 
@@ -745,12 +714,6 @@ def test_a_booted_reader_on_a_constant_co2_twin_reaches_frc_ready_and_keeps_its_
     for device in distinct_wirings("scd30"):
         machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
         _frc_ready_on(device)
-
-
-def test_a_stuck_high_rdy_line_warns_once_after_five_empty_reads_and_new_data_ends_it() -> None:
-    for device in distinct_wirings("scd30"):
-        machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
-        _stuck_rdy_on(device)
 
 
 def test_a_silent_scd30_publishes_not_measuring_and_runs_no_cycle_streak_or_entry() -> None:

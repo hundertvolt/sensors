@@ -83,7 +83,7 @@ _NTP_BLOCK_MARGIN_S = 10.0
 _COMMAND_AFTER_ANSWERED = 3
 _SYSTEM = "asy_system_service.py"
 # The read paths' new codes, named so a load arm that provokes one says which (catalog names, checked at run time).
-_LOAD_CODES = (("W", "BMP_CHIP_RESET"), ("E", "READ_RANGE"), ("W", "ISL_DIVERGED"))
+_LOAD_CODES = (("E", "READ_RANGE"), ("W", "ISL_DIVERGED"))
 
 
 @pytest.mark.provokes_log(
@@ -421,9 +421,9 @@ def test_fram_erase_under_api_load(board: Board, bench: "BenchBridge", dut_ip: s
     _command_under_load(board, bench, dut_ip, "erasefram", noted)
     if not noted.recovered:
         assert _reset_reason(dut_ip) == _load.src_number(_SYSTEM, "_RR_FRAM_ERASED"), f"the erase's reset reads ResetReason {_reset_reason(dut_ip)!r}, not the erase's own code (a watchdog reset reads 2)"
-    counts = get_errcount(dut_ip)
-    kept = {name: errcount_entry(counts, name) for name in fram_backed_logger_names() if [h for h in errcount_entry(counts, name)["history"] if h.get("type") != "N"]}
-    assert not kept, f"FRAM-backed logs still hold entries after the erase: {kept}"
+    counts, owed = get_errcount(dut_ip), {name: (1, [("W", code("W", "SGP_NO_BACKUP"))]) for name in _load.instance_loggers("sgp40")}
+    kept = {name: errcount_entry(counts, name) for name in fram_backed_logger_names() if (errcount_entry(counts, name)["counter"], [(h.get("type"), h.get("num")) for h in errcount_entry(counts, name)["history"] if h.get("type") != "N"]) not in ((0, []), owed.get(name))}
+    assert not kept, f"FRAM-backed logs still hold entries after the erase, each SGP40's W SGP_NO_BACKUP for its blank backup chunk aside: {kept}"
 
 
 def test_reboot_under_api_load(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:

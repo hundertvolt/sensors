@@ -346,7 +346,7 @@ def _scl_wait(start: int, timeout_us: int, *, sync: bool, held_reads: "int | Non
     Pin.set_external_level(_SCL_PIN, scl_level)
     scl = Pin(_SCL_PIN, Pin.IN, pull=Pin.PULL_UP)
     try:
-        released = asy_i2c_driver._scl_released_sync(scl, timeout_us) if sync else run(asy_i2c_driver._scl_released(scl, timeout_us))
+        released = run(asy_i2c_driver._scl_released(scl, timeout_us, awaited=not sync))
         return released, reads[0]
     finally:
         _restore(asy_i2c_driver)

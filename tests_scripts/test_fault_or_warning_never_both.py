@@ -26,15 +26,11 @@ Pair = tuple[str, str, Event, Event]  # (module path, function, first, second)
 _FILE_THEN_WRITE = "the config file was unusable, then writing its repair failed: two occurrences"
 _TWO_SOURCES = "the config manager and the read callback are two sources: two occurrences"
 _FILE_THEN_SCHEMA = "the config file was unusable, then the schema itself proved invalid: two occurrences"
-_CHIP_RESET = "a chip reset, then a failed re-apply or a rejected reading: separate occurrences"
 _OWN_CALL = "only the warning's own logging call can raise once it persisted, and the task's top logs that: the logging-call caveat (SPECIFICATION.md G.2)"
 
 # The mixed pairs the tree holds on purpose, each with why its two entries are two occurrences. A listed
 # pair the scan no longer finds fails, so the list follows every change that renames or removes one.
 _ALLOWED: "dict[Pair, str]" = {
-    ("src/asy_bmp3xx_driver.py", "_read_bmp", ("E", "CFG_READ"), ("W", "BMP_CHIP_RESET")): "the cycle's config read fell back, then the chip reset was read: separate occurrences",
-    ("src/asy_bmp3xx_driver.py", "_read_bmp", ("W", "BMP_CHIP_RESET"), ("E", "READ")): _CHIP_RESET,
-    ("src/asy_bmp3xx_driver.py", "_read_bmp", ("W", "BMP_CHIP_RESET"), ("E", "READ_RANGE")): _CHIP_RESET,
     ("src/asy_isl29125_driver.py", "_check_divergence", ("W", "ISL_DIVERGED"), ("E", "CHIP_SET")): "the chip diverged from the shadow, then its re-apply failed: separate occurrences",
     ("src/asy_uart_comm.py", "_resync", ("W", "UART_DRAIN_BOUND"), ("E", "UART_LINK_UNINTELLIGIBLE")): "a drain that hit its bound and a link no frame ever validated on are separate conditions",
     ("src/asy_fram_driver.py", "setup", ("W", "FRAM_ID_RETRIED"), ("E", "FRAM_WP_PARTIAL")): "the chip answered its identification only on a retry, then its status register read partly protected: two conditions",

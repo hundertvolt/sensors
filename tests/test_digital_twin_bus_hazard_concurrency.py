@@ -110,7 +110,7 @@ _GENERAL_CALL_ENTRY = ("writeto", 0x00, b"\x06", True)
 # smaller analogue of tests/_bus_hazard_catalog.py's mock-tier adapters (Part C.8); a new driver needs an entry first.
 _I2C_DRIVER_HEALTH_FIELD: "dict[str, str]" = {"scd30": "CO2", "sgp40": "VOC", "bmp3xx": "Pres", "isl29125": "Lux"}
 # The per-cycle register read a driver makes on its shared bus, each pointer write followed at once by its read.
-_PER_CYCLE_REGISTER = {"bmp3xx": 0x10, "isl29125": 0x01}  # BMP3XX's EVENT, ISL29125's CONFIG snapshot
+_PER_CYCLE_REGISTER = {"bmp3xx": 0x04, "isl29125": 0x09}  # each chip's data burst
 # Every (device, bus, occupants) whose plan puts two or more chips on one bus: the shared-bus cases run on each.
 _SHARED = devices_with_shared_bus()
 # FRAM sits alone on its SPI bus on every device; its same-device hazards run once per distinct FRAM wiring (its SPI
@@ -1072,7 +1072,8 @@ def test_two_setups_failing_together_are_each_retried_by_the_restart_with_no_bus
             for reader in (module.sgp40, module.bmp3xx):
                 log = (await reader.pr.get_log())[reader.pr.name]
                 kinds = [(log["ErrType"][i], log["ErrNum"][i]) for i in range(len(log["ErrNum"])) if log["ErrType"][i] != "N"]
-                assert kinds == [("E", code("E", "INIT"))], f"{reader.pr.name}: not its own setup error alone: {log}"
+                restore = [("W", code("W", "SGP_NO_BACKUP"))] if reader is module.sgp40 else []  # the fresh FRAM holds no backup
+                assert kinds == [("E", code("E", "INIT"))] + restore, f"{reader.pr.name}: not its own setup error alone: {log}"
             kept = fake.devices == chips and all(fake.devices[a] is chips[a] for a in chips)
             return bus.recoveries - mark, kept
         finally:
