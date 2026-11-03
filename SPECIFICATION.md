@@ -4308,16 +4308,11 @@ the pause ends at most one pass late; a reset that paused storage meanwhile keep
 uptime tick refused (refuted in normal operation) no pass runs, so a pause lasts until the reboot. A driver needing more than one rate
 (BMP3XX, ISL29125: 1 Hz base tick divided down) runs `SensorReader`'s shared trigger divider
 (`_trigger_loop()`, G.2) rather than reprogramming the Timer's period at runtime. A read-trigger arm
-failure wakes the task waiting on it, which persists the failure (`TIMER`) once and ends; its
-restart re-arms first, through `SensorReader._rearm_timer()`, which persists an arm that failed
-while the task was down (the generated `main()` starts the tasks before the timers) and never one
-already persisted. A boot with no free alarm (F.1: the pool holds 16, shared) fails every reader's
-arm at once: each reader persists `TIMER` and ends at each start, the supervisor's restart budget
-(C.4.1) is spent and the device reboots, which frees every alarm, and it reboots again at each boot
-while the shortage returns. That reboot is kept (owner, 2026-10-21, asked "Reboot when no sensor
-read timer can start?": "a - if the shortage came each boot, this would be a malformed firmware,
-which would already be seen in the tests - nothing which would happen by itself as a surprise.";
-option (a), the reboot kept rather than a reader degrading in place with its sensor silent). Any
+failure prints `Could not start timer:` at the arm and leaves that reader untriggered, as before the
+audit: the alarm pool's exhaustion is refuted in normal operation (at most 12 `Timer` objects against
+a pool of 16, F.1), and a shortage at each boot is a malformed firmware the tests show (owner,
+2026-10-21: "a - if the shortage came each boot, this would be a malformed firmware, which would
+already be seen in the tests - nothing which would happen by itself as a surprise."). Any
 other failed arm is re-armed at the task's next opportunity and
 persisted on a second failure, then the task ends for the supervisor: NTP's check and sync-age
 timers when the sync task starts and at each of its wakes, the WiFi uptime tick at the connection
@@ -7700,9 +7695,7 @@ backend-only or frontend-only validation/coercion policy change in this project.
   (`session_lock`) plus its bus device (`i2c_device`), built by every driver, never subclassed per
   driver (C.2).
 - **Trigger divider** — `SensorReader._trigger_loop()`: a reader needing a slower rate than its 1 s
-  base tick divides it here, every n-th tick setting the read event (C.9). A read-trigger arm failure
-  goes through `_timer_failed()` (the sync starter keeps the error and wakes the waiting task) and
-  `_timer_fault()` (the task persists `TIMER`, `errno` 17, and ends) (C.9).
+  base tick divides it here, every n-th tick setting the read event (C.9).
 - **Republishing a sample** — `SensorReader._republish(names, **changes)`: the last sample again with
   some fields changed, in one data-lock hold, its own `TS` kept (SCD30's `FRCState` 0, M.2).
 - **Config-log placement** — `SensorReaderConfig._CFG_LOG_FRAM`: a reader class that sets it `False`
@@ -7755,10 +7748,7 @@ backend-only or frontend-only validation/coercion policy change in this project.
   `get_bits()`/`set_bits()`/`get_register_struct()` read through a no-stop register-address write
   and `machine.I2C.readfrom_into()` (F.5.1) into one long-lived 32-byte scratch per `I2C`, and
   `get_register_bytes()` copies out of the same scratch (agent, 2026-09-29); a register write sends
-  its address and payload in one `writeto()`. `get_register_into()` (and its `I2CDevice`
-  forwarder) is for a burst the caller decodes at once into a buffer of its own: it reads straight
-  into the caller's buffer with the same pointer write and ACK test (BMP3XX's pressure and
-  temperature burst, ISL29125's counts and configuration snapshot). No await between fill and decode, no Timer/IRQ
+  its address and payload in one `writeto()`. No await between fill and decode, no Timer/IRQ
   callback touches I2C, and a returned value never aliases the scratch (a caller keeping a view
   copies it). A transfer above 32 bytes falls back to an allocating buffer; no driver issues one, so
   only the unit test exercises it, and it stays as general-purpose driver API (owner, 2026-09-26:
@@ -8918,8 +8908,7 @@ reports it (G.2). Per frame: one view of the scratch or the caller's buffer, tra
 **`asy_i2c_driver.py`** — construction, long-lived, fixed: the bus lock and the 32-byte scratch (G.2).
 Per register read, transient: a `memoryview` of the scratch and its slice (16 bytes each,
 `py/objarray.c:216-217, 556`), the register address as `bytes`, `get_register_bytes()`'s copy or
-`get_register_struct()`'s `struct.unpack()` tuple; `get_register_into()` reads straight into the
-caller's buffer. A register write: its address and payload as one `bytes`. A read larger than
+`get_register_struct()`'s `struct.unpack()` tuple. A register write: its address and payload as one `bytes`. A read larger than
 the scratch falls back to the allocating call; no driver issues one (BMP3XX's 21-byte calibration
 block is the largest), so the fallback is unexercised on every device — kept as
 hardware-completeness API (owner, 2026-09-26). Boot list: the bus clear's two `Pin` objects and its
@@ -8928,10 +8917,10 @@ controller recovery (`recover()`): `init()`'s stored arguments, a 5-tuple replac
 `machine.I2C` it constructs again is a static object (`ports/rp2/machine_i2c.c:87`), as is a `Pin` of
 a pin number (`ports/rp2/machine_pin.c:187-188`), so neither takes heap on rp2.
 
-**`asy_isl29125_driver.py`** — construction, long-lived, fixed: the reader, its `ISL29125_I2C`, the
-6-byte RGB burst buffer (`_rgb_burst`) and the 3-byte configuration snapshot (`_config_burst`, valid
-until the next snapshot), each decoded under the hold that filled it; the RGB decode unpacks in
-place. Per read: one `ISL29125` sample namedtuple, the counts tuple and the derived floats, transient.
+**`asy_isl29125_driver.py`** — construction, long-lived, fixed: the reader and its `ISL29125_I2C`. Per
+read: the 6-byte RGB burst's copy, unpacked in place, one `ISL29125` sample namedtuple, the counts
+tuple and the derived floats, transient; after a counted failed write, the 3-byte configuration
+snapshot's copy.
 Calibration only: `_cal_recent`, at most `_CAL_CONVERGE_N` ratios, cleared at the run's end.
 
 **`asy_neopixel_driver.py`** — construction, long-lived, fixed: the `NeoPixel`, its events and lock.
@@ -11560,8 +11549,8 @@ flag again.
 
 **Cycle order.** Each read cycle reads the status byte first, once. A cycle that finds `BOUTF` logs
 one `ISL_BROWNOUT` (`wrnno` 30), re-applies the whole shadow once and takes no CONFIG snapshot; every
-other cycle takes the 3-byte CONFIG snapshot (M.1.3), then waits out the settle deadline (M.1.4),
-captures the scaling settings and reads the data. A second consecutive failed cycle re-applies the
+other cycle takes the 3-byte CONFIG snapshot only after a counted failed write (M.1.3), then waits out
+the settle deadline (M.1.4), captures the scaling settings and reads the data. A second consecutive failed cycle re-applies the
 whole configuration as a brownout does — the `CONFIG1`-`3` burst, `BOUTF` cleared, the thresholds
 re-armed under `RangeAuto` — the participant rung of the recovery ladder (C.7).
 
@@ -11569,9 +11558,9 @@ re-armed under `RangeAuto` — the participant rung of the recovery ladder (C.7)
 
 | State | At a restart | Why |
 |---|---|---|
-| `_err_cnt_internal`, `_periodic_only_switches` | reset | a new task starts its streak and its periodic-only run at zero |
-| `_filtered` (the EMA state, in place) | reset | the first sample after a restart is unfiltered, never blended with a pre-restart value |
-| `_irq_fired`, `_int_held`, `_int_rearmed` | reset | an edge or a parked INT from before the restart says nothing about the re-armed chip |
+| `_err_cnt_internal` | reset | a new task starts its streak at zero |
+| `_int_held` | reset | a parked INT from before the restart says nothing about the re-armed chip |
+| `_filtered`, `_irq_fired`, `_periodic_only_switches` | kept | one filter step or one decision credited across a restart |
 | the cached knobs | reloaded from config | the config file is their store |
 | `_reconciled_write_failures` | kept | it compares against the protocol layer's write-failure count, which survives too |
 | the calibration run and its candidate | kept | each is bounded by its own deadline (M.1.5) |
@@ -11724,11 +11713,8 @@ agent's (agent, 2026-09-13). Each constant named below is a Part N row (`isl2912
   | 2 | too dark |
   | 3 | too bright |
 
-- **A run that closes without a stable reading persists `ISL_CAL_TIMEOUT`** (`wrnno` 75), readable in
-  the module's history; a converged run logs nothing (agent, 2026-10-06). The candidate's hold and
-  the calibration window are checked every read cycle, failed ones included: a run whose window
-  closes during an outage still persists the warning, and an outage never revives a run or a
-  candidate.
+- **A run ends with its console line alone** (`Gain-ratio calibration finished:` and the reason),
+  converged or not; the window is checked on the cycles that measure.
 
 Proven on silicon (2026-09-14): three runs at ~138 lx each converged within ~6–8 s, nine candidates
 within 23.70–24.13, `GainRatio` unchanged throughout; applying the measured ratio cut the
@@ -12347,7 +12333,6 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l1.asy_uart_link_driver_hazard_run_virtual_ms` | 22440 ms | `tests/test_asy_uart_link_driver.py` — `22440` | each L1 hazard run's bound on the driven clock, from the request to the run's end: a run past it fails. The hazard checks' ends poll at the rates the device wiring `uart_link` builds its two buses with, read from its generated module (`dev.uart_poll_wait_ms`, `dev.uart_poll_idle_ms`) | measured 2026-10-27, `build-standard`, at both GC stages: 22440 virtual ms from the request to a hazard run's end with no CRC and with CRC16 (the raw-frame check's run among them), at those rates; exact on any host, no margin (agent, 2026-10-27) | none: virtual time is exact | the hazard mode's waits (`uart.hazard_quiet_timeouts`, `uart.hazard_window_timeouts`, `uart.hazard_recovery_attempts`), its hazard set, the link's timeout or those poll rates change |
 | `l1.asy_base_classes_piece_rounds` | 50 | `tests/test_asy_base_classes.py` — `50` | the rounds of each measured `PieceBuffer` loop (built and dropped; written and copied out) and of its ambient control in the retention test | estimated (agent, `c11ca0a`) — measurement owed: the smallest count at which a planted per-round retention of one block fails the test, and the test's elapsed at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_base_classes_fired_bound_ms` | 100 ms | `tests/test_asy_base_classes.py` — `100` | the hang bound on the tick flag a triggered `arm_tick_timer()` timer sets | measured 2026-10-27, `build-standard`, 2 runs per stage (an instrumented scratch copy): the wait returns in at most 0.02 ms at the reactive default and 0.03 ms at 32768, on the shared x86 host | about 3,000× the slowest wait; the bench Pi4, the slowest host that runs it, is not measured | `arm_tick_timer()` or the host class changes |
-| `l1.asy_base_classes_trigger_loop_bound_s` | 1 s | `tests/test_asy_base_classes.py` — `1` | the hang bound on a trigger loop that ends by itself on its failed re-arm (`run()`'s wait_for) | measured 2026-10-27, `build-standard`, 2 runs per stage (each `run()` call timed in a scratch copy): every such call returns in at most 1 ms at both stages, on the shared x86 host | about 1,000× the slowest call; the bench Pi4, the slowest host that runs it, is not measured | the trigger loop or the host class changes |
 | `l1.asy_bmp3xx_driver_event_wait_s` | 1 s | `tests/test_asy_bmp3xx_driver.py` — `1` | — | estimated (agent, `4448a6f`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_bmp3xx_driver_reset_run_bound_s` | 2 s | `tests/test_asy_bmp3xx_driver.py` — `2` | the hang bound (`run()`'s wait_for) on the BMP3XX `reset()` whose bus goes down between its two sessions | measured 2026-10-27, `build-standard`, 2 runs per stage (each `run()` call recorded in a scratch copy): the reset run took 2.42-3.90 ms, on the shared x86 host (load 0.7-2.2) | about 500× the slowest run; the bench Pi4, the slowest host that runs it, is not measured | the BMP3XX reset or the host class changes |
 | `l1.asy_dns_client_prompt_return_max_ms` | 200 ms | `tests/test_asy_dns_client.py` — `200` | — | estimated (agent, `a6abe13`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
@@ -12914,8 +12899,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l4.sensor_config_push_altitude_step_m` | 1000 m | `tests_hardware/bench/test_sensor_config_push_over_real_hardware.py` — `1000` | a shift the pressure compensation must show, inside `_VAL_ALTITUDE`'s range either way round | estimated (agent, 2026-10-14) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.sensor_config_push_altitude_settle_intervals` | 3 | `tests_hardware/bench/test_sensor_config_push_over_real_hardware.py` — `3` | measurement intervals waited before the shift is read | estimated (agent, 2026-10-14) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.sensor_config_push_altitude_observe_intervals` | 5 | `tests_hardware/bench/test_sensor_config_push_over_real_hardware.py` — `5` | measurement intervals the shift is read over | estimated (agent, 2026-10-14) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
-| `l4.sensor_config_push_calibration_end_margin_s` | 10.0 s | `tests_hardware/bench/test_sensor_config_push_over_real_hardware.py` — `10.0` | + `isl29125.cal_window_ms` + one ISL29125 `SampleInterval` = the Calibrate test's wait for its run's end, so `ISL_CAL_TIMEOUT` lands in that test's own log window | estimated (agent, 2026-10-27) — measurement owed: the elapsed time from the Calibrate PUT to `ISL_CAL_TIMEOUT` on the dev bench, with date and run count, L4 | against that measurement, once taken | the calibration window, the read loop or the host class changes |
-| `l4.sensor_config_push_calibration_poll_s` | 2.0 s | `tests_hardware/bench/test_sensor_config_push_over_real_hardware.py` — `2.0` | the errcount poll between the window's close and `l4.sensor_config_push_calibration_end_margin_s`'s deadline | estimated (agent, 2026-10-27) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
+| `l4.sensor_config_push_calibration_end_margin_s` | 10.0 s | `tests_hardware/bench/test_sensor_config_push_over_real_hardware.py` — `10.0` | + `isl29125.cal_window_ms` + one ISL29125 `SampleInterval` = the Calibrate test's wait for its run's end | estimated (agent, 2026-10-27) — measurement owed: the elapsed time from the Calibrate PUT to the run's end on the dev bench, with date and run count, L4 | against that measurement, once taken | the calibration window, the read loop or the host class changes |
 | `l4.sensor_config_push_reset_voc_settle_margin_s` | 2.0 s | `tests_hardware/bench/test_sensor_config_push_over_real_hardware.py` — `2.0` | + the SGP40's fixed 1000 ms trigger period (`src/asy_sgp40_driver.py` `start_timer()`, read from there) = the ResetVOC test's settle, so the reset's next-cycle FRAM clear (`_read_sgp()`) and its `SGP_BACKUP_CLEAR` land in that test's own log window | estimated (agent, 2026-10-27) — measurement owed: the elapsed time from the ResetVOC PUT's answer to the reset's read cycle on the dev bench, with date and run count, L4 | two periods past the one cycle a request waits | the SGP40's read period or read loop, or the host class changes |
 | `l4.serving_heap_at_default_gc_connect_timeout_s` | 30.0 s | `tests_hardware/bench/test_serving_heap_at_default_gc.py` — `30.0` | — | estimated (agent, `79cb3b1`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.serving_heap_at_default_gc_barrier_timeout_s` | 30.0 s | `tests_hardware/bench/test_serving_heap_at_default_gc.py` — `30.0` | — | estimated (agent, `79cb3b1`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |

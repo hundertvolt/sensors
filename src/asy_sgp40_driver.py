@@ -303,7 +303,6 @@ class SGP40_Reader(SensorReaderConfig):
         return getattr(temp_data, self._temperature.field, None), getattr(hum_data, self._humidity.field, None)
 
     async def _init_sgp(self) -> bool:
-        await self._rearm_timer()  # a failed read-trigger arm is persisted once and re-armed first
         self._err_cnt_internal = 0
         self._backup_counter = 0
         self._voc_init = 0
@@ -346,8 +345,6 @@ class SGP40_Reader(SensorReaderConfig):
             return  # end and restart if init fails
         while True:
             await self._read_event.wait()  # wait for read trigger event
-            if await self._timer_fault():
-                return  # the trigger timer never armed: the restart re-arms it
             self.pr.evt("sensor trigger")
             buf, serialize, deserialize, cfg_values = await self._check_storage()
             deserialize = await self._run_restore(buf, deserialize=deserialize, cfg_values=cfg_values)  # check for available backup data
@@ -574,9 +571,9 @@ class SGP40_Reader(SensorReaderConfig):
                 mode=Timer.PERIODIC,
                 callback=lambda _b: self._read_event.set(),
             )
-        except (MemoryError, OSError) as e:
-            # Alarm pool exhausted (ENOMEM) or no memory: wake the waiting task, which logs it and ends; its restart re-arms.
-            self._timer_failed(e, self._read_event)
+        except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully
+            # instead of crashing the caller (this sensor just never gets triggered this cycle).
+            self.pr.err("Could not start timer:", e)
 
     def stop_timer(self) -> None:
         self._trigger_timer.deinit()

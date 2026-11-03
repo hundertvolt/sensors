@@ -186,15 +186,6 @@ class I2C:
             return None
         return bytes(self._read_into_scratch(self._i2c, address, reg_addr, length, addrsize))
 
-    def get_register_into(self, address: int, reg_addr: int, buf: bytearray, addrsize: int | None = None) -> bool:
-        # len(buf) bytes straight into the caller's own buffer, for a burst it decodes at once: no scratch, no copy.
-        # False for no bus or an empty buffer; a bus OSError propagates.
-        if self._i2c is None or not len(buf):
-            return False
-        self._point_at(self._i2c, address, reg_addr, addrsize)
-        self._i2c.readfrom_into(address, buf)
-        return True
-
     def get_register_struct(
         self, address: int, reg_addr: int, reg_format: str, addrsize: int | None = None,
     ) -> int | float | bytes | None:
@@ -409,9 +400,6 @@ class I2CDevice(Lockable):
 
     async def get_register_bytes(self, reg_addr: int, length: int, addrsize: int | None = None) -> bytes | None:
         return self.i2c.get_register_bytes(self.device_address, reg_addr, length, addrsize)
-
-    async def get_register_into(self, reg_addr: int, buf: bytearray, addrsize: int | None = None) -> bool:
-        return self.i2c.get_register_into(self.device_address, reg_addr, buf, addrsize)
 
     async def get_register_struct(
         self, reg_addr: int, reg_format: str, addrsize: int | None = None,

@@ -169,7 +169,6 @@
       "63": {"owner": "fram", "name": "FRAM_BLOCK_INVALID", "text": "a chunk block held invalid data; it is repaired from the other copy"},
       "65": {"owner": "sgp40", "name": "SGP_NO_BACKUP", "text": "no algorithm-state backup was found"},
       "67": {"owner": "notify", "name": "NOTIFY_SIGNAL_DROPPED", "text": "a requested LED signal was refused (LED busy) and dropped"},
-      "75": {"owner": "isl29125", "name": "ISL_CAL_TIMEOUT", "text": "a gain-ratio calibration window closed without a stable reading"},
       "77": {"owner": "wifi", "name": "WLAN_STATIONS_UNKNOWN", "text": "the hotspot's station list could not be read (the query raised, or the chip-down 32-entry answer); counted as no client"},
       "78": {"owner": "wifi", "name": "WLAN_STATUS_UNREADABLE", "text": "the WLAN status could not be read; the last link state and uptime are kept"},
       "79": {"owner": "wifi", "name": "WLAN_TO_HOTSPOT", "text": "repeated STA connect failures reached the limit; the unit falls back to its hotspot"},

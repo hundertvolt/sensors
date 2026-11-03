@@ -858,7 +858,6 @@ def test_start_timer_degrades_gracefully_when_alarm_pool_exhausted() -> None:
     assert reader._trigger_timer.period == -1  # never actually armed
     assert reader._trigger_timer.callback is None  # nor wired to the trigger event
     assert reader.pr._err_count == 0  # start_timer() logs via the non-persisting pr.err(), not err_s()
-    assert run(asyncio.wait_for(reader._read_event.wait(), _EVENT_WAIT_S)) is None  # the read task is woken
 
 
 def test_start_timer_degrades_gracefully_on_a_memory_error() -> None:
@@ -870,72 +869,6 @@ def test_start_timer_degrades_gracefully_on_a_memory_error() -> None:
     assert reader._trigger_timer.period == -1  # never actually armed
     assert reader._trigger_timer.callback is None  # nor wired to the trigger event
     assert reader.pr._err_count == 0  # start_timer() logs via the non-persisting pr.err(), not err_s()
-    assert run(asyncio.wait_for(reader._read_event.wait(), _EVENT_WAIT_S)) is None  # the read task is woken
-
-
-def test_an_arm_failure_wakes_the_read_task_which_persists_it_and_ends() -> None:
-    reader = _make_reader()
-    queue_successful_init(bus(reader._sgp._i2c_sgp40.i2c_device.i2c))
-
-    async def scenario() -> "tuple[bool, bool]":
-        task = asyncio.create_task(reader._read_loop())
-        for _ in range(50):  # init (fast sleeps), then the loop parks on the read event
-            await asyncio.sleep(0)
-        parked = not task.done()
-        with RaiseOnArm():
-            reader.start_timer()
-        for _ in range(50):
-            await asyncio.sleep(0)
-            if task.done():
-                await task  # returns None: the task ended, and its restart re-arms
-                return parked, True
-        task.cancel()
-        return parked, False
-
-    with FastAsyncSleep():
-        parked, ended = run(scenario())
-    assert parked
-    assert ended
-    log = run(reader.get_error_counter())
-    assert log["SGP40"]["ErrCount"] == 1
-    assert _last_err(log, "ErrNum") == code("E", "TIMER")
-
-
-def test_init_rearms_a_failed_timer_first() -> None:
-    reader = _make_reader()
-    fake_bus = bus(reader._sgp._i2c_sgp40.i2c_device.i2c)
-    queue_successful_init(fake_bus)
-    reader._timer_failed(OSError(12, "ENOMEM"), reader._read_event)  # an earlier failed arm
-    fake_bus.log.clear()
-    seen: list[int] = []
-    real_start = reader.start_timer
-
-    def recording_start() -> None:
-        seen.append(len(fake_bus.log))
-        real_start()
-
-    reader.start_timer = recording_start  # type: ignore[method-assign]
-    with FastAsyncSleep():
-        assert run(reader._init_sgp()) is True
-    assert reader._timer_error is None
-    assert seen == [0]  # armed before the setup exchange
-    assert reader._trigger_timer.period == 1000
-
-
-def test_an_arm_failure_stored_before_the_read_task_starts_is_persisted_once_then_re_armed() -> None:
-    reader = _make_reader()
-    fake_bus = bus(reader._sgp._i2c_sgp40.i2c_device.i2c)
-    with RaiseOnArm(OSError):
-        reader.start_timer()
-    assert run(reader.get_error_counter())["SGP40"]["ErrCount"] == 0  # the starter only stores it
-    for _ in range(2):  # the task's first start, then a restart with nothing stored: no second entry, no second arm
-        queue_successful_init(fake_bus)
-        with FastAsyncSleep():
-            assert run(reader._init_sgp()) is True
-        log = run(reader.get_error_counter())
-        assert log["SGP40"]["ErrCount"] == 1
-        assert _last_err(log, "ErrNum") == code("E", "TIMER")
-        assert len(reader._trigger_timer.arms) == 1
 
 
 def test_two_trigger_fires_before_the_loop_waits_give_one_cycle() -> None:

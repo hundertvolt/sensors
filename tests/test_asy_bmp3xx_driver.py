@@ -2124,10 +2124,7 @@ def test_start_timer_degrades_gracefully_when_the_trigger_timer_cannot_be_armed(
         reader.start_timer()  # must not raise despite the timer failing to arm
     assert reader._trigger_timer.period == -1  # never actually armed
     assert reader._trigger_timer.callback is None  # nothing wired to _base_trigger_event either
-    assert reader._base_trigger_event.state == 1  # the trigger task wakes to report it, never sleeps forever
-    # start_timer() is synchronous: it prints the failure and wakes the trigger task, which persists the
-    # TIMER entry (test_a_failed_trigger_arm_ends_the_trigger_task_...), so nothing is counted here yet.
-    assert run(reader.get_error_counter())["BMP3XX"]["ErrCount"] == 0
+    assert run(reader.get_error_counter())["BMP3XX"]["ErrCount"] == 0  # a console line, never a persisted entry
 
 
 def test_start_timer_degrades_gracefully_on_a_memory_error_while_arming() -> None:
@@ -2139,33 +2136,6 @@ def test_start_timer_degrades_gracefully_on_a_memory_error_while_arming() -> Non
         reader.start_timer()  # must not raise despite the timer failing to arm
     assert reader._trigger_timer.period == -1  # never actually armed
     assert reader._trigger_timer.callback is None
-    assert reader._base_trigger_event.state == 1  # the trigger task wakes to report it
-
-
-def test_a_failed_trigger_arm_ends_the_trigger_task_with_one_timer_entry_and_a_restart_rearms() -> None:
-    for exc in (OSError, MemoryError):
-        reader = _make_reader("trigger_arm_fails")
-        with RaiseOnArm(exc):
-            reader.start_timer()
-            run(reader._trigger_loop(), _EVENT_WAIT_S)  # its re-arm fails too: the task ends
-        assert _count(reader, "E", "TIMER") == 1, exc
-        arms_before = len(reader._trigger_timer.arms)
-
-        async def restarted(reader: BMP3XX_Reader = reader) -> bool:
-            task = asyncio.create_task(reader._trigger_loop())
-            await _settle(3)
-            reader._trigger_timer.trigger()  # one 1 s tick; the period is 1
-            fired = True
-            try:
-                await asyncio.wait_for(reader._read_event.wait(), _EVENT_WAIT_S)
-            except asyncio.TimeoutError:
-                fired = False
-            await cancel(task)
-            return fired
-
-        assert run(restarted()) is True, exc
-        assert len(reader._trigger_timer.arms) == arms_before + 1  # one Timer.init at the restart
-        assert _count(reader, "E", "TIMER") == 1
 
 
 def test_stop_timer_deinits_the_trigger_timer() -> None:

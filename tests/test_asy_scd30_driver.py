@@ -63,43 +63,6 @@ def _arg_words(i2c: FakeI2C) -> "list[int]":
     return [(entry[2][0] << 8) | entry[2][1] for entry in i2c.log if entry[0] == "writeto" and len(entry[2]) == 5]
 
 
-def _arm_failure_then_restart(exc: "type[BaseException]") -> None:
-    reader = _make_reader(trigger_s=1)  # two ticks with the pin high force a read
-    reader._irq_pin.value(1)
-
-    async def first_run() -> bool:
-        task = asyncio.create_task(reader._irq_loop())
-        await _settle(3)
-        with RaiseOnArm(exc):
-            reader.start_timer()
-        await _settle(5)
-        if not task.done():
-            task.cancel()
-            return False
-        await task  # ended on its own: a return, not a raise
-        return True
-
-    assert run(first_run()) is True, exc
-    log = run(reader.get_error_counter())["SCD30"]
-    assert log["ErrCount"] == 1 and log["ErrNum"][-1] == code("E", "TIMER"), exc
-
-    async def restart() -> bool:
-        task = asyncio.create_task(reader._irq_loop())
-        await _settle(3)
-        for _ in range(2):
-            reader._start_trigger_timer.trigger()
-            await _settle(3)
-        fired = reader._read_event.state
-        await cancel(task)
-        return bool(fired)
-
-    assert run(restart()) is True, exc
-    assert [arm[1] for arm in reader._start_trigger_timer.arms] == [_START_TRIGGER_PERIOD_MS]
-    log = run(reader.get_error_counter())["SCD30"]
-    assert log["ErrCount"] == 2, exc  # counted again
-    assert [n for n in log["ErrNum"] if n] == [code("E", "TIMER")], exc  # in one slot
-
-
 def _contmeas_put(body: "CfgValue") -> "tuple[WriteValidity, ErrorLog, FakeI2C]":
     reader = _make_reader()
     i2c = _reader_fake_i2c(reader)
@@ -989,10 +952,7 @@ def test_reader_start_timer_degrades_gracefully_when_the_trigger_timer_cannot_be
         reader.start_timer()  # must not raise despite the timer failing to arm
     assert reader._start_trigger_timer.period == -1  # never actually armed
     assert reader._start_trigger_timer.callback is None  # nothing wired to _base_trigger_event
-    # start_timer() is synchronous and persists nothing itself; the waiting _irq_loop() records the TIMER
-    # error and ends (see the test below).
-    assert run(reader.get_error_counter())["SCD30"]["ErrCount"] == 0
-    assert reader._base_trigger_event.state  # the waiter is woken
+    assert run(reader.get_error_counter())["SCD30"]["ErrCount"] == 0  # a console line, never a persisted entry
 
     # The pin IRQ is wired after the guarded try/except, so a timer that failed to arm must not
     # cost the sensor its data-ready interrupt as well - that IRQ, not the timer, is what actually
@@ -1016,36 +976,6 @@ def test_reader_start_timer_degrades_gracefully_on_a_memory_error_while_arming()
     assert reader._start_trigger_timer.period == -1  # never actually armed
     assert reader._start_trigger_timer.callback is None
     assert reader._irq_pin.irq_trigger == FakePin.IRQ_RISING
-    assert reader._base_trigger_event.state  # the waiter is woken
-
-
-def test_a_failed_trigger_arm_ends_the_irq_task_with_one_timer_entry_and_a_restart_rearms() -> None:
-    # The arm fails after the task started (tasks start before timers at boot): the woken task persists a TIMER
-    # entry and ends; its restart counts it again in the same slot, re-arms, and a tick drives the stuck-pin read.
-    for exc in (OSError, MemoryError):
-        _arm_failure_then_restart(exc)
-
-
-def test_an_arm_failure_stored_before_the_irq_task_starts_is_persisted_once_then_re_armed() -> None:
-    reader = _make_reader()
-    with RaiseOnArm(OSError):
-        reader.start_timer()
-    assert run(reader.get_error_counter())["SCD30"]["ErrCount"] == 0  # the starter only stores it
-
-    async def run_briefly() -> bool:
-        task = asyncio.create_task(reader._irq_loop())
-        await _settle(3)
-        ended = task.done()
-        await cancel(task)
-        return ended
-
-    assert run(run_briefly()) is False
-    log = run(reader.get_error_counter())["SCD30"]
-    assert log["ErrCount"] == 1 and log["ErrNum"][-1] == code("E", "TIMER")
-    assert [arm[1] for arm in reader._start_trigger_timer.arms] == [_START_TRIGGER_PERIOD_MS]  # one arm, at the start
-    assert run(run_briefly()) is False  # a later start with nothing stored persists and arms nothing
-    assert run(reader.get_error_counter())["SCD30"]["ErrCount"] == 1
-    assert len(reader._start_trigger_timer.arms) == 1
 
 
 def test_reader_stop_timer_deinits_the_periodic_timer_only() -> None:

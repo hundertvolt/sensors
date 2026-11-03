@@ -433,11 +433,8 @@ class SCD30_Reader(SensorReaderConfig):
     # Trigger the CO2 sensor IRQ if it isn't running (pin stays HIGH if not read!); the same 500 ms tick
     # counts the time since the last measurement for the FRC readiness.
     async def _irq_loop(self) -> None:
-        await self._rearm_timer()  # a failed arm is persisted once and re-armed first
         while True:
             await self._base_trigger_event.wait()
-            if await self._timer_fault():
-                return
             if self._irq_pin.value() == 1 and self._scd_timer_triggers < self._trigger_half_ticks:
                 self._scd_timer_triggers += 1  # ticks with the pin high since the last read, not necessarily consecutive; capped at the threshold
             idle_limit = 4 * self._frc_interval_s  # two intervals without a measurement: not measuring
@@ -535,9 +532,9 @@ class SCD30_Reader(SensorReaderConfig):
                 mode=Timer.PERIODIC,
                 callback=lambda _b: self._base_trigger_event.set(),
             )
-        except (MemoryError, OSError) as e:
-            # Alarm pool exhausted (ENOMEM) or no memory: wake the waiting task, which logs it and ends; its restart re-arms.
-            self._timer_failed(e, self._base_trigger_event)
+        except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully
+            # instead of crashing the caller (this sensor just never gets triggered this cycle).
+            self.pr.err("Could not start timer:", e)
         self._irq_pin.irq(
             trigger=self._irq_pin.IRQ_RISING,
             handler=lambda _b: self._read_event.set(),

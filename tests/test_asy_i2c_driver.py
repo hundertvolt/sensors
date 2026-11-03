@@ -1192,8 +1192,6 @@ def test_a_read_larger_than_the_scratch_still_works() -> None:
 # ---------------------------------------------------------------------------
 
 
-
-
 def _eio(call: "Callable[[], object]") -> bool:
     try:
         call()
@@ -1213,8 +1211,6 @@ def test_a_short_ack_count_raises_eio_and_a_no_stop_write_then_sends_the_stop() 
     assert _eio(lambda: i2c.writeto(0x60, b"abc", stop=False))
     assert _fake(i2c).log == [("writeto", 0x60, b"abc", False), ("writeto", 0x60, b"", True)]
     assert i2c.writeto(0x60, b"abc") == 3  # the next full ACK count is a plain success again
-
-
 
 
 def test_a_nacked_data_byte_in_a_register_write_raises_eio_and_stores_nothing() -> None:
@@ -1301,85 +1297,6 @@ def test_a_set_register_struct_above_the_scratch_still_writes_address_and_payloa
     payload = bytes(range(40))
     i2c.set_register_struct(0x50, 0x20, "40s", payload)
     assert _fake(i2c).log == [("writeto", 0x50, b"\x20" + payload, True)]
-
-
-# ---------------------------------------------------------------------------
-# get_register_into() - the caller's own buffer goes to machine.I2C as it is
-# ---------------------------------------------------------------------------
-
-
-def _record_buffers(mock: FakeI2C) -> "list[object]":
-    # Every buffer object the fake's readfrom_into()/writeto() is handed, in call order, the calls themselves unchanged.
-    received: list[object] = []
-    real_read, real_write = mock.readfrom_into, mock.writeto
-
-    def read(address: int, buf: object, stop: bool = True) -> None:
-        received.append(buf)
-        real_read(address, buf, stop)
-
-    def write(address: int, buf: object, stop: bool = True) -> int:
-        received.append(buf)
-        return real_write(address, buf, stop)
-
-    mock.readfrom_into = read  # type: ignore[method-assign]
-    mock.writeto = write  # type: ignore[method-assign]
-    return received
-
-
-def test_get_register_into_fills_exactly_the_callers_buffer() -> None:
-    # The pointer write and the read get_register_bytes() makes, the read straight into the caller's buffer: only
-    # the register byte passes through the shared scratch, and the fake is handed the caller's object itself.
-    i2c = _make_i2c()
-    mock = _fake(i2c)
-    mock.registers[(0x50, 0x04)] = bytearray(b"\x10\x20\x30\x40")
-    i2c._scratch[:] = b"\xee" * _SCRATCH_SIZE
-    received = _record_buffers(mock)
-    buf = bytearray(3)
-    assert i2c.get_register_into(0x50, 0x04, buf) is True
-    assert buf == b"\x10\x20\x30"
-    assert len(received) == 2 and received[1] is buf
-    assert bytes(i2c._scratch)[1:] == b"\xee" * (_SCRATCH_SIZE - 1)
-    assert mock.log == [("writeto", 0x50, b"\x04", False), ("readfrom_into", 0x50, b"\x10\x20\x30", True)]
-    mock.log.clear()
-    assert i2c.get_register_into(0x50, 0x04, bytearray(0)) is False
-    i2c.deinit()
-    assert i2c.get_register_into(0x50, 0x04, buf) is False
-    assert mock.log == [("deinit",)]  # neither refusal made a transfer
-
-
-def test_get_register_into_lets_a_bus_oserror_propagate_and_never_reads_after_a_nacked_register_byte() -> None:
-    i2c = _make_i2c()
-    _fake(i2c).registers[(0x50, 0x20)] = bytearray(b"\x01\x02")
-    _fake(i2c).inject_fault("readfrom_into", OSError, errno.ETIMEDOUT, "stretch", match=0x20)
-    try:
-        i2c.get_register_into(0x50, 0x20, bytearray(2))
-        raised = None
-    except OSError as e:
-        raised = e.errno
-    assert raised == errno.ETIMEDOUT
-    buf = bytearray(b"\xaa\xaa")
-    _fake(i2c).log.clear()
-    _fake(i2c).short_ack(0x50, 0)
-    assert _eio(lambda: i2c.get_register_into(0x50, 0x20, buf))
-    assert buf == b"\xaa\xaa"  # an EIO, never the untouched buffer read as fresh data
-    assert _fake(i2c).log == [("writeto", 0x50, b"\x20", False), ("writeto", 0x50, b"", True)]
-
-
-def test_device_get_register_into_forwards_its_address_and_addrsize() -> None:
-    i2c = _make_i2c()
-    _fake(i2c).register_device(0x51, addrsize=16)
-    _fake(i2c).registers[(0x51, 0x0102)] = bytearray(b"\x12\x34")
-    _fake(i2c).registers[(0x50, 0x04)] = bytearray(b"\x56")
-    buf = bytearray(2)
-    assert run(I2CDevice(i2c, 0x51).get_register_into(0x0102, buf, addrsize=16)) is True
-    assert buf == b"\x12\x34"
-    assert _fake(i2c).log[0] == ("writeto", 0x51, b"\x01\x02", False)
-    one = bytearray(1)
-    assert run(I2CDevice(i2c, 0x50).get_register_into(0x04, one)) is True
-    assert one == b"\x56"
-
-
-
 
 
 
@@ -1652,8 +1569,6 @@ def test_recover_re_constructs_even_after_a_held_scl() -> None:
     status, _made = _clear(i2c, recover=True)
     assert status == _REC_SCL_HELD
     assert _fake(i2c).log == [("deinit",), ("init", 100000, _HELD_SCL_TIMEOUT_US)]
-
-
 
 
 def test_each_clear_and_recover_steps_recoveries_once_and_the_sequence_wraps() -> None:
