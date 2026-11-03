@@ -30,10 +30,10 @@ require_fresh()  # every caller loads a generated module, and this file reads it
 
 _WATCHDOG_LINE = "watchdog = WDT(timeout="
 
-# The console level of a boot that can run out of memory: its err() lines print, so a caught MemoryError reaches the
-# memory gate's stream (owner, 2026-10-20, paraphrase: the unit tests that can run out of memory log at error level).
+# A boot that can run out of memory logs at warning level: a caught MemoryError reaches the memory gate's stream, logged
+# as an error or a warning (owner, 2026-10-20, paraphrase: those unit tests log at error level or above).
 # Pinned, not read from source: the boot-placement probe imports this file, and an import-time read shifts its heap.
-ERROR_LEVEL = 1  # pins src/asy_print_log.py _LOG_ERR
+ERROR_LEVEL = 2  # pins src/asy_print_log.py _LOG_WARN
 _SYSTEM_STORE = "SYSTEM"  # pins src/asy_system_service.py _NAME
 
 _BLANK = bytes(4096)

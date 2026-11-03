@@ -471,9 +471,9 @@ def test_a_held_port_53_fails_the_run_at_once_naming_it_and_boots_nothing(harnes
 
 
 def test_every_boot_logs_at_error_level_from_its_build_and_its_stored_level(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Built at error level by the runner's flag and kept there by a stored DebugLevel planted before the spawn, so a
+    # Built at warning level by the runner's flag and kept there by a stored DebugLevel planted before the spawn, so a
     # caught allocation failure's line reaches the memory gate; the scenario's own arguments follow unchanged.
-    level = module_int_const(_REPO_ROOT / "src", "asy_print_log.py", "_LOG_ERR")
+    level = module_int_const(_REPO_ROOT / "src", "asy_print_log.py", "_LOG_WARN")
     args, stored = _spawned_boot(harness, tmp_path, monkeypatch)
     assert args == ["--debug-level", str(level), "--test-kbd-traceback", "--test-flash-stall-max"], args
     assert stored is not None and json.loads(stored) == {"DebugLevel": level}, stored
@@ -481,7 +481,7 @@ def test_every_boot_logs_at_error_level_from_its_build_and_its_stored_level(harn
 
 def test_a_device_wiring_a_uart_link_boots_its_link_on_the_driven_clock(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # Its reply deadlines count the link's own waits, never the host's load; a device wiring none boots as before.
-    level = module_int_const(_REPO_ROOT / "src", "asy_print_log.py", "_LOG_ERR")
+    level = module_int_const(_REPO_ROOT / "src", "asy_print_log.py", "_LOG_WARN")
     args, _stored = _spawned_boot(harness, tmp_path, monkeypatch, instances=(("uart_link_init", "uart_link", "init"),))
     assert args == ["--debug-level", str(level), "--test-kbd-traceback", "--test-uart-driven-clock", "--test-flash-stall-max"], args
 

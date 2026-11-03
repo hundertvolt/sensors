@@ -301,7 +301,7 @@ class Context:
 
     @contextlib.contextmanager
     def boot(self, *args: str, state_dir: "Path | None" = None, logged: bool = True) -> "Iterator[Twin]":
-        # A twin on a fresh port of this device's band, fresh state unless given, logging at error level unless not `logged`
+        # A twin on a fresh port of its device's band, fresh state unless given, at warning level unless not `logged`
         # (_log_at_error_level()), shut down in finally; its log passes the memory gate and refused no public destination,
         # or the scenario fails naming why. A sharing scenario's one boot is the shared twin instead, which outlives it.
         self.boots += 1
@@ -1238,10 +1238,10 @@ def _load_while_ntp_is_unreachable(ctx: Context, *, writes: bool) -> None:
     _expect(parse_machine_reset_line(read_log(twin.run.log_path)) is None, "the device reset under the load")
 
 def _log_at_error_level(state: Path) -> "tuple[str, ...]":
-    # A boot's loggers at error level, so a caught allocation failure's line reaches the memory gate (agent, 2026-10-20,
-    # extending the owner's option 1 for the unit tests, owner, 2026-10-20: "Option 1 is good"): built so by the
-    # runner's flag and kept by a stored DebugLevel, planted unless one is stored.
-    level = _src_int("asy_print_log.py", "_LOG_ERR")
+    # A boot's loggers at warning level, so a caught allocation failure's line, an error's or a warning's, reaches the
+    # memory gate (agent, 2026-10-20, extending the owner's option 1 for the unit tests, owner, 2026-10-20: "Option 1 is
+    # good"): built so by the runner's flag and kept by a stored DebugLevel, planted unless one is stored.
+    level = _src_int("asy_print_log.py", "_LOG_WARN")
     config = state_paths(state).config_dir
     config.mkdir(parents=True, exist_ok=True)
     stored = config / "config_SYSTEM.cfg"

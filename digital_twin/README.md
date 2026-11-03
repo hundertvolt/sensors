@@ -874,11 +874,11 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
 runs after the suite at each GC stage, holding port 53 (`--exclusive-port-53`), so its DNS scenarios
 run too; without that lock they are deselected and listed. Each scenario boots the device's
 generated graph in a twin and drives it over HTTP, reading only the runner's stdout and its
-`--test-*` lines. Every boot logs at error level, so a caught allocation failure's line reaches the
+`--test-*` lines. Every boot logs at warning level, so a caught allocation failure's line reaches the
 memory gate (the owner's option 1 for the unit tests, owner, 2026-10-20, asked, paraphrase, whether
 to turn logging on at error level or above in the unit tests that can actually run out of memory, in
 every unit test, or in none: "Option 1 is good"; applied to the harness too, agent, 2026-10-20):
-the runner's `--debug-level 1` over a stored `DebugLevel` of 1 planted before the spawn unless one
+the runner's `--debug-level 2` over a stored `DebugLevel` of 2 planted before the spawn unless one
 is stored, but for the scenario reading the settings routes' defaults, which boots unplanted at the
 default level. Every boot also carries
 `--test-kbd-traceback`, so a twin that ignores its shutdown SIGINT is described before the kill:

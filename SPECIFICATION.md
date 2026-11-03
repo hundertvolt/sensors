@@ -3720,8 +3720,12 @@ handler that logs its exception records it. A handler no logger sees starts with
 `FRAM_SPI.__aexit__()`, `DNSQuery`'s parse, `_body_as_dict()`, and the `_print_exception()` rebound
 over Microdot's `print_exception` (`ext/microdot.py`), which may return unlogged. The call allocates
 and prints nothing; a handler too deep to log raises afresh, and the first outer handler that logs
-records it. `tests_scripts/test_fatal_report_sites.py` walks `src/` and every generated module for
-it; `PrintLog.report_unretrieved()` keeps its `except Exception: pass`
+records it. A logger call builds its arguments first (a star-call's tuple, `err_s()`'s
+coroutine), so on a heap without that room (32 B for `wrn()`, 152 B for `err_s()`, measured) it
+raises `MemoryError` before recording: that double fault goes unrecorded, the `MemoryError` takes
+its own path outward and the watchdog stays the backstop (agent, 2026-11-02).
+`tests_scripts/test_fatal_report_sites.py` walks `src/` and every generated module for it, counting
+only a log that runs before any statement that can leave the handler; `PrintLog.report_unretrieved()` keeps its `except Exception: pass`
 (`tests_scripts/test_exception_handler_contract.py`), and the shutdown's await of a stopped task
 records nothing, the supervisor, the record's one reader, having stopped first.
 
@@ -9267,13 +9271,15 @@ device script running the firmware's `main()` installs an always-printing report
 nothing, ever (owner, 2026-11-02): a logger-bearing class logs the caught `MemoryError` through its
 level-gated `err()`/`err_s()`, and a class with no logger of its own (`asy_udp_socket.py`,
 `asy_uart_driver.py`, the region buffer, the COBS scratch) through the one its builder or user hands
-it (C.7, G.2), each printing only at a `DebugLevel` of at least 1 (ERR): the board's standard state
-holds 5 (`tests_hardware/README.md`) and the twin suite's Run 1 sets 5 for the runs on its state.
-The unit tests that can run out of memory log at ERR (owner, 2026-10-20, asked, paraphrase, whether
-to turn logging on at error level or above in the unit tests that can actually run out of memory, in
-every unit test, or in none: "Option 1 is good"). The system builds boot at
-`tests/_generated_module.py`'s `ERROR_LEVEL` (1) — `boot_generated(log_errors=True)`, or
-`debug=ERROR_LEVEL` to the generated `build_system()`/`main()` — over a stored `DebugLevel` of 1
+it (C.7, G.2), each printing from its call's level on: ERR (1) for `err()`/`err_s()`, WARN (2) for the
+six that log it as a warning (a config file's read, the web server's start and its writer's close).
+The board's standard state holds 5 (`tests_hardware/README.md`) and the twin suite's Run 1 sets 5 for
+the runs on its state. The unit tests that can run out of memory log at WARN, so both print (owner,
+2026-10-20, asked, paraphrase, whether to turn logging on at error level or above in the unit tests
+that can actually run out of memory, in every unit test, or in none: "Option 1 is good"; WARN since
+level 0 went silent, agent, 2026-11-03). The system builds boot at
+`tests/_generated_module.py`'s `ERROR_LEVEL` (2) — `boot_generated(log_errors=True)`, or
+`debug=ERROR_LEVEL` to the generated `build_system()`/`main()` — over a stored `DebugLevel` of 2
 that `write_error_level_config()` plants when none is stored, since `SystemService.setup()`
 re-applies the stored level over every logger's `debug=`; the load tests build their UART pairs
 (`Pair`, `build_pair()`, `hazard_pair()`) and webserver hammers (`_make_service()`) with `debug` at
@@ -9282,8 +9288,8 @@ off the gate, among them the scenarios that pin a fresh store's `DebugLevel` 0 o
 (`log_errors=False`, so `SystemService.setup()` applies the stored 0) and
 `tests/test_bus_hazard_multi_device.py`, whose level-gated catches guard allocations of tens of
 bytes while its large ones, test-fake code nothing catches, fail loudly at any level (agent,
-2026-10-20). The scenario harness's twins log at ERR too (E.9; agent, 2026-10-20): the runner's
-`--debug-level 1` over a planted stored `DebugLevel` of 1, but for the scenario reading the settings
+2026-10-20). The scenario harness's twins log at WARN too (E.9; agent, 2026-10-20): the runner's
+`--debug-level 2` over a planted stored `DebugLevel` of 2, but for the scenario reading the settings
 routes' defaults. **The board prints that text too**, which is what the hardware half of
 the gate rests on: `m_malloc_fail()` carries its message unconditionally, and rp2 resolves to
 `MICROPY_ERROR_REPORTING_NORMAL` (through `MICROPY_CONFIG_ROM_LEVEL_EXTRA_FEATURES`) — of the four
