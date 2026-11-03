@@ -200,7 +200,7 @@
     "VOCState": {
       "0": {"text": "blackout (first 46 samples, index 0)"},
       "1": {"text": "learning (fresh start, first 24 h)"},
-      "2": {"text": "learned (past the 24 h learning time)"},
+      "2": {"text": "settled (past the 24 h learning time)"},
       "3": {"text": "restored from backup (first 24 h after the restore)"}
     },
     "FRCState": {

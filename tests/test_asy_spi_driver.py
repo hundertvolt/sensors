@@ -117,7 +117,7 @@ def test_operations_after_deinit_return_none_or_noop() -> None:
 
 
 def test_device_operations_on_an_already_deinitialized_bus_return_none_or_noop() -> None:
-    # Bypasses `async with device:` deliberately: __aenter__ would call configure(), which raises on a
+    # Bypasses `async with device:` on purpose: __aenter__ would call configure(), which raises on a
     # deinitialized bus regardless. This test is only about SPI's no-op contract at the
     # write()/readinto()/write_readinto() level, reached directly the way I2CDevice's equivalent test does.
     spi = _make_spi()

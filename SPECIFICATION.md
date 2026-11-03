@@ -362,15 +362,11 @@ features as today's deployed units, not a feature change.
   the index converges toward 100 ("clean air") —
   a spike needs a real step change, not just a high absolute value; (3) a *higher* raw tick count
   reads as *cleaner* air — the inverse of what "raw" suggests. Not a bug — how Sensirion's reference
-  algorithm works; `asy_sgp40_driver.py` treats `VOC` as an opaque index throughout (F.4). A compensation value whose
-  producer timestamp is older than `sgp40.comp_max_age_s` (Part N, three hours) counts as unavailable, so the read is
-  skipped as for a missing value (the owner-confirmed rule in this section's list); a value with no timestamp yet counts
-  as current (agent, 2026-10-06). A second consecutive failed cycle sends the device-addressed heater-off (SGP40
-  datasheet Table 14), which reaches only the SGP40 — the participant rung of the recovery ladder (C.7); the
-  general-call reset stays at setup (C.8). A task restart keeps the running algorithm state and restores nothing (agent,
-  2026-10-06: the legacy read task never restarted in place, its end reset the board, so it never restored over a live
-  state); a boot restores the FRAM backup, and so does a restart while the boot's own restore is still waiting for NTP,
-  whose samples are the fresh start that restore replaces (agent, 2026-10-07).
+  algorithm works; `asy_sgp40_driver.py` treats `VOC` as an opaque index throughout (F.4). A second consecutive failed
+  cycle sends the device-addressed heater-off (SGP40 datasheet Table 14), which reaches only the SGP40 — the participant
+  rung of the recovery ladder (C.7); the general-call reset stays at setup (C.8). A task restart restores the FRAM
+  backup as a boot does, so `VOCState` reads 3 for the next 24 h; while the restore waits for NTP the chunk is read
+  every cycle, and every read that is not valid, a first boot's blank chunk included, persists one `SGP_NO_BACKUP`.
 - **BMP3XX recovery.** A second consecutive failed read soft-resets the chip (0xB6 to CMD) and writes
   the stored oversampling and filter configuration back, since the reset returns every user setting to its default
   (BMP388 DS001 §4.3.22) — the participant rung of the recovery ladder (C.7); a reset the chip rejects (`ERR_REG`
@@ -7650,12 +7646,9 @@ backend-only or frontend-only validation/coercion policy change in this project.
 - **Current UTC timestamp** — `asy_base_classes.py`'s `utc_now()`: `None` until the NTP client has
   set the clock this boot (its one writer, `set_utc_valid()`); never computed inside a read's `try`
   (agent, 2026-09-29; owner-reviewed, 2026-10-02).
-- **A stale producer sample** — one rule, written in one shape at its two consumers: with
-  `utc_now()` set and the sample's `TS` an `int` older than the consumer's bound, the value counts as
-  unavailable, while a sample without a `TS` counts as current — `asy_sgp40_driver.py`'s
-  `_current_value()` (`sgp40.comp_max_age_s`) and `asy_notification_service.py`'s `_check_one()`
-  (`notify.sample_max_age_s`), both three hours (A.4). A third consumer takes the same shape; two
-  sites do not yet make a shared helper (agent, 2026-10-08).
+- **A stale producer sample** — `asy_notification_service.py`'s `_check_one()`: with `utc_now()` set
+  and the sample's `TS` an `int` older than `notify.sample_max_age_s` (three hours), the value counts
+  as unavailable, while a sample without a `TS` counts as current (A.4).
 - **Hourly window counter** — `asy_base_classes.py`'s `HourlyWindowCounter`: a count of events in
   the last 24 hours at hourly resolution, in 24 integer bins allocated once at construction; the bins
   advance lazily on the next `add(now_s)` or `total(now_s)` from the uptime seconds the caller passes
@@ -8972,11 +8965,11 @@ word buffer the six data words are copied into without their CRC bytes. Per read
 points, and one `SCD30` sample namedtuple replacing the last, transient. Per config PUT: the staging
 dicts, bounded by the schema.
 
-**`asy_sgp40_driver.py`** — construction, long-lived, fixed: the `VOCAlgorithm` (35 attributes and
-its precomputed constants, built and initialised with the chip object, never at the first read) and
-the 268 B FRAM backup buffer (allocated with the reader; a failed one is tried again at the next
-storage check); the flash tier's survivor bound counts both (F.5.3). Per sample: one `_exchange()` into the reply buffer and a word decoded in place, no
-list, tuple or float (`_read_word()`); the compensation's command words written into the command
+**`asy_sgp40_driver.py`** — construction, long-lived, fixed: the `VOCAlgorithm` (built and
+initialised with the chip object, never at the first read); the flash tier's survivor bound counts it
+(F.5.3). Per storage check with a restore or backup due: the 268 B FRAM backup buffer, transient (a
+failed one leaves both parts for the next cycle). Per sample: one read into the reply buffer and its
+one-word list (`_read_words()`); the compensation's command words written into the command
 buffer through one view and two slices of it; one `SGP40` sample namedtuple, transient. Setup only: the 3-word serial
 number's list. The algorithm's own churn is in `voc_algorithm.py`.
 
@@ -9047,8 +9040,8 @@ Per status pass: one `WIFI` sample; no `network.WLAN.scan()` call anywhere.
 **`math_helpers.py`** — each formula's float results and its validity check's type tuple, per call,
 transient.
 
-**`voc_algorithm.py`** — construction: the parameter object and every constant a sample uses,
-converted once (`_f16()`). Per sample (1 s): about 80 `_fix16_mul()`, 13 `_fix16_div()`, 8
+**`voc_algorithm.py`** — construction: the parameter object and `_fix16_exp()`'s eight constants;
+every other constant is converted where it is used (`_f16()`), per sample. Per sample (1 s): about 80 `_fix16_mul()`, 13 `_fix16_div()`, 8
 `_fix16_exp()` and 2 `_fix16_sqrt()` calls (a CPython count, 2026-10-20), whose 32-bit intermediates
 past ±2**30 are heap ints on rp2 only — the Unix port's 63-bit small ints show none; the board's
 per-sample figure is owed to the bench. The state codec packs into and unpacks from the caller's
@@ -11326,8 +11319,7 @@ Behaviour (owner, 2026-09-26): with a live source wired, the SGP40 skips its rea
 unavailable (no VOC value, nothing substituted) and reads compensated once it is; with no live
 source, the device TOML states the constant (`{default = true, temperature = 25}`, SGP40 datasheet
 Table 9 defaults 25 °C / 50 %RH). Both `@value-wiring` tags are `required`, so an SGP40 with neither
-fails the build. A live value whose producer `TS` is older than `sgp40.comp_max_age_s` (Part N)
-counts as unavailable (A.4).
+fails the build.
 
 Name-matching is the whole mechanism — there is no separate property or unit tag system. A producer
 naming the same physical quantity differently (`"Temperature"` instead of `"Temp"`) simply is not
@@ -12081,7 +12073,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `notify.loop_tick_s` | 1 s | `src/asy_notification_service.py` — `1` | `_pause_loop()`'s round: a measured pause ends at most one round late (the L1 override test reads its end in virtual time, at the pause plus one round); `l4.sensor_config_push_over_real_hardware_override_poll_s` × `l4.sensor_config_push_over_real_hardware_override_poll_tries`: ten ticks over the bench's 3 s countdown; `l1.asy_notification_service_override_secs` leaves one full round with the override active | estimated (agent, `da9b4ab`) — measurement owed: none for the value, the pause's lateness bound; the loop share, L2 | unknown until measured | the pause loop changes |
 | `notify.min_sleep_ms` | 100 ms | `src/asy_notification_service.py` — `100` | the monitor loop's shortest sleep | estimated (agent, `454f6a2`) — measurement owed: the monitor loop's cycle cost, L2 | unknown until measured | the monitor loop changes |
 | `notify.cfg_fail_interval_s` | 600 s | `src/asy_notification_service.py` — `600` | the interval used while its config reads fail | estimated (agent, `da9b4ab`) — measurement owed: none: a fallback while the config is unreadable | twice the `FlashInterval` default | the `FlashInterval` range changes |
-| `notify.sample_max_age_s` | 10800 s | `src/asy_notification_service.py` — `10800` | `_check_one()`: a producer sample whose `TS` is older counts as unavailable, the signal not evaluated (`State` 3, A.4); the same rule and value as `sgp40.comp_max_age_s` (G.2) | three times the longest configurable producer interval, BMP3XX `SampleInterval` 3600 s, so a slow producer is never cut off (agent, 2026-10-06) | a producer late by up to three intervals still counts | a producer's interval maximum changes |
+| `notify.sample_max_age_s` | 10800 s | `src/asy_notification_service.py` — `10800` | `_check_one()`: a producer sample whose `TS` is older counts as unavailable, the signal not evaluated (`State` 3, A.4); (G.2) | three times the longest configurable producer interval, BMP3XX `SampleInterval` 3600 s, so a slow producer is never cut off (agent, 2026-10-06) | a producer late by up to three intervals still counts | a producer's interval maximum changes |
 | `scd30.cmd_response_wait_ms` | 50 ms | `src/asy_scd30_driver.py` — `50` | every command-and-read exchange | owner decision (owner, 2026-07-13, `144873f`: owner-tested) | 16.7× the > 3 ms between write and read (Interface Description 1.4.4, 1.4.5; M.2) | the bus speed or the chip's firmware changes |
 | `scd30.asc_enable_wait_ms` | 10 ms | `src/asy_scd30_driver.py` — `10` | — | legacy `legacy/firmware/python/IndividualDrivers/asy_scd30_driver.py:286` | datasheet margin owed | the chip's firmware changes |
 | `scd30.soft_reset_wait_ms` | 2500 ms | `src/asy_scd30_driver.py` — `2500` | — | estimated (agent, `7267509`) — measurement owed: the chip's ready time after a soft reset on the dev bench, L3 (the Interface Description's boot time is the floor) | 1.25× the boot-up time < 2 s (Interface Description 1.1; M.2) | the chip's firmware changes |
@@ -12092,7 +12084,6 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `sgp40.general_call_reset_wait_s` | 1 s | `src/asy_sgp40_driver.py` — `1` | — | legacy `legacy/firmware/python/IndividualDrivers/asy_sgp40_driver/__init__.py:352` | about 1667× the soft-reset time tSR, 0.6 ms maximum (Table 3; M.3) | the reset path changes |
 | `sgp40.fram_verify_mins` | 60 min | `src/asy_sgp40_driver.py` — `60` | the FRAM backup's verify period | estimated (agent, `5ff8c0b`) — measurement owed: none for the value, a design period; FRAM reads per day, L3 | unknown until measured | the backup scheme changes |
 | `sgp40.backup_counter_max` | 100000 | `src/asy_sgp40_driver.py` — `100000` | the backup counter's wrap (one day of 1 s cycles is 86,400) | estimated (agent, `770cf13`) — measurement owed: none: a counter bound above one day of cycles | 86,400 cycles a day under it | the sampling period changes |
-| `sgp40.comp_max_age_s` | 10800 s | `src/asy_sgp40_driver.py` — `10800` | the compensation read: a producer sample whose `TS` is older counts as unavailable and the cycle is skipped | three times the longest configurable producer interval, BMP3XX `SampleInterval` 3600 s, so a slow producer is never cut off (agent, 2026-10-06) | a producer late by up to three intervals still counts | a producer's interval maximum changes |
 | `bmp3xx.cmd_rdy_timeout_ms` | 50 ms | `src/asy_bmp3xx_driver.py` — `50` | — | estimated (agent, `433e35e`) — measurement owed: none: the datasheet gives no bound, so it bounds a bus fault | unknown until measured | the command path changes |
 | `bmp3xx.meas_timeout_ms` | 300 ms | `src/asy_bmp3xx_driver.py` — `300` | — | estimated (agent, `433e35e`) — measurement owed: none: bounds a stuck STATUS past the datasheet's worst case (3.9.2) | about 2× the ~129-150 ms worst case at x32/x32 | the oversampling range changes |
 | `bmp3xx.status_poll_ms` | 2 ms | `src/asy_bmp3xx_driver.py` — `2` | the STATUS poll's loop share | estimated (agent, `433e35e`) — measurement owed: the poll rounds per conversion on the dev bench, L3 | unknown until measured | the conversion timing changes |
