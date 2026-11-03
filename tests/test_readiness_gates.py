@@ -1,6 +1,6 @@
 """Every class with an async setup() answers each public call before setup() and after a setup() forced to
 fail exactly as its contract says - a sentinel, False, "Failed" per key, or its documented raise - never an
-AttributeError; setup() itself answers a bool (SPECIFICATION.md Part C.13)."""
+AttributeError; setup() answers a bool where product code reads it (SPECIFICATION.md Part C.13)."""
 
 import os
 import sys
@@ -107,7 +107,7 @@ def _reader_calls(obj: SensorReader) -> "Calls":
 def test_sensor_reader_answers_before_and_after_a_setup_whose_logger_cannot_reach_its_store() -> None:
     reader = SensorReader(Meas(None, None), "GATE", max_module_error=3, log=LogConfig(_fram(writable=False), 4, None))
     assert _answers(reader, _reader_calls(reader)) == []
-    assert run(reader.setup()) is True  # the reader is ready; its logger runs in RAM
+    run(reader.setup())  # the reader is ready; its logger runs in RAM
     assert reader.pr.initialized is False
     assert _answers(reader, _reader_calls(reader)) == []
 
@@ -117,7 +117,8 @@ def test_sensor_reader_config_answers_before_and_after_a_failed_setup() -> None:
     calls = _reader_calls(reader)
     calls["get_cfg_schema"] = ((), lambda r: r == _VAL_COUNT)
     assert _answers(reader, calls) == []
-    assert run(reader.setup()) is False
+    run(reader.setup())
+    assert reader.cfgmgr.valid is False
     assert _answers(reader, calls) == []
     assert run(reader._set_dict_cfg({"Count": 3}, _VAL_COUNT)) == {"Count": "Failed"}
 
@@ -138,7 +139,8 @@ def test_system_service_answers_before_and_after_a_failed_setup() -> None:
         "pause_permanent_storage": ((10,), lambda r: r is True),  # no storage wired: a no-op that answers True
     }
     assert _answers(svc, calls) == []
-    assert run(svc.setup()) is False
+    run(svc.setup())
+    assert svc.cfgmgr.valid is False
     assert svc.pr.initialized is True
     assert _answers(svc, calls) == []
 
@@ -154,7 +156,7 @@ def test_config_manager_is_gated_on_valid_before_and_after_a_failed_setup() -> N
         "flush_pending": ((), lambda r: r is None),
     }
     assert _answers(mgr, calls) == []
-    assert run(mgr.setup()) is False
+    run(mgr.setup())
     assert mgr.valid is False
     assert _answers(mgr, calls) == []
 
@@ -296,7 +298,8 @@ def test_notification_service_answers_before_and_after_a_failed_setup() -> None:
         "get_timer_starters": ((), lambda r: r == []),
     })
     assert _answers(svc, calls) == []
-    assert run(svc.setup()) is False
+    run(svc.setup())
+    assert svc.cfgmgr.valid is False
     assert _answers(svc, calls) == []
     assert run(svc._set_dict_cfg({"AutoOn": True}, svc.get_cfg_schema())) == {"AutoOn": "Failed"}
     run(svc.set_override_led(5))  # the pause runs on ticks, with no store involved
@@ -316,7 +319,8 @@ def test_wifi_service_answers_before_and_after_a_failed_setup() -> None:
         "get_dns_server_ip": ((), _is(None)),  # no snapshot taken yet: no DHCP-assigned server known
     })
     assert _answers(svc, calls) == []
-    assert run(svc.setup()) is False
+    run(svc.setup())
+    assert svc.cfgmgr.valid is False
     assert svc._dns_server.pr.initialized is True  # the captive DNS logger is set up all the same
     assert _answers(svc, calls) == []
     assert run(svc._set_dict_cfg({"SSID": "net"}, svc.get_cfg_schema())) == {"SSID": "Failed"}

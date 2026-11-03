@@ -286,8 +286,8 @@ _USAGE = f"""Usage: micropython digital_twin/run_generic_integration.py --module
   --test-hold-closing-slot, --test-stall-loop-ms N, --test-conn-status-interval-ms N,
   --test-fault-status-interval-ms N, --test-shutdown-hang S1|S2|S3|S4|S5reset|S5erase|S6,
   --test-flash-stall-max (every flush at its datasheet maximum), --test-uart-over-cap (one train past each link's cap),
-  --test-hold-system-entry ERRNO[:cut] (SYSTEM's entry with that errno waits for ENTRY_RELEASE, its bounded wait starting
-        there; with :cut its write is held inside its first block after the busy mark, never released, so the bound cuts it),
+  --test-hold-system-entry ERRNO[:cut] (SYSTEM's entry with that errno waits for ENTRY_RELEASE; with :cut its write is
+        held inside its first block after the busy mark, never released),
   --test-kbd-traceback (KBD_TRACEBACK prints the interrupt object's traceback),
   --test-loop-lag-ms N (a LOOP_LAG line every {_LOOP_LAG_REPORT_MS // 1000} s from a task sleeping N ms at a time, each link's transfers on it),
   --test-drop-timer-fire reset|sequencer (that one-shot's fire lost as rp2's full scheduler queue loses it),
@@ -711,14 +711,11 @@ def _test_hold_closing_slot(module: "ModuleType") -> "Callable[[], None]":
 
 
 def _test_hold_system_entry(module: "ModuleType", errno_held: int, say: "Callable[[str], None]" = print, *, cut: bool = False) -> "Callable[[], None]":
-    # SystemService's logger writes its entry with errno_held only after ENTRY_RELEASE: ENTRY_HELD marks the call's start,
-    # so the host acts inside that write (the supervisor's escalation entry); the returned callback releases it. The
-    # service's bounded wait on a held entry starts at the release, so the host's own pace never counts against it.
-    logger, gate, service = module.sysfunct.pr, asyncio.Event(), sys.modules.get("asy_system_service")
-    if service is None:
-        raise RuntimeError("asy_system_service is not imported, so the held entry's bounded wait cannot start at its release")
+    # SystemService's logger writes its entry with errno_held only after ENTRY_RELEASE: ENTRY_HELD marks the write's start,
+    # so the host acts inside that write (the supervisor's escalation entry); the returned callback releases it.
+    logger, gate = module.sysfunct.pr, asyncio.Event()
     real_err_s = logger.err_s
-    if cut:  # the entry's real write starts and is held after its first block's busy mark: the bound counts the hold
+    if cut:  # the entry's real write starts and is held after its first block's busy mark, never released
         chunk = getattr(logger, "fram", None)
         if chunk is None:
             raise RuntimeError("SystemService's logger has no FRAM chunk, so no block of its entry can be cut")
@@ -729,7 +726,7 @@ def _test_hold_system_entry(module: "ModuleType", errno_held: int, say: "Callabl
             if armed[0] and val == _FRAM_STATUS_BUSY and done is not None:
                 armed[0] = False
                 say("ENTRY_HELD")
-                await asyncio.Event().wait()  # never set: only the bound's cancel ends this write
+                await asyncio.Event().wait()  # never set: this write never ends
             return done
 
         def cut_entry(*args: object, **kwargs: object) -> "Coroutine[object, object, None]":
@@ -738,41 +735,23 @@ def _test_hold_system_entry(module: "ModuleType", errno_held: int, say: "Callabl
 
         logger.err_s, chunk._handle_status_bytes = cut_entry, status_then_hold
         return lambda: None  # never released: the cut is the mode
-    unstarted: list[Coroutine[object, object, None]] = []  # held entries no bounded wait has started yet
 
-    async def hold() -> None:
+    async def held_entry(args: "tuple[object, ...]", kwargs: "dict[str, object]") -> None:
         if not gate.is_set():
             say("ENTRY_HELD")
             await gate.wait()
-
-    async def held_entry(args: "tuple[object, ...]", kwargs: "dict[str, object]") -> None:
-        await hold()
         await real_err_s(*args, **kwargs)
 
     def entry(*args: object, **kwargs: object) -> "Coroutine[object, object, None]":
         if kwargs.get("errno") != errno_held or gate.is_set():
             return cast("Coroutine[object, object, None]", real_err_s(*args, **kwargs))
-        coro = held_entry(args, kwargs)
-        unstarted.append(coro)
-        return coro
-
-    class _ReleasedWaits:
-        # The service's asyncio: every name reaches the real module; a wait on a held entry first waits for the release.
-        def __getattr__(self, name: str) -> object:
-            return getattr(asyncio, name)
-
-        async def wait_for_ms(self, aw: "Coroutine[object, object, None]", timeout: int) -> None:
-            if aw in unstarted:
-                unstarted.remove(aw)
-                await hold()
-            await asyncio.wait_for_ms(aw, timeout)
+        return held_entry(args, kwargs)
 
     def release() -> None:
         gate.set()
         say("ENTRY_RELEASED")
 
     logger.err_s = entry
-    service.__dict__["asyncio"] = _ReleasedWaits()  # the module global the escalation's bounded wait reads
     return release
 
 

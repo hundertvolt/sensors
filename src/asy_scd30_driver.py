@@ -431,7 +431,6 @@ class SCD30_Reader(SensorReaderConfig):
             interval = await self._scd.get_measurement_interval()
         except Exception as e:
             await self.pr.err_s("Error in initial setup:", e, errno=_ERR_INIT)
-            await self._init_failed()
             return False
         # The chip's word, held to the datasheet range so the readiness arithmetic never divides by zero.
         self._frc_interval_s = min(max(interval, _MEAS_INTERVAL_MIN), _MEAS_INTERVAL_MAX)

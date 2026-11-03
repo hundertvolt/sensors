@@ -21,7 +21,7 @@ sys.path.insert(0, "ext")
 
 import machine
 import microtest
-from _async_harness import cancel, run, run_timed
+from _async_harness import cancel, run, run_timed, track_starts
 from _error_codes import code
 from _fast_sleep import FastAsyncSleep, check_sleep_ms
 from _fram_chip_fake import FakeMB85RS64V
@@ -1046,6 +1046,7 @@ class _CommandBench:
         self.fram = FRAMManager(SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4), 1, max_size=0x2000)
         self.reader = _CmdReader(_CmdData(0), "CMDSENS", _CMD_SCHEMA, cfg_path=cfg_path)
         self.svc = SystemService(_never_synced, watchdog=machine.WDT(), storage=self.fram, config_stores=self._stores, cfg_path=cfg_path)
+        self.sequences = track_starts(self.svc, "_shutdown_sequence")  # the service keeps no handle on its shutdown task
         self.service, self.app = _make_service(
             sensors=(self.reader,), system_cmd=self._system_cmd, reset_refusals=(self.svc.is_reset_decided, self.fram.get_pause),
             error_sources=(self.svc, self.reader),
@@ -1078,16 +1079,16 @@ class _CommandBench:
     async def sequence_ended(self) -> bool:
         # Yields, bounded, until the shutdown sequence has ended; then whether it armed the reset.
         for _ in range(_SEQUENCE_YIELDS):
-            task = self.svc._shutdown_task
-            if task is not None and task.done():
+            if self.sequences and self.sequences[-1].done():
                 break
             await asyncio.sleep(0)
         return self.svc._reset_armed
 
     async def setup(self) -> None:
         assert await self.fram.setup()
-        assert await self.svc.setup()
-        assert await self.reader.setup()
+        await self.svc.setup()
+        await self.reader.setup()
+        assert self.svc.cfgmgr.valid and self.reader.cfgmgr.valid
 
 
 async def _hammer_settings_route(app: "Microdot", path: str, n: int, expected_key_count: int) -> None:
@@ -1103,7 +1104,7 @@ async def _hammer_settings_route(app: "Microdot", path: str, n: int, expected_ke
 def test_each_system_command_over_put_system_reaches_its_reset_arm_without_a_lock_held() -> None:
     # Each command's own code is armed, and the one-shot's last flush pass, which takes every owner lock again,
     # runs the reset; config reset deletes both files, FRAM erase completes (code 8, not 9).
-    cases = (("reboot", "_RR_REBOOT"), ("bootloader", "_RR_BOOTLOADER"), ("resetconfig", "_RR_CONFIG_RESET"), ("erasefram", "_RR_FRAM_ERASED"))
+    cases = (("reboot", "_RR_REBOOT"), ("bootloader", "_BOOTLOADER"), ("resetconfig", "_RR_CONFIG_RESET"), ("erasefram", "_RR_FRAM_ERASED"))
     for word, code_name in cases:
         bench = _CommandBench()
         run(bench.setup())
@@ -1138,7 +1139,7 @@ def test_each_system_command_over_put_system_reaches_its_reset_arm_without_a_loc
         assert result == {"SystemCmd": "Valid"}, word
         assert bench.locked_at_dispatch == [False], word
         assert (armed, one_shot) == (True, True), word
-        assert machine.mem_backup(0)[1] == _system_const(code_name), word
+        assert machine.mem_backup(0)[1] == (0 if bootloader else _system_const(code_name)), word  # BOOTSEL loses the record
         assert (machine.reset_count, machine.bootloader_count) == (resets[0] + (not bootloader), resets[1] + bootloader), word
         files = [_file_or_none(path) is not None for path in bench.paths]
         assert files == ([False, False] if word == "resetconfig" else [True, True]), (word, files)
@@ -1172,7 +1173,7 @@ def test_a_config_put_mid_write_when_a_command_arrives_is_waited_out_then_flushe
             await asyncio.sleep(0)  # the sequence runs as far as it can
         supervisor = bench.svc._supervisor_task
         held = (
-            supervisor is not None and supervisor.done(), bench.svc._shutdown_task is not None and bench.svc._shutdown_task.done(),
+            supervisor is not None and supervisor.done(), bool(bench.sequences) and bench.sequences[-1].done(),
             bench.svc._reset_armed, counter.writes, _file_or_none(bench.paths[1]),
         )
         gate.set()

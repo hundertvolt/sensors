@@ -373,9 +373,8 @@ class NotificationService(SensorReaderConfig):
         self._pause.restart(min(max(secs, 0), _MAX_OVERRIDE_TIME))
         return True  # clamps, never refuses
 
-    async def setup(self) -> bool:  # call once, before any task starter runs
-        ok = await super().setup()  # the logger first, so the refusals below persist
+    async def setup(self) -> None:  # call once, before any task starter runs
+        await super().setup()  # the logger first, so the refusals below persist
         while self._pending_wrn:
             msg, wrnno = self._pending_wrn.pop(0)
             await self.pr.wrn_s(msg, wrnno=wrnno)
-        return ok

@@ -126,7 +126,7 @@ def check_table(spec_text: str, src: Path) -> "list[str]":
 def expected_rows(src: Path) -> "dict[str, list[int]]":
     # Each code-derived row's figures in µs, the Value cell's leading one first; the rest must appear in the cell.
     system = "asy_system_service.py"
-    task_check_s, reset_s, entry_ms = (module_int_const(src, system, n) for n in ("_TASK_CHECK_TIME", "_RESET_DELAY", "_ESCALATION_ENTRY_WAIT_MS"))
+    task_check_s, reset_s = (module_int_const(src, system, n) for n in ("_TASK_CHECK_TIME", "_RESET_DELAY"))
     gc_ms = module_int_const(src, "asy_uart_comm.py", "_GC_PAUSE_WORST_MS")
     cmd_ms = module_int_const(src, "asy_scd30_driver.py", "_CMD_RESPONSE_WAIT_MS")
     probe_ms = module_int_const(src, "asy_i2c_driver.py", "_PROBE_SETTLE_MS")
@@ -148,7 +148,7 @@ def expected_rows(src: Path) -> "dict[str, list[int]]":
         "hold.scd30_command": [cmd_ms * 1000],
         "hold.scd30_snapshot": [reads * cmd_ms * 1000, cmd_ms * 1000],
         "hold.i2c_probe": [settles * probe_ms * 1000, probe_ms * 1000],
-        "feed.supervisor": [task_check_s * 1_000_000, entry_ms * 1000],
+        "feed.supervisor": [task_check_s * 1_000_000],
         "feed.reset_path": [reset_s * 1_000_000],
         "con.dns_query": [module_int_const(_CODEGEN_DIR, "codegen.py", "_DNS_TIMEOUT_MS") * 1000],
         "con.http_call": [round(per_call_s * 1_000_000), round(outer_s * 1_000_000)],

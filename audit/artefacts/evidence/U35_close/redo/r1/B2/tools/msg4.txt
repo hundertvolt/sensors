@@ -1,0 +1,18 @@
+U35: core: the command gate refuses once a reset is decided; exact boot checks
+
+A system command is refused once a reset is decided, not only once it is armed: the supervisor's
+escalation records its code before its entry write, and a command accepted during that write
+rewrote the record, so a write that never ended left the watchdog's reset reading 9 instead of the
+escalation's 5 or 20.
+
+The pause and uptime comments state what holds with the uptime tick refused (refuted in normal
+operation): a storage pause lasts until the reboot, and uptime reads right only while something
+reads it at least every 2**29 ms. Reset code 9's text covers everything that records it.
+
+The checks around the restored not-found warning are exact again: the storm scenario allows it only
+for a config store whose file the boot did not find, the generated-boot check wants exactly one per
+such store and none for a planted file, the erase-cut test wants a whole ring or a blank one, and the
+manual power-cycle test reads HAD_POR and the watchdog REASON bits through its device script.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

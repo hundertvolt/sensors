@@ -551,7 +551,6 @@ def test_printloghistorystore_setup_first_time_falls_back_to_writing_defaults() 
     store = PrintLogHistoryStore(manager, history_length=4)
     run(store.setup())
     assert store.initialized is True
-    assert store.restored is False  # a blank chunk: nothing an earlier boot stored
 
 
 def test_printloghistorystore_setup_with_no_fram_returns_without_initializing() -> None:
@@ -594,7 +593,6 @@ def test_printloghistorystore_err_s_persists_and_survives_a_simulated_reboot() -
     run(rebooted_store.setup())
     assert rebooted_store._err_count == 1
     assert list(rebooted_store.history)[-1] == 3
-    assert rebooted_store.restored is True
 
 
 def test_a_reset_while_storage_is_paused_clears_nothing_and_the_history_survives_the_pause() -> None:
@@ -712,22 +710,19 @@ def test_the_resets_image_packs_without_allocating() -> None:
     assert bytes(dbuf) == bytes((1, 0)) + bytes(63) + bytes((4,))
 
 
-def test_restored_is_false_for_an_unreadable_chunk_and_a_ram_only_history() -> None:
+def test_setup_initialises_a_ram_only_history_but_no_unusable_chunk() -> None:
     manager, chip = make_fram_manager()
     run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=4)
     chip.drop_wren = True  # blank and unwritable: setup() can neither read nor write it
     run(store.setup())
     assert store.initialized is False
-    assert store.restored is False
     no_chunk = PrintLogHistoryStore(make_fram_manager(max_size=1)[0], history_length=4)
     run(no_chunk.setup())
     assert no_chunk.initialized is False
-    assert no_chunk.restored is False
     ram = PrintLogHistory(history_length=4)
     run(ram.setup())
     assert ram.initialized is True
-    assert ram.restored is False  # a RAM-only history never restores
 
 
 def test_a_restored_0x80_byte_reads_back_as_no_entry() -> None:
@@ -1297,7 +1292,6 @@ def test_a_clean_read_of_a_valid_store_sets_up_without_writing() -> None:
     store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=3)
     run(store.setup())
     assert store.initialized is True
-    assert store.restored is True
     assert store._err_count == 2
     assert chunk.writes == 0
 
@@ -1321,7 +1315,6 @@ def test_a_reset_landing_during_setups_read_leaves_ram_and_the_chunk_cleared() -
     assert list(store.history) == [0, 0, 0]
     assert chunk.writes == 1  # the reset's write only: setup() applied and wrote nothing
     assert chunk.last_payload == bytes(5)
-    assert store.restored is False
 
 
 def test_a_blank_store_is_reinitialised() -> None:
@@ -1329,7 +1322,6 @@ def test_a_blank_store_is_reinitialised() -> None:
     store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=3)
     run(store.setup())
     assert store.initialized is True
-    assert store.restored is False
     assert chunk.writes == 1
     assert chunk.last_payload == bytes(5)
 
@@ -1339,7 +1331,6 @@ def test_an_unreadable_store_keeps_its_bytes_and_stays_ram_only() -> None:
     store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=3, name="U")
     run(store.setup())
     assert store.initialized is False
-    assert store.restored is False
     run(store.err_s("later", errno=4))
     assert chunk.writes == 0  # nothing ever reached the chunk: the stored history stays for the next boot
     assert list(store.history) == [0, code("E", "LOG_RAM_ONLY"), 4]
@@ -1601,7 +1592,7 @@ def test_report_if_fatal_allocates_and_prints_nothing() -> None:
 # DebugLevel 0 prints nothing, ever; a C-stack overflow handed to any entry point is recorded at every level
 # ---------------------------------------------------------------------------
 
-_ENTRIES = ("err", "err_nomem", "wrn", "one", "evt", "all", "err_s", "wrn_s")  # every logging entry point
+_ENTRIES = ("err", "wrn", "one", "evt", "all", "err_s", "wrn_s")  # every logging entry point
 
 
 def _call(pr: PrintLogHistory, method: str, *args: object) -> None:
@@ -1643,27 +1634,6 @@ def test_every_entry_point_records_a_stack_overflow_at_level_0() -> None:
         for other in (RuntimeError("CRC check failed while reading data"), ValueError(str(error))):
             _call(pr, method, "no overflow:", other)
     assert fatal_reported() is False
-
-
-def test_err_nomem_prints_its_line_from_level_1_and_allocates_nothing() -> None:
-    # The line of a caught MemoryError's arm on a full heap: with the heap locked, the real print() neither raises nor
-    # allocates, at level 0 or 1; the recorded line is err()'s, with print()'s own separator and line end.
-    err = MemoryError("injected for the locked line")  # worded clear of the memory gates' markers
-    raised = []
-    for level in (0, 1):
-        pr = PrintLog(level, name="N")
-        micropython.heap_lock()
-        try:
-            pr.err_nomem("arm:", err)
-        except MemoryError:
-            raised.append(level)
-        finally:
-            micropython.heap_unlock()
-    assert raised == [], raised
-    with record_prints() as rec:
-        PrintLog(0, name="N").err_nomem("arm:", err)
-        PrintLog(1, name="N").err_nomem("arm:", err)
-    assert (rec.lines, rec.kwargs) == ([("N", "arm:", err)], [{}]), (rec.lines, rec.kwargs)
 
 
 class _FlagAtWriteChunk(_RaisingFramChunk):

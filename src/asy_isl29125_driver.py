@@ -464,7 +464,6 @@ class ISL29125_Reader(SensorReaderConfig):
             await self._isl.setup()
         except Exception as e:
             await self.pr.err_s("Error in initial setup:", e, errno=_ERR_INIT)
-            await self._init_failed()
             return False  # error
 
         self.pr.one("Setting sensor config at startup.")
@@ -507,7 +506,6 @@ class ISL29125_Reader(SensorReaderConfig):
             )
         except Exception as e:
             await self.pr.err_s("Error setting config data:", e, errno=_ERR_CHIP_SET)
-            await self._init_failed()
             return False  # error
 
         if self._range_auto:

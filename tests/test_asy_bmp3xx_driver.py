@@ -1371,10 +1371,9 @@ def test_init_bmp_fails_and_logs_when_stored_oversampling_is_outside_hardware_do
     before = run(reader.get_error_counter())["BMP3XX"]["ErrCount"]
     assert run(reader._init_bmp()) is False
     log = run(reader.get_error_counter())["BMP3XX"]
-    # The chip write failed: its CHIP_SET entry, then _init_failed()'s controller rung (C.7) before the task ends.
-    assert log["ErrCount"] == before + 2
-    assert [log["ErrNum"][-2], log["ErrType"][-2]] == [code("E", "CHIP_SET"), "E"]
-    assert [log["ErrNum"][-1], log["ErrType"][-1]] == [code("W", "BUS_RECOVERY"), "W"]
+    # The chip write failed: its CHIP_SET entry, and no bus rung before the task ends (C.7).
+    assert log["ErrCount"] == before + 1
+    assert [log["ErrNum"][-1], log["ErrType"][-1]] == [code("E", "CHIP_SET"), "E"]
 
 
 def test_mean_atm_temp_below_minus_40_is_refused_and_minus_40_yields_a_sea_level_pressure() -> None:
@@ -1606,10 +1605,9 @@ def test_init_bmp_fails_and_logs_when_setup_raises() -> None:
     ok, counters = run(scenario())
     assert ok is False
     log = counters["BMP3XX"]
-    # "Error in initial setup", then _init_failed()'s controller rung re-initialises the bus (C.7).
-    assert log["ErrCount"] == 2
-    assert [log["ErrNum"][-2], log["ErrType"][-2]] == [code("E", "INIT"), "E"]
-    assert [log["ErrNum"][-1], log["ErrType"][-1]] == [code("W", "BUS_RECOVERY"), "W"]
+    # "Error in initial setup", and no bus rung (C.7): the restart retries the setup.
+    assert log["ErrCount"] == 1
+    assert [log["ErrNum"][-1], log["ErrType"][-1]] == [code("E", "INIT"), "E"]
 
 
 def test_init_bmp_fails_and_logs_when_config_data_unreadable() -> None:

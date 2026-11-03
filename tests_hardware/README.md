@@ -904,16 +904,15 @@ writes restored in the script, so it runs only with `--allow-persistence-write` 
 
 Each `ResetReason` code (SPECIFICATION.md Part A.8 holds the meanings), the test that proves it and
 its level. Every bench test reads the code from `GET /status` after a serving boot, with the FRAM
-evidence saved first. `ResetBits` is recorded for every row; once measured, a table here lists the
-raw flags each reset kind leaves.
+evidence saved first; `bench/test_reset_reasons.py` then reads the watchdog's REASON bits on the
+board itself and asserts the half each reset kind sets.
 
 | code | test that proves it | level | on silicon |
 |---|---|---|---|
 | 0 | `bench/test_reset_reasons.py::test_an_invalid_record_reads_as_unknown` | L4 | not yet run |
 | 1 | `manual/manual_persistence.py`'s power-cycle steps (each reads `ResetReason` after power returns; `test_console_soft_reset_keeps_the_reset_record` holds a valid record across its cut, so its 1 also shows the cut cleared the scratch registers) | manual | not yet run |
-| 2 | `bench/test_reset_reasons.py::test_a_harness_hard_reset_reads_as_watchdog_without_a_record` | L4 | not yet run |
+| 2 | `bench/test_reset_reasons.py::test_a_harness_hard_reset_reads_as_watchdog_without_a_record`; after the bootloader command's BOOTSEL round trip, which loses the record: `bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed` (the way back is `sudo picotool reboot`, no load), `flash/test_system_commands.py::test_bootloader_command_shuts_down_then_enters_bootsel` | L4, L3 | not yet run |
 | 3 | `bench/test_end_to_end_timing.py::test_real_reboot_sequencing_via_rest_completes_cleanly`; `flash/test_system_commands.py::test_a_reboot_with_storage_paused_still_resets_attributed` | L4, L3 | not yet run |
-| 4 | `bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed` (the way back is `sudo picotool reboot`, no load); `flash/test_system_commands.py::test_bootloader_command_shuts_down_then_enters_bootsel` | L4, L3 | not yet run |
 | 5 | `bench/test_reset_reasons.py::test_the_supervisor_escalation_reboot_is_attributed` (a task dying until the budget reboots, also with a console host holding the port unread) | L4 | not yet run |
 | 6 | `bench/test_reset_reasons.py::test_the_starved_watchdog_fallback_is_attributed`; the fallback itself on L3: `flash/test_watchdog_starvation.py::test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm` (`reboot_fallback_starves_the_watchdog.py`) | L4, L3 | not yet run |
 | 7 | `flash/test_system_commands.py::test_config_reset_deletes_every_config_file_and_reboots`; `bench/test_system_commands_over_rest.py::test_config_reset_over_rest_brings_back_the_defaults` | L3, L4 | not yet run |
@@ -1092,8 +1091,8 @@ a live question:
   evidence, `fram_raw_dump.py` reading only) and `GET /status` with it on the bench, so the
   before-image is kept and every entry a run adds is attributable. Two kinds of entry a run leaves
   in the production history are its own: every scratch build (`build_system()` or `main()` over
-  `hwtest-scratch/`) records `W CONFIG_LOST` (69) in SYSTEM's history, since its settings file is
-  absent while FRAM history is restored; and test-band residue - the reboot script's load entries,
+  `hwtest-scratch/`) records `W CFG_FILE_UNREADABLE` (22) in each FRAM-backed config store's
+  history, its files not found there; and test-band residue - the reboot script's load entries,
   an erase script's seeds when it fails before erasing - is the same kind.
 - **The chunk reset race lands on each named seam, and a stale seed cannot pass.**
   `flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write`
@@ -1350,7 +1349,7 @@ a live question:
   - whether DMA reads update UARTRSR's error flags as CPU reads do -
     `flash/test_uart_crossover.py::test_a_break_mid_frame_fails_that_transaction_only`;
   - whether the reset record survives a RUN-pin reset - `manual/manual_persistence.py::test_run_pin_reset_keeps_or_clears_the_record` -
-    and the bootloader reboot - `bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed`;
+    and that the bootloader reboot loses it - `bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed`;
   - the SCD30's answer to a read with no command before it - `scd30_conformance_probe.py`'s
     `C03_read_before_a_command` - and after an NVM write cut by power loss -
     `manual/manual_persistence.py::test_power_loss_mid_scd30_nvm_write`;

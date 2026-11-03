@@ -176,7 +176,7 @@ async def _main() -> None:
             fact("bounds", {"min_step_ratio": _MIN_STEP_RATIO, "min_span_ratio": _MIN_SPAN_RATIO, "max_switches": _MAX_SWITCHES, "max_range_step": _MAX_RANGE_STEP, "bit_depth_rel_max": _BIT_DEPTH_REL_MAX, "periodic_only": W_ISL_PERIODIC_ONLY})
     finally:
         pixel.off()
-        asy_base_classes.set_utc_valid(valid=False)  # the clock state this script set is its own
+        asy_base_classes._utc_valid = False  # the clock state this script set is its own
         if reader is not None:
             await reader.cfgmgr.flush_pending()
         try:

@@ -29,6 +29,7 @@ _UNENDED = "the reap could not end a task the run created:"
 # @tunable l1.async_harness_reap_limit_ms = 5000
 _REAP_LIMIT_MS = 5000
 _COMPACT_MIN = 8
+_START_ROUNDS = 8  # scheduler rounds newest_start() gives a just-created task to begin
 # The running call's tasks: the finished ones are dropped whenever the list doubles past its last compaction, so a
 # create costs no scan. One call runs at a time (nesting is refused), so this is module state, emptied as a call ends.
 _tracked: "list[_Task]" = []
@@ -237,6 +238,31 @@ async def cancel_all(tasks: "Iterable[asyncio.Task[T]]", settle_yields: int = 0)
         await cancel(task)
     for _ in range(settle_yields):
         await asyncio.sleep(0)
+
+
+def track_starts(owner: object, method: str) -> "list[asyncio.Task[object]]":
+    # Rebinds owner.<method>, a coroutine method, so each run first records its own task: the handle of a task its owner
+    # keeps no reference to (a system command's shutdown sequence). A task appears once it has begun to run.
+    starts: list[asyncio.Task[object]] = []
+    real = getattr(owner, method)
+
+    async def recorded(*args: object) -> object:
+        task = asyncio.current_task()
+        assert task is not None  # the coroutine runs as its own task
+        starts.append(task)
+        return await real(*args)
+
+    setattr(owner, method, recorded)
+    return starts
+
+
+async def newest_start(starts: "list[asyncio.Task[object]]") -> "asyncio.Task[object]":
+    # The newest task track_starts() recorded, after the scheduler rounds a task created just now needs to begin.
+    for _ in range(_START_ROUNDS):
+        if starts:
+            return starts[-1]
+        await asyncio.sleep(0)
+    raise AssertionError("the tracked method never started a task")
 
 
 def release_finished() -> None:

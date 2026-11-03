@@ -594,6 +594,11 @@ def _beyond_max_rejected_cleanly(ctx: Context) -> None:
         _still_serving(twin.port)
 
 
+# The config files every scenario boot finds already there: SYSTEM's (_log_at_error_level()) and NTP's (the runner's
+# offline responder).
+_PLANTED_CONFIG_LOGS = ("CFGMGR_SYSTEM", "CFGMGR_NTP")
+
+
 @scenario("a_bounded_fault_storm_persists_only_what_its_events_allow", family="fault_storm")
 def _bounded_fault_storm(ctx: Context) -> None:
     """A fault storm below the escalation threshold persists per FRAM-backed logger only the entries its events allow and resets nothing."""
@@ -609,8 +614,10 @@ def _bounded_fault_storm(ctx: Context) -> None:
     if line is None:
         raise AssertionError("the twin printed no shutdown line")
     failed = _LOOP_LAG_FAULTS if sgp40 else 0
-    # Each refusal at the ceiling is one WEBSERVER entry (_note_drop()); a served connection persists none.
-    events = {"SGP40": _ENTRIES_PER_FAILED_CYCLE * failed + sum(at <= failed for at in _STORM_RUNGS_AT), "WEBSERVER": sum(r != HTTPStatus.OK for r in burst)}
+    # Each refusal at the ceiling is one WEBSERVER entry (_note_drop()); a served connection persists none. A config
+    # store whose file this boot did not find persists its not-found warning once; a planted one's owes none.
+    events = {name: 1 for name in line.fram_writes_by if name.startswith("CFGMGR_") and name not in _PLANTED_CONFIG_LOGS}
+    events |= {"SGP40": _ENTRIES_PER_FAILED_CYCLE * failed + sum(at <= failed for at in _STORM_RUNGS_AT), "WEBSERVER": sum(r != HTTPStatus.OK for r in burst)}
     bound = {name: _CHUNK_COPIES * (1 + events.get(name, 0)) for name in line.fram_writes_by}
     over = {name: (n, bound[name]) for name, n in line.fram_writes_by.items() if n > bound[name]}
     _expect(not over, f"loggers over the chunk writes their setup and the storm's events allow, (writes, bound): {over}")
@@ -817,22 +824,24 @@ def _error_table(port: int) -> "dict[str, JSONObject]":
     return errcount_table(HTTPStatus.OK, _status(port))
 
 
-@scenario("an_escalation_entry_held_past_its_bound_is_cut_and_the_reset_still_follows", family="system_commands", drivers=("fram", "scd30"))
+@scenario("an_escalation_entry_that_never_finishes_leaves_code_20_to_the_watchdog", family="system_commands", drivers=("fram", "scd30"))
 def _escalation_entry_cut(ctx: Context) -> None:
-    """An escalation entry write held inside its first block past its bound is cancelled there: code 20, the cut block healed and logged."""
+    """An escalation entry write held inside its first block for good starves the watchdog with code 20 recorded; the cut block is healed and logged."""
     key, _name = _first_instance(ctx, "scd30")
     state = ctx.logs_dir / "state_escalation_cut"
     errno = _src_int(_SYSTEM, "_ERR_STACK_EXHAUSTED")
     busy, repaired = _src_int("asy_fram_manager.py", "_ERR_FRAM_STATUS_BYTE"), _src_int("asy_fram_manager.py", "_WRN_FRAM_BLOCK_INVALID")
     with ctx.boot("--fault", f"{key}:readfrom_into:stack", "--test-hold-system-entry", f"{errno}:cut", state_dir=state) as twin:
+        twin.starves_watchdog = True
+        since = twin.mark()
         _expect(twin.wait_line("ENTRY_HELD", 0, _src_int(_SYSTEM, "_TASK_CHECK_TIME") + _COMMANDED_RESET_MARGIN_S) is not None, "the escalation's entry write never reached its first block's busy mark")
-        _exits_with(twin, 3, "the escalation whose entry write was held inside its first block")
-        _expect("its entry write did not finish within" in read_log(twin.run.log_path), "the reset came without the bound cancelling the held write")
+        engaged = twin.wait_line("WATCHDOG_WOULD_TRIGGER", since, _WATCHDOG_WINDOW_S + _COMMANDED_RESET_MARGIN_S)
+        _expect(twin.run.proc.poll() is None and engaged is not None, "the watchdog did not engage behind the held entry write")
+    line = parse_shutdown_line(read_log(twin.run.log_path))
+    _expect(line is not None and line.mem_backup_r0[1:2] == (_src_int(_SYSTEM, "_RR_STACK_EXHAUSTED"),), f"the record the watchdog's reset would read is not code 20 ({line!r})")
+    _expect(parse_machine_reset_line(read_log(twin.run.log_path)) is None, "a reset ran past the held entry write")
     with ctx.boot(state_dir=state) as twin:
-        status = _status(twin.port)
-        reason = _group(status, "system").get("ResetReason")
-        _expect(reason == _src_int(_SYSTEM, "_RR_STACK_EXHAUSTED"), f"the relaunch reads ResetReason {reason!r}")
-        table = errcount_table(HTTPStatus.OK, status)
+        table = errcount_table(HTTPStatus.OK, _status(twin.port))
         _expect(not _has_entry(table.get("SYSTEM"), "E", errno), f"the cut entry reached the relaunch's SYSTEM history ({table.get('SYSTEM')!r})")
         _expect(_has_entry(table.get("FRAM"), "E", busy) and _has_entry(table.get("FRAM"), "W", repaired), f"the relaunch logged no busy block and its repair ({table.get('FRAM')!r})")
     with ctx.boot(state_dir=state) as twin:
@@ -1557,9 +1566,9 @@ def _refusal_counted(ctx: Context) -> None:
         _expect(isinstance(before, int) and after == before + refused, f"HTTPDropped {before!r} -> {after!r} after {refused} refusal(s)")
 
 
-@scenario("refused_config_write_is_reported_unpersisted", family="sensortask_integration")
+@scenario("refused_config_write_is_logged_and_the_next_one_lands", family="sensortask_integration")
 def _refused_config_write(ctx: Context) -> None:
-    """A config write the flash refuses answers Valid, is reported in ConfigUnpersisted and CFGMGR_NTP, and the next landed write clears it."""
+    """A config write the flash refuses answers Valid and is logged in CFGMGR_NTP; the next write lands in the file."""
     state = ctx.logs_dir / "state_unpersisted"
     with ctx.boot(state_dir=state) as twin:
         path = state_paths(state).config_dir / "config_NTP.cfg"
@@ -1573,13 +1582,11 @@ def _refused_config_write(ctx: Context) -> None:
             if _writable(path):
                 raise UnmetPremiseError(f"file modes do not bind for this process (a write probe opened the 0444 {path.name}), so the twin's write cannot be refused")
             _expect(_result(_request(twin.port, "PUT", "/networking", {"NTPOffset": offset + 1}), "NTPOffset") == "Valid", "the refused write's PUT did not answer Valid")
-            _expect(_wait_unpersisted(twin.port, ["NTP"]), "ConfigUnpersisted never named NTP after its refused write")
-            _expect(_has_entry(_errcount(twin.port, "CFGMGR_NTP"), "E", _src_int("asy_config_manager.py", "_ERR_CFG_FILE_WRITE")), "CFGMGR_NTP holds no CFG_FILE_WRITE entry")
+            _expect(_wait_entry(twin.port, "CFGMGR_NTP", _DRAIN_WAIT_S, num=_src_int("asy_config_manager.py", "_ERR_CFG_FILE_WRITE")), "CFGMGR_NTP holds no CFG_FILE_WRITE entry after the refused write")
         finally:
             for p, mode in modes:
                 p.chmod(mode)
         _expect(_result(_request(twin.port, "PUT", "/networking", {"NTPOffset": offset + 2}), "NTPOffset") == "Valid", "the second PUT did not answer Valid")
-        _expect(_wait_unpersisted(twin.port, []), "ConfigUnpersisted still names a store after a write that landed")
         _expect(_wait_stored(state, "NTP", "NTPOffset", offset + 2), "the second write never reached the config file")
 
 
@@ -1659,9 +1666,6 @@ def _reset_errors_under_the_escalation(ctx: Context) -> None:
         before = _error_table(twin.port)
         _expect(_counter(before.get(name)) > 0, f"the stack fault logged no {name} entry, so there is nothing to clear ({before.get(name)!r})")
         _refused_reset_errors(twin.port, before, "while the escalation writes its entry")
-        # Held past the entry's own bound on every host, as the knob starts that bound at the release: one path however
-        # fast this host is, and a hold the bound counted loses the entry on every run (agent, 2026-10-22).
-        time.sleep(max(0.0, held_at + _src_int(_SYSTEM, "_ESCALATION_ENTRY_WAIT_MS") / 1000 - time.monotonic()))
         held_s = time.monotonic() - held_at
         twin.trigger("ENTRY_RELEASE")
         _exits_with(twin, 3, f"the escalation after a refused ResetErrors, its entry held {held_s:.1f} s")
@@ -2223,16 +2227,6 @@ def _wait_stored(state: Path, store: str, key: str, value: JSONValue, timeout_s:
             pass  # not written yet: the next poll reads it again
         time.sleep(_LINE_POLL_S)
     return False
-
-def _wait_unpersisted(port: int, stores: "list[str]", timeout_s: float = _DRAIN_WAIT_S) -> bool:
-    # Whether GET /status's ConfigUnpersisted reads `stores` by the deadline: the write's deferred flush ran.
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        if _group(_status(port), "system").get("ConfigUnpersisted") == stores:
-            return True
-        time.sleep(_LINE_POLL_S)
-    return False
-
 
 def _watchdog_fault(ctx: Context, kind: str) -> None:
     # One --test-watchdog-fault after the supervisor's first feed: the starved watchdog engages with the twin still up.

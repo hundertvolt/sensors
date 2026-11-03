@@ -431,16 +431,12 @@ gates, traps).
   erased nor floating (the probe's `_bmp3xx_calibration_set`), recorded so the twin's synthetic
   block can be set against them. Wear: none (a read). Twin row: the fidelity table's BMP3XX
   calibration row, synthetic until then.
-- **`mem_backup()` and `reset_cause()` after a BOOTSEL round trip** — on `dev`, a value written to
-  the watchdog scratch registers, `machine.bootloader()`, the board brought back out of BOOTSEL,
-  then both read: whether the registers survive and which cause rp2 reports is not in the pinned
-  MicroPython source (the bootrom is not in the corpus); the twin keeps the registers and reports a
-  watchdog reset. `bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed` runs the
-  round trip through `PUT /system {"SystemCmd": "bootloader"}`. Expected: the board serves again and
-  `GET /status`'s `ResetReason` reads 4, the bootloader code, since the record survived (the test's
-  assertion; `ResetBits` recorded beside it); a 2 or a 1 means the bootrom's reboot lost it. Wear:
-  none (no flash write; leaving BOOTSEL needs the owner or `picotool reboot`). Twin row: the
-  fidelity table's bootloader assumption.
+- **The bootloader command's BOOTSEL round trip** — the bench found both backup regions lost
+  (the bootrom's `reset_usb_boot()`; cause 3, REASON TIMER), so the command writes no code of its
+  own. `bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed` runs the round trip
+  through `PUT /system {"SystemCmd": "bootloader"}`. Expected: the board serves again and
+  `GET /status`'s `ResetReason` reads 2. Wear: none (no flash write; leaving BOOTSEL needs the owner
+  or `picotool reboot`). Twin row: the fidelity table's BOOTSEL row.
 - **Every reset code read back through `/status`** — `bench/test_reset_reasons.py` on `dev`, the
   session saving `errcount` and the raw FRAM first: the harness hard reset (a watchdog reset with no
   record), the bootloader reboot, the supervisor's escalation reboot, the starved-watchdog fallback,
@@ -1118,6 +1114,9 @@ gates, traps).
   `cp -r` of a checkout is one, a copied worktree (whose `.git` file points outside the chroot) is not
   (agent, 2026-10-27). A failed `--coverage` render's input now moves into the run's evidence archive,
   named under `Notes:`. `git` is already in the recipe's package list; nothing new to install.
+  **2026-11-03, lint config and test orchestration only, no build impact**: `pyproject.toml`'s per-file ignore for
+  `src/asy_system_service.py` is RUF006 instead of PLW0603; `scripts/_digital_twin_ci_suite.py`'s fresh-boot check and
+  `scripts/_digital_twin_scenarios.py`'s storm bound expect each config store's not-found warning. Nothing new to install.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot

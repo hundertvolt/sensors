@@ -153,3 +153,14 @@ pre-setup merge, the level setter's refusal and six retired catalog rows went. `
 brief and hand-back, the falsification's brief and result, and the lead's check of each refutation
 (`redo/r1/B1/FALSIFY_VERIFIED.md`): the guard test was narrowed, the memory gate's tests boot at warning level, and the
 construction window on the board went to the owner. `redo/r1/B2/` holds the next unit's action list and brief.
+
+## Twenty-sixth snapshot (2026-11-03): R1's second unit, reset codes and `/status`
+
+The plan's second R1 unit, on the same standing go-ahead. Code 4 and the reset-register reads went; the bootloader records
+code 9; the command gate refuses once a reset is due; the escalation writes its entry, then resets. Logging an
+allocation failure is a plain `err()` (owner, 2026-11-03: "Yes keep it simple"); what a module logs while it is built
+stays unprinted and unkept (owner: "Leave that."); the newest-entry slot rule stays (owner: "Keep as is.").
+`redo/r1/B2/` holds the action list, brief, hand-back, review, the falsification's brief and result, the lead's check of
+each refutation (`FALSIFY_VERIFIED.md`) and the gate (`GATE.md`). `redo/r1/CARRY_LATER.md` lists what later units take
+over; `redo/r1/B4/` and `redo/r1/B5/` hold the next two units' action lists and briefs (buses and sensors; network, with
+the owner's fixed 60 s NTP retry while unsynced).

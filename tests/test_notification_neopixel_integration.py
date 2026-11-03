@@ -260,7 +260,7 @@ def test_the_window_check_reads_a_real_ntp_clock() -> None:
         assert window_cycle((cur + 60) % 1440, (cur + 120) % 1440, 0) == []  # an hour away from it: dark
     finally:
         asy_ntp_client.time = original
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
 
 
 def test_a_service_on_the_default_sink_completes_a_cycle_silently() -> None:
@@ -279,7 +279,7 @@ def test_a_service_on_the_default_sink_completes_a_cycle_silently() -> None:
         with _driven() as clock:
             run(scenario(clock))
     finally:
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
     assert run(notify.get_data()).Triggered is True
     assert run(notify.get_error_counter())["NOTIFY"]["ErrCount"] == 0  # the default sink's False is no LED, not a drop
 

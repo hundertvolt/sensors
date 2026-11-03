@@ -408,9 +408,10 @@ def _check_no_memory_error_in_log(log_path: Path, run_label: str) -> None:
     _check(condition=verdict is None, msg=f"{run_label}: log carries none of {_MEMORY_ERROR_MARKERS}" + (f" - {verdict}" if verdict else ""))
 
 
-def _check_quiet_boot(label: str, spawned_at: float, keep: Path, expected: "tuple[tuple[str, str, str], ...]" = ()) -> None:
-    # One /status read, its errcount kept at keep, whose E and W slots are exactly expected ((module, type, catalog
-    # name), no tolerance list); read before the boot's own first background warning can land (_quiet_boot_deadline_s()).
+def _check_quiet_boot(label: str, spawned_at: float, keep: Path, *, fresh_config: bool = False) -> None:
+    # One /status read, its errcount kept at keep, whose E and W slots are exactly what the boot owes (no tolerance list):
+    # over a fresh config directory each config store's one W CFG_FILE_UNREADABLE, its file not found, else none; the
+    # launcher writes NTP's file (its offline responder's) before the boot.
     status, body = _http("GET", "/status")
     age_s = time.monotonic() - spawned_at
     table = errcount_table(status, body)
@@ -419,8 +420,8 @@ def _check_quiet_boot(label: str, spawned_at: float, keep: Path, expected: "tupl
     deadline_s = _quiet_boot_deadline_s()
     _check(condition=age_s < deadline_s, msg=f"{label}: the errcount was read {age_s:.1f}s after the spawn, before a boot's own first background warning can land ({deadline_s:.0f}s)")
     found = _boot_entries(table)
-    wanted = [(name, kind, code(kind, entry)) for name, kind, entry in expected]
-    named = "exactly " + ", ".join(f"{name}'s {kind} {entry}" for name, kind, entry in expected) if expected else "no E and no W entry"
+    wanted = [(name, "W", code("W", "CFG_FILE_UNREADABLE")) for name in table if fresh_config and name.startswith("CFGMGR_") and name != "CFGMGR_NTP"]
+    named = "exactly each config store's W CFG_FILE_UNREADABLE" if fresh_config else "no E and no W entry"
     _check(condition=found == wanted, msg=f"{label}: the boot logged {named} (kept in {keep}: {found!r})")
 
 
@@ -916,9 +917,9 @@ def _run_11b_full_ceiling_concurrency(ctx: RunContext) -> None:
 
 
 def _run_12_reset_reasons(ctx: RunContext) -> None:
-    # ---- Run 12: the reset reasons reachable at L2. A fresh boot reads power-on; bootloader exits as a bootloader entry,
-    # its relaunch reads its code and clears the record; a SIGINT relaunch reads power-on; a C-stack overflow reboots with
-    # 20. The task budget's escalation is Run 4's, the REST reboot Run 5c's, 7 and 8 Run 13's. ----
+    # ---- Run 12: the reset reasons reachable at L2. A fresh boot reads power-on; the bootloader's relaunch reads 2,
+    # BOOTSEL having lost both regions; a SIGINT relaunch reads power-on; a C-stack overflow reboots with 20. The
+    # task budget's escalation is Run 4's, the REST reboot Run 5c's, 7 and 8 Run 13's. ----
     _archive_state(ctx, "run12")
     proc = _spawn(ctx, [], ctx.logs_dir / "run12_a_power_on_then_bootloader.log")
     try:
@@ -931,9 +932,9 @@ def _run_12_reset_reasons(ctx: RunContext) -> None:
     reset = parse_machine_reset_line(read_log(proc.log_path))
     _check(condition=reset is not None and reset.kind == "bootloader", msg=f"Run 12: the runner's machine reset line names the bootloader entry ({reset!r})")
     log_b = ctx.logs_dir / "run12_b_after_bootloader.log"
-    _relaunch_reason(ctx, log_b.name, "Run 12 (after bootloader)", _reset_code("_RR_BOOTLOADER"), interrupt=True)  # what the SIGINT relaunch follows
+    _relaunch_reason(ctx, log_b.name, "Run 12 (after bootloader)", _reset_code("_RR_WATCHDOG"), interrupt=True)  # what the SIGINT relaunch follows
     line = _shutdown_line(log_b, "Run 12 (after bootloader)")
-    _check(condition=line is not None and line.mem_backup_r0 == (0, 0, 0, 0), msg=f"Run 12: the boot that read the bootloader record cleared it (mem_backup r0 {line.mem_backup_r0 if line else None!r})")
+    _check(condition=line is not None and line.mem_backup_r0 == (0, 0, 0, 0), msg=f"Run 12: the boot after the bootloader left no record (mem_backup r0 {line.mem_backup_r0 if line else None!r})")
     _relaunch_reason(ctx, "run12_c_sigint_relaunch.log", "Run 12 (SIGINT relaunch)", _reset_code("_RR_POWER_ON"))
     _run_12_stack_exhaustion(ctx)
 
@@ -1121,13 +1122,13 @@ def _run_13_system_commands(ctx: RunContext) -> None:
     _run_13_erase_fram(ctx)
     _run_13_near_misses(ctx)
     _run_13_reboot_sequence(ctx, "reboot", EXIT_SIMULATED_RESET, "_RR_REBOOT")
-    _run_13_reboot_sequence(ctx, "bootloader", EXIT_SIMULATED_BOOTLOADER, "_RR_BOOTLOADER")
+    _run_13_reboot_sequence(ctx, "bootloader", EXIT_SIMULATED_BOOTLOADER, "_RR_WATCHDOG")
 
 
 def _run_1_baseline(ctx: RunContext) -> None:
-    # ---- Run 1: fresh boot, walk every GET endpoint, and nothing logged (kept in runs/ before the reset). With no
-    # station link yet the device has never synced its clock, so both time fields read null. Its reformat relaunch
-    # PUTs the settings later runs carry forward. ----
+    # ---- Run 1: fresh boot, walk every GET endpoint, nothing logged but each config file not found (kept in runs/
+    # before the reset). With no station link the clock never synced, so both time fields read null. Its reformat
+    # relaunch PUTs the settings later runs carry forward. ----
     log1 = ctx.logs_dir / "run1_baseline.log"
     spawned_at = time.monotonic()
     proc = _spawn(ctx, [], log1)
@@ -1136,7 +1137,7 @@ def _run_1_baseline(ctx: RunContext) -> None:
         for path in (*ctx.routes, "/"):
             status, _ = _http("GET", path)
             _check(condition=status == _HTTP_OK, msg=f"Run 1: GET {path} -> 200")
-        _check_quiet_boot("Run 1", spawned_at, ctx.runs_dir / "run1_errcount.json")
+        _check_quiet_boot("Run 1", spawned_at, ctx.runs_dir / "run1_errcount.json", fresh_config=True)
         times = (_status_field("system", "UTCTime"), _status_field("system", "LocalTime"))
         _check(condition=times == (None, None), msg=f"Run 1: UTCTime and LocalTime are null before the first NTP sync ({times!r})")
         stale = _status_field("system", "TimeStale")
@@ -1156,7 +1157,7 @@ def _run_1_baseline(ctx: RunContext) -> None:
 
 def _run_1_reformat_relaunch(ctx: RunContext) -> None:
     # Run 1's second boot on an emptied config directory beside the kept FRAM state, as a reformatted filesystem leaves
-    # a unit: SYSTEM logs exactly one W CONFIG_LOST (kept in runs/ before the reset), then the settings Run 2 reads are PUT.
+    # a unit: each config store logs its file not found (kept in runs/ before the reset), then the settings Run 2 reads are PUT.
     label = "Run 1 (reformat relaunch)"
     config_dir = state_paths(ctx.state_dir).config_dir
     try:
@@ -1169,7 +1170,7 @@ def _run_1_reformat_relaunch(ctx: RunContext) -> None:
     proc = _spawn(ctx, [], ctx.logs_dir / "run1_reformat_relaunch.log")
     try:
         _wait_until_serving(proc)
-        _check_quiet_boot(label, spawned_at, ctx.runs_dir / "run1_reformat_errcount.json", (("SYSTEM", "W", "CONFIG_LOST"),))
+        _check_quiet_boot(label, spawned_at, ctx.runs_dir / "run1_reformat_errcount.json", fresh_config=True)
 
         status, body = _http("PUT", "/system", {"DebugLevel": _TEST_DEBUG_LEVEL})
         _check(condition=status == _HTTP_OK and _field(body, "result", "DebugLevel") in ("Valid", "Unchanged"), msg=f"Run 1: PUT /system DebugLevel={_TEST_DEBUG_LEVEL} accepted")

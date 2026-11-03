@@ -898,7 +898,8 @@ async def _read_while_storing(store: ConfigManager, path: str) -> "tuple[int, in
             seen.add(text)
             await asyncio.sleep(0)
 
-    assert await store.setup() is True
+    await store.setup()
+    assert store.valid
     task = asyncio.create_task(reader())
     for count in range(1, 9):
         assert (await store.write_config({"Count": count}))[0] is True

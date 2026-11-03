@@ -19,7 +19,7 @@ import machine
 import microtest
 import network
 import rp2
-from _async_harness import cancel, run
+from _async_harness import cancel, newest_start, run, track_starts
 from _boot_recorder import BootRecorder, expected_entries
 from _bus_hazard_catalog import adapter_for, scd_data_frame, scd_register_frame, sgp_word
 from _error_codes import code
@@ -363,16 +363,18 @@ def _scenario_fram_chunk_layout(device: str) -> None:
 def _scenario_first_boot_after_a_reflash(device: str) -> None:
     # Another build's bytes over this build's addresses read as invalid and are re-initialised, with no
     # crash and no error flood (owner, 2026-09-26). Rotating the image by 3 bytes misaligns every chunk.
-    image, _shift = _image_with_every_chunk_written(device)
-    _assert_every_chunk_starts_empty_and_accepts_writes(device, image, -3, wrap=True)
+    cfg_path = _tmp_cfg_dir()
+    image, _shift = _image_with_every_chunk_written(device, cfg_path)
+    _assert_every_chunk_starts_empty_and_accepts_writes(device, cfg_path, image, -3, wrap=True)
 
 
 @_register("a_layout_shifted_by_one_chunk_restores_no_neighbours_history")
 def _scenario_layout_shifted_by_one_chunk(device: str) -> None:
     # An image from a build with one more leading chunk: each equal-size chunk now holds its neighbour's
     # valid dual copy, and only the owner seed tells them apart, so every owner must read it as blank.
-    image, shift = _image_with_every_chunk_written(device)
-    _assert_every_chunk_starts_empty_and_accepts_writes(device, image, shift)
+    cfg_path = _tmp_cfg_dir()
+    image, shift = _image_with_every_chunk_written(device, cfg_path)
+    _assert_every_chunk_starts_empty_and_accepts_writes(device, cfg_path, image, shift)
 
 
 @_register("fram_chunks_are_all_successfully_allocated_not_out_of_memory")
@@ -418,8 +420,10 @@ class _DeadFramChip(FakeMB85RS64V):
 def _scenario_dead_fram_chip_escalates(device: str) -> None:
     # A declared chip that never comes up escalates like every other declared chip (owner, 2026-09-29: 'the
     # same as all other chips'); until the reboot every module keeps logging in RAM (owner, 2026-08-11). No NTP
-    # task starts here, so the boot keeps a fresh config dir: the offline file's repair would log in CFGMGR_NTP.
-    module = build(device, chip=_DeadFramChip, offline_ntp=False)
+    # task starts here, so no offline NTP file is written; a first boot on a healthy chip writes the other files.
+    cfg_path = _tmp_cfg_dir()
+    build(device, cfg_path, offline_ntp=False)
+    module = build(device, cfg_path, chip=_DeadFramChip, offline_ntp=False)
     assert module.fram is not None and module.sysfunct is not None
     assert module.neopixel is not None and module.notification is not None
     rdids = _fram_chip(module).rdid_count
@@ -837,12 +841,11 @@ def _all_loggers(module: "ModuleType") -> "list[PrintLogHistory]":
     return loggers
 
 
-def _assert_every_chunk_starts_empty_and_accepts_writes(device: str, image: "tuple[bytes, ...]", at: int, *, wrap: bool = False) -> None:
-    # A boot on an image this build did not write: no owner restores anything, every store is set up on a
-    # re-initialised chunk, and a reboot on the same filesystem then restores what that boot wrote. No task
-    # starts, so neither boot needs the offline NTP file, whose repair would log in CFGMGR_NTP.
+def _assert_every_chunk_starts_empty_and_accepts_writes(device: str, cfg_path: str, image: "tuple[bytes, ...]", at: int, *, wrap: bool = False) -> None:
+    # A boot on an image this build did not write, over the filesystem the image's build wrote (no config file is
+    # absent): no owner restores anything, every store is set up on a re-initialised chunk, and a reboot on the same
+    # filesystem then restores what that boot wrote. No task starts, so the offline NTP file is never repaired.
     base = fram_fake_class(device)
-    cfg_path = _tmp_cfg_dir()
     module = build(device, cfg_path, chip=_chip_holding(base, image, at, wrap=wrap), offline_ntp=False)
     stores = _fram_stores(module)
     for logger in stores:
@@ -926,9 +929,10 @@ async def _command_to_reset(module: "ModuleType", sup: "asyncio.Task[None]", gat
     # reset is armed, then the timer fired: the reset never returns, so its exception ends the run where a unit restarts.
     sysfunct = module.sysfunct
     fired = machine.reset_count + machine.bootloader_count
+    sequences = track_starts(sysfunct, "_shutdown_sequence")
     result: dict[str, object] = _strict((await _dispatch_async(module, "PUT", "/system", body)).body, "result")
     assert result["SystemCmd"] == "Valid", result
-    task = sysfunct._shutdown_task
+    task = await newest_start(sequences)
     while True:
         await _until(lambda: gate.arrived.is_set() or task.done(), f"{body}: the sequence stopped between its steps")
         if not gate.arrived.is_set():
@@ -1048,7 +1052,7 @@ async def _every_error_log(module: "ModuleType") -> "list[object]":
     return logs
 
 
-async def _every_write_refused(module: "ModuleType", word: str, accepted: "object") -> "list[object]":
+async def _every_write_refused(module: "ModuleType", word: str, sequences: "list[asyncio.Task[object]]") -> "list[object]":
     # Every write the API offers, sent while the sequence waits at a gate: the answers that are not "Failed" (the same
     # command again: "Valid", nothing new started). ResetErrors clears nothing: no log and no log chunk's FRAM bytes.
     wrong: list[object] = []
@@ -1076,7 +1080,7 @@ async def _every_write_refused(module: "ModuleType", word: str, accepted: "objec
         if kept is not None and kept != (await _every_error_log(module), _log_chunk_bytes(module)):
             wrong.append((path, command, "a log was cleared"))
     again = await put("/system", {"SystemCmd": word})
-    if again != {"SystemCmd": "Valid"} or module.sysfunct._shutdown_task is not accepted:
+    if again != {"SystemCmd": "Valid"} or len(sequences) != 1:
         wrong.append(("/system", word, again))
     return wrong
 
@@ -1228,10 +1232,10 @@ def _hold_each_step(module: "ModuleType", gate: "_StepGate") -> None:
     stores[0].delete_file = first_delete_held
 
 
-def _image_with_every_chunk_written(device: str) -> "tuple[tuple[bytes, ...], int]":
+def _image_with_every_chunk_written(device: str, cfg_path: str) -> "tuple[tuple[bytes, ...], int]":
     # One entry in every store and one VOC backup: every chunk holds a valid dual copy. Also returns the
     # first chunk's full size, the shift a layout with one more leading chunk of that size would have.
-    module = build(device)
+    module = build(device, cfg_path)
     _log_one_entry_everywhere(module, "written by the previous build")
     if _has(module, "sgp40"):
         backup = module.sgp40._ts_storage
@@ -2197,7 +2201,7 @@ def _scenario_forty_days_of_link_uptime_and_sync_age(device: str) -> None:
         with DrivenTime(asy_base_classes, now=_TICKS_PERIOD - _HOUR_MS, sleeps=True) as clock:
             run(drive(clock))
     finally:
-        asy_base_classes.set_utc_valid(valid=False)  # the sync handler's, for the scenarios after this one
+        asy_base_classes._utc_valid = False  # the sync handler's, for the scenarios after this one
     assert got["wifi"] == got["wifi_driven"], f"{device}: WiFi uptime {got}"
     assert got["age"] == got["age_driven"], f"{device}: NTP LastSyncAge {got}"
 
@@ -2206,8 +2210,9 @@ def _scenario_forty_days_of_link_uptime_and_sync_age(device: str) -> None:
 def _scenario_log_ring_saturation(device: str) -> None:
     # Months of faults leave every FRAM-backed logger at its count's top: seeded one below it, more distinct codes than
     # the ring holds count once to the top and no further, the ring keeps the newest in order, and a rebuild on the chip
-    # image restores both.
-    module = build(device)
+    # image and the same filesystem restores both.
+    cfg_path = _tmp_cfg_dir()
+    module = build(device, cfg_path)
     top = src_int("src/asy_print_log.py", "_MAX_CNT")
     expected: dict[str, list[int]] = {}
     for logger in _fram_stores(module):
@@ -2218,7 +2223,7 @@ def _scenario_log_ring_saturation(device: str) -> None:
         expected[logger.name] = list(range(3, slots + 3))
         log = run(logger.get_log())[logger.name]
         assert (log["ErrCount"], log["ErrNum"]) == (top, expected[logger.name]), (logger.name, log)
-    rebooted = build(device, chip=_chip_holding(fram_fake_class(device), _chip_image(module)))
+    rebooted = build(device, cfg_path, chip=_chip_holding(fram_fake_class(device), _chip_image(module)))
     restored = {logger.name: run(logger.get_log())[logger.name] for logger in _fram_stores(rebooted)}
     assert sorted(restored) == sorted(expected), (sorted(restored), sorted(expected))
     for name, log in restored.items():
@@ -2645,7 +2650,7 @@ def _scenario_ntp_no_reply_storm(device: str) -> None:
     finally:
         asy_ntp_client.UDPSocket = real  # type: ignore[misc]
         machine.RTC._seconds = rtc
-        asy_base_classes.set_utc_valid(valid=False)  # the sync's, for the scenarios after this one
+        asy_base_classes._utc_valid = False  # the sync's, for the scenarios after this one
     count, slots, spent, synced = storm[0]
     assert got == [("E", no_reply)] * attempts, (device, got)  # the recovery logged nothing
     assert count == before["ErrCount"] + attempts and slots.count(no_reply) == 1 and not synced, (before, storm)
@@ -3224,6 +3229,7 @@ def _scenario_writes_refused_during_the_shutdown(device: str) -> None:
         async def scenario(word: str = word, gate: "_StepGate" = gate, wrong: "list[object]" = wrong, nvm: "list[list[dict[int, int]]]" = nvm) -> None:
             module, sup = await _boot_supervised(device, gate)
             _hold_each_step(module, gate)
+            sequences = track_starts(module.sysfunct, "_shutdown_sequence")
             for logger in _fram_stores(module):  # a log in every store, so a ResetErrors that cleared one shows
                 await logger.err_s("written before the command", errno=code("E", "INIT"))
 
@@ -3232,7 +3238,7 @@ def _scenario_writes_refused_during_the_shutdown(device: str) -> None:
                     nvm.append([scd30_nvm_writes(_scd30_bus(reader)) for reader in _scd30_readers(module)])
                 if module.fram.get_pause() != (step >= "S4"):  # FRAM pauses inside S3's quiesce, before the tasks stop
                     wrong.append((step, "FRAM paused" if module.fram.get_pause() else "FRAM not paused"))
-                wrong.extend((step, w) for w in await _every_write_refused(module, word, module.sysfunct._shutdown_task))
+                wrong.extend((step, w) for w in await _every_write_refused(module, word, sequences))
 
             async def armed(_result: "dict[str, object]") -> None:  # the last moment before the reset
                 nvm.append([scd30_nvm_writes(_scd30_bus(reader)) for reader in _scd30_readers(module)])
@@ -3463,9 +3469,9 @@ def _scenario_status_get(device: str) -> None:
         assert "Transfers" in _obj(sensors["UARTLINK"]) and "Failures" in _obj(sensors["UARTLINK"])
         assert set(_obj(sensors[module.uart_link_init.name])) == {"Runs", "Pending", "Last"}, sensors
     assert "SysUptime" in system and "LocalTime" in system and "UTCTime" in system and "UnixTime" in system
-    for key in ("ResetReason", "ResetBits", "MemFree"):  # this boot's decoded reason, the chip's raw flags, the free heap
+    for key in ("ResetReason", "MemFree"):  # this boot's decoded reason, the free heap
         assert type(system[key]) is int, (key, system[key])
-    assert system["ConfigFaults"] == [] and system["ConfigUnpersisted"] == [], system  # a clean boot
+    assert system["ConfigFaults"] == [], system  # a clean boot
     assert system["LastTaskEnd"] is None, system  # no supervised task has ended
     assert "WifiUptime" in networking and "NTPSynced" in networking and "WifiTS" in networking
     assert networking["HTTPDropped"] == 0  # a clean boot has dropped no connection
@@ -3533,7 +3539,7 @@ def _scenario_status_notification_state(device: str) -> None:
         assert state() == 0
     finally:
         asy_ntp_client.time = original
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
 
 
 class _ReadFails(WriteCountingOpen):
@@ -3576,28 +3582,11 @@ def _scenario_status_config_faults(device: str) -> None:
     faulted = [unreadable, unparseable, not_object, bounded]
     system = _strict(status_body(_dispatch(module, "GET", "/status")), "system")
     assert system["ConfigFaults"] == [store.module_name for store in stores if store in faulted], system["ConfigFaults"]
-    assert system["ConfigUnpersisted"] == [], system["ConfigUnpersisted"]
     with open(unreadable_path) as f:
         assert f.read() == "{}", "the unreadable file was overwritten"
     for store in (unparseable, not_object, bounded, lacking, unknown):  # every readable damaged or drifted file repaired
         with open(asy_config_manager.config_filename(cfg_path, store.module_name)) as f:
             assert json.load(f) == _store_defaults(store), store.module_name
-
-
-@_register("webserver_status_lists_a_module_whose_config_write_failed_until_its_next_good_write")
-def _scenario_status_config_unpersisted(device: str) -> None:
-    # Every file write of a fresh boot refused: each storing module runs on values the flash lacks and is listed in
-    # ConfigUnpersisted (not ConfigFaults: no file was damaged); a module's next good write takes it off the list.
-    cfg_path = _tmp_cfg_dir()
-    with WriteCountingOpen(asy_config_manager, fail_writes=True):
-        module = build(device, cfg_path=cfg_path, offline_ntp=False, log_errors=False)  # no task runs: a fresh boot, NTP's store included
-    names = [store.module_name for store in _storing_stores(module)]
-    system = _strict(status_body(_dispatch(module, "GET", "/status")), "system")
-    assert (system["ConfigUnpersisted"], system["ConfigFaults"]) == (names, []), system
-    assert _strict(_dispatch(module, "PUT", "/system", {"DebugLevel": 1}).body, "result")["DebugLevel"] == "Valid"
-    run(module.sysfunct.cfgmgr.flush_pending())
-    system = _strict(status_body(_dispatch(module, "GET", "/status")), "system")
-    assert system["ConfigUnpersisted"] == [name for name in names if name != module.sysfunct.cfgmgr.module_name], system
 
 
 @_register("webserver_status_answers_the_networking_snapshot_while_wifi_mode_lock_is_held")
@@ -3666,7 +3655,7 @@ def _scenario_status_utc_time_waits_for_ntp_sync(device: str) -> None:
         unix = _strict(status_body(_dispatch(module, "GET", "/status")), "system")["UnixTime"]
         now = time.mktime(time.gmtime())
     finally:
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
     assert type(unix) is int and 0 <= now - unix <= 1, (unix, now)
 
 
@@ -3691,7 +3680,7 @@ def _scenario_status_utc_time_through_a_stale_sync(device: str) -> None:
         assert system["UTCTime"] is None and system["TimeStale"] is True, (device, system)
         assert run(backup.write_into(backup.get_buffer(), require_ntp=True)) == (False, False, None)
     finally:
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
 
 
 @_register("webserver_system_get_reports_the_real_build_info")

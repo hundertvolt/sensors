@@ -150,7 +150,7 @@ async def resolve_ipv4(
     try:
         query = _build_query(host.lower().encode(), os.urandom(2))  # DNS names are case-insensitive (RFC 1035 SS2.3.3)
     except MemoryError as e:
-        pr.err_nomem("DNS query not built:", e)
+        pr.err("DNS query not built:", e)
         return None, DNS_NOT_SENT
     except ValueError:  # a name RFC 1035 cannot encode - nothing to resolve
         return None, DNS_NOT_SENT

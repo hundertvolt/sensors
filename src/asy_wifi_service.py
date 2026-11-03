@@ -408,8 +408,7 @@ class WifiService(SensorReaderConfig):
             else:
                 self._hw_op_failed = False
                 if self._tick_armed is False:  # the uptime tick never armed: this iteration retries it
-                    # Quiet: the episode's first refusal printed the helper's line; this pass's persisted entry is its record.
-                    self._tick_armed = arm_tick_timer(self._counter_timer, self._time_counter_trigger_event, self.pr, "WiFi uptime", quiet=True)
+                    self._tick_armed = arm_tick_timer(self._counter_timer, self._time_counter_trigger_event, self.pr, "WiFi uptime")
                     if not self._tick_armed:
                         await self.pr.err_s("WiFi uptime timer not armed", errno=_ERR_TIMER)
                         self._hw_op_failed = True
@@ -975,7 +974,6 @@ class WifiService(SensorReaderConfig):
         self._on_hotspot_window_end()
         self._reconnect_fresh = True
 
-    async def setup(self) -> bool:
-        ok = await super().setup()
+    async def setup(self) -> None:
+        await super().setup()
         await self._dns_server.pr.setup()  # the DNS server's own logger is set up separately
-        return ok

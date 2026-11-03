@@ -12,7 +12,7 @@ import _load
 import heap_map
 import http_client
 import pytest
-from harness import MEMORY_ERROR_MARKERS, configured_max_connections, get_routes, parse_facts, restore_board_to_serving, wait_for_script_server
+from harness import MEMORY_ERROR_MARKERS, configured_max_connections, get_routes, parse_facts, restore_board_to_serving, scratch_config_entries, wait_for_script_server
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -56,10 +56,10 @@ _DRIVER_JOIN_S = 90.0
 
 
 @pytest.mark.provokes_log(
-    "each probe runs on heaps shaped below its need, over a scratch-config boot that logs CONFIG_LOST: a streamed source"
+    "each probe runs on heaps shaped below its need, over a scratch-config boot that logs each config file not found: a streamed source"
     " that fails there logs CALLBACK, and a config read logs its module's CHIP_GET or config-read entry",
     ("WEBSERVER", "E", "CALLBACK"),
-    ("SYSTEM", "W", "CONFIG_LOST"),
+    *scratch_config_entries(),
     ("BMP3XX", "E", "CHIP_GET"),
     ("ISL29125", "E", "CHIP_GET"),
     ("SCD30", "E", "CHIP_GET"),

@@ -26,6 +26,7 @@ from buildgen.generate import generate_device
 from buildgen.twin_wiring import compute_twin_wiring
 from buildgen.validate import module_int_const
 from scripts._twin_process import twin_env
+from tests._error_codes import code
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -131,7 +132,7 @@ def _boot_generated_device(root: "Path | None", generated: "GeneratedDevice", mi
                 failures.extend(_errcount_parity_failures(definitions, body))
                 failures.extend(_status_field_parity_failures(definitions, body))
                 failures.extend(_maintenance_key_failures(generated.model, body))
-                failures.extend(_normal_boot_log_failures(body))
+                failures.extend(_normal_boot_log_failures(body, _absent_config_logs(tmp_path / "config")))
             elif path == "/system":
                 failures.extend(_system_path_failures(definitions, body))
         stop_file.touch()  # done: the twin leaves its serving on the same clean path its duration ends on
@@ -228,17 +229,28 @@ def _no_duplicate_keys(pairs: "list[tuple[str, JsonValue]]") -> "JsonDict":
     return dict(pairs)
 
 
-def _normal_boot_log_failures(status_body: object) -> list[str]:
+def _absent_config_logs(config_dir: Path) -> set[str]:
+    # The config stores whose file this boot found absent and wrote: every config file there but the runner's NTP one,
+    # written before the boot for its offline responder (as _check_quiet_boot() knows).
+    return {f"CFGMGR_{path.stem.removeprefix('config_')}" for path in config_dir.glob("config_*.cfg")} - {"CFGMGR_NTP"}
+
+
+def _normal_boot_log_failures(status_body: object, absent: "set[str]") -> list[str]:
     # A normal boot logs no E and no W entry, NTP's included, and needs no NTPSynced: no SSID is set here (agent,
-    # 2026-10-21). Read within _BOOT_TIMEOUT_S of the spawn, before SGP40's untimestamped-backup W can land.
+    # 2026-10-21); a config store whose file it found absent logs exactly one W not-found. Read within _BOOT_TIMEOUT_S.
     errcount = status_body.get("errcount") if isinstance(status_body, dict) else None
+    not_found = f"W{code('W', 'CFG_FILE_UNREADABLE')}"
     failures: list[str] = []
     for module, entry in sorted(errcount.items()) if isinstance(errcount, dict) else ():
         history = entry.get("history") if isinstance(entry, dict) else None
         if not isinstance(history, list):
             failures.append(f"{module}'s errcount entry carries no history list")
             continue
-        failures += [f"{module} logged {item.get('type')}{item.get('num')} on a normal boot" for item in history if isinstance(item, dict) and item.get("type") in ("E", "W")]
+        logged = [f"{item.get('type')}{item.get('num')}" for item in history if isinstance(item, dict) and item.get("type") in ("E", "W")]
+        if module not in absent:
+            failures += [f"{module} logged {item} on a normal boot" for item in logged]
+        elif (logged, entry.get("counter")) != ([not_found], 1):
+            failures.append(f"{module} logged {logged} (count {entry.get('counter')}) on a normal boot, its absent file owing exactly one {not_found}")
     return failures
 
 
@@ -347,9 +359,34 @@ def test_a_get_route_the_service_gains_is_smoked(tmp_path: Path) -> None:
 
 def test_an_error_or_warning_logged_on_a_normal_boot_fails_naming_it() -> None:
     body = {"errcount": {"SGP40": {"counter": 1, "history": [{"type": "E", "num": 102}]}, "NTP": {"counter": 1, "history": [{"type": "N", "num": 0}, {"type": "W", "num": 5}]}, "WIFI": {"counter": 0, "history": []}}}
-    assert _normal_boot_log_failures(body) == ["NTP logged W5 on a normal boot", "SGP40 logged E102 on a normal boot"]
-    assert _normal_boot_log_failures({"errcount": {"WIFI": {"counter": 0, "history": [{"type": "N", "num": 0}]}}}) == []
-    assert _normal_boot_log_failures({"errcount": {"WIFI": {"counter": 0}}}) == ["WIFI's errcount entry carries no history list"]
+    assert _normal_boot_log_failures(body, set()) == ["NTP logged W5 on a normal boot", "SGP40 logged E102 on a normal boot"]
+    assert _normal_boot_log_failures({"errcount": {"WIFI": {"counter": 0, "history": [{"type": "N", "num": 0}]}}}, set()) == []
+    assert _normal_boot_log_failures({"errcount": {"WIFI": {"counter": 0}}}, set()) == ["WIFI's errcount entry carries no history list"]
+
+
+def test_a_store_whose_file_was_absent_owes_exactly_one_not_found_warning_and_a_planted_one_none() -> None:
+    not_found = {"type": "W", "num": code("W", "CFG_FILE_UNREADABLE")}
+    absent = {"CFGMGR_WIFI", "CFGMGR_SGP40", "CFGMGR_BMP3XX"}
+    table = {
+        "CFGMGR_WIFI": {"counter": 1, "history": [not_found]},  # as owed
+        "CFGMGR_SGP40": {"counter": 2, "history": [not_found]},  # counted twice
+        "CFGMGR_BMP3XX": {"counter": 0, "history": []},  # never warned
+        "CFGMGR_NTP": {"counter": 1, "history": [not_found]},  # its file was planted
+        "WIFI": {"counter": 1, "history": [{"type": "E", "num": 4}]},
+    }
+    assert _normal_boot_log_failures({"errcount": table}, absent) == [
+        "CFGMGR_BMP3XX logged [] (count 0) on a normal boot, its absent file owing exactly one W22",
+        "CFGMGR_NTP logged W22 on a normal boot",
+        "CFGMGR_SGP40 logged ['W22'] (count 2) on a normal boot, its absent file owing exactly one W22",
+        "WIFI logged E4 on a normal boot",
+    ]
+    assert _normal_boot_log_failures({"errcount": {"CFGMGR_WIFI": table["CFGMGR_WIFI"]}}, absent) == []
+
+
+def test_the_absent_config_stores_are_the_files_the_boot_wrote_less_the_planted_ntp_one(tmp_path: Path) -> None:
+    for name in ("config_WIFI.cfg", "config_NTP.cfg", "config_SGP40_2.cfg", "other.txt"):
+        (tmp_path / name).write_text("{}", encoding="utf-8")
+    assert _absent_config_logs(tmp_path) == {"CFGMGR_WIFI", "CFGMGR_SGP40_2"}
 
 
 def test_a_boot_phase_logged_out_of_main_s_order_fails_naming_both_orders() -> None:

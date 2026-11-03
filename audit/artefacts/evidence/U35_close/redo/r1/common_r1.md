@@ -5,6 +5,10 @@ You do one unit of `S/u35r/plan/PLAN.md` (read sections 0, 2 and 4; they bind). 
 list; what is not on it does not change. Work the way the audit's first units worked: tests first, the smallest change,
 source, tests and docs in one commit, one gate, a short hand-back. No machinery: no ledgers, inventories or matrices.
 
+## Standing direction
+Target low complexity (owner, 2026-11-03: "Generally target low complexity"): of two forms that both hold, take the
+one with fewer lines, branches and states. PLAN 0 still holds: nothing proven good goes.
+
 ## Environment
 - S = `/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad`. Your worktree and branch are
   named in your brief; it starts at the integration head.

@@ -448,3 +448,36 @@ their context). From now on every owner word is appended here as it is given.
 - (2026-11-02 21:25 UTC, clarification (h) decided: the wet bulb's corner) "(a), remove the corner" Recorded as: the
   cold-dry corner exclusion in `wet_bulb_temperature()` goes (its 4 constants, the check and its tests); the
   pre-audit range check (-20..50 degC, 5..99 %RH) stays.
+- (2026-11-03, time not taken, before 05:52 UTC, question on clarification (d2)) "What is the decision you ask about?"
+  Recorded as: a question; (d2) re-asked in full with its blast radius; still open.
+- (2026-11-03, time not taken, between 05:52 and 06:00 UTC, the allocation-free log call) "Is the err nomem really the
+  best way? Sounds like overkill complexity to me. Is there a simple way?" Recorded as: a question; answered with the
+  plain `err()` form and its blast radius.
+- (2026-11-03 06:00 UTC, the allocation-free log call decided) "Yes keep it simple" Recorded as: `err_nomem()` goes;
+  its 14 calls in 9 modules use plain `err()`, as before the audit; a log line that cannot get its argument tuple on a
+  full heap raises, and the restart and watchdog backstops take it. One lead change after B2's merge, before B4 and B5.
+- (2026-11-03, time not taken, between 06:07 and 06:12 UTC, clarification (d2)) "Concerning the debug level log lines:
+  how about option b and letting them store errors in fram? No prints but never lost, isn't it?" Recorded as: a
+  proposal; answered with its form (an E20 entry written at the logger's setup) and its limits.
+- (2026-11-03 06:12 UTC, clarification (d2) decided) "Pre construction error storage is overkill complexity, it opens a
+  tree of recombinations (multiple errors, own error, etc.). Leave that." Recorded as: (d2) is (b): nothing changes;
+  lines logged during construction stay silent on the board, no reader of the stored level before the build, no
+  pre-setup storage. B8 carries no (d2) item.
+- (2026-11-03, time not taken, between 06:13 and 06:17 UTC, budget) "We are at 9% usage now, is that within
+  expectation?" Recorded as: a meter reading, 9 % of the week, with B2's falsification, gate and push still to run;
+  the plan's running total through B2 is 10 % (R0 2, B1 4, B2 4).
+- (2026-11-03 06:18 UTC, budget and pace) "Okay, keep rolling" Recorded as: the standing go-ahead (2026-11-02 20:42)
+  holds after the budget reading; B2's close, the plain-err change and B4/B5 continue.
+- (2026-11-03 06:41 UTC, the error log's slot rule (OR35.b's reading)) "Option a is more complex and could mess up
+  appearance order. Keep as is. Generally target low complexity" Recorded as: the newest-entry rule stays (a repeat
+  is compared with the newest slot only; alternating codes each take a slot); and a standing direction for every unit:
+  target low complexity.
+- (2026-11-03 06:45 UTC, NTP's unsynced retry (legacy every 10 s against the doubling to 600 s)) "Option a, keep it
+  simple, but the resync trial timeout may be longer, something between 1 and 10 minutes. What would you suggest?"
+  Recorded as: the doubling, its cap and their two device settings go (B5); one fixed retry interval between 1 and 10
+  minutes, its value asked back with a suggestion.
+- (2026-11-03 06:54 UTC, NTP's unsynced retry interval decided) "Understood the suggestion. Then let's actually take 1
+  minute, easier to understand and not significantly more noise than 2." Recorded as: while unsynced, the first attempt
+  at the first check with the network up, then one attempt every 60 s after a failed one (one tunable constant, no
+  device setting); the doubling, its 600 s cap, `ntp_retry_s`/`ntp_retry_max_s`, their build check and the generator's
+  pair go; a skipped attempt (no network) does not count; a settings change or forced resync tries at once. B5 item 19.

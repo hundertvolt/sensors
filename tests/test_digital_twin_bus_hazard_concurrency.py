@@ -1046,72 +1046,25 @@ def test_two_failing_readers_on_one_bus_run_each_bus_rung_once() -> None:
     assert kept, "the bus rungs lost the wired chips"
 
 
-def test_two_setups_failing_together_each_rebuild_the_controller_once_one_after_the_other() -> None:
-    # Both chips of the shared bus fail their task's setup once. A sibling session holds the bus lock, so the first
-    # rebuild parks on it while the second setup failure reaches _init_failed(): each failed setup still rebuilds the
-    # controller once (its own episode), inside the lock one at a time, and the supervisor restarts both in budget.
+def test_two_setups_failing_together_are_each_retried_by_the_restart_with_no_bus_rung() -> None:
+    # Both chips of the shared bus fail their task's setup once: each logs its own setup error, runs no bus rung (the
+    # mild step first), and the supervisor's restart retries both within the budget, the wired chips kept.
     device = _ladder_device()
     addresses = {a["driver"]: a["address"] for attachments in wiring_plan(device)["buses"].values() for a in attachments}
 
-    async def until(done: "Callable[[], bool]", what: str) -> None:
-        for _ in range(int(_RUN_BOUND_S / _POLL_S)):
-            if done():
-                return
-            await asyncio.sleep(_POLL_S)
-        raise AssertionError(what)
-
-    async def scenario() -> "tuple[int, int, int, int, bool]":
+    async def scenario() -> "tuple[int, bool]":
         module, watchdog = await _boot(device, port=_ports.next())
         (bus_name,) = [bus for d, bus, _o in _SHARED if d == device]
         bus = getattr(module, bus_name)
         fake = bus._i2c
         assert fake is not None
         chips = dict(fake.devices)
-        real_recover: Callable[[], Coroutine[object, object, int]] = bus.recover
-        real_clear: Callable[[], Coroutine[object, object, int]] = bus._clear_locked
-        rebuilds, inside, arrived = [0], [0, 0, 0], []  # real rebuilds; in the lock now, most at once, beside the sibling; readers at the gate
-        sibling, started = [False], [0]  # the test holds the bus lock; rebuilds released from the gate
-        go = {reader.pr.name: asyncio.Event() for reader in (module.sgp40, module.bmp3xx)}
-
-        async def counted() -> int:
-            rebuilds[0] += 1
-            return await real_recover()
-
-        async def held() -> int:
-            if sibling[0] or not bus.bus_lock.locked():
-                inside[2] += 1  # a rebuild ran beside the sibling's session, or with no lock held
-            inside[0] += 1
-            inside[1] = max(inside[:2])
-            try:
-                return await real_clear()
-            finally:
-                inside[0] -= 1
-
-        for name, wrapper in (("recover", counted), ("_clear_locked", held)):
-            setattr(bus, name, wrapper)  # an instance attribute shadowing the method, as _ladder_run's
-        for reader in (module.sgp40, module.bmp3xx):
-
-            async def gated(real: "Callable[[], Coroutine[object, object, None]]" = reader._init_failed, name: str = reader.pr.name) -> None:
-                arrived.append(name)
-                await go[name].wait()
-                await real()
-
-            setattr(reader, "_init_failed", gated)  # noqa: B010 - the instance attribute the driver's _init_*() calls
+        mark = bus.recoveries
         chips[addresses["sgp40"]].fault.inject_fault("readfrom_into", OSError, errno.EIO, "no ACK", times=1)
         chips[addresses["bmp3xx"]].fault.inject_fault("readfrom_mem", OSError, errno.EIO, "no ACK", times=1)
         feeder = asyncio.get_event_loop().create_task(_feed_watchdog_periodically(watchdog))
         supervisor = await _supervised_graph(module)
         try:
-            await until(lambda: len(arrived) == 2, "both setups did not fail")
-            mark = bus.recoveries
-            await bus.bus_lock.acquire()  # the sibling session
-            sibling[0] = True
-            for name in arrived:
-                go[name].set()
-                started[0] += 1
-                await until(lambda: bus.recoveries - mark == started[0], f"the rebuild of {name}'s failed setup never started")
-            bus.bus_lock.release()
-            sibling[0] = False
             while (await module.sgp40.get_data()).VOC is None or (await module.bmp3xx.get_data()).Pres is None:
                 await asyncio.sleep(_POLL_S)
             assert watchdog.would_have_triggered_count == 0
@@ -1119,19 +1072,17 @@ def test_two_setups_failing_together_each_rebuild_the_controller_once_one_after_
             for reader in (module.sgp40, module.bmp3xx):
                 log = (await reader.pr.get_log())[reader.pr.name]
                 kinds = [(log["ErrType"][i], log["ErrNum"][i]) for i in range(len(log["ErrNum"])) if log["ErrType"][i] != "N"]
-                assert kinds == [("E", code("E", "INIT")), ("W", code("W", "BUS_RECOVERY"))], f"{reader.pr.name}: not one rebuild beside its own setup error: {log}"
+                assert kinds == [("E", code("E", "INIT"))], f"{reader.pr.name}: not its own setup error alone: {log}"
             kept = fake.devices == chips and all(fake.devices[a] is chips[a] for a in chips)
-            return rebuilds[0], inside[1], inside[2], await _w15(module.sgp40, module.bmp3xx), kept
+            return bus.recoveries - mark, kept
         finally:
-            if sibling[0]:
-                bus.bus_lock.release()
             await cancel(supervisor)
             await cancel(feeder)
             await _cancel_started_tasks(module)
 
-    rebuilds, most_inside, unlocked, w15, kept = run_timed(scenario(), timeout_s=_STATE_RUN_BOUND_S)
-    assert (rebuilds, most_inside, unlocked, w15) == (2, 1, 0, 2), f"expected two rebuilds one at a time inside the bus lock, each with one W15; got {rebuilds} rebuild(s), {most_inside} at once, {unlocked} outside the lock, {w15} W15 slot(s)"
-    assert kept, "the rebuilds lost the wired chips"
+    rungs, kept = run_timed(scenario(), timeout_s=_STATE_RUN_BOUND_S)
+    assert rungs == 0, f"a failed setup ran {rungs} bus rung(s)"
+    assert kept, "the restarts lost the wired chips"
 
 
 # ---------------------------------------------------------------------------

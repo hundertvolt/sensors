@@ -95,7 +95,9 @@ def _arm_failure_then_restart(exc: "type[BaseException]") -> None:
 
     assert run(restart()) is True, exc
     assert [arm[1] for arm in reader._start_trigger_timer.arms] == [_START_TRIGGER_PERIOD_MS]
-    assert run(reader.get_error_counter())["SCD30"]["ErrCount"] == 1
+    log = run(reader.get_error_counter())["SCD30"]
+    assert log["ErrCount"] == 2, exc  # counted again
+    assert [n for n in log["ErrNum"] if n] == [code("E", "TIMER")], exc  # in one slot
 
 
 def _contmeas_put(body: "CfgValue") -> "tuple[WriteValidity, ErrorLog, FakeI2C]":
@@ -1051,8 +1053,8 @@ def test_reader_start_timer_degrades_gracefully_on_a_memory_error_while_arming()
 
 
 def test_a_failed_trigger_arm_ends_the_irq_task_with_one_timer_entry_and_a_restart_rearms() -> None:
-    # The arm fails after the task started (tasks start before timers at boot): the woken task persists one
-    # TIMER entry and ends; its restart re-arms first, and a tick then drives the stuck-pin read.
+    # The arm fails after the task started (tasks start before timers at boot): the woken task persists a TIMER
+    # entry and ends; its restart counts it again in the same slot, re-arms, and a tick drives the stuck-pin read.
     for exc in (OSError, MemoryError):
         _arm_failure_then_restart(exc)
 
@@ -1796,8 +1798,8 @@ def test_init_scd_returns_false_immediately_when_probe_fails_no_reset_reached() 
     reader = _make_reader()
     _reader_fake_i2c(reader).nak_addresses.add(_ADDR)
     assert run(reader._init_scd()) is False
-    # A failed chip setup runs the controller rung at once (C.7): the setup error, then the bus recovery.
-    assert _entries(reader) == [("E", code("E", "INIT")), ("W", code("W", "BUS_RECOVERY"))]
+    # A failed chip setup runs no bus rung (C.7): its one entry; the restart retries it.
+    assert _entries(reader) == [("E", code("E", "INIT"))]
 
 
 def test_the_boot_start_sequence_sends_no_nvm_storing_command() -> None:
@@ -2204,18 +2206,19 @@ def test_an_unreadable_frc_config_is_logged_once_per_episode() -> None:
         assert isinstance(count, int)
         return count
 
+    before = store_errors()  # its absent file's one warning
     store.valid = False
     for _ in range(5):
         run(reader._capture_frc_config())
         assert reader._frc_cfg_ok is False
-    assert store_errors() == 1
+    assert store_errors() == before + 1
     store.valid = True
     run(reader._capture_frc_config())
     assert reader._frc_cfg_ok is True
     store.valid = False
     for _ in range(3):
         run(reader._capture_frc_config())
-    assert store_errors() == 2
+    assert store_errors() == before + 2
 
 
 def test_frc_readiness_reaches_ready_after_the_settle_count_and_one_closed_window() -> None:

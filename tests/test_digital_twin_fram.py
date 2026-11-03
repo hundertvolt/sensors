@@ -765,7 +765,7 @@ def test_the_timestamped_chunk_read_carries_the_same_tri_state() -> None:
         bus.rx_overrun = False
         assert run(ts_chunk.read_into(ts_chunk.get_buffer())) == (False, None, None)
     finally:
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
 
 
 def test_every_chunk_operation_stays_silent_on_the_twin_while_the_chip_is_lost() -> None:

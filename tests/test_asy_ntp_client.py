@@ -153,7 +153,7 @@ def _against_responder(client: NTPClient, responder: NtpResponder, modes: "list[
         return run(scenario())
     finally:
         responder.close()
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
 
 
 async def _attempt_ended(finished: asyncio.Event) -> None:
@@ -498,7 +498,7 @@ def _synced_due_at(phase_ms: int, latency_ms: int, cycles: int) -> "list[int]":
         try:
             return run(scenario())
         finally:
-            asy_base_classes.set_utc_valid(valid=False)
+            asy_base_classes._utc_valid = False
 
 
 def _timing(
@@ -710,7 +710,7 @@ def test_get_dict_cfg_is_the_unavailable_marker_when_config_manager_is_invalid()
 
 
 def test_get_data_and_get_dict_data_reflect_the_initial_never_synced_state() -> None:
-    asy_base_classes.set_utc_valid(valid=False)  # another test's sync may have set the process-wide flag
+    asy_base_classes._utc_valid = False  # another test's sync may have set the process-wide flag
     client = _make_client()
     data = run(client.get_data())
     assert data.Synced is False
@@ -726,7 +726,7 @@ def test_get_data_reflects_a_successful_sync() -> None:
         run(client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0)))
         data = run(client.get_data())
     finally:
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
     assert data.Synced is True
     assert data.LastSyncAge == 0
     assert data.TS is not None  # the sync itself marked the clock valid before stamping
@@ -735,12 +735,12 @@ def test_get_data_reflects_a_successful_sync() -> None:
 def test_a_successful_sync_marks_the_utc_clock_valid() -> None:
     client = _make_client()
     try:
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
         assert asy_base_classes.utc_now() is None
         run(client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0)))
         assert isinstance(asy_base_classes.utc_now(), int)
     finally:
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
 
 
 def test_get_dict_data_reflects_a_successful_sync() -> None:
@@ -749,7 +749,7 @@ def test_get_dict_data_reflects_a_successful_sync() -> None:
         run(client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0)))
         dict_data = run(client.get_dict_data())
     finally:
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
     assert dict_data["NTP"]["TS"] is not None
     assert dict_data["NTP"]["Synced"] is True
     assert dict_data["NTP"]["LastSyncAge"] == 0
@@ -1042,7 +1042,7 @@ def test_a_forced_resync_reports_unsynced_until_the_next_success() -> None:
         assert run(scenario()) == [(True, 0, True), (False, None, True), (True, 0, True)]
     finally:
         ntpmod.time = original_time
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
 
 
 def test_the_clock_turns_valid_at_a_successful_sync() -> None:
@@ -1058,7 +1058,7 @@ def test_the_clock_turns_valid_at_a_successful_sync() -> None:
     try:
         assert run(scenario()) == [False, True]
     finally:
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
 
 
 def test_a_settings_change_unsets_the_clock_until_the_next_sync() -> None:
@@ -1080,7 +1080,7 @@ def test_a_settings_change_unsets_the_clock_until_the_next_sync() -> None:
     try:
         assert run(scenario()) == [(True, True), (False, False), (True, True)]
     finally:
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
 
 
 # ---------------------------------------------------------------------------
@@ -1521,7 +1521,7 @@ def test_a_long_reply_is_read_as_its_48_byte_header() -> None:
     try:
         assert run(scenario()) == (True, True)
     finally:
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
 
 
 # ---------------------------------------------------------------------------
@@ -1796,7 +1796,7 @@ def test_handle_sync_success_resets_retries_marks_synced_and_records_the_sync_ti
         run(client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0)))
         data = run(client.get_data())
     finally:
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
     assert client._ntp_retries == 0
     assert data.Synced is True
     assert data.LastSyncAge == 0
@@ -1977,7 +1977,7 @@ def test_refresh_marks_the_sync_stale_three_intervals_after_the_last_success() -
         try:
             changes, valid = run(scenario())
         finally:
-            asy_base_classes.set_utc_valid(valid=False)
+            asy_base_classes._utc_valid = False
     assert changes == [(_CHECK_INTERVAL_S, True), (_STALE_AFTER_S, False)]  # synced until the age reaches 3 h, not before
     assert valid is True  # the clock stays valid through the stale sync
 
@@ -2005,7 +2005,7 @@ def test_ntp_goes_stale_when_every_due_resync_fails() -> None:
             changes = run(scenario())
         finally:
             ntpmod.resolve_ipv4 = original
-            asy_base_classes.set_utc_valid(valid=False)
+            asy_base_classes._utc_valid = False
     assert changes == [(_CHECK_INTERVAL_S, True), (_STALE_AFTER_S, False)]
     assert len(recorder.calls) >= 2  # the 1 h and 2 h resyncs ran, and failed
     assert _slots(client)[1][0] == code("E", "NTP_DNS")
@@ -2030,7 +2030,7 @@ def test_a_successful_resync_restarts_the_age() -> None:
             changes = run(scenario())
             age = client._sync_age.read()  # on the stepped clock: past the block, ticks_ms() is the host's uptime
         finally:
-            asy_base_classes.set_utc_valid(valid=False)
+            asy_base_classes._utc_valid = False
     assert changes == [(_CHECK_INTERVAL_S, True)]  # 4 h after the first success, 1.5 h after the second
     assert age == 90 * 60
 
@@ -2066,7 +2066,7 @@ def test_the_due_counter_never_exceeds_one_interval() -> None:
         try:
             changes = run(scenario())
         finally:
-            asy_base_classes.set_utc_valid(valid=False)
+            asy_base_classes._utc_valid = False
     assert changes == [(_CHECK_INTERVAL_S, True)]
     assert counts[:period] == counts[period : 2 * period] == counts[2 * period :]
     assert max(counts) < 3600 and counts[period - 1] == 0  # reset at the due tick itself
@@ -2104,13 +2104,13 @@ class _ClockSet:
         asy_base_classes.set_utc_valid()
 
     def __exit__(self, *exc_info: object) -> None:
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
 
 
 def test_cettime_returns_none_before_the_clock_was_set() -> None:
     client = _make_client()
     run(client._set_synced(value=True))  # Synced alone does not open the gate: the clock-set state does
-    asy_base_classes.set_utc_valid(valid=False)
+    asy_base_classes._utc_valid = False
     assert asy_base_classes.utc_now() is None
     original_time = ntpmod.time
     ntpmod.time = _FixedNowTime(_mid_month_now(7))  # type: ignore[assignment]
@@ -2268,7 +2268,7 @@ def test_sync_age_follows_measured_time_while_synced() -> None:
         try:
             assert run(scenario()) == 3
         finally:
-            asy_base_classes.set_utc_valid(valid=False)
+            asy_base_classes._utc_valid = False
 
 
 def test_a_late_wake_advances_the_age_by_the_measured_seconds() -> None:
@@ -2294,7 +2294,7 @@ def test_a_late_wake_advances_the_age_by_the_measured_seconds() -> None:
         try:
             assert run(scenario()) == 2
         finally:
-            asy_base_classes.set_utc_valid(valid=False)
+            asy_base_classes._utc_valid = False
 
 
 def test_sync_state_follows_measured_ticks_not_rtc_steps() -> None:
@@ -2320,7 +2320,7 @@ def test_sync_state_follows_measured_ticks_not_rtc_steps() -> None:
         try:
             assert run(scenario()) == [(True, 10), (True, 20)]
         finally:
-            asy_base_classes.set_utc_valid(valid=False)
+            asy_base_classes._utc_valid = False
 
 
 def test_the_first_sync_from_the_boot_default_restarts_the_age() -> None:
@@ -2351,7 +2351,7 @@ def test_the_first_sync_from_the_boot_default_restarts_the_age() -> None:
         try:
             rtc, tm, first, later, stamp = run(scenario())
         finally:
-            asy_base_classes.set_utc_valid(valid=False)
+            asy_base_classes._utc_valid = False
     assert rtc == (tm[0], tm[1], tm[2], tm[6], tm[3], tm[4], tm[5], 0)  # the getter's recomputed weekday
     assert (first, later, stamp) == (0, _CHECK_INTERVAL_S, reply_time)  # the age counts from the sync, not from boot
 
@@ -2378,7 +2378,7 @@ def test_an_offset_put_then_a_sync_shifts_the_rtc_and_cycles_synced() -> None:
     try:
         cleared, tm, synced, rtc = run(scenario())
     finally:
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
     shifted = tuple(time.gmtime(reply_time + 3600))
     assert (cleared, synced) == (False, True)
     assert tm is not None and tuple(tm)[:8] == shifted[:8]
@@ -2688,7 +2688,7 @@ def test_the_sync_task_survives_a_cancel_at_every_await() -> None:
             assert clock.wakes() == [], clock.wakes()
     finally:
         ntpmod.UDPSocket = original  # type: ignore[misc]
-        asy_base_classes.set_utc_valid(valid=False)  # the sync this sweep completes sets the process-wide flag
+        asy_base_classes._utc_valid = False  # the sync this sweep completes sets the process-wide flag
     assert counts == len(built) == 16
     assert phases == [(0, False), (1, False), (2, False), (2, True)], phases  # before the socket, in each wait, after the sync
 
@@ -3118,7 +3118,7 @@ def test_missing_config_failure_logs_in_both_layers_one_slot_each() -> None:
     before = run(client.cfgmgr.get_error_counter())["CFGMGR_NTP"]["ErrCount"]
     assert _twice_one_slot(client, lambda: client._run_ntp_sync_attempt(None)) == (2, [code("E", "CFG_READ")], ["E"])
     store = run(client.cfgmgr.get_error_counter())["CFGMGR_NTP"]
-    assert store["ErrCount"] - before == 1  # four failed reads (two per attempt: host, then offset), one run: one entry
+    assert store["ErrCount"] - before == 4  # four failed reads (two per attempt: host, then offset), each counted
     kept = [store["ErrNum"][i] for i in range(len(store["ErrNum"])) if store["ErrType"][i] != "N"]
     assert kept[-1] == code("E", "CFG_NOT_VALID") and kept.count(code("E", "CFG_NOT_VALID")) == 1, kept
 
@@ -3405,7 +3405,7 @@ def test_a_failed_resync_never_resets_the_staleness_count() -> None:
             seen = run(scenario())
         finally:
             responder.close()
-            asy_base_classes.set_utc_valid(valid=False)
+            asy_base_classes._utc_valid = False
     assert seen == [(3600, True), (7200, True), (_STALE_AFTER_S - _CHECK_INTERVAL_S, True), (_STALE_AFTER_S, False)]
     assert responder.requests >= 3  # the sync, then the two failed resyncs
     assert _slots(client)[1] == [code("E", "NTP_NO_REPLY")]
@@ -3442,7 +3442,7 @@ def test_a_dropped_check_tick_does_not_delay_the_due_resync() -> None:
         try:
             due_at = run(scenario())
         finally:
-            asy_base_classes.set_utc_valid(valid=False)
+            asy_base_classes._utc_valid = False
     assert due_at == 3600, due_at
 
 

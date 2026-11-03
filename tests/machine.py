@@ -1437,6 +1437,7 @@ mem32 = _Mem32()
 _WATCHDOG_REASON = 0x40058008  # WATCHDOG_BASE + 0x08: bit 0 TIMER, bit 1 FORCE (RP2040 datasheet 4.7.6, Table 548)
 _CHIP_RESET = 0x40064008  # VREG_AND_CHIP_RESET_BASE + 0x8: bit 8 HAD_POR, 16 HAD_RUN, 20 HAD_PSM_RESTART (RP2040 datasheet 2.10.6)
 _REASON_FORCE = 0x2  # watchdog_reboot(..., 0) sets the trigger bit (pico-sdk watchdog.c:65-66)
+_REASON_TIMER = 0x1  # a watchdog timeout, and what a BOOTSEL round trip leaves (bench)
 _HAD_POR = 0x100
 # Test-only: what the two registers read, the power-on pair until power_on()/reset()/bootloader() move them.
 watchdog_reason_value = 0
@@ -1481,10 +1482,14 @@ TEST_API = (
 
 
 def bootloader() -> None:
+    # A BOOTSEL round trip loses both backup regions on silicon, then reads cause 3 and REASON TIMER (bench).
     global bootloader_count, reset_cause_value, watchdog_reason_value
     bootloader_count += 1
+    for region in _REGIONS:
+        for i in range(len(region)):
+            region[i] = 0
     reset_cause_value = WDT_RESET
-    watchdog_reason_value = _REASON_FORCE
+    watchdog_reason_value = _REASON_TIMER
     raise SimulatedBootloaderEntryError("machine.bootloader() never returns")
 
 

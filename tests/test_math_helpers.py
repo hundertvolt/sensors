@@ -55,9 +55,8 @@ def test_wet_bulb_humidity_above_range() -> None:
 
 
 def test_wet_bulb_boundary_values_accepted() -> None:
-    # The cold-dry corner line's two end points and the far edge (Stull 2011, Fig. 3), each against Stull 2011's eq. 1
-    # evaluated by hand: T atan(0.151977 (RH + 8.313659)^0.5) + atan(T + RH) - atan(RH - 1.676331)
-    # + 0.00391838 RH^1.5 atan(0.023101 RH) - 4.686035.
+    # Points on the domain's edges, each against Stull 2011's eq. 1 evaluated by hand:
+    # T atan(0.151977 (RH + 8.313659)^0.5) + atan(T + RH) - atan(RH - 1.676331) + 0.00391838 RH^1.5 atan(0.023101 RH) - 4.686035.
     for temperature, humidity, expected in ((-20.0, 75.0, -20.949), (10.0, 5.0, 0.608), (50.0, 5.0, 20.909), (50.0, 99.0, 50.035)):
         value = mh.wet_bulb_temperature(temperature, humidity)
         assert value is not None and abs(value - expected) < 0.001, (temperature, humidity, value)
@@ -80,13 +79,10 @@ def test_wet_bulb_nan_and_inf_return_none() -> None:
     assert mh.wet_bulb_temperature(20.0, inf) is None
 
 
-def test_wet_bulb_is_refused_in_the_cold_dry_corner() -> None:
-    # Stull (2011) Fig. 3 excludes the region below the line (-20 degC, 75 %) to (10 degC, 5 %);
-    # at 5 degC the line sits at 75 - 70 * 25 / 30 = 16.7 %, so 15 % lies below it and 20 % above it.
-    assert mh.wet_bulb_temperature(-10.0, 20.0) is None
-    assert mh.wet_bulb_temperature(-20.0, 74.9) is None
-    assert mh.wet_bulb_temperature(5.0, 15.0) is None
-    assert mh.wet_bulb_temperature(5.0, 20.0) is not None
+def test_wet_bulb_answers_across_the_whole_range_check() -> None:
+    # The range check alone gates the formula: a cold, dry point inside -20..50 degC and 5..99 %RH answers too.
+    for temperature, humidity in ((-20.0, 5.0), (-10.0, 20.0), (-20.0, 74.9), (5.0, 15.0)):
+        assert mh.wet_bulb_temperature(temperature, humidity) is not None, (temperature, humidity)
     result = mh.wet_bulb_temperature(20.0, 50.0)  # the paper's worked example, "13.7 degC"
     assert result is not None
     assert approx(result, 13.699, tol=1e-3)
@@ -299,20 +295,20 @@ def test_rel_humidity_none_inputs() -> None:
 
 def test_rel_humidity_round_trips_each_hand_worked_vector() -> None:
     # The exact inverse of abs_humidity: each (degC, %RH) vector above comes back within the tolerance, a saturated
-    # one included (its inverse may land a rounding step above 100 %).
+    # one included (its inverse clamps at 100 %).
     for temperature, humidity in ((20.0, 50.0), (40.0, 100.0), (-30.0, 100.0), (0.0, 100.0), (-0.1, 100.0)):
         rh = mh.rel_humidity(temperature, mh.abs_humidity(temperature, humidity))
         assert rh is not None
         assert approx(rh, humidity, tol=0.01)
 
 
-def test_rel_humidity_refuses_a_value_above_saturation() -> None:
-    # No clamp: a result above 100 % (beyond the rounding margin) is outside the domain and returns None.
-    assert mh.rel_humidity(20.0, 20.0) is None  # 115.7 %
-    assert mh.rel_humidity(40.0, 100.0) is None  # 196 %
+def test_rel_humidity_clamps_to_0_100() -> None:
+    # A result above saturation reads 100 %, as legacy's inverse clamped it: just over, and far over.
     saturated = mh.abs_humidity(20.0, 100.0)
     assert saturated is not None
-    assert mh.rel_humidity(20.0, saturated * 1.0001) is None  # 100.01 %
+    assert mh.rel_humidity(20.0, saturated * 1.0001) == 100.0  # 100.01 %
+    assert mh.rel_humidity(20.0, 20.0) == 100.0  # 115.7 %
+    assert mh.rel_humidity(40.0, 100.0) == 100.0  # 196 %
 
 
 def test_rel_humidity_zero_is_zero() -> None:

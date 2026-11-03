@@ -333,7 +333,6 @@ class SGP40_Reader(SensorReaderConfig):
             await self._sgp.setup()
         except Exception as e:
             await self.pr.err_s("Error in initial setup:", e, errno=_ERR_INIT)
-            await self._init_failed()
             return False  # error
 
         if self._ts_storage is None:

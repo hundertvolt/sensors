@@ -290,11 +290,11 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "l
     lines.extend(("    local_time = await ntp.cettime()", "    utc = time.gmtime() if await ntp.ntp_clock_valid() else None"))
     lines.append("    return {")
     lines.append('        "SysUptime": await sysfunct.get_uptime(), "BootSignature": await sysfunct.get_boot_signature(),')
-    lines.append('        "ResetReason": sysfunct.get_reset_reason(), "ResetBits": sysfunct.get_reset_bits(), "MemFree": gc.mem_free(),')
+    lines.append('        "ResetReason": sysfunct.get_reset_reason(), "MemFree": gc.mem_free(),')
     if "fram" in have:
         lines.append(f'        "MemPaused": {_singleton_var(ctx, "fram")}.get_pause(),')
     # Copied into the JSON value type: a list[str] is not a list of JSON values (lists are invariant).
-    lines.append('        "ConfigFaults": list(sysfunct.get_config_faults()), "ConfigUnpersisted": list(sysfunct.get_config_unpersisted()),')
+    lines.append('        "ConfigFaults": list(sysfunct.get_config_faults()),')
     lines.append('        "LastTaskEnd": sysfunct.get_last_task_end(),')
     lines.append('        "LocalTime": _gmtimestruct_to_dict(local_time), "UTCTime": _gmtimestruct_to_dict(utc), "UnixTime": utc_now(),')
     lines.append('        "TimeStale": None if utc_now() is None else not await ntp.ntp_issynced(),')
