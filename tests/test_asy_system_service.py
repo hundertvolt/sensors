@@ -4352,4 +4352,6 @@ def test_the_raised_helper_lets_an_interrupt_through() -> None:
 
 
 if __name__ == "__main__":
+    import microtest
+
     microtest.run(globals())

@@ -210,3 +210,9 @@ shutdown-sequence tracker was never cleared, so every service, rig and fake chip
 heap grew from 0.42 MB to 4.9 MB over its 187 tests). One after-each clear fixes it; the live heap stays at 0.5 MB and
 the file passes under the coverage build at a 4 MB heap. Test-only, no firmware byte changes. `redo/r1/B36/GATE.md`
 records the measurements.
+
+## Thirty-first snapshot (2026-11-03): the system service test file keeps its standard trailer
+
+The previous snapshot's fix also moved one import out of the test file's closing `__main__` block, which a build-chain
+test requires in every test file, so both unit-test lanes failed that one check. The block is back as it was; the whole
+build-chain test tier passes. Test-only, no firmware byte changes; `redo/r1/B36/GATE.md` records it.

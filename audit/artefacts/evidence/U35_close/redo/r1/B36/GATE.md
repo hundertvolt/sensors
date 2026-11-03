@@ -66,3 +66,14 @@ Fix **d922323b** on int: `microtest.after_each(_SEQUENCES.clear)`, as `test_asy_
 parse cache. After it: the live heap 423,648 B at the first test, 500,672 B at most, 498,112 B at the end; the file
 187/187 under build-settrace at 16, 10 and 4 MB, and under build-standard at -1 and 32768; lint, the three mypy passes
 and `test_comment_block_cap.py` (657) green.
+
+## CI on snapshot 30 (23297252, run 41712336673) and its fix
+
+`unit-tests` and `Unit tests (shipped gc.threshold)` failed (the twin jobs, which wait on them, were skipped): every
+MicroPython test passed (5,868), and one tests_scripts test failed in each. d922323b had moved `import microtest` to
+the top and dropped it from the `__main__` block, and `tests_scripts/test_microtest.py`
+(`test_every_test_file_ends_with_the_canonical_trailer_and_binds_only_functions`) pins that block in every test file:
+checked by parsing the snapshot-30 file (not canonical) and the fixed one (canonical). The lead had run only
+`test_comment_block_cap.py` from tests_scripts for d922323b; the whole tier is the check for a test-file change.
+Fix **a97ec884**: the trailer back as it was, the top-level import kept (as `test_asy_webserver_service.py` has both).
+On it: lint, the three mypy passes and the whole tests_scripts tier (7,113 passed, 6 skipped) green.

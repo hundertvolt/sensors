@@ -521,3 +521,22 @@ their context). From now on every owner word is appended here as it is given.
 - 2026-11-03 20:05 UTC (time taken at reading), B7/B8 owner questions: "Prepare these 5 questions and the one before
   that we can go through them one by one" Done: the B7 `State` question and B8's five queued questions prepared
   together, then asked one at a time.
+- 2026-11-03 20:25 UTC (time taken at reading), B7 question 1 (`State`): "The entries in the status field could be
+  anything as you describe them, what are they about?" Answered: what the notification service checks each cycle and
+  what each code means in those terms; question 1 stays open.
+- 2026-11-03 20:28 UTC (time taken at reading), B7 question 1 (`State`): "Now I understand why the whole notification
+  status field was new to me - I never requested it. Did I actually ever request any status of the notification being
+  added to the status field? Honestly I don't remember ever discussing this." Answered from the records (below).
+- 2026-11-03 20:35 UTC (time taken at reading), B7 question 1 (the notification block in `/status`): "As you said that
+  code functionality can be tested without all that, we do as recommended, only keep pause time" Decided: `Triggered`,
+  `State` and `TS` leave `/status` with the Status page's "Notification Status" group, the NotifyState table and the
+  mock data; `PauseTime` stays where it is; tests observe a flash through the LED fake's frames. Relayed to B7.
+- 2026-11-03 20:40 UTC (time taken at reading), B8 question 2 (the boot entry at DebugLevel 0): "drop the traceback
+  print and keep the start line, as you recommended" Decided: the generated main.py's `sys.print_exception(ended)` goes
+  (reset reason 22 stays the record, with its pre-bind, comment and F811 exemption); the no-autostart start line stays.
+- 2026-11-03 20:43 UTC (time taken at reading), B8 question 3 (the page's build-date stamp): "Remove it" Decided: the
+  meta stamp, its read and compare in the page code and its build steps go; `BuildDate` stays in GET /system.
+- 2026-11-03 20:45 UTC (time taken at reading), B8 question 4 (the "returned no JSON object" banner): "Yes, restore"
+  Decided: the page's GET check goes back to the pre-audit form (an empty body refused, a typing cast otherwise).
+- 2026-11-03 20:47 UTC (time taken at reading), B8 question 5 (a saturated counter shown as "65535+"): "Yes, that was a
+  good addition, keep it" Decided: kept, now with the owner's agreement on record.
