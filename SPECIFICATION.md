@@ -7825,17 +7825,15 @@ backend-only or frontend-only validation/coercion policy change in this project.
   its own codec: one instance shared by two drivers would corrupt both, its long-lived scratch being
   per instance (agent, 2026-09-11).
 - **Derived quantities** — `math_helpers.py`: each formula keeps its legacy form and returns `None`
-  outside the domain its published source validates; nothing clamps, and `rel_humidity()` accepts a
-  saturated reading's 0.001 % rounding step above 100 %. Domains: Stull wet bulb
-  −20..50 °C, 5..99 %RH minus the cold-dry corner below (−20 °C, 75 %)–(10 °C, 5 %), valid at
+  outside the domain its published source validates; `rel_humidity()` alone clamps its result to
+  0..100 %, as legacy's did. Domains: Stull wet bulb −20..50 °C, 5..99 %RH, valid at
   101.325 kPa only; Magnus dew point −40..50 °C; Magnus absolute and relative humidity over water
   −30..40 °C, its water pair the published 7.5/237.3 (Tetens 1930, Murray 1967) where legacy had
   237.4 (owner, 2026-10-07: 'Adapt the humidity to the verified range');
   barometric reduction 300..1250 hPa, −40..85 °C (BMP3xx datasheet); McCamy CCT output 2000..12500 K
   (its measured error: Part M.1.3); EMA off for a coefficient outside (0, 1]. `abs_humidity()` and
   `rel_humidity()` stay in `math_helpers.py`, small and completing the functional suite (owner,
-  2026-10-02: 'useful, complete the functional suite, small, lightweight'), and follow the no-clamp
-  rule like the rest.
+  2026-10-02: 'useful, complete the functional suite, small, lightweight').
 - **CRCs** — `asy_crc_checks.py`: CRC8 = Sensirion CRC-8 (poly 0x31, init 0xFF), CRC16 =
   CRC-16/CCITT-FALSE, CRC32 = CRC-32/MPEG-2, fixed because the chips and the UART peer depend on them;
   a caller passes the buffer's true length (a zero register stays zero through trailing 0x00) and
@@ -11805,8 +11803,7 @@ kept (owner, 2026-10-21; A.4 quotes the answer and the question).
 (Interface Description 1.4.7), and any non-finite value; a rejected reading is logged as
 `READ_RANGE`, apart from a bus fault, and counts as a failed read. The derived values are `None`
 outside their formulas' domains, unlogged, since a physical reading there is an expected condition
-(agent, 2026-10-07): `WetBulb` outside −20..50 °C or 5..99 %RH or below the cold-dry corner line from
-(−20 °C, 75 %) to (10 °C, 5 %) (Stull 2011), `DewPoint` outside −40..50 °C or 0.1..100 %RH
+(agent, 2026-10-07): `WetBulb` outside −20..50 °C or 5..99 %RH (Stull 2011), `DewPoint` outside −40..50 °C or 0.1..100 %RH
 (`math_helpers.py`).
 
 **Not-ready reads.** Five consecutive data-ready signals with no new measurement persist one
