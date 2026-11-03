@@ -478,7 +478,7 @@ def _restore_through_the_outage_on(device: str) -> None:
     waiting, restored_from, sgp_log = _booted(device, responder, restored, cfg_path, fram_state)
     assert waiting is None  # no restore while the responder was silent
     assert restored_from == stamp, (restored_from, stamp)
-    assert sgp_log == (0, []), sgp_log  # the wait and a timestamped restore print only
+    assert sgp_log == (1, [code("W", "SGP_NO_BACKUP")]), sgp_log  # the first boot's, on its blank chunk; the wait and a timestamped restore print only
 
 
 def _served(responder: NtpResponder, request: bytes = _REQUEST) -> "bytes | None":

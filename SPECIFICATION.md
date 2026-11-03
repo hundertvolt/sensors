@@ -6076,8 +6076,9 @@ its family, the drivers it needs (skipped on a device without them) and whether 
 boot: the shared ones run first on one twin per group, with an idle check between two of them (the
 twin alive, every connection slot drained, the kernel's accept queue empty, the error counts after
 the drain, the memory gate), and a failure names its scenario and sends the next to a fresh boot.
-A shared twin is also retired before its own background can move a count: a fresh hotspot-mode
-boot never syncs NTP, so SGP40's untimestamped-backup warning lands
+A shared twin's first count snapshot waits out each SGP40's W65, its first restore finding a fresh
+FRAM's backup chunk blank. The twin is also retired before its own background can move a count
+again: a fresh hotspot-mode boot never syncs NTP, so SGP40's untimestamped-backup warning lands
 `l2.scenario_shared_boot_deadline_s` after the spawn at the earliest; the group goes on on a fresh
 boot once one more scenario could pass that, and a count an idle check reads moved past it fails by
 name as the boot's overrun, never as the scenario's (agent, 2026-10-19).

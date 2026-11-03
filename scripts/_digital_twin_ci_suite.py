@@ -408,10 +408,12 @@ def _check_no_memory_error_in_log(log_path: Path, run_label: str) -> None:
     _check(condition=verdict is None, msg=f"{run_label}: log carries none of {_MEMORY_ERROR_MARKERS}" + (f" - {verdict}" if verdict else ""))
 
 
-def _check_quiet_boot(label: str, spawned_at: float, keep: Path, *, fresh_config: bool = False) -> None:
+def _check_quiet_boot(label: str, spawned_at: float, keep: Path, *, fresh_config: bool = False, blank_backups: "tuple[str, ...]" = ()) -> None:
     # One /status read, its errcount kept at keep, whose E and W slots are exactly what the boot owes (no tolerance list):
-    # over a fresh config directory each config store's one W CFG_FILE_UNREADABLE, its file not found, else none; the
-    # launcher writes NTP's file (its offline responder's) before the boot.
+    # over a fresh config directory each config store's W CFG_FILE_UNREADABLE (the launcher writes NTP's file), and each
+    # blank SGP40 backup chunk's W SGP_NO_BACKUP, its first restore's, waited for; else none.
+    for name in blank_backups:
+        _wait_for_error_type_count(name, 1, _FIRST_FAULT_WAIT_S, "W")
     status, body = _http("GET", "/status")
     age_s = time.monotonic() - spawned_at
     table = errcount_table(status, body)
@@ -420,8 +422,11 @@ def _check_quiet_boot(label: str, spawned_at: float, keep: Path, *, fresh_config
     deadline_s = _quiet_boot_deadline_s()
     _check(condition=age_s < deadline_s, msg=f"{label}: the errcount was read {age_s:.1f}s after the spawn, before a boot's own first background warning can land ({deadline_s:.0f}s)")
     found = _boot_entries(table)
-    wanted = [(name, "W", code("W", "CFG_FILE_UNREADABLE")) for name in table if fresh_config and name.startswith("CFGMGR_") and name != "CFGMGR_NTP"]
+    owed = {name: code("W", "SGP_NO_BACKUP") for name in blank_backups}
+    owed |= {name: code("W", "CFG_FILE_UNREADABLE") for name in table if fresh_config and name.startswith("CFGMGR_") and name != "CFGMGR_NTP"}
+    wanted = [(name, "W", owed[name]) for name in table if name in owed]
     named = "exactly each config store's W CFG_FILE_UNREADABLE" if fresh_config else "no E and no W entry"
+    named += ", plus each blank SGP40 backup chunk's W SGP_NO_BACKUP" if blank_backups else ""
     _check(condition=found == wanted, msg=f"{label}: the boot logged {named} (kept in {keep}: {found!r})")
 
 
@@ -749,9 +754,15 @@ def _put_system_cmd(cmd: JSONValue) -> str | None:
     return word if isinstance(word, str) else None
 
 
+def _blank_backups(ctx: RunContext) -> "tuple[str, ...]":
+    # Run 1's SGP40s on FRAM: no boot of it lives long enough to write a backup, so each restore finds the chunk blank.
+    fram = any(inst.driver == "fram" for inst in ctx.instances)
+    return tuple(inst.errcount_name for inst in ctx.instances if inst.driver == "sgp40" and fram)
+
+
 def _quiet_boot_deadline_s() -> float:
-    # A boot's own first error-count move, SGP40's untimestamped-backup warning, comes no earlier than the scenarios'
-    # shared-boot deadline after the spawn; one source for both readers of that background.
+    # Past its blank chunk's W65, a boot's own first error-count move, SGP40's untimestamped-backup warning, comes no
+    # earlier than the scenarios' shared-boot deadline after the spawn; one source for both readers of that background.
     return module_float_const(REPO_ROOT / "scripts", "_digital_twin_scenarios.py", "_SHARED_BOOT_DEADLINE_S")
 
 
@@ -1126,9 +1137,9 @@ def _run_13_system_commands(ctx: RunContext) -> None:
 
 
 def _run_1_baseline(ctx: RunContext) -> None:
-    # ---- Run 1: fresh boot, walk every GET endpoint, nothing logged but each config file not found (kept in runs/
-    # before the reset). With no station link the clock never synced, so both time fields read null. Its reformat
-    # relaunch PUTs the settings later runs carry forward. ----
+    # ---- Run 1: fresh boot, walk every GET endpoint, nothing logged but each config file and SGP40 backup not found
+    # (kept in runs/ before the reset). With no station link the clock never synced, so both time fields read null. Its
+    # reformat relaunch PUTs the settings later runs carry forward. ----
     log1 = ctx.logs_dir / "run1_baseline.log"
     spawned_at = time.monotonic()
     proc = _spawn(ctx, [], log1)
@@ -1137,7 +1148,7 @@ def _run_1_baseline(ctx: RunContext) -> None:
         for path in (*ctx.routes, "/"):
             status, _ = _http("GET", path)
             _check(condition=status == _HTTP_OK, msg=f"Run 1: GET {path} -> 200")
-        _check_quiet_boot("Run 1", spawned_at, ctx.runs_dir / "run1_errcount.json", fresh_config=True)
+        _check_quiet_boot("Run 1", spawned_at, ctx.runs_dir / "run1_errcount.json", fresh_config=True, blank_backups=_blank_backups(ctx))
         times = (_status_field("system", "UTCTime"), _status_field("system", "LocalTime"))
         _check(condition=times == (None, None), msg=f"Run 1: UTCTime and LocalTime are null before the first NTP sync ({times!r})")
         stale = _status_field("system", "TimeStale")
@@ -1170,7 +1181,7 @@ def _run_1_reformat_relaunch(ctx: RunContext) -> None:
     proc = _spawn(ctx, [], ctx.logs_dir / "run1_reformat_relaunch.log")
     try:
         _wait_until_serving(proc)
-        _check_quiet_boot(label, spawned_at, ctx.runs_dir / "run1_reformat_errcount.json", fresh_config=True)
+        _check_quiet_boot(label, spawned_at, ctx.runs_dir / "run1_reformat_errcount.json", fresh_config=True, blank_backups=_blank_backups(ctx))
 
         status, body = _http("PUT", "/system", {"DebugLevel": _TEST_DEBUG_LEVEL})
         _check(condition=status == _HTTP_OK and _field(body, "result", "DebugLevel") in ("Valid", "Unchanged"), msg=f"Run 1: PUT /system DebugLevel={_TEST_DEBUG_LEVEL} accepted")
