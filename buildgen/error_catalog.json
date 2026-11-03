@@ -36,7 +36,7 @@
       "12": {"owner": "shared", "name": "CHIP_GET", "text": "reading a setting back from the chip failed"},
       "13": {"owner": "shared", "name": "CHIP_SET", "text": "applying a setting or command to the chip failed"},
       "14": {"owner": "shared", "name": "CALLBACK", "text": "a caller-supplied callback raised or returned an unusable result"},
-      "15": {"owner": "shared", "name": "SOURCE", "text": "a producer's get_data() raised or returned a non-numeric field"},
+      "15": {"owner": "shared", "name": "SOURCE", "text": "a producer's get_data() raised"},
       "17": {"owner": "shared", "name": "TIMER", "text": "arming a machine.Timer failed"},
       "18": {"owner": "shared", "name": "NOT_INIT", "text": "called before a successful setup"},
       "19": {"owner": "shared", "name": "LOCK_TIMEOUT", "text": "a lock was not acquired in time"},

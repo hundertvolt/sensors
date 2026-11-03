@@ -6599,13 +6599,12 @@ mechanism**: a wait that genuinely can be bounded is wrapped in `asyncio.wait_fo
 <timeout_ms>)` around the single awaitable that can wait (`extmod/asyncio/funcs.py:24-55`), the
 timeout a caller parameter in milliseconds and a timeout mapped to the owning function's documented
 sentinel (agent, 2026-09-29) — `asy_udp_socket.py`'s `select.poll`-driven `ready()` and the FRAM
-presence check's wait for the driver's session lock. Six
+presence check's wait for the driver's session lock. Five
 waits map no sentinel. The webserver's waits (each stream call, the writer's close, the outer
 request cap and each trace awaited before a close, in milliseconds its constructor converts once
 from `ServingLimits`' seconds) raise `TimeoutError`, which `_serve()` turns into a reclaimed
 connection and its warning, a close wait's timeout logs its own warning, and a trace's timeout
-leaves its entry in RAM for the logger's next write (A.8); the NeoPixel overlay's periodic rewrite
-takes its refresh cadence as its timeout. The supervisor's escalation entry is awaited plainly: its
+leaves its entry in RAM for the logger's next write (A.8). The supervisor's escalation entry is awaited plainly: its
 reset code is recorded before it and the command gate refuses from then on, so a write that never
 finishes stops the feed and the watchdog's reset reads that code; a `MemoryError` building it still arms the reset. No `asyncio.wait_for()` is left
 in `src/` (D.4). The FRAM's other lock waits and its status-byte sequences carry none: they wait

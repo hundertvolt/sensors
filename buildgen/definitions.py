@@ -685,6 +685,10 @@ def _status_section(model: DeviceModel, have: "set[str]", cache: "dict[Path, _Dr
         ]
     if maintenance_fields:
         groups.append({"key": "sensors", "label": "Sensor Maintenance", "fields": maintenance_fields})
+    if "notification" in have:
+        groups.append({"key": "notification", "label": "Notification Status", "fields": [
+            {"key": "PauseTime", "label": "Remaining Pause Time", "unit": "s", "kind": "readonly"},
+        ]})
     # Every field group, then the error counts and their reset command; the webserver's row is errcount's last.
     groups.append(_errcount_group(model, _load_catalog(), src_dir))
     groups.append(dict(_RESET_ERRORS_GROUP))

@@ -343,18 +343,13 @@ def _module_source(toml_path: Path, src_dir: Path, ext_dir: Path) -> str:
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_each_status_group_lists_the_keys_its_generated_source_returns(repo_root: Path, src_dir: Path, device: str) -> None:
-    # A key no status group lists is shown by a field's statusPath ([block, key]) elsewhere on the site.
     source = _module_source(device_toml(device), src_dir, repo_root / "ext")
-    generated = _generate(repo_root, src_dir, device)
-    groups = {_str(g["key"]): g for g in _groups(_section(generated, "status"))}
-    by_path = [_strs(f["statusPath"]) for _s, g in _field_groups(generated) for f in _fields(g) if "statusPath" in f]
+    groups = {_str(g["key"]): g for g in _groups(_section(_generate(repo_root, src_dir, device), "status"))}
     for key, function in (("networking", "_networking_status"), ("system", "_system_status"), ("notification", "_notification_status")):
-        shown = {_str(f["key"]) for f in _fields(groups[key])} if key in groups else set()
-        shown |= {path[1] for path in by_path if path[0] == key}
-        if not shown:
+        if key not in groups:
             assert f"async def {function}(" not in source, f"{function}() is generated but no status group lists it"
             continue
-        assert shown == set(_returned_keys(source, function)), key
+        assert sorted(_str(f["key"]) for f in _fields(groups[key])) == sorted(_returned_keys(source, function)), key
 
 
 # The devices whose TOML declares a notification: the notification checks below run on each of them.
@@ -523,10 +518,11 @@ def test_every_maintenance_field_reads_its_instance_and_field_by_path(repo_root:
 
 @pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
 def test_the_notification_status_is_the_pause_alone_read_from_status(repo_root: Path, src_dir: Path, device: str) -> None:
-    # /status's notification block answers the remaining pause only; the Status page lists no notification group.
+    # /status's notification block answers the remaining pause only, the Status page's notification row with it.
     sections = {_str(s["key"]): s for s in _sections(_generate(repo_root, src_dir, device))}
     assert "notification" in sections, f"{device} declares a notification, yet its definitions have no notification section"
-    assert [g["key"] for g in _groups(sections["status"]) if g["key"] == "notification"] == []
+    status_fields = [f for g in _groups(sections["status"]) if g["key"] == "notification" for f in _fields(g)]
+    assert status_fields == [{"key": "PauseTime", "label": "Remaining Pause Time", "unit": "s", "kind": "readonly"}]
     assert _returned_keys(_module_source(device_toml(device), src_dir, repo_root / "ext"), "_notification_status") == ["PauseTime"]
     (pause,) = [f for g in _groups(sections["notification"]) if g["key"] == "pause" for f in _fields(g)]
     assert (pause["key"], pause["kind"], pause["statusPath"]) == ("PauseTime", "number", ["notification", "PauseTime"])
