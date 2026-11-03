@@ -122,13 +122,11 @@ class CRCBase:
     ) -> int | None:
         # Like check(), but verifies in place within a shared buffer; returns just the payload
         # length (excluding the CRC) instead of a copy of the data.
-        if self._poly is None:  # uninitialized or "pass" mode
-            return len(buffer) if size is None else size
         size = len(buffer) if size is None else size
+        if self._poly is None:  # uninitialized or "pass" mode
+            return size
         init = self._validate_init(init)
-        if init is None or size <= 0 or start < 0:  # init must be valid, size must be > 0
-            return None
-        if start + size > len(buffer) or size <= self._num_bytes:
+        if init is None or size <= self._num_bytes or start < 0 or start + size > len(buffer):
             return None
         mv = memoryview(buffer)[start : start + size]
         if await self._crc(mv, init, self._poly) == 0:
