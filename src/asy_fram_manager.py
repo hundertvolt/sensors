@@ -108,7 +108,7 @@ class _FRAMBaseChunk:
         except (MemoryError, OverflowError) as e:
             # Synchronous, so no persisted entry here; a read then returns block 0 unchecked, a verified write fails
             # (_compare_with()).
-            self.pr.err_nomem("check buffer allocation failed:", e)
+            self.pr.err("check buffer allocation failed:", e)
             self._check_buf = None
         self._check_mv = None if self._check_buf is None else memoryview(self._check_buf)
         self._no_check_logged = False  # True once a missing check buffer's one ALLOC entry is persisted: it never comes back
@@ -787,7 +787,7 @@ class FRAMManager:
         try:
             unit = bytearray(_ERASE_UNIT)
         except MemoryError as e:
-            self.pr.err_nomem("FRAM erase: no buffer, chunks blanked only:", e)
+            self.pr.err("FRAM erase: no buffer, chunks blanked only:", e)
             return False
         size = await self.fram.get_size()
         for addr in range(0, size, _ERASE_UNIT):

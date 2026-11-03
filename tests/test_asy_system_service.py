@@ -3758,11 +3758,12 @@ def test_a_fault_of_the_supervisor_itself_is_persisted_once_and_ends_it_unfed() 
 
 
 def _escalate_into_a_full_heap(starter: "Callable[[], asyncio.Task[None]]", *, stack: bool) -> "list[object]":
-    # One escalation on a heap full from its decision on: building its entry raises, and so does every star-call log
-    # line. Whether it armed, its record, the starve, the supervisor running on, the cause lines.
+    # One escalation on a heap full from its decision on: its entry and every star-call log line raise, so the
+    # supervisor ends unfed. Whether it armed, its record, the supervisor running on, no feed after, the cause lines.
     no_room = _ExhaustionError("no room for the entry")
     machine.power_on()
-    svc = _make_service(watchdog=machine.WDT(), log=LogConfig(None, 10, _ERR))
+    wdt = machine.WDT()
+    svc = _make_service(watchdog=wdt, log=LogConfig(None, 10, _ERR))
     real_err_s = svc.pr.err_s
     entries = (code("E", "STACK_EXHAUSTED"), code("E", "TASK_BUDGET_REBOOT"))
     seen: list[object] = []
@@ -3786,17 +3787,17 @@ def _escalate_into_a_full_heap(starter: "Callable[[], asyncio.Task[None]]", *, s
             asy_print_log.report_if_fatal(_stack_error())
         for _ in range(_RUN_BOUND_S * 100):
             await asyncio.sleep(0)
-            if svc._reset_armed:
+            if svc._reset_armed or (svc._supervisor_task is not None and svc._supervisor_task.done()):
                 break
+        fed = wdt.feed_count
+        await _yields(50)
         running = svc._supervisor_task is not None and not svc._supervisor_task.done()
-        seen.extend((_armed(svc), machine.mem_backup(0)[1], svc._force_watchdog_starve, running))
+        seen.extend((_armed(svc), machine.mem_backup(0)[1], running, wdt.feed_count == fed))
         await cancel(sup)
-        assert seen[0], f"the escalation never reached _reboot(): {seen}"
-        await _fire(svc)
 
     try:
         with record_prints() as recorder, FastAsyncSleep():
-            _run_into_reset(scenario())
+            run(scenario())
     finally:
         asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
     seen.append(sum(1 for line in recorder.lines if no_room in line))
@@ -3804,12 +3805,12 @@ def _escalate_into_a_full_heap(starter: "Callable[[], asyncio.Task[None]]", *, s
 
 
 def test_an_escalation_whose_entry_cannot_even_be_built_on_a_full_heap_still_reboots_with_its_code() -> None:
-    # Building the entry allocates its generator and argument tuple, so on a full heap that fails: each escalation must
-    # still print the cause once, starve and arm its own code, the supervisor running on.
+    # Building the entry allocates its generator and argument tuple, and the arm's line its tuple: on a full heap the
+    # supervisor ends with nothing feeding, and the watchdog's reset reads the code recorded first. One line names it.
     stack = _escalate_into_a_full_heap(_long_lived_starter, stack=True)
     budget = _escalate_into_a_full_heap(_always_raising_starter, stack=False)
-    assert stack == [True, _const("_RR_STACK_EXHAUSTED"), True, True, 1], stack
-    assert budget == [True, _const("_RR_TASK_BUDGET"), True, True, 1], budget
+    assert stack == [False, _const("_RR_STACK_EXHAUSTED"), False, True, 1], stack
+    assert budget == [False, _const("_RR_TASK_BUDGET"), False, True, 1], budget
 
 
 def test_a_console_soft_reset_after_a_power_on_boot_reads_the_recorded_code() -> None:

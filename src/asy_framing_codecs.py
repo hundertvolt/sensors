@@ -91,7 +91,7 @@ class FramingCOBS(FramingBase):
                 self._scratch = bytearray(self.max_encoded(self.max_frame))
             except (MemoryError, OverflowError) as e:
                 if logger is not None:  # its builder's, the UART driver's user's: silent without one
-                    logger.err_nomem("FramingCOBS: scratch allocation failed:", e)
+                    logger.err("FramingCOBS: scratch allocation failed:", e)
                 self._scratch = None
 
     def _checked(self, buf: bytearray, size: int) -> bool:

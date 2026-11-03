@@ -100,7 +100,7 @@ class UDPSocket:
 
     def _nomem(self, e: BaseException) -> None:  # a caught MemoryError's line, through its builder's logger; none, silent
         if isinstance(e, MemoryError) and self.logger is not None:
-            self.logger.err_nomem("UDPSocket:", e)
+            self.logger.err("UDPSocket:", e)
 
     async def _poll(self, mask: int, wait_ms: int, timeout_ms: int) -> bool:
         # ipoll(0), then sleep_ms(wait_ms), until mask (or a real POLLERR/POLLHUP) is set or a timeout_ms > 0 has passed, the

@@ -1592,7 +1592,7 @@ def test_report_if_fatal_allocates_and_prints_nothing() -> None:
 # DebugLevel 0 prints nothing, ever; a C-stack overflow handed to any entry point is recorded at every level
 # ---------------------------------------------------------------------------
 
-_ENTRIES = ("err", "err_nomem", "wrn", "one", "evt", "all", "err_s", "wrn_s")  # every logging entry point
+_ENTRIES = ("err", "wrn", "one", "evt", "all", "err_s", "wrn_s")  # every logging entry point
 
 
 def _call(pr: PrintLogHistory, method: str, *args: object) -> None:
@@ -1634,27 +1634,6 @@ def test_every_entry_point_records_a_stack_overflow_at_level_0() -> None:
         for other in (RuntimeError("CRC check failed while reading data"), ValueError(str(error))):
             _call(pr, method, "no overflow:", other)
     assert fatal_reported() is False
-
-
-def test_err_nomem_prints_its_line_from_level_1_and_allocates_nothing() -> None:
-    # The line of a caught MemoryError's arm on a full heap: with the heap locked, the real print() neither raises nor
-    # allocates, at level 0 or 1; the recorded line is err()'s, with print()'s own separator and line end.
-    err = MemoryError("injected for the locked line")  # worded clear of the memory gates' markers
-    raised = []
-    for level in (0, 1):
-        pr = PrintLog(level, name="N")
-        micropython.heap_lock()
-        try:
-            pr.err_nomem("arm:", err)
-        except MemoryError:
-            raised.append(level)
-        finally:
-            micropython.heap_unlock()
-    assert raised == [], raised
-    with record_prints() as rec:
-        PrintLog(0, name="N").err_nomem("arm:", err)
-        PrintLog(1, name="N").err_nomem("arm:", err)
-    assert (rec.lines, rec.kwargs) == ([("N", "arm:", err)], [{}]), (rec.lines, rec.kwargs)
 
 
 class _FlagAtWriteChunk(_RaisingFramChunk):

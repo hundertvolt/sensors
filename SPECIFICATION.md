@@ -3708,8 +3708,8 @@ logger when its `deinit()` returns `False`, then re-initialises as before, while
 **Every broad handler records a C-stack overflow** (`asy_print_log.py`), so the supervisor reboots
 (reset code 20, F.1; owner, 2026-10-01). A broad handler is one that can catch a
 `RuntimeError`: an `except Exception`/`BaseException`/`RuntimeError`, a bare `except`, or a tuple
-naming any of them. Every logger entry point (`err`, `err_nomem`, `wrn`, `one`, `evt`, `all`, `err_s`,
-`wrn_s`) first runs `report_if_fatal()` over its arguments, at every level and ahead of any FRAM write, so a
+naming any of them. Every logger entry point (`err`, `wrn`, `one`, `evt`, `all`, `err_s`, `wrn_s`)
+first runs `report_if_fatal()` over its arguments, at every level and ahead of any FRAM write, so a
 handler that logs its exception records it. A handler no logger sees starts with
 `report_if_fatal(<its binding>)`: the lock-release exits `Lockable.__aexit__()` and
 `FRAM_SPI.__aexit__()`, `DNSQuery`'s parse, `_body_as_dict()`, and the `_print_exception()` rebound
@@ -7668,11 +7668,10 @@ backend-only or frontend-only validation/coercion policy change in this project.
   `PrintLogHistory`/`PrintLogHistoryStore`, never a bespoke print-based counter. `PrintLog`'s
   `report_unretrieved()` is asyncio's exception handler (F.1); the PC tiers' counterpart is
   `digital_twin/unix_port_unretrieved_report.py`.
-- **A caught `MemoryError`'s line** — `PrintLog.err_nomem(what, e)`: `err()` with a fixed arity and
-  no star-call, so it allocates nothing on a full heap and cannot raise inside a `MemoryError` arm (a
-  frame falls back to the C stack, `py/objfun.c:268-287`, F.1); every arm that caught one prints
-  through it, from level 1 up, so the memory gates see it (C.7, I.4(e)), and level 0 prints nothing,
-  ever (owner, 2026-11-02). A layer with no logger of its own (`UDPSocket`, `RegionBuffer`,
+- **A caught `MemoryError`'s line** — a plain `err()`, from level 1 up, so the memory gates see it
+  (C.7, I.4(e)); level 0 prints nothing, ever (owner, 2026-11-02). On a heap without room for the
+  line's argument tuple the line raises, and the task's restart or the watchdog takes it (owner,
+  2026-11-03: "Yes keep it simple"). A layer with no logger of its own (`UDPSocket`, `RegionBuffer`,
   `FramingCOBS`, `UART`) takes its builder's or user's logger for it, optional and silent without one.
 - **Fatal-error report** — `asy_print_log.py`'s `report_if_fatal(e)`/`fatal_reported()`: the first
   step of every logger entry point, over its arguments, and the first statement of each broad

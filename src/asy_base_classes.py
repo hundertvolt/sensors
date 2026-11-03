@@ -159,7 +159,7 @@ class RegionBuffer:
                 self._buf = bytearray(size)
             except (MemoryError, OverflowError) as e:
                 if logger is not None:  # its builder's: silent without one
-                    logger.err_nomem("RegionBuffer: buffer allocation failed:", e)
+                    logger.err("RegionBuffer: buffer allocation failed:", e)
                 self._buf = None
 
     def get_buf(self) -> bytearray | None:
@@ -393,7 +393,7 @@ def arm_tick_timer(timer: "Timer", flag: asyncio.ThreadSafeFlag, pr: "PrintLogHi
     try:
         timer.init(period=1000, mode=timer.PERIODIC, callback=lambda _b: flag.set())
     except MemoryError as e:
-        pr.err_nomem("Could not arm a 1 s tick timer:", e)
+        pr.err("Could not arm a 1 s tick timer:", e)
         return False
     except OSError as e:
         pr.err("Could not arm", what, "timer:", e)

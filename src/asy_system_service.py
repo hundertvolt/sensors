@@ -559,8 +559,8 @@ class SystemService:
                             await self.pr.err_s("C stack exhausted - reboot triggered", errno=_ERR_STACK_EXHAUSTED)
                         else:
                             await self.pr.err_s("Task error counter above", _TASK_FAIL_MAX, "- reboot triggered!", errno=_ERR_TASK_BUDGET_REBOOT)
-                    except MemoryError as e:  # building the entry or its write found no room: the reset still arms
-                        self.pr.err_nomem("Reboot entry not written:", e)
+                    except MemoryError as e:  # the entry found no room: the reset arms, unless this line finds none too
+                        self.pr.err("Reboot entry not written:", e)
                     # Re-checked after the log write, which yields: a system command that passed the gate meanwhile owns
                     # the reset now, and nothing awaits from here until _reboot() marks it armed.
                     if self._feed_owned:
