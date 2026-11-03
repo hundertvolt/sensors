@@ -160,7 +160,11 @@ stays only for waits in loops.
   logger entry point, ahead of the level gate and any FRAM write, plus explicit calls at the 5 handlers that log nothing
   and the Microdot hook, replacing 123 calls. Shrink: E28 to one entry at setup for an unreadable store; a full FRAM
   stays silent (owner, 2026-09-16). Go: the catalog rows of removed codes and the 6 placeholders (decision 6). Keep: the
-  Q6 handler (owner: "Option a"), one of the closure's five, in the form (d) leaves. Clarification (d) first.
+  Q6 handler (owner: "Option a"), one of the closure's five, in the form (d) leaves, with its install guard (owner,
+  2026-11-02: "That's okay."). (d), decided 2026-11-02 ("There must be a mode which is really silent on the console,
+  ever. That's level 0."; "Agreed with this."): level 0 prints nothing; the UDP socket, `RegionBuffer`, the UART bus
+  driver and the COBS codec log through the logger of the module that builds or uses them (optional, silent by
+  default); `console()` and the logger's below-level MemoryError branch go.
 - **B2 core** (base classes, system service, config manager, `math_helpers.py`, API response; their `/status` keys). Go:
   `ResetBits` and `ConfigUnpersisted` in `/status` with emitter lines and website rows (the decoded `ResetReason` and
   the flush flag stay); W69 with `absent_at_boot` and the `restored` flag (a missing config file returns to the
@@ -168,7 +172,9 @@ stays only for waits in loops.
   Change: a chip-setup failure follows OR113's order, mild rung first; `rel_humidity()` clamps again, as before the
   audit. Keep: E115, the mempause deadline (decision 3), the recovery ladder in a smaller form, the reset path, the
   system commands, the staged write, the newest-entry rule, the counter caps (OR103), the measured uptime (OR101).
-  Clarifications (h) and (k) first.
+  Decided 2026-11-02: both keys go ("(a), remove both"); reset code 4 goes, the bootloader command writing no record
+  ("That actually never happened and is overkill code bloating the firmware. Remove code 4."); the wet bulb's
+  cold-dry corner goes ("(a), remove the corner").
 - **B3 storage** (FRAM driver and manager, CRC checks, `erase_ready()`'s caller). Go: the lost-FRAM chain (decision 3)
   with `erase_ready()`'s shrink; the SPI "no bus" consumers and E52; the chunk read's `MemoryError` catch and the two
   rows beside it, judged in the action list. Keep: the identification retries with W29 (decision 3), the escalation for
@@ -196,7 +202,9 @@ stays only for waits in loops.
   piece replies, the construction refusals E91 (with its build mirror) and E92, the DMA ring, the hazard mode, the
   link's `initialized`. Judged in the action list: the codec's decode-size change and its removed counter. The wire
   format stays untouched; every change gets its changelog entry. Clarification (c) first. The crc16 hazard results wait
-  for round 1 (owner, 2026-11-02).
+  for round 1 (owner, 2026-11-02). Add a `cobs` mode to the crossover script (`uart_crossover_exchange.py` and the
+  host test choosing its modes), test-side only, OR123's pattern (owner, 2026-11-02: "Option 1, add the cobs mode in
+  B6"); it first runs on silicon in round 1.
 - **B7 LED** (NeoPixel driver, notification service, the `State` field's sites). Back to the pre-audit form: the 300 s
   overlay rewrite (to the pre-audit wait), the entry sanitiser (to the per-channel clamp with the 0.1 s floor). Go: the
   notification's sample-age check and its `State` field with status key, website row, code table, mock data and website

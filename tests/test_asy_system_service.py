@@ -108,7 +108,7 @@ def _make_service(  # keywords mirror SystemService.__init__()'s own
     storage: "FRAMManager | None" = None,
     log: "LogConfig" = DEFAULT_LOG,
     cfg_path: "str | None" = None,
-    level_setters: "Callable[[], list[Callable[[int], bool]]] | None" = None,
+    level_setters: "Callable[[], list[Callable[[int], None]]] | None" = None,
     config_stores: "Callable[[], list[cm.ConfigManager]] | None" = None,
     reset_reason: int = 0,
 ) -> SystemService:
@@ -1623,9 +1623,9 @@ def test_a_raising_flush_reaches_the_reset_and_reads_9_unless_a_config_reset_del
         out = _drive(rig, purpose)
         assert out.record == _code_after_flush_shortfall(purpose), purpose
         assert [s.flushes >= 2 for s in doubles] == [True, True]  # S2's and the arm's pass reach both
-        # S2's failure lands in FRAM; the later passes run with FRAM paused, so theirs stay in RAM behind a LOG_RAM_ONLY.
+        # S2's failure lands in FRAM; the later passes run with FRAM paused, so theirs stay in RAM, a repeat in its one slot.
         assert _rings_after(rig.chip)[0][0] == ([] if purpose == "_RR_FRAM_ERASED" else [code("E", "CALLBACK")]), purpose
-        assert _persisted(rig.svc) == [code("E", "CALLBACK"), code("E", "LOG_RAM_ONLY"), code("E", "CALLBACK")], _persisted(rig.svc)
+        assert _persisted(rig.svc) == [code("E", "CALLBACK")], _persisted(rig.svc)
 
 
 def test_a_store_running_on_config_the_flash_lacks_reads_9_unless_a_config_reset_deletes_it() -> None:
@@ -1707,7 +1707,7 @@ def test_a_fault_in_a_shutdown_step_is_logged_and_the_watchdog_still_resets() ->
     with record_prints(rig.svc.pr) as recorder:
         out = _drive(rig, "_RR_CONFIG_RESET")
     assert out.answer is True
-    assert _persisted(rig.svc) == [code("E", "UNEXPECTED"), code("E", "LOG_RAM_ONLY")], _persisted(rig.svc)
+    assert _persisted(rig.svc) == [code("E", "UNEXPECTED")], _persisted(rig.svc)
     assert "injected delete fault" in recorder.text(), recorder.text()
     assert code("E", "UNEXPECTED") not in _rings_after(rig.chip)[0][0]  # FRAM paused: the console and RAM log only
     # No reset armed and nothing feeds, so the watchdog resets; the record still reads the incomplete command.
@@ -2602,7 +2602,7 @@ def test_a_record_already_written_is_kept_and_a_torn_one_is_replaced() -> None:
 
 
 def test_the_debug_level_range_is_the_loggers_level_range() -> None:
-    # _apply_level() drops set_level()'s answer: safe only while the schema's bounds are the loggers' own.
+    # set_level() clamps silently: _apply_level() is exact only while the schema's bounds are the loggers' own.
     field = src_schema(_SRC, "_VAL_DEBUG_LEVEL")[0]
     assert [field[3], field[4]] == [_const("_LOG_OFF", _LOG_SRC), _const("_LOG_ALL", _LOG_SRC)], field
 
@@ -3791,8 +3791,8 @@ def test_a_recorded_stack_overflow_reboots_with_code_20_at_the_next_pass() -> No
 def test_a_stack_overflow_caught_by_a_level_setter_reboots_through_the_supervisor() -> None:
     # The real path: a setter that recurses until the C stack runs out keeps the push running, one E14 is persisted
     # for it, and the supervisor's next pass escalates with code 20.
-    def bottomless(value: int) -> bool:
-        return bottomless(value + 1)
+    def bottomless(value: int) -> None:
+        bottomless(value + 1)
 
     # Untraced: a limit reached inside the coverage tracer would end tracing for the whole file.
     svc = _make_service(level_setters=lambda: [lambda value: untraced(lambda: bottomless(value))])
@@ -4195,11 +4195,10 @@ def _set_level(svc: SystemService, level: int) -> "cm.WriteValidity":
     return run(svc._set_dict_cfg({"DebugLevel": level}, svc.get_cfg_schema()))
 
 
-def _recorder(calls: "list[int]") -> "Callable[[int], bool]":
-    # A level setter that records each level it is given and accepts it, as PrintLog.set_level() does.
-    def setter(value: int) -> bool:
+def _recorder(calls: "list[int]") -> "Callable[[int], None]":
+    # A level setter that records each level it is given, answering nothing, as PrintLog.set_level() does.
+    def setter(value: int) -> None:
         calls.append(value)
-        return True
 
     return setter
 
@@ -4322,7 +4321,7 @@ def test_a_level_without_any_registered_setters_still_persists() -> None:
 def test_one_bad_setter_does_not_stop_the_rest_of_the_registry() -> None:
     calls: list[int] = []
 
-    def _raising_setter(_value: int) -> bool:
+    def _raising_setter(_value: int) -> None:
         raise RuntimeError("simulated bad setter")
 
     svc = _make_service(
@@ -4334,7 +4333,7 @@ def test_one_bad_setter_does_not_stop_the_rest_of_the_registry() -> None:
 
 
 def test_a_bad_setter_persists_one_callback_entry() -> None:
-    def _raising_setter(_value: int) -> bool:
+    def _raising_setter(_value: int) -> None:
         raise RuntimeError("simulated bad setter")
 
     svc = _make_service(cfg_path=_tmp_cfg_dir(), level_setters=lambda: [_raising_setter])
@@ -4371,7 +4370,7 @@ def test_the_level_setters_provider_is_resolved_once_in_setup() -> None:
     resolved = [0]
     calls: list[int] = []
 
-    def provider() -> "list[Callable[[int], bool]]":
+    def provider() -> "list[Callable[[int], None]]":
         resolved[0] += 1
         return [_recorder(calls)]
 
@@ -4623,7 +4622,7 @@ def test_the_report_prints_nothing_at_level_0_and_releases_the_dead_task() -> No
 def test_from_level_1_the_report_prints_one_line_and_the_traceback() -> None:
     for level in (_ERR, _WARN, _EVENT, _ALL):
         svc = _make_service()
-        assert svc.pr.set_level(level)
+        svc.pr.set_level(level)
         exc = _raised(ValueError("probe"))
         context = _context(exc)
         with _ReportRecorder() as recorder:
@@ -4645,7 +4644,7 @@ def test_the_report_returns_and_releases_the_task_with_the_heap_locked() -> None
     )
     for level, exc in cases:
         svc = _make_service()
-        assert svc.pr.set_level(level)
+        svc.pr.set_level(level)
         context = _context(exc)
         _call_locked(svc.pr.report_unretrieved, context)
         assert context["exception"] is None and context["future"] is None, (level, exc)
@@ -4663,7 +4662,7 @@ def test_the_reports_outputs_allocate_nothing() -> None:
         micropython.heap_unlock()
     for level in (0, _ERR):
         svc = _make_service()
-        assert svc.pr.set_level(level)
+        svc.pr.set_level(level)
         context = _context(exc)
         cost = _call_cost()
         gc.collect()
@@ -4675,7 +4674,7 @@ def test_the_reports_outputs_allocate_nothing() -> None:
 
 def test_a_report_that_cannot_print_still_releases_the_task_and_never_raises() -> None:
     svc = _make_service()
-    assert svc.pr.set_level(_ERR)
+    svc.pr.set_level(_ERR)
     context = _context(_raised(ValueError("probe")))
     with _ReportRecorder(fail=RuntimeError("console gone")):
         svc.pr.report_unretrieved(None, context)
@@ -4684,7 +4683,7 @@ def test_a_report_that_cannot_print_still_releases_the_task_and_never_raises() -
     svc.pr.report_unretrieved(None, bare)  # the missing "message" raises before anything prints
     assert bare == {"exception": None, "future": None}, bare
     for level in (0, _ERR):
-        assert svc.pr.set_level(level)
+        svc.pr.set_level(level)
         svc.pr.report_unretrieved(None, None)  # type: ignore[arg-type]  # not even a dict: the clearing raises too
 
 

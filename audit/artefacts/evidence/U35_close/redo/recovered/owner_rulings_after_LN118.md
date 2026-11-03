@@ -412,3 +412,39 @@ their context). From now on every owner word is appended here as it is given.
 - (2026-11-02 20:30 UTC, item 6 confirmed; go-ahead: the CI fix) "That's okay. And fix CI right now." Recorded as:
   the exception-handler guard stays, now on the owner's word (it was a decision taken on the owner's behalf); and the
   go-ahead to fix the red coverage test in R0, now, instead of R2: the byte check on `build-standard` only.
+- (2026-11-02 20:42 UTC, standing go-ahead: run the plan) "You don't need to wait for my go for every step. We have a
+  plan which seems sound, so keep rolling with our agreed scheme on parallelism." Recorded as: a standing go-ahead to
+  run PLAN.md's phases in order without a go-ahead per phase or unit (R0's close, then R1 onward), with PLAN.md 4.3's
+  parallelism. What still waits for the owner, by the plan and CLAUDE.md: a clarification (section 6), a user-visible
+  removal with no record (section 2, step 1), a budget stop (section 5), and real hardware (round 1 and the last round
+  need the owner's hardware go-ahead in this conversation).
+- (2026-11-02 20:49 UTC, question on clarification (d)) "What is the \"RegionBuffer\", actually?" Recorded as: a
+  question; (d) still open.
+- (2026-11-02 20:53 UTC, clarification (d): level 0 silent; the questions' blast radius) "Actually, many of the
+  questions you asked in the past were unclear about the real blast radius. There must be a mode which is really silent
+  on the console, ever. That's level 0. Nevertheless, the outputs of the modules shall be visible with higher levels so
+  it does not become invisible. Is there such thing possible as - adding a Logger without error codes, just console or
+  nothing? - passing through the upstream module's Logger (done in many other places)? - Something else you would
+  suggest?" Recorded as: decided, level 0 prints nothing on the console, ever; at level 1 and above every module's
+  output is visible, the four logger-less layers included. Open: the mechanism (asked). Standing: every question states
+  its real blast radius (files, sites, bytes, tests, behaviour on the device).
+- (2026-11-02 20:58 UTC, clarification (d) decided; a COBS question) "Agreed with this. But why is nothing using COBS?
+  I assumed it being run on the UART crossover test module!" Recorded as: (d) decided as proposed (loggers passed
+  through to the UDP socket, RegionBuffer, the UART bus driver and the COBS codec; `console()` and the below-level
+  MemoryError branch go; level 0 prints nothing, ever). Open: why no device runs COBS (asked).
+- (2026-11-02 21:01 UTC, a COBS mode on the crossover jumper) "Option 1, add the cobs mode in B6" Recorded as: B6's
+  action list gains a `cobs` mode in the flash-tier crossover script (`tests_hardware/device_scripts/
+  uart_crossover_exchange.py` and the host test choosing its modes), test-side only, OR123's pattern; it first runs on
+  silicon in round 1. No firmware, build-chain or wire change.
+- (2026-11-02 21:11 UTC, B2: two /status keys) "(a), remove both" Recorded as: `ResetBits` and `ConfigUnpersisted` go
+  from `/status`, with their emitter lines, website rows, getters and tests; `ResetReason` and the internal
+  unpersisted flag (the shutdown flush) stay.
+- (2026-11-02 21:17 UTC, question on clarification (k)) "If I decide to keep code 4, can it ever be read by anyone?"
+  Recorded as: a question; (k) still open.
+- (2026-11-02 21:22 UTC, clarification (k) decided: reset code 4) "That actually never happened and is overkill code
+  bloating the firmware. Remove code 4." Recorded as: the bootloader command writes no reset record; code 4 and its
+  catalog row go (decision 6: no placeholder before the release); the bench test expects what the silicon reads (2);
+  B2 takes the smallest form (less code, not a new branch where avoidable).
+- (2026-11-02 21:25 UTC, clarification (h) decided: the wet bulb's corner) "(a), remove the corner" Recorded as: the
+  cold-dry corner exclusion in `wet_bulb_temperature()` goes (its 4 constants, the check and its tests); the
+  pre-audit range check (-20..50 degC, 5..99 %RH) stays.

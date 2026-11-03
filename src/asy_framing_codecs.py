@@ -9,7 +9,13 @@ import asyncio
 
 from micropython import const
 
-from asy_print_log import console
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from asy_print_log import PrintLog
 
 COBS_DELIMITER = const(0x00)
 
@@ -76,7 +82,7 @@ class FramingPass(FramingBase):
 class FramingCOBS(FramingBase):
     # Consistent Overhead Byte Stuffing: the encoded form provably contains no 0x00, so a single
     # 0x00 delimiter frames it unambiguously whatever the payload, CRC or UID happen to be.
-    def __init__(self, max_frame: int) -> None:
+    def __init__(self, max_frame: int, logger: "PrintLog | None" = None) -> None:
         super().__init__(max_frame, run_length=_COBS_RUN_LEN, trailer=1)
         # One long-lived scratch, sized for the worst case from max_frame - never per frame.
         self._scratch: bytearray | None = None
@@ -84,8 +90,8 @@ class FramingCOBS(FramingBase):
             try:
                 self._scratch = bytearray(self.max_encoded(self.max_frame))
             except (MemoryError, OverflowError) as e:
-                # No logger in this class: one ungated line keeps a caught allocation failure visible to the memory gates (CLAUDE.md memory rule).
-                console("FramingCOBS", "scratch allocation failed:", e)
+                if logger is not None:  # its builder's, the UART driver's user's: silent without one
+                    logger.err_nomem("FramingCOBS: scratch allocation failed:", e)
                 self._scratch = None
 
     def _checked(self, buf: bytearray, size: int) -> bool:

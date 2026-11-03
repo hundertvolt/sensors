@@ -18,7 +18,7 @@ cp $S/u35/lead/snap2/README.md "$X/README.md"
 [ -d $S/u35r/plan ] && cp -r $S/u35r/plan "$R/plan"
 [ -d $S/u35r/plancheck ] && (cd $S/u35r && tar --exclude=plancheck/falsify/f1work -cf - plancheck) | tar -xf - -C "$R"
 [ -d $S/u35r/bench ] && (cd $S/u35r && tar -cf - bench) | tar -xf - -C "$R"
-for d in r0 knowledge findings; do [ -d $S/u35r/$d ] && (cd $S/u35r && tar --exclude='*.log' --exclude='*.out' -cf - $d) | tar -xf - -C "$R"; done
+for d in r0 r1 knowledge findings; do [ -d $S/u35r/$d ] && (cd $S/u35r && tar --exclude='*.log' --exclude='*.out' --exclude='*.diff' -cf - $d) | tar -xf - -C "$R"; done
 [ -f $S/u35r/tools/review_hunks.py ] && cp $S/u35r/tools/review_hunks.py "$R/tools/"
 [ -d $S/u35r/hw_handover ] && (cd $S/u35r && tar --exclude=hw_handover/logs --exclude=__pycache__ -cf - hw_handover) | tar -xf - -C "$R"
 [ -f $S/u35r/int_history.txt ] && gzip -c $S/u35r/int_history.txt > "$R/int_history.txt.gz"

@@ -1139,8 +1139,8 @@ def test_a_silent_client_prints_one_line_at_a_raised_level() -> None:
 
 
 def test_a_handler_exception_prints_nothing_at_level_zero_and_one_gated_line_above() -> None:
-    # Microdot prints a handler's exception before our catch-all runs; the service rebound that print to its logger,
-    # except a MemoryError's text, which stays on the console for the memory gates (CLAUDE.md memory rule).
+    # Microdot prints a handler's exception before our catch-all runs; the service rebound that print to its logger, so
+    # level 0 prints nothing, a MemoryError included, and level 1 prints both lines with the text (CLAUDE.md memory rule).
     sensor = _RaisingSensor(ValueError("probe"))
     service = _make_service(sensors=[sensor], debug=0)
     rebound = _microdot_print_exception() == service._print_exception
@@ -1162,10 +1162,12 @@ def test_a_handler_exception_prints_nothing_at_level_zero_and_one_gated_line_abo
         loud = await serve_once()
         service.pr.set_level(0)
         sensor.exc = MemoryError("injected for the handler")
-        return [quiet, loud, await serve_once()]
+        silent = await serve_once()
+        service.pr.set_level(1)
+        return [quiet, loud, silent, await serve_once()]
 
     try:
-        quiet, loud, exhausted = run(scenario(), _RUN_LIMIT_S)
+        quiet, loud, silent, exhausted = run(scenario(), _RUN_LIMIT_S)
     finally:
         console.restore()
     assert rebound
@@ -1175,9 +1177,10 @@ def test_a_handler_exception_prints_nothing_at_level_zero_and_one_gated_line_abo
     # One gated line is Microdot's print; the other the catch-all's own entry, both carrying the text.
     assert [line[1] for line in lines] == ["Microdot caught:", "Unhandled exception in route handler:"], lines
     assert all(str(line[2]) == "probe" for line in lines), lines
+    assert silent == (500, 3, []), silent
     status, count, lines = exhausted
-    # At level 0 a MemoryError keeps both on the console, each with its text: Microdot's print and the catch-all's line.
-    assert (status, count, [line[:2] for line in lines]) == (500, 3, [("WEBSERVER", "Microdot caught:"), ("WEBSERVER", sensor.exc)]), exhausted
+    # At level 1 a MemoryError prints both, each with its text: Microdot's print and the catch-all's line.
+    assert (status, count, [line[:2] for line in lines]) == (500, 4, [("WEBSERVER", "Microdot caught:"), ("WEBSERVER", "Unhandled exception in route handler:")]), exhausted
     assert [str(line[-1]) for line in lines] == ["injected for the handler"] * 2, lines
 
 

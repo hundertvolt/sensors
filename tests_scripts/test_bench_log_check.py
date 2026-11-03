@@ -279,8 +279,8 @@ _MALFORMED = [
 
 @pytest.mark.parametrize("mark", _MALFORMED)
 def test_a_marker_without_its_reason_and_live_entries_fails_the_test(monkeypatch: pytest.MonkeyPatch, mark: "pytest.Mark") -> None:
-    # The reason, then each entry as (logger, "E" or "W", catalog name) with a live row: a retired name (WLAN_OFF) or a
-    # name of the other kind is refused as an unknown one is.
+    # The reason, then each entry as (logger, "E" or "W", catalog name) with a live row: a name the catalog no longer
+    # holds (WLAN_OFF) or a name of the other kind is refused as an unknown one is.
     with pytest.raises(pytest.fail.Exception, match="test_case: provokes_log"):
         _drive(monkeypatch, [], mark=mark)
 

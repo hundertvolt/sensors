@@ -56,7 +56,7 @@ class CaptiveDNS:
         # asy_webserver_service.py's registration lists key on (error_sources=).
         # mode="server" sockets receive from anyone - asy_udp_socket.py places source-address
         # trust on the caller. run() filters to the AP's own subnet before ever replying.
-        self._udps = UDPSocket(("0.0.0.0", 53), mode="server")
+        self._udps = UDPSocket(("0.0.0.0", 53), mode="server", logger=self.pr)
 
     async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
@@ -124,7 +124,6 @@ class CaptiveDNS:
 
                 except Exception as e:
                     # nothing supervises this task - never let an unexpected exception here kill it.
-                    report_if_fatal(e)
                     await self.pr.err_s("DNS Server error:", e, errno=_ERR_UNEXPECTED)
                     await asyncio.sleep(_ERROR_RETRY_WAIT_S)
 
@@ -135,7 +134,6 @@ class CaptiveDNS:
             except Exception as e:
                 # disconnect() is documented as never raising, but nothing supervises this task -
                 # never let cleanup itself become the uncaught exception.
-                report_if_fatal(e)
                 await self.pr.err_s("DNS Server error during disconnect:", e, errno=_ERR_UNEXPECTED)
                 disconnect_ok = True  # already logged above via the except-Exception branch
             if not disconnect_ok:

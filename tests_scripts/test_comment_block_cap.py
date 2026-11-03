@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 from _devices import DEVICE_NAMES
-from _repo_scan import REPO_ROOT, is_shared_excluded, repo_files
+from _repo_scan import REPO_ROOT, is_shared_excluded, python_files, repo_files
 
 SCOPES = ("src", "buildgen", "digital_twin", "toolchain", "scripts", "tests", "tests_scripts", "tests_hardware")
 CAP = 3
@@ -213,11 +213,8 @@ def _statements(node: ast.AST) -> Iterator[ast.stmt]:
 
 
 def _sources() -> list[Path]:
-    found: list[Path] = []
-    for scope in SCOPES:
-        for pattern in ("*.py", "*.sh", "**/*.py", "**/*.sh"):
-            found.extend(p for p in (REPO_ROOT / scope).glob(pattern) if p.is_file())
-    return sorted(set(found))
+    # Never entering the scratch the MicroPython tier writes beside this one (_repo_scan.CONCURRENT_SCRATCH).
+    return sorted({p for scope in SCOPES for p in python_files(REPO_ROOT, scope, (".py", ".sh")) if p.is_file()})
 
 
 @pytest.fixture(scope="module")

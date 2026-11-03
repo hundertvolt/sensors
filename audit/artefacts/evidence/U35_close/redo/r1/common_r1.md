@@ -1,0 +1,55 @@
+# R1 units: what every unit brief shares (lead, 2026-11-02)
+
+## The idea
+You do one unit of `S/u35r/plan/PLAN.md` (read sections 0, 2 and 4; they bind). The unit's action list is your work
+list; what is not on it does not change. Work the way the audit's first units worked: tests first, the smallest change,
+source, tests and docs in one commit, one gate, a short hand-back. No machinery: no ledgers, inventories or matrices.
+
+## Environment
+- S = `/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad`. Your worktree and branch are
+  named in your brief; it starts at the integration head.
+- Shell setup for every command: `export PATH=S/uvenv/bin:/root/pico-toolchain/node/node-v24.22.1-linux-x64/bin:$PATH
+  UV_OFFLINE=1 UV_PROJECT_ENVIRONMENT=S/wt-base/.venv; source S/wt-base/.venv/bin/activate` (the run wrapper does it).
+- Every run, a short probe included, goes through `S/u35/lead/run.sh <worktree> <label> "<command>"` (network
+  namespace, nice 19, run log lines, a disk check; output in `S/u35/lead/<label>.log`). Prefix labels with your unit.
+- One MicroPython test file, both GC stages: `TZ=UTC MICROPYPATH=build/generated_src:src:tests:frozen_modules:.frozen
+  S/tc-int/micropython/ports/unix/build-standard/micropython -X heapsize=16M tests/test_x.py`, and the same with
+  `tests/_threshold_runner.py tests/test_x.py 32768` as its arguments (`TEST_DEVICE=<device>` for a per-device file).
+  The settrace binary is `build-settrace` beside it. Whole-tier runs set `PICO_TOOLCHAIN_DIR=S/tc-int`.
+- After any `src/`, `buildgen/` or device TOML edit: `S/u23/rebuild.sh <worktree>` before running a test file.
+- Lint: `S/u35/lead/lint_direct.sh` from your worktree (after the rebuild). Typecheck: `ln -s S/shared/typings
+  <worktree>/typings`, then `mypy --cache-dir=/dev/null`, `mypy --cache-dir=/dev/null --config-file host_typecheck.ini`
+  and `mypy --cache-dir=/dev/null --config-file digital_twin/typecheck.ini`; remove the link afterwards (`rm` with the
+  literal path, as its own command). `scripts/lint.sh` and `scripts/typecheck.sh` refuse the shared venv.
+- The gate (once, on the finished change, in the background): `PICO_TOOLCHAIN_DIR=S/tc-int scripts/test.sh` and
+  `PICO_TOOLCHAIN_DIR=S/tc-int GC_THRESHOLD=32768 scripts/test.sh` (one after the other, never at the same time as
+  another port-binding run), then `scripts/run_digital_twin_ci.sh dev --gc-threshold -1 --part suite`, the same with
+  `--part harness`, and both again with `--gc-threshold 32768`. A change the website reads (`buildgen/error_catalog.json`,
+  an emitter, `js/`, `html/`) also runs `npm run lint`, `npm run typecheck` and `npm run test:unit`.
+- Sizes for the hand-back: `S/u35r/r0/module_sizes.sh <worktree> <your head> <out .tsv>` (per-module lines and bytecode;
+  compare with `S/u35r/r0/mpy/now.tsv`), and `scripts/build_firmware.py dev` (its `.json` record's `imageFreeBytes`; R0:
+  43,068 B).
+
+## Rules (with CLAUDE.md, all of it binding)
+- Only the owner's words bind; `S/u35r/recovered/owner_rulings_after_LN118.md` holds them since 2026-10-26, verbatim.
+- Test first: a behaviour that changes gets its test changed first and seen red; a mechanism that goes loses its pinning
+  tests first (list them); a kept behaviour without a test gets one, seen red on a planted break. A failure on a kept
+  behaviour is fixed in the code, never in the test (OR12). A test reproducing a failure the device can really meet
+  keeps its fix in the smallest form: say so in the hand-back.
+- The smallest change; no new hardcoded delay check; no module's bytecode grows except by an admitted fix, stated.
+- Never open anything under `/root/.claude/`. Never read `arduino/` (`':!arduino'` in every git grep and git log). Never
+  edit `ext/`. No real hardware, no `mpremote`, `picotool`, `nmcli`, `iw`, `iptables`; `tests_hardware` only with
+  `--collect-only` or `--twin`. Never commit credentials; never write the hotspot fallback password's literal.
+- Commit on your branch only, never push. Subject `U35: <summary>`; trailers `Co-Authored-By: Claude Opus 5.5
+  <noreply@anthropic.com>` and `Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8`. Text outside
+  `audit/` cites no audit ID (OR/OF/SF), no lane, unit or plan name. A decision you take gets "(agent, YYYY-MM-DD)".
+- Comment blocks at most 3 prose lines (CLAUDE.md); docs: the unit's own lines only (current state, not history).
+- Kill by pid only; no `git stash`; `rm` only with literal paths or `"${var:?}"`, as its own command. Keep 3 GB free.
+- No failure is called a flake without a root cause. A reproduced failure outside your unit goes to the hand-back,
+  marked (a) firmware defect, (b) a defect in your deliverable, or (c) other; you never pursue it.
+- Efficiency: read the anchor, then the range; logs by summary and failing block; while fixing, only the failing file
+  runs; long runs in the background, waiting for their notice, no polling; the gate once.
+- Hand-back: write it yourself to the path your brief names (first line "<unit> hand-back, written by the agent (<date
+  -u>)"): per action-list item the outcome and its test (seen red, then green); each removed item's knowledge line (what
+  it was, why it went, the commit holding its code); the gate's results; the sizes; decisions you took; findings. Your
+  final message: that path, your commits, one line per headline result, and last "nothing of mine is running".

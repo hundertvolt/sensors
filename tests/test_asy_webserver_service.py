@@ -154,9 +154,9 @@ def _body_service() -> "tuple[WebserverService, Microdot, _FakeModule]":
 _DEFAULT_MAX_CONTENT_LENGTH: int = src_int("src/asy_webserver_service.py", "_DEFAULT_MAX_CONTENT_LENGTH")
 _DEFAULT_CHUNK_BYTES: int = src_int("src/asy_webserver_service.py", "_DEFAULT_CHUNK_BYTES")
 _VAL_NTP_HOST: "cm.ConfigSchema" = src_schema("src/asy_ntp_client.py", "_VAL_NTP_HOST")
-# The hammers' console level: their err() lines print, so a caught MemoryError reaches the memory gate's stream
-# (owner, 2026-10-20, paraphrase: the unit tests that can run out of memory log at error level).
-_ERROR_LEVEL = 1  # pins src/asy_print_log.py _LOG_ERR
+# The hammers' console level: a caught MemoryError reaches the memory gate's stream, logged as an error or a warning
+# (owner, 2026-10-20, paraphrase: the unit tests that can run out of memory log at error level or above).
+_ERROR_LEVEL = 2  # pins src/asy_print_log.py _LOG_WARN
 
 # The usual run_timed() bound: section F below exercises timeout/hang scenarios, so a genuine bug in the
 # implementation under test (or in one of the fakes below) must surface as a fast FAIL, never a whole-suite stall.
@@ -4386,6 +4386,20 @@ def test_a_webserver_built_without_a_system_command_handler_answers_invalid() ->
     assert res.status_code == 200
     assert _obj(_at(_json(res.body), "result")).get("SystemCmd") == "Invalid"
 
+
+
+class _OverflowingJson:
+    # A request whose body decoding meets the C-stack overflow.
+    @property
+    def json(self) -> object:
+        raise stack_overflow()
+
+
+def test_a_body_whose_decoding_meets_a_stack_overflow_records_it_and_reads_as_none() -> None:
+    # The body reader's broad catch logs nothing: its explicit record is what the supervisor's reboot reads.
+    assert asy_webserver_service._body_as_dict(_OverflowingJson()) is None  # type: ignore[arg-type]
+    assert fatal_reported() is True
+    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
 
 if __name__ == "__main__":
     import microtest

@@ -59,3 +59,4 @@ revert, anything else keep.
   on `build-settrace` untraced and under the coverage runner; lint, the main and twin mypy passes and the
   comment-cap test clean.
 - PR comment posted (2026-11-02 20:18 UTC).
+- CI on snapshot 24 (`045985fe`, run 41520171304): green, all jobs (2026-11-02 21:07 UTC). R0 is done.

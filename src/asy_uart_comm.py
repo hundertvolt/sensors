@@ -12,7 +12,7 @@ from collections import namedtuple
 from micropython import const
 
 from asy_base_classes import COUNTER_CAP, PieceBuffer, RegionBuffer
-from asy_print_log import DEFAULT_LOG, PrintLogHistory, make_logger, report_if_fatal
+from asy_print_log import DEFAULT_LOG, PrintLogHistory, make_logger
 
 try:
     from typing import TYPE_CHECKING
@@ -209,6 +209,8 @@ class UARTComm:
         self.name = name  # matches self.pr.name - the _ModuleLike registration shape
         # asy_webserver_service.py's registration lists key on (error_sources=/settings=).
         self._uart = uart
+        if uart is not None:  # the bus has no logger of its own: its console lines go out through its user's
+            uart.logger = self.pr
         self._role = role
         self._payload_size = limits.payload_size
         self._timeout = limits.timeout
@@ -338,8 +340,8 @@ class UARTComm:
         else:
             size = self._frame_size
             room = self._uart.framing.max_encoded(size + self._uart.crc.length())
-        tx = RegionBuffer(room, data_start=_HEADER_LEN, data_length=max(size - _HEADER_LEN, 0))
-        rx = RegionBuffer(room, data_start=_HEADER_LEN, data_length=max(size - _HEADER_LEN, 0))
+        tx = RegionBuffer(room, data_start=_HEADER_LEN, data_length=max(size - _HEADER_LEN, 0), logger=self.pr)
+        rx = RegionBuffer(room, data_start=_HEADER_LEN, data_length=max(size - _HEADER_LEN, 0), logger=self.pr)
         try:
             ack = bytearray(room)
             zero = bytearray(max(size - _HEADER_LEN, 0))
@@ -419,7 +421,6 @@ class UARTComm:
             if result is not None and hasattr(result, "send"):
                 result = await result  # type: ignore[misc]  # awaitable: `send` checked above
         except Exception as e:  # caller-supplied code; its runtime behaviour is not statically known
-            report_if_fatal(e)
             await self._err(_ERR_CALLBACK, "callback raised:", e)
             return None
         return result
@@ -560,7 +561,6 @@ class UARTComm:
                     backoff = self._backoff_initial_ms
                     continue
             except Exception as e:  # uart_listen() is contracted never to raise; a contract is not an enforcement
-                report_if_fatal(e)
                 await self._err(_ERR_UNEXPECTED, "listen loop caught:", e)
             await asyncio.sleep_ms(backoff)  # cancellable, and never a zero-delay retry
             backoff = min(backoff * _BACKOFF_MULT, self._backoff_max_ms)

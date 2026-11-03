@@ -14,7 +14,7 @@ from micropython import const
 
 from asy_base_classes import SensorReaderConfig, TickSeconds, utc_now
 from asy_config_manager import make_dict, name_cfg, schema_names
-from asy_print_log import DEFAULT_LOG, LogConfig, report_if_fatal
+from asy_print_log import DEFAULT_LOG, LogConfig
 
 try:
     from typing import TYPE_CHECKING
@@ -225,7 +225,6 @@ class NotificationService(SensorReaderConfig):
             value = getattr(data, notif.value.field, None)
             ts = getattr(data, "TS", None)
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s(notif.name, "Value read failed:", e, errno=_ERR_SOURCE)
             return None
         now = utc_now()  # outside the try: a raise here (it allocates on rp2) is not the producer's failed read
@@ -321,7 +320,6 @@ class NotificationService(SensorReaderConfig):
         try:  # caller-supplied callback, could legitimately misbehave
             return await self._local_time_callback()
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("local_time_callback failed:", e, errno=_ERR_CALLBACK)
             return None
 
@@ -333,7 +331,6 @@ class NotificationService(SensorReaderConfig):
         try:  # caller-supplied callback, could legitimately misbehave
             ok = await self._request_signal_cb(r * flash_bri, g * flash_bri, b * flash_bri, flash_dur)
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s(notif.name, "request_signal_cb failed:", e, errno=_ERR_CALLBACK)
             return
         if not ok and not self._sink_is_default:  # outside the try: a raise here is not the callback's failure

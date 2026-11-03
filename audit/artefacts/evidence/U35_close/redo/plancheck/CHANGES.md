@@ -246,3 +246,14 @@ all of them, with a coherence pass of its own. The main changes:
   rule 10 and 11's attribution (R2-R5's falsification is the agent's extension); decisions 2 and 3's wording;
   per-unit budgets summed per phase; one path scheme; DECREV 4's ninth place in R5.
 PLAN.md: 434 lines (343 after the rewrite; the growth is restored content). No product file was touched.
+
+## The owner's decisions at R1's start (2026-11-02, 20:30-21:01 UTC)
+
+- B1: the exception-handler guard stays (20:30, "That's okay."); clarification (d) decided (20:53, 20:58): level 0
+  prints nothing, ever; the four logger-less layers log through their owner's logger; `console()` and the below-level
+  MemoryError branch go.
+- B6: a `cobs` mode in the crossover script, test-side only (21:01, "Option 1, add the cobs mode in B6").
+- Standing (20:42): the plan runs on without a go-ahead per phase or unit (rulings file); (20:53) every question
+  states its real blast radius.
+- B2 (21:11-21:25): `ResetBits` and `ConfigUnpersisted` go ("(a), remove both"); (k) reset code 4 goes ("Remove code
+  4."); (h) the wet bulb's corner goes ("(a), remove the corner"). PLAN.md's B2 row carries them.

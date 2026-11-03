@@ -17,7 +17,7 @@ from micropython import const
 import asy_api_response as ar
 from asy_base_classes import UNAVAILABLE, HourlyWindowCounter, LockedCounter
 from asy_config_manager import FAILED, INVALID, VALID, checked_float, checked_int
-from asy_print_log import DEFAULT_LOG, LogConfig, console, make_logger, report_if_fatal
+from asy_print_log import DEFAULT_LOG, LogConfig, make_logger, report_if_fatal
 
 try:
     from typing import TYPE_CHECKING
@@ -733,12 +733,10 @@ class WebserverService:
         except Exception as e:  # best-effort cleanup, never load-bearing - still logged (Part C.7's
             # silent-failure-masking convention) since a repeatedly-failing close() could leak TCP
             # PCBs under this platform's tiny connection ceiling with no other trace.
-            report_if_fatal(e)
             await self.pr.wrn_s("Error closing connection writer:", e, wrnno=_WRN_HTTP_CLOSE_RAISED)
         try:
             await asyncio.wait_for_ms(writer.wait_closed(), self._per_call_timeout_ms)
         except Exception as e:  # bounds a hanging wait_closed() (F.6) as well as any raised error
-            report_if_fatal(e)
             await self.pr.wrn_s("Error waiting for writer to close:", e, wrnno=_WRN_HTTP_WAIT_CLOSED)
 
     async def _dispatch_notification_led(self, payload: object) -> tuple[str, bool]:
@@ -757,7 +755,6 @@ class WebserverService:
             # this codebase already has.
             ok = await self._notification_led(r, g, b, t)
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("notification_led callback failed:", e, errno=_ERR_CALLBACK)
             return FAILED, False
         # External LED commands are refused while a signal runs and told to retry; internal ones wait, bounded (owner, 2026-10-02).
@@ -775,7 +772,6 @@ class WebserverService:
             # this codebase already has.
             ok = await self._notification_pause(pause)
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("notification_pause callback failed:", e, errno=_ERR_CALLBACK)
             return FAILED
         return VALID if ok else FAILED
@@ -792,7 +788,6 @@ class WebserverService:
         # Registered via app.errorhandler(Exception) in __init__, purely to persist the exception
         # into FRAM history - never to shape the reply. The 500 status-code handler already does
         # that on its own, whether or not this one is registered (Part A.5).
-        report_if_fatal(exc)
         await self.pr.err_s("Unhandled exception in route handler:", exc, errno=_ERR_UNEXPECTED)
         return ar.make_response(500), 500
 
@@ -803,15 +798,12 @@ class WebserverService:
 
     def _print_exception(self, exc: BaseException) -> None:
         # Microdot's own exception print (rebound in __init__), all its request-read catch does: level-gated like every
-        # other line, except a MemoryError's text, which stays on the console so the memory gates read it (CLAUDE.md memory rule).
+        # other line, its C-stack record first, since the traced timeout returns unlogged.
         report_if_fatal(exc)
         if exc is self._read_traced[0]:  # the proxy's read arm traced this very timeout already: one line, not two
             self._read_traced[0] = None
             return
-        if isinstance(exc, MemoryError):
-            console(_NAME, "Microdot caught:", exc)
-        else:
-            self.pr.err("Microdot caught:", exc)
+        self.pr.err_nomem("Microdot caught:", exc)  # allocates nothing, so a caught MemoryError prints as any other
 
     async def _put_networking(self, request: "_RequestLike") -> "ResponseEnvelope":
         body = _body_as_dict(request)
@@ -874,7 +866,6 @@ class WebserverService:
             for outcome in outcomes:
                 name = next(names, _NAME)
                 if isinstance(outcome, BaseException):  # persisted after the resets, so the cleared log keeps it
-                    report_if_fatal(outcome)
                     await self.pr.err_s("Error log reset failed:", name, outcome, errno=_ERR_CALLBACK)
                 if isinstance(outcome, BaseException) or not outcome:
                     result[key] = FAILED
@@ -893,7 +884,6 @@ class WebserverService:
         try:  # caller-supplied callback, guarded as _run_system_cmd() guards its own (Part G.2)
             ok = command()
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("status command failed:", key, e, errno=_ERR_CALLBACK)
             return FAILED
         return VALID if ok is True else FAILED
@@ -906,7 +896,6 @@ class WebserverService:
             # persisted errno instead of escaping through the route handler.
             ok = await self._system_cmd(name)
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("system_cmd callback failed:", e, errno=_ERR_CALLBACK)
             return FAILED
         return VALID if ok else FAILED
@@ -944,7 +933,6 @@ class WebserverService:
                     # write); the resets it mutes end in peer_gone instead, traced below.
                     await self._trace_before_close(self.pr.wrn_s("Connection reclaimed (socket error):", e, wrnno=_WRN_HTTP_SOCKET_ERROR))
                 except Exception as e:  # a fault the request raised (SPECIFICATION.md A.5)
-                    report_if_fatal(e)
                     await self._trace_before_close(self.pr.err_s("Unexpected error serving connection:", e, errno=_ERR_UNEXPECTED))
                 else:  # no arm traced this connection's one entry, so a drop trace may (C.7)
                     if head_refused[0]:
@@ -958,7 +946,6 @@ class WebserverService:
             except Exception as e:  # the connection task's top: its creator logs what escaped the request (the count, a
                 # proxy, a release, a trace); the task raises out only via a failing logging call (SPECIFICATION.md A.5, G.2)
                 # or the finally's own calls on an exhausted heap: _close_writer() catches every Exception, decrement() cannot raise
-                report_if_fatal(e)
                 await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)
         finally:
             try:  # _close_writer()'s own logging can raise MemoryError on an exhausted heap,
@@ -1003,7 +990,6 @@ class WebserverService:
         try:  # see _write_guarded()'s own comment - identical reasoning, different source kind.
             raw = await get_log_fct()
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("Status stream source failed:", name, e, errno=_ERR_CALLBACK)
             writer.add(_UNAVAILABLE_TEXT)
             return
@@ -1014,7 +1000,6 @@ class WebserverService:
             # one failing source discard every other section's already-fetched data.
             value = await fct()
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("Status stream source failed:", name, e, errno=_ERR_CALLBACK)
             writer.add(_UNAVAILABLE_TEXT)
             return

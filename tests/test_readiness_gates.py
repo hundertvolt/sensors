@@ -163,16 +163,16 @@ def test_history_stores_answer_before_and_after_a_failed_setup() -> None:
     for history in (PrintLogHistory(4, None, name="GATELOG"), PrintLogHistoryStore(_fram(writable=False), 4, None, name="GATELOG")):
         calls: Calls = {
             "get_log": ((), _is_log_of(history.name)),
-            "set_level": ((9,), lambda r: r is False),  # refused: outside 0-5
+            "set_level": ((-1,), lambda r: r is None),  # clamped into 0-5, answering nothing
         }
         assert _answers(history, calls) == []
         expected = type(history) is PrintLogHistory  # only the RAM history can always set up
-        assert run(history.setup()) is expected
+        run(history.setup())
         assert history.initialized is expected
         assert _answers(history, calls) == []
-        assert history.level == 0  # the refused level left it unchanged
+        assert history.level == 0  # the clamp kept it off
         run(history.err_s("still counted", errno=1))
-        assert history._err_count == (1 if expected else 2)  # a failed store also counts its one LOG_RAM_ONLY entry
+        assert history._err_count == 1  # a failed setup write records nothing itself
 
 
 _WRONG_CHIP_ID = bytes([0x05, 0x7F, 0x03, 0x02])  # a manufacturer ID no supported FRAM reports

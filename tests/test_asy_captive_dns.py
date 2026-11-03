@@ -15,9 +15,11 @@ from _error_codes import code
 from _fast_sleep import check_sleep_ms
 from _port_bands import PortAllocator
 from _src_const import src_int
+from _stack_overflow import stack_overflow
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 
 import asy_captive_dns
+import asy_print_log
 from asy_captive_dns import CaptiveDNS, DNSQuery
 from asy_dns_client import DNS_UDP_MAX
 from asy_print_log import LogConfig, PrintLogHistory, PrintLogHistoryStore
@@ -325,6 +327,11 @@ def test_dns_query_rejects_question_truncated_right_before_qtype_qclass() -> Non
 # ---------------------------------------------------------------------------
 # CaptiveDNS: construction.
 # ---------------------------------------------------------------------------
+
+
+def test_dns_server_hands_its_logger_to_its_socket() -> None:
+    server = CaptiveDNS(log=LogConfig(None, 10, None))
+    assert server._udps.logger is server.pr
 
 
 def test_dns_server_init_binds_the_standard_dns_port_in_server_mode() -> None:
@@ -1482,6 +1489,20 @@ def test_run_logs_a_persisted_warning_when_disconnect_reports_incomplete_teardow
 
     run(scenario())
 
+
+
+class _OverflowingData:
+    # Datagram stand-in (the class is public, so data need not be bytes) whose first read meets the C-stack overflow.
+    def __getitem__(self, _index: object) -> int:
+        raise stack_overflow()
+
+
+def test_a_query_whose_parse_meets_a_stack_overflow_records_it_and_reads_as_malformed() -> None:
+    # The parse's broad catch logs nothing: its explicit record is what the supervisor's reboot reads.
+    query = DNSQuery(_OverflowingData(), PrintLogHistory(name="DNSSRV"))  # type: ignore[arg-type]
+    assert (query.domain, query._parsed_ok) == ("", False)
+    assert asy_print_log.fatal_reported() is True
+    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
 
 if __name__ == "__main__":
     import microtest

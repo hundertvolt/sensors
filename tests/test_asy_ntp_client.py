@@ -1349,8 +1349,8 @@ def test_the_resolvers_cause_picks_the_persisted_code() -> None:
 class _FakeUDPSocket:
     # Stands in for asy_udp_socket.UDPSocket: records each call and answers as the script says, a
     # None-shaped sentinel for silence exactly as the real socket returns one.
-    def __init__(self, script: "_SocketScript", addr: "tuple[str, int]", mode: str) -> None:
-        self.script, self.addr, self.mode = script, addr, mode
+    def __init__(self, script: "_SocketScript", addr: "tuple[str, int]", mode: str, logger: object) -> None:
+        self.script, self.addr, self.mode, self.logger = script, addr, mode, logger
         self.calls: list[tuple[str, int, int]] = []
         self.disconnected = False
 
@@ -1396,8 +1396,8 @@ class _SocketScript:
         self.sockets: list[_FakeUDPSocket] = []
         self.requests: list[bytes | bytearray] = []
 
-    def make(self, addr: "tuple[str, int]", mode: str = "client") -> _FakeUDPSocket:
-        sock = _FakeUDPSocket(self, addr, mode)
+    def make(self, addr: "tuple[str, int]", mode: str = "client", logger: object = None) -> _FakeUDPSocket:
+        sock = _FakeUDPSocket(self, addr, mode, logger)
         self.sockets.append(sock)
         return sock
 
@@ -1407,7 +1407,7 @@ def test_fetch_ntp_reply_forwards_the_constructors_own_fetch_timeout() -> None:
     script = _SocketScript()
     assert _fetch_with(client, script) is None
     (sock,) = script.sockets
-    assert (sock.addr, sock.mode) == (("192.0.2.123", 123), "client")
+    assert (sock.addr, sock.mode, sock.logger) == (("192.0.2.123", 123), "client", client.pr)  # the builder's logger
     assert sock.calls == [("write", 48, 9999), ("recvfrom", 48, 9999)]  # one 48-byte request, a 48-byte receive
     assert script.requests == [b"\x1b" + bytes(47)]  # LI 0, VN 3, mode 3 (client)
     assert sock.disconnected is True
@@ -2677,8 +2677,8 @@ def test_the_sync_task_survives_a_cancel_at_every_await() -> None:
         if not phases or phases[-1] != phase:
             phases.append(phase)
 
-    def make(addr: "tuple[str, int]", mode: str = "client") -> _FakeUDPSocket:
-        return built[-1].script.make(addr, mode)
+    def make(addr: "tuple[str, int]", mode: str = "client", logger: object = None) -> _FakeUDPSocket:
+        return built[-1].script.make(addr, mode, logger)
 
     original = ntpmod.UDPSocket
     ntpmod.UDPSocket = make  # type: ignore[assignment, misc]

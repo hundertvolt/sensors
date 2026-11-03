@@ -142,3 +142,14 @@ The owner's go-ahead ("And fix CI right now."). The first full CI run, on the tw
 checks bytes on the settrace-free binary only. `redo/r0/R0_CHECKS.md`'s last section has the root cause and the fix,
 `redo/r0/BASELINE.md` the CI time per job (`redo/r0/ci/jobs.tsv`). The owner also confirmed the exception-handler
 guard ("That's okay."). This snapshot runs the full CI.
+
+## Twenty-fifth snapshot (2026-11-03): R1's first unit, logging and the catalog
+
+The plan's first R1 unit, on the owner's standing go-ahead (2026-11-02: "keep rolling with our agreed scheme on
+parallelism"). The logger records a C-stack overflow at its own entry, so 118 of 123 per-handler calls went; DebugLevel
+0 prints nothing, the four logger-less layers printing through the logger their builder hands them (owner, 2026-11-02:
+"There must be a mode which is really silent on the console, ever. That's level 0."); the RAM-only log entry, the
+pre-setup merge, the level setter's refusal and six retired catalog rows went. `redo/r1/` holds the unit's action list,
+brief and hand-back, the falsification's brief and result, and the lead's check of each refutation
+(`redo/r1/B1/FALSIFY_VERIFIED.md`): the guard test was narrowed, the memory gate's tests boot at warning level, and the
+construction window on the board went to the owner. `redo/r1/B2/` holds the next unit's action list and brief.

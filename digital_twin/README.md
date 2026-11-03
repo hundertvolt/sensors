@@ -455,7 +455,7 @@ off the booted module by name, joins their underlying `machine.UART` fakes with
 | `--device LABEL` | the module name | the device name the log lines carry |
 | `--host HOST`, `--port N` | `localhost`, `8080` (owner, 2026-08-13) | where the webserver listens |
 | `--config-dir PATH/` | `digital_twin/config/` | the product's config directory; refused without its trailing `/`, since each config file's name is that path plus `config_<name>.cfg` (`config_filename()` in `src/asy_config_manager.py`) |
-| `--debug-level N` | off, as on the device | every logger built at level N, until the stored `DebugLevel` applies; a level `PrintLog.set_level()` refuses is refused |
+| `--debug-level N` | off, as on the device | every logger built at level N, until the stored `DebugLevel` applies; a level `PrintLog.set_level()` would clamp is refused |
 | `--fram-state-path`, `--scd30-state-path`, `--mem-backup-state-path PATH` | `digital_twin/fram_state.json`, `scd30_state.json`, `mem_backup_state.json` | where that state persists; `""` keeps it in memory |
 | `--online-ntp` | off | off: the local NTP responder runs and the config pointing at it is written; on: neither, the stored config is used |
 | `--seed N` | none | seeds every chip's random walk |
@@ -874,11 +874,11 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
 runs after the suite at each GC stage, holding port 53 (`--exclusive-port-53`), so its DNS scenarios
 run too; without that lock they are deselected and listed. Each scenario boots the device's
 generated graph in a twin and drives it over HTTP, reading only the runner's stdout and its
-`--test-*` lines. Every boot logs at error level, so a caught allocation failure's line reaches the
+`--test-*` lines. Every boot logs at warning level, so a caught allocation failure's line reaches the
 memory gate (the owner's option 1 for the unit tests, owner, 2026-10-20, asked, paraphrase, whether
 to turn logging on at error level or above in the unit tests that can actually run out of memory, in
 every unit test, or in none: "Option 1 is good"; applied to the harness too, agent, 2026-10-20):
-the runner's `--debug-level 1` over a stored `DebugLevel` of 1 planted before the spawn unless one
+the runner's `--debug-level 2` over a stored `DebugLevel` of 2 planted before the spawn unless one
 is stored, but for the scenario reading the settings routes' defaults, which boots unplanted at the
 default level. Every boot also carries
 `--test-kbd-traceback`, so a twin that ignores its shutdown SIGINT is described before the kill:

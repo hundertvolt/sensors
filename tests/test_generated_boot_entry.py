@@ -22,7 +22,6 @@ class _Stub:
         self.RR_INTERRUPTED = _RR_INTERRUPTED  # the entry imports it by this name
         self.calls: list[tuple[object, int]] = []
         self.records: list[object] = []
-        self.consoles: list[tuple[str, object, object]] = []
         self.reported: list[BaseException] = []
         self._raises = raises
 
@@ -30,9 +29,6 @@ class _Stub:
         self.calls.append((watchdog, gc.threshold()))
         if self._raises is not None:
             raise self._raises
-
-    def console(self, name: str, what: object, err: object = None) -> None:
-        self.consoles.append((name, what, err))
 
     def report_if_fatal(self, e: BaseException) -> None:
         self.reported.append(e)
@@ -125,7 +121,7 @@ def test_any_other_exception_ending_the_loop_is_recorded_printed_and_ends_the_en
             assert raised is None, (device, planted, raised)
             assert stub.records == [_LOOP_ENDED], (device, planted, stub.records)
             assert stub.reported == [planted], (device, stub.reported)  # the stack-overflow check first, as every broad handler
-            assert stub.consoles == [("SYSTEM", "event loop ended with an exception:", None)] and printed == [], (device, stub.consoles)
+            assert printed == [], (device, printed)  # the traceback alone, through sys.print_exception()
             assert loops == [1], device
 
 

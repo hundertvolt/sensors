@@ -9,6 +9,7 @@ from _recording_print import record_prints
 
 import asy_framing_codecs
 from asy_framing_codecs import COBS_DELIMITER, FramingCOBS, FramingPass
+from asy_print_log import PrintLog
 
 # @tunable l1.framing_codecs_run_bound_s = 5
 _RUN_BOUND_S = 5
@@ -238,22 +239,23 @@ def test_cobs_scratch_too_large_for_the_heap_degrades_the_same_way() -> None:
     # The other half of ready(). A negative bound never reaches the allocation at all, so the except
     # clause that catches a real MemoryError/OverflowError - the case that actually happens on a
     # fragmented heap, rather than a caller typo - had no test of its own.
+    logger = PrintLog(1, name="UART")  # its builder's, the UART driver's user's: the lines print from level 1
     with record_prints() as rec:  # recorded, never printed: the interpreter's own text would trip the memory gates
-        codec = FramingCOBS(1 << 40)  # well-formed, and far past what any heap here can serve
-        huge = FramingCOBS(1 << 63)  # past the machine word: bytearray() raises OverflowError instead
+        codec = FramingCOBS(1 << 40, logger)  # well-formed, and far past what any heap here can serve
+        huge = FramingCOBS(1 << 63, logger)  # past the machine word: bytearray() raises OverflowError instead
     assert codec._scratch is None
     assert codec.ready() is False
     assert run(codec.encode_into(bytearray(8), 4), _RUN_BOUND_S) is None
     assert huge.ready() is False
     assert [(line[:2], type(line[2])) for line in rec.lines] == [
-        (("FramingCOBS", "scratch allocation failed:"), MemoryError),
-        (("FramingCOBS", "scratch allocation failed:"), OverflowError),
+        (("UART", "FramingCOBS: scratch allocation failed:"), MemoryError),
+        (("UART", "FramingCOBS: scratch allocation failed:"), OverflowError),
     ]
 
 
 def test_a_failed_cobs_scratch_allocation_prints_its_own_text_once() -> None:
-    # No logger in the codec: a caught allocation failure prints one console line with its own text, so the memory
-    # gates read it, while a bound that never allocates (a caller mistake) prints nothing.
+    # A caught allocation failure prints one line with its own text through the logger its builder passes, from level 1
+    # up, so the memory gates read it; none, or level 0, prints nothing, nor does a bound that never allocates.
     err = MemoryError("injected for the codec scratch")  # worded clear of the memory gates' markers
 
     def failing(*_args: object) -> bytearray:
@@ -262,14 +264,17 @@ def test_a_failed_cobs_scratch_allocation_prints_its_own_text_once() -> None:
     asy_framing_codecs.bytearray = failing  # type: ignore[attr-defined]
     try:
         with record_prints() as rec:
-            codec = FramingCOBS(64)
+            codec = FramingCOBS(64, PrintLog(1, name="UART"))
+        with record_prints() as silent:
+            quiet = [FramingCOBS(64), FramingCOBS(64, PrintLog(0, name="UART"))]
     finally:
         del asy_framing_codecs.bytearray  # type: ignore[attr-defined]
     assert codec.ready() is False
-    assert rec.lines == [("FramingCOBS", "scratch allocation failed:", err)]
-    assert rec.text() == "FramingCOBS scratch allocation failed: injected for the codec scratch"
+    assert rec.lines == [("UART", "FramingCOBS: scratch allocation failed:", err)]
+    assert rec.text() == "UART FramingCOBS: scratch allocation failed: injected for the codec scratch"
+    assert ([c.ready() for c in quiet], silent.lines) == ([False, False], [])
     with record_prints() as rec:
-        guarded = [FramingCOBS(0), FramingCOBS(-1)]
+        guarded = [FramingCOBS(0, PrintLog(5, name="UART")), FramingCOBS(-1, PrintLog(5, name="UART"))]
     assert [c.ready() for c in guarded] == [False, False]
     assert rec.lines == []
     assert FramingCOBS(64).ready() is True  # the module's own bytearray is back

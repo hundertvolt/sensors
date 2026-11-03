@@ -148,7 +148,7 @@ def test_real_device_boot_entry_records_every_exception_ending_the_loop_before_t
     stmts = _body(_real(device).boot_entry_source)
     record_import = "from asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record"
     assert _index(stmts, record_import) > _index(stmts, f"from sensortask_{device} import main")
-    assert _index(stmts, "from asy_print_log import console, report_if_fatal") > _index(stmts, f"from sensortask_{device} import main")
+    assert _index(stmts, "from asy_print_log import report_if_fatal") > _index(stmts, f"from sensortask_{device} import main")
     tail = stmts[-1]
     assert isinstance(tail, ast.Try)
     assert ast.unparse(stmts[-2]) == "ended: BaseException | None = None"  # bound first, so the handler's binding never grows the globals dict
@@ -157,7 +157,7 @@ def test_real_device_boot_entry_records_every_exception_ending_the_loop_before_t
     assert interrupt.type is not None and ast.unparse(interrupt.type) == "KeyboardInterrupt" and interrupt.name is None
     assert [ast.unparse(s) for s in interrupt.body] == ["write_reset_record(RR_INTERRUPTED)", "raise"]
     assert other.type is not None and ast.unparse(other.type) == "BaseException" and other.name == "ended"
-    assert [ast.unparse(s) for s in other.body] == ["report_if_fatal(ended)", "record_loop_end()", "console('SYSTEM', 'event loop ended with an exception:')", "sys.print_exception(ended)"]
+    assert [ast.unparse(s) for s in other.body] == ["report_if_fatal(ended)", "record_loop_end()", "sys.print_exception(ended)"]
     assert not tail.orelse
     assert [ast.unparse(s) for s in tail.finalbody] == ["asyncio.new_event_loop()"]
     # Every name the tail calls is one the entry binds before it.
@@ -408,7 +408,7 @@ def test_real_device_types_the_collectors_by_what_the_service_takes(device: str)
         "_collect_timer_starters": "'list[TimerStarter]'",
         "_collect_trigger_starters": "'list[TimerStarter]'",
         "_collect_error_sources": "'list[ErrorSource]'",
-        "_collect_level_setters": "'list[Callable[[int], bool]]'",
+        "_collect_level_setters": "'list[Callable[[int], None]]'",
         "_collect_config_stores": "list[cm.ConfigManager]",
     }
 
@@ -628,7 +628,7 @@ def _setup_names(source: str) -> "list[str]":
 
 def _shared_head(stmts: "list[ast.stmt]") -> "list[str]":
     # Up to gc.threshold(), without the watchdog lines and the reset records' import.
-    own = {"from machine import WDT", f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})", "from asy_print_log import console, report_if_fatal", "from asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record"}
+    own = {"from machine import WDT", f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})", "from asy_print_log import report_if_fatal", "from asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record"}
     texts = [ast.unparse(stmt) for stmt in stmts]
     return [t for t in texts[: texts.index("gc.threshold(32768)") + 1] if t not in own]
 
