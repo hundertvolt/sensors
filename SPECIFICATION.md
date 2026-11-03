@@ -3070,12 +3070,13 @@ buffers from `__init__` and sends its one-byte commands as module constants.
 - **This carve-out's fault surface is bus-specific.** `asy_i2c_driver.py` raises `OSError` from a
   transfer, a data byte or register byte the device NACKed included (`EIO`, F.5.1);
   `asy_spi_driver.py`'s `write()` cannot raise on rp2, while `readinto()`/`write_readinto()` can
-  raise `OSError(EIO)` on a 32+ byte RX overrun (F.5.2). An uninitialised bus is never a raise:
-  every I2C and SPI transfer, `configure()` and `session_begin()` answer `False`/`None`, and a
-  driver treats that as a failed transfer — an I2C driver raises its own bus-fault shape
-  (`OSError("I2C bus not initialized")`) so its reader's error path logs it, and `FRAM_SPI` answers
-  `False` with `FRAM_BUS_DOWN` (its `setup()` raises `OSError("SPI bus not initialized")`).
-  `write_readinto()` returns `False` for a caller-input length mismatch. `get_register_bytes()`
+  raise `OSError(EIO)` on a 32+ byte RX overrun (F.5.2). No runtime path drops a bus: `deinit()`
+  has no runtime caller, and `recover()`'s re-construction cannot fail with arguments it once took
+  (F.5.1). On a dropped bus an I2C getter answers `None`, which a driver read raises as its own
+  `OSError`, a transfer or setter is a no-op, and SPI's `configure()` raises, which `FRAM_SPI` heads
+  off by checking `SPI.available` and answering `False` with `FRAM_BUS_DOWN` (its `setup()` raises
+  `OSError("SPI bus not initialized")`). `write_readinto()` returns `None` for a caller-input length
+  mismatch. `get_register_bytes()`
   returns exactly the bytes asked for, copied out of the scratch. What rp2's buses raise and answer:
   F.1.
 - **Bus recovery**: `I2C.clear()` waits for SCL to be released (bounded by the bus timeout), then
@@ -3085,9 +3086,9 @@ buffers from `__init__` and sends its one-byte commands as module constants.
   stored frequency and timeout, re-construction being the only controller re-init rp2 offers
   (F.5.1). Both step `recoveries` on entry, before their bus-lock wait, so a second reader whose rung
   comes while one waits finds it taken; both hold the bus lock throughout and report their outcome as status
-  bits, never a raise: 1 SDA was low, 2 SDA stayed low through nine pulses, 4 SCL stayed held, 8 no
-  controller could be built; an SCL still held when the wait ends is 4 alone, with no pulse sent.
-  The constructor runs the same clear once, synchronously, before the controller owns the pins —
+  bits: 1 SDA was low, 2 SDA stayed low through nine pulses, 4 SCL stayed held; an SCL still held
+  when the wait ends is 4 alone, with no pulse sent. One routine does every clear, its SCL waits
+  awaited at run time; the constructor runs it once, unawaited, before the controller owns the pins —
   the same SCL wait first, then SDA read — and keeps its bits for `take_boot_clear_status()`. Each
   SCL wait (the lead-in, nine pulses, the STOP) lasts at most one bus timeout, so the build refuses
   an I2C `timeout` outside 1..200000 µs and a device whose boot clears could together run past
@@ -3702,11 +3703,11 @@ owner decided): `asy_captive_dns.py`'s `CaptiveDNS` (owned by `WifiService`) get
 logger (owner, 2026-08-07, `74cfa7f`) so its history can be shown with the networking data (owner,
 2026-09-26). **A teardown/cleanup method on a class with no logger of its own returns `bool`**, so
 its caller can log the failure — `UDPSocket.disconnect()` (every user checks it and persists a
-failure, `SOCKET_TEARDOWN`), `UART.deinit()`, `I2C.deinit()`, `SPI.deinit()` (C.13); one on a class
+failure, `SOCKET_TEARDOWN`), `UART.deinit()` (C.13); one on a class
 with a logger persists its own failure instead (`WebserverService._close_writer()`). A re-`init()`
 is its own teardown's caller: `UART.init()` prints `re-init teardown failed` through its user's
-logger when its `deinit()` returns `False`, then re-initialises as before, while `I2C.deinit()` and
-`SPI.deinit()` always return `True`, their forwarded `deinit()` being a no-op on rp2 (F.5.1).
+logger when its `deinit()` returns `False`, then re-initialises as before. `I2C.deinit()` and
+`SPI.deinit()` answer nothing: their forwarded `deinit()` is a no-op on rp2 (F.5.1).
 
 **Every broad handler records a C-stack overflow** (`asy_print_log.py`), so the supervisor reboots
 (reset code 20, F.1; owner, 2026-10-01). A broad handler is one that can catch a
@@ -4830,7 +4831,7 @@ is a new heap object on every call (F.1; agent, 2026-09-30). One tunable pair ke
 converts once to whole milliseconds with `round()`, so every wait site still takes `wait_for_ms()`
 (agent, 2026-10-21). A blocking `time.sleep*` appears in
 `src/` only at the named waits of Part N's `loop.sync_wait_max_us`: the SPI chip-select settle and
-the I2C bus clear's half period, at boot and in its awaited runtime twin (C.3). Both rules are
+the I2C bus clear's half period, in its one routine at boot and at run time (C.3). Both rules are
 checked by `tests_scripts/test_src_sleep_forms.py`, by AST: a millisecond delay holds no float
 literal or float constant and no true division, and a float a local computes is left to the tests'
 sleep stand-ins, which refuse it at run time as rp2's `ticks_add()` does (`tests/_fast_sleep.py`'s
@@ -7765,10 +7766,8 @@ backend-only or frontend-only validation/coercion policy change in this project.
   suspension point needs an owner and a lock instead, not this shape (owner, 2026-09-18):
   `get_bits()`/`set_bits()`/`get_register_struct()` read through a no-stop register-address write
   and `machine.I2C.readfrom_into()` (F.5.1) into one long-lived 32-byte scratch per `I2C`, and
-  `get_register_bytes()` copies out of the same scratch (agent, 2026-09-29); a register write
-  assembles its address and payload there too. The bus holds one view of the scratch for its life,
-  so a register access slices it rather than wrapping the scratch again, and a whole buffer goes to
-  `machine.I2C` as it is, only a part of one as a view. `get_register_into()` (and its `I2CDevice`
+  `get_register_bytes()` copies out of the same scratch (agent, 2026-09-29); a register write sends
+  its address and payload in one `writeto()`. `get_register_into()` (and its `I2CDevice`
   forwarder) is for a burst the caller decodes at once into a buffer of its own: it reads straight
   into the caller's buffer with the same pointer write and ACK test (BMP3XX's pressure and
   temperature burst, ISL29125's counts and configuration snapshot). No await between fill and decode, no Timer/IRQ
@@ -8849,8 +8848,8 @@ without a listed reason, its list holding every such site with the reason this c
   timeout adds a boxed float (`extmod/asyncio/core.py:62-63`) that `wait_for_ms()` avoids:
   transient, fixed, per webserver call, FRAM presence check and NeoPixel overlay wake; a UDP wait starts
   none (F.2).
-- **Views** — one `memoryview` slice per I2C register access (the bus's held view), none for a whole
-  buffer on I2C, SPI or UART, one per partial UART write retry (`py/objarray.c:556`): transient, fixed.
+- **Views** — a `memoryview` and its slice per I2C register read and start/end transfer, none for a
+  whole buffer on SPI or UART, one per partial UART write retry (`py/objarray.c:556`): transient, fixed.
 - **Tuples of names** — a tuple display of names (an `isinstance()` type tuple, a multiple return) is
   built at every evaluation, since MicroPython folds only a tuple of literals: transient, fixed.
 - **Strings** — no f-string or concatenation sits on a per-read or per-request path; the few left
@@ -8929,18 +8928,15 @@ log call stays at its decision site (C.7.1) (agent, 2026-09-18).
 `max_frame`; a failed allocation prints `FramingCOBS scratch allocation failed: <text>` and `ready()`
 reports it (G.2). Per frame: one view of the scratch or the caller's buffer, transient.
 
-**`asy_i2c_driver.py`** — construction, long-lived, fixed: the bus lock, the 32-byte scratch and one
-long-lived view of it (agent, 2026-09-29; G.2). Per register access: one slice of that view, no new
-view. Measured structurally (a unit test cannot show rp2 sizes), a register read used to allocate two
-16-byte `memoryview` objects, the view and its slice (`py/objarray.c:216-217, 556`; one GC block
-each), and the same pair for the register-address write: a held view of the scratch halves it, one
-slice per read; a whole buffer goes to `machine.I2C` as it is, a part of one as a view; `get_register_into()`
-reads straight into the caller's buffer, nothing allocated; `get_register_bytes()` returns its
-copy, `get_register_struct()` `struct.unpack()`'s tuple (transient, per read). A register write
-builds its address and payload in the scratch, allocating only above 32 bytes. A read larger than
+**`asy_i2c_driver.py`** — construction, long-lived, fixed: the bus lock and the 32-byte scratch (G.2).
+Per register read, transient: a `memoryview` of the scratch and its slice (16 bytes each,
+`py/objarray.c:216-217, 556`), the register address as `bytes`, `get_register_bytes()`'s copy or
+`get_register_struct()`'s `struct.unpack()` tuple; `get_register_into()` reads straight into the
+caller's buffer. A register write: its address and payload as one `bytes`. A read larger than
 the scratch falls back to the allocating call; no driver issues one (BMP3XX's 21-byte calibration
 block is the largest), so the fallback is unexercised on every device — kept as
-hardware-completeness API (owner, 2026-09-26). Boot list: the bus clear's two `Pin` objects. Per
+hardware-completeness API (owner, 2026-09-26). Boot list: the bus clear's two `Pin` objects and its
+coroutine. Per
 controller recovery (`recover()`): `init()`'s stored arguments, a 5-tuple replacing the last; the
 `machine.I2C` it constructs again is a static object (`ports/rp2/machine_i2c.c:87`), as is a `Pin` of
 a pin number (`ports/rp2/machine_pin.c:187-188`), so neither takes heap on rp2.
@@ -13340,7 +13336,7 @@ applies it.
 | `uart.rxbuf_floor` | `rxbuf ≥ max(framed frame, baud/10 × (poll_wait_ms + uart.poll_jitter_ms)/1000)` | rule — checked by `UARTComm._min_rxbuf()` (`src/asy_uart_comm.py`, a construction refusal) and `buildgen/validate.py`'s UART build check | `uart.poll_jitter_ms`, `uart.rxbuf_default`, `dev.uart_rxbuf`, `uart.poll_wait_ms_default`, `dev.uart_poll_wait_ms` | J.6 (agent, 2026-09-11, `c63ef97`) | J.6 states the floor against the driver default | a poll rate, baud or `payload_size` changes |
 | `uart.rx_ring_floor` | `rx_ring ≥` the next power of two at or above `max(uart.rxbuf_floor's two terms, framed frame × (1 + uart.flash_hold_max_ms // (4 × timeout)))` | rule — checked by `UARTComm._min_rx_ring()` (`src/asy_uart_comm.py`, a construction refusal with `UART_RXBUF`) and `tests/test_asy_uart_comm.py`'s ring-floor tests | `uart.flash_hold_max_ms`, `uart.rx_ring_default`, `uart.poll_jitter_ms`, `uart.poll_wait_ms_default`, `dev.uart_poll_wait_ms` | J.6 (owner, 2026-10-05: the ring is derived, never a bare number) | J.6 states the floor against the driver's default ring (128 B at the defaults against 512 B) | a poll rate, baud, `payload_size`, `timeout` or `uart.flash_hold_max_ms` changes |
 | `i2c.timeout_consumer_us` | `2 × timeout ≤` the device's smallest hard consumer, in µs: each `uart_link`'s reply slack, (its reply timeout (`_DEFAULT_TIMEOUT_MS`, 1000 ms) less `2 × poll_wait_ms + poll_idle_ms + uart.gc_pause_worst_ms`) × 1000, and (`wdt.timeout_ms` − `system.task_check_s` × 1000) × 1000 | rule — checked by `buildgen/validate.py`'s `bus.i2c-timeout-consumer` build check and `tests_scripts/test_buildgen_validate.py`'s edge tests | every `[bus.i2cN].timeout` (unstated: the rp2 default `_DEFAULT_TIMEOUT_US`); `i2c.timeout_max_us`, `uart.timeout_floor`, `uart.gc_pause_worst_ms`, `uart.poll_wait_ms_default`, `uart.poll_idle_ms_default`, `dev.uart_poll_wait_ms`, `dev.uart_poll_idle_ms`, `wdt.timeout_ms`, `system.task_check_s` | each `machine.I2C` transfer can hold the loop for one timeout (`ports/rp2/machine_i2c.c:125`, `:147`, v1.29.0) and a register read makes two (agent, 2026-10-21) | dev allows 462,500 µs against its 200,000 µs; every other device 3,000,000 µs against 200,000 µs | an I2C timeout, a link's poll rates or reply timeout, `wdt.timeout_ms` or `system.task_check_s` changes |
-| `loop.sync_wait_max_us` | sub-millisecond for a synchronous wait `src/` makes on purpose (`sleep_us`, busy-wait) | rule — checked by `tests_scripts/test_src_sleep_forms.py` (a `time.sleep*()` only at the named waits below, each still in place) and by code review of each `src/` file for busy-waits | every synchronous wait in `src/` while timing-sensitive work runs; exceptions: `time.sleep_us(_CS_SETTLE_US)` (`spi.cs_settle_us`, 2 µs, at session begin and end), the bus clear's `time.sleep_us(_CLEAR_HALF_PERIOD_US)` (`i2c.clear_half_period_us`, 5 µs, at boot and in its awaited runtime twin, C.3), unavoidable C calls (I2C/SPI transfers: F.2's watchdog backstop) | F.3 (agent, 2026-07-28) | the exceptions' own bounds | a synchronous wait is added to `src/` |
+| `loop.sync_wait_max_us` | sub-millisecond for a synchronous wait `src/` makes on purpose (`sleep_us`, busy-wait) | rule — checked by `tests_scripts/test_src_sleep_forms.py` (a `time.sleep*()` only at the named waits below, each still in place) and by code review of each `src/` file for busy-waits | every synchronous wait in `src/` while timing-sensitive work runs; exceptions: `time.sleep_us(_CS_SETTLE_US)` (`spi.cs_settle_us`, 2 µs, at session begin and end), the bus clear's `time.sleep_us(_CLEAR_HALF_PERIOD_US)` (`i2c.clear_half_period_us`, 5 µs, in its one routine at boot and at run time, C.3), unavoidable C calls (I2C/SPI transfers: F.2's watchdog backstop) | F.3 (agent, 2026-07-28) | the exceptions' own bounds | a synchronous wait is added to `src/` |
 | `loop.uart_call_span_max_us` | 1,533 µs: a third (`_SPAN_FRACTION`) of one 53-byte frame's wire time at 115200 baud, 4,600 µs (UART reads clamped, F.5.8) | rule — checked by `tests_hardware/flash/test_uart_crossover.py`'s `test_the_shipped_driver_never_holds_the_loop_for_a_frame_still_arriving` (the verdict, against the `span_max_us` that `tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py` derives from `FRAME` and `_SPAN_FRACTION`) and `tests_scripts/test_timing_budget.py` | every UART driver call on the loop; the divisor is `l3.uart_read_never_blocks_the_loop_span_fraction` | F.5.8 (owner, 2026-09-11: the UART modules never block the loop) | a third of one frame's wire time | the driver's read path, baud or frame length changes |
 | `boot.unfed_stretch_1_ms` | from the boot entry's `WDT()` through every product import, every construction, the webserver's, `run_setups()`'s first `gc.collect()` (≤ 21 ms measured, I.1) and the first `fram.setup()` (power-up wait plus one chunk-table read) to the first setup feed: < `wdt.timeout_ms` | rule — checked by review of the generated boot (`buildgen/codegen.py`); no wait in it is timed | `wdt.timeout_ms` (its margin is this row's) | estimated (agent, 2026-09-29) — measurement owed: a bench boot log with a `ticks_ms()` stamp at every feed, taken in a hardware session, L3 | unknown until measured: the product import took ~1.1 s on silicon (A.7); construction allocates and touches no bus beyond each driver's `Pin`/bus constructor, whose I2C boot bus clear is the one bounded wait — at worst 11 SCL waits of one bus timeout per I2C bus, about 2750 ms on a real device today, and refused by the build above three quarters of `wdt.timeout_ms` (`i2c.timeout_max_us`) | a construction, the boot entry or the first setup unit changes |
 | `boot.unfed_stretch_2_ms` | from the last setup feed through `start_tasks()`'s task starts (N × `1000 // N` ms of sleeps, N + 1 collects), `start_timers()` (the trigger stagger, last start below 1,000 ms) and `ntp_force_sync()` (sets an event) to the first feed of the supervisor `supervise_tasks()` starts: ≤ 2,000 ms of waits plus each started task's first slice, < `wdt.timeout_ms` | rule — checked by the boot-stretch scenario in `tests/_sensortask_scenarios.py` (the waits' sum) and the bench measurement below | `wdt.timeout_ms`; `system.timer_base_period_ms` (the stagger's span) | estimated (agent, 2026-09-29) — measurement owed: a bench boot log with a `ticks_ms()` stamp at every feed, taken in a hardware session, L3 | 6,000 ms of `wdt.timeout_ms` over the 2,000 ms of waits; the tasks' first slices have no bound in code and are the measured term | the boot order, the stagger or the task-start spread changes |

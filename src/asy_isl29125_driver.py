@@ -1195,11 +1195,12 @@ class ISL29125_I2C:
         return int(green), int(red), int(blue)
 
     async def _read_byte(self, register: int) -> int:
-        # One register byte; None from the bus layer means no bus, raised so every caller's error path logs it.
+        # get_register_bytes() returns None for a malformed request but lets a real bus OSError straight through,
+        # so a read here checks for None and sits inside a caller that expects a raise.
         async with self._i2c_isl29125 as isl, isl.i2c_device as i2c:
             raw = await i2c.get_register_bytes(register, 1)
         if raw is None:
-            raise OSError("I2C bus not initialized")
+            raise OSError(f"failed to read register {register:#x}")
         return raw[0]
 
     @staticmethod
@@ -1224,8 +1225,7 @@ class ISL29125_I2C:
         # set_register_struct() takes one value but accepts bytes, so an "Ns" format is how a
         # burst write goes through the promoted bus layer. The payload is already bytes of the
         # exact length because struct.pack() truncates silently on MicroPython.
-        if not await i2c.set_register_struct(first_register, f"{len(payload)}s", payload):
-            raise OSError("I2C bus not initialized")
+        await i2c.set_register_struct(first_register, f"{len(payload)}s", payload)
 
     async def get_config_snapshot(self) -> bytearray:
         # One 3-byte burst under one lock hold, UNDECODED (decoding drops mode, SYNC, CONVEN and INTSEL, what a brownout
@@ -1263,8 +1263,7 @@ class ISL29125_I2C:
             low = max(0, min(ceiling, low_counts >> shift))
             high = ceiling if high_counts is None else max(0, min(ceiling, high_counts >> shift))
             packed = struct.pack("<HH", low, high)  # 0x04-0x07, low pair then high pair (p12, Table 14)
-            if not await i2c.set_register_struct(_REGISTER_THRESHOLDS, "4s", packed):
-                raise OSError("I2C bus not initialized")
+            await i2c.set_register_struct(_REGISTER_THRESHOLDS, "4s", packed)
 
     def check_range(self, value: int) -> None:
         # The same guard configure() applies, reachable without writing: the reader stores a fixed
@@ -1276,8 +1275,7 @@ class ISL29125_I2C:
         # Table 15 marks 0x08 "RO", but p12's own BOUTF text requires an I2C write to clear it -
         # the marking is a datasheet defect, not a prohibition.
         async with self._i2c_isl29125 as isl, isl.i2c_device as i2c:
-            if not await i2c.set_register_struct(_REGISTER_STATUS, "B", 0x00):
-                raise OSError("I2C bus not initialized")
+            await i2c.set_register_struct(_REGISTER_STATUS, "B", 0x00)
 
     async def configure(
         self,
@@ -1481,11 +1479,10 @@ class ISL29125_I2C:
         # only, NOT status the way SparkFun's reset() does: reading 0x08 would consume a destructive
         # read outside the one-per-cycle invariant read_status() depends on (M.1.2).
         async with self._i2c_isl29125 as isl, isl.i2c_device as i2c:
-            if not await i2c.set_register_struct(_REGISTER_DEVICE_ID, "B", _CMD_RESET):
-                raise OSError("I2C bus not initialized")
+            await i2c.set_register_struct(_REGISTER_DEVICE_ID, "B", _CMD_RESET)
             config = await i2c.get_register_bytes(_REGISTER_CONFIG1, _CONFIG_BURST_LEN)
         if config is None:
-            raise OSError("I2C bus not initialized")
+            raise OSError("failed to read the config registers back after reset")
         if any(config):
             raise RuntimeError(f"reset did not clear the config registers (read {config!r})")
         self._mode = 0

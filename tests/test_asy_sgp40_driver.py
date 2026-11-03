@@ -328,18 +328,6 @@ def test_reset_tolerates_nak_at_general_call_address() -> None:
     assert list(fake_bus.log) == []  # the NAKed write moved nothing, and nothing else was sent
 
 
-def test_reset_raises_when_the_bus_is_not_initialised() -> None:
-    # No bus is not a NAK: writeto() answers None, and the reset reports it like every other write.
-    sgp = _make_sgp()
-    sgp._i2c_sgp40.i2c_device.i2c.deinit()
-    try:
-        run(sgp._reset())
-        message = ""
-    except OSError as e:
-        message = str(e)
-    assert message == "I2C bus not initialized"
-
-
 # ---------------------------------------------------------------------------
 # turn_heater_off() - datasheet Table 14, the participant rung's command
 # ---------------------------------------------------------------------------
@@ -364,17 +352,6 @@ def test_turn_heater_off_writes_its_command_to_the_sgp40_alone_then_waits_out_it
         asyncio.sleep_ms = real_sleep_ms
     assert fake_bus.log == [("writeto", 0x59, b"\x36\x15", True)]
     assert waits == [2]
-
-
-def test_turn_heater_off_raises_when_the_bus_is_not_initialised() -> None:
-    sgp = _make_sgp()
-    sgp._i2c_sgp40.i2c_device.i2c.deinit()
-    try:
-        run(sgp.turn_heater_off())
-        message = ""
-    except OSError as e:
-        message = str(e)
-    assert message == "I2C bus not initialized"
 
 
 # ---------------------------------------------------------------------------
@@ -446,26 +423,6 @@ def test_measure_raw_custom_compensation_encodes_correct_ticks_and_crc() -> None
     assert sent[0:2] == b"\x26\x0f"
     assert sent[2:5] == b"\x00\x00\x81"  # 0% RH -> 0x0000, CRC 0x81 (Table 10)
     assert sent[5:8] == b"\x00\x00\x81"  # -45C -> 0x0000, CRC 0x81 (Table 10)
-
-
-def test_a_read_on_a_down_bus_fails_without_a_crc_check() -> None:
-    # The reply buffer still holds a valid word from before; a read that moved no bytes must not let
-    # it pass the CRC check as a fresh one.
-    sgp = _make_sgp()
-    sgp._reply_buffer[:] = _word(1111)
-    device = sgp._i2c_sgp40.i2c_device
-
-    async def no_bus(buf: bytearray, start: int = 0, end: int | None = None) -> bool:
-        del buf, start, end  # the signature of the replaced readinto(); nothing is read
-        return False
-
-    device.readinto = no_bus  # type: ignore[method-assign]
-    try:
-        run(sgp.get_raw())
-        message = ""
-    except OSError as e:
-        message = str(e)
-    assert message == "I2C bus not initialized"
 
 
 def test_get_raw_crc_mismatch_raises() -> None:
@@ -3576,7 +3533,6 @@ def test_touches_only_its_own_address_except_reset_which_touches_only_the_genera
         with FastAsyncSleep():
             run(getattr(sgp, name)())
         assert {entry[1] for entry in fake_bus.log} == {0x59, 0x00}, name
-
 
 
 def test_init_sgp_runs_on_the_defaults_when_its_config_file_cannot_be_written() -> None:

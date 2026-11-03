@@ -688,12 +688,10 @@ class SGP40_I2C:
         # Sends self._command_buffer, waits delay_ms, reads back `words` CRC-checked words into the reply buffer.
         replylen = words * 3
         async with sgp40.i2c_device as i2c:  # bus session
-            if not await i2c.write(self._command_buffer):
-                raise OSError("I2C bus not initialized")
+            await i2c.write(self._command_buffer)
         await asyncio.sleep_ms(delay_ms)
         async with sgp40.i2c_device as i2c:
-            if not await i2c.readinto(self._reply_buffer, end=replylen):
-                raise OSError("I2C bus not initialized")  # before the CRC check: a stale buffer would pass it
+            await i2c.readinto(self._reply_buffer, end=replylen)
         for i in range(0, replylen, 3):
             if await self.crc.check_from(self._reply_buffer, 3, start=i) is None:
                 raise RuntimeError("CRC check failed while reading data")
@@ -728,14 +726,11 @@ class SGP40_I2C:
     async def _reset(self) -> None:
         # True I2C general-call reset (datasheet Table 17): 0x06 to the reserved address 0x00,
         # broadcast to every device on the bus. A NAK (OSError) is expected, not a failure.
-        acked: int | None = 0
         async with self._i2c_sgp40 as sgp40, sgp40.i2c_device as i2c:
             try:
-                acked = i2c.i2c.writeto(0x00, b"\x06")
+                i2c.i2c.writeto(0x00, b"\x06")
             except OSError:
                 pass
-        if acked is None:
-            raise OSError("I2C bus not initialized")
         await asyncio.sleep(_GENERAL_CALL_RESET_WAIT_S)
 
     async def get_raw(self) -> int:
@@ -814,6 +809,5 @@ class SGP40_I2C:
     async def turn_heater_off(self) -> None:
         # Datasheet Table 14: hotplate off, measurement stopped, idle mode; the next measure command restarts it.
         async with self._i2c_sgp40 as sgp40, sgp40.i2c_device as i2c:
-            if not await i2c.write(_CMD_HEATER_OFF):
-                raise OSError("I2C bus not initialized")
+            await i2c.write(_CMD_HEATER_OFF)
         await asyncio.sleep_ms(_HEATER_OFF_MAX_MS + 1)  # one tick more than the datasheet bound: sleep_ms() may wake up to 1 ms early

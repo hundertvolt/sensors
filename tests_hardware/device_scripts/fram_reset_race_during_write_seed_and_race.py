@@ -69,10 +69,10 @@ async def _main() -> None:
     spidev = fram._spidev
     original_write_sync = spidev.write_sync
 
-    def resetting_write_sync(buf: "bytes | bytearray | memoryview") -> bool:
+    def resetting_write_sync(buf: "bytes | bytearray | memoryview") -> None:
         if len(buf) == len(_NEW_TARGET_PATTERN):  # the command buffers around the payload are 1 or 5 bytes
             machine.reset()  # never returns: a real RP2040 reset with CS still asserted
-        return original_write_sync(buf)
+        original_write_sync(buf)
 
     async def victim_writer() -> None:
         async with fram:

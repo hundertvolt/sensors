@@ -392,11 +392,10 @@ class I2C:
     # the controller and keeps the devices, faults and log. reset_id() is a test's power-cycled controller.
     TEST_API = (
         "id", "scl", "sda", "freq", "timeout", "deinit_called", "deinit_count", "log", "registers", "read_queue",
-        "read_queue_by_address", "nak_addresses", "attached", "busy", "raise_on_construct", "inject_fault", "pending",
+        "read_queue_by_address", "nak_addresses", "attached", "busy", "inject_fault", "pending",
         "register_device", "reset_id", "reset_registry", "short_ack",
     )  # fmt: skip
     _static: "ClassVar[dict[int, I2C]]" = {}
-    raise_on_construct: "ClassVar[BaseException | None]" = None  # test-only: the next construction raises it, once
     _fresh: bool
 
     def __init__(self, id: int, *, scl: Pin, sda: Pin, freq: int = 400000, timeout: int = 50000) -> None:
@@ -424,10 +423,6 @@ class I2C:
         self.log.append(("init", freq, timeout))
 
     def __new__(cls, id: int, *_args: object, **_kwargs: object) -> "I2C":
-        pending = cls.raise_on_construct
-        if pending is not None:
-            cls.raise_on_construct = None
-            raise pending
         if id not in (0, 1):
             raise ValueError(f"I2C({id}) doesn't exist")  # machine_i2c.c:82-84
         bus = cls._static.get(id)
@@ -1544,7 +1539,6 @@ def reset_test_state() -> None:
         channel.close()  # each claimed rp2.DMA channel's finaliser, as a soft reset runs it (rp2_dma.c:637-673)
     Pin.reset_registry()
     I2C.reset_registry()
-    I2C.raise_on_construct = None
     mem32.log.clear()
     reset_count = 0
     bootloader_count = 0

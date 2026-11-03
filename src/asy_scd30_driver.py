@@ -708,13 +708,11 @@ class SCD30_I2C:
     async def _read_dev_register(self, i2c: I2CDevice, reg_addr: int) -> int:
         self._buffer[0] = reg_addr >> 8
         self._buffer[1] = reg_addr & 0xFF
-        if not await i2c.write(self._buffer, end=2):
-            raise OSError("I2C bus not initialized")
+        await i2c.write(self._buffer, end=2)
         # Separate readinto: the SCD30 has no repeated-start, so this stops the bus first; the
         # delay clears the datasheet's >3ms minimum (Interface Description 1.4.4).
         await asyncio.sleep_ms(_CMD_RESPONSE_WAIT_MS)
-        if not await i2c.readinto(self._buffer, end=3):
-            raise OSError("I2C bus not initialized")  # before the CRC check: a stale buffer would pass it
+        await i2c.readinto(self._buffer, end=3)
         if await self.crc.check_from(self._buffer, 3) != _WORD_BYTES:
             raise RuntimeError("CRC check failed while reading data")
         value: int = unpack_from(">H", self._buffer)[0]
@@ -739,8 +737,7 @@ class SCD30_I2C:
             if await self.crc.add_into(self._buffer, 2, start=2) != _WORD_CRC_BYTES:
                 raise RuntimeError("CRC generation failed")
             end_byte = 5
-        if not await i2c.write(self._buffer, end=end_byte):
-            raise OSError("I2C bus not initialized")
+        await i2c.write(self._buffer, end=end_byte)
         await asyncio.sleep_ms(_CMD_RESPONSE_WAIT_MS)  # delay for response
 
     async def get_CO2(self) -> float | None:
@@ -846,8 +843,7 @@ class SCD30_I2C:
                     await self._send_dev_command(i2c, _CMD_READ_MEASUREMENT)
                 await asyncio.sleep(0)
                 async with scd30.i2c_device as i2c:
-                    if not await i2c.readinto(self._buffer):
-                        raise OSError("I2C bus not initialized")
+                    await i2c.readinto(self._buffer)
 
             if not new_data:
                 return False

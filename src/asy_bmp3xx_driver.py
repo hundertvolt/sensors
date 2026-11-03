@@ -477,8 +477,7 @@ class BMP3XX_I2C:
         # is atomic against a concurrent call setting the OSR register's *other* 3-bit field -
         # unlike the previous hand-rolled read-then-write pair, which was not.
         async with self._i2c_bmp3xx as bmp3xx, bmp3xx.i2c_device as i2c:
-            if not await i2c.set_bits(3, _REGISTER_OSR, start_bit, _OSR_SETTINGS.index(oversample)):
-                raise OSError("I2C bus not initialized")
+            await i2c.set_bits(3, _REGISTER_OSR, start_bit, _OSR_SETTINGS.index(oversample))
 
     async def _read(self) -> tuple[float, float]:
         # Returns a (pressure_pa, temperature_degC) tuple. The whole cycle (trigger, poll, data
@@ -495,8 +494,7 @@ class BMP3XX_I2C:
                 osr_t = (osr >> 3) & 0x07
                 if osr_p >= len(_OSR_SETTINGS) or osr_t >= len(_OSR_SETTINGS):
                     raise OSError(f"OSR register read back reserved encoding {osr:#04x}")
-                if not await i2c.set_register_struct(_REGISTER_CONTROL, "B", 0x13):
-                    raise OSError("I2C bus not initialized")
+                await i2c.set_register_struct(_REGISTER_CONTROL, "B", 0x13)
             wait_us = 939 + 2000 * (_OSR_SETTINGS[osr_p] + _OSR_SETTINGS[osr_t])
             # 3.9.2 typical conversion time, rounded up to whole ms (BMP384/388 constants; BMP390's 2020 us repetitions
             # run ~1 % longer), then poll STATUS: Table 22's maximum runs up to ~18 % over typical, so a few polls
@@ -591,7 +589,7 @@ class BMP3XX_I2C:
         async with self._i2c_bmp3xx as bmp3xx, bmp3xx.i2c_device as i2c:
             value = await i2c.get_register_bytes(register, length)
         if value is None:
-            raise OSError("I2C bus not initialized")
+            raise OSError(f"failed to read {length} bytes from register {register:#x}")
         return value
 
     async def _wait_status_bits(self, bmp3xx: DeviceSession, mask: int, timeout_ms: int) -> None:
@@ -602,8 +600,6 @@ class BMP3XX_I2C:
         while True:
             async with bmp3xx.i2c_device as i2c:  # bus session
                 status = await i2c.get_register_struct(_REGISTER_STATUS, "B")
-            if status is None:  # no bus: reported at once, not as a STATUS timeout
-                raise OSError("I2C bus not initialized")
             if isinstance(status, int) and status & mask == mask:
                 return
             if time.ticks_diff(time.ticks_ms(), start) >= timeout_ms:
@@ -665,8 +661,7 @@ class BMP3XX_I2C:
         if coef not in _IIR_SETTINGS:
             raise ValueError(f"filter coefficient must be one of: {_IIR_SETTINGS}")
         async with self._i2c_bmp3xx as bmp3xx, bmp3xx.i2c_device as i2c:
-            if not await i2c.set_bits(3, _REGISTER_CONFIG, 1, _IIR_SETTINGS.index(coef)):
-                raise OSError("I2C bus not initialized")
+            await i2c.set_bits(3, _REGISTER_CONFIG, 1, _IIR_SETTINGS.index(coef))
 
     async def set_pressure_oversampling(self, oversample: int) -> None:
         await self._set_osr_setting(0, oversample)
@@ -681,8 +676,7 @@ class BMP3XX_I2C:
         async with self._i2c_bmp3xx as bmp3xx:  # device session
             await self._wait_status_bits(bmp3xx, _STATUS_CMD_RDY, _CMD_RDY_TIMEOUT_MS)
             async with bmp3xx.i2c_device as i2c:  # bus session
-                if not await i2c.set_register_struct(_REGISTER_CMD, "B", 0xB6):
-                    raise OSError("I2C bus not initialized")
+                await i2c.set_register_struct(_REGISTER_CMD, "B", 0xB6)
             await asyncio.sleep_ms(_RESET_SETTLE_MS)
             async with bmp3xx.i2c_device as i2c:  # bus session
                 err = await i2c.get_register_struct(_REGISTER_ERR, "B")

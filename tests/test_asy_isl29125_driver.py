@@ -63,9 +63,7 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
-
-    from _async_harness import CoroutineOf
+    from collections.abc import Coroutine
 
     from asy_base_classes import JsonDict, PushFct
     from asy_config_manager import CfgValue
@@ -325,8 +323,6 @@ def seed(i2c: I2C, register: int, payload: "bytes | bytearray", address: int = _
 def seed_cycle(i2c: I2C, green: int, red: int, blue: int, status: int = 0x00) -> None:
     seed(i2c, _REG_STATUS, bytes([status]))
     seed(i2c, _REG_DATA, counts_burst(green, red, blue))
-
-
 
 
 def seed_healthy_chip(i2c: I2C, address: int = _ADDR) -> None:
@@ -952,28 +948,6 @@ def test_every_protocol_read_raises_rather_than_returning_none() -> None:
         except OSError:
             continue
         raise AssertionError(f"{call}() must raise on a bus fault")
-
-
-def test_every_protocol_write_raises_on_a_bus_that_is_down() -> None:
-    # A write the bus never made is no silent no-op: each raises, and configure() keeps its shadow on
-    # what the chip still holds.
-    i2c, isl = ready_protocol()
-    i2c.deinit()
-    calls: tuple[Callable[[], CoroutineOf[None]], ...] = (
-        lambda: isl.configure(resolution=12),
-        lambda: isl.set_thresholds(0, 1000),
-        isl.clear_brownout,
-    )
-    for call in calls:
-        try:
-            run(call())
-            message = ""
-        except OSError as e:
-            message = str(e)
-        assert message == "I2C bus not initialized"
-    decoded = ISL29125_I2C.decode_config(isl.encode_shadow())
-    assert decoded is not None
-    assert decoded[0] == 16
 
 
 def test_read_status_reads_one_byte_and_clear_brownout_writes_it_low() -> None:
@@ -2706,7 +2680,6 @@ def test_set_resolution_reports_failure_when_the_derived_window_cannot_be_re_app
     assert calls[0] == 2, "the CONFIG1 burst must have landed before the CONFIG3 write failed"
 
 
-
 def test_pushing_the_software_knobs_write_only_the_thresholds_they_derive() -> None:
     # AutoRangeThresh moves the chip's down crossing at once; AutoRangeDwell and FiltCoeff are driver state only.
     i2c, reader = ready_reader("push_software")
@@ -4229,7 +4202,6 @@ def test_never_touches_any_address_but_its_own() -> None:
     assert touched == {_ADDR}, f"ISL29125_I2C touched unexpected address(es): {touched - {_ADDR}}"
 
 
-
 def test_init_runs_on_the_defaults_when_its_config_file_cannot_be_written() -> None:
     # A failed config write does not end the read task: the reader runs on the defaults (SPECIFICATION.md C.7.3).
     i2c = _make_i2c()
@@ -4285,25 +4257,6 @@ def test_a_re_arm_write_that_raises_is_logged_and_writes_no_thresholds() -> None
         assert errors(run(reader.get_error_counter()))[-1] == code("E", "CHIP_SET"), error
         assert fatal_reported() is fatal, error
         asy_print_log._fatal = False
-
-
-def test_a_reset_write_the_bus_refuses_while_up_raises_with_no_config_read() -> None:
-    # The bus answers False for the reset write alone and stays up: reset() raises at once and never reads CONFIG1-3
-    # (on a down bus that read would raise the same error, so only an up bus tells the two apart).
-    i2c, isl = ready_protocol()
-
-    def refused(*_args: object) -> bool:
-        return False
-
-    i2c.set_register_struct = refused  # type: ignore[assignment, method-assign]
-    fake(i2c).log.clear()
-    try:
-        run(isl.reset())
-        message = ""
-    except OSError as e:
-        message = str(e)
-    assert message == "I2C bus not initialized"
-    assert register_reads(i2c) == []
 
 
 if __name__ == "__main__":
