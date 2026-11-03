@@ -591,10 +591,11 @@ def test_a_malformed_per_logger_fram_count_fails_naming_the_field(by: str) -> No
         twin_process.parse_shutdown_line(f"{_SHUTDOWN} fram_writes_unattributed=x")
 
 
-@pytest.mark.parametrize(("writes", "silent_writes", "wrens", "within"), [(4, 0, 0, True), (5, 0, 0, False), (2, 3, 0, False), (0, 0, 8, True), (0, 0, 9, False)])
-def test_run_3_bounds_every_fram_write_the_product_issues_landed_or_silent(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, writes: int, silent_writes: int, wrens: int, within: bool) -> None:
+@pytest.mark.parametrize(("writes", "silent_writes", "wrens", "loggers", "within"), [(4, 0, 0, (), True), (5, 0, 0, (), False), (2, 3, 0, (), False), (0, 0, 8, (), True), (0, 0, 9, (), False), (0, 0, 10, ("SGP40", "FRAM"), True), (0, 0, 11, ("SGP40", "FRAM"), False)])
+def test_run_3_bounds_every_fram_write_the_product_issues_landed_or_silent(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, writes: int, silent_writes: int, wrens: int, loggers: tuple[str, ...], within: bool) -> None:
     # A 1300 ms run allows 4 writes; a silent chip's data phases count as writes and its WRENs as attempts, at most two
-    # per write (the driver's one latch retry), so 9 WRENs are 5 attempts.
+    # per write (the driver's one latch retry), so 9 WRENs are 5 attempts. Each FRAM-backed logger /status lists adds
+    # one setup attempt; FRAM's own in-memory log adds none.
     fields = f"fram_writes={writes} fram_writes_by=- fram_silent_writes={silent_writes} fram_silent_wrens={wrens}"
     log = f"{_PREFIX} machine reset: kind=reset reset_count=1 bootloader_count=0\n{_SHUTDOWN.split(' fram_writes=', maxsplit=1)[0]} {fields}\n"
 
@@ -606,6 +607,7 @@ def test_run_3_bounds_every_fram_write_the_product_issues_landed_or_silent(ci_su
     monkeypatch.setattr(ci_suite.time, "monotonic", lambda: next(clock))
     monkeypatch.setattr(ci_suite, "_spawn", spawn)
     monkeypatch.setattr(ci_suite, "_wait_until_serving", lambda _proc: None)
+    monkeypatch.setattr(ci_suite, "_errcount_all", lambda: {name: {"counter": 0, "history": []} for name in loggers})
     monkeypatch.setattr(ci_suite, "_wait_exit", lambda _proc, _label, timeout_s: ci_suite.EXIT_SIMULATED_RESET)
     failures: list[str] = []
     monkeypatch.setattr(ci_suite, "_check", lambda *, condition, msg: None if condition else failures.append(msg))
