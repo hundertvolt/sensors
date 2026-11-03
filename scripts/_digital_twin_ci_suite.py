@@ -1251,8 +1251,10 @@ def _run_3_sustained_bus_fault_matrix(ctx: RunContext) -> None:
     proc = _spawn(ctx, fault_args, log3)
     seen: dict[str, JSONObject] = {}
     ec = -1
+    backed = 0
     try:
         _wait_until_serving(proc)
+        backed = sum(1 for name in _errcount_all() if name not in _IN_MEMORY_ONLY_ERROR_SOURCES)
         # Keyed on "E" entries, never the raw counter a "W" recovery notice also bumps; each poll stops at the reset.
         for inst in faulted:
             if inst.key in ctx.responders:  # a silent link leaves a responder listening, never failed: it logs nothing of its own
@@ -1278,7 +1280,7 @@ def _run_3_sustained_bus_fault_matrix(ctx: RunContext) -> None:
     writes = line.fram_writes + line.fram_silent_writes if line is not None else None
     _check(condition=writes is not None and writes <= ceiling, msg=f"Run 3: the FRAM chip's {writes!r} writes, landed or issued while silent, stay within the persisted-log rate, {ceiling} over the {window_ms:.0f} ms run")
     attempts = -(-line.fram_silent_wrens // 2) if line is not None else None
-    ceiling += read_log(log3).count("PrintLog: FRAM setup failed!")  # each logger's one setup write, before any rate applies
+    ceiling += backed  # each FRAM-backed logger's one setup write, before any rate applies (from /status: the console may be off)
     _check(condition=attempts is not None and attempts <= ceiling, msg=f"Run 3: the {attempts!r} FRAM write attempts its silent chip saw (WRENs / 2) stay within the persisted-log rate, {ceiling} over the {window_ms:.0f} ms run")
 
 

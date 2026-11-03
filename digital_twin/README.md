@@ -738,8 +738,8 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
    link leaves it listening, never failed), then the supervisor's restart budget
    runs out and the device resets itself — exit code 3 with one reset line, never a crash, and the
    (simulated) watchdog never starves. `fram:silent` makes the chip answer zeros and keep its bytes,
-   so nothing is torn; its write attempts stay within the persisted-log rate plus one per logger whose
-   setup write failed.
+   so nothing is torn; its write attempts stay within the persisted-log rate plus one setup write per
+   FRAM-backed logger.
 4. **Relaunch fault-free on run 3's state** — `ResetReason` is the supervisor's escalation code,
    the boot cleared the reset record (`mem_backup` region 0 reads zero at shutdown), every measuring
    driver produces real readings again, and SCD30/BMP3XX/ISL29125, whichever this device wires, read

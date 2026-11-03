@@ -1170,7 +1170,7 @@ def test_the_erase_racing_a_logger_write_never_tears_a_chunk() -> None:
 
 
 def test_the_erase_feeds_the_watchdog_at_bus_speed() -> None:
-    # The largest generated FRAM erased at its real wire time (8 us/byte): the sequence's own feeds keep the watchdog
+    # The largest generated FRAM erased on an 8x-slow bus (8 us/byte): the sequence's own feeds keep the watchdog
     # fed throughout, and every unit lands below the chip's size.
     plan = _fram_plan_by_size()
     device = plan["device"]
