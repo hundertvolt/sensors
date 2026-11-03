@@ -714,12 +714,13 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
 
 1. **Baseline boot, then the reformat relaunch** — walk every `GET` route of the device's API
    reference and `/`, then read, keep (`runs/run1_errcount.json`) and check the logs — no error or
-   warning entry from any module — then clear them (`ResetErrors`); with no station link the clock
+   warning entry from any module but each config store's one `CFG_FILE_UNREADABLE`, its file not
+   found — then clear them (`ResetErrors`); with no station link the clock
    has never synced, so `UTCTime`, `LocalTime` and `TimeStale` read null. Shut down cleanly through
    the stop file (`main()`'s clean path, which flushes the FRAM/SCD30 state as the `SIGINT` handler
    does; `SIGINT` is the fallback, never `SIGTERM`) and confirm the state files landed on disk. Then
    relaunch on an emptied config directory beside the kept FRAM state, as a reformatted filesystem
-   leaves a unit: `SYSTEM` logs exactly one W `CONFIG_LOST` (kept in `runs/`), and a setting is
+   leaves a unit: each config store logs its file not found, as Run 1 (kept in `runs/`), and a setting is
    `PUT` on each of `/system` (`DebugLevel=5`), `/notification` (`WarnCO2=1800`), `/sensors`
    (`SCD30.MeasInterval=4`), `/networking` (`Hostname`) and `/status` (`ResetErrors`) — every
    route that accepts `PUT`.

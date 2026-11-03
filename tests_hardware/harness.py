@@ -534,6 +534,11 @@ def fram_backed_logger_names(device: "str | None" = None) -> "list[str]":
     return [str(name) for name in names]
 
 
+def scratch_config_entries() -> "tuple[tuple[str, str, str], ...]":
+    # What a scratch-config build leaves on FRAM: each FRAM-backed config store's file not found, as provokes_log names it.
+    return tuple((name, "W", "CFG_FILE_UNREADABLE") for name in fram_backed_logger_names() if name.startswith("CFGMGR_"))
+
+
 def hotspot_password(device: "str | None" = None) -> str:
     # The hotspot password the device's TOML builds in ([device] hotspot_password), the bench board's by default.
     password = _device_table(device or bench_device()).get("hotspot_password")

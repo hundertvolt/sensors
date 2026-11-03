@@ -1055,8 +1055,9 @@ def test_reader_construction_can_disable_the_internal_pull_up_for_a_board_with_i
     assert reader.irq_pin.pull == 0  # rp2 sets an omitted pull to none (ports/rp2/machine_pin.c:300-306)
 
 
-def test_init_returns_false_and_logs_an_init_error_and_reinitialises_the_controller() -> None:
-    # A chip-setup failure runs the controller rung at once: the bus is cleared and its controller rebuilt.
+def test_init_returns_false_and_logs_an_init_error_and_leaves_the_bus_to_the_restart() -> None:
+    # A chip-setup failure runs no bus rung: the task ends and the supervisor's restart retries the setup, the mild
+    # rung first; the budget's reboot, whose construction clears every bus, is the strong one.
     i2c, reader = _make_reader("absent", healthy=False)
     fake(i2c).nak_addresses.add(_ADDR)
     before = i2c.recoveries
@@ -1068,8 +1069,8 @@ def test_init_returns_false_and_logs_an_init_error_and_reinitialises_the_control
 
     counters = run(scenario())
     assert errors(counters)[-1] == code("E", "INIT")
-    assert warnings(counters) == [code("W", "BUS_RECOVERY")]
-    assert i2c.recoveries == before + 1
+    assert warnings(counters) == []
+    assert i2c.recoveries == before
 
 
 def test_init_returns_false_when_the_config_is_unreadable_logs_in_both_layers() -> None:
@@ -1110,7 +1111,7 @@ def test_init_returns_false_and_logs_chip_set_when_applying_the_config_raises() 
 
     counters = run(scenario())
     entry = counters["ISL29125"]
-    assert (entry["ErrNum"][-2:], entry["ErrType"][-2:]) == ([code("E", "CHIP_SET"), code("W", "BUS_RECOVERY")], ["E", "W"])
+    assert (entry["ErrNum"][-1], entry["ErrType"][-1]) == (code("E", "CHIP_SET"), "E")  # no bus rung follows
 
 
 def test_init_arms_the_thresholds_for_the_starting_range() -> None:
@@ -3336,7 +3337,7 @@ def test_the_read_loop_gives_up_immediately_when_the_chip_is_not_there_at_all() 
     assert entered[0] == 0, "the loop was entered despite the init having failed"
     counters = run(reader.get_error_counter())
     assert code("E", "INIT") in errors(counters)
-    assert warnings(counters) == [code("W", "BUS_RECOVERY")]
+    assert warnings(counters) == []
 
 
 def test_two_failed_status_reads_reapply_the_shadow_and_rearm_the_thresholds() -> None:
@@ -4234,8 +4235,8 @@ def test_init_runs_on_the_defaults_when_its_config_file_cannot_be_written() -> N
     i2c = _make_i2c()
     seed_healthy_chip(i2c)
     reader = ISL29125_Reader(i2c, 6, cfg_path=_tmp_cfg_path("unwritable") + "missing_dir/")
-    assert run(reader.setup()) is True  # the config store's validity: the defaults are valid
-    assert reader.cfgmgr.valid is True
+    run(reader.setup())
+    assert reader.cfgmgr.valid is True  # the config store's validity: the defaults are valid
 
     async def scenario() -> "ErrorLog":
         with FastAsyncSleep():

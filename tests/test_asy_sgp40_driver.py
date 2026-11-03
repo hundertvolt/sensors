@@ -3138,8 +3138,8 @@ def test_init_sgp_fails_and_logs_when_setup_raises() -> None:
         ok = run(reader._init_sgp())
     assert ok is False
     log = run(reader.get_error_counter())
-    # The setup failure, then the controller rung the base runs at once (the bus cleared and re-initialised).
-    assert _entries(log) == [("E", code("E", "INIT")), ("W", code("W", "BUS_RECOVERY"))]
+    # The setup failure's one entry: no bus rung, the restart retries it.
+    assert _entries(log) == [("E", code("E", "INIT"))]
 
 
 def test_init_sgp_fails_and_logs_when_config_data_unreadable() -> None:
@@ -3495,16 +3495,16 @@ def test_read_sgp_completes_a_pending_reset_even_when_the_i2c_read_fails() -> No
 
 
 # ---------------------------------------------------------------------------
-# _read_loop() - an init failure ends the task (it returns None) after the controller rung.
+# _read_loop() - an init failure ends the task (it returns None), no bus rung run.
 # ---------------------------------------------------------------------------
 
 
-def test_read_loop_ends_with_init_and_the_controller_rung_when_init_fails() -> None:
+def test_read_loop_ends_with_init_and_no_bus_rung_when_init_fails() -> None:
     # No fake_bus.read_queue seeded - same fast-failing setup as test_init_sgp_fails_and_logs_when_setup_raises
     # above, so no real _GENERAL_CALL_RESET_WAIT_S _reset() sleep is ever reached.
     reader = _make_reader()
     assert run(reader._read_loop()) is None
-    assert _entries(run(reader.get_error_counter())) == [("E", code("E", "INIT")), ("W", code("W", "BUS_RECOVERY"))]
+    assert _entries(run(reader.get_error_counter())) == [("E", code("E", "INIT"))]
 
 
 # ---------------------------------------------------------------------------

@@ -285,7 +285,8 @@ def test_the_no_configuration_pattern_blinks_a_real_neopixel_driver_and_obeys_le
     pixel = NeopixelDriver(0)
     run(pixel.setup())  # the boot batch's setup(), before any task starts
     conn = WifiService(WifiConfig("SensorNode", "12345678", 5, 5), ext_led=pixel, cfg_path=_blocked_dir())
-    assert run(conn.setup()) is False
+    run(conn.setup())
+    assert conn.cfgmgr.valid is False
     with _FlashSleeps(conn) as sleeps:
 
         async def scenario() -> "tuple[list[tuple[int, ...]], list[tuple[int, ...]], list[tuple[int, ...]]]":

@@ -47,7 +47,7 @@ if TYPE_CHECKING:
     PushFct = Callable[[CfgValue], Awaitable[bool]]  # a field's live push: True when the value reached the module
     NtpSyncFct = Callable[[], Awaitable[bool]]  # whether the clock is NTP-synced
     AsyncCallback = Callable[[], Awaitable[None]]
-    SetupFct = Callable[[], Awaitable[bool]]  # one boot setup: True when ready
+    SetupFct = Callable[[], Awaitable[object]]  # one boot setup; what it answers is never read
 
     class ErrorSource(Protocol):
         # One /status error-log entry: what every get_error_sources() list holds (Part C.14).
@@ -381,13 +381,13 @@ class TickSeconds:
 _utc_valid = False  # one writer (the NTP client's sync success), no await between read and use
 
 
-def set_utc_valid(*, valid: bool = True) -> None:
+def set_utc_valid() -> None:
     # The NTP client calls it once it has set the RTC; the clock then stays valid for the boot (Part G.2).
     global _utc_valid
-    _utc_valid = valid
+    _utc_valid = True
 
 
-def arm_tick_timer(timer: "Timer", flag: asyncio.ThreadSafeFlag, pr: "PrintLogHistory", what: str, *, quiet: bool = False) -> bool:
+def arm_tick_timer(timer: "Timer", flag: asyncio.ThreadSafeFlag, pr: "PrintLogHistory", what: str) -> bool:
     # The one starter shape of the 1 s tick timers (system uptime, WiFi uptime, NTP sync age): False when
     # the alarm pool refuses the arm (Part F.1), reported here in one wording; the caller degrades.
     try:
@@ -396,8 +396,7 @@ def arm_tick_timer(timer: "Timer", flag: asyncio.ThreadSafeFlag, pr: "PrintLogHi
         pr.err_nomem("Could not arm a 1 s tick timer:", e)
         return False
     except OSError as e:
-        if not quiet:  # a re-arm inside an episode its first arm already reported
-            pr.err("Could not arm", what, "timer:", e)
+        pr.err("Could not arm", what, "timer:", e)
         return False
     return True
 
@@ -441,7 +440,6 @@ class SensorReader:
         self._bus_mark = 0  # _recovery_bus.recoveries when this episode began
         self._recovery_bus: I2C | None = None  # set by a driver whose chip sits on I2C
         self._timer_error: Exception | None = None  # a failed read-trigger arm, until its task's restart re-arms
-        self._timer_reported = False  # _timer_error is persisted already: a re-arm does not persist it again
 
     async def _get_dict_cfg(
         self,
@@ -611,20 +609,9 @@ class SensorReader:
         if status:
             await self.pr.wrn_s("I2C bus was held at boot and cleared, status", status, wrnno=_WRN_BUS_RECOVERY)
 
-    async def _init_failed(self) -> None:
-        # A driver's _init_*() calls it before a chip-setup failure's return False: the bus is cleared and
-        # its controller rebuilt before the task's restart budget reaches the reboot.
-        bus = self._recovery_bus
-        if bus is None:
-            return
-        self._bus_mark = bus.recoveries  # the setup attempt starts its own episode
-        self._rungs |= _RUNG_BUS
-        await self._recover_bus(_RUNG_CONTROLLER)
-
     async def _rearm_timer(self) -> None:
-        # A task start's first step after a failed read-trigger arm: persisted once, then re-armed. The generated main()
-        # starts the tasks before the timers, so the woken task usually persisted it already; an arm that failed while
-        # the task was down is persisted here.
+        # A task start's first step after a failed read-trigger arm: persisted, then re-armed. The generated main()
+        # starts the tasks before the timers, so the woken task usually persisted it already.
         if self._timer_error is None:
             return
         await self._timer_fault()
@@ -709,18 +696,15 @@ class SensorReader:
     def _timer_failed(self, e: Exception, waiter: asyncio.ThreadSafeFlag) -> None:
         # A read-trigger arm failed in a sync starter: keep it for the waiting task and wake that task.
         self._timer_error = e
-        self._timer_reported = False
         self.pr.err("Could not start timer:", e)
         waiter.set()
 
     async def _timer_fault(self) -> bool:
-        # True once a failed arm is persisted, which happens once per failure: the woken task then ends, and its restart
-        # re-arms through _rearm_timer().
+        # True once a failed arm is persisted: the woken task then ends, and its restart re-arms through _rearm_timer();
+        # the logger keeps one slot for the repeat (its newest-entry rule).
         if self._timer_error is None:
             return False
-        if not self._timer_reported:
-            self._timer_reported = True
-            await self.pr.err_s("Read trigger timer not armed:", self._timer_error, errno=_ERR_TIMER)
+        await self.pr.err_s("Read trigger timer not armed:", self._timer_error, errno=_ERR_TIMER)
         return True
 
     async def _trigger_loop(self) -> None:
@@ -768,10 +752,9 @@ class SensorReader:
         self._rungs = 0
         return await self.pr.reset()
 
-    async def setup(self) -> bool:
-        # True = ready; a logger that could not reach its store has logged it and runs in RAM.
+    async def setup(self) -> None:
+        # A logger that could not reach its store has logged it and runs in RAM.
         await self.pr.setup()
-        return True
 
 
 def utc_now() -> int | None:
@@ -835,8 +818,7 @@ class SensorReaderConfig(SensorReader):
         # Same extension as get_error_sources() above, for the debug-level registry instead.
         return [self.pr, self.cfgmgr.pr]
 
-    async def setup(self) -> bool:
-        # The reader's own logger first, then the store and its logger; True when the store is valid.
+    async def setup(self) -> None:
+        # The reader's own logger first, then the store and its logger.
         await super().setup()
         await self.cfgmgr.setup()
-        return self.cfgmgr.valid

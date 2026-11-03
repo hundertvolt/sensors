@@ -840,18 +840,20 @@ def test_schema_names_and_schema_dict_tolerate_a_non_tuple_element_among_good_on
 
 
 def test_configmanager_writes_the_defaults_once_when_the_file_is_absent() -> None:
+    # An absent file persists one warning, "not found", where its defaults are then written; it is no config fault.
     path = _tmp_path("fresh.cfg")
     _remove(path)
-    mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+    mgr = cm.ConfigManager(path, _SCHEMA, "TEST", log=LogConfig(None, 10, 2))
     try:
-        with WriteCountingOpen(cm) as counter:
-            assert run(mgr.setup()) is True
+        with WriteCountingOpen(cm) as counter, record_prints() as recorder:
+            run(mgr.setup())
         assert counter.writes == 1
         with open(path) as f:
             on_disk = json.load(f)
         assert on_disk == {"Count": 5, "Offset": 1.5, "Name": "abc", "Enabled": True}
-        assert mgr.pr._err_count == 0  # absence alone persists nothing: a console line only
-        assert (mgr.absent_at_boot, mgr.faulted, mgr.unpersisted) == (True, False, False)
+        assert (mgr.pr._err_count, _newest_code(mgr)) == (1, code("W", "CFG_FILE_UNREADABLE"))
+        assert [line[1:4] for line in recorder.lines if "not found:" in line] == [("Config file", path, "not found:")], recorder.lines
+        assert (mgr.faulted, mgr.unpersisted) == (False, False)
     finally:
         _remove(path)
 
@@ -870,7 +872,7 @@ def test_an_absent_file_is_written_once_per_boot_and_never_again() -> None:
             run(again.setup())
             assert run(_write_flushed(again, {"Count": 5})) == (True, {"Count": "Unchanged"})
         assert counter.writes == 1
-        assert again.absent_at_boot is False
+        assert again.pr._err_count == 0  # the file the first boot wrote: nothing to warn of
     finally:
         _remove(path)
 
@@ -882,7 +884,7 @@ def test_an_absent_files_refused_defaults_write_leaves_the_store_unpersisted() -
     with WriteCountingOpen(cm, fail_writes=True) as counter:
         run(mgr.setup())
     assert counter.writes == 1
-    assert (mgr.valid, mgr.absent_at_boot, mgr.unpersisted, mgr.faulted) == (True, True, True, False)
+    assert (mgr.valid, mgr.unpersisted, mgr.faulted) == (True, True, False)
     assert _log_entry(mgr) == (1, [code("E", "CFG_FILE_WRITE")])
     assert run(mgr.get_dict(["Count", "Name"])) == {"Count": 5, "Name": "abc"}  # the defaults, from RAM
 
@@ -902,7 +904,7 @@ def test_a_damaged_file_is_a_config_fault_still_listed_after_its_repair() -> Non
             assert counter.writes == 1, content
             with open(path) as f:
                 assert json.load(f) == {"Count": 5, "Offset": 1.5, "Name": "abc", "Enabled": True}, content
-            assert (mgr.valid, mgr.faulted, mgr.absent_at_boot, mgr.writable) == (True, True, False, True), content
+            assert (mgr.valid, mgr.faulted, mgr.writable) == (True, True, True), content
         finally:
             _remove(path)
 
@@ -919,7 +921,7 @@ def test_schema_drift_is_repaired_without_a_config_fault() -> None:
             with WriteCountingOpen(cm) as counter:
                 run(mgr.setup())
             assert counter.writes == 1, content
-            assert (mgr.faulted, mgr.absent_at_boot) == (False, False), content
+            assert mgr.faulted is False, content
         finally:
             _remove(path)
 
@@ -931,7 +933,7 @@ def test_an_absent_or_valid_file_is_no_config_fault() -> None:
         again = cm.ConfigManager(path, _SCHEMA, "TEST")
         with WriteCountingOpen(cm) as counter:
             run(again.setup())
-        assert (counter.writes, again.faulted, again.absent_at_boot) == (0, False, False)
+        assert (counter.writes, again.faulted, again.pr._err_count) == (0, False, 0)
     finally:
         _remove(path)
 
@@ -958,7 +960,8 @@ def test_a_config_path_that_is_a_directory_is_a_file_fault() -> None:
     original_os = cm.os
     try:
         mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
-        assert run(mgr.setup()) is False
+        run(mgr.setup())
+        assert mgr.valid is False
         assert mgr.faulted is True
         assert _log_entry(mgr) == (1, [code("E", "CFG_PATH_IS_DIR")])
         assert os.stat(path)[0] & 0x4000  # untouched: still the directory
@@ -989,7 +992,7 @@ def test_configmanager_directory_path_is_invalid() -> None:
     os.mkdir(path)
     try:
         mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
-        assert run(mgr.setup()) is False
+        run(mgr.setup())
         assert mgr.valid is False
     finally:
         os.rmdir(path)
@@ -999,7 +1002,8 @@ def test_configmanager_empty_schema_is_invalid() -> None:
     mgr, path = _make("emptyschema.cfg", cfg_vals=())
     try:
         assert mgr.valid is False
-        assert run(mgr.setup()) is False
+        run(mgr.setup())
+        assert mgr.valid is False
     finally:
         _remove(path)
 
@@ -1011,7 +1015,7 @@ def test_configmanager_corrupt_json_falls_back_to_defaults() -> None:
         f.write("{not valid json")
     try:
         mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
-        assert run(mgr.setup()) is True
+        run(mgr.setup())
         assert mgr.valid is True
         with open(path) as f:
             assert json.load(f)["Count"] == 5  # rewritten with defaults
@@ -1347,7 +1351,7 @@ def test_configmanager_file_is_json_array_not_dict() -> None:
         f.write("[1, 2, 3]")
     try:
         mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
-        assert run(mgr.setup()) is True
+        run(mgr.setup())
         assert mgr.valid is True
         with open(path) as f:
             assert json.load(f)["Count"] == 5  # rewritten with defaults
@@ -2343,9 +2347,9 @@ def _count_and_lines(mgr: "cm.ConfigManager", reads: "Sequence[Coroutine[object,
     return run(mgr.get_error_counter())[mgr.name]["ErrCount"], len(recorder.lines)
 
 
-def test_an_invalid_store_keeps_one_entry_and_one_line_for_its_run_of_failed_reads() -> None:
-    # A store invalid for the boot fails every read: the first persists and prints, the rest add nothing; a cleared
-    # history starts a new run, so the still-invalid store shows again once.
+def test_an_invalid_store_counts_and_prints_every_failed_read_in_one_slot() -> None:
+    # A store invalid for the boot fails every read: each persists and prints, the history keeping one slot for the
+    # repeats (the logger's newest-entry rule); a cleared history counts afresh.
     path = _tmp_path("invalidrun.cfg")
     _remove(path)
     os.mkdir(path)
@@ -2354,22 +2358,23 @@ def test_an_invalid_store_keeps_one_entry_and_one_line_for_its_run_of_failed_rea
         with record_prints():
             run(mgr.setup())  # its own entry: the path is a directory
         reads = [mgr.get_dict(["Count"]), mgr.get_int_values(_VAL_INT), mgr.get_dict(["Count"]), mgr.get_str_values(_VAL_STR)]
-        assert _count_and_lines(mgr, reads) == (2, 1)
+        assert _count_and_lines(mgr, reads) == (5, 4)
         assert _newest_code(mgr) == code("E", "CFG_NOT_VALID")
+        assert run(mgr.get_error_counter())[mgr.name]["ErrNum"].count(code("E", "CFG_NOT_VALID")) == 1
         assert run(mgr.reset_error_counter()) is True
-        assert _count_and_lines(mgr, [mgr.get_dict(["Count"]), mgr.get_int_values(_VAL_INT)]) == (1, 1)
+        assert _count_and_lines(mgr, [mgr.get_dict(["Count"]), mgr.get_int_values(_VAL_INT)]) == (2, 2)
     finally:
         os.rmdir(path)
 
 
-def test_a_wrong_typed_value_keeps_one_entry_per_run_and_a_good_read_ends_the_run() -> None:
+def test_a_wrong_typed_value_is_counted_and_printed_at_every_read() -> None:
     mgr, path = _make("wrongtyperun.cfg")
     mgr.pr.level = 1  # the entry's console line prints at the error level
     try:
         run(mgr.reset_error_counter())
-        assert _count_and_lines(mgr, [mgr.get_int_values(_VAL_STR), mgr.get_int_values(_VAL_STR), mgr.get_dict(["Missing"])]) == (1, 1)
-        assert run(mgr.get_str_values(_VAL_STR)) == ["abc"]  # a good read ends the run
-        assert _count_and_lines(mgr, [mgr.get_int_values(_VAL_STR), mgr.get_int_values(_VAL_STR)]) == (2, 1)
+        assert _count_and_lines(mgr, [mgr.get_int_values(_VAL_STR), mgr.get_int_values(_VAL_STR), mgr.get_dict(["Missing"])]) == (3, 3)
+        assert run(mgr.get_str_values(_VAL_STR)) == ["abc"]  # a good read logs nothing
+        assert _count_and_lines(mgr, [mgr.get_int_values(_VAL_STR), mgr.get_int_values(_VAL_STR)]) == (5, 2)
         assert _newest_code(mgr) == code("E", "CONTRACT")
     finally:
         _remove(path)
@@ -2582,8 +2587,8 @@ def test_an_enoent_from_the_same_stand_in_is_the_absent_file_path() -> None:
         cm.os = original_os
     try:
         assert counter.writes == 1  # the absent file's one defaults write
-        assert (mgr.absent_at_boot, mgr.faulted, mgr.writable) == (True, False, True)
-        assert mgr.pr._err_count == 0
+        assert (mgr.faulted, mgr.writable) == (False, True)
+        assert (mgr.pr._err_count, _newest_code(mgr)) == (1, code("W", "CFG_FILE_UNREADABLE"))  # its "not found" warning
     finally:
         _remove(path)
 
@@ -3318,9 +3323,9 @@ def test_a_boot_over_a_valid_file_reads_it_and_writes_nothing() -> None:
     path = _tmp_path("fs_boot_valid.cfg")
     _remove(path)
     try:
-        assert run(cm.ConfigManager(path, _VAL_INT, "TEST").setup())
+        run(cm.ConfigManager(path, _VAL_INT, "TEST").setup())
         with _FsCalls() as fs:
-            assert run(cm.ConfigManager(path, _VAL_INT, "TEST").setup())
+            run(cm.ConfigManager(path, _VAL_INT, "TEST").setup())
         assert fs.calls == [("stat", path), ("open", path, "r")], fs.calls
     finally:
         _remove(path)
@@ -3331,7 +3336,7 @@ def test_a_boot_over_an_absent_file_writes_it_once() -> None:
     _remove(path)
     try:
         with _FsCalls() as fs:
-            assert run(cm.ConfigManager(path, _VAL_INT, "TEST").setup())
+            run(cm.ConfigManager(path, _VAL_INT, "TEST").setup())
         assert fs.calls == [("stat", path), ("open", path, "w"), ("write", path), ("close", path)], fs.calls
     finally:
         _remove(path)
@@ -3372,16 +3377,14 @@ def test_a_write_error_is_not_retried_and_keeps_the_old_document() -> None:
 
 
 def test_reset_error_counter_answers_false_when_the_history_clear_fails() -> None:
-    # The clear refused (its FRAM chunk write failing): the run of failed reads stays open, so it is not shown again.
+    # The clear refused (its FRAM chunk write failing): the store answers its logger's False.
     mgr, path = _make("resetrefused.cfg")
     try:
         async def refused() -> bool:
             return False
 
         mgr.pr.reset = refused  # type: ignore[method-assign]
-        mgr._read_failing = True
         assert run(mgr.reset_error_counter()) is False
-        assert mgr._read_failing is True
     finally:
         _remove(path)
 
@@ -3391,7 +3394,7 @@ def test_a_schema_field_with_no_default_leaves_the_manager_invalid_and_writes_no
     _remove(path)
     mgr = cm.ConfigManager(path, _VAL_INT + (("Bad", "int", None, 0, 10, None),), "TEST")
     try:
-        assert run(mgr.setup()) is False
+        run(mgr.setup())
         assert mgr.valid is False
         assert _newest_code(mgr) == code("E", "CFG_BAD_DEFAULT")
         assert not _exists(path)

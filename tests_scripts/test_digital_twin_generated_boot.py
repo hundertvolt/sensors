@@ -26,6 +26,7 @@ from buildgen.generate import generate_device
 from buildgen.twin_wiring import compute_twin_wiring
 from buildgen.validate import module_int_const
 from scripts._twin_process import twin_env
+from tests._error_codes import code
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -230,15 +231,18 @@ def _no_duplicate_keys(pairs: "list[tuple[str, JsonValue]]") -> "JsonDict":
 
 def _normal_boot_log_failures(status_body: object) -> list[str]:
     # A normal boot logs no E and no W entry, NTP's included, and needs no NTPSynced: no SSID is set here (agent,
-    # 2026-10-21). Read within _BOOT_TIMEOUT_S of the spawn, before SGP40's untimestamped-backup W can land.
+    # 2026-10-21); over its fresh config dir, a config store's one W is its file's not-found. Read within _BOOT_TIMEOUT_S.
     errcount = status_body.get("errcount") if isinstance(status_body, dict) else None
+    not_found = code("W", "CFG_FILE_UNREADABLE")
     failures: list[str] = []
     for module, entry in sorted(errcount.items()) if isinstance(errcount, dict) else ():
         history = entry.get("history") if isinstance(entry, dict) else None
         if not isinstance(history, list):
             failures.append(f"{module}'s errcount entry carries no history list")
             continue
-        failures += [f"{module} logged {item.get('type')}{item.get('num')} on a normal boot" for item in history if isinstance(item, dict) and item.get("type") in ("E", "W")]
+        kept = ("W", not_found) if module.startswith("CFGMGR_") else None
+        logged = [item for item in history if isinstance(item, dict) and item.get("type") in ("E", "W")]
+        failures += [f"{module} logged {item.get('type')}{item.get('num')} on a normal boot" for item in logged if (item.get("type"), item.get("num")) != kept]
     return failures
 
 
@@ -350,6 +354,14 @@ def test_an_error_or_warning_logged_on_a_normal_boot_fails_naming_it() -> None:
     assert _normal_boot_log_failures(body) == ["NTP logged W5 on a normal boot", "SGP40 logged E102 on a normal boot"]
     assert _normal_boot_log_failures({"errcount": {"WIFI": {"counter": 0, "history": [{"type": "N", "num": 0}]}}}) == []
     assert _normal_boot_log_failures({"errcount": {"WIFI": {"counter": 0}}}) == ["WIFI's errcount entry carries no history list"]
+
+
+def test_a_config_stores_not_found_warning_is_the_one_entry_a_fresh_config_dir_boot_keeps() -> None:
+    not_found = code("W", "CFG_FILE_UNREADABLE")
+    kept = {"CFGMGR_WIFI": {"counter": 1, "history": [{"type": "W", "num": not_found}]}}
+    assert _normal_boot_log_failures({"errcount": kept}) == []
+    other = {"WIFI": {"counter": 1, "history": [{"type": "W", "num": not_found}]}, "CFGMGR_SGP40": {"counter": 2, "history": [{"type": "W", "num": not_found}, {"type": "E", "num": 4}]}}
+    assert _normal_boot_log_failures({"errcount": other}) == ["CFGMGR_SGP40 logged E4 on a normal boot", f"WIFI logged W{not_found} on a normal boot"]
 
 
 def test_a_boot_phase_logged_out_of_main_s_order_fails_naming_both_orders() -> None:

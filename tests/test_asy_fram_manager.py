@@ -3322,8 +3322,8 @@ def _recorded_warnings(manager: FRAMManager) -> list[str]:
 
 
 async def _relaunched(chip: FakeMB85RS64V) -> "tuple[tuple[list[int], int] | None, bool, bool]":
-    # A reboot over a copy of chip's bytes, store "T" set up as the boot batch does: the state it restored (None for
-    # none), whether both blocks end IDLE, and whether the FRAM log holds a block found not IDLE.
+    # A reboot over a copy of chip's bytes, store "T" set up as the boot batch does: the state it holds then (a blank
+    # restart reads empty), whether both blocks end IDLE, and whether the FRAM log holds a block found not IDLE.
     manager, fresh = _make_manager()
     fresh.memory[:] = chip.memory
     store = PrintLogHistoryStore(manager, _CUT_SLOTS, None, name="T")
@@ -3332,7 +3332,7 @@ async def _relaunched(chip: FakeMB85RS64V) -> "tuple[tuple[list[int], int] | Non
     assert isinstance(store.fram, FRAMChunk)
     repaired = all(pair == (_STATUS_IDLE, _STATUS_IDLE) for pair in _block_statuses(fresh, store.fram))
     logged = code("E", "FRAM_STATUS_BYTE") in (await manager.get_error_counter())["FRAM"]["ErrNum"]
-    return ((list(store.history), store._err_count) if store.restored else None), repaired, logged
+    return (list(store.history), store._err_count), repaired, logged
 
 
 async def _setup_manager(manager: FRAMManager) -> bool:
@@ -3461,7 +3461,6 @@ def test_an_erased_chip_boots_like_a_new_one() -> None:
     fresh, _chip, stores = _logged_system(FakeMB85RS64V, chip.memory)
     for store in stores:
         assert store.initialized is True
-        assert store.restored is False
         assert run(store.get_log())[store.name]["ErrCount"] == 0
     assert "E" not in run(fresh.get_error_counter())["FRAM"]["ErrType"]
 
@@ -3551,10 +3550,9 @@ def test_an_erase_cut_at_any_point_leaves_a_bootable_chip() -> None:
         manager, _chip, stores = _logged_system(FakeMB85RS64V, image)
         for n, store in enumerate(stores):
             assert store.initialized is True
-            if store.restored:
-                assert list(store.history) == rings[n], f"cut after {landed}: {store.name} restored a different ring"
-            else:
-                assert run(store.get_log())[store.name]["ErrCount"] == 0, f"cut after {landed}: {store.name}"
+            # Restored whole, or restarted empty: never a different ring.
+            whole = list(store.history) == rings[n]
+            assert whole or run(store.get_log())[store.name]["ErrCount"] == 0, f"cut after {landed}: {store.name} holds a different ring"
             run(store.err_s("after", errno=9))
             chunk = store.fram
             assert chunk is not None

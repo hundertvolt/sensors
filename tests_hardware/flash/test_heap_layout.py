@@ -7,7 +7,6 @@ import json
 from typing import TYPE_CHECKING
 
 import heap_map
-from error_log_helpers import code
 from harness import DEVICE_SCRIPTS_DIR, REPO_ROOT, bench_device, crash_lines, parse_facts
 
 if TYPE_CHECKING:
@@ -21,7 +20,6 @@ _TWIN_BOUNDS = REPO_ROOT / "tests_scripts" / "test_digital_twin_boot_contiguity.
 # @tunable l3.heap_layout_script_timeout_s = 120.0
 _LAYOUT_SCRIPT_TIMEOUT_S = 120.0
 _UNRETRIEVED = "UNRETRIEVED"  # the script's always-printing report of a task that died unawaited
-_CONFIG_LOST = code("W", "CONFIG_LOST")
 
 
 def _high_band_blocks(arm: str, board: "Board", result_note: "Callable[[str], None]") -> "tuple[int, int]":
@@ -31,12 +29,12 @@ def _high_band_blocks(arm: str, board: "Board", result_note: "Callable[[str], No
     facts = parse_facts(output)
     assert facts.get("arm") == arm, f"the script ran another arm: {facts}"
     assert facts.get("starter_loop_done") is True and facts.get("timers_done") is True, f"{arm}: a boot list did not complete within its bound: {facts}"
-    # A scratch build over a SYSTEM chunk holding history logs CONFIG_LOST, its config file being absent in the scratch
-    # directory; any other entry is a degraded stagger or a starter that raised.
+    # SYSTEM logs nothing during a healthy boot's lists (its absent config file is its store's own entry); any entry is a
+    # degraded stagger or a starter that raised.
     system = facts.get("system")
     assert isinstance(system, dict), f"{arm}: no SYSTEM log fact: {facts}"
     logged = [(t, n) for t, n in zip(system.get("ErrType", []), system.get("ErrNum", []), strict=True) if t != "N"]
-    assert all(entry == ("W", _CONFIG_LOST) for entry in logged), f"{arm}: SYSTEM logged during the boot lists: {system}"
+    assert not logged, f"{arm}: SYSTEM logged during the boot lists: {system}"
     died = crash_lines(output.splitlines()) + [line for line in output.splitlines() if line.startswith(_UNRETRIEVED)]
     assert not died, f"{arm}: a traceback, an allocation failure or a task death in the measured boot:\n" + "\n".join(died)
     maps = heap_map.parse_labelled(output)

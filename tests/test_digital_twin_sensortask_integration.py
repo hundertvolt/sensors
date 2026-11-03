@@ -1187,7 +1187,7 @@ def test_a_restored_backup_reports_its_timestamp_without_ntp() -> None:
         written = sgp1._last_backup
         assert written, f"the backup was written without a timestamp ({written}) although the clock was set"  # 0: the unset stamp
         machine.flush_fram()
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
         await _boot(cfg_path=cfg_path)
         await _seed_compensation()
         await _restore(module.sgp40, "without NTP")
@@ -1301,7 +1301,7 @@ def test_the_notification_window_spanning_midnight_flashes_red() -> None:
             for task in tasks:
                 await cancel(task)
             _step_sensor_waits(on=False)
-            asy_base_classes.set_utc_valid(valid=False)
+            asy_base_classes._utc_valid = False
 
     run(scenario())
 
@@ -1365,7 +1365,7 @@ def test_a_stopped_scd30_ends_its_alerts_and_sgp40_compensation() -> None:
                 await cancel(task)
             del sgp_chip.handle_writeto
             _step_sensor_waits(on=False)
-            asy_base_classes.set_utc_valid(valid=False)
+            asy_base_classes._utc_valid = False
 
     run(scenario())
 
@@ -1403,7 +1403,7 @@ def test_a_boot_without_ntp_reports_no_local_time() -> None:
             assert await _wait_until_async(lambda: notified(_EVALUATED), _WINDOW_WAIT_S), f"a set clock reported as {await notif.get_data()}"
         finally:
             await cancel(task)
-            asy_base_classes.set_utc_valid(valid=False)
+            asy_base_classes._utc_valid = False
 
     run(scenario())
 

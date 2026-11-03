@@ -335,7 +335,7 @@ class UTCValid:
         return self
 
     def __exit__(self, *_exc: object) -> None:
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
 
 
 async def _run(waiter: "asyncio.Task[object]", task: "asyncio.Task[object]", wake: _Wake) -> None:

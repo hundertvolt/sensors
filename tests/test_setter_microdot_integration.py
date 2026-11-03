@@ -191,8 +191,10 @@ def _make_service(bmp_cls: "type[BMP3XX_Reader]" = BMP3XX_Reader) -> _Product:
         SGP40_Reader(bus1, ValueRef(comp, "Temp"), ValueRef(comp, "Hum"), max_module_error=5, cfg_path=cfg_path),
         SCD30_Reader(bus0, irq_pin=5, trigger_s=3, max_module_error=5, cfg_path=cfg_path),
     )
-    assert [run(wifi.setup()), run(ntp.setup()), run(system.setup())] == [True] * 3
-    assert [run(reader.setup()) for reader in readers] == [True] * len(readers)
+    modules = (wifi, ntp, system) + readers
+    for module in modules:
+        run(module.setup())
+    assert [module.cfgmgr.valid for module in modules] == [True] * len(modules)
     return _Product(wifi, ntp, system, readers, (bus0, bus1))
 
 

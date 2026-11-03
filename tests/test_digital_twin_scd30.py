@@ -53,7 +53,8 @@ def _frc_ready_on(device: str) -> None:
     chip.temp = Walk(chip.temp.lo, chip.temp.hi, 0.0)  # and a steady temperature
 
     async def scenario() -> "tuple[list[int | None], dict[str, CfgValue]]":
-        assert await reader.setup() is True
+        await reader.setup()
+        assert reader.cfgmgr.valid is True
         assert await reader._init_scd() is True  # the chip answers its interval: 2 s, so 180 samples settle
         states = []
         for _ in range(180):
@@ -91,7 +92,8 @@ def _healed_flush_on(device: str) -> None:
         return dict(results)
 
     with FastAsyncSleep():  # the driver's command waits cost no real time
-        assert run(reader.setup()) is True  # the store loaded, as at boot
+        run(reader.setup())
+        assert reader.cfgmgr.valid is True  # the store loaded, as at boot
         with WriteCountingOpen(asy_config_manager, fail_writes=True) as failing:
             first = run(put({"FRCNoise": 25.0}))  # a file-held setting: the chip's own ones live in its NVM
         unpersisted = store.unpersisted
@@ -125,7 +127,8 @@ def _largest_offset_on(device: str) -> None:
     reader, chip = _reader_on_the_twin_bus(device, cfg_path=_scratch.dir())
 
     async def scenario() -> "tuple[float | None, bool, float, int]":
-        assert await reader.setup() is True
+        await reader.setup()
+        assert reader.cfgmgr.valid is True
         body: dict[str, CfgValue] = {"TempOffset": 655.35}
         assert await reader._set_dict_cfg(body, reader.get_cfg_schema()) == {"TempOffset": "Valid"}
         chip._produce_new_reading()
@@ -184,7 +187,8 @@ def _silent_scd30_on(device: str) -> None:
     reader, chip = _reader_on_the_twin_bus(device, cfg_path=_scratch.dir())
 
     async def scenario() -> "tuple[int | None, int | None, bool, int, int, int]":
-        assert await reader.setup() is True
+        await reader.setup()
+        assert reader.cfgmgr.valid is True
         assert await reader._init_scd() is True  # the chip answers its interval: 2 s, four 500 ms ticks
         for _ in range(3):
             chip._produce_new_reading()
@@ -222,7 +226,8 @@ def _stuck_rdy_on(device: str) -> None:
         return sum(1 for kind, number in zip(log["ErrType"], log["ErrNum"]) if (kind, number) == ("W", code("W", "SCD_NOT_READY")))
 
     async def scenario() -> "tuple[list[int], int]":
-        assert await reader.setup() is True
+        await reader.setup()
+        assert reader.cfgmgr.valid is True
         chip.rdy_stuck_high = True
         seen = []
         for _ in range(5):

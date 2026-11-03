@@ -154,7 +154,6 @@ class PrintLogHistory(PrintLog):
             self.err_nomem("PrintLog: history allocation failed:", e)
         self._err_count = 0
         self.initialized = False
-        self.restored = False  # True once setup() loaded what an earlier boot stored; a RAM-only history never does
         self._kept = 0  # wrapping counts of _keep()'s appends and _count()'s calls: a reset keeps what arrived since it began
         self._counted = 0
         self._resets = 0  # one bit per store reset() in flight, so overlapping resets each keep their own window
@@ -390,7 +389,6 @@ class PrintLogHistoryStore(PrintLogHistory):
         if isinstance(stored, tuple):  # the stored ring and count replace the RAM state
             self._err_count, entries = stored
             self.history.extend(entries)
-            self.restored = True
             self.initialized = True
         elif await self._write():  # a blank or invalid store starts from the RAM state
             self.initialized = True

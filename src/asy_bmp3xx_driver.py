@@ -198,7 +198,7 @@ class BMP3XX_Reader(SensorReaderConfig):
         self._get_callbacks[name_cfg(_VAL_FILT_COEFF)] = self.get_filter_coefficient
 
     async def _apply_stored_config(self) -> int:
-        # _APPLIED, _CFG_UNREADABLE (no bus rung) or _CHIP_WRITE_FAILED; each failure has logged its own entry.
+        # _APPLIED, _CFG_UNREADABLE or _CHIP_WRITE_FAILED; each failure has logged its own entry.
         cfg_values = await self.cfgmgr.get_int_values(_VAL_SAMPLE_INTERVAL + _VAL_PRES_OVERS + _VAL_TEMP_OVERS + _VAL_FILT_COEFF)
         if cfg_values is None or len(cfg_values) != _N_INT_CFG:
             await self.pr.err_s("Error reading config data!", errno=_ERR_CFG_READ)
@@ -223,13 +223,10 @@ class BMP3XX_Reader(SensorReaderConfig):
             await self._bmp.setup()
         except Exception as e:
             await self.pr.err_s("Error in initial setup:", e, errno=_ERR_INIT)
-            await self._init_failed()
             return False  # error
 
         self.pr.one("Setting sensor config at startup.")
         code = await self._apply_stored_config()
-        if code == _CHIP_WRITE_FAILED:  # the bus rungs run; an unreadable config is no bus fault
-            await self._init_failed()
         if code != _APPLIED:
             return False  # error
         await self._init_done()

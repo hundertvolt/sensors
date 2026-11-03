@@ -399,9 +399,9 @@ def test_a_failed_tick_arm_is_retried_by_the_next_loop_iteration() -> None:
     assert code("E", "TIMER") in _used_slots(log)
 
 
-def test_a_refused_tick_prints_the_arm_line_once_per_episode() -> None:
-    # The first refused arm prints the helper's line; each later pass's re-arm inside that episode is quiet, the pass's
-    # own persisted entry being its record.
+def test_a_refused_tick_prints_the_arm_line_at_every_arm() -> None:
+    # Every refused arm prints the helper's line, the first and each later pass's re-arm alike: the console prints all,
+    # and the logger's newest-entry rule alone keeps the history from repeating.
     client = _make_client()
     run(client.pr.setup())
     client.pr.set_level(5)
@@ -419,7 +419,7 @@ def test_a_refused_tick_prints_the_arm_line_once_per_episode() -> None:
     passes = [ln for ln in recorder.lines if "WiFi uptime timer not armed" in ln]
     assert len(passes) >= 2, recorder.lines
     armed = [ln[:4] for ln in recorder.lines if "Could not arm" in ln]
-    assert armed == [("WIFI", "Could not arm", "WiFi uptime", "timer:")], armed
+    assert armed == [("WIFI", "Could not arm", "WiFi uptime", "timer:")] * (1 + len(passes)), (armed, len(passes))
 
 
 def test_max_failed_rearms_end_the_loop() -> None:
@@ -3679,7 +3679,8 @@ def test_setup_runs_both_loggers_in_the_boot_batch() -> None:
     # one; the connect loop sets up neither (SPECIFICATION.md A.7).
     client = _make_client()
     before = (client.pr.initialized, client._dns_server.pr.initialized)
-    assert run(client.setup()) is True
+    run(client.setup())
+    assert client.cfgmgr.valid is True
     assert before == (False, False)
     assert (client.pr.initialized, client._dns_server.pr.initialized) == (True, True)
 
@@ -4578,7 +4579,7 @@ def test_stop_counter_timer_deinits_the_counter_timer() -> None:
 def test_the_snapshot_timestamp_is_none_until_the_clock_is_set() -> None:
     client = _make_client()
     try:
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
         run(client._update_wifi_snapshot(connected=True))
         assert run(client.get_data()).TS is None
         assert run(client.get_data()).Mode == "STA"  # the rest of the snapshot is unaffected
@@ -4586,7 +4587,7 @@ def test_the_snapshot_timestamp_is_none_until_the_clock_is_set() -> None:
         run(client._update_wifi_snapshot(connected=True))
         assert isinstance(run(client.get_data()).TS, int)
     finally:
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
 
 
 # ---------------------------------------------------------------------------

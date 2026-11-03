@@ -1091,8 +1091,8 @@ a live question:
   evidence, `fram_raw_dump.py` reading only) and `GET /status` with it on the bench, so the
   before-image is kept and every entry a run adds is attributable. Two kinds of entry a run leaves
   in the production history are its own: every scratch build (`build_system()` or `main()` over
-  `hwtest-scratch/`) records `W CONFIG_LOST` (69) in SYSTEM's history, since its settings file is
-  absent while FRAM history is restored; and test-band residue - the reboot script's load entries,
+  `hwtest-scratch/`) records `W CFG_FILE_UNREADABLE` (22) in each FRAM-backed config store's
+  history, its files not found there; and test-band residue - the reboot script's load entries,
   an erase script's seeds when it fails before erasing - is the same kind.
 - **The chunk reset race lands on each named seam, and a stale seed cannot pass.**
   `flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write`

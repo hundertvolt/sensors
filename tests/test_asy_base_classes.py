@@ -254,6 +254,13 @@ def _timer_count(reader: SensorReader) -> int:
     return run(reader.pr.get_log())[reader.pr.name]["ErrCount"]
 
 
+def _timer_slots(reader: SensorReader) -> int:
+    # The history slots holding TIMER: a repeat of the newest entry spends none (the logger's newest-entry rule).
+    nums = run(reader.pr.get_log())[reader.pr.name]["ErrNum"]
+    assert isinstance(nums, list)
+    return nums.count(code("E", "TIMER"))
+
+
 def _with_fake_ticks(start_ms: int = 0) -> "_WallTime":
     fake = _WallTime(start_ms)
     fake.__enter__()  # undone by _restore_time()
@@ -1081,22 +1088,6 @@ def test_arm_tick_timer_reports_a_failed_arm_with_one_line() -> None:
     assert "simulated allocation failure" in recorder.text()
 
 
-def test_arm_tick_timer_quiet_drops_only_the_alarm_pool_line() -> None:
-    # A caller's re-arm inside one failed episode: the refusal was reported at the episode's first arm, while every
-    # allocation failure still prints, the line the memory gates read. The result is unchanged either way.
-    for exc, lines in ((OSError, 0), (MemoryError, 1)):
-        with RaiseOnArm(exc), record_prints() as recorder:
-            timer = machine.Timer()
-            pr = PrintLogHistory(level=5, name="T")
-            assert arm_tick_timer(timer, asyncio.ThreadSafeFlag(), pr, "test", quiet=True) is False
-        assert timer.period == -1  # never armed
-        assert len(recorder.lines) == lines, (exc, recorder.lines)
-    with record_prints() as recorder:
-        timer = machine.Timer()
-        assert arm_tick_timer(timer, asyncio.ThreadSafeFlag(), PrintLogHistory(level=5, name="T"), "test", quiet=True) is True
-    assert (timer.period, recorder.lines) == (1000, [])
-
-
 def test_utc_now_is_none_until_the_clock_is_marked_valid() -> None:
     fake = _with_fake_ticks()
     try:
@@ -1106,19 +1097,7 @@ def test_utc_now_is_none_until_the_clock_is_marked_valid() -> None:
         fake.wall_s += 60
         assert utc_now() == fake.wall_s
     finally:
-        set_utc_valid(valid=False)
-        _restore_time()
-
-
-def test_set_utc_valid_with_valid_false_takes_the_clock_back_to_unavailable() -> None:
-    _with_fake_ticks()
-    try:
-        set_utc_valid()
-        assert utc_now() is not None
-        set_utc_valid(valid=False)
-        assert utc_now() is None
-    finally:
-        set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
         _restore_time()
 
 
@@ -1138,7 +1117,7 @@ def test_utc_now_follows_a_clock_step_while_tickseconds_does_not() -> None:
         assert utc_now() == fake.wall_s
         assert ticks.read() == 3
     finally:
-        set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
         _restore_time()
 
 
@@ -1152,16 +1131,16 @@ def test_sensorreader_uses_in_memory_logging_when_fram_is_none() -> None:
     reader = SensorReader(Meas(20.0, 50), "MEM", max_module_error=3)
     assert isinstance(reader.pr, PrintLogHistory)
     assert getattr(reader.pr, "fram", None) is None
-    assert run(reader.setup()) is True
+    run(reader.setup())
     run(reader.pr.err_s("e", errno=7))
     log = run(reader.pr.get_log())["MEM"]
     assert [log["ErrNum"][i] for i in range(len(log["ErrNum"])) if log["ErrType"][i] == "E"] == [7], log
 
 
-def test_sensorreader_setup_sets_up_its_logger_and_answers_true() -> None:
+def test_sensorreader_setup_sets_up_its_logger() -> None:
     reader = SensorReader(Meas(20.0, 50), "", max_module_error=3)
     assert reader.pr.initialized is False  # __init__ never sets the logger up
-    assert run(reader.setup()) is True
+    run(reader.setup())
     assert reader.pr.initialized is True
 
 
@@ -1234,7 +1213,7 @@ def test_a_failing_cycle_keeps_the_drivers_and_the_streaks_entries() -> None:
     # Each layer that meets the fault keeps its own entry: the driver's read failure, then the streak's;
     # the give-up adds its own. Alternating codes each take a slot under the newest-entry rule (C.7.1).
     reader = SensorReader(Meas(None, 50), "", max_module_error=1)
-    assert run(reader.setup()) is True
+    run(reader.setup())
     for _ in range(2):
         run(reader.pr.err_s("read failed", errno=code("E", "READ")))  # the driver's own entry
         run(reader._error_check(Meas(None, 50)))
@@ -1265,7 +1244,7 @@ def test_sensorreader_meas_data_roundtrip() -> None:
 
 def test_sensorreader_reset_error_counter_clears_history() -> None:
     reader = SensorReader(Meas(20.0, 50), "", max_module_error=3)
-    assert run(reader.setup()) is True
+    run(reader.setup())
     run(reader.pr.err_s("boom", errno=code("E", "STREAK")))
     assert reader.pr._err_count == 1
     assert run(reader.reset_error_counter()) is True
@@ -1418,25 +1397,6 @@ def test_reset_error_counter_re_arms_every_rung() -> None:
     for _ in range(4):
         _fail(reader)
     assert (reader.device_calls, bus.clears, bus.recovers) == (2, 2, 2)
-
-
-def test_init_failed_rebuilds_the_controller_once_per_episode() -> None:
-    bus = _StubBus()
-    reader = _LadderReader(bus=bus)
-    run(reader._init_failed())
-    run(reader._init_failed())  # the same episode: already spent
-    assert (bus.clears, bus.recovers) == (0, 1)
-    assert _entries(reader, "W", "BUS_RECOVERY") == 1
-    run(reader._init_done())
-    run(reader._init_failed())
-    assert bus.recovers == 2
-
-
-def test_init_failed_and_init_done_without_a_recovery_bus_do_nothing() -> None:
-    reader = _LadderReader()
-    run(reader._init_failed())
-    run(reader._init_done())
-    assert reader.pr._err_count == 0
 
 
 def test_init_done_re_arms_the_rungs_and_reports_a_held_boot_bus_once_per_bus() -> None:
@@ -1615,7 +1575,7 @@ def test_trigger_loop_persists_an_arm_failure_no_task_saw_once_then_re_arms() ->
     assert reader._timer_error is None  # last: mypy keeps the OSError narrowed from the line above run()
 
 
-def test_a_failure_the_loop_persisted_is_not_persisted_again_by_the_restarts_re_arm() -> None:
+def test_a_failure_the_loop_persisted_is_counted_again_by_the_restarts_re_arm_in_its_one_slot() -> None:
     reader = _DividingReader(1)
 
     async def scenario() -> bool:
@@ -1628,13 +1588,13 @@ def test_a_failure_the_loop_persisted_is_not_persisted_again_by_the_restarts_re_
 
     assert run(scenario()) is True
     assert _timer_count(reader) == 1
-    assert run(_run_briefly(reader)) is False  # the restart re-arms without a second entry
-    assert (_timer_count(reader), len(reader._trigger_timer.arms)) == (1, 1)
+    assert run(_run_briefly(reader)) is False  # the restart counts the failure again, then re-arms
+    assert (_timer_count(reader), _timer_slots(reader), len(reader._trigger_timer.arms)) == (2, 1, 1)
 
 
-def test_two_wakes_finding_one_failed_arm_persist_it_once_however_they_interleave() -> None:
-    # The trigger loop and a driver's read loop (SCD30, SGP40) both wake on one failed arm: the first parks in its log
-    # write, the second must find the failure taken. One TIMER entry, and both still end their task.
+def test_two_wakes_finding_one_failed_arm_each_count_it_in_one_slot_and_end() -> None:
+    # The trigger loop and a driver's read loop (SCD30, SGP40) both wake on one failed arm, the first parked in its log
+    # write: each counts it, the history keeping one TIMER slot, and both still end their task.
     reader = _DividingReader(1)
     with RaiseOnArm(OSError), record_prints():
         reader.start_timer()
@@ -1656,7 +1616,7 @@ def test_two_wakes_finding_one_failed_arm_persist_it_once_however_they_interleav
         return await first, await second
 
     assert run(body()) == (True, True)
-    assert (_timer_count(reader), len(parked)) == (1, 1), f"a failed arm two wakes found was persisted {len(parked)} times"
+    assert (_timer_count(reader), _timer_slots(reader), len(parked)) == (2, 1, 2)
 
 
 # @tunable l1.asy_base_classes_trigger_loop_bound_s = 1
@@ -1672,8 +1632,8 @@ def test_a_failed_re_arm_persists_the_stored_failure_then_its_own_and_ends_the_l
         assert _timer_count(reader) == 2, exc  # one entry per failed arm, the boot's and the re-arm's
         assert isinstance(reader._timer_error, exc)
         assert reader._read_event.state == 0  # no read was triggered by the fault's wake
-        assert run(_run_briefly(reader)) is False  # the restart re-arms: no third entry
-        assert _timer_count(reader) == 2, exc
+        assert run(_run_briefly(reader)) is False  # the restart persists the failure it finds, then re-arms
+        assert (_timer_count(reader), _timer_slots(reader)) == (3, 1), exc
 
 
 def test_republish_replaces_the_named_fields_and_keeps_the_rest() -> None:
@@ -1841,7 +1801,7 @@ def test_a_failed_config_read_sends_the_unavailable_marker_in_place_of_the_map()
     for store, outcome, entry, called in cases:
         calls.clear()
         reader = _FailingReadReader(store)
-        assert run(reader.setup()) is True
+        run(reader.setup())
         result = run(reader._get_dict_cfg("READ", _TEST_SCHEMA_SI, callback=reading(outcome)))
         assert result == {"READ": {"error": "unavailable"}}, (store, outcome, result)
         assert calls == called, (store, outcome, calls)
@@ -1869,7 +1829,7 @@ def test_sensorreader_fram_backed_error_check_persists_and_survives_reboot() -> 
     manager, chip = make_fram_manager()
     run(manager.setup())
     reader = SensorReader(Meas(None, 50), "", max_module_error=5, log=LogConfig(manager, 10, None))
-    assert run(reader.setup()) is True
+    run(reader.setup())
     assert run(reader._error_check(Meas(None, 50))) is True
     assert run(reader._error_check(Meas(None, 50))) is True
     assert reader.pr._err_count == 2
@@ -1880,7 +1840,7 @@ def test_sensorreader_fram_backed_error_check_persists_and_survives_reboot() -> 
     manager2.fram._spidev.spi._spi = chip
     run(manager2.setup())
     rebooted = SensorReader(Meas(None, 50), "", max_module_error=5, log=LogConfig(manager2, 10, None))
-    assert run(rebooted.setup()) is True
+    run(rebooted.setup())
     assert rebooted.pr._err_count == 2
     nums = run(rebooted.pr.get_log())[rebooted.pr.name]["ErrNum"]
     assert nums[-1] == code("E", "STREAK") and nums.count(code("E", "STREAK")) == 1  # the streak's entry; its repeat spent no slot
@@ -1902,7 +1862,7 @@ def test_sensorreader_fram_allocation_failure_still_logs_in_memory_without_raisi
     reader = SensorReader(Meas(None, 50), "", max_module_error=5, log=LogConfig(manager, 10, None))
     assert isinstance(reader.pr, PrintLogHistoryStore)
     assert reader.pr.fram is None
-    assert run(reader.setup()) is True  # nothing allocated: the logger runs in RAM, never raises
+    run(reader.setup())  # nothing allocated: the logger runs in RAM, never raises
     assert run(reader._error_check(Meas(None, 50))) is True
     assert reader.pr._err_count == 1  # in-memory count still tracked despite FRAM being unavailable
 
@@ -1936,7 +1896,7 @@ def test_sensorreader_fram_write_into_raising_is_caught_during_error_check() -> 
     # buffer size instead of exercising the intended raise_on_write path.
     reader = SensorReader(Meas(None, 50), "", max_module_error=5, log=LogConfig(fake_manager, 4, None))
     assert isinstance(reader.pr, PrintLogHistoryStore)
-    assert run(reader.setup()) is True
+    run(reader.setup())
     assert reader.pr.initialized is True  # set up first: setup() writes the ring too
     chunk.raise_on_write = True
     assert run(reader._error_check(Meas(None, 50))) is True
@@ -1950,7 +1910,7 @@ def test_sensorreader_fram_write_returns_false_is_surfaced_during_error_check() 
     manager, chip = make_fram_manager()
     run(manager.setup())
     reader = SensorReader(Meas(None, 50), "", max_module_error=5, log=LogConfig(manager, 10, None))
-    assert run(reader.setup()) is True
+    run(reader.setup())
     chip.drop_wren = True
     assert run(reader._error_check(Meas(None, 50))) is True
     assert reader.pr._err_count == 1  # the entry; the failed write adds none
@@ -1963,7 +1923,7 @@ def test_sensorreader_fram_read_into_raising_leaves_the_logger_ram_only() -> Non
     chunk = _RaisingFramChunk(raise_on_read=True)
     fake_manager = _RaisingFramManager(chunk)
     reader = SensorReader(Meas(None, 50), "", max_module_error=5, log=LogConfig(fake_manager, 4, None))
-    assert run(reader.setup()) is True
+    run(reader.setup())
     assert reader.pr.initialized is False
     assert reader.pr._err_count == 1
     assert list(reader.pr.history)[-1] == code("E", "LOG_RAM_ONLY")
@@ -1976,7 +1936,7 @@ def test_sensorreader_fram_setup_fails_cleanly_when_both_read_and_write_fail() -
     # Nothing written yet, so _read() naturally fails (chunk reads back as uninitialized); WREN
     # never latching makes the fallback _write() of defaults fail too.
     chip.drop_wren = True
-    assert run(reader.setup()) is True  # the reader is ready; its logger runs in RAM
+    run(reader.setup())  # the reader is ready; its logger runs in RAM
     assert reader.pr.initialized is False
     assert reader.pr._err_count == 0  # a failed setup write records nothing
     assert run(reader._error_check(Meas(None, 50))) is True  # still tracks in-memory
@@ -2062,7 +2022,8 @@ def test_sensorreaderconfig_setup_awaits_cfgmgr_setup() -> None:
         reader = SensorReaderConfig(Meas(20.0, 50), "ownsetup", _TEST_SCHEMA_SI, max_module_error=3, cfg_path=path_prefix)
         valid_before = reader.cfgmgr.valid
         assert valid_before is False  # not set up yet - __init__ is stash-only
-        assert run(reader.setup()) is True
+        run(reader.setup())
+        assert reader.cfgmgr.valid is True
         valid_after = reader.cfgmgr.valid
         assert valid_after is True
         assert reader.pr.initialized is True  # the reader's own logger first, then the store's
@@ -2073,12 +2034,12 @@ def test_sensorreaderconfig_setup_awaits_cfgmgr_setup() -> None:
         _remove(path_prefix + "config_ownsetup.cfg")
 
 
-def test_sensorreaderconfig_setup_answers_false_for_an_unusable_store() -> None:
+def test_sensorreaderconfig_setup_leaves_an_unusable_store_invalid() -> None:
     path_prefix = _SHARED_CFG_DIR
     os.mkdir(path_prefix + "config_dirsetup.cfg")  # a directory where the config file belongs
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), "dirsetup", _TEST_SCHEMA_SI, max_module_error=3, cfg_path=path_prefix)
-        assert run(reader.setup()) is False
+        run(reader.setup())
         assert reader.cfgmgr.valid is False
         assert reader.pr.initialized is True  # the logger is set up even when the store is not
     finally:
@@ -2242,7 +2203,8 @@ def test_sensorreaderconfig_an_unreadable_store_sends_the_unavailable_marker_thr
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), "unreadable", _TEST_SCHEMA_SI, max_module_error=3, cfg_path=_SHARED_CFG_DIR)
         with _ReadFailingOpen(asy_config_manager):
-            assert run(reader.setup()) is True  # valid, on its defaults
+            run(reader.setup())
+            assert reader.cfgmgr.valid is True  # valid, on its defaults
         assert (reader.cfgmgr.writable, reader.cfgmgr.faulted) == (False, True)
         assert run(reader.cfgmgr.get_int_values(_TEST_SCHEMA_SI)) == [2]  # the module itself still runs on the defaults
         assert run(reader._get_dict_cfg("Sensor", _TEST_SCHEMA_SI, callback)) == {"Sensor": {"error": "unavailable"}}
@@ -2305,9 +2267,9 @@ def test_sensorreaderconfig_cfgmgr_write_failure_errno_persists_across_a_simulat
         run(manager.setup())
         reader = SensorReaderConfig(Meas(20.0, 50), "fram_reboot", _TEST_SCHEMA_SI, max_module_error=3, cfg_path=path_prefix, log=LogConfig(manager, 10, None))
         run(reader.cfgmgr.setup())
-        # A first boot's absent file is written with its defaults and persists no entry (a console line only).
+        # A first boot's absent file is written with its defaults and persists its one "not found" warning.
         baseline_err_count = reader.cfgmgr.pr._err_count
-        assert baseline_err_count == 0
+        assert baseline_err_count == 1
         ok, results = run(reader.cfgmgr.write_config({"NotARealKey": 1}))
         # An unrecognized key alone never sets changed=True, so write_config's own "nothing to
         # write" path returns (True, ...) - "ok" means "no exception", not "every field valid";
@@ -2377,7 +2339,8 @@ def test_a_reader_that_keeps_its_config_log_off_fram_still_logs_its_own_to_fram(
         assert len(store.history) == 4
         assert store.level == 1
         assert SensorReaderConfig._CFG_LOG_FRAM is True  # every other reader keeps both on FRAM
-        assert run(reader.setup()) is True
+        run(reader.setup())
+        assert reader.cfgmgr.valid is True
     finally:
         _remove(path_prefix + "config_ramcfglog.cfg")
 
@@ -3097,9 +3060,10 @@ def test_recover_failed_push_unknown_key_is_a_defensive_noop() -> None:
     try:
         reader = WriteCountingReader(Meas(20.0, 50), "recoverunknown", _TEST_SCHEMA_SI, max_module_error=3, cfg_path=path_prefix)
         run(reader.cfgmgr.setup())
+        stored = reader.cfgmgr.pr._err_count  # its absent file's one warning
         run(reader._recover_failed_push("NoSuchField", {"NoSuchField": 7}, _TEST_SCHEMA_SI, fields=schema_dict(_TEST_SCHEMA_SI)))
         # No correction write, no entry in either log, the stored config as it was.
-        assert (reader._write_calls, reader.pr._err_count, reader.cfgmgr.pr._err_count) == (0, 0, 0)
+        assert (reader._write_calls, reader.pr._err_count, reader.cfgmgr.pr._err_count) == (0, 0, stored)
         assert run(reader.cfgmgr.get_dict(["SampleInterval"])) == {"SampleInterval": 2}
     finally:
         _remove(path_prefix + "config_recoverunknown.cfg")

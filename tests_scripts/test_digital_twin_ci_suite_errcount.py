@@ -959,16 +959,16 @@ def test_run_10_ends_each_hang_run_on_the_runners_line_and_otherwise_waits_out_i
 
 
 # ---------------------------------------------------------------------------
-# Run 1's normal boot: one /status read, kept, with no E and no W entry (no tolerance list, NTP's included); its
-# reformat relaunch holds exactly SYSTEM's one W CONFIG_LOST. NTPSynced is waited for where a station link exists.
+# Run 1's boots: one /status read, kept, with no E and no W entry (no tolerance list, NTP's included) but, over a fresh
+# config directory, each config store's one W CFG_FILE_UNREADABLE. NTPSynced is waited for where a station link exists.
 # ---------------------------------------------------------------------------
 
 
-def _quiet_boot(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, body: "dict[str, object]", *, age_s: float = 1.0, expected: "tuple[tuple[str, str, str], ...]" = ()) -> "list[str]":
+def _quiet_boot(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, body: "dict[str, object]", *, age_s: float = 1.0, fresh_config: bool = False) -> "list[str]":
     # One _check_quiet_boot() over a stubbed /status answer read age_s after the spawn; returns its failures.
     monkeypatch.setattr(ci_suite, "_http", lambda *_a, **_k: (200, body))
     spawned_at = time.monotonic() - age_s
-    return _failures_of(ci_suite, lambda: ci_suite._check_quiet_boot("Run 1", spawned_at, tmp_path / "runs" / "kept.json", expected))
+    return _failures_of(ci_suite, lambda: ci_suite._check_quiet_boot("Run 1", spawned_at, tmp_path / "runs" / "kept.json", fresh_config=fresh_config))
 
 
 def test_a_quiet_boot_passes_and_its_errcount_is_kept(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -1002,12 +1002,13 @@ def test_an_unreadable_status_raises_rather_than_reading_as_a_quiet_boot(ci_suit
         ci_suite._check_quiet_boot("Run 1", time.monotonic(), tmp_path / "kept.json")
 
 
-@pytest.mark.parametrize(("lost", "other", "passes"), [(1, False, True), (0, False, False), (2, False, False), (1, True, False)])
-def test_the_reformat_relaunch_wants_exactly_one_config_lost_in_system_and_nothing_else(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, lost: int, *, other: bool, passes: bool) -> None:
-    config_lost = ci_suite.code("W", "CONFIG_LOST")
-    table = {"SYSTEM": _entry(*[(config_lost, "W")] * lost), "CFGMGR_NTP": _entry(*([(config_lost, "W")] if other else []))}
-    failures = _quiet_boot(ci_suite, monkeypatch, tmp_path, {"errcount": table}, expected=(("SYSTEM", "W", "CONFIG_LOST"),))
-    assert failures == [] if passes else (len(failures) == 1 and "the boot logged exactly SYSTEM's W CONFIG_LOST" in failures[0]), failures
+@pytest.mark.parametrize(("absent", "other", "ntp", "passes"), [(1, False, False, True), (0, False, False, False), (2, False, False, False), (1, True, False, False), (1, False, True, False)])
+def test_a_fresh_config_wants_exactly_one_not_found_warning_per_config_store_and_nothing_else(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, absent: int, *, other: bool, ntp: bool, passes: bool) -> None:
+    # The launcher writes NTP's file (its offline responder's) before the boot, so CFGMGR_NTP owes none.
+    not_found = ci_suite.code("W", "CFG_FILE_UNREADABLE")
+    table = {"SYSTEM": _entry(*([(not_found, "W")] if other else [])), "CFGMGR_SYSTEM": _entry(*[(not_found, "W")] * absent), "CFGMGR_NTP": _entry(*([(not_found, "W")] if ntp else []))}
+    failures = _quiet_boot(ci_suite, monkeypatch, tmp_path, {"errcount": table}, fresh_config=True)
+    assert failures == [] if passes else (len(failures) == 1 and "the boot logged exactly each config store's W CFG_FILE_UNREADABLE" in failures[0]), failures
 
 
 def _run_1_server(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, table: "dict[str, object]", seen: "list[tuple[str, str]]") -> None:
@@ -1032,14 +1033,14 @@ def test_a_planted_warning_fails_run_1_whose_errcount_is_kept_before_the_reset(c
     paths.fram.parent.mkdir(parents=True)
     paths.fram.touch()
     paths.scd30.touch()
-    table: dict[str, object] = {"SYSTEM": _entry(), "SGP40": _entry(*([(35, "W")] if planted else []))}
+    table: dict[str, object] = {"SYSTEM": _entry(), "CFGMGR_SYSTEM": _entry((ci_suite.code("W", "CFG_FILE_UNREADABLE"), "W")), "SGP40": _entry(*([(35, "W")] if planted else []))}
     seen: list[tuple[str, str]] = []
     relaunched: list[object] = []
     _run_1_server(ci_suite, monkeypatch, table, seen)
     monkeypatch.setattr(ci_suite, "_spawn", lambda *_a: object())
     monkeypatch.setattr(ci_suite, "_run_1_reformat_relaunch", relaunched.append)
     failures = _failures_of(ci_suite, lambda: ci_suite._run_1_baseline(ctx))
-    assert failures == [] if not planted else (len(failures) == 1 and "Run 1: the boot logged no E and no W entry" in failures[0]), failures
+    assert failures == [] if not planted else (len(failures) == 1 and "Run 1: the boot logged exactly each config store's W CFG_FILE_UNREADABLE" in failures[0]), failures
     assert json.loads((tmp_path / "runs" / "run1_errcount.json").read_text(encoding="utf-8")) == table
     assert seen[-1] == ("PUT", "/status") and relaunched == [ctx], (seen, relaunched)
 
@@ -1050,7 +1051,7 @@ def test_the_reformat_relaunch_boots_on_an_emptied_config_beside_the_kept_fram_t
     paths.config_dir.mkdir(parents=True)
     (paths.config_dir / "config_SYSTEM.cfg").write_text("{}", encoding="utf-8")
     paths.fram.write_text("{}", encoding="utf-8")
-    table: dict[str, object] = {"SYSTEM": _entry((ci_suite.code("W", "CONFIG_LOST"), "W")), "NTP": _entry()}
+    table: dict[str, object] = {"SYSTEM": _entry(), "CFGMGR_SYSTEM": _entry((ci_suite.code("W", "CFG_FILE_UNREADABLE"), "W")), "NTP": _entry()}
     at_spawn: list[tuple[list[str], bool, str]] = []
 
     def spawn(_ctx: object, _args: object, log_path: Path) -> object:

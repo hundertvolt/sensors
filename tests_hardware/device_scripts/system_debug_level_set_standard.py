@@ -36,7 +36,8 @@ async def _main() -> None:
     # ConfigManager's own schema type at this one boundary.
     schema: ConfigSchema = cast("ConfigSchema", tuple((name,) + tuple(spec) for name, spec in BENCH["system_schema"].items()))
     store = cm.ConfigManager("config_SYSTEM.cfg", schema, "SYSTEM")
-    fact("valid", await store.setup())
+    await store.setup()
+    fact("valid", store.valid)
     before = (await store.get_dict(["DebugLevel"]) or {}).get("DebugLevel")
     fact("before", before)
     written = False

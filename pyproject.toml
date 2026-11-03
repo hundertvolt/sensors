@@ -244,10 +244,11 @@ max-returns = 10
 # _DefaultSignalSink.request_signal() is a static no-op whose signature mirrors NeopixelDriver's exactly, so codegen
 # needs no special case (ARG004); `value != value` is the NaN test (PLR0124).
 "src/asy_notification_service.py" = ["ARG004", "PLR0124"]
-# One module flag each, with one writer: the UTC-valid flag the NTP client sets, and this boot's reset bits that
-# begin_boot() reads once (PLW0603).
+# One module flag with one writer: the UTC-valid flag the NTP client sets (PLW0603).
 "src/asy_base_classes.py" = ["PLW0603"]
-"src/asy_system_service.py" = ["PLW0603"]
+# The command's shutdown sequence is created and not kept: the run queue holds a created task
+# (extmod/asyncio/core.py:147, v1.29.0), and nothing reads it back (RUF006; agent, 2026-11-03).
+"src/asy_system_service.py" = ["RUF006"]
 # S104: the webserver (web_host's generated default) and the captive DNS bind every interface on a trusted home LAN
 # (owner, 2026-09-26; SPECIFICATION.md A.11); asy_dns_client.py and the twin's network.py and UDP shim only compare with
 # or name the unset address; the rogue responder binds the bench host's responder on the bench LAN.

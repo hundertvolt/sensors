@@ -82,7 +82,7 @@ _MAIN_RUN_BOUND_S = 15.0
 # @tunable l2.run_generic_integration_prompt_bound_ms = 100
 _PROMPT_BOUND_MS = 100  # an entry, or a released hold, that finishes at once
 # @tunable l2.run_generic_integration_cut_wait_ms = 50
-_CUT_WAIT_MS = 50  # the cut entry's bound, waited out
+_CUT_WAIT_MS = 50  # how long the cut entry is watched not to finish
 # @tunable l2.run_generic_integration_clearer_run_ms = 20
 _CLEARER_RUN_MS = 20
 # @tunable l2.run_generic_integration_reach_ms = 5
@@ -191,7 +191,7 @@ def test_parse_args_refuses_a_config_dir_without_its_trailing_separator() -> Non
         assert "--config-dir" in said and repr(value) in said and "'/'" in said, said
 
 
-def test_the_cut_system_entry_is_held_after_its_first_blocks_busy_mark_and_only_its_bound_ends_it() -> None:
+def test_the_cut_system_entry_is_held_after_its_first_blocks_busy_mark_and_never_finishes() -> None:
     said: list[str] = []
     marks: list[int] = []
 
@@ -220,7 +220,7 @@ def test_the_cut_system_entry_is_held_after_its_first_blocks_busy_mark_and_only_
         cut = asyncio.create_task(logger.err_s("C stack exhausted - reboot triggered", errno=25))
         release()  # no release: ENTRY_RELEASE reaches nothing in this mode
         try:
-            await asyncio.wait_for_ms(cut, _CUT_WAIT_MS)  # the service's own bound, counting the hold
+            await asyncio.wait_for_ms(cut, _CUT_WAIT_MS)  # the test's own watch: the held write does not end
         except asyncio.TimeoutError:
             pass
         else:
@@ -1012,12 +1012,11 @@ def _stored_level_boot_on(device: str) -> None:
     returned: list[bool] = []
     setup = asy_wifi_service.WifiService.setup
 
-    async def setup_then_hold(self: "asy_wifi_service.WifiService") -> bool:
+    async def setup_then_hold(self: "asy_wifi_service.WifiService") -> None:
         # The run ends here (agent, 2026-10-26): the WIFI store's whole setup inside the window, no later setup or task in it.
-        ok = await setup(self)
-        returned.append(ok)
+        await setup(self)
+        returned.append(self.cfgmgr.valid)
         await asyncio.Event().wait()  # until main()'s shutdown path cancels the boot
-        return ok
 
     asy_wifi_service.WifiService.setup = setup_then_hold  # type: ignore[method-assign]  # the class the generated module builds
     try:

@@ -1,6 +1,6 @@
 """Bench-tier automated tests: every reset code the firmware attributes, proven through GET /status's ResetReason after
-the production boot serves - each test saves errcount and the raw FRAM first, reads the chip's watchdog REASON bits,
-asserts the half the reset kind fixes, and restores serving after. Code 1 (a power cut) is the manual power-cycle step's."""
+the production boot serves - each test saves errcount and the raw FRAM first, reads the watchdog REASON bits, asserts
+the half the reset kind fixes, and restores serving after. Code 1 (a power cut) is the manual power-cycle step's."""
 
 import subprocess
 import time
@@ -10,7 +10,7 @@ import http_client
 import pytest
 import serial
 from error_log_helpers import code, get_errcount, save_errcount
-from harness import DEVICE_SCRIPTS_DIR, SRC_DIR, HardwareTestFailureError, fram_backed_logger_names, kick_then_reset, parse_facts, restore_board_to_serving, save_fram_raw, wait_until
+from harness import DEVICE_SCRIPTS_DIR, SRC_DIR, HardwareTestFailureError, fram_backed_logger_names, kick_then_reset, parse_facts, restore_board_to_serving, save_fram_raw, scratch_config_entries, wait_until
 
 from buildgen.validate import _WDT_TIMEOUT_MS, module_int_const
 
@@ -152,8 +152,8 @@ def test_an_invalid_record_reads_as_unknown(board: "Board", bench: "BenchBridge"
 
 
 @pytest.mark.provokes_log(
-    "the planted EIO cuts the erase, over a scratch-config boot that logs CONFIG_LOST beside SYSTEM's FRAM history",
-    ("SYSTEM", "W", "CONFIG_LOST"),
+    "the planted EIO cuts the erase, over a scratch-config boot that logs each config file not found",
+    *scratch_config_entries(),
 )
 def test_an_incomplete_command_is_attributed(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]") -> None:
     try:
@@ -177,8 +177,8 @@ def test_an_incomplete_command_is_attributed(board: "Board", bench: "BenchBridge
 
 @pytest.mark.parametrize("phase", _BOOT_PHASES)
 @pytest.mark.provokes_log(
-    "phases 3-5 hang after the setups of a boot over an empty scratch config, which logs CONFIG_LOST beside SYSTEM's FRAM history",
-    ("SYSTEM", "W", "CONFIG_LOST"),
+    "phases 3-5 hang after the setups of a boot over an empty scratch config, which logs each config file not found",
+    *scratch_config_entries(),
 )
 def test_a_hang_in_boot_phase_p_is_attributed(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]", phase: int) -> None:
     try:
@@ -196,7 +196,7 @@ def test_a_hang_in_boot_phase_p_is_attributed(board: "Board", bench: "BenchBridg
     "the recursing reader's TASK_RAISED and the supervisor's STACK_EXHAUSTED in SYSTEM",
     ("SYSTEM", "E", "TASK_RAISED"),
     ("SYSTEM", "E", "STACK_EXHAUSTED"),
-    ("SYSTEM", "W", "CONFIG_LOST"),
+    *scratch_config_entries(),
 )
 def test_a_c_stack_exhaustion_is_attributed(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]") -> None:
     # The reader dies of the stack check's RuntimeError; the handler that catches it records the overflow, and the

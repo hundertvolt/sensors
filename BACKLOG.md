@@ -1114,6 +1114,9 @@ gates, traps).
   `cp -r` of a checkout is one, a copied worktree (whose `.git` file points outside the chroot) is not
   (agent, 2026-10-27). A failed `--coverage` render's input now moves into the run's evidence archive,
   named under `Notes:`. `git` is already in the recipe's package list; nothing new to install.
+  **2026-11-03, lint config and test orchestration only, no build impact**: `pyproject.toml`'s per-file ignore for
+  `src/asy_system_service.py` is RUF006 instead of PLW0603; `scripts/_digital_twin_ci_suite.py`'s fresh-boot check and
+  `scripts/_digital_twin_scenarios.py`'s storm bound expect each config store's not-found warning. Nothing new to install.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot

@@ -28,7 +28,7 @@ import machine  # noqa: E402 - imported after the prewarm and the UDP shim
 import microtest  # noqa: E402 - imported after the prewarm and the UDP shim
 import network  # noqa: E402 - imported after the prewarm and the UDP shim
 import run_generic_integration  # noqa: E402 - imported after the prewarm and the UDP shim
-from _async_harness import cancel, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
+from _async_harness import cancel, run_timed, track_starts  # noqa: E402 - imported after the prewarm and the UDP shim
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
 from _fake_time import DrivenTime  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -282,8 +282,8 @@ def test_read_triggers_that_never_arm_end_at_the_budgets_reboot_with_one_entry()
 
 
 def test_the_tick_timers_degrade_in_place_and_rearm_once_the_pool_frees() -> None:
-    # SYSTEM's uptime runs on its one-second fallback with one E TIMER (the boot signature it feeds resolves only after
-    # system.ntp_wait_s offline); once the pool frees, SYSTEM's, NTP's and WiFi's tick timers re-arm. No reset arms.
+    # SYSTEM's uptime tick stays unarmed for the boot, printed and not persisted, its uptime still measured on each
+    # read; once the pool frees, NTP's and WiFi's tick timers re-arm. No reset arms.
     async def scenario(clock: "DrivenTime") -> None:
         watchdog = await _driven(clock, "the boot never finished", _boot(_POOL))
         sysfunct, ntp, conn = module.sysfunct, module.ntp, module.conn
@@ -293,12 +293,10 @@ def test_the_tick_timers_degrade_in_place_and_rearm_once_the_pool_frees() -> Non
         await ntp.ntp_force_sync()  # main()'s first sync request: the sync loop's wake, where it retries its arms
         try:
             uptime = await sysfunct.get_uptime()
-            await _until(clock, "SYSTEM's uptime stood still on its fallback", lambda: sysfunct._uptime.read() > uptime)
-            assert sysfunct._tick_failed is True, "the uptime tick armed from an empty pool"
-            assert await _errors(sysfunct, code("E", "TIMER")) == 1, f"{device}: SYSTEM's failed uptime arm is not one E TIMER"
+            await _until(clock, "SYSTEM's uptime stood still while its tick was unarmed", lambda: sysfunct._uptime.read() > uptime)
+            assert await _errors(sysfunct, code("E", "TIMER")) == 0, f"{device}: SYSTEM persisted its failed uptime arm"
             assert (ntp._check_armed, ntp._tick_armed, conn._tick_armed) == (False, False, False), "a tick timer armed from an empty pool"
             machine.set_alarm_pool_free(_POOL)
-            await _until(clock, "SYSTEM's uptime tick never re-armed", lambda: not sysfunct._tick_failed)
             await _until(clock, "NTP's timers never re-armed", lambda: ntp._tick_armed is True and ntp._check_armed is True)
             await _until(clock, "WiFi's uptime tick never re-armed", lambda: conn._tick_armed is True)
             assert not sysfunct._reset_armed and machine.reset_count == 0, f"{device}: an exhausted pool armed a reset"
@@ -316,11 +314,12 @@ def test_a_reboot_whose_reset_timer_cannot_arm_starves_the_watchdog_instead() ->
     async def scenario() -> None:
         watchdog = await _boot(_POOL)
         sysfunct = module.sysfunct
+        sequences = track_starts(sysfunct, "_shutdown_sequence")
         supervisor = await _supervise(module._collect_task_starters(), module._collect_task_names(), module._collect_trigger_starters(), module._collect_timer_starters())
         try:
             machine.set_alarm_pool_free(0)
             assert await sysfunct.reboot_system() is True
-            await _until(None, "the shutdown sequence never finished", lambda: sysfunct._shutdown_task is not None and sysfunct._shutdown_task.done())
+            await _until(None, "the shutdown sequence never finished", lambda: bool(sequences) and sequences[-1].done())
             assert sysfunct._force_watchdog_starve is True, "the failed arm left the watchdog fed"
             record = machine.mem_backup(0)
             assert (record[0], record[1]) == (_RR_MAGIC, _RR_STARVE_ARM_FAILED), [hex(word) for word in record]
