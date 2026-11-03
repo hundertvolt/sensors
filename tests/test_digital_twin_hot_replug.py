@@ -1,6 +1,6 @@
 """A sensor re-plugged on a running unit recovers without a reboot: the task ends, the supervisor restarts it, setup()
 runs again (owner, 2026-07-13, paraphrase). Each bus-attached driver on one device the generated plans wire it on, alone
-on its supervisor; FRAM's re-plug is tests/test_digital_twin_fram.py's booted silent-chip case."""
+on its supervisor; FRAM's writes resume once it answers: tests/test_digital_twin_fram.py's booted silent-chip case."""
 
 import sys
 

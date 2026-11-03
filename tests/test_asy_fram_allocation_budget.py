@@ -41,7 +41,8 @@ async def _priced(logger: PrintLogHistoryStore) -> int:
 
 async def _rig() -> "tuple[FRAMManager, PrintLogHistoryStore]":
     manager, _chip = make_fram_manager()
-    assert await manager.setup()
+    await manager.setup()
+    assert manager.initialized
     return manager, PrintLogHistoryStore(manager, 10, None, name="BUDGET")
 
 

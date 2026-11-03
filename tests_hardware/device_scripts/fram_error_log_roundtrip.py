@@ -34,7 +34,8 @@ async def _main() -> None:
     bus = BENCH["bus"][chip["bus"]]
     spi = asy_spi_driver.SPI(bus["id"], sck_pin=bus["sck_pin"], mosi_pin=bus["mosi_pin"], miso_pin=bus["miso_pin"])
     fram_a = FRAMManager(spi, chip["cs_pin"], BENCH["fram_max_size"])
-    fact("setup", await fram_a.setup())
+    await fram_a.setup()
+    fact("setup", fram_a.initialized)
     pr1 = make_logger(LogConfig(fram_a, _HISTORY_LENGTH, None), _LOG_NAME)
     await pr1.setup()
     fact("initialized", pr1.initialized)
@@ -47,7 +48,8 @@ async def _main() -> None:
     try:
         fact("cleared_first", await pr1.reset())
         await pr1.err_s("test error for fram_error_log_roundtrip.py", errno=E_TEST_SEED_A)
-        fact("rebooted_setup", await fram_b.setup())
+        await fram_b.setup()
+        fact("rebooted_setup", fram_b.initialized)
         await pr2.setup()
         fact("restored", pr2.initialized)
         entry = (await pr2.get_log())[_LOG_NAME]  # ErrEntry types its three fields exactly

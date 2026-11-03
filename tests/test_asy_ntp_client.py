@@ -589,12 +589,14 @@ def test_fram_given_logs_into_the_fram_chunk() -> None:
     # The constructor forwards its log config: an entry the client logs lands in its FRAM chunk, where the same
     # client built anew over a fresh manager on that chip (a reboot) reads it back.
     manager, chip = make_fram_manager()
-    assert run(manager.setup()) is True  # the boot batch sets the manager up before any chunk is written
+    run(manager.setup())  # the boot batch sets the manager up before any chunk is written
+    assert manager.initialized is True
     client = _make_client(log=LogConfig(manager, 10, None))
     assert isinstance(client.pr, PrintLogHistoryStore)
     run(client.pr.err_s("probe", errno=code("E", "CALLBACK")))
     rebooted, _ = make_fram_manager(chip=chip)
-    assert run(rebooted.setup()) is True
+    run(rebooted.setup())
+    assert rebooted.initialized is True
     reread = _make_client(log=LogConfig(rebooted, 10, None))
     entry = run(reread.pr.get_log())["NTP"]
     assert entry["ErrCount"] == 1

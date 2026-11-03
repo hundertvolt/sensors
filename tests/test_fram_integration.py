@@ -115,8 +115,8 @@ def test_sensorreader_runs_in_degraded_mode_when_fram_setup_never_succeeded() ->
     # reader.pr.fram is a real but permanently unusable chunk, not None, and must degrade cleanly.
     manager, chip = make_fram_manager()
     chip.rdid_response = bytes([0xFF, 0xFF, 0xFF, 0xFF])
-    setup_ok = run(manager.setup())
-    assert setup_ok is False
+    run(manager.setup())
+    assert manager.initialized is False
     before = bytes(chip.memory)
     reader = SensorReader(Meas(20.0, 50), "", max_module_error=3, log=LogConfig(manager, 10, None))
     run(reader.setup())
@@ -130,32 +130,6 @@ def test_sensorreader_runs_in_degraded_mode_when_fram_setup_never_succeeded() ->
 
     assert run(scenario()) == 2  # its RAM-only entry and this one, tracked in memory, no crash despite the dead chip
     assert bytes(chip.memory) == before
-
-
-def test_after_a_chip_loss_ten_logger_writes_add_no_fram_log_entry_beyond_the_loss() -> None:
-    # A chip gone silent mid-run is lost on the second latch anomaly: one FRAM_CHIP_LOST, then the chunk layer
-    # stays off the chip, so no later persisted entry reaches the bus or adds to the FRAM manager's log.
-    manager, chip = make_fram_manager()
-    run(manager.setup())
-    reader = SensorReader(Meas(1.0, 1), "LOSS", max_module_error=3, log=LogConfig(manager, 10, None))
-    run(reader.setup())
-    chip.silent = 0x00
-    for _ in range(2):  # each failed write stops at its first status-byte write: one latch anomaly apiece
-        run(reader.pr.err_s("a write that finds the loss", errno=code("E", "READ")))
-    assert manager.fram.lost.is_set()
-    assert list(manager.pr.history).count(code("E", "FRAM_CHIP_LOST")) == 1
-    fram_errors = manager.pr._err_count
-    chip.opcodes = []
-
-    async def ten_writes() -> None:
-        for _ in range(10):
-            await reader.pr.err_s("while lost", errno=code("E", "READ"))
-
-    run(ten_writes())
-    assert manager.pr._err_count == fram_errors
-    assert list(manager.pr.history).count(code("E", "FRAM_CHIP_LOST")) == 1
-    assert chip.opcodes == []  # nothing reached the bus
-    assert reader.pr._err_count == 12  # every entry still counted in RAM
 
 
 # ---------------------------------------------------------------------------

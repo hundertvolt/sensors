@@ -6,7 +6,7 @@ the 2026-09-18 heap restructure was held to (agent, 2026-09-18); what each proto
 SPECIFICATION.md A.4 (owner, 2026-09-18).
 
 Deliberate changes since: a blank block is read without a busy marker (agent, 2026-09-29); each chunk's CRC is seeded by
-its owner (agent, 2026-10-06); a blank verdict probes the chip's RDID (agent, 2026-10-21)."""
+its owner (agent, 2026-10-06); the bus runs at 8 MHz (owner, 2026-11-02)."""
 # The recorder decomposes a trace into CS cycles. Every cycle is asserted to be framed by exactly
 # one SPI.init() at the fixed bus config and one CS low/high pair, so the goldens below need hold
 # only the transfers inside each cycle - the envelope is checked, not dropped (see _cycles()).
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 # The one bus config SPIDevice.__aenter__ applies (firstbit MSB = 1 on rp2), as one recorded event. Every CS cycle
 # carries it.
-_INIT_EVENT = "init 1000000/0/0/8/1"
+_INIT_EVENT = "init 8000000/0/0/8/1"
 _WRDI = b"\x04"  # asy_fram_driver.py's _CMD_WRDI is module-private
 
 
@@ -205,7 +205,6 @@ w:03000d r:00
 w:03000e r:00
 w:03001c r:00
 w:03001d r:00
-w:9f r:047f0302
 w:03001c r:0000
 w:06
 w:05 r:02
@@ -499,7 +498,7 @@ def test_cs_cycle_counts_are_the_measured_figures() -> None:
     # protocol change and not an optimisation. A write's read of block 1's status, which picks the block it takes first,
     # is one such change, made on the owner's behalf for review (agent, 2026-10-22).
     traces = run(_collect())
-    assert len(traces["blank"][0]) == 56
+    assert len(traces["blank"][0]) == 55
     assert len(traces["valid"][0]) == 47
     assert len(traces["ts_write"][0]) == 51
     assert len(traces["ts_read"][0]) == 48
@@ -516,7 +515,7 @@ async def _rig() -> "tuple[FRAMManager, PrintLogHistoryStore, FRAMTimestampedChu
     # The production shape section 3B priced: one manager, a PrintLogHistoryStore allocated first
     # (SensorReader's own order) and a separate timestamped value chunk second.
     manager, _chip = make_fram_manager()
-    assert await manager.setup()
+    await manager.setup()
     logger = PrintLogHistoryStore(manager, 10, None, name=_STORE_OWNER)
     chunk = manager.get_timestamped_chunk(8, _never_synced, crc=CRC32(), owner=_VALUE_OWNER)
     assert chunk is not None

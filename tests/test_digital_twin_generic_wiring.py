@@ -188,7 +188,8 @@ def test_one_shot_bad_rdid_then_good() -> None:
     chip = manager.fram._spidev.spi._spi.device if manager.fram._spidev.spi._spi is not None else None
     assert chip is not None
     chip.rdid_once = bytes(4)
-    assert run(manager.setup()) is True
+    run(manager.setup())
+    assert manager.initialized is True
     assert manager.fram.initialized is True
     assert _pending_rdid(chip) is None, "the one-shot answer was never consumed"
     log = run(manager.fram.pr.get_log())[manager.fram.pr.name]

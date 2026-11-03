@@ -104,7 +104,7 @@ _I2C_DEFAULT_TIMEOUT_US: int = src_int("src/asy_i2c_driver.py", "_DEFAULT_TIMEOU
 _STA_RETRY_S: int = src_int("src/asy_wifi_service.py", "_STA_RETRY_AFTER_LOSS_S")
 _STA_ESTABLISHED: int = src_int("src/asy_wifi_service.py", "_PHASE_STA_ESTABLISHED")
 # @tunable l2.bus_hazard_concurrency_erase_us_per_byte = 8
-_ERASE_US_PER_BYTE = 8  # the erase's real wire time at the 1 MHz bus (asy_fram_manager.py's _ERASE_UNIT comment)
+_ERASE_US_PER_BYTE = 8  # an 8x-slow bus: the product's 8 MHz FRAM clock moves a byte in 1 us
 _GENERAL_CALL_ENTRY = ("writeto", 0x00, b"\x06", True)
 # Which get_data() field, per driver, proves that driver produced a real reading under load - the twin tier's much
 # smaller analogue of tests/_bus_hazard_catalog.py's mock-tier adapters (Part C.8); a new driver needs an entry first.
@@ -1170,7 +1170,7 @@ def test_the_erase_racing_a_logger_write_never_tears_a_chunk() -> None:
 
 
 def test_the_erase_feeds_the_watchdog_at_bus_speed() -> None:
-    # The largest generated FRAM erased at its real wire time (8 us/byte): the sequence's own feeds keep the watchdog
+    # The largest generated FRAM erased on an 8x-slow bus (8 us/byte): the sequence's own feeds keep the watchdog
     # fed throughout, and every unit lands below the chip's size.
     plan = _fram_plan_by_size()
     device = plan["device"]

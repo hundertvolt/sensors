@@ -233,7 +233,6 @@ def test_fram_driver_answers_its_sentinels_before_and_after_a_setup_that_finds_n
         "get_values_sync": ((bytearray(4),), lambda r: type(r) is int and r != 0),  # a refusal status, never OK
         "set_values_sync": ((b"ab", 0), lambda r: type(r) is int and r != 0),
         "get_write_protected": ((), _is(False)),
-        "is_ready": ((), _is(False)),
         "verify_present": ((), _is(False)),
     }
     assert _answers(fram, calls) == []
@@ -264,7 +263,8 @@ def test_fram_manager_answers_before_and_after_a_setup_that_finds_no_chip() -> N
     chip = manager.fram._spidev.spi._spi
     assert isinstance(chip, FakeMB85RS64V)
     chip.rdid_response = _WRONG_CHIP_ID
-    assert run(manager.setup()) is False
+    run(manager.setup())
+    assert manager.initialized is False
     assert manager.fram.initialized is False
     assert _last_error(run(manager.get_error_counter()), manager.name) == code("E", "INIT")
     assert _answers(manager, calls) == []

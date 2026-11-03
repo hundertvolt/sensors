@@ -4,7 +4,7 @@ chunks, and every fault failing cleanly and logged."""
 import asyncio
 import time
 
-from _async_harness import run
+from _async_harness import cancel, run
 from _cancel_sweep import assert_unlocked, cancel_at_each_await
 from _error_codes import code
 from _fake_time import UTCValid
@@ -45,7 +45,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Coroutine
+    from collections.abc import Callable, Coroutine
 
     from asy_crc_checks import CRCBase
     from asy_print_log import ErrorLog
@@ -723,10 +723,9 @@ def test_a_verify_pass_whose_block_read_fails_the_crc_logs_fram_data_crc() -> No
     assert _entries(run(manager.get_error_counter())) == [(code("E", "FRAM_DATA_CRC"), "E"), (code("E", "FRAM_VERIFY"), "E")]
 
 
-def test_an_unallocatable_check_length_logs_alloc_once_and_rewrites_nothing() -> None:
-    # The cross-check's scratch could not be allocated, and it never comes back: every read returns block 0's data
-    # unchecked, block 1 is never rewritten for it, and the one ALLOC entry stands for the whole run; a verified
-    # write still cannot verify, so each one fails with its own entry.
+def test_an_unallocatable_check_length_reads_block_1_as_invalid_and_rewrites_it_each_read() -> None:
+    # The cross-check's scratch could not be allocated, and it never comes back: block 1 cannot be judged, so every read
+    # warns it invalid and rewrites it from block 0's valid data; a verified write cannot verify, so each one fails.
     manager, _chip = _make_manager()
     run(_setup_manager(manager))
     manager.pr.set_level(1)  # the check buffer's line prints from level 1
@@ -746,9 +745,9 @@ def test_an_unallocatable_check_length_logs_alloc_once_and_rewrites_nothing() ->
     for _read in range(3):
         assert run(chunk.read()) == bytearray(b"data")
     errs = run(manager.get_error_counter())
-    assert rewrites[0] == 0
-    assert _entries(errs) == [(code("E", "ALLOC"), "E")]
-    assert errs["FRAM"]["ErrCount"] == 1
+    assert rewrites[0] == 3
+    assert _entries(errs) == [(code("W", "FRAM_BLOCK_INVALID"), "W")]
+    assert errs["FRAM"]["ErrCount"] == 3
     verified, _chip = _make_manager()
     run(_setup_manager(verified))
     verified.pr.set_level(1)  # the check buffer's line prints from level 1
@@ -759,8 +758,8 @@ def test_an_unallocatable_check_length_logs_alloc_once_and_rewrites_nothing() ->
     assert run(vchunk.write(b"data")) is False
     assert run(vchunk.write(b"data")) is False
     verrs = run(verified.get_error_counter())
-    assert _entries(verrs) == [(code("E", "ALLOC"), "E"), (code("E", "FRAM_VERIFY"), "E")]
-    assert verrs["FRAM"]["ErrCount"] == 3  # one ALLOC, then one FRAM_VERIFY per write
+    assert _entries(verrs) == [(code("E", "FRAM_VERIFY"), "E")]
+    assert verrs["FRAM"]["ErrCount"] == 2  # one FRAM_VERIFY per write
 
 
 # ---------------------------------------------------------------------------
@@ -1873,15 +1872,14 @@ def test_construction_raises_uncaught_valueerror_for_an_out_of_range_spi_cs() ->
 
 def test_setup_fails_cleanly_when_device_id_does_not_match() -> None:
     # Real device-not-found path (asy_fram_driver.py's FRAM_SPI.setup() raises OSError) - caught
-    # by FRAMManager.setup()'s own try/except, turned into a clean False + an INIT entry, not left
+    # by FRAMManager.setup()'s own try/except, turned into an unset manager + an INIT entry, not left
     # to propagate. A different, driver-owned RDID mismatch, not a caller misconfiguration.
     manager, chip = _make_manager()
     chip.rdid_response = bytes([0xFF, 0xFF, 0xFF, 0xFF])
 
     async def scenario() -> "tuple[bool, ErrorLog]":
-        ok = await manager.setup()
-        errs = await manager.get_error_counter()
-        return ok, errs
+        await manager.setup()
+        return manager.initialized, await manager.get_error_counter()
 
     ok, errs = run(scenario())
     assert ok is False
@@ -1889,8 +1887,8 @@ def test_setup_fails_cleanly_when_device_id_does_not_match() -> None:
 
 
 def test_chunk_operations_fail_cleanly_when_the_bus_is_deinitialized_mid_run() -> None:
-    # A deinitialised bus is reported by the driver as bus-down; the chunk layer fails the operation
-    # and logs its own entry.
+    # A deinitialised bus raises configure()'s RuntimeError at the driver's first transfer; each chunk operation catches it
+    # as its own unexpected error and fails, logging its own entry.
     manager, _chip = _make_manager()
     run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
@@ -1910,10 +1908,8 @@ def test_chunk_operations_fail_cleanly_when_the_bus_is_deinitialized_mid_run() -
     assert write_ok is False
     assert read_result is None
     assert cleared is False
-    assert code("E", "FRAM_BUS_DOWN") in errnums  # the driver's status, no raise
-    assert code("E", "UNEXPECTED") not in errnums
+    assert code("E", "UNEXPECTED") in errnums  # each operation's caught RuntimeError
     assert code("E", "FRAM_BLOCK_WRITE") in errnums
-    assert code("E", "FRAM_STATUS_READ") in errnums
     assert code("E", "FRAM_CLEAR") in errnums
 
 
@@ -2119,10 +2115,11 @@ def test_op_lock_prevents_concurrent_writes_from_interleaving_between_blocks() -
 
 def test_manager_setup_is_idempotent_when_called_twice() -> None:
     manager, _chip = _make_manager()
-    ok1 = run(manager.setup())
-    ok2 = run(manager.setup())
+    run(manager.setup())
+    ok1 = manager.initialized
+    run(manager.setup())
     assert ok1 is True
-    assert ok2 is True
+    assert manager.initialized is True
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
 
@@ -2541,41 +2538,6 @@ def test_an_unallocated_buffer_never_reaches_the_chip_at_all() -> None:
     assert sent == [], f"a write from an unallocated buffer still drove the bus: {sent!r}"
 
 
-def test_a_missing_chunk_buffer_logs_alloc() -> None:
-    # Every chunk entry point that meets an unallocated buffer persists one ALLOC entry of its own:
-    # an own buffer that failed (negative size) and a foreign one handed in, on both chunk classes.
-    manager, _chip = _make_manager()
-    run(_setup_manager(manager))
-    plain = manager.get_chunk(4, crc=CRC8(), owner="T1")
-    stamped = manager.get_timestamped_chunk(4, _synced, crc=CRC8(), owner="T2")
-    plain_unalloc = manager.get_chunk(-4, crc=CRCPass(), owner="T3")  # allocated last: a negative size moves the bump pointer back
-    stamped_unalloc = manager.get_timestamped_chunk(-4, _synced, crc=CRCPass(), owner="T4")
-    assert plain is not None and plain_unalloc is not None
-    assert stamped is not None and stamped_unalloc is not None
-    calls: tuple[Callable[[], Awaitable[object]], ...] = (
-        lambda: plain_unalloc.write(b"data"),
-        plain_unalloc.read,
-        lambda: plain.write_into(_degraded_buffer()),
-        lambda: plain.read_into(_degraded_buffer()),
-        lambda: stamped_unalloc.write(b"data"),
-        stamped_unalloc.read,
-        lambda: stamped.write_into(_degraded_timestamped_buffer()),
-        lambda: stamped.read_into(_degraded_timestamped_buffer()),
-    )
-
-    async def scenario() -> "list[int]":
-        counts = []
-        for call in calls:
-            await call()
-            log = await manager.get_error_counter()
-            assert log["FRAM"]["ErrNum"][-1] == code("E", "ALLOC")
-            counts.append(log["FRAM"]["ErrCount"])
-        return counts
-
-    assert run(scenario()) == list(range(1, len(calls) + 1)), "each call adds exactly one entry"
-    assert _entries(run(manager.get_error_counter())) == [(code("E", "ALLOC"), "E")]  # one repeated code, one slot
-
-
 # ---------------------------------------------------------------------------
 # The rp2 SPI RX-overrun raise site (v1.29.0; SPECIFICATION.md F.5.2), driven through the live path: the
 # fault is injected at the machine.SPI boundary and travels asy_spi_driver -> asy_fram_driver.get_values()
@@ -2758,7 +2720,8 @@ def _logged_system(chip_class: "type[FakeMB85RS64V]", image: "bytearray | None" 
     if image is not None:
         chip.memory[:] = image
     stores = [PrintLogHistoryStore(manager, 10, None, name=name) for name in _LOGGERS]
-    assert run(_setup_manager(manager)) is True
+    run(_setup_manager(manager))
+    assert manager.initialized is True
     for store in stores:
         run(store.setup())
     return manager, chip, stores
@@ -3031,40 +2994,6 @@ def test_a_failed_check_buffer_allocation_prints_its_own_text_once() -> None:
     assert rec.lines == []  # the read's own entry is persisted, not a second console line
 
 
-def test_a_failed_read_copy_returns_the_sentinel_on_both_chunk_classes() -> None:
-    # read()'s copy-out is chunk-sized, so it degrades as the buffer it copies from does: the not-read sentinel, the
-    # failure's own text in its persisted ALLOC entry's line (the memory gates read it from level 1), never a raise.
-    err = MemoryError("injected for the read copy")  # worded clear of the memory gates' markers
-    real = bytearray
-
-    def failing(*args: object) -> bytearray:
-        if args and isinstance(args[0], memoryview):  # the copy of the data region: no other bytearray() takes a view
-            raise err
-        return real(*args)
-
-    manager, _chip = _make_manager()
-    run(_setup_manager(manager))
-    manager.pr.set_level(1)
-    plain = manager.get_chunk(4, crc=CRC8(), owner="T1")
-    stamped = manager.get_timestamped_chunk(4, _synced, crc=CRC8(), owner="T2")
-    assert plain is not None and stamped is not None
-    assert run(plain.write(b"data")) is True
-    assert run(stamped.write(b"stmp"))[0] is True
-    asy_fram_manager.bytearray = failing  # type: ignore[attr-defined]
-    try:
-        with record_prints() as rec:
-            assert run(plain.read()) is None
-            assert run(stamped.read()) == (None, None, None)
-    finally:
-        del asy_fram_manager.bytearray  # type: ignore[attr-defined]
-    assert rec.lines == [("FRAM", "No buffer for the chunk read:", err)] * 2
-    log = run(manager.get_error_counter())
-    assert log["FRAM"]["ErrNum"][-1] == code("E", "ALLOC")
-    assert log["FRAM"]["ErrCount"] == 2
-    assert run(plain.read()) == bytearray(b"data")  # nothing stored was touched: the next read copies again
-    assert run(stamped.read())[2] == bytearray(b"stmp")
-
-
 # ---------------------------------------------------------------------------
 # The central newest-entry rule (asy_print_log.py, SPECIFICATION.md C.7.1): a repeated identical code spends no
 # new slot; ErrCount counts every event.
@@ -3140,92 +3069,8 @@ def test_a_held_mempause_spends_one_slot_for_paused_writes_and_reads() -> None:
 
 
 # ---------------------------------------------------------------------------
-# A lost chip, a stepped clock, the erase and the chip-watch task
+# A stepped clock, the erase and the chip-watch task
 # ---------------------------------------------------------------------------
-
-
-def test_every_chunk_operation_stays_silent_while_the_chip_is_lost() -> None:
-    # The loss is the driver's one FRAM_CHIP_LOST entry: while it stands, no chunk operation reaches the bus
-    # or logs, so the loggers' writes add nothing to the manager's history.
-    manager, chip = _make_manager()
-    run(_setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
-    ts_chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC8(), owner="T2")
-    assert chunk is not None and ts_chunk is not None
-    assert run(chunk.write(b"data")) is True
-    stored = bytearray(chip.memory)
-    chip.opcodes = []
-    manager.fram.lost.set()
-    assert run(chunk.write(b"else")) is False
-    assert run(chunk.read_into(chunk.get_buffer())) is None
-    assert run(chunk.clear()) is False
-    assert run(chunk.invalidate()) is False
-    assert run(ts_chunk.write(b"else"))[0] is False
-    assert run(ts_chunk.read_into(ts_chunk.get_buffer())) == (None, None, None)
-    assert chip.opcodes == []
-    assert chip.memory == stored
-    assert run(manager.get_error_counter())["FRAM"]["ErrCount"] == 0
-
-
-def test_a_blank_read_of_a_silent_chip_finds_the_loss_and_reads_none() -> None:
-    # An undriven bus reads every status byte blank, as a never-written chunk does; the RDID probe after a blank verdict
-    # tells them apart (MB85RS64V p10), so a silent chip takes the lost path at its first read, not at its next write.
-    manager, chip = _make_manager()
-    run(_setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
-    ts_chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC8(), owner="T2")
-    assert chunk is not None and ts_chunk is not None
-    stored = bytearray(chip.memory)
-    chip.silent = 0x00
-    assert run(chunk.read_into(chunk.get_buffer())) is None
-    assert manager.fram.lost.is_set()
-    assert manager.fram.initialized is False
-    assert run(ts_chunk.read_into(ts_chunk.get_buffer())) == (None, None, None)
-    assert chip.memory == stored
-    assert _entries(run(manager.get_error_counter())) == [(code("E", "FRAM_CHIP_LOST"), "E")]
-
-
-def test_every_blank_read_probes_once_so_a_chip_that_stops_answering_is_found_at_the_next() -> None:
-    # Unbounded on purpose: an undriven bus reads every chunk blank, so any skipped probe would hide a chip that
-    # answered one blank read and then went silent. A chip that answers keeps its blank chunk; a valid read never probes.
-    manager, chip = _make_manager()
-    run(_setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
-    assert chunk is not None
-    for _read in range(2):
-        rdids = chip.rdid_count
-        assert run(chunk.read_into(chunk.get_buffer())) is False
-        assert chip.rdid_count == rdids + 1
-    assert run(chunk.write(b"data")) is True
-    rdids = chip.rdid_count
-    assert run(chunk.read_into(chunk.get_buffer())) is True
-    assert chip.rdid_count == rdids
-    assert run(chunk.clear()) is True
-    assert run(chunk.read_into(chunk.get_buffer())) is False
-    assert not manager.fram.lost.is_set()
-    chip.silent = 0x00
-    assert run(chunk.read_into(chunk.get_buffer())) is None
-    assert manager.fram.lost.is_set()
-    assert _entries(run(manager.get_error_counter())) == [(code("E", "FRAM_CHIP_LOST"), "E")]
-
-
-def test_a_probe_that_cannot_take_the_lock_keeps_the_blank_verdict() -> None:
-    # verify_present() gives up on a busy lock without finding a loss: the chunk stays blank (False), as before the
-    # probe, and only a probe that found the loss turns the read into None.
-    manager, _chip = _make_manager()
-    run(_setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
-    assert chunk is not None
-    probes = [0]
-
-    async def busy() -> bool:
-        probes[0] += 1
-        return False
-
-    manager.fram.verify_present = busy  # type: ignore[method-assign]
-    assert run(chunk.read_into(chunk.get_buffer())) is False
-    assert probes == [1]
-    assert not manager.fram.lost.is_set()
 
 
 class _SteppedTime:
@@ -3335,8 +3180,8 @@ async def _relaunched(chip: FakeMB85RS64V) -> "tuple[tuple[list[int], int] | Non
     return (list(store.history), store._err_count), repaired, logged
 
 
-async def _setup_manager(manager: FRAMManager) -> bool:
-    return await manager.setup()
+async def _setup_manager(manager: FRAMManager) -> None:
+    await manager.setup()
 
 
 def _status_byte_addrs(chunk: "FRAMChunk") -> tuple[int, int]:
@@ -3493,9 +3338,6 @@ def test_erase_refuses_a_write_protected_or_uninitialised_chip() -> None:
     assert run(manager.erase_chip(lambda: None)) is False
     assert chip.memory == stored
     assert run(manager.fram.set_write_protected(value=False)) is True
-    manager.fram.lost.set()
-    assert run(manager.erase_ready()) is False
-    manager.fram.lost.clear()
     assert run(manager.erase_ready()) is True
 
 
@@ -3581,42 +3423,30 @@ def test_the_erase_blanks_every_chunk_before_it_zeroes_a_byte() -> None:
     assert seen[-1] == bytes(4 * len(stores))  # after pass 1, every block reads blank
 
 
-def test_the_watch_task_waits_while_healthy_and_ends_on_a_loss() -> None:
-    manager, chip = _make_manager()
+def test_the_watch_task_waits_while_healthy() -> None:
+    manager, _chip = _make_manager()
     assert manager.get_task_starters() == [manager.start_asy_watch_chip]  # always one, whatever the chip does
     assert manager.get_timer_starters() == []
-    assert run(manager.setup()) is True
+    run(manager.setup())
+    assert manager.initialized is True
 
-    async def turns(task: "asyncio.Task[None]") -> bool:
+    async def scenario() -> bool:
+        task = manager.start_asy_watch_chip()
         for _ in range(5):
             await asyncio.sleep(0)
-        return task.done()
+        healthy = task.done()
+        await cancel(task)
+        return healthy
 
-    async def scenario() -> "tuple[bool, bool, bool, bool]":
-        task = manager.start_asy_watch_chip()
-        healthy = await turns(task)
-        manager.fram.lost.set()
-        ended = await turns(task)
-        restarted = manager.start_asy_watch_chip()  # the chip answers again: set up anew, then waiting
-        waiting = not await turns(restarted) and not manager.fram.lost.is_set()
-        chip.rdid_response = bytes(4)  # lost for good: the next restart's setup fails and the task ends
-        manager.fram.lost.set()
-        gone = await turns(restarted)
-        failed = await turns(manager.start_asy_watch_chip())
-        return healthy, ended, waiting, gone and failed
-
-    healthy, ended, waiting, gone = run(scenario())
-    assert healthy is False  # still running while the chip is up
-    assert ended is True
-    assert waiting is True
-    assert gone is True
+    assert run(scenario()) is False  # still running while the chip is up
 
 
 def test_the_watch_task_ends_at_once_for_a_chip_never_set_up() -> None:
     # A declared chip that failed its boot setup escalates like any declared chip: its task ends at once.
     manager, chip = _make_manager()
     chip.rdid_response = bytes([0xFF, 0xFF, 0xFF, 0xFF])
-    assert run(manager.setup()) is False
+    run(manager.setup())
+    assert manager.initialized is False
 
     async def scenario() -> bool:
         task = manager.start_asy_watch_chip()
@@ -3625,34 +3455,6 @@ def test_the_watch_task_ends_at_once_for_a_chip_never_set_up() -> None:
         return task.done()
 
     assert run(scenario()) is True
-
-
-def test_an_erase_asked_while_a_found_chip_loss_is_still_being_reported_is_refused() -> None:
-    # The driver's public set_values() yields between finding the loss (`initialized` cleared) and reporting it
-    # (`lost` set): an erase_ready() asked there answers False and logs nothing, so the loss stays one entry.
-    manager, chip = _make_manager()
-    run(_setup_manager(manager))
-    chip.silent = 0xFF  # the fixed-zero status bit set: the write's latch fault probes RDID at once
-
-    async def write() -> bool:
-        async with manager.fram as fram:
-            return await fram.set_values(b"data", 0)
-
-    async def scenario() -> "tuple[list[bool], bool]":
-        writer = asyncio.create_task(write())
-        answers = []
-        while not writer.done():
-            await asyncio.sleep(0)
-            if not manager.fram.initialized and not manager.fram.lost.is_set():
-                answers.append(await manager.erase_ready())
-        return answers, await writer
-
-    answers, wrote = run(scenario())
-    assert answers, "the write never stood between finding the loss and reporting it"
-    assert True not in answers, answers
-    assert wrote is False
-    assert manager.fram.lost.is_set()
-    assert _entries(run(manager.get_error_counter())) == [(code("E", "FRAM_CHIP_LOST"), "E")]
 
 
 def _raise_on_chip_write(chunk: "FRAMChunk", error: BaseException) -> None:

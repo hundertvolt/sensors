@@ -526,14 +526,16 @@ def test_logger_injection_uses_both_routes() -> None:
 
 def test_a_fram_backed_log_reads_back_through_a_second_logger() -> None:
     manager, chip = make_fram_manager()
-    assert run(manager.setup(), RUN_LIMIT_S) is True
+    run(manager.setup(), RUN_LIMIT_S)
+    assert manager.initialized is True
     comm = _make_comm(name="UART_X", log=LogConfig(manager, 10, None))
     assert isinstance(comm.pr, PrintLogHistoryStore)
     assert run(comm.setup(), RUN_LIMIT_S) is True
     assert run(comm.uart_set(1, b"x"), _RUN_BOUND_S) is False  # nothing is on the line: a silent peer
     assert persisted(comm)[-1] == _e("UART_NO_ACK"), persisted(comm)
     rebooted, _ = make_fram_manager(chip=chip)  # a fresh manager over the same memory: a simulated reboot
-    assert run(rebooted.setup(), RUN_LIMIT_S) is True
+    run(rebooted.setup(), RUN_LIMIT_S)
+    assert rebooted.initialized is True
     second = make_logger(LogConfig(rebooted, 10, None), "UART_X")
     run(second.setup(), RUN_LIMIT_S)
     entry = run(second.get_log(), RUN_LIMIT_S)["UART_X"]

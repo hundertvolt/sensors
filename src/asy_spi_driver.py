@@ -37,11 +37,6 @@ class SPI:
         self.bus_lock = asyncio.Lock()  # serialises the SPI peripheral: every CS session holds it
         self.init(port_id, sck_pin, mosi_pin, miso_pin)
 
-    @property
-    def available(self) -> bool:
-        # Read-only: whether a transfer can reach the bus (a deinit() drops it).
-        return self._spi is not None
-
     def configure(
         self,
         baudrate: int = 1000000,

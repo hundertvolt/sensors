@@ -2502,8 +2502,8 @@ def test_fram_backup_writes_and_restore_recovers_full_algorithm_state() -> None:
         # A second reader, sharing the same FRAM backing (a simulated reboot) - fresh VOCAlgorithm,
         # never processed a single sample, must recover the exact converged state via restore.
         manager2, _ = make_fram_manager(chip=chip)
-        run_ok = await manager2.setup()
-        assert run_ok is True
+        await manager2.setup()
+        assert manager2.initialized is True
         reader = SGP40_Reader(
             _make_i2c(),
             ValueRef(_FakeCompSource(), "Temp"),
@@ -2852,7 +2852,8 @@ def test_sgp40_error_log_survives_a_simulated_reboot_via_fram() -> None:
         await reader.pr.err_s("SGP40", "simulated fault", errno=1)
 
         manager2, _ = make_fram_manager(chip=chip)
-        assert await manager2.setup() is True
+        await manager2.setup()
+        assert manager2.initialized is True
         reader2 = SGP40_Reader(
             _make_i2c(),
             ValueRef(_FakeCompSource(), "Temp"),

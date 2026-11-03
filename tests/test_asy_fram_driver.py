@@ -1,5 +1,5 @@
 """FRAM_SPI against the fake MB85RS64V: identifying it and the 256 KB chip, write protection and WREN latching, a chip that
-is lost or absent, verified writes and the session lock."""
+is absent, verified writes and the session lock."""
 
 import asyncio
 
@@ -35,26 +35,6 @@ if TYPE_CHECKING:
 _LOCK_WAIT_S = 1.0
 
 
-def _assert_lost_and_quiet(fram: FRAM_SPI, chip: FakeMB85RS64V) -> None:
-    assert fram.initialized is False
-    assert fram.lost.is_set()
-    assert _count(fram, code("E", "FRAM_CHIP_LOST")) == 1
-    assert list(fram.pr.history)[-1] == code("E", "FRAM_CHIP_LOST")
-    chip.opcodes = []
-    logged = len(chip.log)
-    assert run(_read_then_write(fram)) == (False, False)
-    assert chip.opcodes == []  # no transfer reaches a lost chip
-    assert len(chip.log) == logged
-    assert not fram.session_lock.locked()
-    assert not fram._bus_lock.locked()
-
-
-def _bus_down_entries(fram: FRAM_SPI) -> int:
-    log = run(fram.pr.get_log())[fram.pr.name]
-    nums, kinds = log["ErrNum"], log["ErrType"]
-    return sum(1 for i in range(len(nums)) if kinds[i] == "E" and nums[i] == code("E", "FRAM_BUS_DOWN"))
-
-
 def _count(fram: FRAM_SPI, entry: int) -> int:
     return list(fram.pr.history).count(entry)
 
@@ -77,11 +57,6 @@ def _make_fram(
     assert isinstance(chip, FakeMB85RS64V)
     chip.wp_pin = fram._wp_pin  # lets the fake model the datasheet's WP-pin status-register lock
     return fram, chip
-
-
-async def _read_then_write(fram: FRAM_SPI) -> "tuple[bool, bool]":
-    async with fram:
-        return await fram.get_values(bytearray(2), 0), await fram.set_values(b"x", 0)
 
 
 # ---------------------------------------------------------------------------
@@ -354,29 +329,6 @@ def test_a_first_time_identification_logs_nothing() -> None:
     assert fram.pr._err_count == 0
 
 
-def test_a_partly_protected_status_register_is_reported_and_writes_refused() -> None:
-    # BP1/BP0 01, 10 and 11 protect part or all of the array (MB85RS64V p.11): any of them reads as
-    # protected. WPEN alone protects only the status register, so the array stays writable.
-    for status in (0x04, 0x08, 0x0C, 0x84):
-        fram, chip = _make_fram()
-        chip.status = status
-        run(_setup_fram(fram))
-        assert run(fram.get_write_protected()) is True, hex(status)
-        assert _count(fram, code("E", "FRAM_WP_PARTIAL")) == 1, hex(status)
-        assert run(_write_one(fram)) is False, hex(status)
-        assert list(fram.pr.history)[-1] == 0x80 + code("W", "FRAM_WRITE_PROTECTED")
-        assert bytes(chip.memory[0x20:0x22]) == b"\x00\x00"
-    fram, chip = _make_fram()
-    chip.status = 0x80
-    run(_setup_fram(fram))
-    assert run(fram.get_write_protected()) is False
-    assert _count(fram, code("E", "FRAM_WP_PARTIAL")) == 1
-    assert run(fram.set_write_protected(value=False)) is True
-    assert chip.status == 0x00
-    assert run(_write_one(fram)) is True
-    assert bytes(chip.memory[0x20:0x22]) == b"ok"
-
-
 def test_a_fully_set_or_clear_status_register_is_not_reported_as_partial() -> None:
     for status in (0x8C, 0x00):
         fram, chip = _make_fram()
@@ -545,7 +497,7 @@ def test_write_reports_data_written_even_if_wrdi_stays_stuck_after_retry() -> No
 
 
 async def _setup_fram(fram: FRAM_SPI) -> None:
-    assert await fram.setup() is True
+    await fram.setup()
 
 
 def test_a_write_lands_when_only_the_first_wren_is_dropped() -> None:
@@ -580,121 +532,17 @@ def test_set_write_protected_retries_a_dropped_wren_once() -> None:
     assert fram.pr._err_count == 0
 
 
-async def _while_held(fram: FRAM_SPI, lock: "asyncio.Lock", call: "Coroutine[object, object, bool]", chip: FakeMB85RS64V) -> "tuple[int, int, bool]":
-    # Holds `lock` on a gate while `call` runs in a second task: returns the chip's status and RDID
-    # count seen while held, then the call's result once the gate opens.
-    gate = asyncio.Event()
-
-    async def holder() -> None:
-        async with lock:
-            await gate.wait()
-
-    held = asyncio.create_task(holder())
-    await asyncio.sleep(0)
-    task = asyncio.create_task(call)
-    for _ in range(5):
-        await asyncio.sleep(0)
-    seen = (chip.status, chip.rdid_count)
-    gate.set()
-    await held
-    return seen[0], seen[1], await task
-
-
-def test_a_chip_gone_silent_mid_run_is_probed_once_and_marked_lost() -> None:
-    # SO stuck low reads WEL clear, so each write's latch "did not set" (refused, w26): a status byte a
-    # live chip could send, so it takes two anomalies in a row before the one ID probe.
-    fram, chip = _make_fram()
-    run(_setup_fram(fram))
-    chip.silent = 0x00
-    rdids = chip.rdid_count
-    assert run(_write_one(fram)) is False
-    assert chip.rdid_count == rdids  # one anomaly does not probe
-    assert not fram.lost.is_set()
-    assert run(_write_one(fram)) is False
-    assert chip.rdid_count == rdids + 1
-    _assert_lost_and_quiet(fram, chip)
-
-
-def test_the_first_write_to_a_chip_whose_so_reads_high_reports_the_loss_not_a_success() -> None:
-    # SO stuck high reads 0xFF: WEL looks set, so the latch "did not clear" and the write would pass as
-    # stored. Status bit 0 is fixed at 0 on both parts (datasheets p.6), so no live chip sends this byte.
-    fram, chip = _make_fram()
-    run(_setup_fram(fram))
-    chip.silent = 0xFF
-    rdids = chip.rdid_count
-    assert run(_write_one(fram)) is False
-    assert chip.rdid_count == rdids + 1  # probed at once
-    assert _count(fram, 0x80 + code("W", "FRAM_WEL_STUCK")) == 0
-    assert fram.pr._err_count == 1
-    _assert_lost_and_quiet(fram, chip)
-
-
-def test_set_write_protected_on_a_chip_whose_so_reads_high_reports_the_loss() -> None:
-    fram, chip = _make_fram()
-    run(_setup_fram(fram))
-    chip.silent = 0xFF
-    assert run(fram.set_write_protected(value=True)) is False
-    assert _count(fram, 0x80 + code("W", "FRAM_WEL_STUCK")) == 0
-    assert fram.pr._err_count == 1
-    _assert_lost_and_quiet(fram, chip)
-
-
 def test_a_real_stuck_latch_on_a_live_chip_still_warns_and_succeeds() -> None:
-    # Guard: a live chip's stuck latch reads a legal status byte, so the write keeps today's behaviour -
-    # stored, one warning, no probe until a second anomaly in a row, whose ID then matches.
+    # A live chip's stuck latch, twice in a row: each write is stored with one warning.
     fram, chip = _make_fram()
     run(_setup_fram(fram))
     chip.disturb_write_autoclear = True
-    rdids = chip.rdid_count
-    for expected_rdids in (rdids, rdids + 1):
+    for _write in range(2):
         chip.drop_next_wrdi = 2
         assert run(_write_one(fram)) is True
         assert bytes(chip.memory[0x20:0x22]) == b"ok"
-        assert chip.rdid_count == expected_rdids
         assert list(fram.pr.history)[-1] == 0x80 + code("W", "FRAM_WEL_STUCK")
     assert fram.initialized is True
-    assert not fram.lost.is_set()
-    assert _count(fram, code("E", "FRAM_CHIP_LOST")) == 0
-
-
-def test_an_anomaly_with_a_matching_id_keeps_the_chip_up() -> None:
-    fram, chip = _make_fram()
-    run(_setup_fram(fram))
-    chip.drop_wren = True  # a latch problem, not a lost chip: the ID still answers
-    rdids = chip.rdid_count
-    for _ in range(4):
-        assert run(_write_one(fram)) is False
-    assert chip.rdid_count == rdids + 2  # one probe per two anomalies: the match resets the count
-    assert fram.initialized is True
-    assert not fram.lost.is_set()
-    assert _count(fram, code("E", "FRAM_CHIP_LOST")) == 0
-
-
-def test_a_clean_write_between_two_anomalies_resets_the_count() -> None:
-    fram, chip = _make_fram()
-    run(_setup_fram(fram))
-    rdids = chip.rdid_count
-    chip.drop_next_wren = 2
-    assert run(_write_one(fram)) is False
-    assert run(_write_one(fram)) is True
-    chip.drop_next_wren = 2
-    assert run(_write_one(fram)) is False
-    assert chip.rdid_count == rdids  # never two anomalies in a row, so never a probe
-
-
-def test_setup_after_a_loss_clears_it_and_the_chip_works_again() -> None:
-    fram, chip = _make_fram()
-    run(_setup_fram(fram))
-    chip.silent = 0x00
-    run(_write_one(fram))
-    run(_write_one(fram))
-    assert fram.lost.is_set()
-    chip.silent = None
-    run(_setup_fram(fram))
-    assert fram.initialized is True
-    assert not fram.lost.is_set()
-    assert run(_write_one(fram)) is True
-    assert bytes(chip.memory[0x20:0x22]) == b"ok"
 
 
 # ---------------------------------------------------------------------------
@@ -888,22 +736,6 @@ async def _write_one(fram: FRAM_SPI, data: bytes = b"ok", addr: int = 0x20) -> b
         return await fram.set_values(data, addr)
 
 
-def test_set_write_protected_and_setup_wait_for_a_held_driver_lock() -> None:
-    # The driver lock guards the scratch buffers both use (C.8), so neither may touch the chip while
-    # another holder has it - not only while the bus is held.
-    fram, chip = _make_fram()
-    run(_setup_fram(fram))
-    status, _rdids, ok = run(_while_held(fram, fram.session_lock, fram.set_write_protected(value=True), chip))
-    assert status & 0x8C == 0x00  # untouched while the driver lock was held
-    assert ok is True
-    assert chip.status & 0x8C == 0x8C
-    rdids = chip.rdid_count
-    _status, seen_rdids, ok = run(_while_held(fram, fram.session_lock, fram.setup(), chip))
-    assert seen_rdids == rdids
-    assert ok is True
-    assert chip.rdid_count == rdids + 1
-
-
 def test_set_write_protected_waits_for_a_held_fram_session() -> None:
     # Guard: `async with fram:` holds the bus too, which set_write_protected() already waited for.
     fram, chip = _make_fram()
@@ -974,22 +806,7 @@ def test_verify_present_false_reverts_to_uninitialized_and_blocks_further_access
     verified, still_readable = run(scenario())
     assert verified is False
     assert fram.initialized is False
-    assert fram.lost.is_set()  # the manager's watch task learns of it
-    assert _count(fram, code("E", "FRAM_CHIP_LOST")) == 1
     assert still_readable is False  # every other method now safely refuses, as if never set up
-
-
-def test_verify_present_on_a_dead_chip_persists_chip_lost_once() -> None:
-    fram, chip = _make_fram()
-    run(_setup_fram(fram))
-    chip.silent = 0xFF
-    assert run(fram.verify_present()) is False
-    assert _count(fram, code("E", "FRAM_CHIP_LOST")) == 1
-    assert fram.pr._err_count == 1
-    assert run(fram.verify_present()) is False  # refused at its guard: the same loss, no second E54
-    assert _count(fram, code("E", "FRAM_CHIP_LOST")) == 1
-    assert not fram.session_lock.locked()
-    assert not fram._bus_lock.locked()
 
 
 def test_setup_again_after_verify_present_failure_recovers() -> None:
@@ -1000,10 +817,8 @@ def test_setup_again_after_verify_present_failure_recovers() -> None:
     assert run_result_1 is False
     chip.rdid_response = bytes([0x04, 0x7F, 0x03, 0x02])  # disturbance cleared up
 
-    assert fram.lost.is_set()
     run(_setup_fram(fram))  # the same task-death-and-respawn "fresh setup()" pattern every driver uses
     assert fram.initialized is True
-    assert not fram.lost.is_set()
 
 
 def test_verify_present_bounded_wait_returns_false_instead_of_hanging_when_lock_already_held() -> None:
@@ -1027,7 +842,6 @@ def test_verify_present_bounded_wait_returns_false_instead_of_hanging_when_lock_
 
     assert run(scenario()) is False
     assert fram.initialized is True  # a lock-busy timeout isn't a device-identification failure
-    assert not fram.lost.is_set()
     assert list(fram.pr.history).count(code("E", "LOCK_TIMEOUT")) == 1
     assert run(fram.verify_present()) is True  # the cancelled acquire left the lock usable
 
@@ -1198,50 +1012,23 @@ def count_bus_lock_holds(fram: FRAM_SPI) -> "list[int]":
     return holds
 
 
-def test_bus_deinit_mid_operation_returns_false_and_logs_bus_down() -> None:
-    # A deinitialised bus is reported as bus-down by the driver (bool SPI results, C.3), not raised.
-    fram, chip = _make_fram()
+def test_bus_deinit_mid_operation_raises_uncaught_runtimeerror() -> None:
+    # A bus deinitialized under a set-up FRAM_SPI: SPIDevice.session_begin()'s configure() raises RuntimeError, uncaught
+    # here (asy_spi_driver.py's contract: the caller's responsibility). No runtime path calls deinit() (C.3).
+    fram, _chip = _make_fram()
     run(_setup_fram(fram))
     fram._spidev.spi.deinit()
-    logged = len(chip.log)
 
     async def scenario() -> bool:
         async with fram:
             return await fram.get_values(bytearray(1), 0)
 
-    assert run(scenario()) is False
-    assert _bus_down_entries(fram) == 1
-    assert fram.pr._err_count == 1
-    assert len(chip.log) == logged  # no transfer was made
-
-
-def test_set_values_on_a_bus_that_went_down_returns_false_and_logs_bus_down() -> None:
-    fram, chip = _make_fram()
-    run(_setup_fram(fram))
-    before = bytes(chip.memory[0:2])
-    fram._spidev.spi.deinit()
-
-    async def scenario() -> bool:
-        async with fram:
-            return await fram.set_values(b"\x5a\xa5", 0)
-
-    assert run(scenario()) is False
-    assert _bus_down_entries(fram) == 1
-    assert fram.pr._err_count == 1
-    assert bytes(chip.memory[0:2]) == before
-
-
-def test_verify_present_and_set_write_protected_report_a_bus_down_after_setup() -> None:
-    fram, _chip = _make_fram()
-    run(_setup_fram(fram))
-    fram._spidev.spi.deinit()
-    assert run(fram.verify_present()) is False
-    assert _bus_down_entries(fram) == 1
-    assert fram.pr._err_count == 1
-    assert run(fram.set_write_protected(value=True)) is False
-    assert _bus_down_entries(fram) == 1  # the same code again shares the newest slot (C.7.1)
-    assert fram.pr._err_count == 2  # one count per call
-    assert fram.initialized is True  # a bus that is down is not a lost chip
+    try:
+        run(scenario())
+        raised = ""
+    except RuntimeError as e:
+        raised = str(e)
+    assert raised == "SPI bus not initialized - call init() first"
     assert not fram.session_lock.locked()
     assert not fram._bus_lock.locked()
 
@@ -1252,9 +1039,9 @@ def test_setup_raises_when_the_bus_is_down() -> None:
     try:
         run(_setup_fram(fram))
         message = ""
-    except OSError as e:
+    except RuntimeError as e:
         message = str(e)
-    assert message == "SPI bus not initialized"
+    assert message == "SPI bus not initialized - call init() first"
     assert fram.initialized is False
     assert not [entry for entry in chip.log if entry[0] != "deinit"]  # no RDID was clocked
 

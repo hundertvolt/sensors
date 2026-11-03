@@ -735,10 +735,12 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
    `SCD30`/`WEBSERVER`) from the very start of boot, polled for rather than slept on.
 3. **The combined-fault escalation** — every instance this device wires boots with its sustained
    fault (`<instance>:writeto:500` for each sensor, `fram:silent`, `uart_link:silent`): each faulted
-   module records a real `"E"` entry while the process lives, then the supervisor's restart budget
+   module records a real `"E"` entry while the process lives (a link's responder excepted: a silent
+   link leaves it listening, never failed), then the supervisor's restart budget
    runs out and the device resets itself — exit code 3 with one reset line, never a crash, and the
    (simulated) watchdog never starves. `fram:silent` makes the chip answer zeros and keep its bytes,
-   so nothing is torn.
+   so nothing is torn; its write attempts stay within the persisted-log rate plus one setup write per
+   FRAM-backed logger.
 4. **Relaunch fault-free on run 3's state** — `ResetReason` is the supervisor's escalation code,
    the boot cleared the reset record (`mem_backup` region 0 reads zero at shutdown), every measuring
    driver produces real readings again, and SCD30/BMP3XX/ISL29125, whichever this device wires, read
