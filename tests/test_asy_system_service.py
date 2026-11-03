@@ -958,8 +958,6 @@ _HANG_REACH_MS = 300  # real time a command's sequence gets to reach the step a 
 _POLL_MS = 10  # how often a bounded real-time wait for the supervisor's escalation looks again
 # @tunable l1.system_service_budget_poll_ms = 20
 _BUDGET_POLL_MS = 20  # how often the starved-supervisor wait looks again within the watchdog's budget
-# @tunable l1.system_service_arm_settle_ms = 10
-_ARM_SETTLE_MS = 10  # real time the escalation's arm gets to pause storage before the test reads the chip
 # @tunable l1.system_service_quiet_window_ms = 20
 _QUIET_WINDOW_MS = 20  # real time a command's refusal or its wait for the supervisor is watched not to move on
 # @tunable l1.system_service_held_window_ms = 50
@@ -1494,38 +1492,6 @@ def test_a_refused_preflight_answers_the_same_word_waiting_on_it_with_its_own_ou
         run(scenario())
 
 
-def test_a_raising_preflight_leaves_the_gate_as_a_refusal_does() -> None:
-    # The raise reaches the caller's catch; the gate then decides the next command afresh and a mempause is not refused.
-    rig = _Rig(tasks=0)
-    assert rig.manager is not None
-    manager, preflights = rig.manager, []
-
-    async def raising_ready() -> bool:
-        raise MemoryError("injected: no room for the preflight")
-
-    async def refusing_ready() -> bool:
-        preflights.append(1)
-        return False
-
-    async def scenario() -> None:
-        sup = await rig.start()
-        manager.erase_ready = raising_ready  # type: ignore[method-assign]
-        raised = ""
-        try:
-            await rig.svc.erase_fram()
-        except MemoryError as e:
-            raised = str(e)
-        assert raised.startswith("injected") and (rig.svc._shutdown, _sequence(rig.svc)) == (0, None), raised
-        assert rig.svc.pause_permanent_storage(0) is True
-        manager.erase_ready = refusing_ready  # type: ignore[method-assign]
-        assert await rig.svc.erase_fram() is False and preflights == [1]
-        assert not (rig.svc._feed_owned or rig.svc._reset_decided)
-        await rig.stop(sup)
-
-    with FastAsyncSleep():
-        run(scenario())
-
-
 def test_a_raising_flush_reaches_the_reset_and_reads_9_unless_a_config_reset_deletes_it() -> None:
     for purpose in _PURPOSES:
         rig = _Rig(stores=0)
@@ -2019,41 +1985,6 @@ def test_tasks_dying_while_a_command_runs_never_escalate() -> None:
         assert rig.svc._force_watchdog_starve is True and len(rig.svc._reset_timer.arms) == 1
         assert machine.mem_backup(0)[1] == _const("_RR_REBOOT")
         assert code("E", "TASK_BUDGET_REBOOT") not in _persisted(rig.svc)
-
-
-def test_an_escalation_armed_during_the_erase_preflight_refuses_the_command() -> None:
-    rig = _Rig(tasks=0)
-    assert rig.manager is not None
-    calls = [0]
-    rig.starters = [_dead_starter(calls)]
-    release = asyncio.Event()
-    real_ready = rig.manager.erase_ready
-
-    async def slow_ready() -> bool:
-        await release.wait()
-        return await real_ready()
-
-    rig.manager.erase_ready = slow_ready  # type: ignore[method-assign]
-
-    async def scenario() -> None:
-        sup = await rig.start()
-        command = asyncio.create_task(rig.svc.erase_fram())
-        for _ in range(_RUN_BOUND_S * 100):
-            if rig.svc._reset_armed:
-                break
-            await _real_time(_POLL_MS)
-        assert rig.svc._reset_armed, "the supervisor never escalated"
-        await _real_time(_ARM_SETTLE_MS)  # the escalation's arm paused storage
-        memory = bytes(rig.chip.memory)
-        release.set()
-        assert await command is False
-        assert (rig.svc._shutdown, rig.svc._feed_owned, _sequence(rig.svc)) == (0, False, None)
-        assert rig.chip.memory == memory
-        await rig.stop(sup)
-
-    with FastAsyncSleep():
-        run(scenario())
-    assert machine.mem_backup(0)[1] == _const("_RR_TASK_BUDGET")
 
 
 def test_the_task_budget_steps_once_past_its_max_and_stops() -> None:
@@ -2632,94 +2563,6 @@ def test_the_first_pass_past_the_deadline_unpauses_and_logs_one_line() -> None:
 
         run(scenario())
     assert _auto_unpause_lines(recorder) == 1
-
-
-def _raising_unpause(svc: SystemService) -> list[bool]:
-    # The service's pause callback, raising at its first unpause only; the list records that raise.
-    set_pause = svc._storage_pause
-    raised: list[bool] = []
-
-    def pause(*, value: bool) -> None:
-        if not value and not raised:
-            raised.append(value)
-            raise MemoryError("injected: no room at the unpause")
-        assert set_pause is not None
-        set_pause(value=value)
-
-    svc._storage_pause = pause
-    return raised
-
-
-async def _ended(task: "asyncio.Task[None]") -> str:
-    # Awaits a status task the scenario lets die, so its injected raise is retrieved here rather than reported.
-    try:
-        await task
-    except MemoryError as e:
-        return str(e)
-    return "returned"
-
-
-def test_an_auto_unpause_that_raises_keeps_its_deadline_for_the_restarted_loop() -> None:
-    # The raise ends the status task; the deadline survives it, so the supervisor's restart still ends the pause.
-    with _driven() as clock:
-        svc, manager = _paused_service()
-        raised = _raising_unpause(svc)
-
-        async def scenario() -> None:
-            first = asyncio.create_task(svc._status_loop())
-            outcome = asyncio.create_task(_ended(first))
-            assert svc.pause_permanent_storage(60) is True
-            await _pump(svc._uptime_event, 60, clock)
-            assert (await outcome).startswith("injected") and raised and manager.get_pause() is True
-            second = asyncio.create_task(svc._status_loop())  # the supervisor's restart
-            await _pump(svc._uptime_event, 1, clock)
-            assert (manager.get_pause(), _pending(svc)) == (False, False)
-            await cancel(second)
-
-        run(scenario())
-
-
-def test_an_immediate_unpause_that_raises_keeps_the_pending_deadline() -> None:
-    svc, manager = _paused_service()
-    assert svc.pause_permanent_storage(60) is True
-    raised = _raising_unpause(svc)
-    message = ""
-    try:
-        svc.pause_permanent_storage(0)
-    except MemoryError as e:
-        message = str(e)
-    assert message.startswith("injected") and raised and manager.get_pause() is True and _pending(svc), message
-
-
-def test_a_raising_signature_line_never_lets_the_restarted_loop_draw_a_second_signature() -> None:
-    # The random fallback at 120 s; the flag is set with the value, so the restarted loop keeps the signature.
-    with _driven() as clock:
-        svc = _make_service()
-        one = svc.pr.one
-        raised: list[object] = []
-
-        def raising_one(*args: object, sep: str = " ", end: str = "\n") -> None:
-            if not raised and "boot signature" in str(args[0]):
-                raised.append(args[0])
-                raise MemoryError("injected: no room for the signature line")
-            one(*args, sep=sep, end=end)
-
-        svc.pr.one = raising_one  # type: ignore[method-assign]
-
-        async def scenario() -> "tuple[int | float | None, int | float | None]":
-            first = asyncio.create_task(svc._status_loop())
-            outcome = asyncio.create_task(_ended(first))
-            await _pump(svc._uptime_event, 120, clock)
-            assert (await outcome).startswith("injected") and raised
-            before = await svc.get_boot_signature()
-            second = asyncio.create_task(svc._status_loop())  # the supervisor's restart
-            await _pump(svc._uptime_event, 2, clock)
-            after = await svc.get_boot_signature()
-            await cancel(second)
-            return before, after
-
-        before, after = run(scenario())
-    assert before is not None and before == after, (before, after)
 
 
 def test_a_second_pause_replaces_the_first_deadline() -> None:

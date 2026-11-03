@@ -21,12 +21,11 @@ class CRCBase:
     def __init__(self, num_bytes: int, poly: int | None, fmt: str) -> None:
         # An invalid config (negative num_bytes, poly out of range for the width) silently
         # degrades to pass-through mode rather than raising - see module docstring's contract.
-        mask = (1 << (num_bytes * 8)) - 1 if num_bytes > 0 else 0
-        self._poly = poly if poly is not None and num_bytes > 0 and 0 <= poly <= mask else None
-        self._num_bytes = 0 if self._poly is None else num_bytes  # every width field follows the checked polynomial
-        self._all_set = 0 if self._poly is None else mask
-        self._msb_set = 0 if self._poly is None else 1 << ((self._num_bytes * 8) - 1)
-        self._crc_shift = 0 if self._poly is None else 8 * (self._num_bytes - 1)
+        self._num_bytes = 0 if poly is None or num_bytes < 0 else num_bytes
+        self._all_set = 0 if self._num_bytes <= 0 else (1 << (self._num_bytes * 8)) - 1
+        self._msb_set = 0 if self._num_bytes <= 0 else 1 << ((self._num_bytes * 8) - 1)
+        self._crc_shift = 0 if self._num_bytes <= 0 else 8 * (self._num_bytes - 1)
+        self._poly = None if poly is None or self._num_bytes == 0 or not (0 <= poly <= self._all_set) else poly
         self._fmt = fmt
         self._inc_crc: int | None = None
         self._inc_count = 0
@@ -93,12 +92,12 @@ class CRCBase:
     async def add_into(self, buffer: bytearray, size: int, start: int = 0, init: int | None = None) -> int | None:
         # Like add(), but writes the CRC directly into a slice of an existing buffer instead of
         # allocating a new one; returns the total size written (payload + CRC).
-        if size <= 0 or start < 0 or start + size + self._num_bytes > len(buffer):
-            return None
         if self._poly is None:  # uninitialized or "pass" mode
             return size
         init = self._validate_init(init)
-        if init is None:
+        if init is None or size <= 0 or start < 0:  # init must be valid, size must be > 0
+            return None
+        if start + size + self._num_bytes > len(buffer):  # buffer must be sufficient for CRC
             return None
         mv = memoryview(buffer)[start : (start + size + self._num_bytes)]
         crc = await self._crc(mv[0:size], init, self._poly)
@@ -123,13 +122,13 @@ class CRCBase:
     ) -> int | None:
         # Like check(), but verifies in place within a shared buffer; returns just the payload
         # length (excluding the CRC) instead of a copy of the data.
-        size = len(buffer) if size is None else size
-        if size <= self._num_bytes or start < 0 or start + size > len(buffer):
-            return None
         if self._poly is None:  # uninitialized or "pass" mode
-            return size
+            return len(buffer) if size is None else size
+        size = len(buffer) if size is None else size
         init = self._validate_init(init)
-        if init is None:
+        if init is None or size <= 0 or start < 0:  # init must be valid, size must be > 0
+            return None
+        if start + size > len(buffer) or size <= self._num_bytes:
             return None
         mv = memoryview(buffer)[start : start + size]
         if await self._crc(mv, init, self._poly) == 0:
@@ -147,7 +146,7 @@ class CRCBase:
 
     def length(self) -> int:
         # CRC width in bytes; 0 in pass-through mode (CRCPass, or any width constructed with
-        # poly=None or a polynomial out of range for it).
+        # poly=None).
         return self._num_bytes
 
     # Feeds one chunk of data into an in-progress incremental CRC computation. Call once per

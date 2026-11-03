@@ -37,7 +37,8 @@ async def _main() -> None:
     bus = BENCH["bus"][chip["bus"]]
     spi = asy_spi_driver.SPI(bus["id"], sck_pin=bus["sck_pin"], mosi_pin=bus["mosi_pin"], miso_pin=bus["miso_pin"])
     fram = FRAMManager(spi, chip["cs_pin"], BENCH["fram_max_size"])
-    fact("setup", await fram.setup())
+    await fram.setup()
+    fact("setup", fram.initialized)
     store = make_logger(LogConfig(fram, _HISTORY_LENGTH, None), _LOG_NAME)
     await store.setup()
     fact("initialized", store.initialized)

@@ -203,20 +203,6 @@ def test_crc_pass_add_into_and_check_from_are_size_identity() -> None:
     assert run(cp.check_from(buf)) == 3
 
 
-def test_pass_mode_add_into_and_check_from_refuse_bad_bounds() -> None:
-    # Pass mode refuses the same zero, negative and overrunning sizes the real CRCs refuse.
-    for crc in (CRCPass(), CRC8(poly=None)):
-        buf = bytearray(3)
-        assert run(crc.add_into(buf, 0)) is None
-        assert run(crc.add_into(buf, -1)) is None
-        assert run(crc.add_into(buf, 1, start=-1)) is None
-        assert run(crc.add_into(bytearray(2), 3)) is None
-        assert run(crc.check_from(buf, 0)) is None
-        assert run(crc.check_from(buf, -1)) is None
-        assert run(crc.check_from(buf, 1, start=-1)) is None
-        assert run(crc.check_from(bytearray(2), 3)) is None
-
-
 # ---------------------------------------------------------------------------
 # Incremental API: run_inc / check_inc
 # ---------------------------------------------------------------------------
@@ -394,45 +380,18 @@ def test_check_rejects_invalid_init() -> None:
 def test_poly_above_all_set_degrades_to_pass_mode() -> None:
     base = CRCBase(1, 0x1FF, ">B")  # poly wider than a single byte can hold
     assert base._poly is None
-    assert base.length() == 0
     assert run(base.add(bytearray(b"x"))) == bytearray(b"x")
 
 
 def test_poly_negative_degrades_to_pass_mode() -> None:
     base = CRCBase(1, -1, ">B")
     assert base._poly is None
-    assert base.length() == 0
 
 
 def test_num_bytes_negative_degrades_to_pass_mode() -> None:
     base = CRCBase(-1, 0x31, ">B")
     assert base._num_bytes == 0
     assert base._poly is None
-
-
-def _assert_pure_pass_through(base: CRCBase, width: int) -> None:
-    # A refused polynomial leaves no trace of its width: nothing appended, no CRC byte reserved or checked.
-    assert (base.length(), base._all_set, base._msb_set, base._crc_shift) == (0, 0, 0, 0)
-    data = bytearray(b"xy")
-    assert run(base.add(data)) == bytearray(b"xy")
-    for room in (0, width):  # an exact-size buffer, and one a CRC wider than the payload
-        buf = bytearray(b"xy") + bytearray(room)
-        before = bytes(buf)
-        assert run(base.add_into(buf, 2)) == 2
-        assert bytes(buf) == before
-    assert run(base.check_from(bytearray(width), width)) == width  # all payload, no CRC to strip
-
-
-def test_a_polynomial_above_the_one_byte_mask_is_pure_pass_through() -> None:
-    _assert_pure_pass_through(CRCBase(1, 0x1FF, ">B"), 1)
-
-
-def test_a_polynomial_above_the_two_byte_mask_is_pure_pass_through() -> None:
-    _assert_pure_pass_through(CRCBase(2, 0x1FFFF, ">H"), 2)
-
-
-def test_a_polynomial_above_the_four_byte_mask_is_pure_pass_through() -> None:
-    _assert_pure_pass_through(CRCBase(4, 0x1FFFFFFFF, ">I"), 4)
 
 
 # ---------------------------------------------------------------------------

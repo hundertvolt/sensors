@@ -36,12 +36,11 @@ _NUM_STATUS_BYTES = const(2)
 _TS_FMT = const("<Q")  # explicit little-endian, no padding - matches asy_print_log.py's own convention
 _TS_UNINIT = const(b"\x00")
 _NAME = const("FRAM")
-_ERASE_UNIT = const(256)  # one erase write: 2.1 ms at the 1 MHz bus, divides both chip sizes; the size class the webserver's chunked writes use (Part I.3)
+_ERASE_UNIT = const(256)  # one erase write: 0.3 ms at 8 MHz, divides both chip sizes; the size class the webserver's chunked writes use (Part I.3)
 
 # Error-catalog codes this module logs (buildgen/error_catalog.json, SPECIFICATION.md Part C.7.1).
 _ERR_INIT = const(10)
 _ERR_CALLBACK = const(14)
-_ERR_ALLOC = const(20)
 _ERR_BAD_ARG = const(21)
 _ERR_UNEXPECTED = const(23)
 _ERR_FRAM_STATUS_BYTE = const(46)
@@ -106,12 +105,11 @@ class _FRAMBaseChunk:
         try:  # check_length is a caller-supplied int (get_chunk's own param), not hardware-bounded
             self._check_buf: bytearray | None = bytearray(self._check_length)
         except (MemoryError, OverflowError) as e:
-            # Synchronous, so no persisted entry here; a read then returns block 0 unchecked, a verified write fails
-            # (_compare_with()).
+            # Degrades exactly as the per-call allocation did: _compare_with() then reports the
+            # block as "not verifiably valid", and a read falls back to rewriting it.
             self.pr.err("check buffer allocation failed:", e)
             self._check_buf = None
         self._check_mv = None if self._check_buf is None else memoryview(self._check_buf)
-        self._no_check_logged = False  # True once a missing check buffer's one ALLOC entry is persisted: it never comes back
         # What _read_into()'s and _compare_with()'s per-iteration closures used to hold in cells.
         self._read_valid = True
         self._read_match = True
@@ -146,21 +144,14 @@ class _FRAMBaseChunk:
             return None
         return False
 
-    async def _blank_verdict(self, *, blank: bool) -> bool | None:
-        # False: no copy usable. An undriven bus reads blank too, so off the bus lock the chip's RDID tells it apart
-        # (MB85RS64V p10): None once that probe found the loss, which the driver logged once and the chip watch takes.
-        if blank and not await self.fram.verify_present() and self.fram.lost.is_set():
-            return None
-        return False
-
     async def _clear_chunk(self, addr: int) -> bool:
         async with self.fram as fram:
             try:
                 if await self._handle_status_bytes(fram, addr, _STATUS_UNINIT, check_idle=False) is None:
                     return False
                 await asyncio.sleep(0)  # after the status-byte pair; the bus lock is held, CS is not asserted
-                # bytearray(n) zero-fills directly (same content as `[_STATUS_UNINIT] * n`) without building that list first
-                # `[x] * n` can segfault uncatchably for large n (Part F.1).
+                # bytearray(n) zero-fills directly (same content as `[_STATUS_UNINIT] * n`) without
+                # building that list first - `[x] * n` can segfault uncatchably for large n (Part F.1).
                 clear_status = fram.set_values_sync(bytearray(self.size + self.crc.length()), addr)
                 if clear_status and not await fram.report_set_values(clear_status):
                     await self.pr.err_s("FRAM write failed in _clear_chunk!", errno=_ERR_FRAM_CLEAR_WRITE)
@@ -171,11 +162,8 @@ class _FRAMBaseChunk:
         return True
 
     async def _compare_with(self, buf: bytearray, addr: int) -> tuple[bool, bool, bool, bool]:
-        if self._check_buf is None:  # allocated once, at construction: its absence lasts the run, so one entry
-            if not self._no_check_logged:
-                self._no_check_logged = True
-                await self.pr.err_s("No scratch buffer to check block at", addr, errno=_ERR_ALLOC)
-            return False, False, False, True
+        if self._check_buf is None:  # the scratch allocation failed at construction
+            return False, False, False, False
         self._read_valid = True
         self._read_match = True
         self._read_iters = 0
@@ -187,15 +175,6 @@ class _FRAMBaseChunk:
             self._compare_against = None
         valid = self._read_valid and valid_bytes == self.size and self._read_iters > 0
         return valid, uninit, self._read_match, self._read_fault
-
-    async def _copy_out(self, data: memoryview) -> bytearray | None:
-        # read()'s copy of the data region is chunk-sized, so it degrades as the buffer it copies from does
-        # (RegionBuffer): the not-read sentinel on an exhausted heap, never a raise.
-        try:
-            return bytearray(data)
-        except MemoryError as e:
-            await self.pr.err_s("No buffer for the chunk read:", e, errno=_ERR_ALLOC)
-            return None
 
     async def _handle_status_bytes(
         self, fram: FRAM_SPI, addr: int, val: int, *, check_idle: bool,
@@ -214,9 +193,7 @@ class _FRAMBaseChunk:
 
     async def _read(self, buf: bytearray) -> bool | None:
         # True: valid data. False: read, and no copy usable (blank, invalid, or two differing copies).
-        # None: not read (paused, lost, a bad buffer, a fault without a valid copy beside it, a failed repair).
-        if self.fram.lost.is_set():
-            return None
+        # None: not read (paused, a bad buffer, a fault without a valid copy beside it, a failed repair).
         async with self._op_lock:  # serializes this chunk's own writes/reads/clears end to end
             if self._mempause():
                 await self.pr.wrn_s("FRAM communication paused, not reading FRAM!", wrnno=_WRN_FRAM_PAUSED)
@@ -241,7 +218,7 @@ class _FRAMBaseChunk:
                     else:
                         await self.pr.wrn_s("Invalid data in block 1", wrnno=_WRN_FRAM_BLOCK_INVALID)
                     # a fault: not read, so the stored bytes are kept
-                    return None if fault or fault1 else await self._blank_verdict(blank=uninit or uninit1)
+                    return None if fault or fault1 else False
                 self.pr.all("Valid data in block 1, overwriting block 0")
                 # if block 1 is valid, overwrite invalid block 0 with valid data
                 if not await self._write_chunk(buf, self._block_addr[0]):
@@ -252,21 +229,20 @@ class _FRAMBaseChunk:
             self.pr.all("Data read successfully from block 0")
             valid, uninit, match, fault = await self._compare_with(buf, self._block_addr[1])
             if not valid:  # check block 1 even if block 0 is valid
-                if self._check_buf is not None:  # without its check buffer block 1 cannot be judged: left as it is
-                    if uninit:
-                        self.pr.evt("Uninitialized data in block 1, writing block 0 data")
-                    elif fault:
-                        await self.pr.wrn_s("Read fault in block 1, overwriting with block 0 data", wrnno=_WRN_FRAM_BLOCK_INVALID)
-                    else:
-                        await self.pr.wrn_s("Invalid data in block 1, overwriting with block 0 data", wrnno=_WRN_FRAM_BLOCK_INVALID)
-                    if not await self._write_chunk(buf, self._block_addr[1]):
-                        await self.pr.err_s("Writing block 1 failed!", errno=_ERR_FRAM_BLOCK_WRITE)
-                        return None  # writing failed, means something is really wrong, better do not use data
+                if uninit:
+                    self.pr.evt("Uninitialized data in block 1, writing block 0 data")
+                elif fault:
+                    await self.pr.wrn_s("Read fault in block 1, overwriting with block 0 data", wrnno=_WRN_FRAM_BLOCK_INVALID)
+                else:
+                    await self.pr.wrn_s("Invalid data in block 1, overwriting with block 0 data", wrnno=_WRN_FRAM_BLOCK_INVALID)
+                if not await self._write_chunk(buf, self._block_addr[1]):
+                    await self.pr.err_s("Writing block 1 failed!", errno=_ERR_FRAM_BLOCK_WRITE)
+                    return None  # writing failed, means something is really wrong, better do not use data
                 self.pr.all("Data read successfully from block 0")
                 return True
             if not match:
-                # No generation counter says which block is newer, so a write torn between blocks leaves two valid
-                # but differing copies: a hard failure, never a guess (owner, 2026-07-18). The next write heals it.
+                # Deliberate: no generation counter says which block is newer, so a write torn between
+                # blocks leaves two self-consistent but differing copies - a hard failure, not a guess.
                 await self.pr.err_s("Both blocks valid but different data", errno=_ERR_FRAM_COPIES_DIFFER)
                 return False
             self.pr.all("Both blocks valid and data verified")
@@ -370,8 +346,6 @@ class _FRAMBaseChunk:
         self._read_match = match
 
     async def _write(self, buf: bytearray) -> bool:
-        if self.fram.lost.is_set():
-            return False  # no log: the loss is the driver's one FRAM_CHIP_LOST entry
         async with self._op_lock:  # serializes this chunk's own writes/reads/clears end to end
             if self._mempause():
                 await self.pr.wrn_s("FRAM communication paused, not writing FRAM!", wrnno=_WRN_FRAM_PAUSED)
@@ -441,8 +415,6 @@ class _FRAMBaseChunk:
         self._verify = value
 
     async def clear(self) -> bool:
-        if self.fram.lost.is_set():
-            return False
         async with self._op_lock:  # serializes this chunk's own writes/reads/clears end to end
             if self._mempause():
                 await self.pr.wrn_s("FRAM communication paused, not clearing FRAM!", wrnno=_WRN_FRAM_PAUSED)
@@ -457,8 +429,6 @@ class _FRAMBaseChunk:
     async def invalidate(self) -> bool:
         # Marks both blocks blank (their status bytes only); no pause check: only the erase calls it, after
         # FRAMManager.quiesce() closed the chunk layer.
-        if self.fram.lost.is_set():
-            return False
         async with self._op_lock:
             for addr in self._block_addr:
                 async with self.fram as fram:
@@ -488,15 +458,12 @@ class FRAMChunk(_FRAMBaseChunk):
             return None
         dbuf = buf.get_data_buf()
         if dbuf is None:
-            # Unreachable: read_into() already failed on a missing buffer, and a RegionBuffer's buffer is fixed at
-            # construction - kept to narrow the Optional for the type checker.
             return None
-        return await self._copy_out(dbuf)
+        return bytearray(dbuf)
 
     async def read_into(self, buf: RegionBuffer) -> bool | None:
         dbuf = buf.get_buf()
         if dbuf is None:
-            await self.pr.err_s("No buffer for the chunk read", errno=_ERR_ALLOC)
             return None
         return await self._read(dbuf)
 
@@ -504,7 +471,6 @@ class FRAMChunk(_FRAMBaseChunk):
         buf = self.get_buffer()  # preallocate buffer for payload and crc length
         databuf = buf.get_data_buf()
         if databuf is None:
-            await self.pr.err_s("No buffer for the chunk write", errno=_ERR_ALLOC)
             return False
         if len(data) > len(databuf):
             await self.pr.err_s("Data size", len(data), "larger than buffer size", len(databuf), "!", errno=_ERR_BAD_ARG)
@@ -516,7 +482,6 @@ class FRAMChunk(_FRAMBaseChunk):
     async def write_into(self, buf: RegionBuffer) -> bool:
         dbuf = buf.get_buf()
         if dbuf is None:
-            await self.pr.err_s("No buffer for the chunk write", errno=_ERR_ALLOC)
             return False
         return await self._write(dbuf)
 
@@ -558,16 +523,12 @@ class FRAMTimestampedChunk(_FRAMBaseChunk):
             return None, None, None
         dbuf = buf.get_data_buf()
         if dbuf is None:
-            # Unreachable: read_into() already failed on a missing buffer, and a RegionBuffer's buffer is fixed at
-            # construction - kept to narrow the Optional for the type checker.
             return None, None, None
-        data = await self._copy_out(dbuf)
-        return (None, None, None) if data is None else (ts, age, data)
+        return ts, age, bytearray(dbuf)
 
     async def read_into(self, buf: FRAMChunkTimestampedBuffer) -> tuple[bool | None, int | None, int | None]:
         bbuf = buf.get_buf()
         if bbuf is None:
-            await self.pr.err_s("No buffer for the chunk read", errno=_ERR_ALLOC)
             return None, None, None
         res = await self._read(bbuf)
         if res is not True:
@@ -575,8 +536,6 @@ class FRAMTimestampedChunk(_FRAMBaseChunk):
         age = None
         tbuf = buf.get_ts_buf()
         if tbuf is None:
-            # Unreachable: the buffer above exists, and a RegionBuffer's buffer is fixed at construction - kept to
-            # narrow the Optional for the type checker.
             return None, None, None
         ts = int(struct.unpack_from(_TS_FMT, tbuf, 0)[0])
         if ts == _TS_UNINIT[0]:
@@ -602,7 +561,6 @@ class FRAMTimestampedChunk(_FRAMBaseChunk):
         buf = self.get_buffer()  # preallocate buffer for payload and crc length
         dbuf = buf.get_data_buf()
         if dbuf is None:
-            await self.pr.err_s("No buffer for the chunk write", errno=_ERR_ALLOC)
             return False, False, None
         if len(data) > len(dbuf):
             await self.pr.err_s("Data size", len(data), "larger than buffer size", len(dbuf), "!", errno=_ERR_BAD_ARG)
@@ -635,13 +593,10 @@ class FRAMTimestampedChunk(_FRAMBaseChunk):
             self.pr.evt("FRAM write timestamp is valid")
         tbuf = buf.get_ts_buf()
         if tbuf is None:
-            await self.pr.err_s("No buffer for the chunk write", errno=_ERR_ALLOC)
             return False, False, None
         struct.pack_into(_TS_FMT, tbuf, 0, utc)
         bbuf = buf.get_buf()
         if bbuf is None:
-            # Unreachable: get_ts_buf() above found the buffer, and a RegionBuffer's buffer is fixed at construction -
-            # kept to narrow the Optional for the type checker.
             return False, False, None
         return await self._write(bbuf), ntp_synced, utc
 
@@ -662,16 +617,12 @@ class FRAMManager:
         self.fram = FRAM_SPI(spi_bus, spi_cs, max_size=self.size, logger=self.pr)
 
     async def _watch_chip_loop(self) -> None:
-        # Ends when the chip is not up, so the supervisor restarts it and reboots past its budget, as for any
-        # declared chip (owner, 2026-09-29: 'the same as all other chips'); a restart sets a lost chip up anew.
+        # Ends at once for a chip that never set up, so the supervisor restarts it and reboots past its budget, as for
+        # any declared chip (owner, 2026-09-29: 'the same as all other chips'); a chip that set up parks it for the boot.
         if not self.initialized:
             self.pr.err("FRAM chip declared but not set up - escalating")
             return
-        if self.fram.lost.is_set():
-            if not await self.setup():
-                return
-            self.pr.one("FRAM chip answers again")
-        await self.fram.lost.wait()
+        await asyncio.Event().wait()
 
     def get_task_starters(self) -> "list[TaskStarter]":
         return [self.start_asy_watch_chip]
@@ -802,8 +753,7 @@ class FRAMManager:
         return ok
 
     async def erase_ready(self) -> bool:
-        # The driver's readiness first: it ends on finding a loss, before `lost` is set (FRAM_SPI.set_values() yields between).
-        return self.initialized and self.fram.is_ready() and not self.fram.lost.is_set() and not await self.fram.get_write_protected()
+        return self.initialized and not await self.fram.get_write_protected()
 
     async def quiesce(self, step_done: "Callable[[], None]") -> None:
         # Pauses the chunk layer, then waits out each chunk's operation in flight, calling step_done() after
@@ -816,12 +766,11 @@ class FRAMManager:
     async def reset_error_counter(self) -> bool:
         return await self.pr.reset()
 
-    async def setup(self) -> bool:
+    async def setup(self) -> None:
         await self.pr.setup()  # required for all logged warnings and errors
         try:
             await self.fram.setup()
         except Exception as e:
             await self.pr.err_s("FRAM Setup failed:", e, errno=_ERR_INIT)
-            return False
+            return
         self.initialized = True
-        return True

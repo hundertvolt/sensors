@@ -34,10 +34,10 @@ async def _main() -> None:
     bus = BENCH["bus"][chip["bus"]]
     spi = asy_spi_driver.SPI(bus["id"], sck_pin=bus["sck_pin"], mosi_pin=bus["mosi_pin"], miso_pin=bus["miso_pin"])
     fram = FRAMManager(spi, chip["cs_pin"], BENCH["fram_max_size"])
-    ready = await fram.setup()
-    fact("setup", ready)
+    await fram.setup()
+    fact("setup", fram.initialized)
     fact("rdid", binascii.hexlify(bytes(fram.fram._id_buf)).decode())
-    chunk = fram.get_chunk(CHUNK_SIZE, crc=CRC8(), owner="fram_manager_roundtrip") if ready else None
+    chunk = fram.get_chunk(CHUNK_SIZE, crc=CRC8(), owner="fram_manager_roundtrip") if fram.initialized else None
     fact("allocated", chunk is not None)
     if chunk is not None:
         try:
