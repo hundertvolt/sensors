@@ -1076,13 +1076,13 @@ def test_mem32_answers_the_reset_registers_on_each_reset_path() -> None:
     reason, chip = 0x40058008, 0x40064008  # WATCHDOG REASON, VREG_AND_CHIP_RESET CHIP_RESET
     machine.power_on()
     assert (machine.mem32[reason], machine.mem32[chip]) == (0, 0x100)  # HAD_POR
-    for action in (reset, bootloader):
+    for action, bits in ((reset, 2), (bootloader, 1)):  # FORCE; a BOOTSEL round trip leaves TIMER (bench)
         machine.power_on()
         try:
             action()
         except SimulatedRebootError:
             pass
-        assert (machine.mem32[reason], machine.mem32[chip]) == (2, 0x100)  # FORCE; HAD_POR survives
+        assert (machine.mem32[reason], machine.mem32[chip]) == (bits, 0x100), action  # HAD_POR survives
     machine.power_on()
 
     async def starve() -> None:

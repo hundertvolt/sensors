@@ -399,7 +399,7 @@ def test_networking_status_lists_the_drop_window_and_the_wifi_snapshot_time(repo
 
 
 # GET /status's system keys in the order the generated _system_status() publishes them; MemPaused only with FRAM.
-_SYSTEM_STATUS_KEYS = ("SysUptime", "BootSignature", "ResetReason", "ResetBits", "MemFree", "MemPaused", "ConfigFaults", "ConfigUnpersisted", "LastTaskEnd", "LocalTime", "UTCTime", "UnixTime", "TimeStale")
+_SYSTEM_STATUS_KEYS = ("SysUptime", "BootSignature", "ResetReason", "MemFree", "MemPaused", "ConfigFaults", "LastTaskEnd", "LocalTime", "UTCTime", "UnixTime", "TimeStale")
 
 
 def _objs(value: "JsonValue") -> "list[JsonDict]":
@@ -421,18 +421,10 @@ def test_the_reset_heap_and_config_rows_say_what_they_report(repo_root: Path, sr
     assert fields["ResetReason"] == {
         "key": "ResetReason", "label": "Last Reset Reason", "kind": "readonly", "description": "Why the device last restarted, as a numeric code; click it for its meaning.", "codes": reset_codes,
     }
-    assert fields["ResetBits"] == {
-        "key": "ResetBits", "label": "Reset Flags", "kind": "readonly",
-        "description": "The chip's own reset flags at this boot, reported raw: 1 watchdog timer expired, 2 reset forced by software, 256 power-on or brown-out, 65536 RUN pin, 1048576 debug-port restart.",
-    }
     assert fields["MemFree"] == {"key": "MemFree", "label": "Free Heap", "unit": "B", "kind": "readonly", "description": "gc.mem_free() when this poll was answered; the floor under load is the figure of interest."}
     assert fields["ConfigFaults"] == {
         "key": "ConfigFaults", "label": "Config Faults", "kind": "readonly",
         "description": "Modules whose config file existed at this boot but could not be read or was damaged (a damaged file is repaired at boot); empty when none. Listed until the next boot.",
-    }
-    assert fields["ConfigUnpersisted"] == {
-        "key": "ConfigUnpersisted", "label": "Config Unpersisted", "kind": "readonly",
-        "description": "Modules whose last accepted config change could not be written to flash: it applies now but is lost at the next boot. Empty when none; cleared by the module's next successful write.",
     }
 
 

@@ -61,8 +61,9 @@ else:
 _SRC = "src/asy_system_service.py"
 _BOOT_DONE = src_int(_SRC, "BOOT_DONE")
 _BOOT_SETUP = src_int(_SRC, "BOOT_SETUP")
-_TIMER_BIT, _FORCED_BIT = 0x1, 0x2  # ResetBits' watchdog half: REASON TIMER and FORCE
-_HAD_POR_BIT = 0x100  # ResetBits' CHIP_RESET HAD_POR: power-on or brown-out
+_WATCHDOG_REASON, _CHIP_RESET = 0x40058008, 0x40064008  # the chip's reset flags, as the twin's registers hold them
+_TIMER_BIT, _FORCED_BIT = 0x1, 0x2  # WATCHDOG REASON: TIMER and FORCE
+_HAD_POR_BIT = 0x100  # CHIP_RESET HAD_POR: power-on or brown-out
 # @tunable l2.loop_end_boot_limit_ms = 20000
 _BOOT_LIMIT_MS = 20000  # a boot past it is a failure of its own, never a planted fault
 # @tunable l2.loop_end_run_timeout_s = 30.0
@@ -260,23 +261,23 @@ def _per_distinct_wiring() -> None:
         raise microtest.Skip(f"runs on {chosen}, one device per distinct wiring of every instance")
 
 
-def _watchdog_bits(system: "dict[str, object]") -> int:
-    bits = system.get("ResetBits")
-    assert isinstance(bits, int) and bits & _TIMER_BIT and not bits & _FORCED_BIT, system
-    return bits
+def _watchdog_bits() -> None:
+    # The starved watchdog's reset: REASON reads TIMER, never FORCE.
+    bits = machine.mem32[_WATCHDOG_REASON]
+    assert bits & _TIMER_BIT and not bits & _FORCED_BIT, bits
 
 
-def _power_on_bits(system: "dict[str, object]") -> None:
+def _power_on_bits() -> None:
     # No watchdog reset since the power-on: REASON reads neither TIMER nor FORCE, CHIP_RESET keeps HAD_POR.
-    bits = system.get("ResetBits")
-    assert isinstance(bits, int) and bits & _HAD_POR_BIT and not bits & (_TIMER_BIT | _FORCED_BIT), system
+    reason, chip = machine.mem32[_WATCHDOG_REASON], machine.mem32[_CHIP_RESET]
+    assert chip & _HAD_POR_BIT and not reason & (_TIMER_BIT | _FORCED_BIT), (reason, chip)
 
 
 def test_a_loop_core_failure_after_boot_reads_22_at_the_next_boot() -> None:
     _plant, escaped, system = _case("core", _BOOT_DONE)
     assert escaped is None, escaped  # recorded and printed, never re-raised
     assert system.get("ResetReason") == 22, system
-    _watchdog_bits(system)
+    _watchdog_bits()
 
 
 def test_a_non_exception_raised_in_a_task_after_boot_reads_22() -> None:
@@ -284,7 +285,7 @@ def test_a_non_exception_raised_in_a_task_after_boot_reads_22() -> None:
     _plant, escaped, system = _case("task", _BOOT_DONE)
     assert escaped is None, escaped  # a SystemExit too, which rp2 would turn into a soft reset
     assert system.get("ResetReason") == 22, system
-    _watchdog_bits(system)
+    _watchdog_bits()
 
 
 def test_a_loop_ended_during_boot_reads_10_plus_its_phase() -> None:
@@ -293,7 +294,7 @@ def test_a_loop_ended_during_boot_reads_10_plus_its_phase() -> None:
     assert escaped is None, escaped
     assert _BOOT_SETUP <= plant.raised_in_phase < _BOOT_DONE, plant.raised_in_phase
     assert system.get("ResetReason") == src_int(_SRC, "_RR_BOOT_FAILURE") + plant.raised_in_phase, system
-    _watchdog_bits(system)
+    _watchdog_bits()
 
 
 def test_a_console_interrupt_after_boot_still_reads_21() -> None:
@@ -301,7 +302,7 @@ def test_a_console_interrupt_after_boot_still_reads_21() -> None:
     plant, escaped, system = _case("interrupt", _BOOT_DONE)
     assert escaped is plant.interrupt, escaped  # recorded with its own code and re-raised to the REPL
     assert system.get("ResetReason") == src_int(_SRC, "RR_INTERRUPTED"), system
-    _watchdog_bits(system)
+    _watchdog_bits()
 
 
 def test_a_console_soft_reset_after_ctrl_c_reads_21() -> None:
@@ -310,7 +311,7 @@ def test_a_console_soft_reset_after_ctrl_c_reads_21() -> None:
     plant, escaped, system = _case("interrupt", _BOOT_DONE, "soft")
     assert escaped is plant.interrupt, escaped
     assert system.get("ResetReason") == src_int(_SRC, "RR_INTERRUPTED"), system
-    _power_on_bits(system)
+    _power_on_bits()
 
 
 def test_a_console_soft_reset_after_a_loop_end_reads_22() -> None:
@@ -318,7 +319,7 @@ def test_a_console_soft_reset_after_a_loop_end_reads_22() -> None:
     _plant, escaped, system = _case("core", _BOOT_DONE, "soft")
     assert escaped is None, escaped
     assert system.get("ResetReason") == 22, system
-    _power_on_bits(system)
+    _power_on_bits()
 
 
 def test_a_console_soft_reset_after_a_loop_ended_during_boot_reads_10_plus_its_phase() -> None:
@@ -328,7 +329,7 @@ def test_a_console_soft_reset_after_a_loop_ended_during_boot_reads_10_plus_its_p
     assert escaped is None, escaped
     assert _BOOT_SETUP <= plant.raised_in_phase < _BOOT_DONE, plant.raised_in_phase
     assert system.get("ResetReason") == src_int(_SRC, "_RR_BOOT_FAILURE") + plant.raised_in_phase, system
-    _power_on_bits(system)
+    _power_on_bits()
 
 
 def test_a_power_cycle_after_ctrl_c_reads_1() -> None:
@@ -336,7 +337,7 @@ def test_a_power_cycle_after_ctrl_c_reads_1() -> None:
     plant, escaped, system = _case("interrupt", _BOOT_DONE, "power")
     assert escaped is plant.interrupt, escaped
     assert system.get("ResetReason") == src_int(_SRC, "_RR_POWER_ON"), system
-    _power_on_bits(system)
+    _power_on_bits()
 
 
 microtest.after_each(machine.reset_test_state)

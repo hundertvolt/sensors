@@ -1001,20 +1001,14 @@ settings.
   from `ticks_ms()` deltas, never counted wake-ups or the clock (owner, 2026-09-29); if the uptime
   tick timer cannot be armed, a one-second sleep stands in, so it stays measured. `BootSignature` —
   resolved once per boot, unchanged by a restart of the uptime task. `ResetReason` — the reason for
-  the last reset (the codes below). `ResetBits` — the chip's own reset flags at this boot, reported
-  raw: 1 watchdog timer expired, 2 reset forced by software, 256 power-on or brown-out, 65536 RUN
-  pin, 1048576 debug-port restart; read once at boot, never decoded into `ResetReason` (F.5.4).
-  `MemFree` — `gc.mem_free()` when the poll was answered, in bytes (owner, 2026-09-26); no
+  the last reset (the codes below). `MemFree` — `gc.mem_free()` when the poll was answered, in bytes (owner, 2026-09-26); no
   collection runs before it (I.4(f.1)). `ConfigFaults` — the names of the modules whose config file
   existed at this boot but could not be read or was damaged (unparseable, not a JSON object, or
   holding a value the schema refuses, or a directory in the file's place), an empty list when there
   are none — fixed when the boot setup batch ends (A.7), bounded by the build's config stores, and a
   module stays listed for the rest of the boot even when the boot repair rewrote its file; a missing
   or unknown key alone is a repair, not listed (C.7.3); the module's persisted warning stays, once
-  per boot (owner, 2026-10-01). `ConfigUnpersisted` — the modules whose last config write to flash
-  failed (the absent file's defaults, the boot repair, or a PUT's deferred flush), so
-  their current values apply now but are lost at the next boot; an empty list when there are none;
-  a module leaves the list at its next successful write (C.7.3). `LastTaskEnd` — `null` until the
+  per boot (owner, 2026-10-01). `LastTaskEnd` — `null` until the
   supervisor records a supervised task's end this boot, then the last recorded one's `{"Task":
   "<logger name>.<starter name>", "Uptime": <SysUptime seconds at that record>}` (A.7's
   `_collect_task_names()`), recorded at the supervisor's next scan (one every 2 s) after the end;
@@ -1067,7 +1061,6 @@ settings.
 | 1 | power-on (also the RUN pin, RP2040 datasheet §4.7.4) |
 | 2 | watchdog without a record (a starvation, machine.reset() from outside the firmware, mpremote reset) |
 | 3 | reboot command |
-| 4 | bootloader command |
 | 5 | supervisor escalation (task-error budget) |
 | 6 | watchdog starve after the reset timer could not be armed |
 | 7 | reboot after "Reset to defaults" |
@@ -1168,7 +1161,9 @@ the steps have run (for Erase FRAM the whole-chip overwrite) and the 4 s reset d
 a debug level of 4 or more, a USB host that holds the serial port open without reading stalls each
 console line up to about 2 s; such stalls in the last 4 s before a system command's reset can let
 the watchdog end it instead — a `bootloader` then restarts the firmware rather than entering
-BOOTSEL (agent, 2026-09-30). Reset codes 3, 4, 7, 8, 9. The supervisor's escalation reboot (the task
+BOOTSEL (agent, 2026-09-30). Reset codes 3, 7, 8, 9; the bootloader writes no code of its own:
+the BOOTSEL round trip loses both regions, so the boot after it reads 2 (owner, 2026-11-02:
+"Remove code 4."). The supervisor's escalation reboot (the task
 budget, code 5, or a recorded C-stack overflow, code 20) resets directly, without the sequence.
 
 `resetconfig` ("Reset to defaults") deletes every schema-backed config file without reading it,
@@ -3891,9 +3886,9 @@ value the schema refuses (owner, 2026-10-01). A module whose file existed at thi
 be read or was damaged is listed in `/status` `ConfigFaults` for the rest of the boot, even after
 the boot repair rewrote its file, and keeps its persisted warning, once per boot (A.8; owner,
 2026-10-01); a missing or unknown key alone is a repair, not listed — schema drift across a firmware
-update, not damage. A failed write costs persistence only until the next good one: from the failed
-write (the absent file's defaults, the boot repair, or a PUT's deferred flush) until the store's
-next successful write, `/status` lists it in `ConfigUnpersisted`; the write is not retried (A.8). A
+update, not damage. A failed write (the absent file's defaults, the boot repair, or a PUT's deferred
+flush) persists `CFG_FILE_WRITE` and costs persistence only until the store's next successful
+write; the write is not retried, and a commanded reset meanwhile reads 9 (A.8). A
 directory where a config file belongs is a file fault: the store stays invalid, persists
 `CFG_PATH_IS_DIR` and is listed in `ConfigFaults`. `SystemService`'s config file absent
 at boot while its FRAM history survived, with no config reset commanded, persists one SYSTEM warning, `CONFIG_LOST`: the
@@ -7032,7 +7027,7 @@ without flash writes and without FRAM'). `asy_system_service.py`'s `_reboot()` w
 region 0 (`write_reset_record()`) immediately before every intended reset, `boot_phase()` writes a
 boot-phase marker to region 1 at a boot-phase transition only, and `begin_boot()` decodes both with
 `machine.reset_cause()` once per boot and clears region 0. The codes: 0 an invalid record, 1
-power-on, 2 watchdog (no record, boot completed), 3 reboot command, 4 bootloader command, 5
+power-on, 2 watchdog (no record, boot completed), 3 reboot command, 5
 supervisor task budget, 6 reset timer not armed (watchdog starved), 7 config reset, 8 FRAM erase, 9
 command incomplete, 10 + p a boot failure in phase p (region 1's marker, phases 1-5), 20 a recorded
 C-stack overflow (the supervisor's escalation, outside the boot-failure band), 21 a run
@@ -7043,7 +7038,7 @@ recorded by the boot entry's `record_loop_end()` (A.7). The entry never re-raise
 `ports/rp2/main.c:246-249`, v1.29.0): `soft_reset_exit` (`main.c:265-305`) releases the network,
 DMA, PIO, PWM, pins, UARTs and soft timers, but not the I2C or SPI controllers (F.5.1), and main.py
 runs again at once, its boot keeping the recorded 22 (the decode order below); unraised, every loop
-end ends in the watchdog's reset, which ResetBits mark with TIMER.
+end ends in the watchdog's reset, whose REASON register reads TIMER.
 That is the reset class the 2026-09-08 `WDT_RESET` investigation
 could not diagnose (see CLAUDE.md's FRAM-log rule). Every generated device calls `begin_boot()` as
 `build_system()`'s first statement and marks each boot phase from `main()` (A.7), and `/status`
@@ -7065,7 +7060,7 @@ Power-off and the RUN pin clear both regions (above), so either seen under a pow
 soft reset: a friendly-REPL Ctrl-D (`shared/runtime/pyexec.c:676-681`) leaves for `soft_reset_exit`
 and main.py runs again (`ports/rp2/main.c:246-262`) while `reset_cause()` still reads the last hard
 reset, and that boot reports the 21 or 22 recorded before it, or the 10 + p of a loop that ended
-during boot (which records nothing, A.7), ResetBits showing no watchdog bit. A real power-on still
+during boot (which records nothing, A.7), the REASON register showing no watchdog bit. A real power-on still
 reads 1, its regions being empty; so do a torn record under a power-on cause and a soft reset after
 a completed boot, whose marker reads `BOOT_DONE`, outside the boot range. A torn record beside an
 in-boot marker reads 10 + p under any cause. A write into the cleared record cannot tear it (`_write_region()` stores the magic last and
@@ -7091,13 +7086,13 @@ harness `hard_reset()` writes no record: it decodes as "watchdog without a recor
 completed boot and as a boot failure in phase p when it interrupted one; a test that needs an
 intended reset attributed issues it through the REST reboot path (agent, 2026-09-29).
 
-**The chip keeps what `reset_cause()` collapses.** `begin_boot()` reads the watchdog's REASON
-register (TIMER, FORCE) and CHIP_RESET (HAD_POR for power-on or brown-out, HAD_RUN,
-HAD_PSM_RESTART; RP2040 datasheet 2.12.7) once and `/status` reports them raw as `ResetBits` (A.8);
-addresses and bits from pico-sdk's `watchdog.h` and `vreg_and_chip_reset.h` at the pin. They are not
-folded into `ResetReason`: CHIP_RESET names the last chip-level reset, which a watchdog reset is
-not, so a decode waits on the bench's record of each reset kind (agent, 2026-10-06). SCRATCH4 is not
-read: the boot entry's `WDT()` has overwritten it.
+**The chip keeps what `reset_cause()` collapses; the firmware does not read it.** On the bench the
+watchdog's REASON register (0x40058008, bits TIMER and FORCE) tells a `machine.reset()` (FORCE)
+from a watchdog timeout (TIMER), and CHIP_RESET's HAD_POR (0x40064008, bit 8) stays set after
+watchdog resets until the next power cycle, so it never marks a power-on alone; a soft reset changes
+neither. The decoded record is the discriminator; a test that needs the watchdog half reads REASON
+on the board itself (`tests_hardware/bench/test_reset_reasons.py`). A BOOTSEL round trip loses both
+backup regions (the bootrom's `reset_usb_boot()`), so the boot after it reads 2.
 
 ### F.5.5 Two defects in the 1.29 stub package, repaired at install time
 

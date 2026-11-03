@@ -186,7 +186,6 @@
       "1": {"text": "power-on (also the RUN pin, RP2040 datasheet §4.7.4)"},
       "2": {"text": "watchdog without a record (a starvation, machine.reset() from outside the firmware, mpremote reset)"},
       "3": {"text": "reboot command"},
-      "4": {"text": "bootloader command"},
       "5": {"text": "supervisor escalation (task-error budget)"},
       "6": {"text": "watchdog starve after the reset timer could not be armed"},
       "7": {"text": "reboot after \"Reset to defaults\""},

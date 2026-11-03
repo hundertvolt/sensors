@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ()
 
 _SRC = "asy_system_service.py"
-_RR_REBOOT, _RR_BOOTLOADER, _RR_CONFIG_RESET, _RR_FRAM_ERASED = (module_int_const(SRC_DIR, _SRC, name) for name in ("_RR_REBOOT", "_RR_BOOTLOADER", "_RR_CONFIG_RESET", "_RR_FRAM_ERASED"))
+_RR_WATCHDOG, _RR_REBOOT, _RR_CONFIG_RESET, _RR_FRAM_ERASED = (module_int_const(SRC_DIR, _SRC, name) for name in ("_RR_WATCHDOG", "_RR_REBOOT", "_RR_CONFIG_RESET", "_RR_FRAM_ERASED"))
 _SAVED_SET = "config-files-before-reset.txt"  # the dump's verbatim output, under each run's evidence directory
 # Whole-string equality is the dispatch's one check: each of these is one edit away from a command word.
 _NEAR_MISSES = ("Reboot", "reboot ", "REBOOT", "erase", "erasefram!", "eraseFRAM", "resetConfig", "boot", "", "mempause1", 1, None)
@@ -108,7 +108,7 @@ def _serving_status(dut_ip: str, started: float, result_note: "Callable[[str], N
     wait_until(lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PUT_TIMEOUT_S).status_code == 200, timeout_s=_SERVING_TIMEOUT_S, poll_interval_s=_SERVING_POLL_S, description=f"DUT serving after {context}")
     system = _get(dut_ip, "/status").get("system")
     assert isinstance(system, dict), f"{context}: /status carries no system block"
-    result_note(f"{context}: serving {time.monotonic() - started:.1f} s after the reply; ResetReason {system.get('ResetReason')}, ResetBits {system.get('ResetBits')}")
+    result_note(f"{context}: serving {time.monotonic() - started:.1f} s after the reply; ResetReason {system.get('ResetReason')}")
     return system
 
 
@@ -221,7 +221,7 @@ def test_reboot_and_bootloader_at_once(board: "Board", bench: "BenchBridge", dut
             wait_until(lambda: not board.is_device_present(), timeout_s=_PUT_TIMEOUT_S, description="the board leaving USB for BOOTSEL")
             reboot = _picotool_reboot()
             assert reboot == 0, f"picotool reboot found no BOOTSEL device (exit {reboot})"
-        expected = _RR_BOOTLOADER if answers["bootloader"] == "Valid" else _RR_REBOOT
+        expected = _RR_WATCHDOG if answers["bootloader"] == "Valid" else _RR_REBOOT  # BOOTSEL loses the record: 2
         system = _serving_status(dut_ip, replied, result_note, "the raced reboot and bootloader")
         assert system.get("ResetReason") == expected, f"the winner's code {expected} not read: {system.get('ResetReason')} ({answers})"
     finally:

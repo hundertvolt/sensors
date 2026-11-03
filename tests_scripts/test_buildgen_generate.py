@@ -348,15 +348,13 @@ def test_real_device_system_status_reports_every_system_key_in_order(device: str
     result = _real(device)
     entries = _status_entries(result.module_source, "_system_status")
     has_fram = any(k[0] == "fram" for k in result.model.instances)
-    expected = ["SysUptime", "BootSignature", "ResetReason", "ResetBits", "MemFree", *(["MemPaused"] if has_fram else []), "ConfigFaults", "ConfigUnpersisted", "LastTaskEnd", "LocalTime", "UTCTime", "UnixTime", "TimeStale"]
+    expected = ["SysUptime", "BootSignature", "ResetReason", "MemFree", *(["MemPaused"] if has_fram else []), "ConfigFaults", "LastTaskEnd", "LocalTime", "UTCTime", "UnixTime", "TimeStale"]
     assert list(entries) == expected
     assert entries["LastTaskEnd"] == "sysfunct.get_last_task_end()"  # None until a supervised task ends this boot
     assert entries["UnixTime"] == "utc_now()"  # None until the first NTP sync, as UTCTime
     assert entries["ResetReason"] == "sysfunct.get_reset_reason()"
-    assert entries["ResetBits"] == "sysfunct.get_reset_bits()"
     assert entries["MemFree"] == "gc.mem_free()"
     assert entries["ConfigFaults"] == "list(sysfunct.get_config_faults())"
-    assert entries["ConfigUnpersisted"] == "list(sysfunct.get_config_unpersisted())"
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)

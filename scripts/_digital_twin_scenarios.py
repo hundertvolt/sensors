@@ -1557,9 +1557,9 @@ def _refusal_counted(ctx: Context) -> None:
         _expect(isinstance(before, int) and after == before + refused, f"HTTPDropped {before!r} -> {after!r} after {refused} refusal(s)")
 
 
-@scenario("refused_config_write_is_reported_unpersisted", family="sensortask_integration")
+@scenario("refused_config_write_is_logged_and_the_next_one_lands", family="sensortask_integration")
 def _refused_config_write(ctx: Context) -> None:
-    """A config write the flash refuses answers Valid, is reported in ConfigUnpersisted and CFGMGR_NTP, and the next landed write clears it."""
+    """A config write the flash refuses answers Valid and is logged in CFGMGR_NTP; the next write lands in the file."""
     state = ctx.logs_dir / "state_unpersisted"
     with ctx.boot(state_dir=state) as twin:
         path = state_paths(state).config_dir / "config_NTP.cfg"
@@ -1573,13 +1573,11 @@ def _refused_config_write(ctx: Context) -> None:
             if _writable(path):
                 raise UnmetPremiseError(f"file modes do not bind for this process (a write probe opened the 0444 {path.name}), so the twin's write cannot be refused")
             _expect(_result(_request(twin.port, "PUT", "/networking", {"NTPOffset": offset + 1}), "NTPOffset") == "Valid", "the refused write's PUT did not answer Valid")
-            _expect(_wait_unpersisted(twin.port, ["NTP"]), "ConfigUnpersisted never named NTP after its refused write")
-            _expect(_has_entry(_errcount(twin.port, "CFGMGR_NTP"), "E", _src_int("asy_config_manager.py", "_ERR_CFG_FILE_WRITE")), "CFGMGR_NTP holds no CFG_FILE_WRITE entry")
+            _expect(_wait_entry(twin.port, "CFGMGR_NTP", _DRAIN_WAIT_S, num=_src_int("asy_config_manager.py", "_ERR_CFG_FILE_WRITE")), "CFGMGR_NTP holds no CFG_FILE_WRITE entry after the refused write")
         finally:
             for p, mode in modes:
                 p.chmod(mode)
         _expect(_result(_request(twin.port, "PUT", "/networking", {"NTPOffset": offset + 2}), "NTPOffset") == "Valid", "the second PUT did not answer Valid")
-        _expect(_wait_unpersisted(twin.port, []), "ConfigUnpersisted still names a store after a write that landed")
         _expect(_wait_stored(state, "NTP", "NTPOffset", offset + 2), "the second write never reached the config file")
 
 
@@ -2223,16 +2221,6 @@ def _wait_stored(state: Path, store: str, key: str, value: JSONValue, timeout_s:
             pass  # not written yet: the next poll reads it again
         time.sleep(_LINE_POLL_S)
     return False
-
-def _wait_unpersisted(port: int, stores: "list[str]", timeout_s: float = _DRAIN_WAIT_S) -> bool:
-    # Whether GET /status's ConfigUnpersisted reads `stores` by the deadline: the write's deferred flush ran.
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        if _group(_status(port), "system").get("ConfigUnpersisted") == stores:
-            return True
-        time.sleep(_LINE_POLL_S)
-    return False
-
 
 def _watchdog_fault(ctx: Context, kind: str) -> None:
     # One --test-watchdog-fault after the supervisor's first feed: the starved watchdog engages with the twin still up.

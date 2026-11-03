@@ -252,7 +252,7 @@ acceptance carrying its reason and its actor's tag, or `assumption` with its BAC
 | Runtime | a Pin IRQ runs from the interrupt | synchronously in the caller | — | L3 | accepted (agent, 2026-10-14) |
 | Runtime | `machine.reset()`/`bootloader()` end the program | `SimulatedRebootError`, a `BaseException`, ends the loop; the runner exits 3 or 4 | — | L2 | fixed: `D machine::a_reset_and_a_power_loss_are_no_exceptions_a_product_can_swallow`, `D machine::a_timer_calling_reset_ends_the_loop_past_an_except_exception_sibling` |
 | Runtime | `mem_backup()` regions survive a reset and clear at power-on; `reset_cause()`; a console soft reset keeps both regions and the last hard reset's cause | the same, carried to the next launch through a state file; a soft reset is a launch that keeps both | `machine_mem_backup.c:36-40` | L2 | fixed: `D machine::the_twin_meets_the_shared_mem_backup_contract` (`tests/_mem_backup_contract.py`), `D machine::a_flushed_mem_backup_reaches_the_next_launch_once`, `D loop_end::a_console_soft_reset_after_ctrl_c_reads_21` |
-| Runtime | whether `reset_usb_boot()` keeps the scratch registers, and the cause read after BOOTSEL | kept; a watchdog reset | the bootrom is not in the pinned source | — | assumption: BACKLOG "`mem_backup()` and `reset_cause()` after a BOOTSEL round trip" |
+| Runtime | `reset_usb_boot()` loses both scratch regions, and the cause read after BOOTSEL is a watchdog reset | both regions cleared; a watchdog reset | the bench (2026-10-29) | L2 | fixed: `D machine::the_twin_meets_the_shared_mem_backup_contract` (`tests/_mem_backup_contract.py`) |
 | Runtime | the WDT resets the chip | records a would-have-reset and never resets; the runner prints `WATCHDOG_WOULD_TRIGGER` | — | L2 | accepted (owner, 2026-08-12); a reset code reached only through a real watchdog reset is L1's and the bench's |
 | Runtime | the RTC takes no constructor argument, an 8-tuple, recomputes the weekday, its setter returns `None`; a set moves `time.time()` | the same with the runner's wall clock installed; uninstalled it holds a fixed tuple | `machine_rtc.c:52, 64-97`, `ports/rp2/modtime.c:31-43` | L2 | fixed: `D machine::an_installed_clock_makes_an_rtc_set_move_the_wall_clock`, `D machine::an_uninstalled_rtc_keeps_its_tuple_by_rp2s_rules` |
 | Runtime | a flash write holds the loop with interrupts off | a config flush stalls the loop for its pages' erase and program time | `rp2_flash.c:167-173` | L2, L3 | fixed: `D machine_uart::a_config_flush_through_the_installed_open_stalls_once_for_its_pages` |
@@ -851,8 +851,8 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
     would otherwise start. Driven from a separate process because an in-process client measures its
     own buffers (SPECIFICATION.md Part E.9).
 12. **The reset reasons reachable at L2** — a fresh boot reads the power-on code; `bootloader` exits
-    with code 4 and the relaunch reads its code (the fidelity table's bootloader assumption) with the
-    record cleared at boot; a SIGINT relaunch reads power-on, the twin's non-reset launch. Last, on
+    with code 4 and the relaunch reads 2, BOOTSEL having lost both regions (the fidelity table), with
+    no record left; a SIGINT relaunch reads power-on, the twin's non-reset launch. Last, on
     the same state, a C-stack overflow in one read of the plan's first bus device (I2C buses in plan
     order before SPI): `--fault <instance>:<read op>:stack` (`readfrom_into` for SCD30 and SGP40,
     `readfrom_mem` for BMP3XX and ISL29125, `readinto` for the FRAM) queues one, the handler that

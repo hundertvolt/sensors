@@ -857,6 +857,7 @@ def test_reboot_bootloader_arms_the_one_shot_and_the_trigger_runs_machine_bootlo
         assert await _command(svc, svc.reboot_bootloader) is True
         assert manager.get_pause() is True
         assert machine.bootloader_count == 0
+        assert machine.mem_backup(0)[1] == _const("_RR_COMMAND_INCOMPLETE")  # no code of its own: its acceptance's stays
         await _fire(svc)
 
     with FastAsyncSleep():
@@ -867,7 +868,7 @@ def test_reboot_bootloader_arms_the_one_shot_and_the_trigger_runs_machine_bootlo
 def _arm_failure(exc: "type[BaseException]", *, bootloader: bool, with_fram: bool) -> "tuple[SystemService, FRAMManager | None]":
     manager = make_fram_manager()[0] if with_fram else None
     svc = _make_service(storage=manager, log=LogConfig(manager, 10, None) if manager is not None else DEFAULT_LOG)
-    code_ = _const("_RR_BOOTLOADER" if bootloader else "_RR_REBOOT")
+    code_ = _const("_BOOTLOADER" if bootloader else "_RR_REBOOT")
     action = machine.bootloader if bootloader else machine.reset
     with RaiseOnArm(exc):
         run(svc._reboot(code_, "Reboot triggered", action))  # must not raise despite the timer failing to arm
@@ -1057,8 +1058,8 @@ _QUIET_WINDOW_MS = 20  # real time a command's refusal or its wait for the super
 _HELD_WINDOW_MS = 50  # real time a sequence is watched holding behind an in-flight write or a PUT's lock
 # @tunable l1.system_service_stalled_window_ms = 100
 _STALLED_WINDOW_MS = 100  # real time a sequence is watched hung in its flush step
-_PURPOSES = ("_RR_REBOOT", "_RR_BOOTLOADER", "_RR_CONFIG_RESET", "_RR_FRAM_ERASED")
-_REST_WORDS = {"_RR_REBOOT": "reboot", "_RR_BOOTLOADER": "bootloader", "_RR_CONFIG_RESET": "resetconfig", "_RR_FRAM_ERASED": "erasefram"}
+_PURPOSES = ("_RR_REBOOT", "_BOOTLOADER", "_RR_CONFIG_RESET", "_RR_FRAM_ERASED")
+_REST_WORDS = {"_RR_REBOOT": "reboot", "_BOOTLOADER": "bootloader", "_RR_CONFIG_RESET": "resetconfig", "_RR_FRAM_ERASED": "erasefram"}
 
 
 class PowerCut(BaseException):
@@ -1118,7 +1119,7 @@ def _armed(svc: SystemService) -> bool:
 
 
 def _word(svc: SystemService, purpose: str) -> "Callable[[], Coroutine[object, object, bool]]":
-    commands = {"_RR_REBOOT": svc.reboot_system, "_RR_BOOTLOADER": svc.reboot_bootloader, "_RR_CONFIG_RESET": svc.reset_to_defaults, "_RR_FRAM_ERASED": svc.erase_fram}
+    commands = {"_RR_REBOOT": svc.reboot_system, "_BOOTLOADER": svc.reboot_bootloader, "_RR_CONFIG_RESET": svc.reset_to_defaults, "_RR_FRAM_ERASED": svc.erase_fram}
     return commands[purpose]
 
 
@@ -1343,8 +1344,8 @@ def test_reboot_takes_over_closes_quiesces_stops_then_resets_with_code_3() -> No
     _takes_over("_RR_REBOOT", "reset_count")
 
 
-def test_bootloader_takes_over_closes_quiesces_stops_then_enters_the_bootloader_with_code_4() -> None:
-    _takes_over("_RR_BOOTLOADER", "bootloader_count")
+def test_bootloader_takes_over_closes_quiesces_stops_then_enters_the_bootloader_with_no_code_of_its_own() -> None:
+    _takes_over("_BOOTLOADER", "bootloader_count")
 
 
 def test_reset_to_defaults_closes_flushes_quiesces_stops_deletes_then_reboots_with_code_7() -> None:
@@ -1509,7 +1510,7 @@ def test_the_same_command_again_answers_true_and_any_other_answers_false() -> No
 
 def test_two_commands_at_once_start_one_sequence_and_one_reset() -> None:
     # Both orders of two different words, the same word twice, and a command, a reboot and a mempause together.
-    cases = (("_RR_REBOOT", "_RR_BOOTLOADER"), ("_RR_BOOTLOADER", "_RR_REBOOT"), ("_RR_FRAM_ERASED", "_RR_CONFIG_RESET"), ("_RR_CONFIG_RESET", "_RR_CONFIG_RESET"))
+    cases = (("_RR_REBOOT", "_BOOTLOADER"), ("_BOOTLOADER", "_RR_REBOOT"), ("_RR_FRAM_ERASED", "_RR_CONFIG_RESET"), ("_RR_CONFIG_RESET", "_RR_CONFIG_RESET"))
     for a, b in cases:
         rig = _Rig()
 
@@ -2429,7 +2430,7 @@ def test_a_hang_in_any_step_is_never_fed() -> None:
     rig = _Rig()
     unstick = asyncio.Event()
     rig.starters[1] = _sleeping(rig.events, "t1", stubborn_until=unstick)
-    _hang(rig, "_RR_BOOTLOADER", nothing, unstick=unstick)
+    _hang(rig, "_BOOTLOADER", nothing, unstick=unstick)
     # S5, config reset: a store whose file lock is held for good.
     path = _tmp_cfg_dir()
     store = _named_store(path, "HELD", 4)
@@ -3428,7 +3429,7 @@ def test_the_escalation_flushes_a_staged_write_and_stops_feeding_for_good() -> N
 
 
 # ---------------------------------------------------------------------------
-# run_setups() - the boot setup list, fed and collected per unit; the config-fault and unpersisted lists
+# run_setups() - the boot setup list, fed and collected per unit; the config-fault list
 # ---------------------------------------------------------------------------
 
 
@@ -3524,37 +3525,6 @@ def test_get_config_faults_names_each_faulted_store_once_in_list_order() -> None
     by_name = {s.module_name: s for s in stores}
     assert run(by_name["PARSE"].write_config({"Count": 6}))[0] is True  # a later good write
     assert svc.get_config_faults() == ["UNREAD", "PARSE", "REFUSED"]  # fixed for the boot
-
-
-async def _write_and_flush(store: cm.ConfigManager, count: int) -> bool:
-    # One accepted write and its flash write: write_config() only stages, its flush task writes the file.
-    persisted = (await store.write_config({"Count": count}))[0]
-    await store.flush_pending()
-    return persisted
-
-
-def test_get_config_unpersisted_lists_a_store_until_its_next_good_write() -> None:
-    path = _tmp_cfg_dir()
-    svc, stores = _boot_with_stores(path, [("FIRST", '{"Count": 4}'), ("SECOND", '{"Count": 4}')])
-    assert svc.get_config_unpersisted() == []
-    with WriteCountingOpen(cm, fail_writes=True):
-        assert run(_write_and_flush(stores[1], 6)) is True  # applied, its file write failed
-    assert svc.get_config_unpersisted() == ["SECOND"]
-    assert svc.get_config_faults() == []  # the two lists are independent
-    assert run(_write_and_flush(stores[1], 7)) is True
-    assert svc.get_config_unpersisted() == []
-    # A store whose defaults could not be written at its setup() is listed from the boot on.
-    path = _tmp_cfg_dir()
-    stores = [cm.ConfigManager(path + "config_FRESH.cfg", _VAL_COUNT, "FRESH")]
-    svc = _make_service(cfg_path=path, config_stores=lambda: stores)
-    run(svc.setup())
-
-    async def refused_setup() -> bool:
-        with WriteCountingOpen(cm, fail_writes=True):
-            return await stores[0].setup()
-
-    run(svc.run_setups([refused_setup]))
-    assert (svc.get_config_unpersisted(), svc.get_config_faults()) == (["FRESH"], [])
 
 
 # ---------------------------------------------------------------------------
@@ -3710,7 +3680,8 @@ def test_every_intended_reset_path_decodes_to_its_code_and_is_cleared() -> None:
             assert run(_command(svc, svc.reboot_system)) is True  # the gate answers True; the arm then fails
         _watchdog_reset()
 
-    for path, name in ((reboot, "_RR_REBOOT"), (bootloader, "_RR_BOOTLOADER"), (starve, "_RR_STARVE_ARM_FAILED")):
+    # BOOTSEL loses both regions on silicon, as the fake models: the boot after the bootloader reads 2.
+    for path, name in ((reboot, "_RR_REBOOT"), (bootloader, "_RR_WATCHDOG"), (starve, "_RR_STARVE_ARM_FAILED")):
         machine.power_on()
         begin_boot()
         path(_make_service())
@@ -4124,44 +4095,6 @@ def _plant_reset_flags(reason: int, chip: int) -> None:
     # What the chip's WATCHDOG REASON and VREG_AND_CHIP_RESET CHIP_RESET registers read at this boot.
     machine.watchdog_reason_value = reason
     machine.chip_reset_value = chip
-
-
-def test_the_reset_flags_read_power_on_after_a_power_cycle() -> None:
-    machine.power_on()
-    assert begin_boot() == _const("_RR_POWER_ON")
-    assert _make_service().get_reset_bits() == 0x100  # HAD_POR
-
-
-def test_the_reset_flags_after_a_reboot_read_force_with_had_por_kept() -> None:
-    machine.power_on()
-    begin_boot()
-    svc = _make_service()
-
-    async def scenario() -> None:
-        assert await _command(svc, svc.reboot_system) is True
-        await _fire(svc)
-
-    with FastAsyncSleep():
-        _run_into_reset(scenario())
-    assert begin_boot() == _const("_RR_REBOOT")
-    assert _make_service().get_reset_bits() == 0x102  # FORCE, and HAD_POR survives a watchdog reset
-
-
-def test_the_reset_flags_keep_only_their_named_bits() -> None:
-    machine.power_on()
-    _plant_reset_flags(1, 0x10000)  # a watchdog timeout after a RUN-pin reset
-    begin_boot()
-    assert _make_service().get_reset_bits() == 0x10001
-    _plant_reset_flags(0xFFFFFFFF, 0xFFFFFFFF)
-    begin_boot()
-    assert _make_service().get_reset_bits() == 0x3 | 0x110100  # TIMER|FORCE, HAD_PSM_RESTART|HAD_RUN|HAD_POR
-
-
-def test_the_reset_flags_are_taken_once_at_boot() -> None:
-    machine.power_on()
-    begin_boot()
-    _plant_reset_flags(0x2, 0x10000)  # registers that change later never reach the reported value
-    assert _make_service().get_reset_bits() == 0x100
 
 
 def test_the_reset_flags_never_change_the_decoded_reason() -> None:

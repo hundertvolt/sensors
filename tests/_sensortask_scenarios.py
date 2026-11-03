@@ -3463,9 +3463,9 @@ def _scenario_status_get(device: str) -> None:
         assert "Transfers" in _obj(sensors["UARTLINK"]) and "Failures" in _obj(sensors["UARTLINK"])
         assert set(_obj(sensors[module.uart_link_init.name])) == {"Runs", "Pending", "Last"}, sensors
     assert "SysUptime" in system and "LocalTime" in system and "UTCTime" in system and "UnixTime" in system
-    for key in ("ResetReason", "ResetBits", "MemFree"):  # this boot's decoded reason, the chip's raw flags, the free heap
+    for key in ("ResetReason", "MemFree"):  # this boot's decoded reason, the free heap
         assert type(system[key]) is int, (key, system[key])
-    assert system["ConfigFaults"] == [] and system["ConfigUnpersisted"] == [], system  # a clean boot
+    assert system["ConfigFaults"] == [], system  # a clean boot
     assert system["LastTaskEnd"] is None, system  # no supervised task has ended
     assert "WifiUptime" in networking and "NTPSynced" in networking and "WifiTS" in networking
     assert networking["HTTPDropped"] == 0  # a clean boot has dropped no connection
@@ -3576,28 +3576,11 @@ def _scenario_status_config_faults(device: str) -> None:
     faulted = [unreadable, unparseable, not_object, bounded]
     system = _strict(status_body(_dispatch(module, "GET", "/status")), "system")
     assert system["ConfigFaults"] == [store.module_name for store in stores if store in faulted], system["ConfigFaults"]
-    assert system["ConfigUnpersisted"] == [], system["ConfigUnpersisted"]
     with open(unreadable_path) as f:
         assert f.read() == "{}", "the unreadable file was overwritten"
     for store in (unparseable, not_object, bounded, lacking, unknown):  # every readable damaged or drifted file repaired
         with open(asy_config_manager.config_filename(cfg_path, store.module_name)) as f:
             assert json.load(f) == _store_defaults(store), store.module_name
-
-
-@_register("webserver_status_lists_a_module_whose_config_write_failed_until_its_next_good_write")
-def _scenario_status_config_unpersisted(device: str) -> None:
-    # Every file write of a fresh boot refused: each storing module runs on values the flash lacks and is listed in
-    # ConfigUnpersisted (not ConfigFaults: no file was damaged); a module's next good write takes it off the list.
-    cfg_path = _tmp_cfg_dir()
-    with WriteCountingOpen(asy_config_manager, fail_writes=True):
-        module = build(device, cfg_path=cfg_path, offline_ntp=False, log_errors=False)  # no task runs: a fresh boot, NTP's store included
-    names = [store.module_name for store in _storing_stores(module)]
-    system = _strict(status_body(_dispatch(module, "GET", "/status")), "system")
-    assert (system["ConfigUnpersisted"], system["ConfigFaults"]) == (names, []), system
-    assert _strict(_dispatch(module, "PUT", "/system", {"DebugLevel": 1}).body, "result")["DebugLevel"] == "Valid"
-    run(module.sysfunct.cfgmgr.flush_pending())
-    system = _strict(status_body(_dispatch(module, "GET", "/status")), "system")
-    assert system["ConfigUnpersisted"] == [name for name in names if name != module.sysfunct.cfgmgr.module_name], system
 
 
 @_register("webserver_status_answers_the_networking_snapshot_while_wifi_mode_lock_is_held")

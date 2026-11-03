@@ -598,10 +598,14 @@ def attach_crossover_jumper(fake_a: "UART", fake_b: "UART") -> "tuple[UARTLink, 
 
 
 def bootloader() -> None:
+    # A BOOTSEL round trip loses both backup regions on silicon, then reads cause 3 and REASON TIMER (bench).
     global bootloader_count, reset_cause_value, watchdog_reason_value
     bootloader_count = saturating_add(bootloader_count)
-    reset_cause_value = WDT_RESET  # assumption: the fidelity table
-    watchdog_reason_value = _REASON_FORCE
+    for region in _REGIONS:
+        for i in range(len(region)):
+            region[i] = 0
+    reset_cause_value = WDT_RESET
+    watchdog_reason_value = _REASON_TIMER
     raise SimulatedBootloaderEntryError("machine.bootloader() called - the twin does not actually restart the process")
 
 
@@ -1635,8 +1639,7 @@ def flush_scd30() -> None:
 
 
 # mem_backup(): rp2's two watchdog-scratch regions; they survive machine.reset() (carried to the next launch by the
-# reset handler) and are cleared by power-on (v1.29.0 machine_mem_backup.c:36-40); the bootloader carry-over is an
-# assumption (digital_twin/README.md fidelity table).
+# reset handler) and are cleared by power-on (v1.29.0 machine_mem_backup.c:36-40) and by a BOOTSEL round trip (bench).
 _mem_backup_state_path: "str | None" = None
 
 

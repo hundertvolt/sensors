@@ -1103,7 +1103,7 @@ async def _hammer_settings_route(app: "Microdot", path: str, n: int, expected_ke
 def test_each_system_command_over_put_system_reaches_its_reset_arm_without_a_lock_held() -> None:
     # Each command's own code is armed, and the one-shot's last flush pass, which takes every owner lock again,
     # runs the reset; config reset deletes both files, FRAM erase completes (code 8, not 9).
-    cases = (("reboot", "_RR_REBOOT"), ("bootloader", "_RR_BOOTLOADER"), ("resetconfig", "_RR_CONFIG_RESET"), ("erasefram", "_RR_FRAM_ERASED"))
+    cases = (("reboot", "_RR_REBOOT"), ("bootloader", "_BOOTLOADER"), ("resetconfig", "_RR_CONFIG_RESET"), ("erasefram", "_RR_FRAM_ERASED"))
     for word, code_name in cases:
         bench = _CommandBench()
         run(bench.setup())
@@ -1138,7 +1138,7 @@ def test_each_system_command_over_put_system_reaches_its_reset_arm_without_a_loc
         assert result == {"SystemCmd": "Valid"}, word
         assert bench.locked_at_dispatch == [False], word
         assert (armed, one_shot) == (True, True), word
-        assert machine.mem_backup(0)[1] == _system_const(code_name), word
+        assert machine.mem_backup(0)[1] == (0 if bootloader else _system_const(code_name)), word  # BOOTSEL loses the record
         assert (machine.reset_count, machine.bootloader_count) == (resets[0] + (not bootloader), resets[1] + bootloader), word
         files = [_file_or_none(path) is not None for path in bench.paths]
         assert files == ([False, False] if word == "resetconfig" else [True, True]), (word, files)

@@ -431,16 +431,12 @@ gates, traps).
   erased nor floating (the probe's `_bmp3xx_calibration_set`), recorded so the twin's synthetic
   block can be set against them. Wear: none (a read). Twin row: the fidelity table's BMP3XX
   calibration row, synthetic until then.
-- **`mem_backup()` and `reset_cause()` after a BOOTSEL round trip** — on `dev`, a value written to
-  the watchdog scratch registers, `machine.bootloader()`, the board brought back out of BOOTSEL,
-  then both read: whether the registers survive and which cause rp2 reports is not in the pinned
-  MicroPython source (the bootrom is not in the corpus); the twin keeps the registers and reports a
-  watchdog reset. `bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed` runs the
-  round trip through `PUT /system {"SystemCmd": "bootloader"}`. Expected: the board serves again and
-  `GET /status`'s `ResetReason` reads 4, the bootloader code, since the record survived (the test's
-  assertion; `ResetBits` recorded beside it); a 2 or a 1 means the bootrom's reboot lost it. Wear:
-  none (no flash write; leaving BOOTSEL needs the owner or `picotool reboot`). Twin row: the
-  fidelity table's bootloader assumption.
+- **The bootloader command's BOOTSEL round trip** — the bench found both backup regions lost
+  (the bootrom's `reset_usb_boot()`; cause 3, REASON TIMER), so the command writes no code of its
+  own. `bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed` runs the round trip
+  through `PUT /system {"SystemCmd": "bootloader"}`. Expected: the board serves again and
+  `GET /status`'s `ResetReason` reads 2. Wear: none (no flash write; leaving BOOTSEL needs the owner
+  or `picotool reboot`). Twin row: the fidelity table's BOOTSEL row.
 - **Every reset code read back through `/status`** — `bench/test_reset_reasons.py` on `dev`, the
   session saving `errcount` and the raw FRAM first: the harness hard reset (a watchdog reset with no
   record), the bootloader reboot, the supervisor's escalation reboot, the starved-watchdog fallback,

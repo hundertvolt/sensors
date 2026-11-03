@@ -917,7 +917,7 @@ def _run_11b_full_ceiling_concurrency(ctx: RunContext) -> None:
 
 def _run_12_reset_reasons(ctx: RunContext) -> None:
     # ---- Run 12: the reset reasons reachable at L2. A fresh boot reads power-on; bootloader exits as a bootloader entry,
-    # its relaunch reads its code and clears the record; a SIGINT relaunch reads power-on; a C-stack overflow reboots with
+    # its relaunch reads 2, BOOTSEL having lost both regions; a SIGINT relaunch reads power-on; a C-stack overflow reboots with
     # 20. The task budget's escalation is Run 4's, the REST reboot Run 5c's, 7 and 8 Run 13's. ----
     _archive_state(ctx, "run12")
     proc = _spawn(ctx, [], ctx.logs_dir / "run12_a_power_on_then_bootloader.log")
@@ -931,9 +931,9 @@ def _run_12_reset_reasons(ctx: RunContext) -> None:
     reset = parse_machine_reset_line(read_log(proc.log_path))
     _check(condition=reset is not None and reset.kind == "bootloader", msg=f"Run 12: the runner's machine reset line names the bootloader entry ({reset!r})")
     log_b = ctx.logs_dir / "run12_b_after_bootloader.log"
-    _relaunch_reason(ctx, log_b.name, "Run 12 (after bootloader)", _reset_code("_RR_BOOTLOADER"), interrupt=True)  # what the SIGINT relaunch follows
+    _relaunch_reason(ctx, log_b.name, "Run 12 (after bootloader)", _reset_code("_RR_WATCHDOG"), interrupt=True)  # what the SIGINT relaunch follows
     line = _shutdown_line(log_b, "Run 12 (after bootloader)")
-    _check(condition=line is not None and line.mem_backup_r0 == (0, 0, 0, 0), msg=f"Run 12: the boot that read the bootloader record cleared it (mem_backup r0 {line.mem_backup_r0 if line else None!r})")
+    _check(condition=line is not None and line.mem_backup_r0 == (0, 0, 0, 0), msg=f"Run 12: the boot after the bootloader left no record (mem_backup r0 {line.mem_backup_r0 if line else None!r})")
     _relaunch_reason(ctx, "run12_c_sigint_relaunch.log", "Run 12 (SIGINT relaunch)", _reset_code("_RR_POWER_ON"))
     _run_12_stack_exhaustion(ctx)
 
@@ -1121,7 +1121,7 @@ def _run_13_system_commands(ctx: RunContext) -> None:
     _run_13_erase_fram(ctx)
     _run_13_near_misses(ctx)
     _run_13_reboot_sequence(ctx, "reboot", EXIT_SIMULATED_RESET, "_RR_REBOOT")
-    _run_13_reboot_sequence(ctx, "bootloader", EXIT_SIMULATED_BOOTLOADER, "_RR_BOOTLOADER")
+    _run_13_reboot_sequence(ctx, "bootloader", EXIT_SIMULATED_BOOTLOADER, "_RR_WATCHDOG")
 
 
 def _run_1_baseline(ctx: RunContext) -> None:

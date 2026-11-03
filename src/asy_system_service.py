@@ -17,7 +17,7 @@ import gc
 import random
 import time
 
-from machine import PWRON_RESET, WDT, Timer, mem32, mem_backup, reset_cause
+from machine import PWRON_RESET, WDT, Timer, mem_backup, reset_cause
 from machine import bootloader as system_bootloader
 from machine import reset as system_reset
 from micropython import const
@@ -86,7 +86,6 @@ _RR_UNKNOWN = const(0)
 _RR_POWER_ON = const(1)
 _RR_WATCHDOG = const(2)
 _RR_REBOOT = const(3)
-_RR_BOOTLOADER = const(4)
 _RR_TASK_BUDGET = const(5)
 _RR_STARVE_ARM_FAILED = const(6)
 _RR_CONFIG_RESET = const(7)
@@ -96,12 +95,9 @@ _RR_BOOT_FAILURE = const(10)  # + the boot phase that never completed
 _RR_STACK_EXHAUSTED = const(20)  # outside the 10 + phase band of boot failures
 RR_INTERRUPTED = const(21)  # Ctrl-C on the console ended the run and the watchdog reset followed; the boot entry imports it
 _RR_LOOP_ENDED = const(22)  # any other exception ended the event loop after boot, the watchdog reset followed
-# The chip's own reset flags, which reset_cause() collapses (ports/rp2/modmachine.c:74-89): WATCHDOG REASON bits 0-1
-# (TIMER, FORCE) and CHIP_RESET bits 8, 16, 20 (HAD_POR, HAD_RUN, HAD_PSM_RESTART; pico-sdk watchdog.h, vreg_and_chip_reset.h).
-_WATCHDOG_REASON = const(0x40058008)
-_CHIP_RESET = const(0x40064008)
-_REASON_BITS = const(0x3)
-_CHIP_RESET_BITS = const(0x110100)
+# The bootloader's purpose is its acceptance's code: a BOOTSEL round trip loses both regions (the next boot reads 2),
+# so the command writes no code of its own.
+_BOOTLOADER = const(_RR_COMMAND_INCOMPLETE)
 BOOT_CONSTRUCTION = const(1)
 BOOT_SETUP = const(2)
 BOOT_TASKS = const(3)
@@ -127,7 +123,7 @@ def _purpose_name(purpose: int) -> str:
     # The system command a shutdown purpose (its reset code) stands for, as the console lines name it.
     if purpose == _RR_REBOOT:
         return "reboot"
-    if purpose == _RR_BOOTLOADER:
+    if purpose == _BOOTLOADER:
         return "bootloader"
     if purpose == _RR_CONFIG_RESET:
         return "config reset"
@@ -142,14 +138,9 @@ def _write_region(region: int, magic: int, value: int) -> None:
     mem[0] = magic
 
 
-_reset_bits = 0  # this boot's reset flags, read once by begin_boot() and reported raw, never decoded
-
-
 def begin_boot() -> int:
     # Once per boot, before any construction: decodes this boot's reset reason, clears the record (magic first)
     # and marks phase 1, so a crash in any constructor already reads as a boot failure.
-    global _reset_bits
-    _reset_bits = (mem32[_WATCHDOG_REASON] & _REASON_BITS) | (mem32[_CHIP_RESET] & _CHIP_RESET_BITS)
     record = mem_backup(0)
     phase = mem_backup(1)
     # A valid record, then an in-boot phase: power-off and the RUN pin clear both regions (SPECIFICATION.md F.5.4), so
@@ -482,13 +473,13 @@ class SystemService:
             code = purpose if done and (flushed or purpose == _RR_CONFIG_RESET) else _RR_COMMAND_INCOMPLETE
             if purpose == _RR_REBOOT:
                 message = "Reboot triggered"
-            elif purpose == _RR_BOOTLOADER:
+            elif purpose == _BOOTLOADER:
                 message = "Reboot into bootloader triggered"
             elif purpose == _RR_CONFIG_RESET:
                 message = "Reboot after config reset"
             else:
                 message = "Reboot after FRAM erase"
-            await self._reboot(code, message, system_bootloader if purpose == _RR_BOOTLOADER else system_reset, fed=True)
+            await self._reboot(code, message, system_bootloader if purpose == _BOOTLOADER else system_reset, fed=True)
         except Exception as e:  # an unsupervised task's top: no reset is armed and nothing feeds, so the watchdog resets
             # with the record the sequence left; past the quiesce FRAM is paused, so the entry stays in RAM.
             await self.pr.err_s("Shutdown sequence failed:", e, errno=_ERR_UNEXPECTED)
@@ -638,10 +629,6 @@ class SystemService:
     def get_config_faults(self) -> list[str]:
         return self._config_faults
 
-    def get_config_unpersisted(self) -> list[str]:
-        # Built per read, at most one name per store: a store leaves the list at its next successful write (Part C.7.3).
-        return [store.module_name for store in self._config_stores if store.unpersisted]
-
     async def get_dict_cfg(self) -> "dict[str, dict[str, CfgValue]]":
         # the nested {name: {field: value}} shape every SettingsGroup module returns, or the unavailable marker (Part C.6)
         # when the store answers nothing or only defaults standing in for a file it could not read.
@@ -665,9 +652,6 @@ class SystemService:
 
     def get_loggers(self) -> "list[PrintLogHistory]":
         return [self.pr, self.cfgmgr.pr]
-
-    def get_reset_bits(self) -> int:
-        return _reset_bits
 
     def get_reset_reason(self) -> int:
         return self._reset_reason
@@ -711,7 +695,7 @@ class SystemService:
         return True
 
     async def reboot_bootloader(self) -> bool:
-        return await self._request_shutdown(_RR_BOOTLOADER)
+        return await self._request_shutdown(_BOOTLOADER)
 
     async def reboot_system(self) -> bool:
         return await self._request_shutdown(_RR_REBOOT)
