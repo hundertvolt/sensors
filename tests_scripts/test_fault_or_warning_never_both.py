@@ -48,7 +48,7 @@ _ALLOWED: "dict[Pair, str]" = {
     ("src/asy_webserver_service.py", "_serve", ("W", "HTTP_BAD_HEAD"), ("E", "UNEXPECTED")): _OWN_CALL,
     ("src/asy_webserver_service.py", "_serve", ("W", "HTTP_PEER_RESET"), ("E", "UNEXPECTED")): _OWN_CALL,
     ("src/asy_webserver_service.py", "_serve", ("W", "HTTP_SOCKET_ERROR"), ("E", "UNEXPECTED")): _OWN_CALL,
-    ("src/asy_webserver_service.py", "_serve", ("W", "_WRN_HTTP_CALL_TIMEOUT if timed_out[0] else _WRN_HTTP_REQUEST_CAP"), ("E", "UNEXPECTED")): _OWN_CALL,
+    ("src/asy_webserver_service.py", "_serve", ("W", "HTTP_CALL_TIMEOUT"), ("E", "UNEXPECTED")): _OWN_CALL,
     ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_NOT_OBJECT"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
     ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_JSON"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
     ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_UNREADABLE"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,

@@ -732,15 +732,15 @@ def test_put_nonsense_field_values_are_marked_invalid_not_crashed(board: Board, 
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.provokes_log("the trickled request is reclaimed by the outer cap, which the test asserts", ("WEBSERVER", "W", "HTTP_REQUEST_CAP"))
+@pytest.mark.provokes_log("the trickled request is reclaimed by the outer cap, which the test asserts", ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"))
 def test_slowloris_style_partial_request_is_reclaimed_by_the_outer_timeout(dut_ip: str, request: pytest.FixtureRequest) -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(_SLOWLORIS_SOCKET_TIMEOUT_S)  # over the server's outer_cap_s
         sock.connect((dut_ip, 80))
         sock.sendall(b"GET /status HTTP/1.1\r\nHost: x\r\n")
-        # One header line every 3 s keeps each readline() under its per-call timeout (HTTP_CALL_TIMEOUT never fires)
-        # while the 18 s total passes outer_cap_s, the timeout under test.
+        # One header line every 3 s keeps each readline() under its per-call timeout while the 18 s total passes
+        # outer_cap_s, the timeout under test; both log HTTP_CALL_TIMEOUT.
         try:
             for i in range(6):
                 sock.sendall(f"X-Pad-{i}: 1\r\n".encode())
@@ -754,7 +754,7 @@ def test_slowloris_style_partial_request_is_reclaimed_by_the_outer_timeout(dut_i
     assert response == b"", f"a genuinely Slowloris-paced request (no single stall over 5s, 18s cumulative) was not reclaimed by the outer timeout: {response!r}"
     assert _load.serving(dut_ip), "webserver unresponsive after a slowloris-style trickle-fed request"
     try:
-        assert_module_error_log_contains(dut_ip, "WEBSERVER", code("W", "HTTP_REQUEST_CAP"), "W")
+        assert_module_error_log_contains(dut_ip, "WEBSERVER", code("W", "HTTP_CALL_TIMEOUT"), "W")
         assert_no_task_ended(dut_ip, "a slowloris-paced request")
     finally:
         reset_all_error_logs(dut_ip, request.node.name)
@@ -927,7 +927,6 @@ _LINGER_RESET = struct.pack("ii", 1, 0)  # SO_LINGER on with a zero timeout: the
 @pytest.mark.persistence_write
 @pytest.mark.provokes_log(
     "its misbehaving clients (slowloris, a refused head, a truncated body, a reset) log their HTTP warnings",
-    ("WEBSERVER", "W", "HTTP_REQUEST_CAP"),
     ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
     ("WEBSERVER", "W", "HTTP_BAD_HEAD"),
     ("WEBSERVER", "W", "HTTP_PEER_RESET"),

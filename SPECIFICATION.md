@@ -563,17 +563,17 @@ annotates `get`/`put` (then `tests/test_setter_microdot_integration.py`'s decora
   `WebserverService` rebinds that module name to its level-gated logger at construction, the file
   itself untouched (CLAUDE.md's vendoring rule), so `DebugLevel` 0 keeps it off the console, and the
   catch-all `errorhandler(Exception)` persists the entry (agent, 2026-10-06). A `MemoryError` is gated
-  like every other line (I.4(e)). A read timeout the stream proxy already traced is not printed
-  again, so a silent client leaves one console line, not two; a handler exception keeps its two. The
-  rebind is process-wide: the last service constructed owns it.
+  like every other line (I.4(e)), and the line's entry records a C-stack overflow (F.1). A read
+  timeout the stream proxy traced is printed as well, so a silent client leaves two lines at a
+  raised level. The rebind is process-wide: the last service constructed owns it.
 - Microdot's request read phase passes a muted socket `OSError`, re-raises any other `OSError` and
   only prints any other exception before dispatching with no request (`ext/microdot.py:1415-1428`),
   answered 400, so a read timeout (`asyncio.TimeoutError`, not an `OSError`) is observable only in
   this project's stream proxy, which traces it as `wrnno` 49.
 - `Request.json` has no internal guarding (raises straight out on malformed body) — already
   contained by the blanket catch; guarding it ourselves is about a precise reply, not crash
-  prevention. `_body_as_dict()` answers a malformed body code `1`, but re-raises a `MemoryError`:
-  a heap failure while parsing is the device's own, so the catch-all persists it and answers 500.
+  prevention. `_body_as_dict()` answers a malformed body code `1`, a heap failure while parsing
+  included.
 - Request size is bounded before any handler runs: `max_content_length` (16 KB default, 413 if
   exceeded) → tightened to **2048** bytes (Part N `web.max_content_length`), with `max_body_length`
   bound to the same value so an oversized body is never buffered (Part I.6); `max_readline` (2 KB
@@ -581,12 +581,13 @@ annotates `get`/`put` (then `tests/test_setter_microdot_integration.py`'s decora
   line in pieces of at most `chunk_bytes` and never more than `max_readline` + 1 bytes, then refuses:
   a line over `max_readline`; more than 32 headers (`web.max_header_lines`); a head over 2,048 B,
   request line, headers and blank line together (`web.max_head_bytes`), without which 33 lines of
-  `max_readline` could hold about 67 KB; a line that is not UTF-8; a request line not of three tokens,
-  or whose version has no `/`; a header without `:`; a `Content-Length` that is empty, not ASCII
-  digits, or sent twice; any `Transfer-Encoding` (Microdot would read a chunked body as empty); and a
-  body cut short by EOF. A refused head raises errno 32, which is in Microdot's muted list, so it is
-  answered 400 without a console traceback and traced as `wrnno` 61. With every size bounded,
-  `readexactly(n)` only ever sees `0 <= n <= max_body_length`.
+  `max_readline` could hold about 67 KB; and a `Content-Length` that is empty, not ASCII digits, or
+  sent twice. A refused head raises errno 32, which is in Microdot's muted list, so it is answered
+  400 without a console traceback and traced as `wrnno` 61. With every size bounded,
+  `readexactly(n)` only ever sees `0 <= n <= max_body_length`. Whatever else Microdot cannot parse
+  (a line that is not UTF-8, a malformed request line or header, a body cut short by EOF) raises in
+  its read phase, which prints it through the level-gated rebind and answers 400; a chunked body
+  reaches the handler empty.
 - The Microdot server task is one of the supervised tasks (`start_tasks()`/`supervise_tasks()`) like
   every other module's — a dead
   server task restarts automatically with the same decaying-failure/reboot fallback, no
@@ -594,8 +595,8 @@ annotates `get`/`put` (then `tests/test_setter_microdot_integration.py`'s decora
   `asyncio.Task`** (confirmed against `extmod/asyncio/stream.py`) — the one confirmed
   `Response.write()` gap only ever takes down that one client's connection, never the accept loop.
 - **Recovery for the webserver's own connection faults** (owner, 2026-09-30: smallest blast radius
-  first): a client fault — a refusal, a bad head, a reset, a per-call or outer-cap timeout, a stream
-  error — ends that one connection and releases its slot (the smallest rung), traced once; it never
+  first): a client fault — a refusal, a bad head, a reset, a per-call or outer-cap timeout (both
+  `wrnno` 49), a stream error — ends that one connection and releases its slot (the smallest rung), traced once; it never
   restarts the server task. A send that finds no room in the lwIP send buffer answers `EAGAIN`, and
   its task waits for room without holding the loop until the connection's per-call timeout ends it.
   A write that meets `ERR_MEM` while room is reported answers `EAGAIN` too in this firmware (the
@@ -603,14 +604,12 @@ annotates `get`/`put` (then `tests/test_setter_microdot_integration.py`'s decora
   alone would wait inside the call for up to 10 s with the whole VM held (B.14.2.1); with room
   reported, its task's retry is a cooperative busy wait until the peer acknowledges or the per-call
   timeout fires. Closing the server's listening socket skips the three callbacks lwIP forbids on a
-  listening pcb (the same copy's second patch, B.14.4; owner, 2026-10-26). A failed `start_server()` is
-  tried three times in all, five seconds apart, so the last attempt comes one full lwIP close linger
-  (10 s) after the first (`web.start_retries`, `web.start_retry_s`); each failure prints at the
-  configured level, the first persists `wrnno` 62 too, so a start that succeeds on a retry still
-  leaves its trace, and the last persists it and ends the task. A `socket()` failure holds
-  nothing; a `bind()`/`listen()` failure holds its pcb until a collection
-  (`extmod/asyncio/stream.py:184-188` never closes it), up to two across the attempts. The task
-  supervisor, reboot and watchdog stay above it unchanged. `_serve()` never raises out of its task
+  listening pcb (the same copy's second patch, B.14.4; owner, 2026-10-26). A failed `start_server()`
+  raises out of the serving task, and the supervisor's restart is the retry: the listener sets
+  `SO_REUSEADDR` (`extmod/asyncio/stream.py:186`) and rp2's lwIP builds with `SO_REUSE` 1, so a restart
+  rebinds at once; a failed `bind()`/`listen()` holds its pcb until a collection
+  (`extmod/asyncio/stream.py:184-188` never closes it). The task supervisor, reboot and watchdog stay
+  above it unchanged. `_serve()` never raises out of its task
   but through its logging call itself (above).
 - **Client traffic, a task that ends with an exception and an exception Microdot reports print
   nothing at the shipped `DebugLevel` 0**: the last two go through level-gated loggers (F.1, above);
@@ -1104,10 +1103,9 @@ settings.
   a whole string — no alias, prefix or case variant does (owner, 2026-09-30); `mempause`'s fixed
   300 s lives in the command callback. `/status` — `{"ResetErrors": true}` (and on `dev`
   `{"UartHazards": true}`, below): every registered
-  error source and the webserver's own log reset concurrently, `HTTPDropped`'s window included, and
-  all are awaited before the answer; `result.ResetErrors` answers `"Failed"` when any reset raised
-  or returned false, else `"Valid"`, and each raise is persisted once, after the resets, in the
-  webserver's own history (errno 14, `CALLBACK`: `"Error log reset failed: <name> <exception>"`);
+  error source and the webserver's own log reset concurrently, `HTTPDropped`'s window included;
+  `result.ResetErrors` answers `"Failed"` when any reset returned false, else `"Valid"`; a reset that
+  raises (a defect's path) reaches the catch-all, which answers 500 and persists it (errno 23);
   any other value, and every other key, answers `"Invalid"`; a body without the key resets nothing.
   From the system's reset decision until the unit restarts, `ResetErrors` answers `"Failed"` and
   clears nothing, so the logs survive into the reset: the webserver reads `SystemService.is_reset_decided()`
@@ -1271,8 +1269,8 @@ the bounds in `tests/test_asy_webserver_connections.py`.
 freezefs archiver, through a `python3 -c` wrapper that pins its clock to the epoch and sorts its walk
 without editing `ext/`, as `freezefs <work dir> frozen_modules/frozen_html.py --on-import mount
 --target /html --overwrite always` (never `--compress`: this project pre-gzips by hand, served via Microdot's `send_file(...,
-compressed=True)` over a stream `_StaticRoutes.serve()` opens itself and its connection closes at
-the end, in 256 B reads, with `Content-Length` and `Cache-Control: no-cache`, so a browser revalidates
+compressed=True)` over a stream `_StaticRoutes.serve()` opens itself and Microdot closes after the
+body (a HEAD or cut-short response's at the next collection, its finaliser), in 256 B reads, with `Content-Length` and `Cache-Control: no-cache`, so a browser revalidates
 before reusing a page and a reflashed site is never served stale (agent, 2026-09-30; owner-reviewed,
 2026-10-02) — Part I.3, "Static files"). With `gzip -n` that makes the archive byte-reproducible, the
 build time living only in `buildgen/version.py`'s stamp. Output goes to `frozen_modules/` (gitignored), not
@@ -6579,7 +6577,8 @@ three and emits `NaN`/`Infinity` for the last; MicroPython emits text no `JSON.p
 reports nothing. Two consequences. A route handler therefore cannot rely on serialization failing
 loudly — it will not fail at all — so a value's shape is the caller's obligation, which is why
 `_write_guarded()` needing `json.dumps()` inside its own `try` is moot (I.3). And a non-finite
-measurement would emit a body that breaks the whole web page with no error anywhere. Operators
+measurement would emit a body that breaks the whole web page with no error anywhere, so every
+source gates it (below). Operators
 overflow to `inf` silently — at ~3.4e38 on rp2, whose floats are single precision
 (`MICROPY_FLOAT_IMPL_FLOAT`), not 1e308 as on the Unix port — while `0.0/0.0` raises and `math`
 functions raise `ValueError` rather than return `inf`/`nan` (`math.exp(1000)`, `math.log(0)`);
@@ -7574,7 +7573,6 @@ workaround.
 | A reset during a response write recorded by the proxy (`peer_gone`) | `src/asy_webserver_service.py` `_TimeoutStreamProxy.awrite()` | Microdot reports a response-write reset it mutes | A.5 |
 | The request head bounded and refused with errno 32 before Microdot parses it | `src/asy_webserver_service.py` `_TimeoutStreamProxy.readline()` | Microdot bounds the header count and the whole head, takes `Content-Length` as digits once, and refuses without a traceback | A.5 |
 | Microdot's module-level `print_exception` rebound to the level-gated logger | `src/asy_webserver_service.py` `WebserverService.__init__` | Microdot prints through a level or a hook | A.5 |
-| The opened static stream held on the connection and closed at its end | `src/asy_webserver_service.py` `_StaticRoutes.serve()`, `_TimeoutStreamProxy.release()` | Microdot closes a `send_file()` stream on a `HEAD` or cut-short response | A.9, I.3 |
 | zizmor's `self-repository` audit disabled | `.github/zizmor.yml` | actionlint accepts `uses: $/…` | H.8 |
 | Vitest coverage excludes `**/*.json` | `vitest.config.js` | `@vitest/coverage-v8` stops re-parsing non-JS files | H.8 |
 | Firefox from conda-forge, Edge from Microsoft's repository | `scripts/setup_cross_browser_toolchain.sh` | Ubuntu ships a non-snap Firefox and Playwright's own engines are reachable | H.7 |
@@ -7770,9 +7768,8 @@ backend-only or frontend-only validation/coercion policy change in this project.
   Any route whose response scales with device configuration returns `await
   _stream_dict_response(result, self._chunk_bytes)` instead of `return result`. A response that is
   not one dict (`/status`) builds on the same parts directly: `_PieceWriter` (JSON written value by
-  value into pieces of at most `chunk_bytes` bytes, each fragment encoded once) and
-  `_pieces_response()` (exact Content-Length, the pieces sent as they are), I.3.
-  The writer writes a non-finite float as `null`; producers still gate their own values (F.1).
+  value into pieces of at most `chunk_bytes` characters) and `_pieces_response()` (exact
+  Content-Length, each piece encoded once), I.3. Producers gate their own float values (F.1).
 - **Bounded piece assembly** — `asy_base_classes.py`'s `PieceBuffer` (the webserver's streaming
   `_PieceWriter` is its model): a payload whose size the caller did not fix is held as pieces of at
   most `chunk_bytes`, every piece allocated at construction once the caller's cap has admitted the
@@ -8431,9 +8428,8 @@ PUT), each image built for and tested at its own limit (`HEAP_FRAGMENTATION_MEAS
   block — and must stay within `web.serving_demand_budget_b`: the heap free after boot (about
   105,000 B, I.6) less the 32,768 B contiguity reserve, 72,232 B, an estimate. The per-device
   scenario in `tests/_sensortask_scenarios.py` drives every GET route at a clean boot with a
-  non-ASCII SSID, asserts the one-copy identity (the response body yields exactly the writer's own
-  pieces, so a second encoded copy fails it) and the budget, and printed on the mock tier
-  (2026-10-08):
+  non-ASCII SSID, asserts that the response body yields exactly the writer's pieces, each encoded
+  once, and the budget, and printed on the mock tier (2026-10-08):
 
   | device | demand at 6 connections | largest body |
   | --- | --- | --- |
@@ -8521,8 +8517,8 @@ fails silently, not loudly.
   `per_call_timeout_s` (5.0, Part N `web.per_call_timeout_s`), answering `HTTP/1.0 400 N/A`, not a
   bare FIN, and logs `wrnno` 49 (`HTTP_CALL_TIMEOUT`). Measured: **5.12 / 5.14 / 5.16 s**.
 - A connection that keeps dripping bytes survives the per-call timeout but not `ServingLimits`'
-  `outer_cap_s` (15.0, `web.outer_cap_s`) around the whole request, and logs `wrnno` 50
-  (`HTTP_REQUEST_CAP`). Measured with a header line every 2 s: **15.08 / 15.13 s**. **No connection
+  `outer_cap_s` (15.0, `web.outer_cap_s`) around the whole request, and logs `wrnno` 49
+  (`HTTP_CALL_TIMEOUT`, the one timeout code). Measured with a header line every 2 s: **15.08 / 15.13 s**. **No connection
   can be held longer than ~15 s on this firmware**, whatever the client does; the reclaim's trace
   can delay the close by at most one per-call timeout more, on the device's side (A.8).
 - A slot is released in `_serve()`'s `finally`, after the writer close has been awaited, so it
@@ -9034,7 +9030,7 @@ mitigation and write through `_PieceWriter` (I.3): per response its pieces of at
 and its pending-fragment group, transient, bounded. Per connection: the stream proxies, the
 `Request` and the response, transient, client-controlled and bounded before dispatch — the head at
 2,048 B (`web.max_head_bytes`), the body at `max_content_length` (I.6) — and the connection ceiling
-bounds how many are live (H.7.1). A heap failure parsing a body re-raises to the catch-all (A.5).
+bounds how many are live (H.7.1). A heap failure parsing a body answers it as malformed (A.5).
 Construction, long-lived, fixed: the route tables, `LockedCounter` and the hourly window counter.
 
 **`asy_wifi_service.py`** — construction, long-lived, fixed: the `WLAN` (a static object:
@@ -9073,10 +9069,9 @@ behind them is `HEAP_FRAGMENTATION_MEASUREMENTS.md`) are recorded in their modul
 
 Every GET route whose response grows with device configuration — `/status`, `/sensors`,
 `/measurements`, `/networking`, `/system`, `/notification` — writes its JSON through one
-`_PieceWriter` and hands Microdot `Response(iter(pieces), ...)` (already encoded, one copy) with an
-exact Content-Length. The writer encodes each JSON text fragment once and concatenates adjacent
-fragments into pieces of at most `chunk_bytes` bytes — counted in bytes, so a non-ASCII SSID cannot
-make a piece longer than the cap — one `ServingLimits` field, default **256**
+`_PieceWriter` and hands Microdot `Response(iter(encoded), ...)`, each piece encoded once by
+`_pieces_response()`, with an exact Content-Length. The writer concatenates adjacent JSON text
+fragments into pieces of at most `chunk_bytes` characters — one `ServingLimits` field, default **256**
 (`_DEFAULT_CHUNK_BYTES`), that also sets the static-file read size below, so the two bounds cannot
 drift apart — without ever splitting a fragment, and
 `add_value()` writes a value the way `json.dumps()` would — dicts, lists and tuples walked, only
@@ -9127,9 +9122,9 @@ response the writer does not build: microdot's `send_file` streams the file, rea
 the `200` and its headers were out: the response is HTTP/1.0 with no `Content-Length`, so the
 client saw a cut-off gzip page as a complete one. `_StaticRoutes.serve()` now opens the file
 itself, passes it to `send_file(stream=...)`, sets that attribute on the one response to the same
-`chunk_bytes` (**256**) and adds `Content-Length` from the stream's own size; the connection's writer
-proxy holds the opened stream (`Request.sock`) and closes it when the connection ends, so a `HEAD`
-request or a response cut short closes it too. The attribute
+`chunk_bytes` (**256**) and adds `Content-Length` from the stream's own size; Microdot closes the
+stream after the body, a `HEAD` or cut-short response's at the next collection (its finaliser, read-only
+files). The attribute
 is microdot's own, public, per-instance knob — nothing in `ext/microdot.py` changes — and the page
 now needs 320 B on the 32-bit twin with `dev`'s own site (1,536 B before). **A write-phase failure is never a success**:
 a response whose body can still fail after its status line goes out must carry its length, so the
@@ -12007,8 +12002,6 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `web.chunk_bytes` | 256 B | `src/asy_webserver_service.py` — `256` | one bound for JSON pieces and static-file reads; `tests/test_asy_webserver_service.py` reads it from the source (`src_const()`) | owner decision (owner, 2026-09-26) | a 256 B piece, against the ~105,000 B free after boot (I.6) | a heap-placement or serving-throughput measurement favours another piece size |
 | `web.max_header_lines` | 32 | `src/asy_webserver_service.py` — `32` | the reader proxy's head guard: a 33rd header refuses the head, answered 400 and traced as `wrnno` 61 (A.5) | estimated (agent, 2026-09-30): browsers send about 15-20 headers, curl about 4 — measurement owed: the header count of each supported browser's requests to the device, L4 | about 1.6× a browser's 20 headers | the device sets a cookie or an auth header, or a supported client sends more headers |
 | `web.max_head_bytes` | 2048 B | `src/asy_webserver_service.py` — `2048` | the reader proxy's head guard: a head (request line, headers and the blank line) past it is refused like a bad head (A.5); without it, 33 lines of `max_readline` could hold about 67 KB; the request side of the serving demand per connection (H.7) | estimated (agent, 2026-09-30): this device sets no cookie or auth header, so a browser's head stays well below one `max_readline` — measurement owed: the largest request head a supported browser sends to the device, on the dev bench, L4 | unknown until measured | the device sets a cookie or an auth header, or Microdot's `max_readline` changes |
-| `web.start_retries` | 3 attempts | `src/asy_webserver_service.py` — `3` | with `web.start_retry_s`, the last attempt comes one lwIP close linger after the first (`MICROPY_PY_LWIP_TCP_CLOSE_TIMEOUT_MS`, 10 s, `extmod/modlwip.c:61-63`); a failed `bind()`/`listen()` holds its pcb until a collection, so up to two across the attempts; the last failure persists `wrnno` 62 and ends the task (A.5) | estimated (agent, 2026-09-30): sized so the attempts span one close linger, the time a closing connection holds its pcb — measurement owed: a server start that fails with every TCP pcb held by closing connections, on the twin or the dev bench, L2/L4 | the third attempt, at 10 s, meets the pcbs the linger has freed | the close linger or the `MEMP_NUM_TCP_PCB` headroom over `max_connections` changes |
-| `web.start_retry_s` | 5 s | `src/asy_webserver_service.py` — `5` | `web.start_retries` × it spans the close linger; each wait is an `asyncio.sleep()`, so the task supervisor keeps feeding the watchdog through it (`system.task_check_s`) | estimated (agent, 2026-09-30): half the 10 s close linger, so three attempts span it — measurement owed: as `web.start_retries`, L2/L4 | two waits, 10 s, against the 10 s linger | the close linger changes |
 | `uart.cancel_ack_timeout_ms` | 1000 ms | `src/asy_uart_driver.py` — `1000` | `l1.asy_uart_comm_past_cancel_ack_hold_ms` (1300 ms, past the driver's own 1000 ms acknowledgement bound) and `l1.asy_uart_comm_prompt_hold_ms` (5 ms, a holder that acknowledges well inside it) | estimated (agent, `442a559`) — measurement owed: the cancel acknowledgement's latency on the dev bench crossover, L3 | unknown until measured | the driver's cancel path changes |
 | `uart.delimited_yield_bytes` | 16 B | `src/asy_uart_driver.py` — `16` | the loop hold of one delimited read (F.5.8); `tests/test_asy_uart_driver.py`'s `turns[0] >= 2` (40 bytes at 16 per yield) | estimated (agent, `441de83`) — measurement owed: the longest synchronous span of a delimited read on the dev bench, L3 | unknown until measured | the driver's read path changes |
 | `uart.rxbuf_default` | 256 B | `src/asy_uart_driver.py` — `256` (2 tags) | `uart.rxbuf_floor` (a construction refusal below it) | estimated (agent, `7f4ebc3`) — measurement owed: the receive arrivals per poll at the default rate, L3 | J.6 states the floor against this default | a poll-rate or baud default changes |
@@ -12248,7 +12241,6 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l1.asy_webserver_service_wire_per_call_ms` | 2000 ms | `tests/test_asy_webserver_service.py` — `2000` | the per-call timeout of `_get_on_the_wire()`'s fetches (93 per run), which pin write bounds, not timeouts | measured 2026-10-26, `build-standard`, 1 run per stage — single observation (2026-10-26): the 93 fetches take at most 22.0 ms at the reactive default and 97.5 ms at 32768, each a whole fetch, on the shared x86 host; the run bound's first measurement saw a wire fetch take 120.5 ms at 32768 | about 16× the slowest whole fetch; the 0.5 s cap these fetches ran under before cut a 37 KB body short on a loaded GitHub runner; the bench Pi4, the slowest host that runs it, is not measured | the code under test or the host class changes |
 | `l1.asy_webserver_service_wire_outer_cap_ms` | 4000 ms | `tests/test_asy_webserver_service.py` — `4000` | the outer cap of `_get_on_the_wire()`'s fetches; stays under `l1.asy_webserver_service_run_bound_s`, so a hang fails at the run bound | measured 2026-10-26, `build-standard`, 1 run per stage — single observation (2026-10-26): the 93 fetches take at most 22.0 ms at the reactive default and 97.5 ms at 32768, on the shared x86 host; the run bound's first measurement saw a wire fetch take 120.5 ms at 32768 | about 33× the slowest whole fetch; the bench Pi4, the slowest host that runs it, is not measured | the code under test or the host class changes |
 | `l1.asy_webserver_service_slowloris_trickle_ratio` | 0.5 | `tests/test_asy_webserver_service.py` — `0.5` | the slowloris trickle's byte interval as a share of `l1.asy_webserver_service_slowloris_per_call_s`: below 1, so only the outer cap ends each trickling connection | measured 2026-10-26, `build-standard`, 1 run per stage — single observation (2026-10-26): the 30 scripted 10 ms intervals (27 at 32768, the cap ending each connection) take at most 10.22 ms at the reactive default and 10.25 ms at 32768, on the shared x86 host | the slowest real interval is 0.51 of the per-call timeout, 1.95× under it; the bench Pi4, the slowest host that runs it, is not measured | the code under test or the host class changes |
-| `l1.asy_webserver_service_slow_reset_s` | 0.05 s | `tests/test_asy_webserver_service.py` — `0.05` | the real delay of the reset the reset-errors case needs to finish after the raising one | measured 2026-10-26, `build-standard`, 1 run per stage — single observation (2026-10-26): the raising reset ends 10 µs after the slow one starts at the reactive default and 8 µs at 32768, on the shared x86 host | about 5000× the measured gap; it is the case's cost; the bench Pi4, the slowest host that runs it, is not measured | the code under test or the host class changes |
 | `l1.asy_webserver_service_reset_release_bound_s` | 0.5 s | `tests/test_asy_webserver_service.py` — `0.5` | how long each suspended reset of the run-every-source-at-once case waits for all 3 to start; a sequential reset waits it out once per source and fails the count | measured 2026-10-26, `build-standard`, 1 run per stage — single observation (2026-10-26): the 3 waits take at most 41 µs at the reactive default and 43 µs at 32768, on the shared x86 host | about 11,600× the slowest wait; the bench Pi4, the slowest host that runs it, is not measured | the code under test or the host class changes |
 | `l1.asy_webserver_service_soak_warmup_cycles` | 20 | `tests/test_asy_webserver_service.py` — `20` | the lifecycle soak's warm-up before its first read; with `l1.asy_webserver_service_soak_rate_from_cycle` and `l1.asy_webserver_service_soak_cycles` it sets the windows `l1.webserver_leak_rate_max_b` bounds (E.7 states the counts) | measured 2026-10-26, `build-standard`, 1 run per stage — single observation (2026-10-26): the warm-up's 20 cycles take 87 ms at the reactive default and 99 ms at 32768, and the rate after it reads 0.0 B per cycle at both stages, on the shared x86 host | the first-use caches settle within it: the healthy rate reads 0.0; the bench Pi4, the slowest host that runs it, is not measured | the serving path's first-use allocations or the host class change |
 | `l1.asy_webserver_service_soak_rate_from_cycle` | 80 | `tests/test_asy_webserver_service.py` — `80` | the cycle the soak's retention rate is read from; the rate divides by `l1.asy_webserver_service_soak_cycles` minus it (E.7 states the counts) | measured 2026-10-26, `build-standard`, 1 run per stage — single observation (2026-10-26): cycles 20 to 80 take 247 ms at the reactive default and 325 ms at 32768, on the shared x86 host | 60 cycles past the warm-up, so a late one-time allocation falls before the window; the bench Pi4, the slowest host that runs it, is not measured | the serving path's first-use allocations or the host class change |
