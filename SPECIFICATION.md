@@ -3217,10 +3217,11 @@ the ring is the receive overrun J.7 names. The fill-level choke point also reads
 datasheet 4.2.8, Table 427): an overrun (OE), a framing error (FE) or a break (BE), each a received
 byte that is not what was sent, is cleared through UARTECR and handed to the caller as the receive
 overrun J.7 names, so the frame fails and the sender's transaction fails with it (owner,
-2026-10-06, for the overrun; framing errors and breaks the same way, agent, 2026-10-06). UARTRSR
-holds the error bits of the byte the DMA read last, so the check fails a frame only when the line
-goes quiet after the bad byte; a mid-stream error is left to the CRC or the frame length, and `dev`
-runs `crc = "none"` (dev bench, 2026-10-29: 8 of 134 corrupted frames flagged under glitches). The
+2026-10-06, for the overrun; framing errors and breaks the same way, agent, 2026-10-06). FE and
+BE belong to the byte the DMA read last, so the check fails a frame on them only when the line goes
+quiet after the bad byte; a mid-stream one is left to the CRC or the frame length, and `dev` runs
+`crc = "none"` (dev bench, 2026-10-29: 8 of 134 corrupted frames flagged under glitches). OE stays
+set until UARTECR is written, so an overrun fails the frame wherever it fell. The
 ring's two channels stop through `_rx_stop()` (F.5.8). Parity is not tested while no link configures it. A
 re-init restarts the ring's stream and fails the next read as an overrun, so the caller resyncs
 rather than reading a frame with a byte the handler took before the interrupts were masked. Every
@@ -10114,10 +10115,11 @@ The module therefore follows Part G.2's buffer-ownership primitive, in the same 
   (chunk 1 carries only the command id) is known the moment the first frame of a train arrives, and
   the exact size is known whenever the caller passed `exp_size` — neither case justifies an
   incrementally grown accumulator. **No receive allocation is larger than `chunk_bytes`, and none
-  exceeds `max_transfer_bytes`** (owner, 2026-10-05): a train whose declared size (its `CHUNKS`, or
-  `exp_size`) exceeds the instance's `max_transfer_bytes` is refused before anything is allocated,
+  exceeds `max_transfer_bytes`** (owner, 2026-10-05): a train whose declared size (its `CHUNKS`)
+  exceeds the receiving instance's `max_transfer_bytes` is refused before anything is allocated,
   through the rejection J.4 already has (the withheld ACK, changelog A16), and logged once
-  (`UART_TRANSFER_CAP`); a train the caller gave no destination for (`uart_get()` with
+  (`UART_TRANSFER_CAP`); an `exp_size` larger than the answer's train fails as a size mismatch
+  (`UART_SIZE_MISMATCH`), also before any allocation; a train the caller gave no destination for (`uart_get()` with
   `exp_size=None`, or a `set_callback` answering *don't care*) is assembled in pieces of at most
   `chunk_bytes`, held in G.2's piece primitive; a caller-supplied destination is filled in place as
   before. Both are fields of the one `TransferLimits` the constructor takes, beside `payload_size`

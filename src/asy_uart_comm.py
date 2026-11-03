@@ -612,8 +612,7 @@ class UARTComm:
         self._blind_resyncs = 0
 
     def _over_cap(self, chunks: int) -> bool:
-        # The declared size, (CHUNKS - 1) x payload_size, is what both ends compare with the cap, so a
-        # sender refuses exactly the trains its peer would, and every larger one.
+        # The declared size, (CHUNKS - 1) x payload_size, against this receiver's own cap (changelog A16).
         return (chunks - 1) * self._payload_size > self._max_transfer_bytes
 
     @staticmethod

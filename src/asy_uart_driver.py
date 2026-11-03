@@ -73,9 +73,9 @@ _DREQ_UART0_RX = const(21)  # RP2040 datasheet 2.5.3.1
 _DREQ_UART1_RX = const(23)
 _IMSC_RX = const(0x50)  # RXIM (bit 4) | RTIM (bit 6), Table 435
 _DMACR_RXDMAE = const(0x01)  # Table 439
-# UARTRSR holds the error bits of the byte the DMA read last (Table 427): OE, FE or BE fails the frame only when the
-# line then goes quiet; a mid-stream error is left to the CRC or the frame length (dev bench, 2026-10-29).
-# PE stays out of the mask: no link configures parity, so the bit carries nothing.
+# UARTRSR's FE and BE belong to the byte the DMA read last (Table 427): they fail the frame only when the line then
+# goes quiet, a mid-stream one left to the CRC or the frame length (dev bench, 2026-10-29); OE stays set until UARTECR
+# is written. PE stays out of the mask: no link configures parity, so the bit carries nothing.
 _RSR_ERRORS = const(0x0D)
 _DMA_BASE = const(0x50000000)  # each channel's TRANS_COUNT trigger alias sits at 0x40 * channel + 0x1C (2.5.7)
 _DMA_CH_STRIDE = const(0x40)
