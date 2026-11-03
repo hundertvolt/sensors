@@ -241,8 +241,8 @@ class _FRAMBaseChunk:
                 self.pr.all("Data read successfully from block 0")
                 return True
             if not match:
-                # Deliberate: no generation counter says which block is newer, so a write torn between
-                # blocks leaves two self-consistent but differing copies - a hard failure, not a guess.
+                # No generation counter says which block is newer, so a write torn between blocks leaves two valid
+                # but differing copies: a hard failure, never a guess (owner, 2026-07-18). The next write heals it.
                 await self.pr.err_s("Both blocks valid but different data", errno=_ERR_FRAM_COPIES_DIFFER)
                 return False
             self.pr.all("Both blocks valid and data verified")

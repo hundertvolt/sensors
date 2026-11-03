@@ -104,7 +104,7 @@ _I2C_DEFAULT_TIMEOUT_US: int = src_int("src/asy_i2c_driver.py", "_DEFAULT_TIMEOU
 _STA_RETRY_S: int = src_int("src/asy_wifi_service.py", "_STA_RETRY_AFTER_LOSS_S")
 _STA_ESTABLISHED: int = src_int("src/asy_wifi_service.py", "_PHASE_STA_ESTABLISHED")
 # @tunable l2.bus_hazard_concurrency_erase_us_per_byte = 8
-_ERASE_US_PER_BYTE = 8  # a deliberately slow bus: 8x the 1 us per byte of the product's 8 MHz FRAM clock
+_ERASE_US_PER_BYTE = 8  # an 8x-slow bus: the product's 8 MHz FRAM clock moves a byte in 1 us
 _GENERAL_CALL_ENTRY = ("writeto", 0x00, b"\x06", True)
 # Which get_data() field, per driver, proves that driver produced a real reading under load - the twin tier's much
 # smaller analogue of tests/_bus_hazard_catalog.py's mock-tier adapters (Part C.8); a new driver needs an entry first.

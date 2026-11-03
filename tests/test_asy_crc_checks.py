@@ -203,6 +203,20 @@ def test_crc_pass_add_into_and_check_from_are_size_identity() -> None:
     assert run(cp.check_from(buf)) == 3
 
 
+def test_pass_mode_add_into_and_check_from_refuse_bad_bounds() -> None:
+    # Pass mode refuses the same zero, negative and overrunning sizes the real CRCs refuse.
+    for crc in (CRCPass(), CRC8(poly=None)):
+        buf = bytearray(3)
+        assert run(crc.add_into(buf, 0)) is None
+        assert run(crc.add_into(buf, -1)) is None
+        assert run(crc.add_into(buf, 1, start=-1)) is None
+        assert run(crc.add_into(bytearray(2), 3)) is None
+        assert run(crc.check_from(buf, 0)) is None
+        assert run(crc.check_from(buf, -1)) is None
+        assert run(crc.check_from(buf, 1, start=-1)) is None
+        assert run(crc.check_from(bytearray(2), 3)) is None
+
+
 # ---------------------------------------------------------------------------
 # Incremental API: run_inc / check_inc
 # ---------------------------------------------------------------------------

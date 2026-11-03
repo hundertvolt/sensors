@@ -89,8 +89,8 @@ _W_WEL_STUCK = const(4)  # wrnno 27 - advisory: the operation itself still compl
 _W_WP_MISMATCH = const(8)  # errno 45
 _W_WEL_RETRIED = const(256)  # console only: a recovered transient
 
-# The three guards get_values()/set_values() share, in the same bit set so one status carries
-# whatever the synchronous body decided; the two reporters below own every message.
+# The guards get_values()/set_values() share, in the same bit set so one status carries whatever the
+# synchronous body found; the two reporters below own every message.
 _SV_OK = const(0)
 _SV_NOT_INIT = const(16)  # errno 18
 _SV_NOT_LOCKED = const(32)  # errno 24
@@ -273,9 +273,8 @@ class FRAM_SPI(Lockable):
 
     def _write(self, start_address: int, data: bytes | bytearray | memoryview) -> int:
         if self._is_write_protected():
-            # WP8: persisted by the caller, matching FRAMManager's own "communication paused,
-            # not writing" precedent (asy_fram_manager.py, wrnno 25) for the same class of
-            # condition - a refused-but-expected write against a deliberately-gated chip.
+            # Persisted by the caller, like the manager's "communication paused" refusal (W25): a refused-but-expected
+            # write against a chip gated on purpose.
             return _W_PROTECTED
         en = self._enable_write()
         if en & _W_WEL_NOT_SET:
@@ -381,9 +380,8 @@ class FRAM_SPI(Lockable):
             await self.pr.err_s("set_values: Invalid FRAM address range!", errno=_ERR_BAD_ARG)
             return False
         if status & _W_PROTECTED:
-            # WP8: persisted, matching FRAMManager's own "communication paused, not writing"
-            # precedent (asy_fram_manager.py, wrnno 25) for the same class of condition - a
-            # refused-but-expected write against a deliberately-gated chip, not a hardware fault.
+            # Persisted: a refused-but-expected write against a chip gated on purpose, like the manager's paused
+            # refusal (W25), not a hardware fault.
             await self.pr.wrn_s("FRAM currently write protected.", wrnno=_WRN_FRAM_WRITE_PROTECTED)
             return False
         if status & _W_WEL_NOT_SET:
