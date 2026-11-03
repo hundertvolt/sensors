@@ -135,7 +135,7 @@ async def _ntp_shaped_fetch(addr: tuple[str, int], timeout_ms: int) -> "tuple[bo
     try:
         sent = await cli.write(ntp_request, timeout_ms=timeout_ms) is not None
         if sent:
-            msg, _ = await cli.recvfrom(_NTP_PACKET_LEN, timeout_ms=timeout_ms)
+            msg, _ = await cli.recvfrom(_NTP_RECV_BUF, timeout_ms=timeout_ms)
     finally:
         torn_down = await cli.disconnect()
     return sent, msg, torn_down
@@ -176,7 +176,7 @@ def _unbindable_addr() -> tuple[str, int]:
 _RETRY_BACKOFF_MS: int = src_int("src/asy_udp_socket.py", "_RETRY_BACKOFF_MS")
 _POLL_WAIT_MS: int = src_int("src/asy_udp_socket.py", "_POLL_WAIT_MS")
 _POLL_IDLE_MS: int = src_int("src/asy_udp_socket.py", "_POLL_IDLE_MS")
-_NTP_PACKET_LEN: int = src_int("src/asy_ntp_client.py", "_NTP_PACKET_LEN")
+_NTP_RECV_BUF = 1024  # asy_ntp_client.py _fetch_ntp_reply()'s receive size
 
 
 # ---------------------------------------------------------------------------

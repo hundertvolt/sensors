@@ -73,7 +73,7 @@ _REQUIRED_DEVICE_FIELDS = ("name", "hostname", "hotspot_password", "conn_fail_to
 _REQUIRED_DEVICE_INT_FIELDS = ("conn_fail_to_hotspot", "hotspot_time_min")
 # Optional: absent, each falls back to its class's own __init__ default, and the checks below run
 # against that EFFECTIVE value - so no device can outrun its firmware by simply saying nothing.
-_OPTIONAL_DEVICE_INT_FIELDS = ("max_connections", "backlog", "ntp_retry_s", "ntp_retry_max_s")
+_OPTIONAL_DEVICE_INT_FIELDS = ("max_connections", "backlog")
 # hardware_family and bench are build facts only, never emitted: the label the suite groups devices by, and the
 # one board tests_hardware/ flashes and tests.
 _ALLOWED_DEVICE_FIELDS = frozenset(_REQUIRED_DEVICE_FIELDS) | frozenset(_OPTIONAL_DEVICE_INT_FIELDS) | {"wiring", "hardware_family", "bench"}
@@ -81,7 +81,6 @@ _MAX_CONNECTIONS_FLOOR = 1  # a webserver admitting no connection serves nothing
 _HOSTNAME_PREFIX = "SensorStation"
 # Bounds of values the build hands to the silicon or the port, each with its source.
 _HOTSPOT_TIME_MIN_MAX = (2**31 - 1) // 60000  # Timer.init(period=60000 x minutes) is a signed machine int: ports/rp2/machine_timer.c:79
-_SMALL_INT_MAX = 2**30 - 1  # rp2's small ints are 31-bit (py/smallint.h:39, :62 at v1.29.0); a doubled value past it allocates
 _I2C_FREQUENCY_MAX_HZ = 1000000  # RP2040 datasheet 4.3.3 (printed p.442): fast mode plus, up to 1000 kbps
 _UART_BAUDRATE_MAX = 7812500  # RP2040 datasheet 4.2.1 (printed p.418): UARTCLK / 16, 7.8 Mbaud at 125 MHz
 _UART_BUFFER_MIN = 32  # ports/rp2/machine_uart.c:67, :372-375 (v1.29.0): a smaller rxbuf/txbuf is raised to it silently
@@ -827,41 +826,6 @@ def _check_limits(model: DeviceModel) -> None:
                 )
 
 
-def _check_ntp_backoff(model: DeviceModel, src_dir: Path) -> None:
-    # The unsynced NTP retry backoff (Part C.7.2), checked as the effective pair: NTPClient would quietly clamp
-    # an interval below its check tick or a cap below the interval, and its doubling must stay a small int.
-    table = _device_table(model)
-    if "ntp_retry_s" not in table and "ntp_retry_max_s" not in table:
-        return  # the shipped defaults, pinned coherent by tests_scripts/test_buildgen_validate.py
-    retry_s, retry_max_s = ntp_backoff(table, src_dir)
-    tick = module_int_const(src_dir, "asy_ntp_client.py", "_NTP_CHECK_INTERV")
-    if retry_s < tick:
-        raise BuildError(
-            model.device,
-            f"[device].ntp_retry_s is {retry_s} - NTP checks its sync state every {tick}s, so no shorter retry interval exists",
-            rule="device.ntp-retry-below-tick",
-            fix=f"set ntp_retry_s to {tick} or more",
-            field="ntp_retry_s",
-        )
-    if retry_max_s < retry_s:
-        raise BuildError(
-            model.device,
-            f"[device].ntp_retry_max_s is {retry_max_s}, below the {retry_s}s first retry interval it caps",
-            rule="device.ntp-retry-max-below-retry",
-            fix=f"set ntp_retry_max_s to at least {retry_s}",
-            field="ntp_retry_max_s",
-        )
-    bound = _SMALL_INT_MAX // module_int_const(src_dir, "asy_ntp_client.py", "_NTP_BACKOFF_MULT")
-    if retry_max_s > bound:
-        raise BuildError(
-            model.device,
-            f"[device].ntp_retry_max_s is {retry_max_s} - the retry wait doubles up to it, and past {bound} that leaves rp2's small ints",
-            rule="device.ntp-retry-max-range",
-            fix=f"set ntp_retry_max_s to at most {bound}",
-            field="ntp_retry_max_s",
-        )
-
-
 def _check_required_fields(model: DeviceModel, buses: "dict[str, TomlDoc]", src_dir: Path) -> None:
     for spec in model.instances.values():
         # A driver resolving through driver_registry but absent from buildspec.py's tables would
@@ -1487,7 +1451,6 @@ def build_model(toml_path: Path, src_dir: Path) -> DeviceModel:
     # ship in rather than a property of the TOML - anything genuinely wrong with the device should
     # report before it, and it is the only stage that reads toolchain/versions.toml at all.
     _check_connection_ceiling(model, src_dir)
-    _check_ntp_backoff(model, src_dir)
     _check_uart_link_buses(model, buses, src_dir)
     _check_i2c_timeout_consumer(model, buses, src_dir)  # after the link checks, so its poll values are the validated ones
     return model
@@ -1551,14 +1514,6 @@ def module_int_const(src_dir: Path, filename: str, name: str) -> int:
 def module_str_const(src_dir: Path, filename: str, name: str) -> str:
     # module_int_const()'s str sibling: `NAME = const("<str>")`.
     return _module_const(src_dir, filename, name, str)
-
-
-def ntp_backoff(device_table: "TomlDoc", src_dir: Path) -> "tuple[int, int]":
-    # The effective (retry_s, retry_max_s) pair: [device]'s stated keys, else asy_ntp_client.py's
-    # _DEFAULT_RETRY_S/_DEFAULT_RETRY_MAX_S - what the generated NtpTiming carries.
-    retry_s = _checked_int(device_table["ntp_retry_s"]) if "ntp_retry_s" in device_table else module_int_const(src_dir, "asy_ntp_client.py", "_DEFAULT_RETRY_S")
-    retry_max_s = _checked_int(device_table["ntp_retry_max_s"]) if "ntp_retry_max_s" in device_table else module_int_const(src_dir, "asy_ntp_client.py", "_DEFAULT_RETRY_MAX_S")
-    return retry_s, retry_max_s
 
 
 def smallest_hard_consumer(model: DeviceModel, src_dir: Path) -> HardConsumer:

@@ -131,10 +131,10 @@ _LEFT_OUT = {
 }
 # @tunable l2.ntp_unreachable_watch_s = 90.0
 _NTP_UNREACHABLE_WATCH_S = 90.0  # Run 9's bound - past the old NTP give-up (~60s), see that run
-# The attempts the NTP backoff (10 s, doubling) makes inside that bound, measured failing at ~4, 22 and 62 s of
-# serving, the next at ~142 s: Run 9's watch ends once that many failed (agent, 2026-10-15).
-# @tunable l2.ntp_unreachable_failures = 3
-_NTP_UNREACHABLE_FAILURES = 3
+# The attempts the unsynced NTP retry (at once, then every 60 s) makes inside that bound, failing at about 4 and 64 s
+# of serving, the next at ~124 s: Run 9's watch ends once that many failed (agent, 2026-11-03).
+# @tunable l2.ntp_unreachable_failures = 2
+_NTP_UNREACHABLE_FAILURES = 2
 # @tunable l2.bus_fault_error_count = 500
 _BUS_FAULT_ERROR_COUNT = 500  # sustained/high-repeat-count - see Run 3's own comment for why.
 # Driver to its own REST/error-log `_NAME`, read from each driver's source and pinned to it by an L0 test; an
@@ -1513,11 +1513,11 @@ def _run_9_ntp_unreachable(ctx: RunContext) -> None:
     try:
         _wait_until_serving(proc)
         system_before = _counter(_errcount_required("SYSTEM"))
-        # Past every attempt the backoff makes within the old give-up's reach, then one supervisor pass: the time a task
+        # Past every attempt the retry makes within the old give-up's reach, then one supervisor pass: the time a task
         # that ended on the last failure takes to be restarted, an absence no probe can observe.
         failed = _failure_events(_wait_for_failure_events("NTP", _NTP_UNREACHABLE_FAILURES, timeout_s=_NTP_UNREACHABLE_WATCH_S))
         time.sleep(_src_int("asy_system_service.py", "_TASK_CHECK_TIME") + _COMMANDED_RESET_MARGIN_S)
-        _check(condition=failed >= _NTP_UNREACHABLE_FAILURES, msg=f"Run 9: NTP failed {failed} time(s) within the {_NTP_UNREACHABLE_WATCH_S:.0f}s watch, every attempt its backoff schedules there")
+        _check(condition=failed >= _NTP_UNREACHABLE_FAILURES, msg=f"Run 9: NTP failed {failed} time(s) within the {_NTP_UNREACHABLE_WATCH_S:.0f}s watch, every attempt its retry schedules there")
         status, _ = _http("GET", "/system")
         _check(condition=status == _HTTP_OK, msg="Run 9: webserver stayed fully healthy with NTP permanently unreachable")
         nums = [num for _kind, num in _error_codes(_errcount_required("NTP"))]

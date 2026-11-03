@@ -3810,16 +3810,14 @@ failed syncs, so an unreachable server restarted it about once a minute and rebo
 about every four minutes (owner, 2026-09-24). The legacy client never gave up.
 
 - **NTP** (`asy_ntp_client.py`) keeps no failure streak (`max_module_error` is gone from its
-  constructor). While unsynced it retries on a backoff: its `timing: NtpTiming`'s `retry_s` (default
-  `_DEFAULT_RETRY_S`, 10 s, Part N `ntp.retry_s_default`) doubling per failed attempt
-  (`ntp.backoff_mult`) up to its `retry_max_s` (default `_DEFAULT_RETRY_MAX_S`, 600 s,
-  `ntp.retry_max_s_default`), both rounded up to the 10 s check tick (`ntp.check_interval_s`); a
-  successful sync or a forced resync (`ntp_force_sync()`, e.g. a PUT of `NTPHost`) resets it, and
-  an attempt skipped for "network not up" leaves it alone. Per device through the optional
-  `[device]` keys `ntp_retry_s`/`ntp_retry_max_s`, checked by buildgen as the effective pair (at
-  least the tick; cap not below the interval). A synced device's failed resync keeps its own short
-  retry loop (`_NTP_SYNC_RETRIES` × 15 s: `ntp.sync_retries`, `ntp.retry_interval_s`) and does not
-  touch the backoff. **Confirmed on silicon (2026-09-25)**: with UDP 123 blocked, one `E71`
+  constructor). While unsynced it tries at the first 10 s check (`ntp.check_interval_s`) with the
+  network up, then one attempt every 60 s after a failed one (`_NTP_RETRY_UNSYNCED_S`, Part N
+  `ntp.retry_unsynced_s`; owner, 2026-11-03: "Then let's actually take 1 minute, easier to understand
+  and not significantly more noise than 2."), counted in check ticks; no device setting changes it.
+  An attempt skipped for "network not up" leaves the wait alone, and a successful sync or a forced
+  resync (`ntp_force_sync()`, e.g. a PUT of `NTPHost`) tries at once. A synced device's failed
+  resync keeps its own short retry loop (`_NTP_SYNC_RETRIES` × 15 s: `ntp.sync_retries`,
+  `ntp.retry_interval_s`) and does not touch the unsynced wait. **Confirmed on silicon (2026-09-25)**: with UDP 123 blocked, one `E71`
   (`NTP_NO_REPLY`) slot (count 3), no task ended, SYSTEM clean; two full bench tiers then held
   `assert_no_task_ended` throughout. The resolver tries only the servers its caller passes, in
   order: NTP passes the DHCP-provided DNS server first, then the `DNSFallback` servers (an NTP
@@ -3840,10 +3838,10 @@ socket, so a late reply to an earlier attempt reaches none; an on-path host forg
 address is outside the trusted home-LAN threat model (A.11).
 
 Network faults recover with the smallest step first. A remote fault (no or a bad NTP/DNS reply, a
-bad client datagram) is retried on its capped backoff and never escalates, since nothing local can
+bad client datagram) is retried on its fixed or capped wait and never escalates, since nothing local can
 repair the peer (owner, 2026-09-24). A local fault escalates: a socket that cannot be created or
-bound is re-created on the next attempt; a timer that cannot be armed is re-armed at the next
-opportunity, then its task ends for the supervisor, whose restart budget leads to a reboot; WLAN
+bound is re-created on the next attempt; an NTP timer that cannot be armed prints its refusal and
+stays unarmed (its pool exhaustion is refuted in normal operation, F.1); WLAN
 hardware failures end the WiFi task after `max_module_error` iterations; a CYW43 link stuck in an
 `isconnected()` false positive is recovered by a power cycle, the last rung (owner, 2026-09-26)
 (owner, 2026-09-30).
@@ -4301,7 +4299,7 @@ one connect attempt, so a dropped fire delays that attempt by one period. Each
 remaining `ONE_SHOT` states why a dropped fire is acceptable or backstopped: the stagger wait
 (C.9.1) and the reset timer — `ONE_SHOT` by the owner's choice (owner, 2026-07-18: 'brittle wrt.
 wdt timeout settings'), with nothing fed once it is armed — by the watchdog; the NTP retry by
-`_refresh_loop()`'s due check, which starts the next sync at the check tick nearest `NTPInterval`, so a
+`_refresh_loop()`'s due check, which starts the next sync once its check ticks count `NTPInterval`, so a
 dropped fire loses only that retry. The storage auto-unpause is no timer: `mempause` stores a
 deadline that the uptime pass tests once a second, so no dropped fire can leave storage paused and
 the pause ends at most one pass late; a reset that paused storage meanwhile keeps it paused. With the
@@ -4319,9 +4317,9 @@ read timer can start?": "a - if the shortage came each boot, this would be a mal
 which would already be seen in the tests - nothing which would happen by itself as a surprise.";
 option (a), the reboot kept rather than a reader degrading in place with its sensor silent). Any
 other failed arm is re-armed at the task's next opportunity and
-persisted on a second failure, then the task ends for the supervisor: NTP's check and sync-age
-timers when the sync task starts and at each of its wakes, the WiFi uptime tick at the connection
-loop's next iteration; a failed hotspot-timer arm persists `TIMER`, is retried on the next cycle
+persisted on a second failure, then the task ends for the supervisor: the WiFi uptime tick at the
+connection loop's next iteration; NTP's check and sync-age timers print their refusal and stay
+unarmed, as before the refactor (their pool exhaustion is refuted in normal operation); a failed hotspot-timer arm persists `TIMER`, is retried on the next cycle
 and counts toward the WiFi task's hardware streak (C.7): in the silent mode it leaves no attempt
 due, in the hotspot mode no end to the window. The 1 s tick timers (system uptime, WiFi uptime, NTP
 sync age) share `arm_tick_timer()`; they start with the timer starters and never take a stagger
@@ -8954,9 +8952,9 @@ replaces it: 896 B together on the 64-bit Unix port, fixed.
 transient, bounded by the device TOML's signal count.
 
 **`asy_ntp_client.py`** — construction, long-lived, fixed: its flags, timers and `TickSeconds`. Per
-sync attempt: the DNS resolution (`asy_dns_client.py`), one `UDPSocket`, the 48 B reply (RFC 5905
-§7.3; the request is built once), its unpack tuple and one `NTP` sample, transient, client-controlled
-by the server and bounded before allocation. Per `cettime()`: one `GMTimeStruct` and its tuples.
+sync attempt: the DNS resolution (`asy_dns_client.py`), one `UDPSocket`, the 48 B request, the reply
+received into 1024 B (RFC 5905 §7.3), its unpack tuple and one `NTP` sample, transient,
+client-controlled by the server and bounded before allocation. Per `cettime()`: one `GMTimeStruct` and its tuples.
 
 **`asy_print_log.py`** — construction, long-lived, fixed: each history's ring (`history_length`)
 and, for a FRAM-backed one, its chunk and write lock. Each FRAM-backed logger's
@@ -10696,8 +10694,7 @@ every buildable device has all three unconditionally. Their per-device-tunable k
 `conn_fail_to_hotspot`/`hotspot_time_min`; SystemService has none) live directly in
 `[device]`, **required, not defaulted**: a device TOML missing either is a build-time error. A few
 are **optional, defaulted by the class itself**: the webserver's `max_connections`/`backlog`
-(H.7) and NTP's unsynced retry backoff `ntp_retry_s`/`ntp_retry_max_s` (C.7.2) - absent, the
-constructor default applies, and buildgen checks the effective value either way. Their
+(H.7) - absent, the constructor default applies, and buildgen checks the effective value either way. Their
 crosslinks to optional instances live in `[device.wiring]` (`led_target`/`fram_target`, both
 optional). The webserver is likewise unconditional and never modeled as an instance — its
 constructor takes no independent per-device facts, only references to whichever other instances the
@@ -10842,8 +10839,6 @@ when the key is absent.
 | `[device]` | `hotspot_time_min` | yes | int 1..35791 (the hotspot `Timer` period, 60000 × minutes, is a signed machine int) | `WifiService`: the hotspot window, and the silent mode's connect-attempt period (A.4) |
 | `[device]` | `max_connections` | no | int ≥ 1 that the firmware's lwIP pools serve: `toolchain/versions.toml`'s `[lwip]` table, checked by `toolchain/micropython_overrides.py`'s ensemble check (H.7); default `_DEFAULT_MAX_CONNECTIONS` (6) | `ServingLimits.max_connections` |
 | `[device]` | `backlog` | no | int from `max_connections` to `max_connections` + 1; default `max_connections` + 1 | `ServingLimits.backlog` (H.7) |
-| `[device]` | `ntp_retry_s` | no | int ≥ NTP's 10 s check tick (`_NTP_CHECK_INTERV`); default `_DEFAULT_RETRY_S` (10) | `NtpTiming`'s unsynced retry interval (C.7.2) |
-| `[device]` | `ntp_retry_max_s` | no | int from the effective `ntp_retry_s` to (2**30 − 1) // `_NTP_BACKOFF_MULT`; default `_DEFAULT_RETRY_MAX_S` (600) | `NtpTiming`'s retry cap |
 | `[device]` | `hardware_family` | no | non-empty string | the test suite only: devices of one family differ only in `name` and `hostname`; hardware divergence removes it from one file; kept in `[device]`, checked by the build, never emitted into the image (owner, 2026-10-05) |
 | `[device]` | `bench` | no | bool; default `false`; set in exactly one device TOML (`tests_scripts/test_bench_device.py`) | `tests_hardware/`: the board it flashes and tests (`harness.bench_device()`; `$BENCH_DEVICE` overrides); kept in `[device]`, checked by the build, never emitted into the image (owner, 2026-10-05) |
 | `[device.wiring]` | `led_target` | no | a `neopixel` instance | `WifiService(ext_led=)`: the WiFi status LED |
@@ -11418,7 +11413,7 @@ registration — a driver that resolves via `driver_registry.resolve_driver()` b
 `buildgen/buildspec.py` entry raises its own dedicated error naming that as the cause, rather than
 reporting every one of its TOML fields as unrecognised. Also covered: every numeric `[device]` and
 bus field's range (L.3's table, each bound a named constant of `validate.py` with its source:
-`hotspot_time_min`, `conn_fail_to_hotspot`, the NTP backoff pair, I2C `frequency` and `timeout`,
+`hotspot_time_min`, `conn_fail_to_hotspot`, I2C `frequency` and `timeout`,
 UART `baudrate`, `rxbuf` and `txbuf`); the hostname and hotspot password against the bounds their
 WiFi schema fields hold; `hardware_family` as a non-empty string, never emitted; `irq_pull_up` as a
 bool; a `uart_link`'s `poll_wait_ms`/`poll_idle_ms` ranges and reply-timeout floor, its `rxbuf` and
@@ -12047,13 +12042,11 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `dns.timeout_ms` | 500 ms | `src/asy_dns_client.py` — `500`; `buildgen/codegen.py` — `500` | the NTP fetch's total budget, computed in the generated module; the loop-lag scenario's cap on any one wake after the load (`scripts/_digital_twin_scenarios.py`, read from `buildgen/codegen.py`) | estimated (agent, `5ddbcd3`) — measurement owed: a LAN resolver's answer time, L4 | unknown until measured | the resolver order or a server's latency class changes |
 | `dns.tries` | 1 | `src/asy_dns_client.py` — `1`; `buildgen/codegen.py` — `1` | the resolver tries every server in turn (C.7.2) | estimated (agent, `5ddbcd3`) — measurement owed: the resolver's success rate per server on the bench network, L4 | unknown until measured | the resolver order changes |
 | `ntp.fetch_timeout_ms` | 5000 ms | `buildgen/codegen.py` — `5000`; `tests/test_asy_ntp_client.py` — `5000`; `tests/test_ntp_fram_system_integration.py` — `5000`; `tests/test_ntp_wifi_dns_integration.py` — `5000` | the NTP retry schedule; `l1.asy_ntp_client_retry_armed_poll_tries` × `l1.asy_ntp_client_state_poll_ms` (6 s) outlasts it; `tests/test_ntp_wifi_dns_integration.py`'s `_make_ntp()` default, whose four fetches from its loopback server each ended within 51.03 ms at both GC stages (measured 2026-10-27, 2 runs per stage, shared x86 host) | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:14` | unknown until measured | the NTP fetch path changes |
-| `ntp.check_interval_s` | 10 s | `src/asy_ntp_client.py` — `10`; `tests/test_asy_ntp_client.py` — `10` | the build's `ntp_retry_s` floor (`buildgen/validate.py` reads `_NTP_CHECK_INTERV` from source, no copy of its own); the step both NTP waits round to (`_nearest_tick_s()`), so the synced resync is due at the check tick nearest `NTPInterval` | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:13` | unknown until measured | the sync-age tick changes |
+| `ntp.check_interval_s` | 10 s | `src/asy_ntp_client.py` — `10`; `tests/test_asy_ntp_client.py` — `10` | the step both NTP waits count in: the synced resync is due once its ticks reach `NTPInterval`, and `ntp.retry_unsynced_s` is a whole number of ticks | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:13` | unknown until measured | the sync-age tick changes |
 | `ntp.async_intervals` | 3 | `src/asy_ntp_client.py` — `3`; `tests/test_asy_ntp_client.py` — `3` | `Synced`'s staleness window | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:12` | three sync intervals | the staleness rule changes |
 | `ntp.sync_retries` | 3 | `src/asy_ntp_client.py` — `3`; `tests/test_asy_ntp_client.py` — `3` | — | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:15` | unknown until measured | the retry schedule changes |
 | `ntp.retry_interval_s` | 15 s | `src/asy_ntp_client.py` — `15`; `tests/test_asy_ntp_client.py` — `15` | — | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:16` | unknown until measured | the retry schedule changes |
-| `ntp.backoff_mult` | 2 | `src/asy_ntp_client.py` — `2` | the unsynced retry interval's growth up to `ntp.retry_max_s_default` | estimated (agent, `c20f80b`) — measurement owed: the retry count until a returning server is noticed, L2 | unknown until measured | the retry schedule changes |
-| `ntp.retry_s_default` | 10 s | `src/asy_ntp_client.py` — `10` | ≥ `ntp.check_interval_s` (the build check) | estimated (agent, `c3df14e`) — measurement owed: the unsynced retry cadence a returning server needs, L2 | unknown until measured | the retry schedule changes |
-| `ntp.retry_max_s_default` | 600 s | `src/asy_ntp_client.py` — `600` | the unsynced retry cap | estimated (agent, `c3df14e`) — measurement owed: the unsynced retry cadence a returning server needs, L2 | unknown until measured | the retry schedule changes |
+| `ntp.retry_unsynced_s` | 60 s | `src/asy_ntp_client.py` — `60` | the wait after a failed unsynced attempt, counted in `ntp.check_interval_s` ticks | owner, 2026-11-03: "Then let's actually take 1 minute, easier to understand and not significantly more noise than 2." | one attempt a minute while the server stays away | the owner changes the retry schedule |
 | `ntp.plausible_min_unix` | 1735689600 (2025-01-01T00:00:00Z) | `src/asy_ntp_client.py` — `1735689600` | every accepted NTP reply | estimated (agent, `90171f8`) — measurement owed: none: a floor below any real reply | predates the source itself | raise the lower bound to the release date at each release; any change of the NTP-era handling (2036 wrap) |
 | `ntp.plausible_max_unix` | 4102444800 (2100-01-01T00:00:00Z) | `src/asy_ntp_client.py` — `4102444800` | every accepted NTP reply; below 2**32, the device clock's range | estimated (agent, `90171f8`) — measurement owed: none: a ceiling past the 2036 era wrap | past the 2036 era wrap, under 2**32 | review before 2099-01-01; any change of the NTP-era handling (2036 wrap) |
 | `wifi.hotspot_stations_settle_ms` | 100 ms | `src/asy_wifi_service.py` — `100` | the stations query needs no other status command close before it | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:258` | unknown until measured | the CYW43 driver or the pin moves |
@@ -12504,8 +12497,8 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l2.reset_errors_budget_ratio` | 0.8 | `scripts/_digital_twin_ci_suite.py` — `0.8` | `_RESET_ERRORS_BUDGET_S` = `web.outer_cap_s` × it | estimated (agent, `d370413`) — measurement owed: the ResetErrors sweep's elapsed on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.ceiling_rounds` | 3 | `scripts/_digital_twin_ci_suite.py` — `3` | back-to-back ceiling rounds expose a leaked slot | estimated (agent, `d02ccc9`) — measurement owed: the rounds a leaked slot needs to show on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.slot_release_wait_s` | 1.0 s | `scripts/_digital_twin_ci_suite.py` — `1.0` | a fixed wait kept: a readiness probe would occupy a `max_connections` slot, the property under test | estimated (agent, `dfb8975`) — measurement owed: the slot release time after a ceiling round on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
-| `l2.ntp_unreachable_watch_s` | 90.0 s | `scripts/_digital_twin_ci_suite.py` — `90.0` | Run 9's bound: the watch ends on the `l2.ntp_unreachable_failures`-th NTP failure, then one supervisor pass; past the former NTP give-up (~60 s) | estimated (agent, `c20f80b`) — measurement owed: Run 9's elapsed on the twin, L2 | the third failure came at about 62.4 s of serving on `dev` (2026-10-15, single observation) | the code under test or the host class changes |
-| `l2.ntp_unreachable_failures` | 3 failures | `scripts/_digital_twin_ci_suite.py` — `3` | the count Run 9's watch ends on, inside `l2.ntp_unreachable_watch_s` | measured 2026-10-15, the Unix-port twin, `dev`, single observation: failures at about 4, 22.5 and 62.4 s of serving and none more by 92 s, the NTP backoff (10 s, doubling) putting the fourth near 142 s | the third failure at ~62 s inside the 90 s bound; a fourth is unreachable inside it | the NTP backoff, its fetch timeout or `l2.ntp_unreachable_watch_s` changes |
+| `l2.ntp_unreachable_watch_s` | 90.0 s | `scripts/_digital_twin_ci_suite.py` — `90.0` | Run 9's bound: the watch ends on the `l2.ntp_unreachable_failures`-th NTP failure, then one supervisor pass; past the former NTP give-up (~60 s) | estimated (agent, `c20f80b`) — measurement owed: Run 9's elapsed on the twin, L2 | the second failure comes at about 64 s of serving (agent, 2026-11-03) | the code under test or the host class changes |
+| `l2.ntp_unreachable_failures` | 2 failures | `scripts/_digital_twin_ci_suite.py` — `2` | the count Run 9's watch ends on, inside `l2.ntp_unreachable_watch_s` | estimated (agent, 2026-11-03) from the unsynced retry: the first attempt at about 4 s of serving (measured 2026-10-15, the Unix-port twin, `dev`), then one every `ntp.retry_unsynced_s` — measurement owed: Run 9's failure times on the twin, L2 | the second failure at ~64 s inside the 90 s bound; a third is unreachable inside it | the NTP retry wait, its fetch timeout or `l2.ntp_unreachable_watch_s` changes |
 | `l2.bus_fault_error_count` | 500 | `scripts/_digital_twin_ci_suite.py` — `500` | Run 3's sustained-fault volume | estimated (agent, `c691cb3`) — measurement owed: Run 3's elapsed and logged-error count on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.bounded_fault_count` | 3 | `scripts/_digital_twin_ci_suite.py` — `3` | Runs 5 and 5c: the bounded fault's injected failures | estimated (agent, `dec60b7`) — measurement owed: Run 5's elapsed on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.wifi_scripted_failures` | 5 | `scripts/_digital_twin_ci_suite.py` — `5` | mirrors the `conn_fail_to_hotspot = 5` config value of every `devices/*.toml` | estimated (agent, `dec60b7`) — measurement owed: none: it follows the config value | equal to the config value | a device's `conn_fail_to_hotspot` changes |
@@ -12864,7 +12857,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l4.wifi_networking_reconnect_timeout_s` | 60.0 s | `tests_hardware/bench/test_wifi_networking.py` — `60.0` | — | estimated (agent, `aa008e9`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.wifi_networking_association_attempts` | 2 | `tests_hardware/bench/test_wifi_networking.py` — `2` | — | estimated (agent, `36c9210`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.wifi_networking_probe_timeout_s` | 10.0 s | `tests_hardware/bench/test_wifi_networking.py` — `10.0` | — | estimated (agent, 2026-10-14) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
-| `l4.wifi_networking_ntp_resync_margin_s` | 10.0 s | `tests_hardware/bench/test_wifi_networking.py` — `10.0` | + the unsynced backoff's step after the last attempt `l4.wifi_networking_ntp_fault_tail_s` can hold (`ntp.retry_s_default` rounded up to `ntp.check_interval_s`, times `ntp.backoff_mult` per failed attempt up to `ntp.retry_max_s_default`, read from `src/asy_ntp_client.py`) + one attempt's longest run (`l4.network_resilience_ntp_retry_chain_margin_s`'s attempt term) = the blocked-port test's wait for NTPSynced after the unblock, so a request sent in the block's last fetch timeout logs its NTP_NO_REPLY in that test's own window | estimated (agent, 2026-10-27) — measurement owed: the elapsed time from the unblock to NTPSynced in that test on the dev bench, with date and run count, L4 | against that measurement, once taken | the NTP backoff, the fault tail, the lookup or fetch timeouts, or the host class changes |
+| `l4.wifi_networking_ntp_resync_margin_s` | 10.0 s | `tests_hardware/bench/test_wifi_networking.py` — `10.0` | + the unsynced retry wait after the last failed attempt (`ntp.retry_unsynced_s`, read from `src/asy_ntp_client.py`) + one attempt's longest run (`l4.network_resilience_ntp_retry_chain_margin_s`'s attempt term) = the blocked-port test's wait for NTPSynced after the unblock, so a request sent in the block's last fetch timeout logs its NTP_NO_REPLY in that test's own window | estimated (agent, 2026-10-27) — measurement owed: the elapsed time from the unblock to NTPSynced in that test on the dev bench, with date and run count, L4 | against that measurement, once taken | the NTP retry wait, the lookup or fetch timeouts, or the host class changes |
 | `l4.network_resilience_outage_s` | 15.0 s | `tests_hardware/bench/test_network_resilience.py` — `15.0` | — | estimated (agent, `aa008e9`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.network_resilience_outage_reconnect_timeout_s` | 150.0 s | `tests_hardware/bench/test_network_resilience.py` — `150.0` | — | estimated (agent, `aa008e9`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.network_resilience_reconnect_timeout_s` | 60.0 s | `tests_hardware/bench/test_network_resilience.py` — `60.0` | — | estimated (agent, `c843d4e`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |

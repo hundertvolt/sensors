@@ -245,7 +245,7 @@ def test_each_failure_mode_answers_as_its_name_says() -> None:
         if mode == "unsync":
             assert (reply[0] >> 6, reply[1]) == (3, 0), reply[:2]  # LI 3, stratum 0: a Kiss-of-Death reply
         elif mode == "short":
-            assert len(reply) == 47
+            assert len(reply) == 40
         else:
             assert len(reply) == 48 and _transmit_s(reply) < floor
 
@@ -372,10 +372,10 @@ def _outage_from_boot_on(device: str) -> None:
             return (await _log(module))[0] >= 1
 
         async def backed_off() -> bool:
-            return bool(module.ntp._retry_wait_s == 2 * module.ntp._retry_s)
+            return bool(module.ntp._retry_wait_s == _RETRY_UNSYNCED_S)
 
         await _until(clock, failed, "the boot's attempt never failed")
-        await _until(clock, backed_off, "the failed unsynced attempt never doubled the step (C.7.2)")
+        await _until(clock, backed_off, "the failed unsynced attempt never set the retry wait (C.7.2)")
         synced, log, step = await module.ntp.ntp_issynced(), await _log(module), module.ntp._retry_wait_s
         responder.mode = "serve"
         ticks = await _ticks_to_attempt(module, responder, clock)
@@ -425,8 +425,9 @@ def test_a_send_to_a_refused_address_fails_on_the_products_own_path() -> None:
 # @tunable l2.ntp_sync_wait_timeout_s = 20.0
 _SYNC_WAIT_TIMEOUT_S = 20.0  # the network up, one product fetch timeout (5 s), a check tick (10 s) if it came up late
 _SYNC_POLL_MS = 50
-_TICKS_TO_RETRY = 4  # check ticks fired by hand toward the next attempt: the backoff steps reached here, 20 s and 40 s
 _CHECK_S: int = src_int("src/asy_ntp_client.py", "_NTP_CHECK_INTERV")
+_RETRY_UNSYNCED_S: int = src_int("src/asy_ntp_client.py", "_NTP_RETRY_UNSYNCED_S")
+_TICKS_TO_RETRY = _RETRY_UNSYNCED_S // _CHECK_S  # check ticks fired by hand toward the next attempt: the retry wait
 _SSID = "TestNet"
 _scratch = TmpScratch("digital_twin_ntp")
 

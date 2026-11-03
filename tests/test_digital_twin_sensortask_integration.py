@@ -116,6 +116,7 @@ _POLL_IDLE_MS = src_const("src/asy_udp_socket.py", "_POLL_IDLE_MS")
 _STA_ESTABLISHED = src_const("src/asy_wifi_service.py", "_PHASE_STA_ESTABLISHED")
 _HOTSPOT_PHASE = src_const("src/asy_wifi_service.py", "_PHASE_HOTSPOT")
 _JOINED_NO_IP = src_int("src/asy_wifi_service.py", "_STAT_JOINED_NO_IP")
+_RETRY_UNSYNCED_S = src_int("src/asy_ntp_client.py", "_NTP_RETRY_UNSYNCED_S")
 _WIFI_STORE = str(src_const("src/asy_wifi_service.py", "_NAME"))
 _NO_CLOCK = src_const("src/asy_notification_service.py", "_STATE_NO_CLOCK")
 _EVALUATED = src_const("src/asy_notification_service.py", "_STATE_EVALUATED")
@@ -666,7 +667,7 @@ def test_watchdog_is_never_starved_while_the_real_supervisor_runs() -> None:
         assert watchdog.would_have_triggered_count == 0, list(watchdog.would_have_triggered_log)
         assert not main_task.done(), "main() ended: its supervisor never returns"
         ntp = module.ntp
-        assert await _wait_until(lambda: ntp._retry_wait_s > ntp._retry_s, timeout_s=_WAIT_TIMEOUT_S), "the NTP client never sent a sync attempt"
+        assert await _wait_until(lambda: ntp._retry_wait_s == _RETRY_UNSYNCED_S, timeout_s=_WAIT_TIMEOUT_S), "the NTP client never sent a sync attempt"
         refused = (_unix_port_udp_addr_shim.public_destinations_refused, _unix_port_udp_addr_shim.last_refused)
         assert refused == (0, None), f"the offline boot sent outside the twin: {refused}"
 

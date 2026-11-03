@@ -905,7 +905,7 @@ def test_run_9_fails_closed_on_a_system_entry_without_a_counter(ci_suite: Module
     assert any("no task ended and was restarted" in f for f in failures), failures
 
 
-@pytest.mark.parametrize(("failed", "bound"), [(3, 90.0), (2, 0.0)])
+@pytest.mark.parametrize(("failed", "bound"), [(2, 90.0), (1, 0.0)])
 def test_run_9_ends_its_watch_once_ntp_failed_every_scheduled_attempt_never_after_a_fixed_wait(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, failed: int, bound: float) -> None:
     # The watch ends on the failures, then one supervisor pass; at the bound with fewer, the run fails naming the count.
     expected = "NTP_NO_REPLY" if ci_suite._route_leaves_host(ci_suite._NTP_UNREACHABLE_HOST, ci_suite._NTP_PORT) else "NTP_NOT_SENT"

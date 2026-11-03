@@ -291,18 +291,6 @@ def test_a_hotspot_failure_count_below_one_is_rejected(tmp_path: Path, src_dir: 
     assert _at(_build(tmp_path, src_dir, doc).doc, "device", "conn_fail_to_hotspot") == 1
 
 
-def test_an_ntp_retry_cap_past_the_small_int_range_is_rejected(tmp_path: Path, src_dir: Path) -> None:
-    # The unsynced retry wait doubles up to the cap: past (2**30 - 1) // 2 the doubling leaves rp2's small ints.
-    bound = (2**30 - 1) // _src_int(src_dir, "asy_ntp_client.py", "_NTP_BACKOFF_MULT")
-    doc = base_doc()
-    table_at(doc, "device")["ntp_retry_max_s"] = bound
-    assert _at(_build(tmp_path, src_dir, doc).doc, "device", "ntp_retry_max_s") == bound
-    table_at(doc, "device")["ntp_retry_max_s"] = bound + 1
-    with pytest.raises(BuildError, match=rf"ntp_retry_max_s is {bound + 1}") as info:
-        _build(tmp_path, src_dir, doc)
-    assert (info.value.rule, info.value.field, info.value.fix) == ("device.ntp-retry-max-range", "ntp_retry_max_s", f"set ntp_retry_max_s to at most {bound}")
-
-
 @pytest.mark.parametrize("family", ["", 5, ["label"], True])
 def test_a_hardware_family_that_is_no_non_empty_string_is_rejected(tmp_path: Path, src_dir: Path, family: "TomlValue") -> None:
     doc = base_doc()
@@ -338,17 +326,6 @@ def test_the_hostname_and_password_bounds_come_from_the_wifi_schemas(tmp_path: P
     with pytest.raises(BuildError, match="WPA2 allows 9 to 63") as info:
         _build(tmp_path, staged, doc)
     assert info.value.rule == "device.hotspot-password-length"
-
-
-def test_the_ntp_check_tick_comes_from_the_ntp_client(tmp_path: Path, src_dir: Path) -> None:
-    staged = _staged_src(tmp_path, src_dir, "asy_ntp_client.py", "_NTP_CHECK_INTERV = const(10)", "_NTP_CHECK_INTERV = const(20)")
-    doc = base_doc()
-    table_at(doc, "device")["ntp_retry_s"] = 20
-    assert _at(_build(tmp_path, staged, doc).doc, "device", "ntp_retry_s") == 20
-    table_at(doc, "device")["ntp_retry_s"] = 15
-    with pytest.raises(BuildError, match="every 20s") as info:
-        _build(tmp_path, staged, doc)
-    assert (info.value.rule, info.value.field) == ("device.ntp-retry-below-tick", "ntp_retry_s")
 
 
 def test_empty_bus_table_with_bus_attached_instances_still_fails(tmp_path: Path, src_dir: Path) -> None:
@@ -2527,14 +2504,6 @@ def test_init_int_default_reads_the_named_class_in_the_named_file_only(tmp_path:
         init_int_default(tmp_path, "nope.py", "NTPClient", "retry_s")
 
 
-def test_the_shipped_ntp_backoff_defaults_are_readable_from_the_real_source(src_dir: Path) -> None:
-    # Regression guard for the validator's own input: renaming either constant breaks this, not a device build.
-    from buildgen.validate import module_int_const
-
-    assert module_int_const(src_dir, "asy_ntp_client.py", "_DEFAULT_RETRY_S") == 10
-    assert module_int_const(src_dir, "asy_ntp_client.py", "_DEFAULT_RETRY_MAX_S") == 600
-
-
 @pytest.mark.parametrize("content", [None, "class WebserverService(:\n"])
 def test_an_unreadable_webserver_source_is_a_named_build_error(tmp_path: Path, content: "str | None") -> None:
     from buildgen.validate import webserver_init_default
@@ -2555,51 +2524,14 @@ def test_a_non_int_connection_field_is_rejected(tmp_path: Path, src_dir: Path, f
         _build(tmp_path, src_dir, doc)
 
 
-def test_ntp_backoff_keys_are_optional_and_their_src_defaults_pass_the_check(tmp_path: Path, src_dir: Path) -> None:
-    from buildgen.validate import ntp_backoff
-
-    doc = base_doc()
-    for key in ("ntp_retry_s", "ntp_retry_max_s"):
-        table_at(doc, "device").pop(key, None)
-    _build(tmp_path, src_dir, doc)
-    retry_s, retry_max_s = ntp_backoff(table_at(doc, "device"), src_dir)
-    assert 10 <= retry_s <= retry_max_s
-
-
-def test_an_ntp_retry_interval_below_the_check_tick_is_rejected(tmp_path: Path, src_dir: Path) -> None:
-    # NTPClient would silently round it up to its 10s tick; the build says so instead.
-    doc = base_doc()
-    table_at(doc, "device")["ntp_retry_s"] = 9
-    with pytest.raises(BuildError, match="every 10s") as info:
-        _build(tmp_path, src_dir, doc)
-    assert info.value.field == "ntp_retry_s"
-    table_at(doc, "device")["ntp_retry_s"] = 10
-    _build(tmp_path, src_dir, doc)
-
-
-def test_an_ntp_retry_cap_below_the_interval_is_rejected_against_the_effective_pair(tmp_path: Path, src_dir: Path) -> None:
-    doc = base_doc()
-    table_at(doc, "device")["ntp_retry_s"] = 60
-    table_at(doc, "device")["ntp_retry_max_s"] = 30
-    with pytest.raises(BuildError, match="below the 60s first retry") as info:
-        _build(tmp_path, src_dir, doc)
-    assert info.value.field == "ntp_retry_max_s"
-    del table_at(doc, "device")["ntp_retry_max_s"]  # the stated interval against the src cap (600) passes
-    _build(tmp_path, src_dir, doc)
-    table_at(doc, "device")["ntp_retry_s"] = 900  # ...and one above that cap fails, cap unstated
-    with pytest.raises(BuildError, match="ntp_retry_max_s is 600"):
-        _build(tmp_path, src_dir, doc)
-
-
 @pytest.mark.parametrize("field", ["ntp_retry_s", "ntp_retry_max_s"])
-@pytest.mark.parametrize("bad_value", ["30", 30.0, True])
-def test_ntp_backoff_keys_must_be_ints(tmp_path: Path, src_dir: Path, field: str, bad_value: "TomlValue") -> None:
-    # Same isinstance(int) and not bool guard every other optional [device] int gets.
+def test_the_ntp_retry_keys_are_no_device_setting(tmp_path: Path, src_dir: Path, field: str) -> None:
+    # The unsynced NTP retry wait is one source constant (owner, 2026-11-03): a device stating one names an unknown field.
     doc = base_doc()
-    table_at(doc, "device")[field] = bad_value
-    with pytest.raises(BuildError, match=f"{field} must be an int") as info:
+    table_at(doc, "device")[field] = 60
+    with pytest.raises(BuildError, match="unrecognized field") as info:
         _build(tmp_path, src_dir, doc)
-    assert info.value.field == field
+    assert (info.value.rule, info.value.field) == ("device.field-unknown", field)
 
 
 def test_device_max_connections_reads_the_toml_else_the_src_default(tmp_path: Path, src_dir: Path) -> None:

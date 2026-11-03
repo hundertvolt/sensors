@@ -29,6 +29,7 @@ from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_leve
 from _ntp_responder import NtpResponder  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config, write_responder_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _port_bands import PortAllocator  # noqa: E402 - imported after the prewarm and the UDP shim
+from _src_const import src_int  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_devices import distinct_wirings, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
 from _udp_port_redirect import redirect_udp_port  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -61,7 +62,8 @@ if TYPE_CHECKING:
 _WAIT_TIMEOUT_S = 20.0
 # @tunable l2.clock_jump_poll_ms = 50
 _POLL_MS = 50  # how often a wait below looks again
-_TICKS_TO_RETRY = 4  # check ticks fired by hand toward the next attempt (tests/test_digital_twin_ntp.py's count)
+_RETRY_UNSYNCED_S: int = src_int("src/asy_ntp_client.py", "_NTP_RETRY_UNSYNCED_S")
+_TICKS_TO_RETRY = _RETRY_UNSYNCED_S // src_int("src/asy_ntp_client.py", "_NTP_CHECK_INTERV")  # check ticks toward the next attempt
 _SSID = "TestNet"
 _SCD30_READING = SCD30(800, 22.0, 45.0, None, None, None, None, None)  # the compensation the SGP40 reads first
 _DST_START = _wall_clock.epoch_seconds(2026, 3, 29, 1, 0, 0)  # the last Sunday of March, 01:00 UTC: CET to CEST
@@ -243,10 +245,10 @@ def _first_sync_from_the_boot_default_on(device: str) -> None:
 
     async def scenario(module: "ModuleType", clock: "DrivenTime") -> "tuple[int, int, object]":
         async def backed_off() -> bool:  # the boot's own attempt over, as tests/test_digital_twin_ntp.py waits it out
-            return bool(module.ntp._retry_wait_s == 2 * module.ntp._retry_s)
+            return bool(module.ntp._retry_wait_s == _RETRY_UNSYNCED_S)
 
         _clock().set_wall(_RP2_BOOT_CLOCK)
-        await _driven_until(clock, backed_off, "the boot's attempt never failed and doubled its step")
+        await _driven_until(clock, backed_off, "the boot's attempt never failed and set its retry wait")
         responder.mode = "serve"
         await _ticks_to_attempt(module, responder, clock)
         await _driven_until(clock, module.ntp.ntp_issynced, "no sync after the responder returned")

@@ -287,8 +287,8 @@ def test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage(board: Boa
 # and its limits: tests_hardware/README.md 'What the network-fault injections reach'.
 # ---------------------------------------------------------------------------
 
-# 48 bytes, the NTP packet the client receives into (src/asy_ntp_client.py _NTP_PACKET_LEN), and still no valid NTP
-# header: its first byte 0xff is leap indicator 3, which _parse_ntp_reply() rejects as unsynchronised before any time.
+# 48 bytes, the NTP packet's length (RFC 5905 7.3), and still no valid NTP header: its first byte 0xff is leap
+# indicator 3, which _parse_ntp_reply() rejects as unsynchronised before any time.
 _GARBAGE_PAYLOAD = b"\xff" + b"not an NTP or DNS wire-format packet, on purpose"[:47]
 
 

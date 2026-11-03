@@ -2591,18 +2591,17 @@ _NTP_ATTEMPT_POLL_MS = 1
 @_register("an_ntp_server_that_never_replies_spends_one_slot_and_a_reply_syncs_once_it_answers")
 def _scenario_ntp_no_reply_storm(device: str) -> None:
     # The real sync loop against a server that never replies (the offline host's literal address, no DNS): each attempt
-    # logs the no-reply code once, the run spends one history slot and each entry at most one chunk write, the backoff
-    # doubles to its cap; once replies return, the next attempt syncs, persists nothing and the backoff starts over.
+    # logs the no-reply code once, the run spends one history slot and each entry at most one chunk write, each leaving
+    # the next attempt one retry wait away; once replies return, the next attempt syncs, persists nothing, the wait reset.
     module = build(device)
     ntp = module.ntp
     module.conn._wlan._status = network.STAT_GOT_IP  # the link up: every attempt reaches the server
     ntp_src = "src/asy_ntp_client.py"
-    no_reply, mult = code("E", "NTP_NO_REPLY"), src_int(ntp_src, "_NTP_BACKOFF_MULT")
+    no_reply, retry_s = code("E", "NTP_NO_REPLY"), src_int(ntp_src, "_NTP_RETRY_UNSYNCED_S")
     config = run(ntp._get_ntp_config())
     assert config is not None
     server = (config[0], src_int(ntp_src, "_NTP_UDP_PORT"))
-    steps = [min(ntp._retry_s * mult**k, ntp._retry_max_s) for k in range(1, 16)]
-    attempts = steps.index(ntp._retry_max_s) + 2  # the last attempt runs at the cap
+    attempts = 3  # a run of failed attempts
     # LI 0, version 4, server mode, stratum 2; its transmit seconds read 2026-01-01T00:00:00Z.
     reply = bytes((0x24, 2)) + bytes(38) + (1767225600 + src_int(ntp_src, "_NTP_EPOCH_DELTA")).to_bytes(4, "big") + bytes(4)
     got: list[tuple[str, int]] = []
@@ -2655,9 +2654,9 @@ def _scenario_ntp_no_reply_storm(device: str) -> None:
     assert got == [("E", no_reply)] * attempts, (device, got)  # the recovery logged nothing
     assert count == before["ErrCount"] + attempts and slots.count(no_reply) == 1 and not synced, (before, storm)
     assert (0 < spent <= attempts) if fram else spent == 0, (fram, spent)
-    assert waits == steps[:attempts], (waits, steps)
+    assert waits == [retry_s] * attempts, waits
     assert peer.peers == [server] * (attempts + 1) and peer.closed == attempts + 1, (server, peer.peers, peer.closed)
-    assert healed == [(True, 0, ntp._retry_s, (2026, 1, 1, 3, 0, 0, 0, 0))], healed
+    assert healed == [(True, 0, src_int(ntp_src, "_NTP_CHECK_INTERV"), (2026, 1, 1, 3, 0, 0, 0, 0))], healed
     log = run(ntp.get_error_counter())[ntp.pr.name]
     assert (log["ErrCount"], log["ErrNum"], writes[ntp.pr.name]) == (count, slots, spent), (log, storm)
 
