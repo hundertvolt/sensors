@@ -518,3 +518,6 @@ their context). From now on every owner word is appended here as it is given.
 - 2026-11-03 19:01 UTC (time taken at reading), budget: "24% usage still within expectation?" Answered: a little over;
   the storage and UART pair closes near 25 % once its gate, snapshot and CI are done, about a point above the 23-24 %
   given at 15:17; the 55 % estimate for the whole job holds, with less slack.
+- 2026-11-03 20:05 UTC (time taken at reading), B7/B8 owner questions: "Prepare these 5 questions and the one before
+  that we can go through them one by one" Done: the B7 `State` question and B8's five queued questions prepared
+  together, then asked one at a time.

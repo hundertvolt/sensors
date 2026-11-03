@@ -17,6 +17,7 @@ sys.path.insert(0, "ext")
 
 import machine
 import micropython
+import microtest
 from _async_harness import cancel, newest_start, run, track_starts
 from _error_codes import code
 from _fake_time import DrivenTime
@@ -102,6 +103,7 @@ def _tmp_cfg_dir() -> str:
 
 
 _SEQUENCES: "dict[int, list[asyncio.Task[object]]]" = {}  # each service's shutdown sequences, as track_starts() records them
+microtest.after_each(_SEQUENCES.clear)  # kept, every service, its rig and its chip would outlive the test
 
 
 def _make_service(  # keywords mirror SystemService.__init__()'s own
@@ -4350,6 +4352,4 @@ def test_the_raised_helper_lets_an_interrupt_through() -> None:
 
 
 if __name__ == "__main__":
-    import microtest
-
     microtest.run(globals())

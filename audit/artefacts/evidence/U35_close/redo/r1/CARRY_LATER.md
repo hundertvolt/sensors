@@ -49,3 +49,7 @@ Each line is checked against its unit's own action list at that unit's start; B8
 - Known limits, kept by rule (B3 falsifier, claim 12 and F1): after a failed allocation at call entry, the auto-unpause
   leaves storage paused for the boot, the boot signature can be drawn twice, and the erase preflight leaves the command
   gate refusing until a reboot. CLAUDE.md's MemoryError rule and the owner's 06:00 ruling keep these unguarded.
+- R2: after B7's items 1 and 5, the twin pixel's `power_dip()`, `displayed()` and `raise_on_write`
+  (`digital_twin/neopixel.py`, its README) keep only their own self-tests; judge them as B4's twin knobs were.
+- R2: snapshot 29's coverage failure was one test file keeping every test's objects alive (`B36/GATE.md`). Measure
+  each `tests/` file's live heap after each test once, as that probe did, and fix any other file that grows per test.

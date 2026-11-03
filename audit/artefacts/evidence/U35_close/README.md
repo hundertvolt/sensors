@@ -201,3 +201,12 @@ the merged head). `redo/r1/B3/` and `redo/r1/B6/` hold each unit's action list, 
 brief and result and the lead's check of each refutation (`FALSIFY_VERIFIED.md`); `redo/r1/B36/` the merged head's gate
 and sizes; `redo/r1/MERGE_B3B6_NOTES.md` the trial merge. Gates now run one at a time on this 4-core host: the two
 units' gates side by side failed wall-clock bounds that all held alone.
+
+## Thirtieth snapshot (2026-11-03): the system service tests release each service after its test
+
+CI on the previous snapshot failed one test in the coverage job: the erase test's 256 KB fake chip found no room in
+the 16 MB test heap. The cause was the test file, not the firmware: a module dict holding each service's
+shutdown-sequence tracker was never cleared, so every service, rig and fake chip lived to the end of the file (the live
+heap grew from 0.42 MB to 4.9 MB over its 187 tests). One after-each clear fixes it; the live heap stays at 0.5 MB and
+the file passes under the coverage build at a 4 MB heap. Test-only, no firmware byte changes. `redo/r1/B36/GATE.md`
+records the measurements.
