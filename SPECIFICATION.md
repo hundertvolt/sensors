@@ -925,9 +925,11 @@ error-logging sub-object a module owns (a `SensorReaderConfig`'s own `.cfgmgr`, 
 `._dns_server`); `get_loggers()` is the same shape for `PrintLogHistory` instances, feeding the
 `level_setters` provider `SystemService` resolves in `setup()` and `_apply_level()`'s registry
 (each wrapped in its own `try/except Exception`). The store's value overrides the constructor
-`debug=`; an unreadable store keeps the constructed level. Calling `set_level()` at any time is safe:
-no hard IRQ handler logs, and a soft Timer or Pin callback runs between bytecodes on the scheduler,
-where the store of `self.level` — one small `int` — is atomic.
+`debug=`; an unreadable store keeps the constructed level. The product boot passes no `debug=`, so
+what a module logs while it is built prints at no level and is not kept for a later store: no
+early read of the stored level, no pre-setup entry (owner, 2026-11-03: "Leave that."). Calling
+`set_level()` at any time is safe: no hard IRQ handler logs, and a soft Timer or Pin callback runs
+between bytecodes on the scheduler, where the store of `self.level` — one small `int` — is atomic.
 
 **Dependency graph**: `ntp` holds `conn`'s bound methods; `notification` holds direct references
 to `scd30`/`sgp40` (each `NotificationSignal`'s `value`, a `ValueRef`) plus
