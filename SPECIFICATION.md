@@ -1198,7 +1198,7 @@ fed, so the watchdog resets the unit (owner, 2026-09-30) — and why they run in
 
 | Step | What runs | Why here |
 |---|---|---|
-| 0 accept | the command gate, under one lock: the same command under way answers "Valid", any other is refused, and every command once a reset is decided; the preflight (Reset to defaults: a config store exists; Erase FRAM: a ready chip); then the sequence's task, the watchdog latch (every other feed site is a no-op from here) and every config store closed | a command that cannot start (its task cannot be created) answers "Failed" with nothing changed |
+| 0 accept | the command gate, under one lock: the same command under way answers "Valid", any other is refused, and every command once a reset is due; the preflight (Reset to defaults: a config store exists; Erase FRAM: a ready chip); then the sequence's task, the watchdog latch (every other feed site is a no-op from here) and every config store closed | a command that cannot start (its task cannot be created) answers "Failed" with nothing changed |
 | 1 takeover | the supervisor parks at the top of its next pass, is cancelled and awaited | ownership passes before anything that can hang; parked, it is inside no log write, so the cancel tears no chunk |
 | 2 config stores | each store's pending flush, under its module's PUT lock, so a PUT in flight ends first (C.8) | a failed flush's entry still reaches FRAM |
 | 3 FRAM | pause, then every chunk's operation drained (`quiesce()`) | after it no task is inside a chunk write, so step 4's cancels tear none |
@@ -7876,7 +7876,7 @@ backend-only or frontend-only validation/coercion policy change in this project.
   watchdog-less build and once `_force_watchdog_starve` latches, so every caller (the supervisor and
   the one-time setup batch, `run_setups()`) takes the identical path with no branching of its own.
   It is the one reusable feed access point until a system command takes ownership (never once a reset
-  is decided: the gate refuses, A.8); then only the shutdown sequence's own feed (`_own_feed()`, once
+  is due: the gate refuses, A.8); then only the shutdown sequence's own feed (`_own_feed()`, once
   per bounded step) feeds (A.8). Only
   ever called from a one-time or bounded-loop context, never a place that could keep feeding a
   genuinely hung system forever - that constraint lives with the caller, not the method itself. The

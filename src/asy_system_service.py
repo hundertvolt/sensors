@@ -375,7 +375,7 @@ class SystemService:
             except BaseException:  # a raising preflight leaves the gate as a refusal does; the caller's catch logs it
                 self._shutdown = 0
                 raise
-            if self._reset_decided:  # re-checked: the preflight can yield, and an escalation may have decided meanwhile
+            if self._reset_decided:  # re-checked: the preflight can yield, and an escalation may commit meanwhile
                 refusal = "a reset is already decided"
             if refusal:
                 self._shutdown = 0

@@ -1390,7 +1390,7 @@ def test_every_refusal_answers_false_and_changes_nothing() -> None:
             svc._reset_decided = True  # as both of _reboot()'s callers decide first
             await svc._reboot(_const("_RR_TASK_BUDGET"), "Reboot triggered", machine.reset)
 
-        _refused(rig, purpose, before=armed)  # a reset already decided and armed
+        _refused(rig, purpose, before=armed)  # a reset already due and armed
 
 
 def test_the_same_command_again_answers_true_and_any_other_answers_false() -> None:
@@ -2100,7 +2100,7 @@ async def _until_reached(reached: asyncio.Event) -> None:
 
 
 def test_a_command_during_the_escalations_entry_write_is_refused_and_the_escalation_resets() -> None:
-    # Once the escalation decided the reset, the gate refuses every command: the record keeps code 5, nothing is
+    # Once the escalation commits to the reset, the gate refuses every command: the record keeps code 5, nothing is
     # erased, and the escalation's own reset arms once the entry is written.
     for purpose in ("_RR_REBOOT", "_RR_FRAM_ERASED"):
         rig = _Rig(tasks=0)
@@ -3724,7 +3724,7 @@ def test_a_stack_overflow_caught_by_a_level_setter_reboots_through_the_superviso
 
 
 def test_a_command_during_the_stack_escalations_entry_write_is_refused_and_the_record_keeps_20() -> None:
-    # The C-stack escalation decided the reset before its E25 write: a command then is refused, the record reads 20
+    # The C-stack escalation commits to the reset before its E25 write: a command then is refused, the record reads 20
     # throughout, and the escalation's own reset arms once the entry is written.
     rig = _Rig()
     records: list[object] = []
