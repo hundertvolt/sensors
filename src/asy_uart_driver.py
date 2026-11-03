@@ -281,7 +281,7 @@ class UART(Lockable):
 
     def _report(self, what: str, e: BaseException) -> None:  # through its user's logger from level 1; silent without one
         if self.logger is not None:
-            self.logger.err_nomem(what, e)
+            self.logger.err(what, e)
 
     def _rx_copy(self, dest: bytearray | memoryview | None, start: int, n: int) -> int:
         # Copies n buffered bytes into dest[start:] by index - no slice, no allocation - and consumes them (dest

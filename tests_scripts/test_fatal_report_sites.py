@@ -21,7 +21,7 @@ _BROAD = frozenset({"Exception", "BaseException", "RuntimeError"})
 _EXEMPT = frozenset({("src/asy_print_log.py", "PrintLog.report_unretrieved")})
 _EXEMPT_PASS = frozenset({("src/asy_system_service.py", "SystemService._shutdown_sequence")})
 # Each logger entry point, whose first step records an overflow among its arguments; `_err` is UARTComm's err_s() forwarder.
-_LOGGER_METHODS = frozenset({"err", "err_nomem", "err_s", "wrn", "wrn_s", "one", "evt", "all", "_err"})
+_LOGGER_METHODS = frozenset({"err", "err_s", "wrn", "wrn_s", "one", "evt", "all", "_err"})
 
 Function = ast.FunctionDef | ast.AsyncFunctionDef
 

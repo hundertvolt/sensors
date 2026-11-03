@@ -108,12 +108,6 @@ class PrintLog:
     def err(self, *args: object, sep: str = " ", end: str = "\n") -> None:
         self._line(_LOG_ERR, args, sep, end)
 
-    def err_nomem(self, what: str, e: BaseException) -> None:
-        # err() for a caught MemoryError's arm: a fixed arity and no star-call allocate nothing on a full heap.
-        report_if_fatal(e)
-        if self.level >= _LOG_ERR:
-            print(self.name, what, e)
-
     def evt(self, *args: object, sep: str = " ", end: str = "\n") -> None:
         self._line(_LOG_EVENT, args, sep, end)
 
@@ -151,7 +145,7 @@ class PrintLogHistory(PrintLog):
         except MemoryError as e:  # a 0-length ring: get_log() then reports no slot, every call still counts
             history_length = 0
             self.history = deque([], 0)
-            self.err_nomem("PrintLog: history allocation failed:", e)
+            self.err("PrintLog: history allocation failed:", e)
         self._err_count = 0
         self.initialized = False
         self._kept = 0  # wrapping counts of _keep()'s appends and _count()'s calls: a reset keeps what arrived since it began
@@ -276,7 +270,7 @@ class PrintLogHistoryStore(PrintLogHistory):
             self.fram: _FramChunk | None = fram.get_chunk(size, crc=CRC8(), owner=name)
         except MemoryError as e:
             self.fram = None
-            self.err_nomem("PrintLog: FRAM allocation failed:", e)
+            self.err("PrintLog: FRAM allocation failed:", e)
         else:
             if self.fram is None:
                 self._diag("PrintLog: FRAM allocation failed!")
@@ -309,7 +303,7 @@ class PrintLogHistoryStore(PrintLogHistory):
             count = struct.unpack_from(self._HDR_FMT, dbuf, 0)[0]
             entries = struct.unpack_from(self._history_fmt, dbuf, self._HDR_SIZE)
         except MemoryError as e:
-            self.err_nomem("PrintLog: FRAM history read failed:", e)
+            self.err("PrintLog: FRAM history read failed:", e)
             return None
         return count, entries
 
@@ -336,7 +330,7 @@ class PrintLogHistoryStore(PrintLogHistory):
                     self._pack_reset(dbuf, kept, counted, bit)
                 ok = bool(await self.fram.write_into(buf))
             except MemoryError as e:
-                self.err_nomem("PrintLog: FRAM history write failed:", e)
+                self.err("PrintLog: FRAM history write failed:", e)
                 return False
             if ok:
                 self._written_gen = gen
