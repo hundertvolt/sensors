@@ -67,7 +67,8 @@ class _Board:
                 start += len(page)
         elif image is not None:
             self.chip.memory = image
-        assert run(self.manager.setup()) is True
+        run(self.manager.setup())
+        assert self.manager.initialized is True
 
     def cut_after(self, k: int, work: "Callable[[], Coroutine[object, object, object]]") -> bool:
         # Runs `work` with power lost after k transactions; True when the loss struck before it finished.

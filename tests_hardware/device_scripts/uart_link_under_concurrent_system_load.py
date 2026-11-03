@@ -253,7 +253,9 @@ async def _main() -> None:
     fram = FRAMManager(asy_spi_driver.SPI(spi_bus["id"], spi_bus["sck_pin"], spi_bus["mosi_pin"], spi_bus["miso_pin"]), fram_facts["cs_pin"], max_size=BENCH["fram_max_size"])
     sgp = SGP40_I2C(i2c)
     await sgp.setup()  # answers nothing: a failed setup raises
-    setups = {"initiator": await initiator.setup(), "responder": await responder.setup(), "fram": await fram.setup()}
+    setups = {"initiator": await initiator.setup(), "responder": await responder.setup()}
+    await fram.setup()
+    setups["fram"] = fram.initialized
     fact("setup", setups)
     link = _Link()
     heap = (0, 0)

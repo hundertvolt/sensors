@@ -491,10 +491,7 @@ gates, traps).
   `bench/test_reset_reasons.py`, `bench/test_system_commands_over_rest.py`,
   `flash/test_system_commands.py`, `conftest.py`'s `bench` fixture, now a plain return, and its
   VL805 read, `bench_control.py`'s two `contextlib.suppress` forms, `twin_board.py`,
-  `website_identity.py`); `dev`'s UART link, whose listen and whose GET, train and ACK waits now
-  name a frame their read dropped ("listen read dropped a corrupted or incomplete frame", "answer
-  read dropped ... for GET", "train read dropped ... at chunk", "ACK read dropped ... after sending
-  frame") apart from a silence; and one `GET /status` on `dev`'s own firmware, its
+  `website_identity.py`); and one `GET /status` on `dev`'s own firmware, its
   `system.LastTaskEnd` read (`null` while no supervised task has ended this boot). Then the gated
   run, `--allow-persistence-write`, for the persistence-gated tests among them
   (`bench/test_hotspot_role_reversal.py`, `bench/test_system_commands_over_rest.py`,

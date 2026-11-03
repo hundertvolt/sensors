@@ -672,15 +672,15 @@ def test_a_pause_landing_while_the_resets_write_waits_on_the_chunks_op_lock_clea
     assert bytes(chip.memory[block : block + 6]) == bytes((3, 0, 0, 3, 4, 5))
 
 
-def test_a_reset_on_a_lost_chip_clears_ram_and_answers_false() -> None:
+def test_a_reset_whose_write_the_chip_refuses_clears_ram_and_answers_false() -> None:
     # A failure other than the pause keeps the reset's effect in RAM: the entries go, it answers False with its own
     # diagnostic, and the logger stays as initialised as it was.
-    manager, _chip = make_fram_manager()
+    manager, chip = make_fram_manager()
     run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=3, level=1, name="S")
     with record_prints(store):
         run(store.err_s("e", errno=3))
-    manager.fram.lost.set()
+    chip.drop_wren = True  # every write-enable latch stays clear: the chip refuses each write
     with record_prints(store) as rec:
         assert run(store.reset()) is False
     assert (store._err_count, list(store.history), store.initialized) == (0, [0, 0, 0], False)

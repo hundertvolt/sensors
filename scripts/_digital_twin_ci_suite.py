@@ -295,6 +295,7 @@ class RunContext:
     routes: tuple[str, ...]  # every GET route the device serves, from its API reference
     hostname: str = ""
     micropypath: str = TWIN_MICROPYPATH
+    responders: frozenset[str] = frozenset()  # the uart_link instances' fault keys whose role is responder
 
     @property
     def runs_dir(self) -> Path:
@@ -631,6 +632,12 @@ def _link_crc_modes(device_toml: Path) -> list[str]:
     # The crc mode each uart_link instance of a TOML names ("none" when it names none).
     model = load_device(device_toml)
     return [str(spec.fields.get("crc", "none")) for spec in model.instances.values() if spec.driver == "uart_link"]
+
+
+def _link_responders(device_toml: Path) -> frozenset[str]:
+    # The fault key of each uart_link instance of a TOML whose role is responder.
+    model = load_device(device_toml)
+    return frozenset(instance_label(spec.key) for spec in model.instances.values() if spec.driver == "uart_link" and spec.fields.get("role") == "responder")
 
 
 def _link_failures(before: JSONObject, after: JSONObject) -> int:
@@ -1244,10 +1251,14 @@ def _run_3_sustained_bus_fault_matrix(ctx: RunContext) -> None:
     proc = _spawn(ctx, fault_args, log3)
     seen: dict[str, JSONObject] = {}
     ec = -1
+    backed = 0
     try:
         _wait_until_serving(proc)
+        backed = sum(1 for name in _errcount_all() if name not in _IN_MEMORY_ONLY_ERROR_SOURCES)
         # Keyed on "E" entries, never the raw counter a "W" recovery notice also bumps; each poll stops at the reset.
         for inst in faulted:
+            if inst.key in ctx.responders:  # a silent link leaves a responder listening, never failed: it logs nothing of its own
+                continue
             seen[inst.errcount_name] = _wait_for_error_type_count(inst.errcount_name, 1, timeout_s=_FIRST_FAULT_WAIT_S, run=proc)
         for name, entry in seen.items():
             _check(condition=_error_type_count(entry) > 0, msg=f"Run 3: {name}'s injected sustained fault was recorded as a real error while the process lived ({entry!r})")
@@ -1269,6 +1280,7 @@ def _run_3_sustained_bus_fault_matrix(ctx: RunContext) -> None:
     writes = line.fram_writes + line.fram_silent_writes if line is not None else None
     _check(condition=writes is not None and writes <= ceiling, msg=f"Run 3: the FRAM chip's {writes!r} writes, landed or issued while silent, stay within the persisted-log rate, {ceiling} over the {window_ms:.0f} ms run")
     attempts = -(-line.fram_silent_wrens // 2) if line is not None else None
+    ceiling += backed  # each FRAM-backed logger's one setup write, before any rate applies (from /status: the console may be off)
     _check(condition=attempts is not None and attempts <= ceiling, msg=f"Run 3: the {attempts!r} FRAM write attempts its silent chip saw (WRENs / 2) stay within the persisted-log rate, {ceiling} over the {window_ms:.0f} ms run")
 
 
@@ -1579,6 +1591,7 @@ def _run_both_passes(args: argparse.Namespace) -> int:
         routes=_get_routes(reference),
         hostname=_toml_hostname(device_toml),
         micropypath=micropypath,
+        responders=_link_responders(device_toml),
     )
     crc16 = args.device_toml is not None and "crc16" in _link_crc_modes(device_toml)
     # The WHOLE suite runs twice (Part I.4(e)): clean at MicroPython's own gc.threshold(-1), zero MemoryErrors anywhere,

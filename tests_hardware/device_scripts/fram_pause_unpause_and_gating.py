@@ -175,7 +175,8 @@ async def _main() -> None:
     bus = BENCH["bus"][chip["bus"]]
     spi = asy_spi_driver.SPI(bus["id"], sck_pin=bus["sck_pin"], mosi_pin=bus["mosi_pin"], miso_pin=bus["miso_pin"])
     fram = FRAMManager(spi, chip["cs_pin"], BENCH["fram_max_size"])
-    fact("setup", await fram.setup())
+    await fram.setup()
+    fact("setup", fram.initialized)
     chunk = fram.get_chunk(CHUNK_SIZE, crc=CRC8(), owner="fram_pause_unpause_and_gating")
     fact("allocated", chunk is not None)
     if chunk is None:

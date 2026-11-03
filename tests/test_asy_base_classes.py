@@ -181,9 +181,9 @@ def _chip_store_reader(name: str, schema: "cm.ConfigSchema") -> _ChipStoreReader
     return reader
 
 
-def _copied(buf: PieceBuffer, start: int = 0) -> bytes:
-    dest = bytearray(len(buf) - start)
-    assert buf.copy_into(dest, start)
+def _copied(buf: PieceBuffer) -> bytes:
+    dest = bytearray(len(buf))
+    assert buf.copy_into(dest)
     return bytes(dest)
 
 
@@ -545,27 +545,22 @@ def test_piecebuffer_write_at_refuses_a_range_outside_its_size() -> None:
     assert _copied(buf) == b"uvwxyz"  # a refused write changed nothing
 
 
-def test_piecebuffer_copy_into_copies_from_start_into_the_front_of_dest() -> None:
+def test_piecebuffer_copy_into_copies_the_whole_buffer_into_the_front_of_dest() -> None:
     buf = PieceBuffer(10, 4)
     assert buf.write_at(0, memoryview(b"0123456789"))
-    for start in range(11):
-        assert _copied(buf, start) == b"0123456789"[start:]
+    assert _copied(buf) == b"0123456789"
     dest = bytearray(b"..........!!")  # a longer destination keeps its tail
-    assert buf.copy_into(memoryview(dest), 3)
-    assert bytes(dest) == b"3456789...!!"
+    assert buf.copy_into(memoryview(dest))
+    assert bytes(dest) == b"0123456789!!"
 
 
-def test_piecebuffer_copy_into_a_short_dest_or_a_bad_start_copies_nothing() -> None:
+def test_piecebuffer_copy_into_a_short_dest_copies_nothing() -> None:
     buf = PieceBuffer(10, 4)
     assert buf.write_at(0, memoryview(b"0123456789"))
-    for dest_len, start in ((9, 0), (6, 3), (0, 9)):
+    for dest_len in (9, 0):
         dest = bytearray(b"\xa5" * dest_len)
-        assert not buf.copy_into(dest, start)
+        assert not buf.copy_into(dest)
         assert dest == bytearray(b"\xa5" * dest_len)  # never a partial copy
-    for start in (-1, 11):
-        dest = bytearray(b"\xa5" * 12)
-        assert not buf.copy_into(dest, start)
-        assert dest == bytearray(b"\xa5" * 12)
 
 
 def test_piecebuffer_trim_drops_trailing_bytes_and_pieces() -> None:

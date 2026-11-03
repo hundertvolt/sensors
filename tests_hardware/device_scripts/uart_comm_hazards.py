@@ -115,7 +115,7 @@ class _Pair:
     async def write_raw(self, side: int, frame: bytearray) -> bool:
         driver = self.drivers[side]
         async with driver:
-            return await driver.write(frame, timeout_ms=TIMEOUT_MS)
+            return await driver.write(frame)
 
 
 async def _clean(wdt: "machine.WDT", pair: _Pair) -> bool:

@@ -51,7 +51,7 @@ _BOOT_TIMEOUT_S = 60.0
 _PRESENT_TIMEOUT_S = 30.0
 # @tunable l3.system_commands_picotool_timeout_s = 30.0
 _PICOTOOL_TIMEOUT_S = 30.0
-_MID_ERASE_RESETS_MS = (200, 1000, 2000)  # inside the 256 KB erase, about 2.2 s at the 1 MHz bus
+_MID_ERASE_RESETS_MS = (50, 150, 250)  # inside the 256 KB erase: its wire time alone is ~266 ms at the 8 MHz bus
 # The shutdown's four step lines, in the order SPECIFICATION.md Part A.8 runs them.
 _STEP_LINES = ("Shutdown: supervisor stopped", "Shutdown: config stores closed and flushed", "Shutdown: storage quiesced", "Shutdown: supervised tasks stopped")
 

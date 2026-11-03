@@ -666,7 +666,7 @@ class SPI:
             self.rx_overrun = False
             self.rx_overrun_remaining = 0
             self._power_left: int | None = None  # lose_power_after()'s countdown; None: power stays on
-            # Twin-only test knob: blocking wire time, so a long FRAM pass takes its real clock (8 us/byte at 1 MHz).
+            # Twin-only test knob: blocking wire time per byte, so a long FRAM pass takes real time (1 us at 8 MHz).
             self.wire_time_us_per_byte = 0
             self._wired = True
             _SPI_OBJECTS[id] = self

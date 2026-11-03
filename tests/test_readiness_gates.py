@@ -233,7 +233,6 @@ def test_fram_driver_answers_its_sentinels_before_and_after_a_setup_that_finds_n
         "get_values_sync": ((bytearray(4),), lambda r: type(r) is int and r != 0),  # a refusal status, never OK
         "set_values_sync": ((b"ab", 0), lambda r: type(r) is int and r != 0),
         "get_write_protected": ((), _is(False)),
-        "is_ready": ((), _is(False)),
         "verify_present": ((), _is(False)),
     }
     assert _answers(fram, calls) == []
@@ -264,7 +263,8 @@ def test_fram_manager_answers_before_and_after_a_setup_that_finds_no_chip() -> N
     chip = manager.fram._spidev.spi._spi
     assert isinstance(chip, FakeMB85RS64V)
     chip.rdid_response = _WRONG_CHIP_ID
-    assert run(manager.setup()) is False
+    run(manager.setup())
+    assert manager.initialized is False
     assert manager.fram.initialized is False
     assert _last_error(run(manager.get_error_counter()), manager.name) == code("E", "INIT")
     assert _answers(manager, calls) == []
@@ -343,7 +343,7 @@ def test_webserver_service_answers_before_and_after_a_setup_whose_logger_cannot_
     assert _answers(svc, calls) == []
 
 
-def test_uart_link_driver_with_no_bus_answers_false_and_persists_the_refusal() -> None:
+def test_uart_link_driver_with_no_bus_stays_uninitialized_and_persists_the_refusal() -> None:
     driver = UARTLinkDriver(None, ROLE_INITIATOR, name_ext="gate")
     calls: Calls = {
         "get_error_counter": ((), _is_log_of(driver.name)),
@@ -354,7 +354,7 @@ def test_uart_link_driver_with_no_bus_answers_false_and_persists_the_refusal() -
     }
     assert driver.initialized is False
     assert _answers(driver, calls) == []
-    assert run(driver.setup()) is False
+    assert run(driver.setup()) is None
     assert driver.initialized is False
     assert _last_error(run(driver.get_error_counter()), driver.name) == code("E", "UART_NO_BUS")
     assert _answers(driver, calls) == []

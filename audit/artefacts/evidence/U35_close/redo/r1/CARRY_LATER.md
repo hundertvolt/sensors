@@ -41,3 +41,11 @@ Each line is checked against its unit's own action list at that unit's start; B8
   the crossover's new `cobs` mode runs on silicon for the first time.
 - B3: R0 item 5's reverts of `a4f0ccea` and `8cf55c6b`, B2's and missed by its list, are B3's row 19; `ad1fae73`'s
   is its row 4.
+- Every later unit: gates and timing-sensitive runs go one at a time on this 4-core host. B3's and B6's gates side by
+  side failed six wall-clock bounds at 32768 and stopped npm `test:unit`; all held alone (`B6/HANDBACK.md`, Gate).
+- R2 (MicroPython re-check): `machine.UART.deinit()` waits out the TX FIFO (`machine_uart.c:484`, v1.29.0): at most
+  32 bytes, 2.8 ms at 115200, about 1 s at the hazard script's 300 baud. `asy_uart_driver.py`'s `deinit()` calls it;
+  pre-audit form, no product path deinits or re-inits a UART at runtime (B6 falsifier, claim 3).
+- Known limits, kept by rule (B3 falsifier, claim 12 and F1): after a failed allocation at call entry, the auto-unpause
+  leaves storage paused for the boot, the boot signature can be drawn twice, and the erase preflight leaves the command
+  gate refusing until a reboot. CLAUDE.md's MemoryError rule and the owner's 06:00 ruling keep these unguarded.

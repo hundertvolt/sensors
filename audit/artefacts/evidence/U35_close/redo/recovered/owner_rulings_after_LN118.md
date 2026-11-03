@@ -513,3 +513,8 @@ their context). From now on every owner word is appended here as it is given.
   expectation?" Answered: yes, inside the 17-18 % given for B4 and B5; the whole job's 55 % estimate stands.
 - (2026-11-03, time not taken, between 11:50 and 12:13 UTC, go-ahead) "Okay, keep rolling. Can you already prepare
   something while the background shell is running?" Recorded as: the next units' drafting starts beside the gate.
+
+- 2026-11-03 15:17 UTC (time taken at reading), budget: "we are at 21% usage now. still inside expectation?" Answered: yes; the storage and UART pair, a bit past half done, should close near 23-24 %; the 55 % estimate for the whole job stands.
+- 2026-11-03 19:01 UTC (time taken at reading), budget: "24% usage still within expectation?" Answered: a little over;
+  the storage and UART pair closes near 25 % once its gate, snapshot and CI are done, about a point above the 23-24 %
+  given at 15:17; the 55 % estimate for the whole job holds, with less slack.

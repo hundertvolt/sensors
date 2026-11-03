@@ -965,8 +965,8 @@ needs a driver-level trigger is not reachable at L4 except by hand.
 | boot bus clear | SDA held at construction | L3 | `test_a_held_sda_line_is_cleared_and_every_device_answers` (its boot-clear case) | SDA high, the controller constructs, every device answers |
 | setup reset | each I2C chip's driver `setup()`, every transfer recorded (`setup_resets_each_chip_once.py`) | L3 | `test_every_chip_setup_resets_it_once_after_a_read_identified_it` | one soft reset per chip, after the read that identified it, then a valid read |
 | WiFi radio re-init | `_recover_device()` on a connected link | L4 | `bench/test_wifi_radio_reinit.py` (`wifi_radio_reinit_recovery.py`) | the link back within the connect budget |
-| task restart | a starter that dies at once; a chip unplugged live | L3; manual L4 | `flash/test_task_supervisor.py`; `manual/manual_bus_electrical.py::test_hot_unplug_replug_i2c_recovery`, `::test_fram_unplug_replug_recovery` | the starter called again, SYSTEM's log holding one `TASK_RETURNED` end per restart; by hand the log entries while unplugged and the readings back with no reboot |
-| FRAM chip lost | CS held inactive across two writes; the chip unplugged | L3; manual L4 | `test_fram_cs_pin_hijack_fault_injection_and_recovery`; `::test_fram_unplug_replug_recovery` | the chip-lost entry, then recovery; by hand the seconds from the pull to the first FRAM log entry (`fram-pull-latency.txt`, "none within 120 s" when none) |
+| task restart | a starter that dies at once; a chip unplugged live | L3; manual L4 | `flash/test_task_supervisor.py`; `manual/manual_bus_electrical.py::test_hot_unplug_replug_i2c_recovery` | the starter called again, SYSTEM's log holding one `TASK_RETURNED` end per restart; by hand the log entries while unplugged and the readings back with no reboot |
+| FRAM chip lost | the chip unplugged | manual L4 | `manual/manual_bus_electrical.py::test_fram_unplug_replug_recovery` | by hand the seconds from the pull to the first FRAM log entry (`fram-pull-latency.txt`, "none within 120 s" when none), then FRAM-backed entries written again after the replug, no reboot |
 | UART link lost | the crossover jumper pulled mid-transfer | manual L4 | `manual/manual_bus_electrical.py::test_uart_crossover_pull_recovery` | the link's `Failures` rise and every code logged meanwhile (`uart-crossover-pull.txt`, the verbatim errcount beside it), its `Transfers` advancing within 30 s of the replug, no reboot |
 | supervisor reboot | a task dying until the restart budget is spent | L4 | `bench/test_reset_reasons.py::test_the_supervisor_escalation_reboot_is_attributed` | `ResetReason` 5 with the forced bit; SYSTEM's escalation entry in the rounds the script printed before the reset (its log is RAM-only, so production's history never holds it) |
 | hardware watchdog | the watchdog starved | L3, L4 | `flash/test_watchdog_starvation.py`; `bench/test_reset_reasons.py` (codes 2 and 6) | the reset, then the code |
@@ -1111,7 +1111,8 @@ a live question:
 - **The UART link's coverage on silicon is 11 flash-tier tests and 5 bench-tier tests**
   (`flash/test_uart_crossover.py`; `bench/test_uart_link_under_api_load.py`,
   `bench/test_uart_link_crc16.py`), none run since the receive path moved onto the DMA ring. Each
-  crossover script that runs the link runs with no CRC and with CRC16; the bench link suite runs
+  crossover script that runs the link runs with no CRC and with CRC16, the exchange script also with
+  COBS framing (`cobs`, no CRC; owner, 2026-11-02); the bench link suite runs
   once per mode, the CRC16 run behind `--allow-flash-cycle` (two reflashes: the CRC16 image built
   with `--device-toml` from a copy setting `crc = "crc16"`, and back to the round's image).
   - Two platform findings are asserted rather than documented: F.5.8's clamped read

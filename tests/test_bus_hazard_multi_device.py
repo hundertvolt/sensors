@@ -574,7 +574,8 @@ def test_spi_async_and_synchronous_sessions_share_one_bus_without_cs_overlap() -
     fram = manager.fram
     bus = fram._spidev.spi
     async_device = SPIDevice(bus, 6)
-    assert run(fram.setup()) is True
+    run(fram.setup())
+    assert fram.initialized is True
     run(async_device.setup())
     chip.memory[0:4] = b"\x11\x22\x33\x44"
     rounds = 12
@@ -618,7 +619,8 @@ def test_spi_synchronous_session_never_leaves_the_bus_locked_when_a_transfer_rai
     fram = manager.fram
     bus = fram._spidev.spi
     neighbour = SPIDevice(bus, 6)
-    assert run(fram.setup()) is True
+    run(fram.setup())
+    assert fram.initialized is True
     run(neighbour.setup())
     chip.rx_overrun = True
     chip.opcodes = []
@@ -823,7 +825,8 @@ def _erase_rig(part: "type[_EraseWire]") -> "tuple[FRAMManager, _EraseWire, list
     # A set-up manager over `part` with three chunks of different sizes and CRCs, each written once (status bytes idle).
     manager, chip = make_fram_manager(part.SIZE, part)
     assert isinstance(chip, _EraseWire)
-    assert run(manager.setup()) is True
+    run(manager.setup())
+    assert manager.initialized is True
     chunks = []
     for n, (size, crc) in enumerate(_CHUNKS):
         chunk = manager.get_chunk(size, crc=crc(), owner=_CHUNK_OWNERS[n])

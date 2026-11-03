@@ -185,3 +185,19 @@ recorded error source empty right after a ResetErrors, but an SGP40 on FRAM logs
 first restore after the reboot, and on those devices that restore can land after the reset. The check now admits exactly
 that one warning for an SGP40 and nothing else; test-only, no firmware byte changes. `redo/r1/B45/GATE.md` records the
 failure and the fix.
+
+## Twenty-ninth snapshot (2026-11-03): R1's fifth and sixth units, storage and UART
+
+The plan's B3 (storage) and B6 (UART) units, run side by side on the same standing go-ahead, merged together. Both go
+back to their pre-audit forms where nothing proved the audit's form good: no lost-chip detection or bus-down status for
+the FRAM, no sender cap, write deadline or zero-length guards on the UART. The FRAM's SPI clock is 8 MHz (owner,
+2026-11-02: "Then let's take the 8mhz as initially suggested"); the UART receive ring stops its two DMA channels without
+the hang the bench found (2026-10-29); the overrun warning W57 goes (one entry per fault); the CRC's pass-mode bounds
+stay, since a delimited UART read hands it a decoded size of 0. Each falsification found misses (doc sentences on the
+overrun bit and the sender cap, three texts still timed for the 1 MHz clock, one of them a flash-tier test's mid-erase
+reset points, and a twin CI check counting console lines its console-off run never prints); the lead fixed them before
+the merge, and the merged gate caught that check's own test still unstubbed for the status read the fix added (fixed on
+the merged head). `redo/r1/B3/` and `redo/r1/B6/` hold each unit's action list, brief, hand-back, review, falsification
+brief and result and the lead's check of each refutation (`FALSIFY_VERIFIED.md`); `redo/r1/B36/` the merged head's gate
+and sizes; `redo/r1/MERGE_B3B6_NOTES.md` the trial merge. Gates now run one at a time on this 4-core host: the two
+units' gates side by side failed wall-clock bounds that all held alone.

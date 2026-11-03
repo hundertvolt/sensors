@@ -48,7 +48,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import TypeVar
 
-    from asy_fram_driver import FRAM_SPI
     from asy_fram_manager import FRAMChunk, FRAMTimestampedChunk
 
     T = TypeVar("T")
@@ -106,15 +105,6 @@ def _errnums(manager: FRAMManager) -> list[int]:
     return run(manager.get_error_counter())["FRAM"]["ErrNum"]
 
 
-async def _lose(fram: "FRAM_SPI", chip: FRAMChip) -> None:
-    # The chip goes silent; two refused writes in a row make the driver probe its RDID and find the loss.
-    chip.silent = True
-    for _ in range(2):
-        async with fram:
-            assert await fram.set_values(b"\x01\x02", chip.size - 2) is False
-    assert fram.lost.is_set()
-
-
 def _rdid(chip: FRAMChip) -> bytes:
     chip.write(bytes([_OPCODE_RDID]))
     buf = bytearray(4)
@@ -157,21 +147,27 @@ def _silent_fram_on(device: str) -> None:
         assert isinstance(bus, machine.SPI)
         chip = bus.device
         assert isinstance(chip, FRAMChip)
-        fram, sysfunct = module.fram.fram, module.sysfunct
+        sysfunct = module.sysfunct
         with FastAsyncSleep():
             await sysfunct.start_tasks([module.fram.start_asy_watch_chip], task_names=[task_name(module.fram, module.fram.start_asy_watch_chip)])
             first = sysfunct._tasks[0]
             supervisor = asyncio.create_task(sysfunct.supervise_tasks())
-            await _lose(fram, chip)
-            chip.silent = False
-            await _until("the watch task restarted and set the chip up", lambda: sysfunct._tasks[0] not in (None, first) and not fram.lost.is_set())
+            chip.silent = True
             before = chip.write_count
+            for n in range(2):
+                await sysfunct.pr.err_s("planted while silent", n, errno=code("E", "UNEXPECTED"))
+            fram_log = (await module.fram.get_error_counter())["FRAM"]["ErrNum"]
+            refused = (chip.write_count, code("W", "FRAM_WEL_NOT_SET") in fram_log)
+            chip.silent = False
             await sysfunct.pr.err_s("planted", errno=code("E", "UNEXPECTED"))
-            assert chip.write_count > before, "the logger write after the recovery did not reach the chip"
-            await _lose(fram, chip)
-            await _until("the restart budget armed the reset", lambda: sysfunct._reset_armed)
-            sysfunct._reset_timer.deinit()  # asserted at the armed point: the in-process graph never takes the reset
+            landed = chip.write_count > before
+            for _ in range(_UNTIL_YIELDS):  # the supervisor's polls: an ended watch task would be restarted here
+                await asyncio.sleep(0)
+            kept = (sysfunct._tasks[0] is first, sysfunct._reset_armed)
             await cancel(supervisor)
+        assert refused == (before, True), f"the silent chip's writes: write count, latch warning = {refused}"
+        assert landed, "the first logger write after the chip answered did not land"
+        assert kept == (True, False), f"the chip watch task is the first one, reset armed = {kept}"
 
     run(scenario())
 
@@ -208,7 +204,8 @@ def _twin_manager(status: int = 0x00) -> "tuple[FRAMManager, machine.SPI, FRAMCh
     assert bus is not None
     assert bus.device is not None
     bus.device.status = status
-    assert run(manager.setup()) is True
+    run(manager.setup())
+    assert manager.initialized is True
     return manager, bus, bus.device
 
 
@@ -684,19 +681,6 @@ def test_a_blank_chunk_reads_false_and_takes_no_busy_marker() -> None:
     assert run(manager.get_error_counter())["FRAM"]["ErrCount"] == 0
 
 
-def test_a_blank_read_of_a_silent_twin_chip_finds_the_loss_and_reads_none() -> None:
-    # The twin's undriven read is all zeros, so a silent chip's status bytes read blank, as a never-written chunk's do:
-    # the RDID probe after the blank verdict finds the loss, and the read is None, not False.
-    manager, _bus, chip = _twin_manager()
-    chunk, ts_chunk = _chunks(manager)
-    chip.silent = True
-    assert run(chunk.read_into(chunk.get_buffer())) is None
-    assert manager.fram.lost.is_set()
-    assert run(ts_chunk.read_into(ts_chunk.get_buffer())) == (None, None, None)
-    assert bytes(chip.memory) == bytes(len(chip.memory)), "a read of a silent chip wrote to it"
-    assert _errnums(manager).count(code("E", "FRAM_CHIP_LOST")) == 1
-
-
 def test_a_persistent_chip_read_fault_reads_none_then_the_leftover_busy_markers_read_false() -> None:
     # rp2 raises only on a read of 32+ bytes: the status bytes still read, the payload read fails after its busy
     # marker landed - the same outcome as the bus overrun below, the payload kept and False until the next write.
@@ -766,25 +750,6 @@ def test_the_timestamped_chunk_read_carries_the_same_tri_state() -> None:
         assert run(ts_chunk.read_into(ts_chunk.get_buffer())) == (False, None, None)
     finally:
         asy_base_classes._utc_valid = False
-
-
-def test_every_chunk_operation_stays_silent_on_the_twin_while_the_chip_is_lost() -> None:
-    # While the driver's loss flag stands, no chunk operation reaches the bus, the chip or the log.
-    manager, bus, chip = _twin_manager()
-    chunk, ts_chunk = _chunks(manager)
-    assert run(chunk.write(_PAYLOAD)) is True
-    stored = bytes(chip.memory)
-    traffic = list(bus.log)
-    manager.fram.lost.set()
-    assert run(chunk.write(b"else")) is False
-    assert run(chunk.read_into(chunk.get_buffer())) is None
-    assert run(chunk.clear()) is False
-    assert run(chunk.invalidate()) is False
-    assert run(ts_chunk.write(b"else"))[0] is False
-    assert run(ts_chunk.read_into(ts_chunk.get_buffer())) == (None, None, None)
-    assert list(bus.log) == traffic, "a chunk operation reached the bus while the chip was lost"
-    assert bytes(chip.memory) == stored
-    assert run(manager.get_error_counter())["FRAM"]["ErrCount"] == 0
 
 
 def test_readinto_fault_fires_only_on_a_long_read() -> None:
@@ -943,22 +908,22 @@ def test_a_logger_over_its_written_chunk_on_a_protected_chip_stays_uninitialised
     assert bytes(chip.memory) == stored
 
 
-def test_a_booted_device_whose_fram_goes_silent_restarts_its_task_and_recovers_or_arms_the_reset() -> None:
-    # Silent after boot: two refused writes find the loss and the chip watch task ends; the supervisor restarts it, the
-    # restart sets the answering chip up again and a logger write lands; kept silent, the restart budget arms the reset.
+def test_a_booted_device_whose_fram_goes_silent_fails_its_writes_and_resumes_when_the_chip_answers() -> None:
+    # Silent after boot (its SO floats, owner 2026-10-28): each logger write fails at the write latch, the first one after
+    # the chip answers again lands, and the chip watch task never ends.
     for device in distinct_wirings("fram"):
         machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
         network.reset_test_state()
         _silent_fram_on(device)
 
 
-def test_a_blank_read_whose_probe_meets_a_held_session_stays_blank_and_declares_no_loss() -> None:
-    # A never-written chunk reads blank, so its read probes the chip; a sibling session takes the FRAM between the
-    # read and the probe and holds it past the probe's bounded wait: one E LOCK_TIMEOUT, blank (False), no loss.
+def test_a_blank_read_beside_a_held_session_stays_blank_makes_no_rdid_and_logs_nothing() -> None:
+    # A never-written chunk reads blank; a sibling session takes the FRAM right after the chunk's block reads and holds
+    # it past the driver's 1000 ms lock bound: the read still answers blank (False), with no RDID and no entry.
     manager, _bus, chip = _twin_manager()
     chunk, _ts_chunk = _chunks(manager)
     fram = manager.fram
-    real = fram.verify_present
+    real, real_write, rdids = chunk._read_into, chip.write, [0]
     hold_ms = src_int("src/asy_fram_driver.py", "_VERIFY_PRESENT_LOCK_TIMEOUT_MS") + 200
     held: list[asyncio.Task[None]] = []
 
@@ -966,12 +931,19 @@ def test_a_blank_read_whose_probe_meets_a_held_session_stays_blank_and_declares_
         async with fram.session_lock:
             await asyncio.sleep_ms(hold_ms)
 
-    async def probe_behind_a_sibling() -> bool:
-        held.append(asyncio.get_event_loop().create_task(sibling()))
-        await _until("the sibling never took the session", fram.session_lock.locked)
-        return await real()
+    async def read_then_a_sibling(buf: bytearray, addr: int) -> "tuple[bool, bool, bool]":
+        result = await real(buf, addr)
+        if addr == chunk._block_addr[1]:  # the second block read: the sibling takes the session from here
+            held.append(asyncio.get_event_loop().create_task(sibling()))
+            await _until("the sibling never took the session", fram.session_lock.locked)
+        return result
 
-    fram.verify_present = probe_behind_a_sibling  # type: ignore[method-assign]  # the sibling starts at the probe
+    def counting_write(buf: bytes) -> None:
+        rdids[0] += bytes(buf) == bytes([_OPCODE_RDID])
+        real_write(buf)
+
+    chunk._read_into = read_then_a_sibling  # type: ignore[method-assign]
+    chip.write = counting_write  # type: ignore[method-assign]
     before = bytes(chip.memory)
 
     async def scenario() -> "bool | None":
@@ -982,9 +954,10 @@ def test_a_blank_read_whose_probe_meets_a_held_session_stays_blank_and_declares_
                 await cancel(task)
 
     assert run(scenario()) is False, "the blank read did not stay blank"
-    assert len(held) == 1, f"the read probed {len(held)} time(s), expected once"
-    assert not fram.lost.is_set() and fram.initialized, "a busy session was taken for a lost chip"
-    assert _errnums(manager).count(code("E", "LOCK_TIMEOUT")) == 1, f"the timed-out probe logged {_errnums(manager)}"
+    assert len(held) == 1, f"the sibling started {len(held)} time(s), expected once"
+    assert rdids == [0], f"the blank read clocked {rdids[0]} RDID(s)"
+    assert fram.initialized, "a busy session cleared the driver's readiness"
+    assert run(manager.get_error_counter())["FRAM"]["ErrCount"] == 0, f"the blank read logged {_errnums(manager)}"
     assert bytes(chip.memory) == before, "the blank read wrote the chip"
 
 
@@ -1033,7 +1006,7 @@ def test_a_paused_twin_fram_refuses_every_chunk_operation_with_one_slot_and_resu
 def test_a_latch_one_wrdi_leaves_set_clears_on_the_retry_and_a_stuck_one_warns_once_per_event_with_the_payload_landed() -> None:
     # The driver's WRDI epilogue against the twin chip: a latch the first WRDI leaves set clears on its one retry and logs
     # nothing; one both leave set is one W FRAM_WEL_STUCK, the payload landing all the same; a latch stuck through a
-    # whole write warns at each operation, the repeats sharing that slot. The chip answers its ID: no loss is declared.
+    # whole write warns at each operation, the repeats sharing that slot.
     manager, _bus, chip = _twin_manager()
     chunk, _ts_chunk = _chunks(manager)
     chip.stick_next_wrdi = 1
@@ -1050,7 +1023,6 @@ def test_a_latch_one_wrdi_leaves_set_clears_on_the_retry_and_a_stuck_one_warns_o
     assert stuck == (True, (1, [("W", code("W", "FRAM_WEL_STUCK"))])), f"two WRDIs left set: write and log = {stuck}"
     assert held is True and count > 2 and slots == [("W", code("W", "FRAM_WEL_STUCK"))], f"a stuck write: {held}, {count}, {slots}"
     assert landed is True and bytes(buf.get_data_buf() or b"") == _PAYLOAD, "a stuck latch lost the payload"
-    assert not manager.fram.lost.is_set(), "a stuck latch on an answering chip declared it lost"
 
 
 def test_a_verified_write_the_chip_stored_wrong_fails_once_rewrites_nothing_and_the_next_write_heals() -> None:

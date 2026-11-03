@@ -38,7 +38,6 @@ _COMMAND_BOOT_TIMEOUT_S = 60.0
 
 _REC_SDA_LOW = module_int_const(SRC_DIR, "asy_i2c_driver.py", "_REC_SDA_LOW")
 _REC_SDA_STUCK = module_int_const(SRC_DIR, "asy_i2c_driver.py", "_REC_SDA_STUCK")
-_ERR_FRAM_CHIP_LOST = module_int_const(SRC_DIR, "asy_fram_driver.py", "_ERR_FRAM_CHIP_LOST")
 _RR_REBOOT = module_int_const(SRC_DIR, "asy_system_service.py", "_RR_REBOOT")
 _RR_FRAM_ERASED = module_int_const(SRC_DIR, "asy_system_service.py", "_RR_FRAM_ERASED")
 # Each chip driver's soft reset as its setup writes it: (to the chip's own address, else the general call), the bytes.
@@ -325,17 +324,14 @@ def test_fram_cs_pin_hijack_fault_injection_and_recovery(board: Board) -> None:
     # Needs no separate fault-injection hardware: the RP2040 owns CS as a GPIO.
     facts = _run(board, "fram_cs_hijack_fault_injection_and_recovery.py", _SHORT_SCRIPT_TIMEOUT_S)
     assert facts["initialized"] is True, "the FRAM did not set up"
-    write, read, wren, lost = (facts[key] for key in ("write_hijack", "read_hijack", "wren_dropped", "chip_lost"))
-    assert isinstance(write, dict) and isinstance(read, dict) and isinstance(wren, dict) and isinstance(lost, dict), facts
+    write, read, wren = (facts[key] for key in ("write_hijack", "read_hijack", "wren_dropped"))
+    assert isinstance(write, dict) and isinstance(read, dict) and isinstance(wren, dict), facts
     assert write["injected"] and read["injected"] and wren["injected"], f"an injection never landed with CS asserted: {write}, {read}, {wren}"
     # Hard requirement (owner, 2026-09-04): a hijacked write never reaches the chip, a hijacked read never returns real data.
     assert write["readback_ok"] is True, f"the hijacked write reached the chip although CS was deasserted first: {write}"
     assert read["real_data_returned"] is False, f"the hijacked read returned the real data: {read}"
     assert write["recovered"] and read["recovered"], f"the driver did not recover: {write}, {read}"
     assert wren["readback_ok"] is True, f"the write after a dropped WREN did not land (the driver's one WREN retry): {wren}"
-    assert lost["initialized_after"] is False, f"CS held inactive across two writes: the chip was never declared lost: {lost}"
-    assert lost["errnos"].count(_ERR_FRAM_CHIP_LOST) == 1, f"not exactly one chip-lost entry (errno {_ERR_FRAM_CHIP_LOST}) in the driver's log: {lost['errnos']}"
-    assert lost["setup_after_release"] is True and lost["recovered"] is True, f"CS released, setup() did not bring the chip back: {lost}"
     assert facts["system_task_exceptions"] == [], f"a task ended with an exception under the fault: {facts['system_task_exceptions']}"
 
 

@@ -27,10 +27,12 @@ module"): a downstream fault is an error at its level; the level above that hand
   <worktree>/typings`, then `mypy --cache-dir=/dev/null`, `mypy --cache-dir=/dev/null --config-file host_typecheck.ini`
   and `mypy --cache-dir=/dev/null --config-file digital_twin/typecheck.ini`; remove the link afterwards (`rm` with the
   literal path, as its own command). `scripts/lint.sh` and `scripts/typecheck.sh` refuse the shared venv.
-- The gate (once, on the finished change, in the background): `PICO_TOOLCHAIN_DIR=S/tc-int scripts/test.sh` and
-  `PICO_TOOLCHAIN_DIR=S/tc-int GC_THRESHOLD=32768 scripts/test.sh` (one after the other, never at the same time as
-  another port-binding run), then `scripts/run_digital_twin_ci.sh dev --gc-threshold -1 --part suite`, the same with
-  `--part harness`, and both again with `--gc-threshold 32768`. A change the website reads
+- The gate (once, on the finished change, in the background, and only when the lead says the host is free: two
+  gates at once on this 4-core host fail wall-clock bounds, 2026-11-03):
+  `PICO_TOOLCHAIN_DIR=S/tc-int scripts/test.sh` and `PICO_TOOLCHAIN_DIR=S/tc-int GC_THRESHOLD=32768 scripts/test.sh`
+  (one after the other, never at the same time as another port-binding run), then
+  `scripts/run_digital_twin_ci.sh dev --gc-threshold -1 --part suite`, the same with `--part harness`, and both again
+  with `--gc-threshold 32768`. A change the website reads
   (`buildgen/error_catalog.json`, an emitter, `js/`, `html/`) also runs `npm run lint`, `npm run typecheck`
   and `npm run test:unit`.
 - Sizes for the hand-back: `S/u35r/r0/module_sizes.sh <worktree> <your head> <out .tsv>` (per-module lines and bytecode;

@@ -1075,7 +1075,8 @@ class _CommandBench:
         return self.svc._reset_armed
 
     async def setup(self) -> None:
-        assert await self.fram.setup()
+        await self.fram.setup()
+        assert self.fram.initialized
         await self.svc.setup()
         await self.reader.setup()
         assert self.svc.cfgmgr.valid and self.reader.cfgmgr.valid

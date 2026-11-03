@@ -28,3 +28,6 @@ reset; on dev it lands before, so the local gate (dev only) passed. B4 restored 
 Run 1 and the scenario harness, not Run 5c. Fixed in 6dc76d02: the check admits exactly that one warning for an SGP40,
 counted once; checked against the CI entry (the old predicate fails it, the new one passes it for an SGP40 and fails it
 for any other source), lint, the host mypy pass and the CI-suite rule tests (789 passed).
+
+CI on snapshot 28 (69a8fedb, run 41649801570, 14:02-14:36 UTC): the run concluded success (the cancelled run is the
+superseded push run).

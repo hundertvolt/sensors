@@ -177,10 +177,8 @@ class UARTLinkDriver:
     async def _run_hazards(self) -> None:
         # One run in the bench script's order. Its facts replace the last run's and are judged by the reader, as the bench
         # host judges the script's (J.7); the link counters stay the echo's own.
-        bus = self._uart
+        bus: UART = self._uart  # type: ignore[assignment]  # set: only the exercise loop runs this, after setup() refused a missing bus
         try:
-            if bus is None:  # Unreachable: only the exercise loop runs this, after setup() succeeded, and setup refuses a missing bus - kept to narrow the Optional for the type checker
-                return
             frame = bytearray(self._frame + bus.crc.length())  # room for the CRC: _write_raw() sends it in place
             ack = bytearray(self._frame + bus.crc.length())
             two = await self._two_initiations()
@@ -230,7 +228,7 @@ class UARTLinkDriver:
         if bus is None:
             return False
         async with bus as device:
-            return await device.writefrom(frame, self._frame, timeout_ms=self._timeout)
+            return await device.writefrom(frame, self._frame)
 
     # -- starters ----------------------------------------------------------
 
@@ -286,7 +284,6 @@ class UARTLinkDriver:
     async def reset_error_counter(self) -> bool:
         return await self._comm.reset_error_counter()  # the link's history is the comm's; the counts are since boot
 
-    async def setup(self) -> bool:
+    async def setup(self) -> None:
         if await self._comm.setup():
             self.initialized = True
-        return self.initialized

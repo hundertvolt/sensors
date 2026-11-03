@@ -54,7 +54,8 @@ async def _main() -> None:
     spi_bus = BENCH["bus"][chip["bus"]]
     spi: SPI = asy_spi_driver.SPI(spi_bus["id"], sck_pin=spi_bus["sck_pin"], mosi_pin=spi_bus["mosi_pin"], miso_pin=spi_bus["miso_pin"])
     fram_a = FRAMManager(spi, chip["cs_pin"], BENCH["fram_max_size"])
-    fact("setup", await fram_a.setup())
+    await fram_a.setup()
+    fact("setup", fram_a.initialized)
     reader1 = _reader(i2c, fram_a)
     fact("allocated", reader1._ts_storage is not None)
     if reader1._ts_storage is None:
@@ -64,7 +65,8 @@ async def _main() -> None:
     # A fresh boot: a new FRAMManager over the same part allocates its chunks at the addresses reader1's took. Its
     # loggers are never set up, so they write nothing; the VOC-state chunk is the one this run writes.
     fram_b = FRAMManager(spi, chip["cs_pin"], BENCH["fram_max_size"])
-    fact("rebooted_setup", await fram_b.setup())
+    await fram_b.setup()
+    fact("rebooted_setup", fram_b.initialized)
     reader2 = _reader(i2c, fram_b)
     try:
         last_backup = await _run_until(reader1, wdt, _BACKUP_WAIT_S, 0)
