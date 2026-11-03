@@ -561,10 +561,6 @@ class SystemService:
                             await self.pr.err_s("Task error counter above", _TASK_FAIL_MAX, "- reboot triggered!", errno=_ERR_TASK_BUDGET_REBOOT)
                     except MemoryError as e:  # the entry found no room: the reset arms, unless this line finds none too
                         self.pr.err("Reboot entry not written:", e)
-                    # Re-checked after the log write, which yields: a command that owns the feed (accepted before the
-                    # decision) owns the reset, and nothing awaits from here until _reboot() marks it armed.
-                    if self._feed_owned:
-                        continue
                     # One feed after the entry, then starve one-way: the reset arms below and nothing feeds until it
                     # fires; later passes keep restarting, unfed.
                     self.feed_watchdog()
