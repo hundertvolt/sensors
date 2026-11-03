@@ -2560,6 +2560,68 @@ def test_asy_ntp_time_failed_unsynced_attempts_wait_the_unsynced_retry_interval(
     assert seen == [_CHECK_INTERVAL_S] + [60] * 5
 
 
+async def _settle() -> None:
+    for _ in range(_END_ROUNDS):
+        await asyncio.sleep(0)
+
+
+def _attempts_around_a_held_attempt(during: "Callable[[NTPClient], Coroutine[object, object, None]]", ticks_after: int) -> "list[int]":
+    # The real sync and refresh loops: the boot's forced attempt is held while `during` runs, then fails. The attempts
+    # made by its release, then after each of `ticks_after` check ticks.
+    client = _make_client()
+    release = asyncio.Event()
+    attempts: list[int] = []
+
+    async def failing_attempt(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
+        attempts.append(len(attempts))
+        if len(attempts) == 1:
+            await release.wait()
+        return None, True
+
+    client._run_ntp_sync_attempt = failing_attempt  # type: ignore[assignment, method-assign]
+
+    async def scenario() -> "list[int]":
+        tasks = [asyncio.create_task(client._sync_loop()), asyncio.create_task(client._refresh_loop())]
+        try:
+            await _settle()
+            await client.ntp_force_sync()
+            await _settle()
+            await during(client)
+            release.set()
+            await _settle()
+            counts = [len(attempts)]
+            for _ in range(ticks_after):
+                await tick(client._ntp_timer_trigger_event)
+                await _settle()
+                counts.append(len(attempts))
+            return counts
+        finally:
+            await cancel_all(tasks)
+
+    return run(scenario())
+
+
+def test_a_check_tick_during_a_failing_attempt_starts_no_other_before_the_retry_wait() -> None:
+    # One check tick lands while the attempt runs: none follows at once, and the next comes once _NTP_RETRY_UNSYNCED_S
+    # of check ticks have passed, the one during the attempt included (one attempt a minute; owner, 2026-11-03).
+    async def one_tick(client: NTPClient) -> None:
+        await tick(client._ntp_timer_trigger_event)
+        await _settle()
+
+    ticks = _RETRY_UNSYNCED_S // _CHECK_INTERVAL_S
+    counts = _attempts_around_a_held_attempt(one_tick, ticks - 1)
+    assert counts == [1] * (ticks - 1) + [2], counts
+
+
+def test_a_forced_resync_during_an_attempt_tries_again_once_it_ends() -> None:
+    # A settings change or an operator's resync (both ntp_force_sync()) while an attempt runs: the next one at once.
+    async def forced(client: NTPClient) -> None:
+        await client.ntp_force_sync()
+
+    counts = _attempts_around_a_held_attempt(forced, 0)
+    assert counts == [2], counts
+
+
 def test_asy_ntp_time_network_unavailable_cycles_leave_the_retry_interval_alone() -> None:
     # A skipped attempt says nothing about the server, so the next one must come promptly.
     client = _make_client()

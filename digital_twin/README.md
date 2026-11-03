@@ -803,9 +803,10 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
    Confirms the webserver stays fully healthy past NTP's own 5s fetch timeout, not just eventually,
    that NTP logs `NTP_NO_REPLY` where the host has a route for the request and `NTP_NOT_SENT`
    where it has none (a network namespace holding only `lo`), never both, and that no task ended and
-   was restarted meanwhile. The watch ends on the third NTP failure event, then one supervisor pass
-   (`l2.ntp_unreachable_failures`, inside the 90 s `l2.ntp_unreachable_watch_s` bound): the 10 s
-   doubling backoff puts the failures at about 4, 22 and 62 s of serving (`dev`, 2026-10-15).
+   was restarted meanwhile. The watch ends on the second NTP failure event, then one supervisor pass
+   (`l2.ntp_unreachable_failures`, inside the 90 s `l2.ntp_unreachable_watch_s` bound): the unsynced
+   retry, one attempt every 60 s after a failed one, puts the failures at about 4 and 64 s of serving
+   (the first measured on `dev`, 2026-10-15) and the third at about 124 s, past the bound.
 10. **The dedicated watchdog-backstop case** — one bounded real, *blocking* (`time.sleep()`, not
     `asyncio.sleep()`) hang per bus-attached instance the device wires (`--hang <instance>:<op>:12`,
     `writeto` for a sensor, `readinto` for the FRAM), each in its own process with `--duration 15`,

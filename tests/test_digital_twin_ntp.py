@@ -74,7 +74,7 @@ _REPLY_WAIT_MS = 1000  # a reply on loopback arrives within one responder poll; 
 _POLL_MS = 5
 # @tunable l2.ntp_run_bound_s = 10.0
 _RUN_BOUND_S = 10.0
-_REQUEST = b"\x1b" + bytes(47)  # the product's request: LI 0, VN 3, mode 3 (src/asy_ntp_client.py _NTP_REQUEST)
+_REQUEST = b"\x1b" + bytes(47)  # the product's request: LI 0, VN 3, mode 3 (src/asy_ntp_client.py _fetch_ntp_reply())
 
 _PORTS = PortAllocator("test_digital_twin_ntp")
 

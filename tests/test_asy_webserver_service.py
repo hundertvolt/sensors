@@ -3819,12 +3819,12 @@ def test_h2_errcount_entry_is_never_one_string() -> None:
 
 def test_h2_piece_writer_bounds_every_piece_and_never_splits_a_fragment() -> None:
     fragments = ["a" * n for n in (5, 100, 120, 30, 256, 1, 300, 7, 7)]
-    pieces: list[str] = []
+    pieces: list[bytes] = []
     writer = _PieceWriter(pieces, max_bytes=256)
     for fragment in fragments:
         writer.add(fragment)
     writer.flush()
-    assert "".join(pieces) == "".join(fragments)
+    assert b"".join(pieces) == "".join(fragments).encode()
     # A fragment larger than the cap stands alone rather than being cut; everything else fits it.
     assert [len(p) for p in pieces] == [255, 256, 1, 300, 14]
 
@@ -3832,7 +3832,7 @@ def test_h2_piece_writer_bounds_every_piece_and_never_splits_a_fragment() -> Non
 def test_h2_piece_writer_never_holds_more_than_sixteen_pending_fragments() -> None:
     # Streamed values arrive as many tiny fragments (", ", ": ", single digits); left to grow, the
     # pending list's own array would be as large as the piece - the allocation the writer bounds.
-    pieces: list[str] = []
+    pieces: list[bytes] = []
     writer = _PieceWriter(pieces, max_bytes=256)
     fragments = [", ", "1", ": ", '"k"'] * 200
     for fragment in fragments:
@@ -3840,31 +3840,40 @@ def test_h2_piece_writer_never_holds_more_than_sixteen_pending_fragments() -> No
         # @tunable web.max_pending_fragments = 16
         assert len(writer._group) <= 16, len(writer._group)
     writer.flush()
-    assert "".join(pieces) == "".join(fragments)
+    assert b"".join(pieces) == "".join(fragments).encode()
     assert max(len(p) for p in pieces) <= 256
     assert min(len(p) for p in pieces[:-1]) > 200  # still full pieces, not one per 16 fragments
 
 
+def test_h2_piece_writer_counts_bytes_not_characters() -> None:
+    pieces: list[bytes] = []
+    writer = _PieceWriter(pieces, max_bytes=4)
+    for _ in range(3):
+        writer.add("\u00e9")  # two bytes in UTF-8
+    writer.flush()
+    assert pieces == [b"\xc3\xa9\xc3\xa9", b"\xc3\xa9"], pieces
+
+
 def test_a_networking_get_with_a_multibyte_ssid_stays_bounded() -> None:
-    # A 200-character SSID of three-byte characters is a 602 B JSON string: every piece stays within the cap in
-    # characters, each sent encoded, and Content-Length counts bytes.
+    # A 200-character SSID of three-byte characters is a 602 B JSON string: the one fragment allowed past the cap,
+    # sent whole on its own; every other piece stays within the cap, and Content-Length counts bytes.
     ssid = "\u20ac" * 200
     wifi = _NestedCfgModule("WIFI", {"Before": 1, "SSID": ssid, "After": 2})
     service, _app = _make_service(settings={"networking": [SettingsGroup(wifi, ("Before", "SSID", "After"))]})
     _status, headers, body = _get_on_the_wire(service, "/networking")
-    assert all(len(c.decode()) <= _WIRE_CHUNK_BYTES for c in body), [len(c) for c in body]
+    assert [c for c in body if len(c) > _WIRE_CHUNK_BYTES] == [json.dumps(ssid).encode()], [len(c) for c in body]
     assert headers["content-length"] == str(sum(len(c) for c in body))
     assert _json(b"".join(body)) == {"Before": 1, "SSID": ssid, "After": 2}
 
 
 def test_h2_piece_writer_flush_is_idempotent_and_an_empty_writer_adds_nothing() -> None:
-    pieces: list[str] = []
+    pieces: list[bytes] = []
     writer = _PieceWriter(pieces, _WIRE_CHUNK_BYTES)
     writer.flush()
     writer.add("x")
     writer.flush()
     writer.flush()
-    assert pieces == ["x"]
+    assert pieces == [b"x"]
 
 
 # -- The /status hammers: companions to the real-hardware hammer-load investigation --
@@ -4067,12 +4076,11 @@ def test_i3_hammer_every_memory_bounded_get_route_concurrently() -> None:
 
 
 def _written(value: object, max_bytes: int = _DEFAULT_CHUNK_BYTES) -> "list[bytes]":
-    # Each piece as _pieces_response() sends it: encoded once.
-    pieces: list[str] = []
+    pieces: list[bytes] = []
     writer = _PieceWriter(pieces, max_bytes=max_bytes)
     writer.add_value(value)
     writer.flush()
-    return [p.encode() for p in pieces]
+    return pieces
 
 
 def status_body(res: "Response") -> bytes:
@@ -4143,12 +4151,12 @@ def test_the_server_passes_its_own_backlog_to_start_server() -> None:
 def test_h2_piece_writer_keeps_a_piece_that_lands_exactly_on_the_cap_whole() -> None:
     # The cap is inclusive: two fragments summing to exactly max_bytes share one piece, and only
     # the next one starts a new piece - ">=" would split at the cap and double the write count.
-    pieces: list[str] = []
+    pieces: list[bytes] = []
     writer = _PieceWriter(pieces, max_bytes=4)
     for fragment in ("ab", "cd", "e"):
         writer.add(fragment)
     writer.flush()
-    assert pieces == ["abcd", "e"], pieces
+    assert pieces == [b"abcd", b"e"], pieces
 
 
 def test_h2_a_tuple_value_is_walked_like_a_list_never_dumped_as_one_string() -> None:

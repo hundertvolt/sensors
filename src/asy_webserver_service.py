@@ -198,23 +198,24 @@ def _cfg_values(values: "Mapping[str, Mapping[str, JsonValue]]") -> "Mapping[str
 
 
 class _PieceWriter:
-    # Concatenates adjacent JSON text fragments into pieces of at most max_bytes, never splitting
+    # Concatenates adjacent JSON text fragments into pieces of at most max_bytes bytes, never splitting
     # one - so the largest allocation is bounded by the largest fragment, not by the response.
-    def __init__(self, pieces: list[str], max_bytes: int) -> None:
+    def __init__(self, pieces: list[bytes], max_bytes: int) -> None:
         self._pieces = pieces
-        self._group: list[str] = []
+        self._group: list[bytes] = []
         self._size = 0
         self._max_bytes = max_bytes
 
     def add(self, fragment: str) -> None:
-        if self._group and self._size + len(fragment) > self._max_bytes:
+        data = fragment.encode()  # encoded once, here: a piece is counted and sent in bytes
+        if self._group and self._size + len(data) > self._max_bytes:
             self.flush()
-        self._group.append(fragment)
-        self._size += len(fragment)
+        self._group.append(data)
+        self._size += len(data)
         if len(self._group) == _MAX_PENDING_FRAGMENTS:
             # Collapsed, never left to grow: a piece of tiny fragments would otherwise need a list
             # array as large as the piece itself - the very block this writer exists to avoid.
-            self._group = ["".join(self._group)]
+            self._group = [b"".join(self._group)]
 
     def add_value(self, value: object) -> None:
         # Exactly json.dumps(value)'s text, never built as one string: dicts, lists and tuples are
@@ -238,7 +239,7 @@ class _PieceWriter:
 
     def flush(self) -> None:
         if self._group:
-            self._pieces.append("".join(self._group))
+            self._pieces.append(b"".join(self._group))
             self._group = []
             self._size = 0
 
@@ -637,11 +638,11 @@ class WebserverService:
                 results[key] = INVALID  # a key no group of this endpoint lists, and no dispatch key
         return results
 
-    async def _build_status_pieces(self) -> list[str]:
+    async def _build_status_pieces(self) -> list[bytes]:
         # One _PieceWriter, flushed at every top-level section: each section starts its own piece
         # and no piece exceeds the cap, whatever a section holds - one entry per registered error
         # source, for "errcount" (Part I.3). Values are written, never json.dumps()'d whole.
-        pieces: list[str] = []
+        pieces: list[bytes] = []
         writer = _PieceWriter(pieces, self._chunk_bytes)
         for prefix, key in (('{"networking":', "networking"), (',"system":', "system"), (',"notification":', "notification")):
             writer.add(prefix)
@@ -967,16 +968,15 @@ class WebserverService:
         await self.pr.setup()  # the logger is set up in the boot batch, never by the serve task
 
 
-def _pieces_response(pieces: list[str]) -> Response:
+def _pieces_response(pieces: list[bytes]) -> Response:
     # A plain sync iterator with an exact Content-Length, never Response.complete()'s bytes-only
     # default: without it a client reads to EOF, which real-socket soak testing timed out against.
     # Never an `async def ... yield` generator - that syntax segfaults the interpreter (Part F.1).
-    encoded = [p.encode() for p in pieces]
     return Response(
         # The vendored stub types body as str | bytes (microdot.pyi:165), yet Microdot streams a sync
         # iterator (ext/microdot.py:734). Remove the ignore when the stub accepts one (warn_unused_ignores).
-        iter(encoded),  # type: ignore[arg-type]
-        headers={"Content-Type": "application/json; charset=UTF-8", "Content-Length": str(sum(len(p) for p in encoded))},
+        iter(pieces),  # type: ignore[arg-type]
+        headers={"Content-Type": "application/json; charset=UTF-8", "Content-Length": str(sum(len(p) for p in pieces))},
     )
 
 
@@ -1004,7 +1004,7 @@ async def _stream_dict_response(result: "Mapping[str, object]", chunk_bytes: int
     # Memory-bounded streaming for any GET route whose response scales with device configuration
     # (SPECIFICATION.md Part I.3): the same bytes the old per-key json.dumps() fragments produced,
     # written value by value, so no allocation is a whole key's value, let alone the response.
-    pieces: list[str] = []
+    pieces: list[bytes] = []
     writer = _PieceWriter(pieces, chunk_bytes)
     writer.add("{")
     for index, (key, value) in enumerate(result.items()):

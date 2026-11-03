@@ -17,7 +17,7 @@ _PACKET_LEN = 48  # RFC 5905 7.3: the header a request and a reply carry
 _TRANSMIT_AT = 40  # RFC 5905 7.3: the Transmit Timestamp's offset
 _MODE_CLIENT = 3
 _MODE_SERVER = 4
-_VERSION = 3  # what the product's request carries (src/asy_ntp_client.py _NTP_REQUEST)
+_VERSION = 3  # what the product's request carries (src/asy_ntp_client.py _fetch_ntp_reply()'s first byte, 0x1b)
 _LI_UNSYNCHRONIZED = 3
 # Below the client's 2025 plausibility floor, and above its 2100 ceiling once the client reads it as the next NTP era.
 _IMPLAUSIBLE_UNIX_S = 1000000000

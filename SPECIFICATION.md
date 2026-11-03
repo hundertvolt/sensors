@@ -3811,9 +3811,11 @@ about every four minutes (owner, 2026-09-24). The legacy client never gave up.
   constructor). While unsynced it tries at the first 10 s check (`ntp.check_interval_s`) with the
   network up, then one attempt every 60 s after a failed one (`_NTP_RETRY_UNSYNCED_S`, Part N
   `ntp.retry_unsynced_s`; owner, 2026-11-03: "Then let's actually take 1 minute, easier to understand
-  and not significantly more noise than 2."), counted in check ticks; no device setting changes it.
-  An attempt skipped for "network not up" leaves the wait alone, and a successful sync or a forced
-  resync (`ntp_force_sync()`, e.g. a PUT of `NTPHost`) tries at once. A synced device's failed
+  and not significantly more noise than 2."), counted in check ticks from the attempt's trigger; no
+  device setting changes it. A check tick while an attempt runs counts but starts none (agent,
+  2026-11-03). An attempt skipped for "network not up" leaves the wait alone, and a successful sync or
+  a forced resync (`ntp_force_sync()`, e.g. a PUT of `NTPHost`) tries at once, a forced one during an
+  attempt as soon as that attempt ends. A synced device's failed
   resync keeps its own short retry loop (`_NTP_SYNC_RETRIES` × 15 s: `ntp.sync_retries`,
   `ntp.retry_interval_s`) and does not touch the unsynced wait. **Confirmed on silicon (2026-09-25)**: with UDP 123 blocked, one `E71`
   (`NTP_NO_REPLY`) slot (count 3), no task ended, SYSTEM clean; two full bench tiers then held
@@ -4051,7 +4053,7 @@ contract: a function that needs its caller to hold a lock ends in `_locked`.
 | hotspot bring-up | config reads and one `config()`/`active()` sequence |
 | hotspot stations query | 0.1 s |
 | status read and the 1 Hz snapshot (the uptime loop) | one to three radio calls: `status()`, then `ifconfig()` and, on a STA link, `status("rssi")` |
-| NTP attempt (`NTPClient`), its DNS resolution inside the lock (owner, 2026-07-28) | the DHCP server plus up to three `DNSFallback` servers × (`dns.timeout_ms` 500 + one 20 ms poll step) + `ntp.fetch_timeout_ms` 5,000 + 20 ms ≈ 7.1 s with every server silent, plus 0.5 s per failed socket setup (≤ 9.1 s) |
+| NTP attempt (`NTPClient`), its DNS resolution inside the lock (owner, 2026-07-28) | the DHCP server plus up to three `DNSFallback` servers × (`dns.timeout_ms` 500 + one 20 ms poll step) + `ntp.fetch_timeout_ms` 5,000 + 20 ms ≈ 7.1 s with every server silent; a failed socket setup costs a 0.5 s backoff (`_RETRY_BACKOFF_MS`), at a DNS server up to two, since the resolver ignores its write's answer and the receive sets the socket up again (at most 0.5 s + 0.52 s per server), at the fetch one, which then stops at its unsent request: ≤ 4 × 1.02 s + 5.02 s ≈ 9.1 s |
 
 Each waiter is harmless: the uptime loop waits for the lock, the 1 Hz flag coalesces the ticks
 missed meanwhile, and uptime and sync age are measured ticks, so nothing undercounts; the `/status`
@@ -7768,8 +7770,9 @@ backend-only or frontend-only validation/coercion policy change in this project.
   Any route whose response scales with device configuration returns `await
   _stream_dict_response(result, self._chunk_bytes)` instead of `return result`. A response that is
   not one dict (`/status`) builds on the same parts directly: `_PieceWriter` (JSON written value by
-  value into pieces of at most `chunk_bytes` characters) and `_pieces_response()` (exact
-  Content-Length, each piece encoded once), I.3. Producers gate their own float values (F.1).
+  value into pieces of at most `chunk_bytes` bytes, each fragment encoded once) and
+  `_pieces_response()` (exact Content-Length, the pieces sent as they are), I.3.
+  Producers gate their own float values (F.1).
 - **Bounded piece assembly** — `asy_base_classes.py`'s `PieceBuffer` (the webserver's streaming
   `_PieceWriter` is its model): a payload whose size the caller did not fix is held as pieces of at
   most `chunk_bytes`, every piece allocated at construction once the caller's cap has admitted the
@@ -8428,8 +8431,9 @@ PUT), each image built for and tested at its own limit (`HEAP_FRAGMENTATION_MEAS
   block — and must stay within `web.serving_demand_budget_b`: the heap free after boot (about
   105,000 B, I.6) less the 32,768 B contiguity reserve, 72,232 B, an estimate. The per-device
   scenario in `tests/_sensortask_scenarios.py` drives every GET route at a clean boot with a
-  non-ASCII SSID, asserts that the response body yields exactly the writer's pieces, each encoded
-  once, and the budget, and printed on the mock tier (2026-10-08):
+  non-ASCII SSID, asserts the one-copy identity (the response body yields exactly the writer's own
+  pieces, so a second encoded copy fails it) and the budget, and printed on the mock tier
+  (2026-10-08):
 
   | device | demand at 6 connections | largest body |
   | --- | --- | --- |
@@ -9069,9 +9073,10 @@ behind them is `HEAP_FRAGMENTATION_MEASUREMENTS.md`) are recorded in their modul
 
 Every GET route whose response grows with device configuration — `/status`, `/sensors`,
 `/measurements`, `/networking`, `/system`, `/notification` — writes its JSON through one
-`_PieceWriter` and hands Microdot `Response(iter(encoded), ...)`, each piece encoded once by
-`_pieces_response()`, with an exact Content-Length. The writer concatenates adjacent JSON text
-fragments into pieces of at most `chunk_bytes` characters — one `ServingLimits` field, default **256**
+`_PieceWriter` and hands Microdot `Response(iter(pieces), ...)` (already encoded, one copy) with an
+exact Content-Length. The writer encodes each JSON text fragment once and concatenates adjacent
+fragments into pieces of at most `chunk_bytes` bytes — counted in bytes, so a non-ASCII SSID cannot
+make a piece longer than the cap — one `ServingLimits` field, default **256**
 (`_DEFAULT_CHUNK_BYTES`), that also sets the static-file read size below, so the two bounds cannot
 drift apart — without ever splitting a fragment, and
 `add_value()` writes a value the way `json.dumps()` would — dicts, lists and tuples walked, only
@@ -11185,8 +11190,7 @@ could be wrong and refusing to proceed, rather than degrading (owner, 2026-09-09
   `device.conn-fail-to-hotspot-range`, `device.field-missing`, `device.field-type`,
   `device.field-unknown`, `device.hostname-convention`, `device.hostname-label`,
   `device.hostname-length`, `device.hotspot-password-length`, `device.hotspot-time-min-range`,
-  `device.max-connections-lwip`, `device.max-connections-range`, `device.ntp-retry-below-tick`,
-  `device.ntp-retry-max-below-retry`, `device.ntp-retry-max-range`, `device.table-missing`,
+  `device.max-connections-lwip`, `device.max-connections-range`, `device.table-missing`,
   `device.wiring-field-missing`, `device.wiring-field-unknown`, `device.wiring-no-tag`,
   `device.wiring-not-table`; a `[bus.*]` table: `bus.address-collision`, `bus.boot-clear-budget`,
   `bus.field-missing`, `bus.field-type`, `bus.field-unknown`, `bus.fixed-address-collision`,

@@ -172,6 +172,7 @@ class NTPClient(SensorReaderConfig):
         self._ntp_fetch_timeout_ms = timing.fetch_timeout_ms
         self._retry_wait_s = _NTP_CHECK_INTERV  # the unsynced wait: every check until an attempt fails; reset by a sync or a forced resync
         self._unsynced_wait_s = 0  # seconds since the last unsynced attempt was triggered
+        self._attempting = False  # a sync attempt in flight (_sync_loop()): a check tick meanwhile triggers none
         self._ntp_sec_count = 0
         self._ntp_retries = 0
         self._sync_age = TickSeconds()
@@ -320,7 +321,7 @@ class NTPClient(SensorReaderConfig):
                 due = self._ntp_sec_count >= (ntp_interv[0] * 60 * 60)
             else:
                 self._unsynced_wait_s += _NTP_CHECK_INTERV
-                due = self._unsynced_wait_s >= self._retry_wait_s
+                due = self._unsynced_wait_s >= self._retry_wait_s and not self._attempting
             if due:
                 self._ntp_retry_timer.deinit()
                 self._ntp_retries = 0
@@ -391,13 +392,16 @@ class NTPClient(SensorReaderConfig):
                 await self._set_last_sync_age(value=None)
 
     async def _sync_loop(self) -> None:
+        self._attempting = False  # a restart after a raise mid-attempt starts clear
         await self._set_meas_data(NTP(Synced=False, LastSyncAge=None, TS=utc_now()))
         while True:
             await self._ntp_sync_trigger_event.wait()
             self.pr.evt("NTP sync starting.")
             dns_server = await self._safe_get_dns_server()  # the snapshot's DHCP server, read outside wifi_mode_lock
+            self._attempting = True
             async with self.wifi_mode_lock:
                 tm, network_ok = await self._run_ntp_sync_attempt(dns_server)
+            self._attempting = False
             # Never gives up (Part C.7.2): a failed unsynced attempt waits _NTP_RETRY_UNSYNCED_S for the next
             # (a synced one has _handle_ntp_sync_failure()'s retries). A skipped one leaves the wait alone.
             if tm is None and network_ok and not await self.ntp_issynced():

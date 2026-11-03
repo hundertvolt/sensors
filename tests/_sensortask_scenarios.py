@@ -2690,21 +2690,21 @@ _SERVING_DEMAND_BUDGET_B = 72232
 _POINTER_BYTES = 4  # one piece-list slot on the RP2040
 
 
-@_register("webserver_every_get_route_fits_the_serving_demand_budget_and_sends_its_pieces")
+@_register("webserver_every_get_route_fits_the_serving_demand_budget_and_sends_its_pieces_uncopied")
 def _scenario_serving_demand(device: str) -> None:
     # Per admitted connection: the head and body caps, the largest GET body held once as its encoded pieces, the piece
-    # list and one in-flight chunk; the body is the writer's own pieces, each encoded once at the response.
+    # list and one in-flight chunk; the body is the writer's own pieces (identity), so an encode-copy fails here.
     module = build(device)
     webserver = module.webserver
     ssid = "K\u00fcche-W\u00e4sche"  # non-ASCII: a body's byte count differs from its character count
     assert _strict(_dispatch(module, "PUT", "/networking", {"SSID": ssid}).body)["result"] == {"SSID": "Valid"}
     if _has(module, "scd30"):  # its config snapshot answered, so /sensors carries SCD30's whole map
         _queue_scd30_snapshot(module.scd30._scd._i2c_scd30.i2c_device.i2c._i2c, 2)
-    filled: list[list[str]] = []
+    filled: list[list[bytes]] = []
     real_writer = asy_webserver_service._PieceWriter
 
     class _RecordingPieceWriter(asy_webserver_service._PieceWriter):
-        def __init__(self, pieces: "list[str]", max_bytes: int) -> None:
+        def __init__(self, pieces: "list[bytes]", max_bytes: int) -> None:
             filled.append(pieces)
             super().__init__(pieces, max_bytes)
 
@@ -2718,8 +2718,8 @@ def _scenario_serving_demand(device: str) -> None:
             pieces = filled[0]
             body: Iterable[bytes] = res.body  # type: ignore[assignment]  # the stub types Response.body as bytes (microdot.pyi:162), yet a streamed route's is an iterator over its pieces - removal trigger: SPECIFICATION.md B.15
             sent = list(body)
-            assert sent == [piece.encode() for piece in pieces], route
-            sizes[route] = (sum(len(piece) for piece in sent), len(sent))
+            assert len(sent) == len(pieces) and all(sent[i] is pieces[i] for i in range(len(pieces))), route
+            sizes[route] = (sum(len(piece) for piece in pieces), len(pieces))
             assert int(res.headers["Content-Length"]) == sizes[route][0], route
             if route == "/networking":
                 assert _strict(drain_json_response_body(iter(sent)))["SSID"] == ssid
