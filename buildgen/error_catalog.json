@@ -204,13 +204,6 @@
       "1": {"text": "suitable for Calibrate Gain Ratio", "tone": "good"},
       "2": {"text": "too dark", "tone": "warn"},
       "3": {"text": "too bright", "tone": "warn"}
-    },
-    "NotifyState": {
-      "0": {"text": "every signal evaluated"},
-      "1": {"text": "not evaluated by setting (AutoOn off, paused, or outside the window)"},
-      "2": {"text": "not evaluated: no local time (no NTP sync yet this boot, or the clock callback failed)"},
-      "3": {"text": "evaluated in part (a value unavailable)"},
-      "4": {"text": "the service's own configuration unreadable"}
     }
   }
 }

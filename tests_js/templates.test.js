@@ -588,7 +588,7 @@ describe.each(DEVICE_IDS)("%s's generated code fields", (device) => {
     const codeFields = (defs?.sections ?? []).flatMap((section) => section.groups.flatMap((group) => ("fields" in group ? group.fields : []))).filter((field) => field.codes !== undefined);
 
     it("render each code with its catalog text: a button with the description on click, or the toned text", () => {
-        expect(codeFields.map((field) => field.key)).toEqual(expect.arrayContaining(["ResetReason", "State"]));
+        expect(codeFields.map((field) => field.key)).toEqual(expect.arrayContaining(["ResetReason"]));
         for (const field of codeFields) {
             const [code, text] = Object.entries(field.codes ?? {})[0] ?? ["", ""];
             const el = fieldCard(field, Number(code));

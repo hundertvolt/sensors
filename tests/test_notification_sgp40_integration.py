@@ -56,7 +56,7 @@ _CRC_POLY = 0x31  # SGP40 datasheet Table 7 - same polynomial as test_asy_sgp40_
 
 async def _cycle(clock: DrivenTime, notify: NotificationService, flashes: int) -> None:
     # The monitor's first cycle by the service's own rule: 2 x FlashDur after each triggered flash, so 1 ms before that
-    # end nothing is stored yet; then the loop parks on its next cycle, FlashInterval after its start.
+    # end the loop has not parked on its next cycle yet; then it parks there, FlashInterval after its start.
     cfg = (await notify.get_dict_cfg())["NOTIFY"]
     flash_dur, interval = cfg["FlashDur"], cfg["FlashInterval"]
     assert isinstance(flash_dur, float) and isinstance(interval, float), cfg
@@ -64,9 +64,8 @@ async def _cycle(clock: DrivenTime, notify: NotificationService, flashes: int) -
     end = start + flashes * round(flash_dur * 2000)
     if end > start:
         await clock.elapse(end - 1 - start)
-        assert notify._datastruct[1] is None, f"the cycle was stored by virtual t={clock.now} ms"  # State: None until stored
+        assert start + round(interval * 1000) not in clock.wakes(), f"the cycle ended by virtual t={clock.now} ms: {clock.wakes()}"
     await clock.elapse(end - clock.now)
-    assert notify._datastruct[1] is not None, f"no cycle stored at virtual t={clock.now} ms"
     assert clock.wakes()[-1] == start + round(interval * 1000), f"at virtual t={clock.now} ms the loop waits for {clock.wakes()}"
 
 

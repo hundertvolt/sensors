@@ -61,7 +61,7 @@ def _co2_signal(value: int = 2000) -> NotificationSignal:
 
 async def _cycle(clock: DrivenTime, notify: NotificationService, flashes: int) -> None:
     # The monitor's first cycle by the service's own rule: 2 x FlashDur after each triggered flash, so 1 ms before that
-    # end nothing is stored yet; then the loop parks on its next cycle, FlashInterval after its start.
+    # end the loop has not parked on its next cycle yet; then it parks there, FlashInterval after its start.
     cfg = (await notify.get_dict_cfg())["NOTIFY"]
     flash_dur, interval = cfg["FlashDur"], cfg["FlashInterval"]
     assert isinstance(flash_dur, float) and isinstance(interval, float), cfg
@@ -69,9 +69,8 @@ async def _cycle(clock: DrivenTime, notify: NotificationService, flashes: int) -
     end = start + flashes * round(flash_dur * 2000)
     if end > start:
         await clock.elapse(end - 1 - start)
-        assert notify._datastruct[1] is None, f"the cycle was stored by virtual t={clock.now} ms"  # State: None until stored
+        assert start + round(interval * 1000) not in clock.wakes(), f"the cycle ended by virtual t={clock.now} ms: {clock.wakes()}"
     await clock.elapse(end - clock.now)
-    assert notify._datastruct[1] is not None, f"no cycle stored at virtual t={clock.now} ms"
     assert clock.wakes()[-1] == start + round(interval * 1000), f"at virtual t={clock.now} ms the loop waits for {clock.wakes()}"
 
 
@@ -249,7 +248,7 @@ def test_the_window_check_reads_a_real_ntp_clock() -> None:
 
     original = asy_ntp_client.time
     asy_ntp_client.time = Rp2Gmtime()  # type: ignore[assignment]  # rp2's 8-field gmtime(), which cettime() checks for
-    asy_base_classes.set_utc_valid()  # the clock the sync set: a stored cycle carries its TS
+    asy_base_classes.set_utc_valid()  # the clock the sync set: cettime() answers only once it is set
     try:
         now = run(ntp.cettime())
         assert now is not None
@@ -272,13 +271,8 @@ def test_a_service_on_the_default_sink_completes_a_cycle_silently() -> None:
         await _cycle(clock, notify, 1)  # the default sink's request still settles its 2 x FlashDur
         await cancel_all([task])
 
-    asy_base_classes.set_utc_valid()  # the clock the first sync sets: a stored cycle carries its TS
-    try:
-        with _driven() as clock:
-            run(scenario(clock))
-    finally:
-        asy_base_classes._utc_valid = False
-    assert run(notify.get_data()).Triggered is True
+    with _driven() as clock:
+        run(scenario(clock))
     assert run(notify.get_error_counter())["NOTIFY"]["ErrCount"] == 0  # the default sink's False logs nothing
 
 

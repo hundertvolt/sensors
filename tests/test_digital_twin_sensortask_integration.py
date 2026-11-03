@@ -83,6 +83,7 @@ if TYPE_CHECKING:
     from asy_base_classes import TaskStarter, TickSeconds
     from asy_fram_manager import FRAMChunkTimestampedBuffer
     from asy_neopixel_driver import NeopixelDriver
+    from asy_ntp_client import GMTimeStruct
     from asy_sgp40_driver import SGP40_Reader
     from asy_system_service import SystemService
     from asy_udp_socket import UDPSocket
@@ -117,8 +118,6 @@ _HOTSPOT_PHASE = src_const("src/asy_wifi_service.py", "_PHASE_HOTSPOT")
 _JOINED_NO_IP = src_int("src/asy_wifi_service.py", "_STAT_JOINED_NO_IP")
 _RETRY_UNSYNCED_S = src_int("src/asy_ntp_client.py", "_NTP_RETRY_UNSYNCED_S")
 _WIFI_STORE = str(src_const("src/asy_wifi_service.py", "_NAME"))
-_NO_CLOCK = src_const("src/asy_notification_service.py", "_STATE_NO_CLOCK")
-_EVALUATED = src_const("src/asy_notification_service.py", "_STATE_EVALUATED")
 _FLASH_DUR_S = 0.5  # FlashDur's schema floor
 _FLASH_HOLD_MS = round(_FLASH_DUR_S * 2000)  # the monitor's wait after a flash it asked for (asy_notification_service.py)
 _RUNG_AT = src_int("src/asy_base_classes.py", "_RECOVER_DEVICE_AT")  # consecutive failed iterations to the device rung
@@ -1262,13 +1261,14 @@ def test_the_notification_window_spanning_midnight_flashes_red() -> None:
         chip.co2 = Walk(warn_co2 + 100, warn_co2 + 100, 0.0)
         _step_sensor_waits(on=True)
         tasks = [starter() for starter in module.scd30.get_task_starters()]
+        asked: list[object] = []  # each local time the monitor read: a cycle outside its window ends right after one
 
-        async def triggered() -> bool:
-            return bool((await notif.get_data()).Triggered)
+        async def local_time() -> "GMTimeStruct | None":  # the callback the boot wired, each answer recorded
+            answer: GMTimeStruct | None = await ntp.cettime()
+            asked.append(answer)
+            return answer
 
-        async def not_triggered() -> bool:
-            return not await triggered()
-
+        notif._local_time_callback = local_time  # an instance attribute swap, undone in the finally
         try:
             for starter in module.scd30.get_timer_starters():
                 starter()
@@ -1278,57 +1278,20 @@ def test_the_notification_window_spanning_midnight_flashes_red() -> None:
             assert await _wait_until(lambda: len(_red_frames(list(pixel._pixel.writes))) > 0, _WINDOW_WAIT_S, interval_s=_BIND_POLL_S), (
                 f"no red frame with the window {on_h}:00-{off_h}:00 around local {hour}:{local.minute:02d}"
             )
-            assert await _wait_until_async(triggered, _WINDOW_WAIT_S, interval_s=_BIND_POLL_S), "the cycle that flashed never reported Triggered"
             await cancel(tasks.pop())  # the monitor now sleeps its whole FlashInterval; the next window gets a fresh cycle
             assert await _wait_until(lambda: not pixel._start_signal_event.is_set(), _WINDOW_WAIT_S, interval_s=_BIND_POLL_S)
             seen = len(pixel._pixel.writes)
 
             await _apply_window(off_h, on_h)  # the complementary, same-day window: the current hour is outside
+            n = len(asked)
             tasks.append(notif.start_asy_monitor())
-            assert await _wait_until_async(not_triggered, _WINDOW_WAIT_S, interval_s=_BIND_POLL_S), "a cycle outside the window reported Triggered"
+            assert await _wait_until(lambda: len(asked) > n, _WINDOW_WAIT_S, interval_s=_BIND_POLL_S), "the cycle outside the window never ran"
             assert _red_frames(list(pixel._pixel.writes)[seen:]) == [], "a cycle outside the window flashed"
         finally:
             for task in tasks:
                 await cancel(task)
+            notif._local_time_callback = ntp.cettime
             _step_sensor_waits(on=False)
-            asy_base_classes._utc_valid = False
-
-    run(scenario())
-
-
-def test_a_boot_without_ntp_reports_no_local_time() -> None:
-    # Booted with no NTP responder, the notification's status data reports no clock (State 2) and no trigger; once a
-    # sync has set the clock, the next cycle inside its window evaluates (State 0). Driver-specific (the signals' three
-    # drivers); tests/test_asy_notification_service.py covers every device.
-    _driver_specific("notification", "scd30", "sgp40")
-
-    async def notified(state: object) -> bool:
-        data = await module.notification.get_data()
-        return (data.State, data.Triggered) == (state, False)
-
-    async def scenario() -> None:
-        await _boot()
-        _wall_clock.install(run_generic_integration.product_modules())
-        notif, ntp = module.notification, module.ntp
-        await _seed_compensation()  # every signal's value present and below its warning
-        await module.sgp40._set_meas_data(SGP40(100, None, None, None))
-        task = notif.start_asy_monitor()
-        try:
-            assert await _wait_until_async(lambda: notified(_NO_CLOCK), _WINDOW_WAIT_S), f"no clock reported as {await notif.get_data()}"
-        finally:
-            await cancel(task)
-        # Synced and the RTC flag only: the window reads cettime(), and nothing here reads ntp_clock_valid() (UTCTime,
-        # a VOC backup).
-        await ntp._set_synced(value=True)
-        asy_base_classes.set_utc_valid()
-        try:
-            local = await ntp.cettime()
-            assert local is not None
-            await _apply_window(*_window_around(local.hour))
-            task = notif.start_asy_monitor()
-            assert await _wait_until_async(lambda: notified(_EVALUATED), _WINDOW_WAIT_S), f"a set clock reported as {await notif.get_data()}"
-        finally:
-            await cancel(task)
             asy_base_classes._utc_valid = False
 
     run(scenario())

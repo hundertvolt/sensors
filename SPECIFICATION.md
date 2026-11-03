@@ -392,21 +392,12 @@ features as today's deployed units, not a feature change.
   keeps running when later syncs fail, so the alerts continue through a network outage (agent,
   2026-10-06). The LED pause counts down measured monotonic time (`ticks_ms()`), never wake-ups or
   the clock. A producer value is read as its producer last stored it, a NaN never triggering (it
-  compares False both ways). The published notification sample, `/status`'s `notification` block (A.8), says whether its signals were evaluated: its
-  `State` takes the codes of the table below (agent, 2026-10-06); `Triggered` keeps its meaning.
+  compares False both ways). The service publishes no sample: `/status`'s `notification` block (A.8)
+  carries the remaining pause alone (owner, 2026-11-03: "only keep pause time").
   `NotificationSignal.color` is a per-channel weight (0/1) scaled by the shared `FlashBri` at
   trigger time. Config field names carry no "Led" prefix (`WarnCO2`, not `LedWarnCO2`); the new
   API is the only reference and no legacy spelling or `legacy/firmware/html_raw/` compatibility is
   kept (owner, 2026-09-26).
-
-<!-- catalog: status.NotifyState -->
-| `State` | Meaning |
-|---|---|
-| 0 | every signal evaluated |
-| 1 | not evaluated by setting (AutoOn off, paused, or outside the window) |
-| 2 | not evaluated: no local time (no NTP sync yet this boot, or the clock callback failed) |
-| 3 | evaluated in part (a value unavailable) |
-| 4 | the service's own configuration unreadable |
 
 - The legacy task supervisor is a hand-rolled loop duplicated per device file; every generated
   `sensortask_<device>.py`'s `main()` instead calls `SystemService.start_tasks()`, `start_timers()`
@@ -1022,10 +1013,10 @@ settings.
   happened; no drop, read or hour change allocates; `ResetErrors` clears it; each drop is also
   traced once (A.5; owner, 2026-10-01). A 413 is answered, so it is not a drop.
   `BackupTS`/`RestoreTS` under each SGP40 source — `null` = none since boot, `0` = no timestamp
-  (owner, 2026-09-29). `errcount` — one entry per module plus one per `ConfigManager`
-  (`CFGMGR_<name>`).
+  (owner, 2026-09-29). `notification` — `PauseTime` alone, the seconds the LED pause has left.
+  `errcount` — one entry per module plus one per `ConfigManager` (`CFGMGR_<name>`).
 - **Code tables**: every `/status` code table — `ResetReason` here, `FRCState` (M.2), `VOCState`
-  (M.3), `CalLight` (M.1.5), the notification's `State` (`NotifyState`, A.4) — has one source, the
+  (M.3), `CalLight` (M.1.5) — has one source, the
   `status` section of `buildgen/error_catalog.json`, from which the website's labels are generated;
   a SPEC table copied from it carries a `<!-- catalog: status.<name> -->` marker. The record lives in
   `machine.mem_backup()` region 0 and the boot phase in region 1 — RAM that survives a reset, never
@@ -4644,8 +4635,7 @@ namedtuple with every field `None` before any real read (`SCD30(None, None, None
 etc., C.4.1) — so `get_data()` is always safe to call immediately, returning a namedtuple whose
 individual fields may be `None`. Every direct-reference consumer tolerates that as a normal,
 expected input, not an exceptional one, the same way `NotificationService._check_one()` already
-does for its own `None` field (the signal not evaluated, published as `State` 3, A.4 — not an
-error): `SGP40_Reader._read_sgp()` reads each field via `getattr(..., None)` and, if either is
+does for its own `None` field (the signal not evaluated — not an error): `SGP40_Reader._read_sgp()` reads each field via `getattr(..., None)` and, if either is
 still `None`, skips this
 cycle's compensated read (A.4's already-documented degrade behavior) without logging anything — only
 a genuine exception from the producer's own `get_data()` (a violation of its never-raises contract)
@@ -8223,7 +8213,7 @@ one source file owns: the six-REST-endpoint section skeleton itself (pure routin
 H.4's "mirrors the 6 REST endpoints 1:1"); the dispatch-only, webserver-level fields with no natural
 owning file (`SystemCmd`, `PauseTime`, `LightCmdLED`, `ResetErrors`, the Status section's own
 live-readonly field lists — among them the Device Clock row (`UnixTime`, which every age on the site
-is computed against), the notification `TS` row "Last Cycle Time", the System Status group's
+is computed against), the System Status group's
 "Task Last Ended" row (`LastTaskEnd`: the supervised task whose end the supervisor recorded last
 since boot and the uptime at that record, restarted unless a reboot follows, A.8; legacy's System
 Status showed "Task last error" there), and `ResetReason`'s description "Why the device last
@@ -8905,8 +8895,7 @@ it; per ramp step a 3-tuple pixel value; per overlay wake (`_overlay_loop()`, on
 kept in `_overlay_rgb` until the next wake replaces it.
 
 **`asy_notification_service.py`** — construction, long-lived, fixed: the signals and their
-`TickSeconds`. Per monitoring cycle: one `NOTIFY` sample and each signal's float comparison,
-transient, bounded by the device TOML's signal count.
+`TickSeconds`. Per monitoring cycle: each signal's float comparison, transient, bounded by the device TOML's signal count.
 
 **`asy_ntp_client.py`** — construction, long-lived, fixed: its flags, timers and `TickSeconds`. Per
 sync attempt: the DNS resolution (`asy_dns_client.py`), one `UDPSocket`, the 48 B request, the reply
@@ -12211,7 +12200,6 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `web.serving_demand_budget_b` | 72,232 B | `tests/_sensortask_scenarios.py` — `72232` | the per-device serving-demand scenario: `max_connections` × (`web.max_head_bytes` + `web.max_content_length` + the largest GET body + 4 B per piece of the most-pieced body + `web.chunk_bytes`) stays within it (H.7); `dev`'s 68,790 B is the closest | estimated (agent, 2026-10-08): I.6's about 105,000 B free after boot less the 32,768 B contiguity reserve — measurement owed: the post-boot free heap on `dev`, L4 | about 3.4 KB over `dev`'s demand, against an estimated budget | a device's ceiling, a route's largest body, a cap or the post-boot free heap changes |
 | `l1.sensortask_led_refusal_ms` | 100 ms | `tests/_sensortask_scenarios.py` — `100` | the second back-to-back `LightCmdLED` dispatch's own `timeout_ms` bound | estimated (agent, 2026-10-06) — measurement owed: elapsed of a refused dispatch at both GC stages on the slowest host, L1; the refusal is synchronous, so the bound sits far above it | against that measurement, once taken | the REST LED path or the host class changes |
 | `l1.sensortask_locked_status_ms` | 5000 ms | `tests/_sensortask_scenarios.py` — `5000` | the bound on a `GET /status` taken while a test task holds `wifi_mode_lock`; it only ends a regression that waits on the lock instead of letting it hang the file | measured (agent, 2026-10-08): one `GET /status` took 86-194 ms on `build-standard` and 129-318 ms on `build-settrace` | more than 15× the slowest measured read | a `GET /status` nears 1 s on the coverage lane |
-| `l1.sensortask_notify_cycle_rounds` | 200 | `tests/_sensortask_scenarios.py` — `200` | the scheduler rounds `_one_notification_cycle()` gives one monitor cycle of the built notification service to store its sample, in the per-device `State` scenario; a hang guard | estimated (agent, `0103283`) — measurement owed: the rounds one monitor cycle takes to store a sample that flashes nothing, at both GC stages on the slowest host, L1 (it is expected within a few) | against that measurement, once taken | the monitor loop's await structure changes |
 | `l1.sensortask_ntp_attempt_polls` | 2000 | `tests/_sensortask_scenarios.py` — `2000` | with `l1.sensortask_ntp_attempt_poll_ms`, the looks the NTP no-reply storm scenario gives one sync attempt to end (its peer closed, the WiFi mode lock released); a hang guard | measured 2026-10-27, `build-standard`, one run per generated device and stage (an instrumented scratch copy, the scenario alone, the threshold runner beside it): at most 7 looks at the reactive default and 9 at 32768, on the shared x86 host | more than 200× the most looks measured | the NTP sync loop's attempt structure or the host class changes |
 | `l1.sensortask_ntp_attempt_poll_ms` | 1 ms | `tests/_sensortask_scenarios.py` — `1` | with `l1.sensortask_ntp_attempt_polls`, the real-time sleep between those looks | measured 2026-10-27, `build-standard`, one run per generated device and stage (as its pair): each sleep at most 12.93 ms at the reactive default and 6.24 ms at 32768, one whole attempt at most 23.19 / 19.98 ms, on the shared x86 host | the shortest real sleep: an attempt ends within a few looks | the host class changes |
 | `l1.asy_notification_service_max_rounds` | 200 | `tests/test_asy_notification_service.py` — `200` | a hang guard in scheduler rounds for the coordinator's waits | measured at most 2 rounds used (agent, 2026-10-06, single observation, x86 VM) | 100x the observed use | the coordinator's await structure changes |
@@ -12593,7 +12581,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l2.uart_link_hazard_write_pause_ms` | 1 ms | `tests/test_digital_twin_uart_link.py` — `1` | each response write's pause, as a socket's send is, so requests stay in flight while the link's clock moves: on the driven clock for the readers, on the real loop for the test's own PUT and final GET, which run while the clock stands | a socket send's pause, decided on the owner's behalf for review (agent, 2026-10-21) | none: a stimulus, not a bound | the readers' transport or the driven clock changes |
 | `l2.uart_link_hazard_read_period_ms` | 2500 ms | `tests/test_digital_twin_uart_link.py` — `2500` | each reader starts a GET at every multiple of it on the driven clock and pauses its writes on that clock: 249 reads per run at -1 and at 32768 (83 per reader) | the load the -1 stage served when the readers ran on the real clock, 243-281 reads a run (agent, 2026-10-21) | none: a load figure, exact on any host | the hazard run's length or the reader count changes |
 | `l2.uart_link_hazard_run_virtual_ms` | 208370 ms | `tests/test_digital_twin_uart_link.py` — `208370` | the twin hazard test's bound from the PUT to the run's end on the driven clock; `l4.uart_link_under_api_load_hazard_run_timeout_s` is about 3× it | measured 208370 virtual ms from the PUT to the hazard run's end, exact on any host, no margin (agent, 2026-10-21) | none: virtual time is exact | the hazard mode's waits, its hazard set, dev's reply timeout or the readers' load changes |
-| `l2.sensortask_integration_window_wait_s` | 10.0 s | `tests/test_digital_twin_sensortask_integration.py` — `10.0` | each wait for a red frame, `Triggered` or the window's absence in the overnight-window twin test (FlashDur 0.5 s) | estimated (agent, 2026-10-06) — measurement owed: elapsed per wait at both GC stages on the slowest host, L2 | against that measurement, once taken | the monitor loop's interval or FlashDur in the test changes |
+| `l2.sensortask_integration_window_wait_s` | 10.0 s | `tests/test_digital_twin_sensortask_integration.py` — `10.0` | each wait for a red frame, a ramp's end or the outside-window cycle's local-time read in the overnight-window twin test (FlashDur 0.5 s) | estimated (agent, 2026-10-06) — measurement owed: elapsed per wait at both GC stages on the slowest host, L2 | against that measurement, once taken | the monitor loop's interval or FlashDur in the test changes |
 | `l2.isl29125_autorange_red_scene_window_s` | 20 s | `tests/test_digital_twin_isl29125_autorange.py` — `20` | the red-dominant scene's twin time at a 5 s `SampleInterval`: its read cycles are bounded by the window's intervals plus two | estimated (agent, 2026-10-07) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.wifi_modes_wait_poll_s` | 0.1 s | `tests/test_digital_twin_wifi_modes.py` — `0.1` | every condition wait of the scenario polls at it, so each answers at most one poll late; `l2.wifi_modes_wait_timeout_s` is counted in its iterations | estimated (agent, `0103283`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2; the value of `l2.sensortask_integration_wait_poll_s` | against that measurement, once taken | the code under test or the host class changes |
 | `l2.wifi_modes_wait_timeout_s` | 25.0 s | `tests/test_digital_twin_wifi_modes.py` — `25.0` | each wait for a Wi-Fi transition of the scenario, and its short waits (the first attempt, the lit frame) | estimated (agent, `0103283`) — measurement owed: the longest single transition's elapsed at both GC stages on the slowest host that runs it, L2; derived from the product's timeline: a window end or settings change reaches the next phase within `wifi.refresh_s` 5 + `wifi.reconnect_caller_grace_s` 5 + the mode switch 4 + `wifi.reconnect_settle_s` 3 + one attempt (`l2.twin_wifi_connect_delay_s` 0.7 and the poll), about 18 s | about 7 s over that path, against an estimate | a `wifi.*` delay on that path or the twin's connect delay changes |

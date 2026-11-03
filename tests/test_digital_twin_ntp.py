@@ -349,7 +349,7 @@ def _lost_sync_on(device: str) -> None:
         task = notif.start_asy_monitor()  # one fresh monitor cycle, the boot's own sleeping out its FlashInterval
         try:
             async def flashed() -> bool:
-                return _red_frames(module.neopixel) > before and bool((await notif.get_data()).Triggered)
+                return _red_frames(module.neopixel) > before
 
             await _until(clock, flashed, "no flash once the sync was lost")
         finally:

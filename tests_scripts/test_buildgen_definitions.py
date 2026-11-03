@@ -343,13 +343,18 @@ def _module_source(toml_path: Path, src_dir: Path, ext_dir: Path) -> str:
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_each_status_group_lists_the_keys_its_generated_source_returns(repo_root: Path, src_dir: Path, device: str) -> None:
+    # A key no status group lists is shown by a field's statusPath ([block, key]) elsewhere on the site.
     source = _module_source(device_toml(device), src_dir, repo_root / "ext")
-    groups = {_str(g["key"]): g for g in _groups(_section(_generate(repo_root, src_dir, device), "status"))}
+    generated = _generate(repo_root, src_dir, device)
+    groups = {_str(g["key"]): g for g in _groups(_section(generated, "status"))}
+    by_path = [_strs(f["statusPath"]) for _s, g in _field_groups(generated) for f in _fields(g) if "statusPath" in f]
     for key, function in (("networking", "_networking_status"), ("system", "_system_status"), ("notification", "_notification_status")):
-        if key not in groups:
+        shown = {_str(f["key"]) for f in _fields(groups[key])} if key in groups else set()
+        shown |= {path[1] for path in by_path if path[0] == key}
+        if not shown:
             assert f"async def {function}(" not in source, f"{function}() is generated but no status group lists it"
             continue
-        assert sorted(_str(f["key"]) for f in _fields(groups[key])) == sorted(_returned_keys(source, function)), key
+        assert shown == set(_returned_keys(source, function)), key
 
 
 # The devices whose TOML declares a notification: the notification checks below run on each of them.
@@ -365,21 +370,6 @@ def test_a_real_device_wires_a_notification_and_a_warn_signal() -> None:
     # The floor of the per-device notification checks: none of them may pass by running on no device.
     assert _NOTIFICATION_DEVICES, "no device declares a notification, so the notification checks below run on nothing"
     assert any(_wired_warn_signals(device) for device in _NOTIFICATION_DEVICES), "no notification wires a warn signal, so the warn-field check compares two empty lists"
-
-
-@pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
-def test_the_notification_status_publishes_why_its_signals_were_not_evaluated(repo_root: Path, src_dir: Path, device: str) -> None:
-    # State rides beside Triggered in the published order, its codes the catalog's NotifyState table (SPECIFICATION.md A.4).
-    source = _module_source(device_toml(device), src_dir, repo_root / "ext")
-    status = _section(_generate(repo_root, src_dir, device), "status")
-    group = next((g for g in _groups(status) if g["key"] == "notification"), None)
-    assert group is not None, f"{device} declares a notification, yet its status lists no notification group"
-    assert [f["key"] for f in _fields(group)] == _returned_keys(source, "_notification_status") == ["Triggered", "State", "TS", "PauseTime"]
-    assert _fields(group)[1] == {
-        "key": "State", "label": "Evaluation State", "kind": "readonly",
-        "description": "Whether the last notification cycle evaluated every signal, and why not, as a numeric code.",
-        "codes": {num: row["text"] for num, row in _CATALOG["status"]["NotifyState"].items()},
-    }
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -532,14 +522,12 @@ def test_every_maintenance_field_reads_its_instance_and_field_by_path(repo_root:
 
 
 @pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
-def test_the_notification_status_time_is_the_last_cycles_and_pause_time_reads_from_status(repo_root: Path, src_dir: Path, device: str) -> None:
+def test_the_notification_status_is_the_pause_alone_read_from_status(repo_root: Path, src_dir: Path, device: str) -> None:
+    # /status's notification block answers the remaining pause only; the Status page lists no notification group.
     sections = {_str(s["key"]): s for s in _sections(_generate(repo_root, src_dir, device))}
     assert "notification" in sections, f"{device} declares a notification, yet its definitions have no notification section"
-    status_fields = {_str(f["key"]): f for g in _groups(sections["status"]) if g["key"] == "notification" for f in _fields(g)}
-    assert status_fields["TS"] == {
-        "key": "TS", "label": "Last Cycle Time", "kind": "readonly", "format": "epoch",
-        "description": "When the last notification cycle ran, whether or not it evaluated a signal (see Evaluation State).",
-    }
+    assert [g["key"] for g in _groups(sections["status"]) if g["key"] == "notification"] == []
+    assert _returned_keys(_module_source(device_toml(device), src_dir, repo_root / "ext"), "_notification_status") == ["PauseTime"]
     (pause,) = [f for g in _groups(sections["notification"]) if g["key"] == "pause" for f in _fields(g)]
     assert (pause["key"], pause["kind"], pause["statusPath"]) == ("PauseTime", "number", ["notification", "PauseTime"])
 
@@ -695,10 +683,6 @@ def _returned_keys(module_source: str, function: str) -> "list[str]":
     return [k.value for k in returned.keys if isinstance(k, ast.Constant) and isinstance(k.value, str)]
 
 
-# The Status page's own rows whose key is not their table's name; every other catalog row names its table by its key.
-_STATUS_ROW_TABLES = {"State": "NotifyState"}
-
-
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_every_field_codes_table_equals_its_catalog_status_table(repo_root: Path, src_dir: Path, device: str) -> None:
     # A catalog row (the Status page's own fields) names its table by its key; a tagged field by codes=.
@@ -708,7 +692,7 @@ def test_every_field_codes_table_equals_its_catalog_status_table(repo_root: Path
         for f in _fields(group):
             if "codes" in f:
                 key = _str(f["key"])
-                table = named.get(key, _STATUS_ROW_TABLES.get(key, key))
+                table = named.get(key, key)
                 assert table in tables, f"{f['key']} carries codes but the catalog has no status table {table!r}"
                 assert f["codes"] == {num: row["text"] for num, row in tables[table].items()}, f["key"]
 
@@ -721,7 +705,7 @@ def test_every_code_tone_block_equals_its_catalog_tables_tones(repo_root: Path, 
     for _section, group in _field_groups(_generate(repo_root, src_dir, device)):
         for f in _fields(group):
             key = _str(f["key"])
-            table = named.get(key, _STATUS_ROW_TABLES.get(key, key)) if "codes" in f else None
+            table = named.get(key, key) if "codes" in f else None
             tones = {num: row["tone"] for num, row in tables[table].items() if "tone" in row} if table is not None else {}
             assert f.get("codeTones", {}) == tones, f["key"]
 

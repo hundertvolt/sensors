@@ -6,7 +6,7 @@ import time
 
 from _async_harness import cancel, run
 from _error_codes import code
-from _fake_time import DrivenTime, FakeTime, UTCValid
+from _fake_time import DrivenTime, FakeTime
 from _fast_sleep import FastAsyncSleep
 from _recording_print import record_prints
 from _src_const import src_int
@@ -50,25 +50,6 @@ def _driven() -> DrivenTime:
     # The service's time and asyncio, and asy_base_classes' time (the pause's TickSeconds), on one driven clock for the
     # block: every cycle, settle and pause round parks on it, and time moves only when the test moves it.
     return DrivenTime(asy_notification_service, asy_base_classes, sleeps=True)
-
-
-def _first_stored_sample(service: NotificationService, *, paused: bool = False) -> "tuple[object, ...]":
-    # The sample of the first monitor cycle, under the fast sleep and a set clock (the stored TS marks the cycle).
-    async def scenario() -> bool:
-        tasks = []
-        if paused:
-            await service.set_override_led(_OVERRIDE_SECS)
-            tasks.append(service.start_asy_pause())
-            assert await _rounds_until(lambda: not service._auto_active)
-        tasks.append(service.start_asy_monitor())
-        stored = await _rounds_until(lambda: service._datastruct[-1] is not None)  # TS, NOTIFY's last field
-        for task in tasks:
-            await cancel(task)
-        return stored
-
-    with FastAsyncSleep(), UTCValid():
-        assert run(scenario()) is True
-    return tuple(run(service.get_data()))
 
 
 class _FakeValue:
@@ -626,7 +607,7 @@ def test_check_one_degrades_when_the_threshold_config_cannot_be_read_logs_in_bot
     service.cfgmgr._cache.pop("WarnCO2")  # a missing key in the real store
 
     async def scenario() -> "ErrorLog":
-        assert await service._check_one(signal) is None  # not evaluated
+        assert await service._check_one(signal) is False  # not evaluated
         return await service.get_error_counter()
 
     log = run(scenario())
@@ -673,11 +654,11 @@ def test_check_one_above_true_boundary_and_direction() -> None:
     signal, fv = _make_signal("WarnCO2", above=True, value=1600)  # default threshold is 1600
     service, _clock, _cb = _make_service((signal,))
 
-    async def check(value: "int | float | None") -> "bool | None":
+    async def check(value: "int | float | None") -> "bool":
         fv.value = value
         return await service._check_one(signal)
 
-    async def scenario() -> "tuple[bool | None, bool | None, bool | None]":
+    async def scenario() -> "tuple[bool, bool, bool]":
         return await check(1599), await check(1600), await check(1601)
 
     below, at, above = run(scenario())
@@ -690,11 +671,11 @@ def test_check_one_above_false_boundary_and_direction() -> None:
     signal, fv = _make_signal("WarnCO2", above=False, value=1600)
     service, _clock, _cb = _make_service((signal,))
 
-    async def check(value: "int | float | None") -> "bool | None":
+    async def check(value: "int | float | None") -> "bool":
         fv.value = value
         return await service._check_one(signal)
 
-    async def scenario() -> "tuple[bool | None, bool | None, bool | None]":
+    async def scenario() -> "tuple[bool, bool, bool]":
         return await check(1599), await check(1600), await check(1601)
 
     below, at, above = run(scenario())
@@ -709,7 +690,7 @@ def test_check_one_nan_value_never_triggers() -> None:
     below_signal, _fv2 = _make_signal("WarnVOC", above=False, value=float("nan"))
     service, _clock, _cb = _make_service((above_signal, below_signal))
 
-    async def scenario() -> "tuple[bool | None, bool | None]":
+    async def scenario() -> "tuple[bool, bool]":
         return await service._check_one(above_signal), await service._check_one(below_signal)
 
     above_triggered, below_triggered = run(scenario())
@@ -722,7 +703,7 @@ def test_check_one_infinite_value_triggers_in_the_expected_direction() -> None:
     below_signal, _fv2 = _make_signal("WarnVOC", above=False, value=float("-inf"))
     service, _clock, _cb = _make_service((above_signal, below_signal))
 
-    async def scenario() -> "tuple[bool | None, bool | None]":
+    async def scenario() -> "tuple[bool, bool]":
         return await service._check_one(above_signal), await service._check_one(below_signal)
 
     above_triggered, below_triggered = run(scenario())
@@ -734,11 +715,11 @@ def test_check_one_none_value_is_not_triggered_no_crash() -> None:
     signal, _fv = _make_signal("WarnCO2", value=None)
     service, _clock, _cb = _make_service((signal,))
 
-    async def scenario() -> "bool | None":
+    async def scenario() -> "bool":
         return await service._check_one(signal)
 
     result = run(scenario())
-    assert result is None  # not evaluated
+    assert result is False  # not evaluated
 
 
 def test_check_one_get_value_raises_is_caught_and_logged_and_treated_as_none() -> None:
@@ -746,11 +727,11 @@ def test_check_one_get_value_raises_is_caught_and_logged_and_treated_as_none() -
     fv.raise_exc = RuntimeError("sensor boom")
     service, _clock, _cb = _make_service((signal,))
 
-    async def scenario() -> "bool | None":
+    async def scenario() -> "bool":
         return await service._check_one(signal)
 
     result = run(scenario())
-    assert result is None  # not evaluated
+    assert result is False  # not evaluated
     assert service.pr._err_count == 1
     assert service.pr.history[-1] == code("E", "SOURCE")
 
@@ -774,7 +755,7 @@ def test_check_one_returns_the_most_recent_trigger_state() -> None:
     signal, fv = _make_signal("WarnCO2", value=2000)  # triggered
     service, _clock, _cb = _make_service((signal,))
 
-    async def scenario() -> "tuple[bool | None, bool | None]":
+    async def scenario() -> "tuple[bool, bool]":
         first = await service._check_one(signal)
         fv.value = 0  # not triggered
         return first, await service._check_one(signal)
@@ -1108,9 +1089,9 @@ def test_monitor_loop_restart_does_not_clobber_an_active_led_override() -> None:
     # It would silently clobber an override _pause_loop() had legitimately set active meanwhile, the two tasks, started by
     # start_tasks(), being independently restartable by supervise_tasks() while sharing one unlocked flag. Fixed by making
     # _pause_loop() the flag's sole writer.
-    service, _clock, _cb = _make_service(())
+    service, clock, _cb = _make_service(())
 
-    async def scenario(ticks: DrivenTime) -> "tuple[bool, bool, int | None]":
+    async def scenario(ticks: DrivenTime) -> "tuple[bool, bool, int, bool]":
         pause_task = service.start_asy_pause()
         await ticks.elapse(0)
         await service.set_override_led(_OVERRIDE_SECS)
@@ -1122,17 +1103,19 @@ def test_monitor_loop_restart_does_not_clobber_an_active_led_override() -> None:
         monitor_task = service.start_asy_monitor()
         await ticks.elapse(0)  # the restarted monitor's first cycle, inside the override
         during_after_restart = service._auto_active
-        state = (await service.get_data()).State
+        interval = (await service.get_dict_cfg())["NOTIFY"]["FlashInterval"]
+        assert isinstance(interval, float), interval
+        parked = ticks.now + round(interval * 1000) in ticks.wakes()
 
         await cancel(pause_task)
         await cancel(monitor_task)
-        return during_before_restart, during_after_restart, state
+        return during_before_restart, during_after_restart, clock.calls, parked
 
     with _driven() as ticks:
-        before_restart, after_restart, state = run(scenario(ticks))
+        before_restart, after_restart, asked, parked = run(scenario(ticks))
     assert before_restart is False  # override genuinely active
     assert after_restart is False  # ...and still active after _monitor_loop()'s restart
-    assert state == 1  # the restarted monitor's cycle ran, and read the pause as off by setting
+    assert (asked, parked) == (0, True)  # the restarted monitor's cycle ran to its sleep and read the pause as active
 
 
 def test_set_override_led_above_the_max_clamps_and_reads_back_clamped() -> None:
@@ -1361,35 +1344,29 @@ def test_monitor_loop_config_failures_before_and_after_a_good_read_share_one_slo
 
 
 def test_monitor_loop_self_heals_in_place_once_its_config_reads_again() -> None:
-    # The same task (no restart) goes back to its normal cycle: it stores fresh NOTIFY data again.
+    # The same task (no restart) goes back to its normal cycle: a signal above its threshold flashes again.
     cb = _FakeSignalCb()
     clock = _FakeClock()
-    service = NotificationService(cb, clock.get, (), cfg_path=_tmp_cfg_dir())
+    signal, _fv = _make_signal("WarnCO2", value=2000)  # above the 1600 default threshold
+    service = NotificationService(cb, clock.get, (signal,), cfg_path=_tmp_cfg_dir())
     run(service.setup())
     saved = service.cfgmgr._cache.pop("FlashBri")
 
-    async def scenario() -> "tuple[tuple[object, ...], tuple[object, ...], bool]":
+    async def scenario() -> "tuple[int, bool, bool]":
         task = service.start_asy_monitor()
         for _ in range(10):
             await asyncio.sleep(0)
-        while_failing = tuple(await service.get_data())
+        while_failing = len(cb.calls)
         service.cfgmgr._cache["FlashBri"] = saved
-        for _ in range(10):
-            await asyncio.sleep(0)
-        after = tuple(await service.get_data())
+        flashed = await _rounds_until(lambda: len(cb.calls) > 0)
         still_running = not task.done()
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-        return while_failing, after, still_running
+        await cancel(task)
+        return while_failing, flashed, still_running
 
-    with FastAsyncSleep(), UTCValid():
-        while_failing, after, still_running = run(scenario())
-    assert while_failing[:2] == (False, 4)  # a failing cycle stores why nothing was evaluated
-    assert after[:2] == (False, 0)  # the next good cycle evaluates again (no signals: all of them)
-    assert isinstance(after[2], int)
+    with FastAsyncSleep():
+        while_failing, flashed, still_running = run(scenario())
+    assert while_failing == 0  # a failing cycle evaluates nothing
+    assert flashed is True  # the next good cycle evaluates and flashes again
     assert still_running is True
 
 
@@ -1403,52 +1380,6 @@ def test_the_pause_counts_measured_time_not_rounds() -> None:
         ticks.now = 3000
         second = run(service.get_override_led())
     assert (first, second) == (1, 0)
-
-
-def test_the_stored_sample_has_a_timestamp_only_once_the_clock_is_set() -> None:
-    # utc_now() is None until the NTP client sets the clock this boot; the sample is stored either way.
-    service, _clock, _cb = _make_service(())
-    run(service._store_notif_data(any_triggered=True, state=0))
-    assert run(service.get_data()) == (True, 0, None)
-    with UTCValid():
-        run(service._store_notif_data(any_triggered=False, state=3))
-    data = run(service.get_data())
-    assert (data.Triggered, data.State) == (False, 3)
-    assert isinstance(data.TS, int)
-
-
-def test_the_sample_reports_why_signals_were_not_evaluated() -> None:
-    # One cycle per State code: 0 every signal evaluated, 1 off by setting, 2 no local time, 3 a value unavailable,
-    # 4 the own configuration unreadable; Triggered keeps its meaning beside it.
-    service, _clock, _cb = _make_service()
-    assert tuple(run(service.get_data())) == (False, None, None)  # the construction default, before any cycle
-
-    def first_sample(
-        values: "tuple[int | float | None, ...]" = (1000,), cfg: "dict[str, int | float | str | bool | None] | None" = None,
-        clock: "_FakeClock | None" = None, *, paused: bool = False, broken: bool = False,
-    ) -> "tuple[object, ...]":
-        signals = tuple(_make_signal(("WarnCO2", "WarnVOC")[i], value=value)[0] for i, value in enumerate(values))
-        service, _clock, _cb = _make_service(signals, local_time=clock)
-        if cfg is not None:
-            run(service._set_dict_cfg(cfg, service.get_cfg_schema()))
-        if broken:
-            service.cfgmgr._cache.pop("FlashBri")  # every own-config read now fails
-        return _first_stored_sample(service, paused=paused)[:2]
-
-    raising = _FakeClock()
-    raising.raise_exc = RuntimeError("clock boom")
-    no_time = _FakeClock()
-    no_time.value = None
-    assert first_sample() == (False, 0)
-    assert first_sample((2000,)) == (True, 0)
-    assert first_sample(cfg={"AutoOn": False}) == (False, 1)
-    assert first_sample((2000,), paused=True) == (False, 1)
-    assert first_sample((2000,), clock=_FakeClock(9, 0)) == (False, 1)  # before the 10:00 default window
-    assert first_sample((2000,), clock=no_time) == (False, 2)
-    assert first_sample((2000,), clock=raising) == (False, 2)
-    assert first_sample((None,)) == (False, 3)
-    assert first_sample((None, 2000)) == (True, 3)  # the other signal still evaluated and flashed
-    assert first_sample((2000,), broken=True) == (False, 4)
 
 
 def test_get_task_starters_and_get_timer_starters_shape() -> None:
