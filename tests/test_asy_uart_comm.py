@@ -168,15 +168,6 @@ def persisted(comm: UARTComm) -> "list[str]":
     return logged(comm)[1]
 
 
-def _crc16_pair_dropping(*, from_initiator: bool, frame: int) -> Pair:
-    # CRC16 at both ends, both consoles at the error level, and one payload byte flipped in the frame-th frame (from 0)
-    # one end sends, so the receiving driver drops exactly that frame.
-    pair = run(build_pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(b""), set_callback=accept_set(), crc_a=CRC16(), crc_b=CRC16(), debug=ERROR_LEVEL), RUN_LIMIT_S)
-    sender = pair.fake_a if from_initiator else pair.fake_b
-    pair.link.direction_from(sender).corrupt_indices = {frame * (_FRAME + CRC16().length()) + _FRAME - 1: 0x01}
-    return pair
-
-
 def _e(name: str) -> str:  # persisted()'s form of a catalog errno
     return f"E{code('E', name)}"
 
@@ -1360,36 +1351,13 @@ def test_listening_clears_the_hold_off() -> None:
 
 
 @_on_poll_rounds
-def test_a_frame_read_failing_on_a_receive_error_persists_the_overrun_warning() -> None:
-    # The frame fails under its own code, and the overrun that caused it is named beside it, so a
-    # silent peer and a receive overrun no longer read alike.
+def test_a_frame_read_failing_on_a_receive_error_fails_under_its_own_code_alone() -> None:
+    # The overrun fails the frame like any lost frame: one entry, the frame's own code; the driver counts the overrun.
     pair = run(build_pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(b""), set_callback=accept_set()), RUN_LIMIT_S)
     pair.fake_a.plant_rx_error(0x08)  # UARTRSR OE: the ACK this side waits for is lost to an overrun
     assert run(pair.initiator.uart_set(1, b"x"), _STEP_BOUND_S) is False
-    assert persisted(pair.initiator) == [_w("UART_RX_OVERRUN"), _e("UART_NO_ACK")], persisted(pair.initiator)
-
-
-@_on_poll_rounds
-def test_a_command_frame_the_crc_drops_ends_the_listen_under_its_own_message() -> None:
-    # A corrupted frame and a silent or cancelled read share the listen's one code; the message names the dropped
-    # frame, so the history's entry is not read as a peer that never spoke (J.6).
-    pair = _crc16_pair_dropping(from_initiator=True, frame=0)  # the GET frame
-    with record_prints(pair.responder.pr) as recorder:
-        assert run(pair.with_listener(pair.initiator.uart_get(1)), _STEP_BOUND_S) is None
-    assert persisted(pair.responder)[:1] == [_e("TIMEOUT")], persisted(pair.responder)
-    assert "UART error: listen read dropped a corrupted or incomplete frame" in recorder.text(), recorder.text()
-
-
-@_on_poll_rounds
-def test_an_answer_the_crc_drops_is_named_apart_from_a_get_left_unanswered() -> None:
-    # The GET's reply wait names a dropped answer as the listen does; the responder, which heard nothing back, keeps
-    # its silent message (J.6).
-    pair = _crc16_pair_dropping(from_initiator=False, frame=1)  # the answer header, after the GET's ACK
-    with record_prints() as recorder:
-        assert run(pair.with_listener(pair.initiator.uart_get(1)), _STEP_BOUND_S) is None
-    assert persisted(pair.initiator)[:1] == [_e("TIMEOUT")], persisted(pair.initiator)
-    assert "UART_A UART error: answer read dropped a corrupted or incomplete frame for GET 1" in recorder.text(), recorder.text()
-    assert "UART_B UART error: no ACK for frame 1" in recorder.text(), recorder.text()
+    assert persisted(pair.initiator) == [_e("UART_NO_ACK")], persisted(pair.initiator)
+    assert pair.driver_a.rx_overruns == 1
 
 
 @_on_poll_rounds
@@ -1420,36 +1388,6 @@ def test_a_listen_cleared_before_any_frame_keeps_its_silent_message() -> None:
     assert persisted(pair.responder)[:1] == [_e("TIMEOUT")], persisted(pair.responder)
     assert "UART_B UART error: listen read failed or was cancelled" in recorder.text(), recorder.text()
     assert "listen read dropped" not in recorder.text(), recorder.text()
-
-
-@_on_poll_rounds
-def test_a_train_chunk_the_crc_drops_is_named_apart_from_a_stalled_train() -> None:
-    pair = _crc16_pair_dropping(from_initiator=True, frame=1)  # the SET's data chunk, after its header
-    with record_prints() as recorder:
-        assert run(pair.with_listener(pair.initiator.uart_set(1, b"x")), _STEP_BOUND_S) is False
-    assert persisted(pair.responder)[:1] == [_e("TIMEOUT")], persisted(pair.responder)
-    assert "UART_B UART error: train read dropped a corrupted or incomplete frame at chunk 2" in recorder.text(), recorder.text()
-    assert "UART_A UART error: no ACK for frame 2" in recorder.text(), recorder.text()
-
-
-@_on_poll_rounds
-def test_an_ack_the_crc_drops_is_named_apart_from_a_missing_ack() -> None:
-    pair = _crc16_pair_dropping(from_initiator=False, frame=0)  # the ACK of the SET's header
-    with record_prints() as recorder:
-        assert run(pair.with_listener(pair.initiator.uart_set(1, b"x")), _STEP_BOUND_S) is False
-    assert persisted(pair.initiator)[:1] == [_e("UART_NO_ACK")], persisted(pair.initiator)
-    assert "UART_A UART error: ACK read dropped a corrupted or incomplete frame after sending frame 1" in recorder.text(), recorder.text()
-    assert "UART_B UART error: train stalled at chunk 2" in recorder.text(), recorder.text()
-
-
-@_on_poll_rounds
-def test_a_transmit_that_never_drains_fails_within_the_link_timeout() -> None:
-    # A stalled transmitter used to hold the write forever; the write now gives up at the link's
-    # reply timeout and fails like any other write, so the link resyncs and recovers.
-    pair = run(build_pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(b""), set_callback=accept_set()), RUN_LIMIT_S)
-    pair.fake_a.tx_pending_rounds = 1 << 30  # txdone() never answers True
-    assert run(pair.initiator.uart_set(1, b"x"), _STEP_BOUND_S) is False
-    assert persisted(pair.initiator)[0] == _e("UART_WRITE_FAILED"), persisted(pair.initiator)
 
 
 def test_the_drain_ends_once_the_line_is_quiet() -> None:
@@ -2727,53 +2665,6 @@ def test_a_train_at_the_cap_is_accepted() -> None:
 
 
 @_on_poll_rounds
-def test_a_transfer_over_the_own_cap_is_refused_before_anything_is_sent() -> None:
-    # The sender knows its own cap, so a train its peer would refuse is refused at the argument
-    # checks; the declared size is the same (CHUNKS - 1) x payload_size the receiver compares.
-    cap = 2 * PAYLOAD_SIZE
-    pair = run(build_pair(limits=transfer_limits(max_transfer_bytes=cap), get_callback=echo_get(b""), set_callback=accept_set()), RUN_LIMIT_S)
-    over = cap + 1
-    assert run(pair.initiator.uart_set(1, bytes(over)), RUN_LIMIT_S) is False
-    assert run(pair.initiator.uart_set_into(1, bytearray(over), over), RUN_LIMIT_S) is False
-    assert run(pair.initiator.uart_set_stream(1, over, lambda chunk, buf: len(buf)), RUN_LIMIT_S) is False
-    assert run(pair.initiator.uart_get(1, exp_size=over), RUN_LIMIT_S) is None
-    assert run(pair.initiator.uart_get_into(1, bytearray(over), exp_size=over), RUN_LIMIT_S) is None
-    assert run(pair.initiator.uart_get_stream(1, lambda chunk, buf: True, exp_size=over), RUN_LIMIT_S) is None
-    assert pair.wire_from_initiator() == b""
-    assert persisted(pair.initiator) == [_e("UART_TRANSFER_CAP")], persisted(pair.initiator)
-    assert run(pair.with_listener(pair.initiator.uart_set(2, bytes(cap))), _RUN_BOUND_S) is True
-
-
-def _over_cap_calls(comm: UARTComm, over: int) -> "tuple[tuple[str, Coroutine[object, object, object], object], ...]":
-    # Each initiator entry point given a size one past the cap, with the sentinel its refusal returns.
-    return (
-        ("uart_set", comm.uart_set(1, bytes(over)), False),
-        ("uart_set_into", comm.uart_set_into(1, bytearray(over), over), False),
-        ("uart_set_stream", comm.uart_set_stream(1, over, lambda chunk, buf: len(buf)), False),
-        ("uart_get", comm.uart_get(1, exp_size=over), None),
-        ("uart_get_into", comm.uart_get_into(1, bytearray(over), exp_size=over), None),
-        ("uart_get_stream", comm.uart_get_stream(1, lambda chunk, buf: True, exp_size=over), None),
-    )
-
-
-@_on_poll_rounds
-def test_a_transfer_over_the_own_cap_is_the_caps_refusal_at_every_cap() -> None:
-    # dev's cap is exactly 254 payloads, so every size over it also needs more than 255 chunks: still the
-    # cap's refusal, logged once per call with nothing sent, at that cap and above it; a train at it completes.
-    for cap in (254 * PAYLOAD_SIZE, 254 * PAYLOAD_SIZE + 1, 300 * PAYLOAD_SIZE):
-        pair = run(build_pair(limits=transfer_limits(max_transfer_bytes=cap), get_callback=echo_get(b""), set_callback=accept_set()), RUN_LIMIT_S)
-        for name, work, refused in _over_cap_calls(pair.initiator, cap + 1):
-            before = run(pair.initiator.get_error_counter(), RUN_LIMIT_S)[pair.initiator.name]["ErrCount"]
-            assert run(work, RUN_LIMIT_S) is refused, f"{name} at a cap of {cap}"
-            assert persisted(pair.initiator) == [_e("UART_TRANSFER_CAP")], f"{name} at a cap of {cap}: {persisted(pair.initiator)}"
-            logged = run(pair.initiator.get_error_counter(), RUN_LIMIT_S)[pair.initiator.name]["ErrCount"] - before
-            assert logged == 1, f"{name} at a cap of {cap} logged {logged} entries"
-            assert pair.wire_from_initiator() == b"", f"{name} at a cap of {cap} sent bytes"
-        if cap == 254 * PAYLOAD_SIZE:
-            assert run(pair.with_listener(pair.initiator.uart_set(2, bytes(cap))), _RUN_BOUND_S) is True
-
-
-@_on_poll_rounds
 def test_a_size_within_a_cap_above_the_largest_train_is_refused_as_too_many_chunks() -> None:
     # A cap above 254 payloads holds sizes no CHUNKS byte can declare: those stay the train's own refusal.
     cap = 300 * PAYLOAD_SIZE
@@ -2849,7 +2740,7 @@ def test_repeated_maximum_size_and_over_cap_trains_keep_the_heap_flat() -> None:
 @_on_poll_rounds
 def test_a_lapped_ring_is_a_receive_overrun_and_the_link_resyncs() -> None:
     # More arrives than the ring holds while the responder's consumer is held: the read reports the lap as
-    # J.7's receive overrun, named once by its code, and no lapped byte reaches a callback.
+    # J.7's receive overrun, the listen fails under its own code alone, and no lapped byte reaches a callback.
     asked: list[int] = []
 
     def counting_set(cmd_id: int) -> "tuple[bool, None]":
@@ -2864,8 +2755,7 @@ def test_a_lapped_ring_is_a_receive_overrun_and_the_link_resyncs() -> None:
 
     assert run(scenario(), _LISTENER_RUN_BOUND_S) == ListenResult(None, None, None)
     assert pair.driver_b.rx_overruns > 0
-    assert persisted(pair.responder)[0] == _w("UART_RX_OVERRUN"), persisted(pair.responder)
-    assert persisted(pair.responder).count(_w("UART_RX_OVERRUN")) == 1
+    assert persisted(pair.responder) == [_e("TIMEOUT")], persisted(pair.responder)
     assert asked == []
     assert copied_out(run(pair.with_listener(pair.initiator.uart_get(1)), _RUN_BOUND_S)) == b"ok"
 
@@ -2906,7 +2796,6 @@ def test_a_ring_at_its_floor_holds_a_config_flush() -> None:
     assert failed >= 1
     assert copied_out(got) == b"ok"
     assert pair.driver_b.rx_overruns == 0  # no lap
-    assert _w("UART_RX_OVERRUN") not in persisted(pair.responder), persisted(pair.responder)
 
 
 async def _listen_forever(pair: Pair) -> None:

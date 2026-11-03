@@ -343,7 +343,7 @@ def test_webserver_service_answers_before_and_after_a_setup_whose_logger_cannot_
     assert _answers(svc, calls) == []
 
 
-def test_uart_link_driver_with_no_bus_answers_false_and_persists_the_refusal() -> None:
+def test_uart_link_driver_with_no_bus_stays_uninitialized_and_persists_the_refusal() -> None:
     driver = UARTLinkDriver(None, ROLE_INITIATOR, name_ext="gate")
     calls: Calls = {
         "get_error_counter": ((), _is_log_of(driver.name)),
@@ -354,7 +354,7 @@ def test_uart_link_driver_with_no_bus_answers_false_and_persists_the_refusal() -
     }
     assert driver.initialized is False
     assert _answers(driver, calls) == []
-    assert run(driver.setup()) is False
+    assert run(driver.setup()) is None
     assert driver.initialized is False
     assert _last_error(run(driver.get_error_counter()), driver.name) == code("E", "UART_NO_BUS")
     assert _answers(driver, calls) == []

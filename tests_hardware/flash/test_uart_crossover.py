@@ -1,6 +1,6 @@
 """Flash-tier automated tests: the UART message protocol across the bench board's permanent UART crossover jumper -
 real timing, real peripheral behaviour and real poll latency, the three things no fake reproduces (SPECIFICATION.md
-Parts E.6 and J.7), each crossover script with no CRC and with CRC16 over the same jumper."""
+Parts E.6 and J.7), each crossover script with no CRC and with CRC16 over the jumper, the exchange also with COBS."""
 
 import sys
 from pathlib import Path
@@ -94,7 +94,7 @@ def _run_or_fail(board: Board, script: str, timeout_s: float, *, crc_mode: str =
     return parse_facts(output)
 
 
-@pytest.mark.parametrize("crc_mode", _CRC_MODES)
+@pytest.mark.parametrize("crc_mode", [*_CRC_MODES, "cobs"])
 def test_get_and_set_and_a_multi_chunk_train_cross_the_jumper(board: Board, crc_mode: str) -> None:
     # One Python instance as initiator and one as responder interoperating is a required property of this protocol, and
     # the jumper is where it is physically true; the maximum train each way, and an over-cap train refused unallocated.

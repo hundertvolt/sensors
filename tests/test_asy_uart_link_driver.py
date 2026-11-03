@@ -106,7 +106,9 @@ class Pair:
             await self.responder._comm.uart_listen()
 
     async def setup(self) -> bool:
-        return await self.initiator.setup() and await self.responder.setup()
+        await self.initiator.setup()
+        await self.responder.setup()
+        return self.initiator.initialized and self.responder.initialized
 
     async def with_listener(self, work: "Coroutine[object, object, T]", rounds: int = 1, *, listener_may_stall: bool = False) -> "T":
         # The harness's rule: a stalled responder fails the exchange unless the test declares it.
@@ -181,10 +183,10 @@ def test_the_readiness_flag_follows_the_inner_setup() -> None:
     # False until setup() succeeds; a failed setup (no bus, refused at construction) leaves it False.
     pair = Pair()
     before = pair.initiator.initialized
-    assert run(pair.initiator.setup(), RUN_LIMIT_S) is True
+    run(pair.initiator.setup(), RUN_LIMIT_S)
     assert (before, pair.initiator.initialized) == (False, True)
     refused = UARTLinkDriver(None, ROLE_INITIATOR, limits=transfer_limits(payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS), name_ext="none")
-    assert run(refused.setup(), RUN_LIMIT_S) is False
+    run(refused.setup(), RUN_LIMIT_S)
     assert refused.initialized is False
 
 
@@ -554,7 +556,7 @@ def test_a_refused_construction_ends_every_task_for_both_roles() -> None:
     # escalation reaches a reboot for a link that cannot come up (SPECIFICATION.md Part C.7.2).
     for role in (ROLE_INITIATOR, ROLE_RESPONDER):
         driver = _refused_link(role)
-        assert run(driver.setup(), RUN_LIMIT_S) is False
+        run(driver.setup(), RUN_LIMIT_S)
         assert driver.initialized is False
         done = run(_rounds_until_done(driver), RUN_LIMIT_S)
         assert done == [True], f"{role}: tasks done {done}"

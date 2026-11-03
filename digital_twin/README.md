@@ -51,7 +51,8 @@ the UDP shim or the NTP responder (see "Running the twin's own tests" below).
   so a test can read the gaps between feeds. `peripheral()` (a booted bus by name),
   `reset_peripherals()` and `reset_test_state()` are test-only.
 - `rp2.py` — the DMA channel surface a UART receive ring uses: a paced channel takes the bytes
-  `machine.py`'s `UART` receives as their wire time elapses, never per event-loop turn.
+  `machine.py`'s `UART` receives as their wire time elapses, never per event-loop turn; aborting a
+  busy channel that still chains raises, where silicon hangs (SPECIFICATION.md F.5.8).
 - `_sgp40_chip.py` / `_scd30_chip.py` / `_bmp3xx_chip.py` / `_isl29125_chip.py` — one chip fake per
   sensor, each verified against its own datasheet in `datasheets/` for the raw transaction shape and
   sensible value ranges, each class spelled as its driver's `_NAME` (`SGP40Chip`, `SCD30Chip`,

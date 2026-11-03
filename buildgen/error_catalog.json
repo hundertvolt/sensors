@@ -158,7 +158,6 @@
       "54": {"owner": "uart", "name": "UART_DRAIN_BOUND", "text": "resynced with the drain bound reached (the peer never stopped sending)"},
       "55": {"owner": "uart", "name": "UART_CANCEL_UNACKED", "text": "the driver's unacknowledged-cancel counter rose"},
       "56": {"owner": "uart", "name": "UART_CMD_DECLINED", "text": "a callback declined a command id"},
-      "57": {"owner": "uart", "name": "UART_RX_OVERRUN", "text": "a failed frame read saw the receive ring overrun or a UART receive error"},
       "60": {"owner": "webserver", "name": "HTTP_REFUSED", "text": "a connection over max_connections was refused: closed with no response"},
       "61": {"owner": "webserver", "name": "HTTP_BAD_HEAD", "text": "an oversized request head or a Content-Length that is not digits or comes twice was refused; answered 400"},
       "63": {"owner": "fram", "name": "FRAM_BLOCK_INVALID", "text": "a chunk block held invalid data; it is repaired from the other copy"},
