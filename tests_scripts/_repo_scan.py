@@ -305,14 +305,14 @@ def prose_blocks(path: str, text: str) -> list[Block]:
     return list(_prose_blocks(path, text))
 
 
-def python_files(root: Path, scope: str) -> list[Path]:
-    # Every .py file under root/scope, sorted, never entering concurrent scratch: a directory deleted mid-walk
-    # would raise from the walk itself, so a filter applied to its results comes too late.
+def python_files(root: Path, scope: str, suffixes: tuple[str, ...] = (".py",)) -> list[Path]:
+    # Every .py file (or each suffix asked) under root/scope, sorted, never entering concurrent scratch: a directory
+    # deleted mid-walk would raise from the walk itself, so a filter applied to its results comes too late.
     found: list[Path] = []
     for here, subdirs, names in os.walk(root / scope, onerror=_raise) if (root / scope).is_dir() else ():
         rel = Path(here).relative_to(root).as_posix()
         subdirs[:] = [d for d in subdirs if f"{rel}/{d}" not in CONCURRENT_SCRATCH]
-        found += [Path(here) / n for n in names if n.endswith(".py")]
+        found += [Path(here) / n for n in names if n.endswith(suffixes)]
     return sorted(found)
 
 
