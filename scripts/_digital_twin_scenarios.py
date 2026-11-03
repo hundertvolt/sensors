@@ -594,6 +594,11 @@ def _beyond_max_rejected_cleanly(ctx: Context) -> None:
         _still_serving(twin.port)
 
 
+# The config files every scenario boot finds already there: SYSTEM's (_log_at_error_level()) and NTP's (the runner's
+# offline responder).
+_PLANTED_CONFIG_LOGS = ("CFGMGR_SYSTEM", "CFGMGR_NTP")
+
+
 @scenario("a_bounded_fault_storm_persists_only_what_its_events_allow", family="fault_storm")
 def _bounded_fault_storm(ctx: Context) -> None:
     """A fault storm below the escalation threshold persists per FRAM-backed logger only the entries its events allow and resets nothing."""
@@ -609,9 +614,9 @@ def _bounded_fault_storm(ctx: Context) -> None:
     if line is None:
         raise AssertionError("the twin printed no shutdown line")
     failed = _LOOP_LAG_FAULTS if sgp40 else 0
-    # Each refusal at the ceiling is one WEBSERVER entry (_note_drop()); a served connection persists none. Over the
-    # boot's fresh config dir each config store persists its file's not-found warning once.
-    events = {name: 1 for name in line.fram_writes_by if name.startswith("CFGMGR_")}
+    # Each refusal at the ceiling is one WEBSERVER entry (_note_drop()); a served connection persists none. A config
+    # store whose file this boot did not find persists its not-found warning once; a planted one's owes none.
+    events = {name: 1 for name in line.fram_writes_by if name.startswith("CFGMGR_") and name not in _PLANTED_CONFIG_LOGS}
     events |= {"SGP40": _ENTRIES_PER_FAILED_CYCLE * failed + sum(at <= failed for at in _STORM_RUNGS_AT), "WEBSERVER": sum(r != HTTPStatus.OK for r in burst)}
     bound = {name: _CHUNK_COPIES * (1 + events.get(name, 0)) for name in line.fram_writes_by}
     over = {name: (n, bound[name]) for name, n in line.fram_writes_by.items() if n > bound[name]}

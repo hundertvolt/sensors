@@ -1387,9 +1387,10 @@ def test_every_refusal_answers_false_and_changes_nothing() -> None:
         rig = _Rig()
 
         async def armed(svc: SystemService = rig.svc) -> None:
+            svc._reset_decided = True  # as both of _reboot()'s callers decide first
             await svc._reboot(_const("_RR_TASK_BUDGET"), "Reboot triggered", machine.reset)
 
-        _refused(rig, purpose, before=armed)  # a reset already armed
+        _refused(rig, purpose, before=armed)  # a reset already decided and armed
 
 
 def test_the_same_command_again_answers_true_and_any_other_answers_false() -> None:
@@ -2067,46 +2068,84 @@ def test_the_task_budget_steps_once_past_its_max_and_stops() -> None:
     assert budgets[-3:] == [top, top, top] and top_max < top <= top_max + step
 
 
-def test_a_command_accepted_while_the_escalation_logs_keeps_its_own_reset() -> None:
+def _gate_entry_write(rig: _Rig, entry: str) -> "tuple[asyncio.Event, asyncio.Event]":
+    # The escalation's entry write held at its start until release is set; reached marks the hold.
+    release, reached = asyncio.Event(), asyncio.Event()
+    real_err_s = rig.svc.pr.err_s
+
+    async def gated_err_s(*args: object, errno: int = 0, sep: str = " ", end: str = "\n", real: "_ErrS" = real_err_s) -> None:
+        if errno == code("E", entry):
+            reached.set()
+            await release.wait()
+        await real(*args, errno=errno, sep=sep, end=end)
+
+    rig.svc.pr.err_s = gated_err_s  # type: ignore[method-assign]
+    return release, reached
+
+
+async def _until_armed(svc: SystemService) -> None:
+    for _ in range(_RUN_BOUND_S * 100):
+        if svc._reset_armed:
+            return
+        await _real_time(_POLL_MS)
+    raise AssertionError("the escalation never armed its reset")
+
+
+async def _until_reached(reached: asyncio.Event) -> None:
+    for _ in range(_RUN_BOUND_S * 100):
+        if reached.is_set():
+            return
+        await _real_time(_POLL_MS)
+    raise AssertionError("the supervisor never escalated")
+
+
+def test_a_command_during_the_escalations_entry_write_is_refused_and_the_escalation_resets() -> None:
+    # Once the escalation decided the reset, the gate refuses every command: the record keeps code 5, nothing is
+    # erased, and the escalation's own reset arms once the entry is written.
     for purpose in ("_RR_REBOOT", "_RR_FRAM_ERASED"):
         rig = _Rig(tasks=0)
         calls = [0]
         rig.starters = [_dead_starter(calls)]
-        release, reached = asyncio.Event(), asyncio.Event()
-        real_err_s = rig.svc.pr.err_s
+        release, reached = _gate_entry_write(rig, "TASK_BUDGET_REBOOT")
+        answers: list[object] = []
 
-        async def gated_err_s(
-            *args: object, errno: int = 0, sep: str = " ", end: str = "\n", real: "_ErrS" = real_err_s,
-            release: asyncio.Event = release, reached: asyncio.Event = reached,
-        ) -> None:
-            if errno == code("E", "TASK_BUDGET_REBOOT"):
-                reached.set()
-                await release.wait()
-            await real(*args, errno=errno, sep=sep, end=end)
-
-        rig.svc.pr.err_s = gated_err_s  # type: ignore[method-assign]
-
-        async def scenario(purpose: str = purpose, rig: _Rig = rig, release: asyncio.Event = release, reached: asyncio.Event = reached) -> None:
+        async def scenario(purpose: str = purpose, rig: _Rig = rig, release: asyncio.Event = release, reached: asyncio.Event = reached, answers: "list[object]" = answers) -> None:
             sup = await rig.start()
-            for _ in range(_RUN_BOUND_S * 100):
-                if reached.is_set():
-                    break
-                await _real_time(_POLL_MS)
-            assert reached.is_set(), "the supervisor never logged its budget reboot"
-            fed = rig.wdt.feed_count
-            assert await _word(rig.svc, purpose)() is True
+            await _until_reached(reached)
+            answers.extend((await _word(rig.svc, purpose)(), machine.mem_backup(0)[1]))
             release.set()
-            await rig.settle()
-            assert rig.wdt.feed_count > fed  # the sequence fed through its steps
+            await _until_armed(rig.svc)
             await rig.stop(sup)
 
         with FastAsyncSleep():
             run(scenario())
-        assert len(rig.svc._reset_timer.arms) == 1 and machine.mem_backup(0)[1] == _const(purpose)
-        assert rig.svc._force_watchdog_starve is True  # set by the arm alone (Part C.9), not by the escalation's starve
-        if purpose == "_RR_FRAM_ERASED":
-            assert _all_zero(rig.chip.memory)
+        assert answers == [False, _const("_RR_TASK_BUDGET")], (purpose, answers)
+        assert len(rig.svc._reset_timer.arms) == 1 and machine.mem_backup(0)[1] == _const("_RR_TASK_BUDGET")
+        assert rig.svc._force_watchdog_starve is True
+        assert not _all_zero(rig.chip.memory), purpose  # a refused erase blanks nothing
 
+
+def test_a_command_during_an_entry_write_that_never_ends_leaves_the_escalations_code_to_the_watchdog() -> None:
+    # The write hangs (a lock an overflow left held): the command is refused, nothing feeds after the hold, and the
+    # record still reads 5 when the watchdog resets.
+    rig = _Rig(tasks=0)
+    calls = [0]
+    rig.starters = [_dead_starter(calls)]
+    _release, reached = _gate_entry_write(rig, "TASK_BUDGET_REBOOT")
+    seen: list[object] = []
+
+    async def scenario() -> None:
+        sup = await rig.start()
+        await _until_reached(reached)
+        fed = rig.wdt.feed_count
+        seen.extend((await rig.svc.reboot_system(), machine.mem_backup(0)[1]))
+        await _yields(20)
+        seen.extend((rig.wdt.feed_count - fed, rig.svc._reset_armed, machine.mem_backup(0)[1]))
+        await rig.stop(sup)
+
+    with FastAsyncSleep():
+        run(scenario())
+    assert seen == [False, _const("_RR_TASK_BUDGET"), 0, False, _const("_RR_TASK_BUDGET")], seen
 
 
 def test_a_commands_acceptance_decides_the_reset_before_the_sequence_runs() -> None:
@@ -2439,6 +2478,7 @@ def test_a_refused_command_never_stops_the_supervisor_feeding() -> None:
     rig = _Rig()
 
     async def armed(svc: SystemService = rig.svc) -> None:
+        svc._reset_decided = True  # as both of _reboot()'s callers decide first
         await svc._reboot(_const("_RR_TASK_BUDGET"), "Reboot triggered", machine.reset)
 
     _refused(rig, "_RR_REBOOT", before=armed)
@@ -3683,41 +3723,26 @@ def test_a_stack_overflow_caught_by_a_level_setter_reboots_through_the_superviso
     asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
 
 
-def test_a_command_accepted_while_the_stack_escalation_logs_keeps_its_own_reset() -> None:
-    # The re-check after the E25 entry write: a command that passed the gate meanwhile owns the reset, code 3. The record
-    # reads 20 from the decision on, then 9 from the command's acceptance, so the command's own record is written last.
+def test_a_command_during_the_stack_escalations_entry_write_is_refused_and_the_record_keeps_20() -> None:
+    # The C-stack escalation decided the reset before its E25 write: a command then is refused, the record reads 20
+    # throughout, and the escalation's own reset arms once the entry is written.
     rig = _Rig()
-    records: list[int] = []
-    release, reached = asyncio.Event(), asyncio.Event()
-    real_err_s = rig.svc.pr.err_s
-
-    async def gated_err_s(*args: object, errno: int = 0, sep: str = " ", end: str = "\n", real: "_ErrS" = real_err_s) -> None:
-        if errno == code("E", "STACK_EXHAUSTED"):
-            reached.set()
-            await release.wait()
-        await real(*args, errno=errno, sep=sep, end=end)
-
-    rig.svc.pr.err_s = gated_err_s  # type: ignore[method-assign]
+    records: list[object] = []
+    release, reached = _gate_entry_write(rig, "STACK_EXHAUSTED")
 
     async def scenario() -> None:
         sup = await rig.start()
         asy_print_log.report_if_fatal(_stack_error())
-        for _ in range(_RUN_BOUND_S * 100):
-            if reached.is_set():
-                break
-            await _real_time(_POLL_MS)
-        assert reached.is_set(), "the supervisor never escalated"
-        records.append(machine.mem_backup(0)[1])
-        assert await rig.svc.reboot_system() is True
-        records.append(machine.mem_backup(0)[1])
+        await _until_reached(reached)
+        records.extend((machine.mem_backup(0)[1], await rig.svc.reboot_system(), machine.mem_backup(0)[1]))
         release.set()
-        await rig.settle()
+        await _until_armed(rig.svc)
         await rig.stop(sup)
 
     with FastAsyncSleep():
         run(scenario())
-    assert records == [_const("_RR_STACK_EXHAUSTED"), _const("_RR_COMMAND_INCOMPLETE")], records
-    assert len(rig.svc._reset_timer.arms) == 1 and machine.mem_backup(0)[1] == _const("_RR_REBOOT")
+    assert records == [_const("_RR_STACK_EXHAUSTED"), False, _const("_RR_STACK_EXHAUSTED")], records
+    assert len(rig.svc._reset_timer.arms) == 1 and machine.mem_backup(0)[1] == _const("_RR_STACK_EXHAUSTED")
     asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
 
 

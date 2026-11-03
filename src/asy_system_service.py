@@ -366,8 +366,8 @@ class SystemService:
             self._shutdown = purpose
             refusal = ""
             try:
-                if self._reset_armed:
-                    refusal = "a reset is already armed"
+                if self._reset_decided:
+                    refusal = "a reset is already decided"
                 elif purpose == _RR_CONFIG_RESET and not self._config_stores:
                     refusal = "no config store"
                 elif purpose == _RR_FRAM_ERASED and (self._storage is None or not await self._storage.erase_ready()):
@@ -375,8 +375,8 @@ class SystemService:
             except BaseException:  # a raising preflight leaves the gate as a refusal does; the caller's catch logs it
                 self._shutdown = 0
                 raise
-            if self._reset_armed:  # re-checked: the preflight can yield, and an escalation may have armed meanwhile
-                refusal = "a reset is already armed"
+            if self._reset_decided:  # re-checked: the preflight can yield, and an escalation may have decided meanwhile
+                refusal = "a reset is already decided"
             if refusal:
                 self._shutdown = 0
                 self.pr.evt("Command refused:", refusal)
@@ -547,7 +547,7 @@ class SystemService:
                         self.pr.wrn("Task ended - attempting restart, error counter increased to", task_errors, "-", self._task_names[n])
                 if escalate:
                     # The reset is recorded before the escalation's first await and with no allocation: should what follows
-                    # fail, the watchdog's reset still reads this code; a command passing the gate later writes its own after it.
+                    # fail, the watchdog's reset still reads this code, and from here the command gate refuses.
                     self._reset_decided = True
                     write_reset_record(escalate)
                     stack = escalate == _RR_STACK_EXHAUSTED
@@ -561,8 +561,8 @@ class SystemService:
                             await self.pr.err_s("Task error counter above", _TASK_FAIL_MAX, "- reboot triggered!", errno=_ERR_TASK_BUDGET_REBOOT)
                     except MemoryError as e:  # building the entry or its write found no room: the reset still arms
                         self.pr.err_nomem("Reboot entry not written:", e)
-                    # Re-checked after the log write, which yields: a system command that passed the gate meanwhile owns
-                    # the reset now, and nothing awaits from here until _reboot() marks it armed.
+                    # Re-checked after the log write, which yields: a command that owns the feed (accepted before the
+                    # decision) owns the reset, and nothing awaits from here until _reboot() marks it armed.
                     if self._feed_owned:
                         continue
                     # One feed after the entry, then starve one-way: the reset arms below and nothing feeds until it
@@ -594,7 +594,8 @@ class SystemService:
         return evtloop.create_task(self._status_loop())
 
     def start_uptime_timer(self) -> None:
-        # A failed arm degrades rather than reboots: uptime stays measured on each read, the passes it wakes stop.
+        # A failed arm (refuted in normal operation) degrades rather than reboots: the passes it wakes stop, so a storage
+        # pause lasts until the reboot, and uptime reads right only while something reads it at least every 2**29 ms.
         arm_tick_timer(self._uptime_timer, self._uptime_event, self.pr, "uptime")
 
     async def get_boot_signature(self) -> int | float | None:
@@ -656,8 +657,8 @@ class SystemService:
             self._watchdog.feed()
 
     def pause_permanent_storage(self, duration: int) -> bool:
-        # Refused while a system command shuts down; otherwise True: a pause always ends - its deadline is tested on a
-        # pass that already runs, so nothing can fail after it began.
+        # Refused while a system command shuts down; otherwise True. The pause ends at its deadline, tested on each uptime
+        # pass; with the uptime tick refused (refuted in normal operation) no pass runs and it lasts until the reboot.
         if self._shutdown:
             return False
         if self._storage_pause is not None:

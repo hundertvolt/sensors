@@ -27,6 +27,7 @@ _SCRIPT_TIMEOUT_S = 180.0
 # @tunable l4.manual_persistence_repl_prompt_s = 3.0
 _REPL_PROMPT_S = 3.0
 _MID_WRITE_ROUNDS = 3
+_POWER_ON_BIT = 0x100  # CHIP_RESET's HAD_POR, read by reset_code_invalid_record.py (STATE boot_phase) with the REASON bits
 _RR_POWER_ON, _RR_REBOOT, _RR_INTERRUPTED, _RR_BOOT_FAILURE, _BOOT_CONSTRUCTION = (
     module_int_const(SRC_DIR, "asy_system_service.py", name) for name in ("_RR_POWER_ON", "_RR_REBOOT", "RR_INTERRUPTED", "_RR_BOOT_FAILURE", "BOOT_CONSTRUCTION")
 )
@@ -305,6 +306,9 @@ def test_console_soft_reset_keeps_the_reset_record() -> None:
     phase = facts.get("phase")
     record_assertion()
     assert facts.get("begin_boot") == _RR_INTERRUPTED and facts.get("record") == [0, 0, 0, 0] and isinstance(phase, list) and phase[1:2] == [_BOOT_CONSTRUCTION], f"the script's begin_boot() did not read 21, clear the record and mark phase {_BOOT_CONSTRUCTION}: {facts}"
+    # The power-on boot and the soft reset's: HAD_POR alone, no watchdog reset since the cut (the script reads them, as an
+    # exec here would stop main.py with the watchdog armed).
+    assert facts.get("reset_bits") == [_POWER_ON_BIT, 0], f"after the cut and the soft reset: CHIP_RESET HAD_POR and watchdog REASON read {facts.get('reset_bits')}, not HAD_POR alone"
     system = _console_soft_reset(board, "after a boot-phase marker")
     expected = _RR_BOOT_FAILURE + _BOOT_CONSTRUCTION
     assert system.get("ResetReason") == expected, f"the soft reset's boot read ResetReason {system.get('ResetReason')}, not the marked phase's {expected}"

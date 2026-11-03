@@ -89,7 +89,8 @@ _OSR_SETTINGS = const((1, 2, 4, 8, 16, 32))  # pressure/temperature oversampling
 # checked against Bosch's reference driver, the Linux kernel IIO driver, and both datasheets.
 _IIR_SETTINGS = const((0, 1, 3, 7, 15, 31, 63, 127))
 
-# _apply_stored_config()'s outcome: applied, the config unreadable (no bus rung), or a chip write failed.
+# _apply_stored_config()'s outcome: applied, the config unreadable, or a chip write failed; callers ask only whether
+# it applied (the setup and the POR re-apply), each failure having logged its own entry.
 _APPLIED = const(0)
 _CFG_UNREADABLE = const(1)
 _CHIP_WRITE_FAILED = const(2)

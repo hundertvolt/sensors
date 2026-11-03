@@ -3550,9 +3550,10 @@ def test_an_erase_cut_at_any_point_leaves_a_bootable_chip() -> None:
         manager, _chip, stores = _logged_system(FakeMB85RS64V, image)
         for n, store in enumerate(stores):
             assert store.initialized is True
-            # Restored whole, or restarted empty: never a different ring.
-            whole = list(store.history) == rings[n]
-            assert whole or run(store.get_log())[store.name]["ErrCount"] == 0, f"cut after {landed}: {store.name} holds a different ring"
+            # Restored whole, or restarted blank (every slot empty, nothing counted): never a different ring.
+            log = run(store.get_log())[store.name]
+            blank = log["ErrCount"] == 0 and set(log["ErrType"]) <= {"N"}
+            assert list(store.history) == rings[n] or blank, f"cut after {landed}: {store.name} holds a different ring {log}"
             run(store.err_s("after", errno=9))
             chunk = store.fram
             assert chunk is not None

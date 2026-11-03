@@ -1065,7 +1065,7 @@ settings.
 | 6 | watchdog starve after the reset timer could not be armed |
 | 7 | reboot after "Reset to defaults" |
 | 8 | reboot after "Erase FRAM" |
-| 9 | reboot after either command whose purpose did not complete |
+| 9 | a system command that did not complete: its shutdown did not finish, its delete, erase or config flush fell short, or the bootloader command never reached BOOTSEL |
 | 11 | boot failure in phase 1 (construction), the watchdog reset or a console soft reset followed |
 | 12 | boot failure in phase 2 (setup batch), the watchdog reset or a console soft reset followed |
 | 13 | boot failure in phase 3 (task starts), the watchdog reset or a console soft reset followed |
@@ -1155,7 +1155,8 @@ settings.
 `erasefram` run one sequence — take over the watchdog, close and flush the config stores, close
 FRAM, stop every supervised task, apply the purpose (the last two only), reset or enter the
 bootloader through the reset path. A command is refused ("Failed") while another purpose's shutdown
-runs or the supervisor's own reset is armed; the same command repeated answers "Valid". The reply
+runs or once a reset is decided (the supervisor's escalation decides and records its code before its
+entry write, so no command rewrites it); the same command repeated answers "Valid". The reply
 comes first; the reset follows once the supervisor has stopped (up to one 2 s supervisor period),
 the steps have run (for Erase FRAM the whole-chip overwrite) and the 4 s reset delay has passed. At
 a debug level of 4 or more, a USB host that holds the serial port open without reading stalls each
@@ -1195,7 +1196,7 @@ fed, so the watchdog resets the unit (owner, 2026-09-30) — and why they run in
 
 | Step | What runs | Why here |
 |---|---|---|
-| 0 accept | the command gate, under one lock: the same command under way answers "Valid", any other is refused; the preflight (Reset to defaults: a config store exists; Erase FRAM: a ready chip); then the sequence's task, the watchdog latch (every other feed site is a no-op from here) and every config store closed | a command that cannot start (its task cannot be created) answers "Failed" with nothing changed |
+| 0 accept | the command gate, under one lock: the same command under way answers "Valid", any other is refused, and every command once a reset is decided; the preflight (Reset to defaults: a config store exists; Erase FRAM: a ready chip); then the sequence's task, the watchdog latch (every other feed site is a no-op from here) and every config store closed | a command that cannot start (its task cannot be created) answers "Failed" with nothing changed |
 | 1 takeover | the supervisor parks at the top of its next pass, is cancelled and awaited | ownership passes before anything that can hang; parked, it is inside no log write, so the cancel tears no chunk |
 | 2 config stores | each store's pending flush, under its module's PUT lock, so a PUT in flight ends first (C.8) | a failed flush's entry still reaches FRAM |
 | 3 FRAM | pause, then every chunk's operation drained (`quiesce()`) | after it no task is inside a chunk write, so step 4's cancels tear none |
@@ -4309,8 +4310,8 @@ wdt timeout settings'), with nothing fed once it is armed — by the watchdog; t
 `_refresh_loop()`'s due check, which starts the next sync at the check tick nearest `NTPInterval`, so a
 dropped fire loses only that retry. The storage auto-unpause is no timer: `mempause` stores a
 deadline that the uptime pass tests once a second, so no dropped fire can leave storage paused and
-the pause ends at most one pass late; a reset that paused storage meanwhile keeps it paused, and a
-`mempause` answered "Valid" always ends (agent, 2026-10-06). A driver needing more than one rate
+the pause ends at most one pass late; a reset that paused storage meanwhile keeps it paused. With the
+uptime tick refused (refuted in normal operation) no pass runs, so a pause lasts until the reboot. A driver needing more than one rate
 (BMP3XX, ISL29125: 1 Hz base tick divided down) runs `SensorReader`'s shared trigger divider
 (`_trigger_loop()`, G.2) rather than reprogramming the Timer's period at runtime. A read-trigger arm
 failure wakes the task waiting on it, which persists the failure (`TIMER`) once and ends; its
@@ -4340,8 +4341,9 @@ slot, and every refused arm prints its line. System uptime, WiFi uptime, NTP syn
 `test_sync_state_follows_measured_ticks_not_rtc_steps`,
 `test_the_first_sync_from_the_boot_default_restarts_the_age` and
 `test_an_offset_put_then_a_sync_shifts_the_rtc_and_cycles_synced`. SYSTEM's uptime tick degrades
-in place when its timer cannot be armed, printed, not persisted (owner, 2026-07-18): uptime stays
-measured on each read, while the boot signature and the mempause deadline its passes test wait.
+in place when its timer cannot be armed, printed, not persisted (owner, 2026-07-18): uptime reads
+right only while something reads it at least every 2**29 ms (`TickSeconds`), and the boot signature
+and the mempause deadline its passes test wait until the reboot.
 
 **Every `Timer.init()` failure handler catches `except (MemoryError, OSError) as e:`, not bare
 `OSError`** (F.1; owner, 2026-08-07, `a015e66`, paraphrase: every `Timer.init()` catch widened to
@@ -6650,8 +6652,8 @@ from `ServingLimits`' seconds) raise `TimeoutError`, which `_serve()` turns into
 connection and its warning, a close wait's timeout logs its own warning, and a trace's timeout
 leaves its entry in RAM for the logger's next write (A.8); the NeoPixel overlay's periodic rewrite
 takes its refresh cadence as its timeout. The supervisor's escalation entry is awaited plainly: its
-reset code is recorded before it, so a write that never finishes stops the feed and the watchdog's
-reset reads that code; a `MemoryError` building it still arms the reset. No `asyncio.wait_for()` is left
+reset code is recorded before it and the command gate refuses from then on, so a write that never
+finishes stops the feed and the watchdog's reset reads that code; a `MemoryError` building it still arms the reset. No `asyncio.wait_for()` is left
 in `src/` (D.4). The FRAM's other lock waits and its status-byte sequences carry none: they wait
 only on other coroutines of this program. A single `machine.I2C` or `machine.SPI` transfer is
 synchronous and cannot be wrapped: the ladder acts once it returns, and one that never returns is
@@ -7872,8 +7874,9 @@ backend-only or frontend-only validation/coercion policy change in this project.
   `if self.watchdog is not None: self.watchdog.feed()` at the call site. No-op-safe on a
   watchdog-less build and once `_force_watchdog_starve` latches, so every caller (the supervisor and
   the one-time setup batch, `run_setups()`) takes the identical path with no branching of its own.
-  It is the one reusable feed access point until a system command takes ownership; then only the
-  shutdown sequence's own feed (`_own_feed()`, once per bounded step) feeds (A.8). Only
+  It is the one reusable feed access point until a system command takes ownership (never once a reset
+  is decided: the gate refuses, A.8); then only the shutdown sequence's own feed (`_own_feed()`, once
+  per bounded step) feeds (A.8). Only
   ever called from a one-time or bounded-loop context, never a place that could keep feeding a
   genuinely hung system forever - that constraint lives with the caller, not the method itself. The
   feed sites, `_own_feed()`'s callers included, are pinned by
