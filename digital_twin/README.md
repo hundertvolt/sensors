@@ -715,12 +715,14 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
 1. **Baseline boot, then the reformat relaunch** — walk every `GET` route of the device's API
    reference and `/`, then read, keep (`runs/run1_errcount.json`) and check the logs — no error or
    warning entry from any module but each config store's one `CFG_FILE_UNREADABLE`, its file not
-   found — then clear them (`ResetErrors`); with no station link the clock
+   found, and each SGP40's `SGP_NO_BACKUP`, waited for, its first restore finding the backup chunk
+   blank — then clear them (`ResetErrors`); with no station link the clock
    has never synced, so `UTCTime`, `LocalTime` and `TimeStale` read null. Shut down cleanly through
    the stop file (`main()`'s clean path, which flushes the FRAM/SCD30 state as the `SIGINT` handler
    does; `SIGINT` is the fallback, never `SIGTERM`) and confirm the state files landed on disk. Then
    relaunch on an emptied config directory beside the kept FRAM state, as a reformatted filesystem
-   leaves a unit: each config store logs its file not found, as Run 1 (kept in `runs/`), and a setting is
+   leaves a unit: each config store logs its file not found and each SGP40 its blank backup chunk,
+   as Run 1 (kept in `runs/`), and a setting is
    `PUT` on each of `/system` (`DebugLevel=5`), `/notification` (`WarnCO2=1800`), `/sensors`
    (`SCD30.MeasInterval=4`), `/networking` (`Hostname`) and `/status` (`ResetErrors`) — every
    route that accepts `PUT`.
@@ -803,9 +805,10 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
    Confirms the webserver stays fully healthy past NTP's own 5s fetch timeout, not just eventually,
    that NTP logs `NTP_NO_REPLY` where the host has a route for the request and `NTP_NOT_SENT`
    where it has none (a network namespace holding only `lo`), never both, and that no task ended and
-   was restarted meanwhile. The watch ends on the third NTP failure event, then one supervisor pass
-   (`l2.ntp_unreachable_failures`, inside the 90 s `l2.ntp_unreachable_watch_s` bound): the 10 s
-   doubling backoff puts the failures at about 4, 22 and 62 s of serving (`dev`, 2026-10-15).
+   was restarted meanwhile. The watch ends on the second NTP failure event, then one supervisor pass
+   (`l2.ntp_unreachable_failures`, inside the 90 s `l2.ntp_unreachable_watch_s` bound): the unsynced
+   retry, one attempt every 60 s after a failed one, puts the failures at about 4 and 64 s of serving
+   (the first measured on `dev`, 2026-10-15) and the third at about 124 s, past the bound.
 10. **The dedicated watchdog-backstop case** — one bounded real, *blocking* (`time.sleep()`, not
     `asyncio.sleep()`) hang per bus-attached instance the device wires (`--hang <instance>:<op>:12`,
     `writeto` for a sensor, `readinto` for the FRAM), each in its own process with `--duration 15`,
@@ -890,10 +893,11 @@ website, bus hazards, system commands, webserver requests, UART load), the drive
 device without them skips it) and whether it may share a boot. The sharing ones run first on one twin
 per group, with an idle check between two of them — the twin alive, every slot drained, the kernel's
 accept queue empty, the error counts after the drain, the memory gate — and a failure names its
-scenario and sends the next to a fresh boot. A shared twin is retired before
-`l2.scenario_shared_boot_deadline_s`, the earliest its own SGP40 untimestamped-backup warning can
-land with no NTP sync in the hotspot, and a count an idle check reads moved past it fails by name
-(agent, 2026-10-19). The hung-step scenario ends on the runner's
+scenario and sends the next to a fresh boot. A shared twin's first count snapshot waits for each
+SGP40's `SGP_NO_BACKUP` (a fresh FRAM's blank backup chunk), a boot without it failing there, and
+the twin is retired before `l2.scenario_shared_boot_deadline_s`, the earliest its own SGP40
+untimestamped-backup warning can land with no NTP sync in the hotspot, and a count an idle check
+reads moved past it fails by name (agent, 2026-10-19). The hung-step scenario ends on the runner's
 `WATCHDOG_WOULD_TRIGGER` line (S1 on its `HUNG S1` line); the UART-load scenario
 (`uart_ring_under_concurrent_load`) drives both links of a device that wires a pair through a
 webserver hammer at the ceiling, FRAM log writes and config flushes, each flush stalling the loop as

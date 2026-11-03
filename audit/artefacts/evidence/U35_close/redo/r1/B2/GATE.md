@@ -20,4 +20,7 @@ docs only, no bytecode change. Re-checked on 942ca477: the vocabulary and commen
 
 Sizes on 942ca477 (`sizes_942ca477.tsv`): 28 modules, 16,400 lines, 205,681 B of bytecode. Against B2's 8019a9ef
 (205,832 B): -151 B (plain `err()` -143, the dropped re-check -8). Against R0 (208,708 B): -3,027 B. dev's
-`imageFreeBytes` is read from CI's firmware build on this snapshot (B2 at 8019a9ef: 46,468 B).
+`imageFreeBytes`: 46,468 B at 8019a9ef; CI's build log does not print it and the local build waits on the toolchain
+lock, so the merged head's figure comes with the next merge's gate.
+
+CI on snapshot 26 (22477130, run 41603196565): all 46 jobs green (the 16 cancelled are the superseded push run).

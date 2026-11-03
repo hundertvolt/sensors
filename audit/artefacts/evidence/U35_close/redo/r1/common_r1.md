@@ -8,6 +8,8 @@ source, tests and docs in one commit, one gate, a short hand-back. No machinery:
 ## Standing direction
 Target low complexity (owner, 2026-11-03: "Generally target low complexity"): of two forms that both hold, take the
 one with fewer lines, branches and states. PLAN 0 still holds: nothing proven good goes.
+One entry per fault per level (owner, 2026-11-03: "Either it's a warning or a fault applies to the same level / the same
+module"): a downstream fault is an error at its level; the level above that handles it and degrades logs a warning.
 
 ## Environment
 - S = `/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad`. Your worktree and branch are
@@ -28,8 +30,9 @@ one with fewer lines, branches and states. PLAN 0 still holds: nothing proven go
 - The gate (once, on the finished change, in the background): `PICO_TOOLCHAIN_DIR=S/tc-int scripts/test.sh` and
   `PICO_TOOLCHAIN_DIR=S/tc-int GC_THRESHOLD=32768 scripts/test.sh` (one after the other, never at the same time as
   another port-binding run), then `scripts/run_digital_twin_ci.sh dev --gc-threshold -1 --part suite`, the same with
-  `--part harness`, and both again with `--gc-threshold 32768`. A change the website reads (`buildgen/error_catalog.json`,
-  an emitter, `js/`, `html/`) also runs `npm run lint`, `npm run typecheck` and `npm run test:unit`.
+  `--part harness`, and both again with `--gc-threshold 32768`. A change the website reads
+  (`buildgen/error_catalog.json`, an emitter, `js/`, `html/`) also runs `npm run lint`, `npm run typecheck`
+  and `npm run test:unit`.
 - Sizes for the hand-back: `S/u35r/r0/module_sizes.sh <worktree> <your head> <out .tsv>` (per-module lines and bytecode;
   compare with `S/u35r/r0/mpy/now.tsv`), and `scripts/build_firmware.py dev` (its `.json` record's `imageFreeBytes`; R0:
   43,068 B).

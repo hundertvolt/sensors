@@ -3470,12 +3470,6 @@ def test_get_config_faults_names_each_faulted_store_once_in_list_order() -> None
 _Meas = namedtuple("_Meas", ("TS",))  # the config module's sample shape: one field is enough here
 
 
-class _Holder:
-    # Request.sock's stand-in for an in-process dispatch: no connection ends, so nothing is ever closed.
-    def hold(self, _closable: object) -> None:
-        pass
-
-
 def _count_in(path: str, name: str) -> int:
     with open(path + "config_" + name + ".cfg") as f:
         value = json.loads(f.read())["Count"]
@@ -3512,7 +3506,7 @@ def _rest_rig() -> "tuple[_Rig, Microdot, SensorReaderConfig, str]":
 def _put(app: "Microdot", path: str, body: "dict[str, object]") -> "Coroutine[object, object, Response]":
     raw = json.dumps(body).encode()
     headers = {"Content-Length": str(len(raw)), "Content-Type": "application/json"}
-    request = Request(app, ("127.0.0.1", 12345), "PUT", path, "1.1", headers, body=raw, sock=(_Holder(), _Holder()))  # type: ignore[arg-type]  # the stub types sock as the two asyncio streams
+    request = Request(app, ("127.0.0.1", 12345), "PUT", path, "1.1", headers, body=raw)
     return app.dispatch_request(request)
 
 

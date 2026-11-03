@@ -91,7 +91,6 @@ _ERR_CFG_SNAPSHOT_RAISED = const(7)
 _ERR_RECOVERY_READ_RAISED = const(8)
 _ERR_RECOVERY_WRITE_RAISED = const(9)
 _ERR_CALLBACK = const(14)
-_ERR_TIMER = const(17)
 _WRN_CALLBACK_KEYS = const(1)
 _WRN_CFG_KEYS = const(2)
 _WRN_DEVICE_RECOVERY = const(14)
@@ -439,7 +438,6 @@ class SensorReader:
         self._rungs = 0  # the _RUNG_* bits this failure episode already ran
         self._bus_mark = 0  # _recovery_bus.recoveries when this episode began
         self._recovery_bus: I2C | None = None  # set by a driver whose chip sits on I2C
-        self._timer_error: Exception | None = None  # a failed read-trigger arm, until its task's restart re-arms
 
     async def _get_dict_cfg(
         self,
@@ -609,15 +607,6 @@ class SensorReader:
         if status:
             await self.pr.wrn_s("I2C bus was held at boot and cleared, status", status, wrnno=_WRN_BUS_RECOVERY)
 
-    async def _rearm_timer(self) -> None:
-        # A task start's first step after a failed read-trigger arm: persisted, then re-armed. The generated main()
-        # starts the tasks before the timers, so the woken task usually persisted it already.
-        if self._timer_error is None:
-            return
-        await self._timer_fault()
-        self._timer_error = None
-        self.start_timer()
-
     async def _recover_bus(self, rung: int) -> None:
         # One bus rung per bus per episode: a reader that sees the bus already recovered since its episode
         # began (another reader on it ran the rung) only marks its own rung as spent.
@@ -693,32 +682,13 @@ class SensorReader:
             values = (changes[n] if n in changes else getattr(old, n) for n in names)
             self._datastruct = type(old)(*values)  # type: ignore[arg-type]  # the sample's own namedtuple class, not NamedTuple's factory
 
-    def _timer_failed(self, e: Exception, waiter: asyncio.ThreadSafeFlag) -> None:
-        # A read-trigger arm failed in a sync starter: keep it for the waiting task and wake that task.
-        self._timer_error = e
-        self.pr.err("Could not start timer:", e)
-        waiter.set()
-
-    async def _timer_fault(self) -> bool:
-        # True once a failed arm is persisted: the woken task then ends, and its restart re-arms through _rearm_timer();
-        # the logger keeps one slot for the repeat (its newest-entry rule).
-        if self._timer_error is None:
-            return False
-        await self.pr.err_s("Read trigger timer not armed:", self._timer_error, errno=_ERR_TIMER)
-        return True
-
     async def _trigger_loop(self) -> None:
-        # The shared divider (Part C.9): every n-th base tick sets the read event, n the trigger period; a
-        # failed arm is persisted and retried first, and a fault seen after a wake ends the task.
-        await self._rearm_timer()
+        # The shared divider (Part C.9): every n-th base tick sets the read event, n the trigger period.
         self._trigger_counter = 0
         while True:
             await self._base_trigger_event.wait()
-            if await self._timer_fault():
-                return
             self._trigger_counter += 1
-            period = await self._trigger_period.get_value()  # set at construction, never None
-            if period is not None and self._trigger_counter >= period:
+            if self._trigger_counter >= await self._trigger_period.get_value():  # type: ignore[operator]  # set at construction, never None
                 self._read_event.set()
                 self._trigger_counter = 0
 

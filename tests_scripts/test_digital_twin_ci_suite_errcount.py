@@ -905,7 +905,7 @@ def test_run_9_fails_closed_on_a_system_entry_without_a_counter(ci_suite: Module
     assert any("no task ended and was restarted" in f for f in failures), failures
 
 
-@pytest.mark.parametrize(("failed", "bound"), [(3, 90.0), (2, 0.0)])
+@pytest.mark.parametrize(("failed", "bound"), [(2, 90.0), (1, 0.0)])
 def test_run_9_ends_its_watch_once_ntp_failed_every_scheduled_attempt_never_after_a_fixed_wait(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, failed: int, bound: float) -> None:
     # The watch ends on the failures, then one supervisor pass; at the bound with fewer, the run fails naming the count.
     expected = "NTP_NO_REPLY" if ci_suite._route_leaves_host(ci_suite._NTP_UNREACHABLE_HOST, ci_suite._NTP_PORT) else "NTP_NOT_SENT"
@@ -960,15 +960,15 @@ def test_run_10_ends_each_hang_run_on_the_runners_line_and_otherwise_waits_out_i
 
 # ---------------------------------------------------------------------------
 # Run 1's boots: one /status read, kept, with no E and no W entry (no tolerance list, NTP's included) but, over a fresh
-# config directory, each config store's one W CFG_FILE_UNREADABLE. NTPSynced is waited for where a station link exists.
+# config directory, each config store's one W CFG_FILE_UNREADABLE and, waited for, each blank SGP40 backup chunk's W65.
 # ---------------------------------------------------------------------------
 
 
-def _quiet_boot(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, body: "dict[str, object]", *, age_s: float = 1.0, fresh_config: bool = False) -> "list[str]":
+def _quiet_boot(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, body: "dict[str, object]", *, age_s: float = 1.0, fresh_config: bool = False, blank_backups: "tuple[str, ...]" = ()) -> "list[str]":
     # One _check_quiet_boot() over a stubbed /status answer read age_s after the spawn; returns its failures.
     monkeypatch.setattr(ci_suite, "_http", lambda *_a, **_k: (200, body))
     spawned_at = time.monotonic() - age_s
-    return _failures_of(ci_suite, lambda: ci_suite._check_quiet_boot("Run 1", spawned_at, tmp_path / "runs" / "kept.json", fresh_config=fresh_config))
+    return _failures_of(ci_suite, lambda: ci_suite._check_quiet_boot("Run 1", spawned_at, tmp_path / "runs" / "kept.json", fresh_config=fresh_config, blank_backups=blank_backups))
 
 
 def test_a_quiet_boot_passes_and_its_errcount_is_kept(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -988,6 +988,21 @@ def test_an_ntp_entry_fails_the_normal_boot_whether_or_not_ntp_synced(ci_suite: 
     body = {"errcount": {"SYSTEM": _entry(), "NTP": _entry((72, kind))}, "networking": {"NTPSynced": synced}}
     failures = _quiet_boot(ci_suite, monkeypatch, tmp_path, body)
     assert len(failures) == 1 and f"('NTP', '{kind}', 72)" in failures[0], failures
+
+
+def test_a_blank_backup_chunk_owes_its_sgp40_no_backup_warning_once_waited_for(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # A fresh FRAM's SGP40 restore finds its backup chunk blank and logs W SGP_NO_BACKUP within a cycle or two.
+    waited: list[str] = []
+
+    def wait(name: str, *_a: object, **_k: object) -> "dict[str, object]":
+        waited.append(name)
+        return {}
+
+    monkeypatch.setattr(ci_suite, "_wait_for_error_type_count", wait)
+    warned: dict[str, object] = {"errcount": {"SYSTEM": _entry(), "SGP40": _entry((ci_suite.code("W", "SGP_NO_BACKUP"), "W"))}}
+    assert _quiet_boot(ci_suite, monkeypatch, tmp_path, warned, blank_backups=("SGP40",)) == [] and waited == ["SGP40"]
+    failures = _quiet_boot(ci_suite, monkeypatch, tmp_path, {"errcount": {"SYSTEM": _entry(), "SGP40": _entry()}}, blank_backups=("SGP40",))
+    assert len(failures) == 1 and "each blank SGP40 backup chunk's W SGP_NO_BACKUP" in failures[0], failures
 
 
 def test_a_read_past_the_boots_own_background_deadline_fails(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

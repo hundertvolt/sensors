@@ -116,12 +116,13 @@ _POLL_IDLE_MS = src_const("src/asy_udp_socket.py", "_POLL_IDLE_MS")
 _STA_ESTABLISHED = src_const("src/asy_wifi_service.py", "_PHASE_STA_ESTABLISHED")
 _HOTSPOT_PHASE = src_const("src/asy_wifi_service.py", "_PHASE_HOTSPOT")
 _JOINED_NO_IP = src_int("src/asy_wifi_service.py", "_STAT_JOINED_NO_IP")
+_RETRY_UNSYNCED_S = src_int("src/asy_ntp_client.py", "_NTP_RETRY_UNSYNCED_S")
 _WIFI_STORE = str(src_const("src/asy_wifi_service.py", "_NAME"))
 _NO_CLOCK = src_const("src/asy_notification_service.py", "_STATE_NO_CLOCK")
 _EVALUATED = src_const("src/asy_notification_service.py", "_STATE_EVALUATED")
 _PARTIAL = src_const("src/asy_notification_service.py", "_STATE_PARTIAL")
-# Past both age bounds a sample is unavailable: to the notification's checks and as the SGP40's compensation.
-_STALE_AFTER_S = max(src_int("src/asy_notification_service.py", "_SAMPLE_MAX_AGE_S"), src_int("src/asy_sgp40_driver.py", "_COMP_MAX_AGE_S")) + 1
+# Past its age bound a sample is unavailable to the notification's checks.
+_STALE_AFTER_S = src_int("src/asy_notification_service.py", "_SAMPLE_MAX_AGE_S") + 1
 _FLASH_DUR_S = 0.5  # FlashDur's schema floor
 _FLASH_HOLD_MS = round(_FLASH_DUR_S * 2000)  # the monitor's wait after a flash it asked for (asy_notification_service.py)
 _MEASURE_RAW = b"\x26\x0f"  # the SGP40's measure command (datasheet Table 9), as asy_sgp40_driver.py sends it
@@ -666,7 +667,7 @@ def test_watchdog_is_never_starved_while_the_real_supervisor_runs() -> None:
         assert watchdog.would_have_triggered_count == 0, list(watchdog.would_have_triggered_log)
         assert not main_task.done(), "main() ended: its supervisor never returns"
         ntp = module.ntp
-        assert await _wait_until(lambda: ntp._retry_wait_s > ntp._retry_s, timeout_s=_WAIT_TIMEOUT_S), "the NTP client never sent a sync attempt"
+        assert await _wait_until(lambda: ntp._retry_wait_s == _RETRY_UNSYNCED_S, timeout_s=_WAIT_TIMEOUT_S), "the NTP client never sent a sync attempt"
         refused = (_unix_port_udp_addr_shim.public_destinations_refused, _unix_port_udp_addr_shim.last_refused)
         assert refused == (0, None), f"the offline boot sent outside the twin: {refused}"
 
@@ -1036,8 +1037,9 @@ def test_the_captive_dns_listener_idles_at_its_idle_rate() -> None:
 
 
 def test_the_captive_dns_socket_whose_bind_fails_logs_once_then_rebuilds_binds_and_answers() -> None:
-    # The listener's first bind refused: one E INIT, that socket torn down, and after the backoff the same UDPSocket builds
-    # a fresh socket, binds it and answers a burst (asy_udp_socket.py's teardown and lazy rebuild). Wired as above.
+    # The listener's first bind refused: one receive warning, that socket torn down, and after the backoff the same
+    # UDPSocket builds a fresh socket, binds it and answers a burst (asy_udp_socket.py's teardown and lazy rebuild).
+    # Wired as above.
     _driver_specific("neopixel", "fram")
 
     async def scenario(clock: DrivenTime) -> None:
@@ -1053,7 +1055,7 @@ def test_the_captive_dns_socket_whose_bind_fails_logs_once_then_rebuilds_binds_a
         slots = [(kind, n) for kind, n in zip(entry["ErrType"], entry["ErrNum"]) if kind != "N"]
         assert fault.fired == 1, f"the fault failed {fault.fired} binds"
         assert fault.closed()[:1] == [True] and len(fault.made) == 2, f"sockets made, closed or not: {fault.closed()}"
-        assert (entry["ErrCount"], slots) == (1, [("E", code("E", "INIT"))]), f"the refused bind logged {entry['ErrCount']}: {slots}"
+        assert (entry["ErrCount"], slots) == (1, [("W", code("W", "DNS_RECV_FAILED"))]), f"the refused bind logged {entry['ErrCount']}: {slots}"
         assert answered == _BURST, f"{answered} of {_BURST} queries answered by the rebuilt socket"
 
     run(_on_driven_clock(scenario))
@@ -1197,9 +1199,9 @@ def test_a_restored_backup_reports_its_timestamp_without_ntp() -> None:
     run(scenario())
 
 
-def test_a_restarted_sgp40_task_keeps_its_live_voc_state() -> None:
-    # Fed cycles and one backup on FRAM, then the read task dies and the real supervisor restarts it: no restore, the VOC
-    # state counts on, where a reboot restores (the simulated-reboot test above). Driver-specific as above.
+def test_a_restarted_sgp40_task_restores_its_voc_state_from_fram() -> None:
+    # Fed cycles and one backup on FRAM, then the read task dies and the real supervisor restarts it: the restart
+    # restores, as a reboot does (the simulated-reboot test above). Driver-specific as above.
     _driver_specific("sgp40", "fram")
 
     async def scenario() -> None:
@@ -1226,7 +1228,7 @@ def test_a_restarted_sgp40_task_keeps_its_live_voc_state() -> None:
             assert await _wait_until(lambda: sysfunct._tasks[0] is not first, _RESTART_WAIT_TIMEOUT_S, interval_s=_BIND_POLL_S), "the real supervisor never restarted the SGP40 task"
             await _fed_cycle(sgp)
             restarted = (sgp._voc_samples, sgp._restored_from)
-            assert restarted == (samples + 1, None), f"the restarted task restored from FRAM: {restarted}, not ({samples + 1}, None)"
+            assert restarted[1] is not None, f"the restarted task did not restore from FRAM: {restarted}"
         finally:
             _step_sensor_waits(on=False)
             asy_system_service.asyncio = asyncio  # type: ignore[attr-defined]
@@ -1306,10 +1308,10 @@ def test_the_notification_window_spanning_midnight_flashes_red() -> None:
     run(scenario())
 
 
-def test_a_stopped_scd30_ends_its_alerts_and_sgp40_compensation() -> None:
+def test_a_stopped_scd30_ends_its_alerts() -> None:
     # CO2 above WarnCO2 read for real, then ContMeas off through the path PUT /sensors calls and the wall clock stepped
-    # past both sample age bounds: the next monitor cycle flashes nothing and reports State 3, the SGP40's next reads send
-    # no measure command. Driver-specific (an SCD30 feeding both); both modules' L1 suites cover every device.
+    # past the sample age bound: the next monitor cycle flashes nothing and reports State 3. Driver-specific (an SCD30
+    # feeding both); both modules' L1 suites cover every device.
     _driver_specific("notification", "scd30", "sgp40")
 
     async def partial() -> bool:
@@ -1353,10 +1355,7 @@ def test_a_stopped_scd30_ends_its_alerts_and_sgp40_compensation() -> None:
             local = await module.ntp.cettime()
             assert local is not None
             await _apply_window(*_window_around(local.hour))
-            measured, seen = len(measures), len(pixel._pixel.writes)
-            await _sgp40_cycle(sgp)
-            await _sgp40_cycle(sgp)
-            assert len(measures) == measured, "the SGP40 measured with a stale SCD30 sample"
+            seen = len(pixel._pixel.writes)
             tasks += [pixel.start_asy_signal(), module.notification.start_asy_monitor()]
             assert await _wait_until_async(partial, _WINDOW_WAIT_S, interval_s=_BIND_POLL_S), f"a stale CO2 sample reported as {await module.notification.get_data()}"
             assert _red_frames(list(pixel._pixel.writes)[seen:]) == [], "a stale CO2 sample flashed"

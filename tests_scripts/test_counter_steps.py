@@ -25,6 +25,8 @@ _LARGE_CONSTANTS: dict[tuple[str, str], str] = {
 _EXEMPT: dict[tuple[str, str], str] = {
     ("src/asy_base_classes.py", "SensorReader._err_cnt_internal"): "bounded by the give-up: past max_module_error each failed cycle ends the read loop, whose restarts are budgeted (C.7)",
     ("src/asy_isl29125_driver.py", "ISL29125_Reader._periodic_only_switches"): "returns below its warn threshold and resets to 0 at it",
+    ("src/asy_ntp_client.py", "NTPClient._ntp_sec_count"): "resets to 0 once it reaches the resync interval (`due`), which a stored interval bounds",
+    ("src/asy_ntp_client.py", "NTPClient._unsynced_wait_s"): "resets to 0 once it reaches the unsynced retry wait (`due`), 60 s at most",
     ("src/asy_sgp40_driver.py", "SGP40_Reader._voc_init"): "restores the same call's decrement, so it never rises above its starting value",
 }
 # Unguarded steps whose bound is not written yet: each leaves when its counter saturates, wraps or is
@@ -143,12 +145,6 @@ def unbounded_steps(path: str, tree: ast.Module) -> dict[tuple[str, str], int]:
     return found
 
 
-def voc_uptime_limit(tree: ast.Module) -> int:
-    # The VOC port's two uptime counters step by F16(1) up to this limit, read from the module's own const()s.
-    constants = _int_constants(tree)
-    return (constants["_VOCALGORITHM_MEAN_VARIANCE_ESTIMATOR__FIX16_MAX"] - constants["_VOCALGORITHM_SAMPLING_INTERVAL"]) * constants["_FIX16_ONE"]
-
-
 def test_no_min_step(modules: list[tuple[str, ast.Module]]) -> None:
     found = [line for path, tree in modules for line in min_steps(path, tree)]
     assert not found, "check the bound before stepping, never min() after it:\n" + "\n".join(found)
@@ -186,17 +182,6 @@ def test_the_twin_scans_and_keeps_its_own_copy_of_the_counter_cap(modules: list[
     trees = dict(modules)
     assert any(path.startswith("digital_twin/") for path in trees), "the twin dropped out of the scan"
     assert _int_constants(trees["digital_twin/_twin_common.py"])["COUNTER_CAP"] == _int_constants(trees["src/asy_base_classes.py"])["COUNTER_CAP"] == _SMALL_INT_MAX
-
-
-def test_the_voc_uptime_counters_stay_small_ints(modules: list[tuple[str, ast.Module]]) -> None:
-    # uptime_gamma/uptime_gating are plain assignments on self.params, so this bound is asserted here, not scanned.
-    tree = next(tree for path, tree in modules if path == "src/voc_algorithm.py")
-    assert voc_uptime_limit(tree) <= _SMALL_INT_MAX
-
-
-def test_a_planted_voc_uptime_limit_above_the_range_fails() -> None:
-    tree = ast.parse("_VOCALGORITHM_SAMPLING_INTERVAL = const(1)\n_VOCALGORITHM_MEAN_VARIANCE_ESTIMATOR__FIX16_MAX = const(32767)\n_FIX16_ONE = const(0x00010000)\n")
-    assert voc_uptime_limit(tree) == 32766 * 65536 > _SMALL_INT_MAX
 
 
 def test_a_planted_violation_fails_each_rule(tmp_path: Path) -> None:

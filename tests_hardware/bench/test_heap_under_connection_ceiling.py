@@ -68,7 +68,6 @@ _SAMPLE_STEP_S = 0.25
     ("WEBSERVER", "W", "HTTP_REFUSED"),
     ("WEBSERVER", "W", "HTTP_PEER_RESET"),
     ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
-    ("WEBSERVER", "W", "HTTP_REQUEST_CAP"),
 )
 def test_heap_at_peak_while_a_full_ceiling_is_held(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "_load.Note") -> None:
     ceiling = configured_max_connections()

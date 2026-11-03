@@ -263,7 +263,7 @@ def _crc_recovery_on(device: str) -> None:
     sgp = SGP40_I2C(i2c)
 
     async def scenario() -> None:
-        assert await sgp.setup() is True
+        await sgp.setup()
         chip = _chip_on(bus_name)
         chip.corrupt_next()
         try:

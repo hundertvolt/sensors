@@ -130,8 +130,8 @@ class _DividingReader(SensorReader):
     def start_timer(self) -> None:
         try:
             self._trigger_timer.init(period=1000, mode=machine.Timer.PERIODIC, callback=lambda _b: self._base_trigger_event.set())
-        except (MemoryError, OSError) as e:
-            self._timer_failed(e, self._base_trigger_event)
+        except (OSError, MemoryError) as e:
+            self.pr.err("Could not start timer:", e)
 
 
 class _ChipStoreReader(SensorReaderConfig):
@@ -236,29 +236,9 @@ def _restore_time() -> None:
     asy_base_classes.time = time
 
 
-async def _run_briefly(reader: _DividingReader) -> bool:
-    # One task run of the trigger loop, cancelled after a few rounds; True when it ended by itself.
-    task = asyncio.create_task(reader._trigger_loop())
-    await _settle()
-    ended = task.done()
-    await _end(task)
-    return ended
-
-
 async def _settle(n: int = 5) -> None:
     for _ in range(n):
         await asyncio.sleep(0)
-
-
-def _timer_count(reader: SensorReader) -> int:
-    return run(reader.pr.get_log())[reader.pr.name]["ErrCount"]
-
-
-def _timer_slots(reader: SensorReader) -> int:
-    # The history slots holding TIMER: a repeat of the newest entry spends none (the logger's newest-entry rule).
-    nums = run(reader.pr.get_log())[reader.pr.name]["ErrNum"]
-    assert isinstance(nums, list)
-    return nums.count(code("E", "TIMER"))
 
 
 def _with_fake_ticks(start_ms: int = 0) -> "_WallTime":
@@ -1541,99 +1521,7 @@ def test_trigger_loop_sets_the_read_event_on_every_nth_tick() -> None:
             return seen
 
         assert run(scenario(reader)) == expected, (period, expected)
-        assert reader._timer_error is None
         assert run(reader.pr.get_log())["DIVIDER"]["ErrCount"] == 0
-
-
-def test_a_failed_timer_wakes_the_reader_and_logs_once() -> None:
-    reader = _DividingReader(1)
-    reader.pr.level = 1  # the console line prints at the error level
-    assert run(reader._timer_fault()) is False  # nothing failed: nothing logged
-    flag = asyncio.ThreadSafeFlag()
-    error = OSError(errno.ENOMEM, "alarm pool exhausted")
-    with record_prints() as recorder:
-        reader._timer_failed(error, flag)
-    assert flag.state == 1  # the waiting task wakes instead of sleeping forever
-    assert reader._timer_error is error
-    assert [line[:2] for line in recorder.lines] == [("DIVIDER", "Could not start timer:")]
-    assert run(reader._timer_fault()) is True
-    assert _entries(reader, "E", "TIMER") == 1
-    assert run(reader.pr.get_log())["DIVIDER"]["ErrCount"] == 1
-
-
-def test_trigger_loop_persists_an_arm_failure_no_task_saw_once_then_re_arms() -> None:
-    # An arm that failed while the task was down (a boot start that failed, say) is persisted at its start, then re-armed.
-    reader = _DividingReader(1)
-    with RaiseOnArm(OSError), record_prints():
-        reader.start_timer()
-    assert _timer_count(reader) == 0  # the starter only stores it
-    assert run(_run_briefly(reader)) is False
-    assert (_timer_count(reader), _entries(reader, "E", "TIMER")) == (1, 1)
-    assert len(reader._trigger_timer.arms) == 1 and reader._trigger_timer.period == 1000  # one arm, at the task's start
-    assert run(_run_briefly(reader)) is False  # a later start with nothing stored persists and arms nothing
-    assert (_timer_count(reader), len(reader._trigger_timer.arms)) == (1, 1)
-    assert reader._timer_error is None  # last: mypy keeps the OSError narrowed from the line above run()
-
-
-def test_a_failure_the_loop_persisted_is_counted_again_by_the_restarts_re_arm_in_its_one_slot() -> None:
-    reader = _DividingReader(1)
-
-    async def scenario() -> bool:
-        task = asyncio.create_task(reader._trigger_loop())
-        await _settle()
-        with RaiseOnArm(OSError), record_prints():
-            reader.start_timer()  # an arm failing while the task runs wakes it
-        await _settle()
-        return task.done()
-
-    assert run(scenario()) is True
-    assert _timer_count(reader) == 1
-    assert run(_run_briefly(reader)) is False  # the restart counts the failure again, then re-arms
-    assert (_timer_count(reader), _timer_slots(reader), len(reader._trigger_timer.arms)) == (2, 1, 1)
-
-
-def test_two_wakes_finding_one_failed_arm_each_count_it_in_one_slot_and_end() -> None:
-    # The trigger loop and a driver's read loop (SCD30, SGP40) both wake on one failed arm, the first parked in its log
-    # write: each counts it, the history keeping one TIMER slot, and both still end their task.
-    reader = _DividingReader(1)
-    with RaiseOnArm(OSError), record_prints():
-        reader.start_timer()
-    gate, parked, real = asyncio.Event(), [], reader.pr.err_s
-
-    async def held(*args: object, errno: int) -> None:  # a log write held open until both wakes ran
-        parked.append(errno)
-        await gate.wait()
-        await real(*args, errno=errno)
-
-    setattr(reader.pr, "err_s", held)  # noqa: B010 - an instance attribute shadowing the logger's method
-
-    async def body() -> "tuple[bool, bool]":
-        first = asyncio.create_task(reader._timer_fault())
-        await _until(lambda: bool(parked), "the first wake never reached its log write")
-        second = asyncio.create_task(reader._timer_fault())
-        await _until(lambda: second.done() or len(parked) > 1, "the second wake neither ended nor wrote")
-        gate.set()
-        return await first, await second
-
-    assert run(body()) == (True, True)
-    assert (_timer_count(reader), _timer_slots(reader), len(parked)) == (2, 1, 2)
-
-
-# @tunable l1.asy_base_classes_trigger_loop_bound_s = 1
-_TRIGGER_LOOP_BOUND_S = 1  # a hang bound on a trigger loop that ends by itself on its failed re-arm
-
-
-def test_a_failed_re_arm_persists_the_stored_failure_then_its_own_and_ends_the_loop() -> None:
-    for exc in (OSError, MemoryError):
-        reader = _DividingReader(1)
-        with RaiseOnArm(exc), record_prints():
-            reader.start_timer()
-            run(reader._trigger_loop(), _TRIGGER_LOOP_BOUND_S)  # ends by itself: no cancel needed
-        assert _timer_count(reader) == 2, exc  # one entry per failed arm, the boot's and the re-arm's
-        assert isinstance(reader._timer_error, exc)
-        assert reader._read_event.state == 0  # no read was triggered by the fault's wake
-        assert run(_run_briefly(reader)) is False  # the restart persists the failure it finds, then re-arms
-        assert (_timer_count(reader), _timer_slots(reader)) == (3, 1), exc
 
 
 def test_republish_replaces_the_named_fields_and_keeps_the_rest() -> None:
@@ -3486,7 +3374,6 @@ def test_a_raising_recovery_read_back_is_logged_as_recovery_read_raised() -> Non
 
 def test_a_raising_recovery_write_is_logged_as_recovery_write_raised() -> None:
     assert _logged_by_a_put("recovery_write", push="fails") == [code("E", "RECOVERY_WRITE_RAISED")]
-
 
 
 class _OverflowingRelease:

@@ -26,7 +26,6 @@ from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 import asy_base_classes
 import asy_dns_client
 import asy_ntp_client as ntpmod
-from asy_dns_client import DNS_FAILED, DNS_RESOLVED
 from asy_ntp_client import NTPClient, NtpTiming
 from asy_wifi_service import WIFI, WifiConfig, WifiService
 
@@ -41,7 +40,7 @@ if TYPE_CHECKING:
 
     from _protocols import WLANLike
 
-    from asy_print_log import ErrorLog, PrintLogHistory
+    from asy_print_log import ErrorLog, PrintLog
 
     class _FakeWLAN(WLANLike, Protocol):
         # The fake's test-only names this file reads: mypy resolves `network` to the board stub, which has none of
@@ -61,6 +60,7 @@ _NTP_UDP_PORT = src_const("src/asy_ntp_client.py", "_NTP_UDP_PORT")
 _DNS_PORT = src_const("src/asy_dns_client.py", "_DNS_PORT")
 _PHASE_STA_ESTABLISHED = src_const("src/asy_wifi_service.py", "_PHASE_STA_ESTABLISHED")
 _LOG_ALL: int = src_int("src/asy_print_log.py", "_LOG_ALL")
+_RETRY_UNSYNCED_S: int = src_int("src/asy_ntp_client.py", "_NTP_RETRY_UNSYNCED_S")
 
 # @tunable l1.ntp_wifi_dns_integration_lock_blocked_wait_s = 0.05
 _LOCK_BLOCKED_WAIT_S = 0.05
@@ -120,7 +120,7 @@ def _make_ntp(
         # One single f-string, not a plain-string-literal-adjacent-to-an-f-string concatenation -
         # same MicroPython gotcha test_asy_ntp_client.py's own _client_with_offsets() documents.
         f.write(f'{{"NTPHost": "{ntp_host}", "NTPOffset": 0, "NTPInterval": 12, "GMTOffset": 0, "DSTOffset": 0, "DNSFallback": ""}}')
-    timing = NtpTiming(500, 1, ntp_fetch_timeout_ms, 10, 600)
+    timing = NtpTiming(500, 1, ntp_fetch_timeout_ms)
     ntp = NTPClient(conn.get_wifi_mode_lock(), conn.network_available_locked, conn.get_dns_server_ip, timing, cfg_path=cfg_path)
     run(ntp.setup())
     return ntp
@@ -164,9 +164,9 @@ class _RecordingResolver:
         self.calls: list[tuple[str, tuple[str, ...], int, int]] = []
         self.return_value = return_value
 
-    async def __call__(self, host: str, dns_servers: "tuple[str, ...]" = (), timeout_ms: int = 0, tries: int = 0, *, pr: "PrintLogHistory") -> "tuple[str | None, int]":
+    async def __call__(self, host: str, dns_servers: "tuple[str, ...]" = (), timeout_ms: int = 0, tries: int = 0, *, logger: "PrintLog | None" = None) -> "str | None":
         self.calls.append((host, dns_servers, timeout_ms, tries))
-        return self.return_value, DNS_RESOLVED if self.return_value is not None else DNS_FAILED
+        return self.return_value
 
 
 def test_dns_server_ip_flows_from_a_connected_real_wifi_service_into_resolve_ipv4() -> None:
@@ -281,11 +281,11 @@ class _GatedResolver:
         self.servers: tuple[str, ...] | None = None
         self._gate = asyncio.Event()
 
-    async def __call__(self, host: str, dns_servers: "tuple[str, ...]" = (), timeout_ms: int = 0, tries: int = 0, *, pr: "PrintLogHistory") -> "tuple[str | None, int]":
+    async def __call__(self, host: str, dns_servers: "tuple[str, ...]" = (), timeout_ms: int = 0, tries: int = 0, *, logger: "PrintLog | None" = None) -> "str | None":
         self.entered = True
         self.servers = dns_servers
         await self._gate.wait()
-        return None, DNS_FAILED  # no answer: the attempt ends as a resolution failure, one NTP_DNS entry
+        return None  # no answer: the attempt ends as a resolution failure, one NTP_DNS entry
 
     def release(self) -> None:
         self._gate.set()
@@ -478,7 +478,7 @@ def test_no_socket_is_built_without_a_dns_candidate() -> None:
         errors_after_control = run(attempt(errors))
     assert none_built == 0
     assert errors == 1
-    assert unsent == code("E", "NTP_DNS_NOT_SENT")  # nothing was asked: the device's side, not the servers'
+    assert unsent == code("E", "NTP_DNS")  # nothing was asked
     assert dns_sockets.constructed == 1
     assert errors_after_control == 2
     assert _last_err(run(ntp.get_error_counter()), "ErrNum") == code("E", "NTP_DNS")
@@ -548,7 +548,7 @@ def test_full_chain_degrades_cleanly_when_wifi_reports_connected_but_the_ntp_ser
     server = _make_ntp_server()
     ntp = _make_ntp(conn, "127.0.0.1", ntp_fetch_timeout_ms=_FETCH_TIMEOUT_NO_REPLY_MS)
 
-    async def scenario() -> "tuple[bool, bool, int, int, ErrorLog]":
+    async def scenario() -> "tuple[bool, bool, int, ErrorLog]":
         try:
             with redirect_udp_port(ntpmod, _NTP_UDP_PORT, server.port):
                 task = asyncio.create_task(ntp._sync_loop())
@@ -562,16 +562,16 @@ def test_full_chain_degrades_cleanly_when_wifi_reports_connected_but_the_ntp_ser
                     await task
                 except asyncio.CancelledError:
                     pass
-                return still_running, await ntp.ntp_issynced(), ntp._retry_wait_s, ntp._retry_max_s, await ntp.get_error_counter()
+                return still_running, await ntp.ntp_issynced(), ntp._retry_wait_s, await ntp.get_error_counter()
         finally:
             server.close()
 
-    still_running, synced, wait_s, max_s, counter = run(scenario())
-    # Never synced, but the task handles it (Part C.7.2): still running, backed off to its cap, and the
+    still_running, synced, wait_s, counter = run(scenario())
+    # Never synced, but the task handles it (Part C.7.2): still running, on its unsynced retry wait, and the
     # silent timeout persisted once for the run (C.7.1's repeat rule) while counted every time.
     assert still_running is True
     assert synced is False
-    assert wait_s == max_s
+    assert wait_s == _RETRY_UNSYNCED_S
     assert counter["NTP"]["ErrCount"] == 8
     assert counter["NTP"]["ErrNum"] == [0] * 9 + [code("E", "NTP_NO_REPLY")]
 
@@ -598,7 +598,7 @@ def test_full_chain_stays_unsynced_when_the_real_wifi_service_reports_network_un
 
 def test_dns_resolution_with_no_candidate_persists_the_dns_error() -> None:
     # Every candidate is unset - "0.0.0.0" from the snapshot and the stored empty DNSFallback - so
-    # resolve_ipv4()'s ipv4_to_int() guard asks no server, through the real chain: the query was never sent.
+    # resolve_ipv4()'s ipv4_to_int() guard asks no server, through the real chain: the name does not resolve.
     conn = _make_conn()
     connect_wlan(conn, dns_server="0.0.0.0")
     ntp = _make_ntp(conn, "bogus.invalid")
@@ -613,7 +613,7 @@ def test_dns_resolution_with_no_candidate_persists_the_dns_error() -> None:
     counter = run(ntp.get_error_counter())
     err_num, err_type = counter["NTP"]["ErrNum"], counter["NTP"]["ErrType"]
     assert isinstance(err_num, list) and isinstance(err_type, list)
-    assert err_num[-1] == code("E", "NTP_DNS_NOT_SENT")  # the last entry now: no streak counter logs after it any more
+    assert err_num[-1] == code("E", "NTP_DNS")  # the last entry now: no streak counter logs after it any more
     assert err_type[-1] == "E"
 
 

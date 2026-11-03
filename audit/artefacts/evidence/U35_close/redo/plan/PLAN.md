@@ -233,8 +233,8 @@ reported per device.
   product property through the table or carries an owner row, only its restatement of the table slimmed); harness (kept
   unless lighter). The list goes to the owner before anything is removed.
 - Kept in full by owner rule: the comment-cap gate, the gc-site checker, the memory-gate agreement, the persistence
-  marker completeness, the four-tier bus hazard files; the two decision-records checks until clarification (i), their
-  allow-lists only shrinking.
+  marker completeness, the four-tier bus hazard files; the two decision-records checks (clarification (i): kept, owner
+  2026-11-03), their allow-lists only shrinking.
 - The seven fixed-sleep tests wait for their condition (OR37.a (3)); the shared twin's 89 s retirement gives way to its
   idle event; the launcher stop file and the rig override go.
 - CI timeouts from measured need with a stated margin, the two retries kept; the twin matrix sized to the devices and
@@ -423,12 +423,17 @@ Clarifications, each asked once in prose at the start of its unit (full text: `P
 - (h) B2: whether "Adapt the humidity to the verified range" extends to the wet bulb's cold-dry corner.
 - (k) B2: reset code 4, which never reads back after BOOTSEL (the bootrom overwrites the record): keep it documented as
   unreachable and correct the test, or remove it.
-- (e) B3: FRAM's own log for one invalid block (OR56 against "stay as is").
-- (c) B6: a lost UART frame during a flash erase (measured windows in `PLAN_before_rewrite.md` 7).
+- (e) B3: FRAM's own log for one invalid block (OR56 against "stay as is"). **Decided** (owner, 2026-11-03: "Option A.
+  Both my statements hold."): the pair stays; "never both" applies per level or module.
+- (c) B6: a lost UART frame during a flash erase (measured windows in `PLAN_before_rewrite.md` 7). **Decided** (owner,
+  2026-11-03: "Option A, keep as is."): no change.
 - (i) R2: the two decision-records checks: the owner's prevention rule 5 (OR68 "4. yes") against "The audit verification
   machinery is just a temporary tool".
+  **Decided** (owner, 2026-11-03: "Option A, this is valuable for future sessions as well"): both stay.
 - (j) D: the Stull paper's move: write access to the `datasheets` repository (the owner's grant names fetching only) and
   the paper's redistribution terms (OR52.a (7)).
+  **Decided** (OR80.a; owner, 2026-11-03: "we decided that all docs are moved to the private repo."): it moves
+  now, not at D.
 
 Not asked: (b), settled by decision 4; (a), OR30.a's register scope, shown with R2's list; (f), Wi-Fi, decided by the
 owner; (g), a records fix done in R4.

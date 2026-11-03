@@ -481,3 +481,35 @@ their context). From now on every owner word is appended here as it is given.
   at the first check with the network up, then one attempt every 60 s after a failed one (one tunable constant, no
   device setting); the doubling, its 600 s cap, `ntp_retry_s`/`ntp_retry_max_s`, their build check and the generator's
   pair go; a skipped attempt (no network) does not count; a settings change or forced resync tries at once. B5 item 19.
+- (2026-11-03, time not taken, between 08:25 and 08:29 UTC, budget) "Currently about 13.5% usage. Still within
+  expectation?" Recorded as: a meter reading, 13.5 % of the week, with B2 pushed (CI pending) and B4 and B5 running,
+  neither handed back; the plan's running total through B5 is 16 % (R0 2, B1 4, B2 4, B4 3, B5 3).
+- (2026-11-03, time not taken, between 09:01 and 09:59 UTC, open decisions) "are there decisions which are really mine
+  and which i could take already now?" Recorded as: the owner asks for the open clarifications now rather than at
+  each unit's start; (e) B3, (c) B6, (i) R2 and (j) D are put one by one, (e) first.
+- (2026-11-03, time not taken, between 10:00 and 10:16 UTC, (e) FRAM's E and W for one invalid block) "Option A.
+  Both my statements hold. Either it's a warning or a fault applies to the same level / the same module, which should
+  be clear about what it is. If there is a downstream fault, it's a fault on that level. If that propagates up, is
+  handled and degraded to a warning, that's a valuable traceback. Therefore, both of my criteria are met with it."
+  Recorded as: (e) decided, the pair stays as it is (no change in B3); the reading of "never both" is per level or
+  module: a downstream fault is an error at its level, and the level above that handles it and degrades it logs a
+  warning, which is the traceback the 2026-10-01 note asks for.
+- (2026-11-03, time not taken, between 10:17 and 10:26 UTC, (c) a UART exchange during a flash write) "Option A, keep
+  as is. Would a longer UART timeout, e.g. 3000ms, relieve things further?" Recorded as: (c) decided, no change in B6;
+  the timeout question is answered with facts (the timeout is a fixed protocol parameter, owner 2026-09-11).
+- (2026-11-03, time not taken, between 10:27 and 10:31 UTC, the UART timeout) "Keep the UART as is. Any module using
+  the UART must be aware that errors like this can happen due to various reasons anyway and provide recovery mechanisms
+  themselves. This is nothing new, only something to be aware of." Recorded as: the 1,000 ms timeout stays; a failed
+  exchange is a normal event the link's users recover from themselves; no change and no new mechanism.
+- (2026-11-03, time not taken, between 10:38 and 10:45 UTC, (i) the two decision-records checks) "Option A, this is
+  valuable for future sessions as well" Recorded as: (i) decided, `test_decision_vocabulary.py` and
+  `test_citations.py` stay as permanent repo rules with their shrinking allow-lists; R2 keeps them in full.
+- (2026-11-03, time not taken, between 10:46 and 10:50 UTC, (j) the Stull paper) "Option A. I wonder where this was
+  unclear, we decided that all docs are moved to the private repo." Recorded as: (j) was already decided (OR80.a:
+  `datasheets/` is the private submodule for reference material, history kept); the plan wrongly made the push into a
+  question. The paper moves to `hundertvolt/datasheets` and leaves this repo's tree before PR #107 merges.
+
+- (2026-11-03, time not taken, between 11:47 and 11:49 UTC, budget) "A bit above 17% usage at this moment. Still within
+  expectation?" Answered: yes, inside the 17-18 % given for B4 and B5; the whole job's 55 % estimate stands.
+- (2026-11-03, time not taken, between 11:50 and 12:13 UTC, go-ahead) "Okay, keep rolling. Can you already prepare
+  something while the background shell is running?" Recorded as: the next units' drafting starts beside the gate.

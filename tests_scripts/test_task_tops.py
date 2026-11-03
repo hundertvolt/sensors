@@ -274,7 +274,7 @@ def test_a_top_that_does_not_cover_its_task_fails(src_copy: Path, name: str, old
 def test_a_connection_callback_whose_top_is_removed_fails(src_copy: Path) -> None:
     top = (
         "            except Exception as e:  # the connection task's top: its creator logs what escaped the request (the count, a\n"
-        "                # proxy, a release, a trace); the task raises out only via a failing logging call (SPECIFICATION.md A.5, G.2)\n"
+        "                # proxy, a trace); the task raises out only via a failing logging call (SPECIFICATION.md A.5, G.2)\n"
         "                # or the finally's own calls on an exhausted heap: _close_writer() catches every Exception, decrement() cannot raise\n"
         '                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'
     )

@@ -156,11 +156,24 @@ construction window on the board went to the owner. `redo/r1/B2/` holds the next
 
 ## Twenty-sixth snapshot (2026-11-03): R1's second unit, reset codes and `/status`
 
-The plan's second R1 unit, on the same standing go-ahead. Code 4 and the reset-register reads went; the bootloader records
-code 9; the command gate refuses once a reset is due; the escalation writes its entry, then resets. Logging an
+The plan's second R1 unit, on the same standing go-ahead. Code 4 and the reset-register reads went; the bootloader
+records code 9; the command gate refuses once a reset is due; the escalation writes its entry, then resets. Logging an
 allocation failure is a plain `err()` (owner, 2026-11-03: "Yes keep it simple"); what a module logs while it is built
 stays unprinted and unkept (owner: "Leave that."); the newest-entry slot rule stays (owner: "Keep as is.").
 `redo/r1/B2/` holds the action list, brief, hand-back, review, the falsification's brief and result, the lead's check of
 each refutation (`FALSIFY_VERIFIED.md`) and the gate (`GATE.md`). `redo/r1/CARRY_LATER.md` lists what later units take
 over; `redo/r1/B4/` and `redo/r1/B5/` hold the next two units' action lists and briefs (buses and sensors; network, with
 the owner's fixed 60 s NTP retry while unsynced).
+
+## Twenty-seventh snapshot (2026-11-03): R1's third and fourth units, buses, sensors and network
+
+The plan's B4 (buses and sensors) and B5 (network) units, run side by side on the same standing go-ahead, merged
+together. Both go back to their pre-audit forms where nothing proved the audit's form good; NTP retries every 60 s while
+unsynced (owner, 2026-11-03: "Then let's actually take 1 minute"). Each unit's falsification found misses (a tick during
+an NTP attempt starting the next one, the JSON pieces' memory check weakened, hardware-tier and harness checks left
+behind, the VOC uptime cap off the C reference); a fix round closed them before the merge. `redo/r1/B4/` and
+`redo/r1/B5/` hold each unit's action list, brief, hand-back with its fix round, review, falsification brief and result,
+the lead's check of each refutation (`FALSIFY_VERIFIED.md`) and the fix brief; `redo/r1/B45/` the merged head's gate and
+sizes; `redo/r1/MERGE_B4B5_NOTES.md` the one merge conflict. The Stull (2011) paper moved to the private datasheets
+repository (owner, 2026-11-03). `redo/r1/B3/` and `redo/r1/B6/` hold the next two units' action lists with their drafts
+and briefs (storage; UART), started after this gate.

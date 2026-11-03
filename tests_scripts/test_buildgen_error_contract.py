@@ -335,9 +335,6 @@ _ROWS: "dict[str, Row]" = {
     "device.max-connections-lwip": Row("generate", f"[{_DEVICE}.max_connections] ", doc=_set("device", "max_connections", 64)),
     "device.backlog-below-ceiling": Row("generate", f"[{_DEVICE}.backlog] ", doc=_then(_set("device", "max_connections", 4), _set("device", "backlog", 3))),
     "device.backlog-above-ceiling": Row("generate", f"[{_DEVICE}.backlog] ", doc=_then(_set("device", "max_connections", 4), _set("device", "backlog", 6))),
-    "device.ntp-retry-below-tick": Row("generate", f"[{_DEVICE}.ntp_retry_s] ", doc=_set("device", "ntp_retry_s", 1)),
-    "device.ntp-retry-max-below-retry": Row("generate", f"[{_DEVICE}.ntp_retry_max_s] ", doc=_then(_set("device", "ntp_retry_s", 120), _set("device", "ntp_retry_max_s", 60))),
-    "device.ntp-retry-max-range": Row("generate", f"[{_DEVICE}.ntp_retry_max_s] ", doc=_set("device", "ntp_retry_max_s", 536870912)),
     "device.wiring-field-unknown": Row("generate", f"[{_DEVICE}.bogus_target] ", doc=_set("device", "wiring", "bogus_target", "fram")),
     "device.wiring-no-tag": Row("generate", f"[{_DEVICE}.led_target] ", edits=(("asy_wifi_service.py", "# @wiring led_target NeopixelDriver ext_led optional kwarg", "#"),)),
     "device.wiring-field-missing": Row(
@@ -444,7 +441,7 @@ _ROWS: "dict[str, Row]" = {
     "wiring.field-unknown": Row("generate", f"[{_DEVICE}/scd30.led_target] ", doc=_set("@scd30", "wiring", "led_target", "neopixel")),
     "wiring.field-missing": Row("generate", f"[{_DEVICE}/notification.signal_sink] ", doc=_drop("@notification", "wiring", "signal_sink")),
     "src.unreadable": Row("generate", "[<src>.HotspotPW] ", drop=("asy_wifi_service.py",)),
-    "src.const-missing": Row("generate", "[<src>._NTP_CHECK_INTERV] ", doc=_set("device", "ntp_retry_s", 60), edits=(("asy_ntp_client.py", "_NTP_CHECK_INTERV = const(", "_NTP_CHECK_INTERVAL_X = const("),)),
+    "src.const-missing": Row("generate", "[<src>._DEFAULT_OUTER_CAP_S] ", edits=(("asy_webserver_service.py", "_DEFAULT_OUTER_CAP_S = const(", "_DEFAULT_OUTER_CAP_X = const("),)),
     "src.schema-missing": Row("generate", "[<src>.HotspotPW] ", edits=(("asy_wifi_service.py", '("HotspotPW", "str", "12345678", 8, 63, None)', '("HotspotPW", "str", "12345678", 8, None, None)'),)),
     "src.default-missing": Row("generate", "[<src>.rx_ring] ", doc=_paired(), edits=(("asy_uart_driver.py", "rx_ring: int = 512,", "rx_ring: int = RING,"),)),
     "toolchain.overrides-unloadable": Row("generate", "[<toolchain>.max_connections] ", patch=_overrides_unloadable),

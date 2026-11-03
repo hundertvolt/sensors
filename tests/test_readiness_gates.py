@@ -219,7 +219,7 @@ def test_spi_device_refuses_a_session_before_setup_whose_own_setup_cannot_fail()
     device = SPIDevice(_spi(), 1)
     refusal = "RuntimeError: SPIDevice not set up - call setup() first"  # the async with structural raise (C.13)
     assert (device.initialized, _raised(device.session_begin), _raised(lambda: _enter(device))) == (False, refusal, refusal)
-    assert run(device.setup()) is True
+    run(device.setup())
     assert device.initialized is True
     assert _raised(lambda: _enter(device)) == ""
 
@@ -338,7 +338,7 @@ def test_webserver_service_answers_before_and_after_a_setup_whose_logger_cannot_
         "get_timer_starters": ((), lambda r: r == []),
     }
     assert _answers(svc, calls) == []
-    assert run(svc.setup()) is True  # it serves with its logger in RAM
+    assert run(svc.setup()) is None  # it serves with its logger in RAM
     assert svc.pr.initialized is False
     assert _answers(svc, calls) == []
 

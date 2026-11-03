@@ -1166,20 +1166,13 @@ def test_neither_ntp_nor_notification_is_handed_a_give_up_streak(tmp_path: Path,
     assert all("max_module_error" not in line for line in calls), calls
 
 
-def test_ntp_timing_carries_the_effective_backoff_pair(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
-    def ntp_line(doc: TomlDoc, name: str) -> str:
-        source = generate_device(write_doc(tmp_path, name, doc), src_dir, ext_dir).module_source
-        ast.parse(source)
-        return next(line for line in source.splitlines() if line.strip().startswith("ntp = NTPClient("))
-
-    doc = base_doc()
-    unstated = ntp_line(doc, "ntp_backoff_unstated")
-    # Unstated, the src/ defaults (_DEFAULT_RETRY_S/_DEFAULT_RETRY_MAX_S) are passed as literals.
-    assert "NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _NTP_FETCH_TIMEOUT_MS, 10, 600)" in unstated
-    assert "max_module_error" not in unstated  # NTP keeps no give-up streak (Part C.7.2)
-    table_at(doc, "device")["ntp_retry_s"] = 30
-    table_at(doc, "device")["ntp_retry_max_s"] = 900
-    assert "NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _NTP_FETCH_TIMEOUT_MS, 30, 900)" in ntp_line(doc, "ntp_backoff_stated")
+def test_ntp_timing_carries_the_dns_bounds_and_the_fetch_timeout(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    # The unsynced retry wait is the client's own constant: no device setting reaches NtpTiming (owner, 2026-11-03).
+    source = generate_device(write_doc(tmp_path, "ntp_timing", base_doc()), src_dir, ext_dir).module_source
+    ast.parse(source)
+    line = next(line for line in source.splitlines() if line.strip().startswith("ntp = NTPClient("))
+    assert "NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _NTP_FETCH_TIMEOUT_MS)" in line
+    assert "max_module_error" not in line  # NTP keeps no give-up streak (Part C.7.2)
 
 
 def test_device_with_no_fram_target_leaves_conn_ntp_sysfunct_and_webserver_ram_only(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:

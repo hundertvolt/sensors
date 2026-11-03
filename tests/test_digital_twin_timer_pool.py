@@ -80,21 +80,12 @@ _WAIT_S = 20.0
 _RUN_BOUND_S = 60.0
 # @tunable l2.timer_pool_poll_s = 0.1
 _POLL_S = 0.1  # how often a real-time wait below looks again
-# The reading field that proves a driver read (as the bus-hazard tier's _I2C_DRIVER_HEALTH_FIELD).
-_HEALTH_FIELD = {"scd30": "CO2", "sgp40": "VOC", "bmp3xx": "Pres", "isl29125": "Lux"}
 
 _scratch = TmpScratch("dt_timer_pool_" + device)  # per device: two devices' jobs of this file may run at once
 microtest.after_each(machine.reset_test_state)
 microtest.after_each(network.reset_test_state)
 module = load_device(device)
 plan = wiring_plan(device)
-
-
-def _any_ended(tasks: "list[asyncio.Task[None] | None]") -> "Callable[[], bool]":
-    def check() -> bool:
-        return any(task is not None and task.done() for task in tasks)
-
-    return check
 
 
 async def _boot(pool_free: int) -> "WDT":
@@ -134,56 +125,11 @@ async def _errors(source: object, number: int) -> int:
     return sum(1 for i in range(len(entry["ErrNum"])) if entry["ErrType"][i] == "E" and entry["ErrNum"][i] == number)
 
 
-def _read_after(reader: "SensorReader", before: object, field: str) -> "Callable[[], bool]":
-    # True once the reader stored a sample after `before` carrying its health field.
-    def check() -> bool:
-        return reader._datastruct is not before and getattr(reader._datastruct, field) is not None
-
-    return check
-
-
-def _readers() -> "list[tuple[str, SensorReader]]":
-    # Every plan instance whose reader arms a read trigger of its own: the trigger list's and the SCD30's timer.
-    found = []
-    for attachments in plan["buses"].values():
-        for attachment in attachments:
-            key = attachment["driver"] + ("_" + attachment["name_ext"] if attachment["name_ext"] else "")
-            found.append((key, getattr(module, key)))
-    return sorted(found, key=lambda pair: pair[0])  # a MicroPython dict keeps no order: the plan's buses come unsorted
-
-
-def _restarted(first: "list[asyncio.Task[None] | None]", ended: "list[int]") -> "Callable[[], bool]":
-    # True once the supervisor replaced every task of `ended` (indices into `first`, the tasks as they started).
-    def check() -> bool:
-        return all(module.sysfunct._tasks[i] not in (None, first[i]) for i in ended)
-
-    return check
-
-
 async def _run_on_clock(scenario: "Callable[[DrivenTime], Coroutine[object, object, None]]") -> None:
     # `scenario` booted and run on one driven clock (tests/_fake_time.py), the modules put back after. A UART-wired plan
     # too: its link reads wire time off the twin's plain clock, digital_twin/_flash_stall.py's plain_us() (agent, 2026-10-22).
     with DrivenTime(*_driven_modules(), sleeps=True) as clock:
         await scenario(clock)
-
-
-def _sources(reader: "SensorReader") -> "list[SensorReader]":
-    # The readers whose values `reader` reads (its ValueRef inputs).
-    sources: list[SensorReader] = []
-    for ref in (getattr(reader, "_temperature", None), getattr(reader, "_humidity", None)):
-        if ref is not None and all(ref.source is not known for known in sources):
-            sources.append(ref.source)
-    return sources
-
-
-def _start_sources(reader: "SensorReader") -> "list[asyncio.Task[None]]":
-    # `reader`'s sources running unsupervised: their tasks, their armed timers.
-    sources = _sources(reader)
-    tasks = [starter() for source in sources for starter in source.get_task_starters()]
-    for source in sources:
-        for starter in source.get_trigger_starters() + source.get_timer_starters():
-            starter()
-    return tasks
 
 
 async def _stop_graph(supervisor: "list[asyncio.Task[None]]") -> None:
@@ -224,80 +170,21 @@ async def _until(clock: "DrivenTime | None", what: str, condition: "Callable[[],
         waited += _POLL_S
 
 
-def test_a_reader_whose_trigger_cannot_arm_ends_restarts_and_reads_once_the_pool_frees() -> None:
-    # Per reader, alone on its supervisor: the failed arm ends its task with one E TIMER, the supervisor restarts it,
-    # and once the pool frees it reads. One at a time: every reader dying at once overruns the restart budget (below).
-    async def scenario(clock: "DrivenTime") -> None:
-        watchdog = await _driven(clock, "the boot never finished", _boot(_POOL))
-        sysfunct = module.sysfunct
-        for key, reader in _readers():
-            feeding: list[asyncio.Task[None]] = []
-            machine.set_alarm_pool_free(0)
-            supervisor = await _driven(clock, key + "'s tasks and timers never started", _supervise(reader.get_task_starters(), task_names_of(reader), reader.get_trigger_starters(), reader.get_timer_starters()))
-            try:
-                first = list(sysfunct._tasks)
-                await _until(clock, key + "'s task never ended on its failed arm", _any_ended(first))
-                ended = [i for i, t in enumerate(first) if t is not None and t.done()]
-                await _until(clock, key + "'s task was never restarted", _restarted(first, ended))
-                assert await _errors(reader, code("E", "TIMER")) >= 1, f"{device}: {key} persisted no E TIMER for its failed arm"
-                machine.set_alarm_pool_free(_POOL)
-                field = _HEALTH_FIELD[key.split("_", 1)[0]]
-                before = reader._datastruct
-                feeding = _start_sources(reader)  # an SGP40 measures only with its compensation inputs live
-                await _until(clock, key + " never read once the pool freed", _read_after(reader, before, field))
-            finally:
-                for task in feeding:
-                    await cancel(task)
-                await _stop_graph(supervisor)
-                for armed in [reader] + _sources(reader):  # their alarms back to the pool before the next reader's case
-                    armed.stop_timer()
-            assert not sysfunct._reset_armed and machine.reset_count == 0, f"{device}: {key}'s failed arm armed a reset"
-        assert watchdog.would_have_triggered_count == 0
-
-    run_timed(_run_on_clock(scenario), timeout_s=_RUN_BOUND_S)
-
-
-def test_read_triggers_that_never_arm_end_at_the_budgets_reboot_with_one_entry() -> None:
-    # The pool stays empty: each reader's restart ends once more on its failed arm, so the supervisor's budget runs out and
-    # it escalates to its reboot once, with one budget entry; the reset itself is the reboot path's (the test below's).
-    async def scenario(clock: "DrivenTime") -> None:
-        watchdog = await _driven(clock, "the boot never finished", _boot(_POOL))
-        sysfunct = module.sysfunct
-        machine.set_alarm_pool_free(0)
-        supervisor = await _driven(clock, "the tasks and timers never started", _supervise(module._collect_task_starters(), module._collect_task_names(), module._collect_trigger_starters(), module._collect_timer_starters()))
-        try:
-            await _until(clock, "the restart budget never ran out", lambda: sysfunct._reset_decided)
-            await _until(clock, "the budget's reboot entry was never written", lambda: sysfunct._force_watchdog_starve)
-            assert await _errors(sysfunct, code("E", "TASK_BUDGET_REBOOT")) == 1, f"{device}: the budget's reboot was not logged once"
-            assert (machine.reset_count, watchdog.would_have_triggered_count) == (0, 0), f"{device}: the escalation reset the board before its reboot path"
-        finally:
-            sysfunct._reset_timer.deinit()  # the in-process graph never takes the reset
-            if sysfunct._reset_task is not None:
-                await cancel(sysfunct._reset_task)
-            await _driven(clock, "the graph never stopped", _stop_graph(supervisor))  # a restarted task ends on the clock
-            for _key, reader in _readers():
-                reader.stop_timer()
-
-    run_timed(_run_on_clock(scenario), timeout_s=_RUN_BOUND_S)
-
-
 def test_the_tick_timers_degrade_in_place_and_rearm_once_the_pool_frees() -> None:
     # SYSTEM's uptime tick stays unarmed for the boot, printed and not persisted, its uptime still measured on each
-    # read; once the pool frees, NTP's and WiFi's tick timers re-arm. No reset arms.
+    # read; NTP's starters print their refusal and go on; once the pool frees, WiFi's tick timer re-arms. No reset arms.
     async def scenario(clock: "DrivenTime") -> None:
         watchdog = await _driven(clock, "the boot never finished", _boot(_POOL))
         sysfunct, ntp, conn = module.sysfunct, module.ntp, module.conn
         machine.set_alarm_pool_free(0)
         modules = (sysfunct, ntp, conn)
         supervisor = await _driven(clock, "SYSTEM's, NTP's and WiFi's tasks never started", _supervise([s for m in modules for s in m.get_task_starters()], task_names_of(*modules), [], [s for m in modules for s in m.get_timer_starters()]))
-        await ntp.ntp_force_sync()  # main()'s first sync request: the sync loop's wake, where it retries its arms
         try:
             uptime = await sysfunct.get_uptime()
             await _until(clock, "SYSTEM's uptime stood still while its tick was unarmed", lambda: sysfunct._uptime.read() > uptime)
             assert await _errors(sysfunct, code("E", "TIMER")) == 0, f"{device}: SYSTEM persisted its failed uptime arm"
-            assert (ntp._check_armed, ntp._tick_armed, conn._tick_armed) == (False, False, False), "a tick timer armed from an empty pool"
+            assert conn._tick_armed is False, "WiFi's tick timer armed from an empty pool"
             machine.set_alarm_pool_free(_POOL)
-            await _until(clock, "NTP's timers never re-armed", lambda: ntp._tick_armed is True and ntp._check_armed is True)
             await _until(clock, "WiFi's uptime tick never re-armed", lambda: conn._tick_armed is True)
             assert not sysfunct._reset_armed and machine.reset_count == 0, f"{device}: an exhausted pool armed a reset"
             assert watchdog.would_have_triggered_count == 0

@@ -4,7 +4,8 @@ Each line is checked against its unit's own action list at that unit's start; B8
 
 - B3, B4, B5, B6, B7: the `setup()`s of their files still answer a bool (B2 converted the core's and the overrides in
   Wi-Fi and notification). Each unit converts its own, test first, except the two a product caller reads: dev's
-  `UARTComm.setup()` (`asy_uart_link_driver.py:290`) and the FRAM driver's (`asy_fram_manager.py:671`).
+  `UARTComm.setup()` (`asy_uart_link_driver.py:290`); `FRAMManager.setup()`'s reader (`asy_fram_manager.py:671`)
+  goes with B3's row 2, so its bool goes too (lead, 2026-11-03).
 - B8: once no `setup()` in the boot setup list answers anything, `SetupFct` in `asy_base_classes.py` goes back to
   `Awaitable[None]` (it reads `Awaitable[object]` since B2).
 - B4: the reader timer trio (`_trigger_loop`, `_timer_fault`, `_timer_failed`, `_rearm_timer`; S2-G4-7's reader sites)
@@ -21,3 +22,22 @@ Each line is checked against its unit's own action list at that unit's start; B8
   left; the twin loop-end test and the bench reset test read it.
 - R2 (bench): `tests_hardware/manual/manual_persistence.py`'s HAD_POR and RUN-bit checks lost their `ResetBits` read;
   each needs a device-side read of its own.
+- B3: clarification (e) is decided (owner, 2026-11-03: "Option A."): FRAM's E49 and W63 for one invalid block stay;
+  no row for it. B3 asks nothing at its start.
+- B6: clarification (c) is decided (owner, 2026-11-03: "Option A, keep as is."): no change for a UART exchange during
+  a flash write; B6 asks nothing at its start for it.
+  The timeout stays 1,000 ms (owner, 2026-11-03: "Keep the UART as is. Any module using the UART must be aware
+  that errors like this can happen ... and provide recovery mechanisms themselves."): nothing to change.
+- Next snapshot: the Stull paper left the tree (int 1daa0fae); hundertvolt/datasheets#1 merged at 10:58 UTC as
+  786c947c, and the `datasheets` pointer moved to it (int a6047339).
+- B3: FRAM E19 (`LOCK_TIMEOUT`) twice in B4's first scenario run (schlafzi, arzi, overflow bursts beside the
+  then-unwaited boot W65 write), not in the reruns: check the lock timeout covers a boot W65 beside a burst.
+- R2: twin chip knobs with no driver reader after B4 (`_bmp3xx_chip.py` `fatal_err` and the EVENT model,
+  `_scd30_chip.py` `rdy_stuck_high`); bench tests that expect an empty SGP40 log after boot meet the restored W65.
+- R2: `tests_hardware/flash/test_bus_concurrency.py::test_a_held_sda_line_is_cleared_and_every_device_answers` fails
+  under `--twin` at `963d0de1` and after B4's fix round alike: the twin has no chip that holds SDA against a bit-banged
+  read (B4 fix round, (c)).
+- Round 1: after B6, the UART hazard script's stalled TX fails on the missing ACK (E81), not the write deadline (E82);
+  the crossover's new `cobs` mode runs on silicon for the first time.
+- B3: R0 item 5's reverts of `a4f0ccea` and `8cf55c6b`, B2's and missed by its list, are B3's row 19; `ad1fae73`'s
+  is its row 4.

@@ -88,8 +88,8 @@ _CONN_STATUS_INTERVAL_MS = 20  # the runner's CONN_SLOTS period: dense enough th
 _FAULT_STATUS_INTERVAL_MS = 100
 # @tunable l2.scenario_drain_wait_s = 10.0
 _DRAIN_WAIT_S = 10.0  # a slot outlives its response until its close completes (Part H.7.1)
-# A fresh hotspot boot's first own error-count move is SGP40's untimestamped backup, 60 x BackupPeriod + WaitTimeNTP - 1
-# read cycles of 1 s after its spawn at the earliest (the twin's Timer only fires late): past it no move is the scenario's.
+# Past its first SGP40 restore's W65 (the blank chunk; acquire() waits for it), a fresh boot's first own move is SGP40's
+# untimestamped backup, 60 x BackupPeriod + WaitTimeNTP - 1 late-firing 1 s cycles after spawn: past it none is the scenario's.
 # @tunable l2.scenario_shared_boot_deadline_s = 89.0
 _SHARED_BOOT_DEADLINE_S = 89.0
 # @tunable l2.scenario_shared_boot_budget_s = 30.0
@@ -375,6 +375,9 @@ class SharedBoot:
         if self.twin is None:
             self.spawned_at = time.monotonic()
             twin = self.stack.enter_context(self.ctx.boot(*_CONN))
+            for _key, driver, ext in self.ctx.instances:
+                if driver == "sgp40":  # its first restore logs W65 for the blank backup chunk: the boot's move, never a scenario's
+                    _expect(_wait_entry(twin.port, f"SGP40_{ext}" if ext else "SGP40", kind="W", num=_src_int("asy_sgp40_driver.py", "_WRN_SGP_NO_BACKUP")), "a shared boot's SGP40 never logged W SGP_NO_BACKUP for its blank backup chunk")
             self.counters = {name: _counter(entry) for name, entry in _error_table(twin.port).items()}
             self.twin = twin
         return self.twin
@@ -617,7 +620,8 @@ def _bounded_fault_storm(ctx: Context) -> None:
     # Each refusal at the ceiling is one WEBSERVER entry (_note_drop()); a served connection persists none. A config
     # store whose file this boot did not find persists its not-found warning once; a planted one's owes none.
     events = {name: 1 for name in line.fram_writes_by if name.startswith("CFGMGR_") and name not in _PLANTED_CONFIG_LOGS}
-    events |= {"SGP40": _ENTRIES_PER_FAILED_CYCLE * failed + sum(at <= failed for at in _STORM_RUNGS_AT), "WEBSERVER": sum(r != HTTPStatus.OK for r in burst)}
+    # SGP40's: its first restore's W65 for the blank backup chunk, then the storm's.
+    events |= {"SGP40": 1 + _ENTRIES_PER_FAILED_CYCLE * failed + sum(at <= failed for at in _STORM_RUNGS_AT), "WEBSERVER": sum(r != HTTPStatus.OK for r in burst)}
     bound = {name: _CHUNK_COPIES * (1 + events.get(name, 0)) for name in line.fram_writes_by}
     over = {name: (n, bound[name]) for name, n in line.fram_writes_by.items() if n > bound[name]}
     _expect(not over, f"loggers over the chunk writes their setup and the storm's events allow, (writes, bound): {over}")
@@ -1636,8 +1640,9 @@ def _reset_errors_not_undone(ctx: Context) -> None:
         _expect(answer.status == HTTPStatus.OK, f"ResetErrors at the first answer answered {answer.status}")
         _expect(_wait_reading(twin.port, "SGP40"), "SGP40 never read, so its logger's setup never ran")
         entry = _errcount(twin.port, "SGP40")
-        errors = [h for h in entry.get("history", []) if isinstance(h, dict) and h.get("type") == "E"]  # type: ignore[union-attr]
-        _expect(_counter(entry) == 0 and not errors, f"the restore brought the pre-reset history back over a reset that answered 200: {entry!r}")
+        # At most this boot's own W65: its restore finds the backup chunk still blank, after the reset or before it.
+        owed = [["W", _src_int("asy_sgp40_driver.py", "_WRN_SGP_NO_BACKUP")]]
+        _expect((_counter(entry), _newest_entries(entry)) in ((0, []), (1, owed)), f"SGP40 holds more than its blank chunk's W SGP_NO_BACKUP after a reset that answered 200 (the restore brought the pre-reset history back?): {entry!r}")
 
 
 @scenario("reset_errors_while_a_command_owns_the_reset_is_refused_and_clears_nothing", family="system_commands", drivers=("sgp40",))

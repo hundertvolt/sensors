@@ -69,26 +69,25 @@ class _CsHijack:
 
     def hold_inactive(self) -> None:
         # Every CS cycle starts deselected: the chip sees no command at all, as if it had gone from the bus.
-        def deselected() -> bool:
-            began = self._session_begin()
+        def deselected() -> None:
+            self._session_begin()
             self._yank()
-            return began
 
         self._spidev.session_begin = deselected  # type: ignore[method-assign]
 
     def install_for_read(self) -> None:
-        def hijacked(buf: "bytearray | memoryview", write_value: int = 0x00) -> bool:
+        def hijacked(buf: "bytearray | memoryview", write_value: int = 0x00) -> None:
             if self._hit(buf):
                 self._yank()
-            return self._readinto_sync(buf, write_value)
+            self._readinto_sync(buf, write_value)
 
         self._spidev.readinto_sync = hijacked  # type: ignore[method-assign]
 
     def install_for_write(self) -> None:
-        def hijacked(buf: "bytes | bytearray | memoryview") -> bool:
+        def hijacked(buf: "bytes | bytearray | memoryview") -> None:
             if self._hit(buf):
                 self._yank()  # deselect the chip before the bytes reach it
-            return self._write_sync(buf)
+            self._write_sync(buf)
 
         self._spidev.write_sync = hijacked  # type: ignore[method-assign]
 
