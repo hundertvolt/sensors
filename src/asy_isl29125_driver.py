@@ -21,7 +21,7 @@ import math_helpers
 from asy_base_classes import COUNTER_CAP, DeviceSession, LockedValue, SensorReaderConfig, utc_now
 from asy_config_manager import checked_numeric, name_cfg
 from asy_i2c_driver import I2CDevice
-from asy_print_log import DEFAULT_LOG, LogConfig
+from asy_print_log import DEFAULT_LOG, LogConfig, report_if_fatal
 
 try:
     from typing import TYPE_CHECKING
@@ -535,7 +535,7 @@ class ISL29125_Reader(SensorReaderConfig):
         await self._note_candidate(sample_ratio)
 
     def _measured_ratio(self) -> float | None:
-        # None once the hold expires, so a stale candidate can never be mistaken for a fresh one.
+        # None once the hold expires, so a stale candidate is not mistaken for a fresh one.
         if self._cal_meas is None or time.ticks_diff(time.ticks_ms(), self._cal_meas_until_ms) >= 0:
             return None
         return self._cal_meas
@@ -883,7 +883,8 @@ class ISL29125_Reader(SensorReaderConfig):
             return
         try:
             raw = await self._isl.get_config_snapshot()
-        except Exception:
+        except Exception as e:
+            report_if_fatal(e)
             return  # the bus is down; the counts still differ, so the next cycle tries again
         self._reconciled_write_failures = seen
         await self._check_divergence(raw)
@@ -1093,8 +1094,8 @@ class ISL29125_Reader(SensorReaderConfig):
             await self.pr.err_s("Error setting resolution:", e, errno=_ERR_CHIP_SET)
             return False
         # A resolution change changes the cycle length, so the derived persistence changes with it.
-        period = await self._trigger_period.get_value()  # set at construction, never None
-        if not await self._reapply_persist(int(period)):  # type: ignore[arg-type]
+        period = await self._trigger_period.get_value()
+        if not await self._reapply_persist(int(period)):  # type: ignore[arg-type]  # set at construction, never None
             return False
         # The registers compare the RAW ADC value, so a resolution change rescales them, armed or not.
         await self._write_thresholds()

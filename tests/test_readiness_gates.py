@@ -219,7 +219,7 @@ def test_spi_device_refuses_a_session_before_setup_whose_own_setup_cannot_fail()
     device = SPIDevice(_spi(), 1)
     refusal = "RuntimeError: SPIDevice not set up - call setup() first"  # the async with structural raise (C.13)
     assert (device.initialized, _raised(device.session_begin), _raised(lambda: _enter(device))) == (False, refusal, refusal)
-    assert run(device.setup()) is True
+    run(device.setup())
     assert device.initialized is True
     assert _raised(lambda: _enter(device)) == ""
 

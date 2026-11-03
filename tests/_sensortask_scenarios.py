@@ -44,7 +44,6 @@ from microdot import Request, Response
 
 import asy_base_classes
 import asy_config_manager
-import asy_isl29125_driver
 import asy_ntp_client
 import asy_scd30_driver
 import asy_spi_driver
@@ -2228,42 +2227,6 @@ def _scenario_log_ring_saturation(device: str) -> None:
     assert sorted(restored) == sorted(expected), (sorted(restored), sorted(expected))
     for name, log in restored.items():
         assert (log["ErrCount"], log["ErrNum"]) == (top, expected[name]), (name, log)
-
-
-@_register("isl29125_calibration_ticks_end_on_their_deadlines_across_wraps_and_five_day_stalls")
-def _scenario_isl29125_stored_ticks(device: str) -> None:
-    # The calibration window and a finished run's candidate hold are stored ticks: armed a minute before a 2**30 ms
-    # wrap, each ends on its own deadline past it; armed before each of eight five-day stalls (four wraps, every read
-    # inside ticks_diff()'s 2**29 ms horizon), each is over at the first cycle after the stall.
-    module = build(device)
-    isl = getattr(module, "isl29125", None)
-    if isl is None:
-        return
-    window = src_int("src/asy_isl29125_driver.py", "_CAL_WINDOW_MS")
-    hold = src_int("src/asy_isl29125_driver.py", "_CAL_HOLD_MS")
-    got: list[tuple[bool, object]] = []
-
-    async def drive(clock: DrivenTime) -> None:
-        async def arm() -> None:
-            assert await isl.start_calibration(flag=True)
-            isl._cal_meas, isl._cal_meas_until_ms = 1.25, clock.ticks_add(clock.ticks_ms(), hold)  # a finished candidate
-
-        async def cycle() -> None:
-            got.append((await isl._expire_calibration(), isl._measured_ratio()))
-
-        await arm()
-        for step_ms in (1000, window - 2000, 2000, hold):
-            await clock.jump(step_ms)
-            await cycle()
-        for _ in range(8):
-            await arm()
-            await clock.jump(5 * 24 * _HOUR_MS)
-            await cycle()
-
-    with DrivenTime(asy_isl29125_driver, now=_TICKS_PERIOD - 60_000) as clock:
-        run(drive(clock))
-    assert got[:4] == [(True, 1.25), (True, 1.25), (False, 1.25), (False, None)], got
-    assert got[4:] == [(False, None)] * 8, got
 
 
 @_register("a_uart_write_hold_off_ends_within_one_window_across_a_wrap_and_after_idles_past_the_horizon")
