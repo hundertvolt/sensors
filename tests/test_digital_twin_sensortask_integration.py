@@ -116,6 +116,7 @@ _POLL_IDLE_MS = src_const("src/asy_udp_socket.py", "_POLL_IDLE_MS")
 _STA_ESTABLISHED = src_const("src/asy_wifi_service.py", "_PHASE_STA_ESTABLISHED")
 _HOTSPOT_PHASE = src_const("src/asy_wifi_service.py", "_PHASE_HOTSPOT")
 _JOINED_NO_IP = src_int("src/asy_wifi_service.py", "_STAT_JOINED_NO_IP")
+_RETRY_UNSYNCED_S = src_int("src/asy_ntp_client.py", "_NTP_RETRY_UNSYNCED_S")
 _WIFI_STORE = str(src_const("src/asy_wifi_service.py", "_NAME"))
 _NO_CLOCK = src_const("src/asy_notification_service.py", "_STATE_NO_CLOCK")
 _EVALUATED = src_const("src/asy_notification_service.py", "_STATE_EVALUATED")
@@ -666,7 +667,7 @@ def test_watchdog_is_never_starved_while_the_real_supervisor_runs() -> None:
         assert watchdog.would_have_triggered_count == 0, list(watchdog.would_have_triggered_log)
         assert not main_task.done(), "main() ended: its supervisor never returns"
         ntp = module.ntp
-        assert await _wait_until(lambda: ntp._retry_wait_s > ntp._retry_s, timeout_s=_WAIT_TIMEOUT_S), "the NTP client never sent a sync attempt"
+        assert await _wait_until(lambda: ntp._retry_wait_s == _RETRY_UNSYNCED_S, timeout_s=_WAIT_TIMEOUT_S), "the NTP client never sent a sync attempt"
         refused = (_unix_port_udp_addr_shim.public_destinations_refused, _unix_port_udp_addr_shim.last_refused)
         assert refused == (0, None), f"the offline boot sent outside the twin: {refused}"
 
@@ -1036,8 +1037,9 @@ def test_the_captive_dns_listener_idles_at_its_idle_rate() -> None:
 
 
 def test_the_captive_dns_socket_whose_bind_fails_logs_once_then_rebuilds_binds_and_answers() -> None:
-    # The listener's first bind refused: one E INIT, that socket torn down, and after the backoff the same UDPSocket builds
-    # a fresh socket, binds it and answers a burst (asy_udp_socket.py's teardown and lazy rebuild). Wired as above.
+    # The listener's first bind refused: one receive warning, that socket torn down, and after the backoff the same
+    # UDPSocket builds a fresh socket, binds it and answers a burst (asy_udp_socket.py's teardown and lazy rebuild).
+    # Wired as above.
     _driver_specific("neopixel", "fram")
 
     async def scenario(clock: DrivenTime) -> None:
@@ -1053,7 +1055,7 @@ def test_the_captive_dns_socket_whose_bind_fails_logs_once_then_rebuilds_binds_a
         slots = [(kind, n) for kind, n in zip(entry["ErrType"], entry["ErrNum"]) if kind != "N"]
         assert fault.fired == 1, f"the fault failed {fault.fired} binds"
         assert fault.closed()[:1] == [True] and len(fault.made) == 2, f"sockets made, closed or not: {fault.closed()}"
-        assert (entry["ErrCount"], slots) == (1, [("E", code("E", "INIT"))]), f"the refused bind logged {entry['ErrCount']}: {slots}"
+        assert (entry["ErrCount"], slots) == (1, [("W", code("W", "DNS_RECV_FAILED"))]), f"the refused bind logged {entry['ErrCount']}: {slots}"
         assert answered == _BURST, f"{answered} of {_BURST} queries answered by the rebuilt socket"
 
     run(_on_driven_clock(scenario))

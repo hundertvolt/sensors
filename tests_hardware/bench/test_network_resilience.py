@@ -157,7 +157,6 @@ _CEILING_TRACES = (code("W", "HTTP_REFUSED"), code("W", "HTTP_PEER_RESET"))
     " already past its network check when the AP drops, or its whole retry chain where the link still reads as up",
     ("WIFI", "W", "WLAN_NO_AP"),
     ("WIFI", "W", "WLAN_AUTH_FAILED"),
-    ("NTP", "E", "NTP_DNS_NOT_SENT"),
     ("NTP", "E", "NTP_DNS"),
     ("NTP", "E", "NTP_NOT_SENT"),
     ("NTP", "E", "NTP_NO_REPLY"),
@@ -182,7 +181,6 @@ def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, be
     " attempt already past its network check when the AP drops, or its whole retry chain where the link still reads as up",
     ("WIFI", "W", "WLAN_NO_AP"),
     ("WIFI", "W", "WLAN_AUTH_FAILED"),
-    ("NTP", "E", "NTP_DNS_NOT_SENT"),
     ("NTP", "E", "NTP_DNS"),
     ("NTP", "E", "NTP_NOT_SENT"),
     ("NTP", "E", "NTP_NO_REPLY"),
@@ -289,8 +287,8 @@ def test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage(board: Boa
 # and its limits: tests_hardware/README.md 'What the network-fault injections reach'.
 # ---------------------------------------------------------------------------
 
-# 48 bytes, the NTP packet the client receives into (src/asy_ntp_client.py _NTP_PACKET_LEN), and still no valid NTP
-# header: its first byte 0xff is leap indicator 3, which _parse_ntp_reply() rejects as unsynchronised before any time.
+# 48 bytes, the NTP packet's length (RFC 5905 7.3), and still no valid NTP header: its first byte 0xff is leap
+# indicator 3, which _parse_ntp_reply() rejects as unsynchronised before any time.
 _GARBAGE_PAYLOAD = b"\xff" + b"not an NTP or DNS wire-format packet, on purpose"[:47]
 
 
@@ -374,7 +372,7 @@ _GARBAGE_NTP_HOST = "this-host-will-never-resolve.invalid"
 
 
 @pytest.mark.persistence_write
-@pytest.mark.provokes_log("the .invalid host's lookup answers NXDOMAIN, which the test waits for", ("NTP", "E", "NTP_DNS_NXDOMAIN"))
+@pytest.mark.provokes_log("the .invalid host's lookup never resolves, which the test waits for", ("NTP", "E", "NTP_DNS"))
 def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     original_host = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("NTPHost")
     if original_host == _GARBAGE_NTP_HOST:
@@ -390,8 +388,8 @@ def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: B
         # _VAL_NTP_HOST bounds the length and the RFC 1035 label shape, so this host is "Valid"; the failure is the DNS
         # resolution its post function triggers.
         assert _load.as_object(res.json().get("result"), "result").get("NTPHost") == "Valid", f"garbage NTPHost was rejected at the schema level, not what this test exercises: {res.body!r}"
-        # A resolver answers NXDOMAIN for .invalid (RFC 6761 section 6.4), which NTP persists as its own code.
-        wait_until(lambda: _load._ntp_error_log_contains(dut_ip, code("E", "NTP_DNS_NXDOMAIN")), timeout_s=_WAIT_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description="NTP to log NTP_DNS_NXDOMAIN for the garbage NTPHost")
+        # A resolver answers NXDOMAIN for .invalid (RFC 6761 section 6.4): the name does not resolve, which NTP persists as NTP_DNS.
+        wait_until(lambda: _load._ntp_error_log_contains(dut_ip, code("E", "NTP_DNS")), timeout_s=_WAIT_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description="NTP to log NTP_DNS for the garbage NTPHost")
         # Degrading cleanly means the rest stays healthy, not merely that the error got logged.
         assert _load.serving(dut_ip), "webserver unresponsive while NTPHost was garbage"
         assert_no_task_ended(dut_ip, "a garbage NTPHost")
@@ -734,15 +732,15 @@ def test_put_nonsense_field_values_are_marked_invalid_not_crashed(board: Board, 
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.provokes_log("the trickled request is reclaimed by the outer cap, which the test asserts", ("WEBSERVER", "W", "HTTP_REQUEST_CAP"))
+@pytest.mark.provokes_log("the trickled request is reclaimed by the outer cap, which the test asserts", ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"))
 def test_slowloris_style_partial_request_is_reclaimed_by_the_outer_timeout(dut_ip: str, request: pytest.FixtureRequest) -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(_SLOWLORIS_SOCKET_TIMEOUT_S)  # over the server's outer_cap_s
         sock.connect((dut_ip, 80))
         sock.sendall(b"GET /status HTTP/1.1\r\nHost: x\r\n")
-        # One header line every 3 s keeps each readline() under its per-call timeout (HTTP_CALL_TIMEOUT never fires)
-        # while the 18 s total passes outer_cap_s, the timeout under test.
+        # One header line every 3 s keeps each readline() under its per-call timeout while the 18 s total passes
+        # outer_cap_s, the timeout under test; both log HTTP_CALL_TIMEOUT.
         try:
             for i in range(6):
                 sock.sendall(f"X-Pad-{i}: 1\r\n".encode())
@@ -756,7 +754,7 @@ def test_slowloris_style_partial_request_is_reclaimed_by_the_outer_timeout(dut_i
     assert response == b"", f"a genuinely Slowloris-paced request (no single stall over 5s, 18s cumulative) was not reclaimed by the outer timeout: {response!r}"
     assert _load.serving(dut_ip), "webserver unresponsive after a slowloris-style trickle-fed request"
     try:
-        assert_module_error_log_contains(dut_ip, "WEBSERVER", code("W", "HTTP_REQUEST_CAP"), "W")
+        assert_module_error_log_contains(dut_ip, "WEBSERVER", code("W", "HTTP_CALL_TIMEOUT"), "W")
         assert_no_task_ended(dut_ip, "a slowloris-paced request")
     finally:
         reset_all_error_logs(dut_ip, request.node.name)
@@ -929,7 +927,6 @@ _LINGER_RESET = struct.pack("ii", 1, 0)  # SO_LINGER on with a zero timeout: the
 @pytest.mark.persistence_write
 @pytest.mark.provokes_log(
     "its misbehaving clients (slowloris, a refused head, a truncated body, a reset) log their HTTP warnings",
-    ("WEBSERVER", "W", "HTTP_REQUEST_CAP"),
     ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
     ("WEBSERVER", "W", "HTTP_BAD_HEAD"),
     ("WEBSERVER", "W", "HTTP_PEER_RESET"),

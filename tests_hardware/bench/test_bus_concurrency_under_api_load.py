@@ -121,7 +121,6 @@ def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_c
     ("WEBSERVER", "W", "HTTP_REFUSED"),
     ("WEBSERVER", "W", "HTTP_PEER_RESET"),
     ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
-    ("WEBSERVER", "W", "HTTP_REQUEST_CAP"),
 )
 def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_network_degradation(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest) -> None:
     reset_all_error_logs(dut_ip, request.node.name)
@@ -204,11 +203,9 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
     ("WEBSERVER", "W", "HTTP_REFUSED"),
     ("WEBSERVER", "W", "HTTP_PEER_RESET"),
     ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
-    ("WEBSERVER", "W", "HTTP_REQUEST_CAP"),
     ("WEBSERVER", "W", "HTTP_SOCKET_ERROR"),
     ("WIFI", "W", "WLAN_NO_AP"),
     ("WIFI", "W", "WLAN_AUTH_FAILED"),
-    ("NTP", "E", "NTP_DNS_NOT_SENT"),
     ("NTP", "E", "NTP_DNS"),
     ("NTP", "E", "NTP_NOT_SENT"),
     ("NTP", "E", "NTP_NO_REPLY"),

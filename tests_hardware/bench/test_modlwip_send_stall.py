@@ -85,7 +85,6 @@ class _Verdicts:
     ("WEBSERVER", "W", "HTTP_REFUSED"),
     ("WEBSERVER", "W", "HTTP_PEER_RESET"),
     ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
-    ("WEBSERVER", "W", "HTTP_REQUEST_CAP"),
 )
 def test_no_send_stall_with_the_override(board: "Board", dut_ip: str, result_note: "_load.Note") -> None:
     # A failed bound goes to the owner as an override change (a short POLLOUT back-off), never a larger bound.
@@ -102,7 +101,6 @@ def test_no_send_stall_with_the_override(board: "Board", dut_ip: str, result_not
     ("WEBSERVER", "W", "HTTP_REFUSED"),
     ("WEBSERVER", "W", "HTTP_PEER_RESET"),
     ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
-    ("WEBSERVER", "W", "HTTP_REQUEST_CAP"),
 )
 def test_send_stall_on_the_unpatched_image(board: "Board", bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # The control image the round built (--lwip-control-image) must stall where the normal image does not; both flash

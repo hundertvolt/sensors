@@ -135,7 +135,7 @@ async def _ntp_shaped_fetch(addr: tuple[str, int], timeout_ms: int) -> "tuple[bo
     try:
         sent = await cli.write(ntp_request, timeout_ms=timeout_ms) is not None
         if sent:
-            msg, _ = await cli.recvfrom(_NTP_PACKET_LEN, timeout_ms=timeout_ms)
+            msg, _ = await cli.recvfrom(_NTP_RECV_BUF, timeout_ms=timeout_ms)
     finally:
         torn_down = await cli.disconnect()
     return sent, msg, torn_down
@@ -176,7 +176,7 @@ def _unbindable_addr() -> tuple[str, int]:
 _RETRY_BACKOFF_MS: int = src_int("src/asy_udp_socket.py", "_RETRY_BACKOFF_MS")
 _POLL_WAIT_MS: int = src_int("src/asy_udp_socket.py", "_POLL_WAIT_MS")
 _POLL_IDLE_MS: int = src_int("src/asy_udp_socket.py", "_POLL_IDLE_MS")
-_NTP_PACKET_LEN: int = src_int("src/asy_ntp_client.py", "_NTP_PACKET_LEN")
+_NTP_RECV_BUF = 1024  # asy_ntp_client.py _fetch_ntp_reply()'s receive size
 
 
 # ---------------------------------------------------------------------------
@@ -596,7 +596,7 @@ class _RecordingAsyncio:
 
 def test_ready_with_a_deadline_polls_at_the_transaction_rate() -> None:
     # A wait with a deadline sits inside an exchange (DNS, NTP): every round sleeps _POLL_WAIT_MS, never
-    # a busy-spin of ipoll(0)+sleep_ms(0) on RP2040's single core; the last is cut to end at the deadline.
+    # a busy-spin of ipoll(0)+sleep_ms(0) on RP2040's single core.
     sleeps = _record_ready_sleeps(_READY_EMPTY_TIMEOUT_MS)
     assert len(sleeps) > 0
     assert all(ms == _POLL_WAIT_MS for ms in sleeps[:-1]), sleeps
@@ -640,26 +640,6 @@ def test_a_cancel_in_any_round_after_the_deadline_passes_raises_out_of_ready() -
         run(sock.disconnect())
     lost = [k for k, outcome in enumerate(outcomes) if outcome.endswith("after the cancel")]
     assert not lost, f"a cancel in these rounds after the deadline read as no readiness: {lost} ({outcomes})"
-
-
-def test_ready_with_a_deadline_off_the_poll_rate_ends_at_the_deadline() -> None:
-    # A deadline between two poll rounds ends at itself, as the wait_for_ms() bound did, not at the next round.
-    sock = UDPSocket(_make_addr(), mode="server")  # bound; nothing ever reaches it
-
-    async def scenario(clock: DrivenTime) -> "tuple[bool, bool, object]":
-        waiter = asyncio.create_task(sock.ready(select.POLLIN, timeout_ms=_MS_CHECK_TIMEOUT_MS))
-        await clock.elapse(_MS_CHECK_TIMEOUT_MS - 1)
-        early = waiter.done()
-        await clock.elapse(1)
-        return early, waiter.done(), await waiter if waiter.done() else None
-
-    try:
-        with DrivenTime(asy_udp_socket, sleeps=True) as clock:
-            early, ended, result = run(scenario(clock))
-    finally:
-        run(sock.disconnect())
-    assert _MS_CHECK_TIMEOUT_MS % _POLL_WAIT_MS, "the deadline must fall between two poll rounds"
-    assert (early, ended, result) == (False, True, False), (early, ended, result)
 
 
 def test_a_failed_setup_backs_off_with_one_sleep_ms_of_the_shipped_value() -> None:
@@ -1308,7 +1288,7 @@ def test_ready_sleeps_milliseconds_not_seconds() -> None:
     elapsed = time.ticks_diff(time.ticks_ms(), t0)
     without_deadline = _record_ready_sleeps(-1, stop_after=1)
     assert with_deadline and all(isinstance(ms, int) for ms in with_deadline), with_deadline
-    assert all(ms == _POLL_WAIT_MS for ms in with_deadline[:-1]) and 0 < with_deadline[-1] <= _POLL_WAIT_MS, with_deadline  # the last ends at the deadline
+    assert all(ms == _POLL_WAIT_MS for ms in with_deadline[:-1]) and 0 < with_deadline[-1] <= _POLL_WAIT_MS, with_deadline
     assert without_deadline == [_POLL_IDLE_MS] and isinstance(without_deadline[0], int), without_deadline
     assert elapsed < _MS_CHECK_ELAPSED_MAX_MS  # generously below the 10000ms+ the old seconds-interpretation bug would take
 
@@ -1760,9 +1740,9 @@ def test_cancelling_connect_or_ready_at_each_await_leaves_the_lock_free() -> Non
 
     def invariants(sock: UDPSocket) -> None:
         assert_unlocked(_connect_lock=sock._connect_lock)
-        assert sock._sock is None or sock.connected, "a socket left half set up"
 
     async def reconnect(sock: UDPSocket) -> None:
+        await sock.disconnect()  # every caller tears its socket down in its own finally
         sock._addr = good_addr  # a following connect to a good address succeeds; then no socket is left open
         await sock._connect()
         connected = sock.connected

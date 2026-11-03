@@ -15,7 +15,7 @@ from buildgen.driver_registry import DriverInfo, class_has_read_triggers
 from buildgen.errors import BuildError, BuildInternalError
 from buildgen.model import MAINTENANCE_NAMES, DeviceModel, InstanceSpec, TomlDoc, TomlValue, instance_label, resolve_instance_key
 from buildgen.signals import WARN_SIGNALS
-from buildgen.validate import _WDT_TIMEOUT_MS, SETTINGS_GROUPS, module_float_const, module_int_const, module_str_const, ntp_backoff
+from buildgen.validate import _WDT_TIMEOUT_MS, SETTINGS_GROUPS, module_float_const, module_int_const, module_str_const
 from buildgen.version import FIRMWARE_VERSION, WEBSITE_VERSION
 from buildgen.wiring import WiringField
 
@@ -203,9 +203,7 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
             lines.append(f"    conn = WifiService({wifi}, {led_kw}, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path, {_device_log_arg(model, ctx, 'conn')})")
             continue
         if node == "ntp":
-            # The backoff pair is always the effective one: [device]'s stated keys, else the src/ defaults.
-            retry_s, retry_max_s = ntp_backoff(device_table, ctx.src_dir)
-            timing = f"NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _NTP_FETCH_TIMEOUT_MS, {retry_s}, {retry_max_s})"
+            timing = "NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _NTP_FETCH_TIMEOUT_MS)"
             lines.append(f"    ntp = NTPClient(conn.get_wifi_mode_lock(), conn.network_available_locked, conn.get_dns_server_ip, {timing}, cfg_path=cfg_path, {_device_log_arg(model, ctx, 'ntp')})")
             continue
         if node == "sysfunct":

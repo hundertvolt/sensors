@@ -14,9 +14,10 @@ _NTP_EPOCH_DELTA = 2208988800
 # the project's counter cap (SPECIFICATION.md G.2), a local copy: this module imports nothing from digital_twin/
 _COUNTER_CAP = 0x3FFFFFFF
 _PACKET_LEN = 48  # RFC 5905 7.3: the header a request and a reply carry
+_TRANSMIT_AT = 40  # RFC 5905 7.3: the Transmit Timestamp's offset
 _MODE_CLIENT = 3
 _MODE_SERVER = 4
-_VERSION = 3  # what the product's request carries (src/asy_ntp_client.py _NTP_REQUEST)
+_VERSION = 3  # what the product's request carries (src/asy_ntp_client.py _fetch_ntp_reply()'s first byte, 0x1b)
 _LI_UNSYNCHRONIZED = 3
 # Below the client's 2025 plausibility floor, and above its 2100 ceiling once the client reads it as the next NTP era.
 _IMPLAUSIBLE_UNIX_S = 1000000000
@@ -60,7 +61,7 @@ class NtpResponder:
         if self.mode == "unsync":
             return ntp_reply(now, leap=_LI_UNSYNCHRONIZED, stratum=0)
         if self.mode == "short":
-            return ntp_reply(now)[: _PACKET_LEN - 1]
+            return ntp_reply(now)[:_TRANSMIT_AT]  # cut before the Transmit Timestamp: a malformed reply
         if self.mode == "implausible":
             return ntp_reply(_IMPLAUSIBLE_UNIX_S)
         return ntp_reply(now)

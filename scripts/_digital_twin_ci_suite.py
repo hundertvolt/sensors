@@ -131,10 +131,10 @@ _LEFT_OUT = {
 }
 # @tunable l2.ntp_unreachable_watch_s = 90.0
 _NTP_UNREACHABLE_WATCH_S = 90.0  # Run 9's bound - past the old NTP give-up (~60s), see that run
-# The attempts the NTP backoff (10 s, doubling) makes inside that bound, measured failing at ~4, 22 and 62 s of
-# serving, the next at ~142 s: Run 9's watch ends once that many failed (agent, 2026-10-15).
-# @tunable l2.ntp_unreachable_failures = 3
-_NTP_UNREACHABLE_FAILURES = 3
+# The attempts the unsynced NTP retry (at once, then every 60 s) makes inside that bound, failing at about 4 and 64 s
+# of serving, the next at ~124 s: Run 9's watch ends once that many failed (agent, 2026-11-03).
+# @tunable l2.ntp_unreachable_failures = 2
+_NTP_UNREACHABLE_FAILURES = 2
 # @tunable l2.bus_fault_error_count = 500
 _BUS_FAULT_ERROR_COUNT = 500  # sustained/high-repeat-count - see Run 3's own comment for why.
 # Driver to its own REST/error-log `_NAME`, read from each driver's source and pinned to it by an L0 test; an
@@ -255,7 +255,7 @@ _SLOT_RELEASE_WAIT_S = 1.0  # a readiness probe would occupy a max_connections s
 # apart from an echo of the query itself; the header prefix is _try_dns_query()'s own ">HH" unpack.
 _DNS_QUERY_ID = 0x1234
 _DNS_RESPONSE_HEADER_LEN = 4
-_DNS_BIND_ERROR_TEXT = "Captive DNS socket could not bind port 53."  # asy_captive_dns.py's own error line
+_DNS_RECV_FAILED_TEXT = "Receiving a DNS request failed."  # asy_captive_dns.py's own warning line, a failed port-53 bind included
 
 # The run names --only takes, in run_suite()'s order, and the run each consumes the state or result of.
 RUN_NAMES = ("1", "2", "3", "4", "5", "5b", "5c", "6", "7", "8", "9", "10", "11", "11b", "12", "13")
@@ -1472,8 +1472,8 @@ def _run_7_wifi_hotspot_dns(ctx: RunContext) -> None:
         logged = _error_type_count(entry, type_char="W")
         _check(condition=logged == _WIFI_PERSISTED_WARNINGS, msg=f"Run 7: those {_WIFI_SCRIPTED_FAILURES} identical verdicts spent one history slot, not one each, and the fallback one more ({_WIFI_PERSISTED_WARNINGS}) - the ring still holds what preceded the outage ({entry!r})")
         answered = _wait_for_dns_answer(HOST, timeout_s=_LONG_WAIT_S)
-        bind_failed = _DNS_BIND_ERROR_TEXT in read_log(log7) or code("E", "INIT") in [num for kind, num in _error_codes(_errcount_required("DNSSRV")) if kind == "E"]
-        _check(condition=answered, msg="Run 7: the real CaptiveDNS answered a real UDP DNS query after WiFi hotspot fallback" + ("" if answered else f" - {'the DNS server logged its port-53 bind failure' if bind_failed else 'no bind failure was logged'}"))
+        recv_failed = _DNS_RECV_FAILED_TEXT in read_log(log7) or code("W", "DNS_RECV_FAILED") in [num for kind, num in _error_codes(_errcount_required("DNSSRV")) if kind == "W"]
+        _check(condition=answered, msg="Run 7: the real CaptiveDNS answered a real UDP DNS query after WiFi hotspot fallback" + ("" if answered else f" - {'the DNS server logged a failed receive (a port-53 bind failure among its causes)' if recv_failed else 'no failed receive was logged'}"))
         status, _ = _http("GET", "/status")
         _check(condition=status == _HTTP_OK, msg="Run 7: webserver stayed reachable throughout the WiFi hotspot-fallback transition")
     except Exception as exc:
@@ -1524,11 +1524,11 @@ def _run_9_ntp_unreachable(ctx: RunContext) -> None:
     try:
         _wait_until_serving(proc)
         system_before = _counter(_errcount_required("SYSTEM"))
-        # Past every attempt the backoff makes within the old give-up's reach, then one supervisor pass: the time a task
+        # Past every attempt the retry makes within the old give-up's reach, then one supervisor pass: the time a task
         # that ended on the last failure takes to be restarted, an absence no probe can observe.
         failed = _failure_events(_wait_for_failure_events("NTP", _NTP_UNREACHABLE_FAILURES, timeout_s=_NTP_UNREACHABLE_WATCH_S))
         time.sleep(_src_int("asy_system_service.py", "_TASK_CHECK_TIME") + _COMMANDED_RESET_MARGIN_S)
-        _check(condition=failed >= _NTP_UNREACHABLE_FAILURES, msg=f"Run 9: NTP failed {failed} time(s) within the {_NTP_UNREACHABLE_WATCH_S:.0f}s watch, every attempt its backoff schedules there")
+        _check(condition=failed >= _NTP_UNREACHABLE_FAILURES, msg=f"Run 9: NTP failed {failed} time(s) within the {_NTP_UNREACHABLE_WATCH_S:.0f}s watch, every attempt its retry schedules there")
         status, _ = _http("GET", "/system")
         _check(condition=status == _HTTP_OK, msg="Run 9: webserver stayed fully healthy with NTP permanently unreachable")
         nums = [num for _kind, num in _error_codes(_errcount_required("NTP"))]

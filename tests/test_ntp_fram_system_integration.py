@@ -27,7 +27,6 @@ import asy_ntp_client as ntpmod
 from asy_base_classes import ValueRef
 from asy_bmp3xx_driver import BMP3XX_Reader
 from asy_crc_checks import CRC32
-from asy_dns_client import DNS_FAILED
 from asy_i2c_driver import I2C
 from asy_ntp_client import NTPClient, NtpTiming
 from asy_scd30_driver import SCD30_Reader
@@ -118,7 +117,7 @@ def _make_ntp(
         conn.get_wifi_mode_lock(),
         conn.network_available_locked,
         conn.get_dns_server_ip,
-        NtpTiming(500, 1, ntp_fetch_timeout_ms, 10, 600),
+        NtpTiming(500, 1, ntp_fetch_timeout_ms),
         cfg_path=cfg_path,
     )
     run(ntp.setup())
@@ -420,8 +419,8 @@ def test_system_service_never_restarts_a_real_ntp_task_whose_server_stays_unreac
 
     original_resolver = ntpmod.resolve_ipv4
 
-    async def always_fails(*_args: object, **_kwargs: object) -> "tuple[str | None, int]":
-        return None, DNS_FAILED  # every real resolution attempt fails instantly - no real network wait needed
+    async def always_fails(*_args: object, **_kwargs: object) -> "str | None":
+        return None  # every real resolution attempt fails instantly - no real network wait needed
 
     ntpmod.resolve_ipv4 = always_fails
     try:

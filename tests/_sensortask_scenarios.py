@@ -191,11 +191,6 @@ _STATUS_BYTES_PER_BLOCK = src_int("src/asy_fram_manager.py", "_NUM_STATUS_BYTES"
 _NO_ERR = src_int("src/asy_print_log.py", "_NO_ERR")
 
 
-class _NoopHolder:  # Request.sock's stand-in: a static route hands its opened file to the writer's hold()
-    def hold(self, closable: object) -> None:
-        pass
-
-
 # ---------------------------------------------------------------------------
 # Scenario bodies - one per distinct construction/wiring/webserver-registration concern, each
 # parametrized by `device` and registered per real device below (Part E.1's dynamic registration).
@@ -1032,8 +1027,7 @@ async def _dispatch_async(module: "ModuleType", method: str, path: str, json_bod
     app = module.webserver._app
     body = b"" if json_body is None else json.dumps(json_body).encode()
     headers = {"Content-Length": str(len(body)), "Content-Type": "application/json"}
-    sock = (_NoopHolder(), _NoopHolder())
-    req = Request(app, ("127.0.0.1", 12345), method, path, "1.1", headers, body=body, sock=sock)  # type: ignore[arg-type]  # the stub types sock as asyncio's stream pair; the product reads only _Holder.hold() off it
+    req = Request(app, ("127.0.0.1", 12345), method, path, "1.1", headers, body=body)
     return await app.dispatch_request(req)  # type: ignore[no-any-return]  # the upstream stub leaves dispatch_request() unannotated - removal trigger: SPECIFICATION.md B.15
 
 
@@ -1125,13 +1119,6 @@ async def _fire_stagger_waits(sysfunct: "SystemService", task: "asyncio.Task[Non
     assert task.done(), "start_timers() did not finish: a stagger wait was never armed or fired"
     await task
     return periods
-
-
-def _float_config_keys(obj: "object") -> "list[str]":
-    # The float fields the module's own store holds: a chip-stored one (SCD30's TempOffset) is read from the chip.
-    if not hasattr(obj, "get_cfg_schema") or not hasattr(obj, "cfgmgr"):
-        return []
-    return [field[0] for field in obj.get_cfg_schema() if field[1] == "float" and field[0] in obj.cfgmgr._cache]
 
 
 def _feed_i2c_readers(attached: "list[tuple[SensorReader, I2CAttachment]]", fakes: "list[machine.I2C]", starting: "Iterable[object]", good: int) -> None:
@@ -1254,14 +1241,6 @@ def _image_with_every_chunk_written(device: str, cfg_path: str) -> "tuple[tuple[
 
 def _layout(module: "ModuleType") -> "list[tuple[str, int, int]]":
     return [(owner, chunk._block_addr[0], chunk.size) for owner, chunk in _fram_chunks(module)]
-
-
-def _leaves(parsed: "object") -> "list[object]":
-    if isinstance(parsed, dict):
-        return [leaf for v in parsed.values() for leaf in _leaves(v)]
-    if isinstance(parsed, list):
-        return [leaf for v in parsed for leaf in _leaves(v)]
-    return [parsed]
 
 
 def _log_chunk_bytes(module: "ModuleType") -> "list[bytes]":
@@ -2554,18 +2533,17 @@ _NTP_ATTEMPT_POLL_MS = 1
 @_register("an_ntp_server_that_never_replies_spends_one_slot_and_a_reply_syncs_once_it_answers")
 def _scenario_ntp_no_reply_storm(device: str) -> None:
     # The real sync loop against a server that never replies (the offline host's literal address, no DNS): each attempt
-    # logs the no-reply code once, the run spends one history slot and each entry at most one chunk write, the backoff
-    # doubles to its cap; once replies return, the next attempt syncs, persists nothing and the backoff starts over.
+    # logs the no-reply code once, the run spends one history slot and each entry at most one chunk write, each leaving
+    # the next attempt one retry wait away; once replies return, the next attempt syncs, persists nothing, the wait reset.
     module = build(device)
     ntp = module.ntp
     module.conn._wlan._status = network.STAT_GOT_IP  # the link up: every attempt reaches the server
     ntp_src = "src/asy_ntp_client.py"
-    no_reply, mult = code("E", "NTP_NO_REPLY"), src_int(ntp_src, "_NTP_BACKOFF_MULT")
+    no_reply, retry_s = code("E", "NTP_NO_REPLY"), src_int(ntp_src, "_NTP_RETRY_UNSYNCED_S")
     config = run(ntp._get_ntp_config())
     assert config is not None
     server = (config[0], src_int(ntp_src, "_NTP_UDP_PORT"))
-    steps = [min(ntp._retry_s * mult**k, ntp._retry_max_s) for k in range(1, 16)]
-    attempts = steps.index(ntp._retry_max_s) + 2  # the last attempt runs at the cap
+    attempts = 3  # a run of failed attempts
     # LI 0, version 4, server mode, stratum 2; its transmit seconds read 2026-01-01T00:00:00Z.
     reply = bytes((0x24, 2)) + bytes(38) + (1767225600 + src_int(ntp_src, "_NTP_EPOCH_DELTA")).to_bytes(4, "big") + bytes(4)
     got: list[tuple[str, int]] = []
@@ -2618,9 +2596,9 @@ def _scenario_ntp_no_reply_storm(device: str) -> None:
     assert got == [("E", no_reply)] * attempts, (device, got)  # the recovery logged nothing
     assert count == before["ErrCount"] + attempts and slots.count(no_reply) == 1 and not synced, (before, storm)
     assert (0 < spent <= attempts) if fram else spent == 0, (fram, spent)
-    assert waits == steps[:attempts], (waits, steps)
+    assert waits == [retry_s] * attempts, waits
     assert peer.peers == [server] * (attempts + 1) and peer.closed == attempts + 1, (server, peer.peers, peer.closed)
-    assert healed == [(True, 0, ntp._retry_s, (2026, 1, 1, 3, 0, 0, 0, 0))], healed
+    assert healed == [(True, 0, src_int(ntp_src, "_NTP_CHECK_INTERV"), (2026, 1, 1, 3, 0, 0, 0, 0))], healed
     log = run(ntp.get_error_counter())[ntp.pr.name]
     assert (log["ErrCount"], log["ErrNum"], writes[ntp.pr.name]) == (count, slots, spent), (log, storm)
 
@@ -2664,43 +2642,6 @@ def _scenario_loggers_set_up_by_the_batch(device: str) -> None:
 
 
 _GET_ROUTES = ("/measurements", "/sensors", "/networking", "/system", "/notification", "/status")
-
-
-@_register("no_get_route_serialises_a_non_finite_float")
-def _scenario_no_non_finite_float_on_the_wire(device: str) -> None:
-    # Every measurement field and every float config value a store holds set to NaN, +inf and -inf in turn: every GET
-    # body stays strict JSON (json.dumps() would write bare nan/inf), and every injected field is served and reads null.
-    module = build(device, web_host="127.0.0.1", web_port=0)
-    objects = _module_objects(module)
-    readers = [obj for obj in objects.values() if hasattr(obj, "_set_meas_data")]
-    assert readers
-    for value in (float("nan"), float("inf"), float("-inf")):
-        injected: list[tuple[Any, str]] = []
-        for obj in readers:
-            fields = obj._datastruct
-            run(obj._set_meas_data(type(fields)(*([value] * len(fields)))))
-        for obj in objects.values():
-            for key in _float_config_keys(obj):
-                obj.cfgmgr._cache[key] = value
-                injected.append((obj, key))
-        seen: dict[tuple[str, str], object] = {}
-        for route in _GET_ROUTES:
-            if route == "/sensors" and _has(module, "scd30"):  # its snapshot answered, so SCD30's map is served, not the marker
-                _queue_scd30_snapshot(module.scd30._scd._i2c_scd30.i2c_device.i2c._i2c, 2)
-            res = _dispatch(module, "GET", route)
-            assert res.status_code == 200, (route, res.status_code)
-            body = drain_json_response_body(res.body)  # strict RFC 8259: a bare nan or inf fails here
-            parsed = _strict(body)
-            if route == "/measurements":
-                for obj in readers:
-                    if obj.name in module.webserver._sensors:  # every sensor answers here; the other readers feed /status
-                        assert _leaves(parsed[obj.name]) == [None] * len(_leaves(parsed[obj.name])), (obj.name, parsed[obj.name])
-            elif route == "/sensors":
-                seen.update({(obj.name, key): _obj(parsed[obj.name])[key] for obj, key in injected if key in _obj(parsed.get(obj.name, {}))})
-            elif route != "/status":  # the flat settings routes: one module's keys each
-                seen.update({(obj.name, key): parsed[key] for obj, key in injected if obj.name not in module.webserver._sensors and key in parsed})
-        assert sorted(seen) == sorted((obj.name, key) for obj, key in injected), (sorted(seen), injected)  # every injected value served
-        assert list(seen.values()) == [None] * len(seen), seen  # and read null
 
 
 # A device's whole serving demand stays within the heap free after boot (SPECIFICATION.md I.6: about 105,000 B) less

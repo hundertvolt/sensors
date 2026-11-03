@@ -231,7 +231,7 @@ def test_a_notification_dropped_by_a_busy_led_persists_one_warning() -> None:
 
 def test_the_window_check_reads_a_real_ntp_clock() -> None:
     # The production local-time callback: a real NTP client's cettime(), marked synced by the test.
-    ntp = NTPClient(asyncio.Lock(), lambda: True, lambda: None, NtpTiming(500, 1, 5000, 10, 600), cfg_path=_tmp_cfg_dir())
+    ntp = NTPClient(asyncio.Lock(), lambda: True, lambda: None, NtpTiming(500, 1, 5000), cfg_path=_tmp_cfg_dir())
     run(ntp.cfgmgr.setup())
     run(ntp._set_synced(value=True))
 
