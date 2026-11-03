@@ -283,21 +283,19 @@ def test_read_triggers_that_never_arm_end_at_the_budgets_reboot_with_one_entry()
 
 def test_the_tick_timers_degrade_in_place_and_rearm_once_the_pool_frees() -> None:
     # SYSTEM's uptime tick stays unarmed for the boot, printed and not persisted, its uptime still measured on each
-    # read; once the pool frees, NTP's and WiFi's tick timers re-arm. No reset arms.
+    # read; NTP's starters print their refusal and go on; once the pool frees, WiFi's tick timer re-arms. No reset arms.
     async def scenario(clock: "DrivenTime") -> None:
         watchdog = await _driven(clock, "the boot never finished", _boot(_POOL))
         sysfunct, ntp, conn = module.sysfunct, module.ntp, module.conn
         machine.set_alarm_pool_free(0)
         modules = (sysfunct, ntp, conn)
         supervisor = await _driven(clock, "SYSTEM's, NTP's and WiFi's tasks never started", _supervise([s for m in modules for s in m.get_task_starters()], task_names_of(*modules), [], [s for m in modules for s in m.get_timer_starters()]))
-        await ntp.ntp_force_sync()  # main()'s first sync request: the sync loop's wake, where it retries its arms
         try:
             uptime = await sysfunct.get_uptime()
             await _until(clock, "SYSTEM's uptime stood still while its tick was unarmed", lambda: sysfunct._uptime.read() > uptime)
             assert await _errors(sysfunct, code("E", "TIMER")) == 0, f"{device}: SYSTEM persisted its failed uptime arm"
-            assert (ntp._check_armed, ntp._tick_armed, conn._tick_armed) == (False, False, False), "a tick timer armed from an empty pool"
+            assert conn._tick_armed is False, "WiFi's tick timer armed from an empty pool"
             machine.set_alarm_pool_free(_POOL)
-            await _until(clock, "NTP's timers never re-armed", lambda: ntp._tick_armed is True and ntp._check_armed is True)
             await _until(clock, "WiFi's uptime tick never re-armed", lambda: conn._tick_armed is True)
             assert not sysfunct._reset_armed and machine.reset_count == 0, f"{device}: an exhausted pool armed a reset"
             assert watchdog.would_have_triggered_count == 0

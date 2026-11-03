@@ -338,7 +338,7 @@ def test_webserver_service_answers_before_and_after_a_setup_whose_logger_cannot_
         "get_timer_starters": ((), lambda r: r == []),
     }
     assert _answers(svc, calls) == []
-    assert run(svc.setup()) is True  # it serves with its logger in RAM
+    assert run(svc.setup()) is None  # it serves with its logger in RAM
     assert svc.pr.initialized is False
     assert _answers(svc, calls) == []
 

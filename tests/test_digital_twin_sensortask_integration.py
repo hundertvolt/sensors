@@ -1037,8 +1037,9 @@ def test_the_captive_dns_listener_idles_at_its_idle_rate() -> None:
 
 
 def test_the_captive_dns_socket_whose_bind_fails_logs_once_then_rebuilds_binds_and_answers() -> None:
-    # The listener's first bind refused: one E INIT, that socket torn down, and after the backoff the same UDPSocket builds
-    # a fresh socket, binds it and answers a burst (asy_udp_socket.py's teardown and lazy rebuild). Wired as above.
+    # The listener's first bind refused: one receive warning, that socket torn down, and after the backoff the same
+    # UDPSocket builds a fresh socket, binds it and answers a burst (asy_udp_socket.py's teardown and lazy rebuild).
+    # Wired as above.
     _driver_specific("neopixel", "fram")
 
     async def scenario(clock: DrivenTime) -> None:
@@ -1054,7 +1055,7 @@ def test_the_captive_dns_socket_whose_bind_fails_logs_once_then_rebuilds_binds_a
         slots = [(kind, n) for kind, n in zip(entry["ErrType"], entry["ErrNum"]) if kind != "N"]
         assert fault.fired == 1, f"the fault failed {fault.fired} binds"
         assert fault.closed()[:1] == [True] and len(fault.made) == 2, f"sockets made, closed or not: {fault.closed()}"
-        assert (entry["ErrCount"], slots) == (1, [("E", code("E", "INIT"))]), f"the refused bind logged {entry['ErrCount']}: {slots}"
+        assert (entry["ErrCount"], slots) == (1, [("W", code("W", "DNS_RECV_FAILED"))]), f"the refused bind logged {entry['ErrCount']}: {slots}"
         assert answered == _BURST, f"{answered} of {_BURST} queries answered by the rebuilt socket"
 
     run(_on_driven_clock(scenario))

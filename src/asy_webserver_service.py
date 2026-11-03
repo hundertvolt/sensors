@@ -336,9 +336,10 @@ class _TimeoutStreamProxy:
         line = line.strip()
         if not line:
             return  # the blank line ending the head, or EOF
-        if self._head_lines > _MAX_HEADER_LINES:  # the request line, then at most _MAX_HEADER_LINES headers
+        if self._head_lines <= _MAX_HEADER_LINES:  # the request line, then at most _MAX_HEADER_LINES headers
+            self._head_lines += 1
+        else:
             self._refuse()
-        self._head_lines += 1
         name, colon, value = line.partition(b":")
         if colon and name.lower() == b"content-length":
             if self._length_seen or not value.strip().isdigit():  # ASCII digits, once: int() takes a sign

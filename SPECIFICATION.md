@@ -3713,8 +3713,8 @@ naming any of them. Every logger entry point (`err`, `wrn`, `one`, `evt`, `all`,
 first runs `report_if_fatal()` over its arguments, at every level and ahead of any FRAM write, so a
 handler that logs its exception records it. A handler no logger sees starts with
 `report_if_fatal(<its binding>)`: the lock-release exits `Lockable.__aexit__()` and
-`FRAM_SPI.__aexit__()`, `DNSQuery`'s parse, `_body_as_dict()`, and the `_print_exception()` rebound
-over Microdot's `print_exception` (`ext/microdot.py`), which may return unlogged. The call allocates
+`FRAM_SPI.__aexit__()`, `DNSQuery`'s parse and `_body_as_dict()`; the `_print_exception()` rebound over
+Microdot's `print_exception` (`ext/microdot.py`) logs its exception through `err()`. The call allocates
 and prints nothing; a handler too deep to log raises afresh, and the first outer handler that logs
 records it. A logger call builds its arguments first (a star-call's tuple, `err_s()`'s
 coroutine), so on a heap without that room (32 B for `wrn()`, 152 B for `err_s()`, measured) it

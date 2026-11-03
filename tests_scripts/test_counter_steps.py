@@ -25,6 +25,8 @@ _LARGE_CONSTANTS: dict[tuple[str, str], str] = {
 _EXEMPT: dict[tuple[str, str], str] = {
     ("src/asy_base_classes.py", "SensorReader._err_cnt_internal"): "bounded by the give-up: past max_module_error each failed cycle ends the read loop, whose restarts are budgeted (C.7)",
     ("src/asy_isl29125_driver.py", "ISL29125_Reader._periodic_only_switches"): "returns below its warn threshold and resets to 0 at it",
+    ("src/asy_ntp_client.py", "NTPClient._ntp_sec_count"): "resets to 0 once it reaches the resync interval (`due`), which a stored interval bounds",
+    ("src/asy_ntp_client.py", "NTPClient._unsynced_wait_s"): "resets to 0 once it reaches the unsynced retry wait (`due`), 60 s at most",
     ("src/asy_sgp40_driver.py", "SGP40_Reader._voc_init"): "restores the same call's decrement, so it never rises above its starting value",
 }
 # Unguarded steps whose bound is not written yet: each leaves when its counter saturates, wraps or is

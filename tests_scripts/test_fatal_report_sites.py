@@ -1,6 +1,6 @@
 """Every broad handler in src/ and the generated modules records a C-stack overflow (SPECIFICATION.md F.1): it hands
 its exception to a logger entry, which records it, or starts with report_if_fatal(<its name>), unless it ends in a bare
-raise; so does Microdot's errorhandler(Exception) function, and its rebound print_exception records first."""
+raise; so do Microdot's errorhandler(Exception) function and its rebound print_exception."""
 
 import ast
 from pathlib import Path
@@ -153,8 +153,8 @@ def findings(path: str, source: str) -> "list[str]":
         if not _records_its_parameter(functions.get(name), resolves=resolves, logged=True):
             out.append(f"{path}:{line} errorhandler(Exception) registers {name}(), which neither logs its exception parameter nor starts with {_PRIMITIVE}()")
     for line, name in _rebound_printers(tree):
-        if not _records_its_parameter(functions.get(name), resolves=resolves):
-            out.append(f"{path}:{line} print_exception is rebound to {name}(), which does not start with {_PRIMITIVE}(<its exception parameter>)")
+        if not _records_its_parameter(functions.get(name), resolves=resolves, logged=True):
+            out.append(f"{path}:{line} print_exception is rebound to {name}(), which neither logs its exception parameter nor starts with {_PRIMITIVE}()")
     return out
 
 
@@ -249,7 +249,8 @@ def test_the_rebound_exception_printer_must_record_its_parameter() -> None:
     head = _IMPORT + "import microdot\n\n\nclass W:\n    def __init__(self):\n        microdot.print_exception = self._print_exception\n\n"
     assert len(findings("src/x.py", head + "    def _print_exception(self, exc):\n        log(exc)\n")) == 1
     assert len(findings("src/x.py", head + "    def _print_exception(self, exc):\n        log(exc)\n        report_if_fatal(exc)\n")) == 1
-    assert len(findings("src/x.py", head + "    def _print_exception(self, exc):\n        self.pr.err('caught:', exc)\n")) == 1  # it may return unlogged
+    assert findings("src/x.py", head + "    def _print_exception(self, exc):\n        self.pr.err('caught:', exc)\n") == []  # the logger records first
+    assert len(findings("src/x.py", head + "    def _print_exception(self, exc):\n        if g():\n            return\n        self.pr.err('caught:', exc)\n")) == 1
     assert findings("src/x.py", head + "    def _print_exception(self, exc):\n        report_if_fatal(exc)\n        log(exc)\n") == []
 
 
