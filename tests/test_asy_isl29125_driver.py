@@ -2170,8 +2170,7 @@ def test_read_sensor_dict_detects_a_diverged_mode_and_reapplies_the_shadow() -> 
 
 
 def test_a_config_get_answers_the_snapshot_it_checked_when_another_lands_meanwhile() -> None:
-    # The next snapshot refills the one buffer: the GET decodes its own before the divergence check, whose re-apply
-    # awaits, so a read cycle's snapshot landing meanwhile cannot change the answer.
+    # Each snapshot is a fresh copy: a read cycle's landing while the divergence check awaits cannot change the answer.
     i2c, reader = ready_reader("snapshot_reuse")
     reader._range_auto = False  # Range is reported too
     chip = ISL29125_I2C.decode_config(bytes(fake(i2c).registers[(_ADDR, _REG_CONFIG1)]))

@@ -88,7 +88,7 @@ _CONN_STATUS_INTERVAL_MS = 20  # the runner's CONN_SLOTS period: dense enough th
 _FAULT_STATUS_INTERVAL_MS = 100
 # @tunable l2.scenario_drain_wait_s = 10.0
 _DRAIN_WAIT_S = 10.0  # a slot outlives its response until its close completes (Part H.7.1)
-# Past its first SGP40 restore's W65 (the blank chunk; acquire() waits it out), a fresh boot's first own move is SGP40's
+# Past its first SGP40 restore's W65 (the blank chunk; acquire() waits for it), a fresh boot's first own move is SGP40's
 # untimestamped backup, 60 x BackupPeriod + WaitTimeNTP - 1 late-firing 1 s cycles after spawn: past it none is the scenario's.
 # @tunable l2.scenario_shared_boot_deadline_s = 89.0
 _SHARED_BOOT_DEADLINE_S = 89.0
@@ -377,7 +377,7 @@ class SharedBoot:
             twin = self.stack.enter_context(self.ctx.boot(*_CONN))
             for _key, driver, ext in self.ctx.instances:
                 if driver == "sgp40":  # its first restore logs W65 for the blank backup chunk: the boot's move, never a scenario's
-                    _wait_entry(twin.port, f"SGP40_{ext}" if ext else "SGP40", kind="W", num=_src_int("asy_sgp40_driver.py", "_WRN_SGP_NO_BACKUP"))
+                    _expect(_wait_entry(twin.port, f"SGP40_{ext}" if ext else "SGP40", kind="W", num=_src_int("asy_sgp40_driver.py", "_WRN_SGP_NO_BACKUP")), "a shared boot's SGP40 never logged W SGP_NO_BACKUP for its blank backup chunk")
             self.counters = {name: _counter(entry) for name, entry in _error_table(twin.port).items()}
             self.twin = twin
         return self.twin
@@ -1640,9 +1640,9 @@ def _reset_errors_not_undone(ctx: Context) -> None:
         _expect(answer.status == HTTPStatus.OK, f"ResetErrors at the first answer answered {answer.status}")
         _expect(_wait_reading(twin.port, "SGP40"), "SGP40 never read, so its logger's setup never ran")
         entry = _errcount(twin.port, "SGP40")
-        errors = [h for h in entry.get("history", []) if isinstance(h, dict) and h.get("type") == "E"]  # type: ignore[union-attr]
         # At most this boot's own W65: its restore finds the backup chunk still blank, after the reset or before it.
-        _expect(_counter(entry) <= 1 and not errors, f"the restore brought the pre-reset history back over a reset that answered 200: {entry!r}")
+        owed = [["W", _src_int("asy_sgp40_driver.py", "_WRN_SGP_NO_BACKUP")]]
+        _expect((_counter(entry), _newest_entries(entry)) in ((0, []), (1, owed)), f"SGP40 holds more than its blank chunk's W SGP_NO_BACKUP after a reset that answered 200 (the restore brought the pre-reset history back?): {entry!r}")
 
 
 @scenario("reset_errors_while_a_command_owns_the_reset_is_refused_and_clears_nothing", family="system_commands", drivers=("sgp40",))

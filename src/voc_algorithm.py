@@ -37,9 +37,7 @@ _VOCALGORITHM_LP_TAU_SLOW = const(500)
 _VOCALGORITHM_LP_ALPHA = const(-0.2)
 _VOCALGORITHM_PERSISTENCE_UPTIME_GAMMA = const(10800)
 _VOCALGORITHM_MEAN_VARIANCE_ESTIMATOR__GAMMA_SCALING = const(64)
-# 16383, not the C reference's 32767: keeps both uptime counters below rp2's small-int limit (F16(16382) <
-# 2**30). Both feed only sigmoids that are constant from 10223 s, so the output is unchanged (agent, 2026-09-29).
-_VOCALGORITHM_MEAN_VARIANCE_ESTIMATOR__FIX16_MAX = const(16383)
+_VOCALGORITHM_MEAN_VARIANCE_ESTIMATOR__FIX16_MAX = const(32767)
 _FIX16_MAXIMUM = const(0x7FFFFFFF)
 # INT32_MIN, as the C fix16_t reads 0x80000000
 _FIX16_MINIMUM = const(-0x80000000)

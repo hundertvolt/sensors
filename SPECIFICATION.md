@@ -6826,11 +6826,9 @@ sequence (20,000 samples) against vectors from the archived `Sensirion/embedded-
 `e9ecd60` (its HEAD `19fa58d` gives identical results), both in `tests/voc_reference_vectors.py` and
 checked by `tests/test_voc_algorithm.py` (agent, 2026-10-07). The port's constants, fixed-point arithmetic and
 operation order were checked against the archived C source at promotion (agent, 2026-07-21,
-`5ff8c0b`). One deliberate deviation: the uptime limit constant is 16383, not 32767, which keeps
-both uptime counters small ints and changes no output (agent, 2026-09-29). The literal-port rule is
-agent design (agent, 2026-07-21), the named exception to the Adafruit rule; the port keeps
-upstream's names, casing and order, the one exception to the naming and member-ordering rules (C.2,
-D.15; owner, 2026-10-05).
+`5ff8c0b`). The literal-port rule is agent design (agent, 2026-07-21), the named exception to the
+Adafruit rule; the port keeps upstream's names, casing and order, the one exception to the naming and
+member-ordering rules (C.2, D.15; owner, 2026-10-05).
 
 ## F.5 MicroPython 1.29 delta (audited 2026-10-06, `v1.28.0..v1.29.0`)
 
@@ -8949,11 +8947,11 @@ shown to add anything on top of them. Per history write: the chunk buffer and th
 argument tuple, transient, fixed; per `get_log()` (an `errcount` read): its dict and lists, bounded
 by `history_length`. Its own caught allocation failures print their text from level 1 up (C.7).
 
-**`asy_scd30_driver.py`** — construction, long-lived, fixed: the 18-byte read buffer and a 12-byte
-word buffer the six data words are copied into without their CRC bytes. Per read: one
-`struct.unpack_from()` tuple of three floats from that word buffer, the derived wet-bulb and dew
-points, and one `SCD30` sample namedtuple replacing the last, transient. Per config PUT: the staging
-dicts, bounded by the schema.
+**`asy_scd30_driver.py`** — construction, long-lived, fixed: the 18-byte read buffer. Per read:
+for each of the three floats, its two data words sliced out of that buffer without their CRC bytes,
+joined into one 4-byte `bytes` and decoded by one `struct.unpack()` tuple; the derived wet-bulb and
+dew points; and one `SCD30` sample namedtuple replacing the last, transient. Per config PUT: the
+staging dicts, bounded by the schema.
 
 **`asy_sgp40_driver.py`** — construction, long-lived, fixed: the `VOCAlgorithm` (built and
 initialised with the chip object, never at the first read); the flash tier's survivor bound counts it

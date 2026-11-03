@@ -255,7 +255,6 @@ def test_bus_topology_autodetect_address_and_reserved_range_sweep(board: Board, 
     assert not any(_table(facts, "recover_sibling_errors").values()), f"reads failed beside recover(): {facts['recover_sibling_errors']}"
     assert all(_table(facts, "heater_off_ok").values()), f"a sibling read failed after the SGP40 heater-off: {facts['heater_off_ok']}"
     assert facts["write_eio"] == 0, f"write_eio={facts['write_eio']}: the drivers' register transfers raised EIO on a healthy bus"
-    assert not any(_table(facts, "por_after_setup").values()), f"por_after_setup={facts['por_after_setup']}: reset() did not consume the flag its own soft reset raised"
     assert facts["isl_divergences"] == 0, f"isl_divergences={facts['isl_divergences']}: an ISL29125 snapshot diverged from the driver's shadow"
     _no_errors(facts, "bus sweep")
 

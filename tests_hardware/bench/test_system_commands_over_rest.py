@@ -7,10 +7,11 @@ import threading
 import time
 from typing import TYPE_CHECKING
 
+import _load
 import evidence
 import http_client
 import pytest
-from error_log_helpers import get_errcount, save_errcount
+from error_log_helpers import code, get_errcount, save_errcount
 from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, REPO_ROOT, SRC_DIR, HardwareTestFailureError, crash_lines, dut_hostname_candidates, fram_backed_logger_names, hotspot_password, observe_during, parse_facts, restore_board_to_serving, save_fram_raw, wait_until
 
 from buildgen.validate import module_int_const
@@ -169,9 +170,9 @@ def test_fram_erase_over_rest_blanks_every_error_log(board: "Board", bench: "Ben
         system = _serving_status(dut_ip, replied, result_note, "the FRAM erase")
         # A 2 here is the watchdog having reset the board mid-sequence, never the erase's own reboot.
         assert system.get("ResetReason") == _RR_FRAM_ERASED, f"the erase's reboot read {system.get('ResetReason')}, not {_RR_FRAM_ERASED}"
-        counts = get_errcount(dut_ip)
-        kept = {name: counts[name] for name in fram_backed_logger_names() if counts[name]["counter"] or counts[name]["history"]}
-        assert not kept, f"FRAM-backed logs not blank after the erase: {kept}"
+        counts, owed = get_errcount(dut_ip), {name: (1, [("W", code("W", "SGP_NO_BACKUP"))]) for name in _load.instance_loggers("sgp40")}
+        kept = {name: counts[name] for name in fram_backed_logger_names() if (counts[name]["counter"], [(h.get("type"), h.get("num")) for h in counts[name]["history"] if h.get("type") != "N"]) not in ((0, []), owed.get(name))}
+        assert not kept, f"FRAM-backed logs not blank after the erase, each SGP40's W SGP_NO_BACKUP for its blank backup chunk aside: {kept}"
     finally:
         restore_board_to_serving(board, bench, dut_ip)
 

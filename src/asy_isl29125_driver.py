@@ -742,7 +742,7 @@ class ISL29125_Reader(SensorReaderConfig):
         except Exception as e:
             await self.pr.err_s("Error reading config from sensor:", e, errno=_ERR_CHIP_GET)
             return None
-        decoded = self._isl.decode_config(raw)  # before the check's awaits: the next snapshot refills raw
+        decoded = self._isl.decode_config(raw)
         await self._check_divergence(raw)
         if decoded is None:
             return None

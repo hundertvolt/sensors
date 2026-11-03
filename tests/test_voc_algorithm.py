@@ -716,7 +716,7 @@ def test_set_tuning_parameters_smoke_test_normal_values() -> None:
 def test_both_estimator_uptimes_stop_at_the_uptime_limit() -> None:
     # Checked before the step: one sampling interval below the limit steps onto it, at the limit both stay.
     algo = VOCAlgorithm()
-    limit, step, params = algo._f16(16383 - 1), algo._f16(1), algo.params  # FIX16_MAX less one sampling interval (1 s)
+    limit, step, params = algo._f16(32767 - 1), algo._f16(1), algo.params  # FIX16_MAX less one sampling interval (1 s)
     params.m_mean_variance_estimator_uptime_gamma = params.m_mean_variance_estimator_uptime_gating = limit - step
     for _ in range(2):
         algo._vocalgorithm__mean_variance_estimator___calculate_gamma(0)

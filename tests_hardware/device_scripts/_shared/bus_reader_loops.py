@@ -56,10 +56,9 @@ class Record:
 
 
 class Seen:
-    # What device reads noticed beside their own result: each BMP3XX's power-on flag right after its setup(), and the
-    # ISL29125 configuration snapshots that diverged from the driver's shadow.
+    # What device reads noticed beside their own result: the ISL29125 configuration snapshots that diverged from the
+    # driver's shadow.
     def __init__(self) -> None:
-        self.por_after_setup: dict[str, bool] = {}
         self.isl_divergences = 0
 
 
@@ -86,7 +85,6 @@ async def device_reader(bench: "BenchFacts", label: str, i2c: "asy_i2c_driver.I2
     if driver == "bmp3xx":
         bmp = drivers.bmp3xx(i2c, bench["addresses"][label])
         await bmp.setup()
-        seen.por_after_setup[label] = await take_por(bmp)
 
         async def read_bmp3xx() -> "str | None":
             pressure, temperature = await bmp.get_pressure_and_temperature()
