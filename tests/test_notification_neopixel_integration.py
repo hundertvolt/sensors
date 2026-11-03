@@ -10,7 +10,6 @@ import asyncio
 import time
 
 from _async_harness import cancel_all, run
-from _error_codes import code
 from _fake_time import DrivenTime, FakeTime, Rp2Gmtime
 from _tmp_scratch import TmpScratch
 
@@ -205,7 +204,7 @@ class _LateTicks:
         return 0 if self._reads == 1 else 1 << 28
 
 
-def test_a_notification_dropped_by_a_busy_led_persists_one_warning() -> None:
+def test_a_notification_behind_a_busy_led_queues_at_its_deadline_with_no_entry() -> None:
     # The LED stays busy: a REST command is queued and no signal task ever plays it.
     pixel, notify = _make_pair((_co2_signal(),))
     assert pixel.led_signal(0, 0, 50, 1.0) is True
@@ -215,7 +214,7 @@ def test_a_notification_dropped_by_a_busy_led_persists_one_warning() -> None:
     async def scenario(clock: DrivenTime) -> None:
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         task = notify.start_asy_monitor()
-        await _cycle(clock, notify, 1)  # a dropped request still settles its 2 x FlashDur
+        await _cycle(clock, notify, 1)  # the request queued at its deadline settles its 2 x FlashDur
         await cancel_all([task])
 
     try:
@@ -223,10 +222,9 @@ def test_a_notification_dropped_by_a_busy_led_persists_one_warning() -> None:
             run(scenario(clock))
     finally:
         asy_neopixel_driver.time = original
-    log = run(notify.get_error_counter())["NOTIFY"]
-    assert log["ErrCount"] == 1
-    assert log["ErrNum"][-1] == code("W", "NOTIFY_SIGNAL_DROPPED")
-    assert pixel._pixel.writes == []  # nothing played: the queued command waits for a signal task
+    assert run(notify.get_error_counter())["NOTIFY"]["ErrCount"] == 0
+    assert pixel._rgbt == [200, 0, 0, 0.5]  # the flash replaced the queued command (last wins): FlashBri x red, FlashDur
+    assert pixel._pixel.writes == []  # nothing played: no signal task runs
 
 
 def test_the_window_check_reads_a_real_ntp_clock() -> None:
@@ -281,7 +279,7 @@ def test_a_service_on_the_default_sink_completes_a_cycle_silently() -> None:
     finally:
         asy_base_classes._utc_valid = False
     assert run(notify.get_data()).Triggered is True
-    assert run(notify.get_error_counter())["NOTIFY"]["ErrCount"] == 0  # the default sink's False is no LED, not a drop
+    assert run(notify.get_error_counter())["NOTIFY"]["ErrCount"] == 0  # the default sink's False logs nothing
 
 
 if __name__ == "__main__":

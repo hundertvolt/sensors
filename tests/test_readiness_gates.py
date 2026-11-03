@@ -282,7 +282,7 @@ def test_neopixel_driver_answers_before_and_after_a_setup_whose_logger_cannot_re
         "toggle": ((), _is(None)),
     }
     assert _answers(driver, calls) == []
-    assert run(driver.setup()) is True  # ready: a logger that cannot reach its store has logged it and runs in RAM
+    assert run(driver.setup()) is None  # a logger that cannot reach its store has logged it and runs in RAM
     assert driver.pr.initialized is False
     assert _answers(driver, calls) == []
 

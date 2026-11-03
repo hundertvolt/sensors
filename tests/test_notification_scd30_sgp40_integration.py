@@ -102,9 +102,7 @@ async def _local_time() -> FakeTime:
 def _make_dual_stack(scd_reader: SCD30_Reader, sgp_reader: SGP40_Reader) -> "tuple[NeopixelDriver, NotificationService]":
     # ValueRef(source, field) references (SPECIFICATION.md Part C.14.2), the registration shape the generated
     # build_system() emits.
-    pixel = NeopixelDriver(0)
-    pixel.neopixel_freq = 100  # the driver's own fixed state, set from outside
-    pixel._frame_ms = 10
+    pixel = NeopixelDriver(0, neopixel_freq=100)
 
     co2_signal = NotificationSignal("WarnCO2", ValueRef(scd_reader, "CO2"), (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
     voc_signal = NotificationSignal("WarnVOC", ValueRef(sgp_reader, "VOC"), (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0))

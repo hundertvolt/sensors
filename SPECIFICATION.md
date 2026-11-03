@@ -371,32 +371,28 @@ features as today's deployed units, not a feature change.
   (the REST command) is refused at once while a signal is queued or running (owner, 2026-09-29),
   and the refusal tells the caller to try again later: an external caller could flood the device
   into exhaustion (owner, 2026-10-02); `request_signal()` (internal) waits for a running signal up
-  to a deadline, then queues and returns — never when its own ramp ends — because internal requests
-  are bounded in number and rate (owner, 2026-10-02: 'internal LED commands are guaranteed to be
+  to a deadline (`led.signal_wait_ms`, Part N), then queues anyway, its values replacing any still
+  waiting in the slot, and returns — never when its own ramp ends — because internal requests are
+  bounded in number and rate (owner, 2026-10-02: 'internal LED commands are guaranteed to be
   bounded by number and frequency, they won't flood the device'; legacy queued them without a
-  bound). Values are sanitised when the request enters: colour bytes clamped to 0-255 (non-finite
-  → 0), the duration floored at 0.1 s and capped at 60 s, a non-numeric value refused; a cancelled
-  or failed ramp ends dark with the slot free. The pixel reports no faults (`NeoPixel.write()` hands
-  `machine.bitstream()` only arguments the class builds itself, and the driver clamps every frame
-  value before storing it), so its recovery is the task's: the supervisor restarts an ended overlay
-  or signal task, and each (re)start writes a defined state — the signal task black, then the
-  overlay restored; the overlay task the current overlay (agent, 2026-09-30) — and the overlay task
-  rewrites the overlay at least once per `led.overlay_refresh_ms` (Part N, five minutes, the default
-  `FlashInterval`) with no change pending, so a pixel that lost its state in a supply dip (the
-  WS2812's power-lost reset, after which it shows only new data: WS2812 datasheet, Features and
-  General description) shows the right overlay again; a running signal holds the overlay lock, so a
-  refresh never cuts into a ramp (agent, 2026-10-06). A notification flash the LED refuses, because
-  a signal is still running, is persisted as `NOTIFY_SIGNAL_DROPPED`; with no LED wired (the default
-  sink) nothing is logged. The notification signals are passed at construction (`signals=`,
-  C.14.3): the constructor validates each in check order, prints a refusal at once and builds the
-  combined schema, and `setup()` persists each refusal once. The active window runs from On to Off,
-  and an On time later than Off spans midnight (owner, 2026-09-26). The window needs local time,
-  which counts from the boot's first NTP sync and keeps running when later syncs fail, so the alerts
-  continue through a network outage (agent, 2026-10-06). The LED pause counts down measured
-  monotonic time (`ticks_ms()`), never wake-ups or the clock. A producer value whose timestamp is
-  older than `notify.sample_max_age_s` (Part N, three hours) is unavailable, like a missing one; a
-  value with no timestamp yet counts as current (agent, 2026-10-06). The published notification
-  sample, `/status`'s `notification` block (A.8), says whether its signals were evaluated: its
+  bound). Both store the values as given, and the ramp makes them safe as it reads them: each colour
+  clamped to 0-255 (NaN and ±inf → 0), the duration floored at 0.1 s (NaN too) and +inf played as
+  one step each way; the callers bound the duration (REST `t` 0.5-60 s, `FlashDur` 0.5-10 s). A ramp
+  ends black with the slot freed inside the overlay lock, then the overlay restored. The pixel
+  reports no faults (`NeoPixel.write()` hands `machine.bitstream()` only arguments the class builds
+  itself, and the ramp clamps every frame value before storing it), so its recovery is the task's:
+  the supervisor restarts an ended overlay or signal task; a restarted signal task writes black and,
+  ended mid-ramp, plays the flash still in its slot once more before the overlay is restored. The
+  overlay task writes on a change alone (`on()`, `off()`, `toggle()`, a ramp's end); a running
+  signal holds the overlay lock, so an overlay write never cuts into a ramp. The notification
+  signals are passed at construction (`signals=`, C.14.3): the constructor validates each in check
+  order, prints a refusal at once and builds the combined schema, and `setup()` persists each
+  refusal once. The active window runs from On to Off, and an On time later than Off spans midnight
+  (owner, 2026-09-26). The window needs local time, which counts from the boot's first NTP sync and
+  keeps running when later syncs fail, so the alerts continue through a network outage (agent,
+  2026-10-06). The LED pause counts down measured monotonic time (`ticks_ms()`), never wake-ups or
+  the clock. A producer value is read as its producer last stored it, a NaN never triggering (it
+  compares False both ways). The published notification sample, `/status`'s `notification` block (A.8), says whether its signals were evaluated: its
   `State` takes the codes of the table below (agent, 2026-10-06); `Triggered` keeps its meaning.
   `NotificationSignal.color` is a per-channel weight (0/1) scaled by the shared `FlashBri` at
   trigger time. Config field names carry no "Led" prefix (`WarnCO2`, not `LedWarnCO2`); the new
@@ -409,7 +405,7 @@ features as today's deployed units, not a feature change.
 | 0 | every signal evaluated |
 | 1 | not evaluated by setting (AutoOn off, paused, or outside the window) |
 | 2 | not evaluated: no local time (no NTP sync yet this boot, or the clock callback failed) |
-| 3 | evaluated in part (a value unavailable, stale or not numeric) |
+| 3 | evaluated in part (a value unavailable) |
 | 4 | the service's own configuration unreadable |
 
 - The legacy task supervisor is a hand-rolled loop duplicated per device file; every generated
@@ -3359,9 +3355,9 @@ the caller that meets it, each in its own log, and the caller runs on its docume
 owner, 2026-10-02). `ConfigManager` persists and prints each failed read (not valid, an unknown key,
 a wrong-typed value), the logger keeping one history slot for a repeat (its newest-entry rule; owner,
 2026-09-26: "just don't repeat the same error in the slots. Pure and simple."); the readers that meet it every
-cycle (BMP3XX's compensation-config capture, SCD30's FRC capture, NotificationService's own-config
-read) log one entry per episode the same way, BMP3XX's and NotificationService's also ending at a
-task restart.
+cycle (BMP3XX's compensation-config capture, SCD30's FRC capture) log one entry per episode the same
+way, BMP3XX's also ending at a task restart; NotificationService's own-config read persists and
+prints every failing cycle, one slot by the same rule.
 
 **A real operational hazard**: constructing a `ConfigManager` with a schema narrower than the full
 production one is dangerous — `setup()` treats any on-disk key not in the constructed schema as
@@ -7624,9 +7620,6 @@ backend-only or frontend-only validation/coercion policy change in this project.
 - **Current UTC timestamp** — `asy_base_classes.py`'s `utc_now()`: `None` until the NTP client has
   set the clock this boot (its one writer, `set_utc_valid()`); never computed inside a read's `try`
   (agent, 2026-09-29; owner-reviewed, 2026-10-02).
-- **A stale producer sample** — `asy_notification_service.py`'s `_check_one()`: with `utc_now()` set
-  and the sample's `TS` an `int` older than `notify.sample_max_age_s` (three hours), the value counts
-  as unavailable, while a sample without a `TS` counts as current (A.4).
 - **Hourly window counter** — `asy_base_classes.py`'s `HourlyWindowCounter`: a count of events in
   the last 24 hours at hourly resolution, in 24 integer bins allocated once at construction; the bins
   advance lazily on the next `add(now_s)` or `total(now_s)` from the uptime seconds the caller passes
@@ -8907,10 +8900,9 @@ snapshot's copy.
 Calibration only: `_cal_recent`, at most `_CAL_CONVERGE_N` ratios, cleared at the run's end.
 
 **`asy_neopixel_driver.py`** — construction, long-lived, fixed: the `NeoPixel`, its events and lock.
-Per LED command: the `(r, g, b, t)` values (`_signal_values()`), transient; per ramp step a 3-tuple
-pixel value; per overlay wake (`_overlay_loop()`, every `led.overlay_refresh_ms` or on a request)
-`wait_for_ms()`'s two tasks, transient, and the pixel tuple, kept in `_overlay_rgb` until the next wake
-replaces it: 896 B together on the 64-bit Unix port, fixed.
+Per LED command stored in the slot: the `[r, g, b, t]` list, kept in `_rgbt` until the next one replaces
+it; per ramp step a 3-tuple pixel value; per overlay wake (`_overlay_loop()`, on a request) the pixel tuple,
+kept in `_overlay_rgb` until the next wake replaces it.
 
 **`asy_notification_service.py`** — construction, long-lived, fixed: the signals and their
 `TickSeconds`. Per monitoring cycle: one `NOTIFY` sample and each signal's float comparison,
@@ -12016,14 +12008,12 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `dns_server.recv_backoff_mult` | 2 | `src/asy_captive_dns.py` — `2` | the doubled and quadrupled gap bands of `tests/test_asy_captive_dns.py`: `l1.captive_dns_gap_doubled_min_ms`/`_max_ms` and `l1.captive_dns_gap_quad_min_ms`/`_max_ms` | estimated (agent, `01699e2`) — measurement owed: the receive-failure rate of a broken socket, L2 | unknown until measured | the serve loop's receive path changes |
 | `dns_server.error_retry_wait_s` | 3 s | `src/asy_captive_dns.py` — `3` | `l1.captive_dns_no_backoff_elapsed_max_ms` stays well under it; `l1.captive_dns_backoff_wait_timeout_ms` covers it | legacy `legacy/firmware/python/CommonDrivers/captive_dns.py:37` | unknown until measured | the serve loop's error path changes |
 | `led.min_signal_s` | 0.1 s | `src/asy_neopixel_driver.py` — `0.1` | the shortest ramp a signal runs | estimated (agent, `454f6a2`) — measurement owed: none for the value, a floor for malformed input; the ramp's visible smoothness, L3 | unknown until measured | the ramp's step rate changes |
-| `led.refresh_hz` | 20 Hz | `src/asy_neopixel_driver.py` — `20` | a module constant every `NeopixelDriver` takes (tests set the attribute after construction); the ramp's step count per signal; the frame period `_frame_ms` (derived, an int 50 ms), also `request_signal()`'s poll interval while it waits for a running signal; the loop-lag scenario's at-rest bound, one frame period (`con.led_frame`, `scripts/_digital_twin_scenarios.py`), which the window after the one straddling the load's stop stays under at its p99 | legacy `legacy/firmware/python/IndividualDrivers/neopixel_signal.py:11` | unknown until measured | the LED driver's refresh path changes |
-| `led.overlay_brightness` | 50 | `src/asy_neopixel_driver.py` — `50` | a module constant every `NeopixelDriver` takes; the overlay colour's brightness | legacy `legacy/firmware/python/IndividualDrivers/neopixel_signal.py:11` | of 255 | the overlay's appearance is reviewed |
-| `led.signal_wait_ms` | 120000 ms | `src/asy_neopixel_driver.py` — `120000` | `_MAX_SIGNAL_S` (60 s, the REST ceiling of `t`; the wait is twice it); the notification service's `_trigger_signal()` waits at most this long for a running signal | estimated (agent, 2026-10-06) — measurement owed: wall time of a t = 60 s ramp under bench API load, L4 | 2× the nominal 60 s | `_MAX_SIGNAL_S` changes, or the signal task's restart path changes |
-| `led.overlay_refresh_ms` | 300000 ms | `src/asy_neopixel_driver.py` — `300000` | the overlay task's bounded wait: with no change pending the overlay is rewritten at least this often, so a pixel blanked by a supply dip shows the right overlay again (A.4); every overlay wake, a change or the refresh, runs the wait through `asyncio.wait_for_ms()`, whose two short-lived tasks (the flag wait promoted to a task, and its runner, `extmod/asyncio/funcs.py:24-30`) are built per wake, not per period | the default notification `FlashInterval`, about once per notification cycle (agent, 2026-10-06) | a pixel blanked between two rewrites shows a wrong overlay for at most one period | a `FlashInterval` default change |
+| `led.refresh_hz` | 20 Hz | `src/asy_neopixel_driver.py` — `20` | the default of `NeopixelDriver`'s `neopixel_freq` (tests pass their own); the ramp's step count per signal; the frame period `_frame_ms` (derived, an int 50 ms), also `request_signal()`'s poll interval while it waits for a running signal; the loop-lag scenario's at-rest bound, one frame period (`con.led_frame`, `scripts/_digital_twin_scenarios.py`), which the window after the one straddling the load's stop stays under at its p99 | legacy `legacy/firmware/python/IndividualDrivers/neopixel_signal.py:11` | unknown until measured | the LED driver's refresh path changes |
+| `led.overlay_brightness` | 50 | `src/asy_neopixel_driver.py` — `50` | the default of `NeopixelDriver`'s `led_overl_bri`; the overlay colour's brightness | legacy `legacy/firmware/python/IndividualDrivers/neopixel_signal.py:11` | of 255 | the overlay's appearance is reviewed |
+| `led.signal_wait_ms` | 120000 ms | `src/asy_neopixel_driver.py` — `120000` | `request_signal()` waits at most this long for a running signal, then queues anyway (A.4); twice the REST ceiling of `t` (60 s, `_LIGHT_CMD_FIELDS`) | estimated (agent, 2026-10-06) — measurement owed: wall time of a t = 60 s ramp under bench API load, L4 | 2× the nominal 60 s | the REST ceiling of `t` changes, or the signal task's restart path changes |
 | `notify.loop_tick_s` | 1 s | `src/asy_notification_service.py` — `1` | `_pause_loop()`'s round: a measured pause ends at most one round late (the L1 override test reads its end in virtual time, at the pause plus one round); `l4.sensor_config_push_over_real_hardware_override_poll_s` × `l4.sensor_config_push_over_real_hardware_override_poll_tries`: ten ticks over the bench's 3 s countdown; `l1.asy_notification_service_override_secs` leaves one full round with the override active | estimated (agent, `da9b4ab`) — measurement owed: none for the value, the pause's lateness bound; the loop share, L2 | unknown until measured | the pause loop changes |
 | `notify.min_sleep_ms` | 100 ms | `src/asy_notification_service.py` — `100` | the monitor loop's shortest sleep | estimated (agent, `454f6a2`) — measurement owed: the monitor loop's cycle cost, L2 | unknown until measured | the monitor loop changes |
 | `notify.cfg_fail_interval_s` | 600 s | `src/asy_notification_service.py` — `600` | the interval used while its config reads fail | estimated (agent, `da9b4ab`) — measurement owed: none: a fallback while the config is unreadable | twice the `FlashInterval` default | the `FlashInterval` range changes |
-| `notify.sample_max_age_s` | 10800 s | `src/asy_notification_service.py` — `10800` | `_check_one()`: a producer sample whose `TS` is older counts as unavailable, the signal not evaluated (`State` 3, A.4); (G.2) | three times the longest configurable producer interval, BMP3XX `SampleInterval` 3600 s, so a slow producer is never cut off (agent, 2026-10-06) | a producer late by up to three intervals still counts | a producer's interval maximum changes |
 | `scd30.cmd_response_wait_ms` | 50 ms | `src/asy_scd30_driver.py` — `50` | every command-and-read exchange | owner decision (owner, 2026-07-13, `144873f`: owner-tested) | 16.7× the > 3 ms between write and read (Interface Description 1.4.4, 1.4.5; M.2) | the bus speed or the chip's firmware changes |
 | `scd30.asc_enable_wait_ms` | 10 ms | `src/asy_scd30_driver.py` — `10` | — | legacy `legacy/firmware/python/IndividualDrivers/asy_scd30_driver.py:286` | datasheet margin owed | the chip's firmware changes |
 | `scd30.soft_reset_wait_ms` | 2500 ms | `src/asy_scd30_driver.py` — `2500` | — | estimated (agent, `7267509`) — measurement owed: the chip's ready time after a soft reset on the dev bench, L3 (the Interface Description's boot time is the floor) | 1.25× the boot-up time < 2 s (Interface Description 1.1; M.2) | the chip's firmware changes |
