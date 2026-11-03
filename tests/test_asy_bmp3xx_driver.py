@@ -47,7 +47,6 @@ _REGISTER_CHIPID = 0x00  # DS001 §4.3.1
 _REGISTER_ERR = 0x02  # DS001 §4.3.2
 _REGISTER_STATUS = 0x03  # DS001 §4.3.3
 _REGISTER_PRESSUREDATA = 0x04  # DS001 §4.3.4
-_REGISTER_EVENT = 0x10  # DS001 §4.3.7
 _REGISTER_CONTROL = 0x1B  # DS001 §4.3.16, PWR_CTRL
 _REGISTER_OSR = 0x1C  # DS001 §4.3.17
 _REGISTER_CONFIG = 0x1F  # DS001 §4.3.20
@@ -119,24 +118,24 @@ class _SleepRecorder:
 
 
 class _BadBurstRead:
-    # The burst read reports no bus (get_register_into() -> False) for the burst from ERR_REG only; every
-    # other register read still goes to the fake bus, so _read() gets past its trigger and data-ready poll.
+    # The PRESSUREDATA burst answers None (no bus); every other register read still goes to the fake bus, so
+    # _read() gets past its trigger and data-ready poll to the burst's guard.
     def __init__(self, bmp: BMP3XX_I2C) -> None:
         self._device = bmp._i2c_bmp3xx.i2c_device
 
     def __enter__(self) -> "Self":
-        self._real = self._device.get_register_into
+        self._real = self._device.get_register_bytes
 
-        async def _patched(reg_addr: int, buf: bytearray, addrsize: "int | None" = None) -> bool:
-            if reg_addr == _REGISTER_ERR:
-                return False
-            return await self._real(reg_addr, buf, addrsize)
+        async def _patched(reg_addr: int, length: int, addrsize: "int | None" = None) -> "bytes | None":
+            if reg_addr == _REGISTER_PRESSUREDATA:
+                return None
+            return await self._real(reg_addr, length, addrsize)
 
-        self._device.get_register_into = _patched  # type: ignore[method-assign]  # deliberate monkeypatch, not a real caller mismatch
+        self._device.get_register_bytes = _patched  # type: ignore[method-assign]  # deliberate monkeypatch, not a real caller mismatch
         return self
 
     def __exit__(self, *exc_info: object) -> None:
-        self._device.get_register_into = self._real  # type: ignore[method-assign]
+        self._device.get_register_bytes = self._real  # type: ignore[method-assign]
 
 
 def _accepts_and_refuses_the_next_id(chip_id: int) -> None:
@@ -145,7 +144,7 @@ def _accepts_and_refuses_the_next_id(chip_id: int) -> None:
     i2c, bmp = ready_bmp()
     seed_chip_id(i2c, chip_id)
     seed_calibration(i2c)
-    assert run(bmp.setup()) is True
+    run(bmp.setup())
     assert _register_reads(i2c, _REGISTER_CHIPID) == 1
     assert bmp._temp_calib[0] == 28617 * 256
     assert bmp._pressure_calib[4] == 30462 * 8
@@ -166,15 +165,6 @@ def _adc_to_data6(adc_p: int, adc_t: int) -> bytes:
         return bytes([v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF])
 
     return triplet(adc_p) + triplet(adc_t)
-
-
-def _burst_block(i2c: I2C, address: int) -> bytearray:
-    # ERR_REG, STATUS and the six data bytes are contiguous from 0x02 (DS001 4.3.2-4.3.5): the fake answers the
-    # driver's 8-byte burst, and reset()'s one-byte ERR_REG read, from this one key.
-    block = fake(i2c).registers.setdefault((address, _REGISTER_ERR), bytearray(8))
-    if len(block) < 8:
-        block.extend(bytes(8 - len(block)))
-    return block
 
 
 def _count(reader: BMP3XX_Reader, kind: str, name: str) -> int:
@@ -311,15 +301,11 @@ def seed_chip_id(i2c: I2C, chip_id: int, address: int = _ADDR) -> None:
 
 
 def seed_data(i2c: I2C, six_bytes: bytes, address: int = _ADDR) -> None:
-    _burst_block(i2c, address)[2:8] = six_bytes
+    fake(i2c).registers[(address, _REGISTER_PRESSUREDATA)] = bytearray(six_bytes)
 
 
 def seed_err(i2c: I2C, value: int, address: int = _ADDR) -> None:
-    _burst_block(i2c, address)[0] = value
-
-
-def seed_event(i2c: I2C, value: int, address: int = _ADDR) -> None:
-    fake(i2c).registers[(address, _REGISTER_EVENT)] = bytearray([value])
+    fake(i2c).registers[(address, _REGISTER_ERR)] = bytearray([value])
 
 
 def seed_status(i2c: I2C, value: int, address: int = _ADDR) -> None:
@@ -351,7 +337,7 @@ def test_setup_soft_resets_the_chip_once_after_its_id_check() -> None:
     i2c, bmp = ready_bmp()
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
-    assert run(bmp.setup()) is True
+    run(bmp.setup())
     log = fake(i2c).log
     resets = _writes_to(i2c, _REGISTER_CMD)
     id_read = [i for i, entry in enumerate(log) if entry[0] == "writeto" and entry[3] is False and entry[2] == bytes([_REGISTER_CHIPID])]
@@ -494,45 +480,12 @@ def test_reset_succeeds_when_err_reg_clear() -> None:
     assert ("writeto", _ADDR, bytes([_REGISTER_CMD, 0xB6]), True) in fake(i2c).log
 
 
-def test_reset_settles_one_tick_past_the_reference_settle() -> None:
-    # sleep_ms() counts whole ticks_ms() from the current tick, so it may wake up to 1 ms early: the one settle
-    # after 0xB6 is Bosch's reference 2 ms plus one tick, in whole milliseconds.
+def test_reset_settles_the_reference_settle() -> None:
+    # The one settle after 0xB6 is Bosch's reference 2 ms, in whole milliseconds.
     _, bmp = ready_bmp()
     with _SleepRecorder() as recorder:
         run(bmp.reset())
-    assert recorder.calls == [("sleep_ms", _BOSCH_RESET_SETTLE_MS + 1)], recorder.calls
-
-
-def test_reset_ends_its_session_with_one_event_read_after_the_err_read() -> None:
-    # The soft reset sets por_detected (DS001 4.3.7, clear-on-read): one EVENT read after ERR_REG takes it, so
-    # setup() and the participant rung leave nothing a read cycle would take for a chip self-reset.
-    i2c, bmp = ready_bmp()
-    fake(i2c).log.clear()
-    run(bmp.reset())
-    assert _read_pointers(i2c)[-2:] == [_REGISTER_ERR, _REGISTER_EVENT]
-    assert _register_reads(i2c, _REGISTER_EVENT) == 1
-
-
-def test_take_por_detected_reads_event_once_and_answers_its_bit_0() -> None:
-    i2c, bmp = ready_bmp()
-    for planted, expected in ((0x01, True), (0x00, False), (0x02, False), (0x03, True)):  # bit 1: BMP390's itf_act_pt
-        seed_event(i2c, planted)
-        fake(i2c).log.clear()
-        assert run(bmp.take_por_detected()) is expected, planted
-        assert _read_pointers(i2c) == [_REGISTER_EVENT]
-        reads = [entry for entry in fake(i2c).log if entry[0] == "readfrom_into"]
-        assert len(reads) == 1 and len(reads[0][2]) == 1
-
-
-def test_take_por_detected_raises_oserror_on_a_down_bus() -> None:
-    i2c, bmp = ready_bmp()
-    i2c.deinit()
-    try:
-        run(bmp.take_por_detected())
-        message = ""
-    except OSError as e:
-        message = str(e)
-    assert message == "I2C bus not initialized"
+    assert recorder.calls == [("sleep_ms", _BOSCH_RESET_SETTLE_MS)], recorder.calls
 
 
 # ---------------------------------------------------------------------------
@@ -647,80 +600,10 @@ def test_read_raises_oserror_when_bus_deinitialized_mid_poll() -> None:
     i2c.deinit()
     try:
         run(bmp._read())
-        message = ""
-    except OSError as e:
-        message = str(e)
-    assert message == "I2C bus not initialized"
-
-
-def test_read_takes_one_8_byte_burst_from_err_reg_per_conversion() -> None:
-    # ERR_REG, STATUS and the six data bytes are contiguous (0x02-0x09): one burst carries the fatal_err check too.
-    i2c, bmp = ready_bmp()
-    seed_calibration(i2c)
-    seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
-    run(bmp._read_coefficients())
-    fake(i2c).log.clear()
-    pressure, temperature = run(bmp._read())
-    assert abs(temperature - _EXPECTED_TEMPERATURE) < 1e-6  # decoded from offset 2: the same values
-    assert abs(pressure / 100 - _EXPECTED_PRESSURE_HPA) < 1e-6
-    assert _register_reads(i2c, _REGISTER_ERR) == 1
-    assert _register_reads(i2c, _REGISTER_PRESSUREDATA) == 0
-    bursts = [entry for entry in fake(i2c).log if entry[0] == "readfrom_into" and len(entry[2]) == 8]
-    assert len(bursts) == 1
-
-
-def test_the_data_burst_fills_the_drivers_own_buffer_in_place() -> None:
-    # One 8-byte buffer per driver, built at construction: each conversion's burst lands in it, handed to the bus
-    # as that object itself, so a read makes no copy and no view of its data.
-    i2c, bmp = ready_bmp()
-    seed_calibration(i2c)
-    run(bmp._read_coefficients())
-    burst = bmp._pt_burst
-    assert type(burst) is bytearray and len(burst) == 8
-    received: list[object] = []
-    real_read = fake(i2c).readfrom_into
-
-    def recording(address: int, buf: object, stop: bool = True) -> None:
-        received.append(buf)
-        real_read(address, buf, stop)
-
-    fake(i2c).readfrom_into = recording  # type: ignore[method-assign]
-    for adc_p in (_ADC_P, _ADC_P + 4096):
-        seed_data(i2c, _adc_to_data6(adc_p, _ADC_T))
-        run(bmp._read())
-        assert burst[2:] == _adc_to_data6(adc_p, _ADC_T)  # this conversion's bytes, filled in place
-    assert bmp._pt_burst is burst
-    assert [buf is burst for buf in received if len(buf) == 8] == [True, True]  # type: ignore[arg-type]
-
-
-def test_read_raises_runtime_error_when_err_reg_reports_fatal_err() -> None:
-    i2c, bmp = ready_bmp()
-    seed_calibration(i2c)
-    seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
-    seed_err(i2c, 0x01)  # ERR_REG bit 0 fatal_err (DS001 4.3.2)
-    run(bmp._read_coefficients())
-    try:
-        run(bmp._read())
-        message = ""
-    except RuntimeError as e:
-        message = str(e)
-    assert message == "BMP3XX fatal error (ERR_REG fatal_err)"
-
-
-def test_read_waits_the_computed_conversion_time_at_x32_x32() -> None:
-    # DS001 3.9.2: 234 + (392 + 32 * 2000) + (313 + 32 * 2000) us = 128939 us, slept once after the trigger in
-    # whole milliseconds, rounded up; STATUS is then ready, so the poll takes one read and no poll sleep.
-    i2c, bmp = ready_bmp()
-    seed_calibration(i2c)
-    seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
-    fake(i2c).registers[(_ADDR, _REGISTER_OSR)] = bytearray([0b101101])  # osr_t x32, osr_p x32
-    run(bmp._read_coefficients())
-    fake(i2c).log.clear()
-    with _SleepRecorder() as recorder:
-        run(bmp._read())
-    assert recorder.calls == [("sleep_ms", 129)], recorder.calls
-    assert _register_reads(i2c, _REGISTER_STATUS) <= 2
-    assert _read_pointers(i2c)[0] == _REGISTER_OSR  # the wait follows the settings of this conversion
+        raised = False
+    except OSError:
+        raised = True
+    assert raised
 
 
 def test_read_raises_within_the_measurement_bound_when_status_never_reports_ready() -> None:
@@ -738,22 +621,7 @@ def test_read_raises_within_the_measurement_bound_when_status_never_reports_read
     assert raised
     polls = _register_reads(i2c, _REGISTER_STATUS)
     assert 1 <= polls <= _MEAS_TIMEOUT_MS // _STATUS_POLL_MS + 1, polls
-    form, conversion = recorder.calls[0]  # the conversion wait first, then the poll steps
-    assert form == "sleep_ms" and conversion > _STATUS_POLL_MS, recorder.calls[0]
-    assert all(call == ("sleep_ms", _STATUS_POLL_MS) for call in recorder.calls[1:]), recorder.calls
-
-
-def test_read_refuses_a_reserved_osr_encoding_before_triggering() -> None:
-    i2c, bmp = ready_bmp()
-    fake(i2c).registers[(_ADDR, _REGISTER_OSR)] = bytearray([0b110])  # osr_p = 6, reserved
-    fake(i2c).log.clear()
-    try:
-        run(bmp._read())
-        message = ""
-    except OSError as e:
-        message = str(e)
-    assert "reserved encoding" in message, message
-    assert _count_forced_mode_triggers(i2c) == 0
+    assert all(call == ("sleep_ms", _STATUS_POLL_MS) for call in recorder.calls), recorder.calls
 
 
 def test_read_raises_oserror_when_the_data_burst_read_fails() -> None:
@@ -769,7 +637,7 @@ def test_read_raises_oserror_when_the_data_burst_read_fails() -> None:
             message = ""
         except OSError as e:
             message = str(e)
-    assert message == "I2C bus not initialized"
+    assert message == "unexpected data burst read result"
 
 
 def test_read_bmp_logs_and_degrades_when_the_data_burst_read_fails() -> None:
@@ -1680,11 +1548,10 @@ def test_read_bmp_captures_the_default_compensation_values_when_config_unreadabl
     assert results[2] == fallback.TS  # timestamp is passed through untouched either way
 
 
-def test_an_unreadable_compensation_config_logs_one_entry_and_one_line_per_episode() -> None:
+def test_an_unreadable_compensation_config_logs_one_entry_and_one_line_per_failed_read() -> None:
     # A stored float of the wrong type passes init (the int batch reads) and fails every cycle's capture. The read
-    # still runs each cycle, on the fallback, but the reader persists and prints CFG_READ once per run of failed
-    # captures: a good capture ends the episode, and so does a task restart.
-    _i2c, reader = _healthy_reader("cfg_read_episode")
+    # still runs each cycle, on the fallback, and each failed capture persists and prints CFG_READ.
+    _i2c, reader = _healthy_reader("cfg_read_each")
     reader.pr.level = 1  # the error level: the reader's console lines print
 
     def cycles(n: int) -> "tuple[int, int]":
@@ -1697,14 +1564,10 @@ def test_an_unreadable_compensation_config_logs_one_entry_and_one_line_per_episo
 
     base, _ = cycles(0)
     reader.cfgmgr._cache["PresOffset"] = "damaged"
-    assert cycles(3) == (base + 1, 1)
+    assert cycles(3) == (base + 3, 3)
     assert _used(reader)[-1] == code("E", "CFG_READ")
     reader.cfgmgr._cache["PresOffset"] = 0.0
-    assert cycles(1) == (base + 1, 0)  # the good capture ends the episode, silently
-    reader.cfgmgr._cache["PresOffset"] = "damaged"
-    assert cycles(2) == (base + 2, 1)  # a new episode: one more
-    assert run(reader._init_bmp()) is True  # a task restart
-    assert cycles(2) == (base + 3, 1)
+    assert cycles(1) == (base + 3, 0)  # a good capture logs nothing
 
 
 def test_reader_read_error_check_threshold_and_self_heal() -> None:
@@ -1780,7 +1643,7 @@ def test_reader_read_bmp_triggers_exactly_one_measurement_cycle() -> None:
 
 def test_two_failed_reads_reset_the_chip_and_reapply_the_stored_config() -> None:
     i2c, reader = _healthy_reader("rung_reapply", PresOvers=8, TempOvers=4, FiltCoeff=3)
-    fake(i2c).inject_fault("readfrom_into", OSError, errno_mod.EIO, "no ACK", times=2, match=_REGISTER_ERR)  # the bursts
+    fake(i2c).inject_fault("readfrom_into", OSError, errno_mod.EIO, "no ACK", times=2, match=_REGISTER_PRESSUREDATA)  # the bursts
     fake(i2c).log.clear()
     assert _cycle(reader) is True
     assert _writes_to(i2c, _REGISTER_CMD) == []  # the 1st failure: the retry is the next cycle
@@ -1796,7 +1659,7 @@ def test_two_failed_reads_reset_the_chip_and_reapply_the_stored_config() -> None
 
 def test_a_rejected_reset_logs_one_chip_set_error_and_writes_no_config() -> None:
     i2c, reader = _healthy_reader("rung_rejected", PresOvers=8)
-    fake(i2c).inject_fault("readfrom_into", OSError, errno_mod.EIO, "no ACK", times=2, match=_REGISTER_ERR)
+    fake(i2c).inject_fault("readfrom_into", OSError, errno_mod.EIO, "no ACK", times=2, match=_REGISTER_PRESSUREDATA)
     assert _cycle(reader) is True
     seed_err(i2c, 0x02)  # ERR_REG cmd_err: the chip refuses the soft reset (not fatal_err, bit 0)
     fake(i2c).log.clear()
@@ -1885,53 +1748,12 @@ def test_a_pres_offset_that_leaves_the_formula_domain_publishes_no_sea_level_pre
     assert run(reader.get_error_counter())["BMP3XX"]["ErrCount"] == 0
 
 
-def test_a_chip_reset_reapplies_the_stored_configuration() -> None:
-    i2c, reader = _healthy_reader("chip_reset", PresOvers=8, TempOvers=4, FiltCoeff=3)
-    fake(i2c).registers[(_ADDR, _REGISTER_OSR)] = bytearray([0x02])  # the chip's own reset values back (DS001 §4.2, Table 24)
-    fake(i2c).registers[(_ADDR, _REGISTER_CONFIG)] = bytearray([0x00])
-    seed_event(i2c, 0x01)  # por_detected
-    fake(i2c).log.clear()
-    results = run(reader._read_bmp())
-    seed_event(i2c, 0x00)  # the read cleared it, as the chip's clear-on-read does
-    assert results[0] is not None and results[1] is not None  # the cycle succeeds
-    trigger = [i for i, entry in enumerate(fake(i2c).log) if entry[0] == "writeto" and entry[2] == bytes([_REGISTER_CONTROL, 0x13])]
-    assert len(trigger) == 1
-    assert len(_writes_to(i2c, _REGISTER_OSR)) == 2 and max(_writes_to(i2c, _REGISTER_OSR)) < trigger[0]
-    assert len(_writes_to(i2c, _REGISTER_CONFIG)) == 1 and _writes_to(i2c, _REGISTER_CONFIG)[0] < trigger[0]
-    assert run(reader._bmp.get_config_snapshot()) == (8, 4, 3)
-    assert _used(reader) == [code("W", "BMP_CHIP_RESET")]
-    fake(i2c).log.clear()
-    run(reader._read_bmp())  # a cycle without the flag makes no re-apply write
-    assert _writes_to(i2c, _REGISTER_OSR) == [] and _writes_to(i2c, _REGISTER_CONFIG) == []
-    assert _used(reader) == [code("W", "BMP_CHIP_RESET")]
-
-
-def test_a_failed_reapply_after_a_chip_reset_fails_the_cycle() -> None:
-    i2c, reader = _healthy_reader("chip_reset_fail", PresOvers=8)
-    seed_event(i2c, 0x01)
-    bus = fake(i2c)
-    real_writeto = bus.writeto
-
-    def fail_the_osr_write(address: int, buf: object, stop: bool = True) -> int:
-        if stop and bytes(buf)[:1] == bytes([_REGISTER_OSR]):  # type: ignore[call-overload]  # the write half only
-            raise OSError(errno_mod.EIO, "no ACK on write")
-        return real_writeto(address, buf, stop)
-
-    bus.writeto = fail_the_osr_write  # type: ignore[method-assign]
-    results = run(reader._read_bmp())
-    assert results[0] is None and results[1] is None
-    assert _count_forced_mode_triggers(i2c) == 0  # no conversion ran on the reverted settings
-    assert run(reader._error_check(results)) is True
-    assert reader._err_cnt_internal == 1  # the cycle counted failed
-    assert _used(reader) == [code("W", "BMP_CHIP_RESET"), code("E", "CHIP_SET"), code("E", "READ"), code("E", "STREAK")]
-
-
-def test_a_reading_outside_the_operating_range_logs_read_range() -> None:
+def test_a_reading_outside_the_operating_range_logs_a_failed_read() -> None:
     i2c, reader = _healthy_reader("read_range")
     seed_data(i2c, _adc_to_data6(0xFFFFFF, _ADC_T))  # far above 1250 hPa
     results = run(reader._read_bmp())
     assert results[0] is None and results[1] is None
-    assert _used(reader) == [code("E", "READ_RANGE")]  # no generic READ entry for it
+    assert _used(reader) == [code("E", "READ")]  # "Read failed:", as any other failed read
     assert run(reader._error_check(results)) is True
     assert reader._err_cnt_internal == 1  # it still counts as a failed read
 
@@ -2555,7 +2377,6 @@ def test_never_touches_any_address_but_its_own() -> None:
             bmp.get_temperature,
             bmp.get_pressure_and_temperature,
             bmp.get_pressure_altitude,
-            bmp.take_por_detected,
             bmp.get_pressure_oversampling,
             bmp.get_temperature_oversampling,
             bmp.get_filter_coefficient,
@@ -2574,7 +2395,6 @@ def test_never_touches_any_address_but_its_own() -> None:
 
     touched = {entry[1] for entry in fake(i2c).log if entry[0] in ("writeto", "readfrom_into", "readfrom_mem", "writeto_mem")}
     assert touched == {_ADDR}, f"BMP3XX_I2C touched unexpected address(es): {touched - {_ADDR}}"
-
 
 
 def test_init_bmp_runs_on_the_defaults_when_its_config_file_cannot_be_written() -> None:
@@ -2602,31 +2422,6 @@ def test_init_bmp_runs_on_the_defaults_when_its_config_file_cannot_be_written() 
 
 # @tunable l1.asy_bmp3xx_driver_reset_run_bound_s = 2
 _RESET_RUN_BOUND_S = 2  # far past one reset's polls and settle: a reset() that never ends fails here, the file goes on
-
-
-def test_reset_raises_oserror_when_the_bus_goes_down_between_its_two_sessions() -> None:
-    # The soft reset written, then the bus down during the settle: the second session's register reads answer None and
-    # reset() raises, under its own run bound.
-    i2c, bmp = ready_bmp()
-    bus = fake(i2c)  # the fake outlives the deinit, which drops the driver's reference to it
-    real_sleep_ms = asyncio.sleep_ms
-    soft_reset = ("writeto", _ADDR, bytes([_REGISTER_CMD, 0xB6]), True)
-
-    async def settle_then_down(ms: int) -> None:
-        await real_sleep_ms(ms)
-        if soft_reset in bus.log:
-            i2c.deinit()
-
-    asyncio.sleep_ms = settle_then_down  # type: ignore[assignment]  # process-wide, restored below
-    try:
-        run(bmp.reset(), _RESET_RUN_BOUND_S)
-        message = ""
-    except OSError as e:  # the run bound's TimeoutError included, its message empty
-        message = str(e)
-    finally:
-        asyncio.sleep_ms = real_sleep_ms
-    assert message == "I2C bus not initialized", message
-    assert soft_reset in bus.log
 
 
 if __name__ == "__main__":

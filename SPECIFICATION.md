@@ -355,10 +355,7 @@ features as today's deployed units, not a feature change.
   tick low in float32); a third decimal is rounded by the driver, not by the chip (owner, 2026-09-29).
 - **SCD30 not-ready cycle.** When the chip reports no new data, the reader keeps its cache untouched, counts no
   error and republishes the last reading under a fresh `TS` — the legacy driver's field behaviour (owner, 2026-07-22,
-  `110f3db`), the one named exception to the rule that no driver re-stamps a sample (C.4.2). Five consecutive
-  data-ready signals with no new measurement persist one `SCD_NOT_READY` warning (a data-ready line stuck high is the
-  likely cause), cleared by the next new measurement; the cached values keep being stored with the cycle's timestamp,
-  as above.
+  `110f3db`), the one named exception to the rule that no driver re-stamps a sample (C.4.2).
 - **SGP40's VOC index** is deviation-from-learned-baseline, not absolute concentration (confirmed
   against `voc_algorithm.py`'s Sensirion port): (1) 45 sampling intervals must elapse before the
   index moves off 0 — published as 0 during the blackout, with `VOCState` 0 (M.3); (2) under any constant raw input
@@ -378,11 +375,9 @@ features as today's deployed units, not a feature change.
   the stored oversampling and filter configuration back, since the reset returns every user setting to its default
   (BMP388 DS001 §4.3.22) — the participant rung of the recovery ladder (C.7); a reset the chip rejects (`ERR_REG`
   `cmd_err`) is logged once and writes no configuration. A setup failure, a chip-write failure or a
-  config-read failure runs no rung: the task ends and its restart retries the setup (C.7). A self-reset of the chip is read, not inferred: every cycle
-  reads EVENT's `por_detected` (0x10 bit 0, cleared by the read), and when it is set the reader persists
-  `BMP_CHIP_RESET` and writes the stored configuration back under the setter lock before converting; a write-back that
-  fails fails the cycle into the ladder. ERR_REG (0x02) is read in the same burst as the data, and a set `fatal_err`
-  fails the cycle (EVENT: BMP388 DS001 4.3.7, BMP390 DS002 4.3.8, BMP384 DS003 4.3.7; ERR_REG: 4.3.2, 4.3.3, 4.3.2).
+  config-read failure runs no rung: the task ends and its restart retries the setup (C.7). A self-reset of the chip
+  (a power-on reset) is not watched for: the chip then runs at its defaults (×1, no IIR), and since every cycle writes
+  forced mode again the readings stay valid, at lower precision, until the next setup.
 - Legacy `neopixel_signal.py` (LED hardware plus hardcoded threshold monitoring) was split:
   `asy_neopixel_driver.py`'s `NeopixelDriver` (pure LED hardware; also serves
   `asy_wifi_service.py`'s `LEDControl` Protocol) and `asy_notification_service.py`'s
@@ -8871,10 +8866,9 @@ read and write slice views, transient. `_get_dict_cfg()`/`_set_dict_cfg()`: the 
 per config GET/PUT, transient, bounded by the schema, `schema_dict()` built once per PUT; `_republish()`:
 the changed sample, per republish, replacing the last. `arm_tick_timer()`: one closure per arm, boot list.
 
-**`asy_bmp3xx_driver.py`** — construction, long-lived, fixed: the reader, its `BMP3XX_I2C` and the
-8-byte pressure-and-temperature burst buffer (`_pt_burst`, filled in place by every conversion and
-decoded under the hold that filled it). Per read: one `BMP3XX` sample namedtuple (replacing the last),
-about 35 float results of the compensation (`_read()`), transient. Setup only, at each read-task start:
+**`asy_bmp3xx_driver.py`** — construction, long-lived, fixed: the reader and its `BMP3XX_I2C`. Per read:
+the 6-byte data burst's copy, one `BMP3XX` sample namedtuple (replacing the last), about 35 float
+results of the compensation (`_read()`), transient. Setup only, at each read-task start:
 the 21-byte calibration block, the largest register read any driver issues, and the two coefficient
 tuples it decodes into (`_temp_calib`, `_pressure_calib`), replacing the last.
 
@@ -11796,10 +11790,6 @@ outside their formulas' domains, unlogged, since a physical reading there is an 
 (agent, 2026-10-07): `WetBulb` outside −20..50 °C or 5..99 %RH (Stull 2011), `DewPoint` outside −40..50 °C or 0.1..100 %RH
 (`math_helpers.py`).
 
-**Not-ready reads.** Five consecutive data-ready signals with no new measurement persist one
-`SCD_NOT_READY` (`wrnno` 73) per episode; the next new measurement clears the count, a raised read
-counts nothing, and every init resets it; the not-ready cycle's restamp is A.4's named exception.
-
 **NVM.** SCD30 NVM (no published endurance figure in any Sensirion document) is written only by an
 accepted PUT that changed a value, or by `AmbPres`/`ForceCalRef`/`ContMeas=false`, which write
 whenever a PUT carries them; nothing periodic or boot-time writes it (owner, 2026-09-26); the
@@ -11885,16 +11875,14 @@ it can move the VOC index, and its warning, before the algorithm settles (agent,
 
 | Wait | Value in the driver | Datasheet bound | Margin | Source |
 |---|---|---|---|---|
-| soft reset → ERR read | 3 ms (`bmp3xx.reset_settle_ms`): the reference 2 ms plus one tick, since `sleep_ms()` may wake up to 1 ms early | none documented for 0xB6 (BMP388 DS001 4.3.22) | — | Bosch reference sequence `bmp3_soft_reset()` (agent) |
-| conversion → STATUS ready | computed from the OSR register per 3.9.2, rounded up to whole ms, then STATUS polled every 2 ms (`bmp3xx.status_poll_ms`), bounded by 300 ms (`bmp3xx.meas_timeout_ms`) | typical 128.94 ms at ×32/×32 (BMP384/388; BMP390 130.07 ms, 2020 µs per repetition), maximum about 15 % above typical (Table 22) | ×2.0 against the maximum | agent |
+| soft reset → ERR read | 2 ms (`bmp3xx.reset_settle_ms`) | none documented for 0xB6 (BMP388 DS001 4.3.22) | — | Bosch reference sequence `bmp3_soft_reset()` (agent) |
+| conversion → STATUS ready | STATUS polled every 2 ms (`bmp3xx.status_poll_ms`) from the forced-mode write on, bounded by 300 ms (`bmp3xx.meas_timeout_ms`) | typical 128.94 ms at ×32/×32 (BMP384/388; BMP390 130.07 ms, 2020 µs per repetition), maximum about 15 % above typical (Table 22) | ×2.0 against the maximum | agent |
 | `cmd_rdy` before a command | 50 ms (`bmp3xx.cmd_rdy_timeout_ms`) | none documented (DS001 4.3.3) | — | agent: bounds a bus fault |
 
 AN006 5.2 verifies each trimming parameter against bounds it does not publish; the driver rejects an
-all-0x00/0xFF trim block, which catches the same memory fault class. EVENT (0x10) bit 0
-`por_detected` is set after a power-up or a soft reset and cleared by reading; ERR_REG (0x02) bit 0
-is `fatal_err`. The reader reads EVENT every cycle and starts its data burst at ERR_REG (0x02-0x09
-contiguous), so a chip self-reset re-applies the stored configuration (A.4) and a fatal error fails
-the read; a pressure outside 300-1250 hPa is logged as `READ_RANGE`.
+all-0x00/0xFF trim block, which catches the same memory fault class. The data burst is the six
+bytes from PRESSUREDATA (0x04); a pressure outside 300-1250 hPa fails the read like any other
+(`READ`).
 
 `MeanAtmTemp` is bounded to −40..50 °C so every accepted value lies inside the barometric formula's
 domain. A `PresOffset` that moves the pressure outside 300-1250 hPa still publishes the sample, with
@@ -12098,7 +12086,6 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `scd30.asc_enable_wait_ms` | 10 ms | `src/asy_scd30_driver.py` — `10` | — | legacy `legacy/firmware/python/IndividualDrivers/asy_scd30_driver.py:286` | datasheet margin owed | the chip's firmware changes |
 | `scd30.soft_reset_wait_ms` | 2500 ms | `src/asy_scd30_driver.py` — `2500` | — | estimated (agent, `7267509`) — measurement owed: the chip's ready time after a soft reset on the dev bench, L3 (the Interface Description's boot time is the floor) | 1.25× the boot-up time < 2 s (Interface Description 1.1; M.2) | the chip's firmware changes |
 | `scd30.start_trigger_period_ms` | 500 ms | `src/asy_scd30_driver.py` — `500`; `tests/test_asy_scd30_driver.py` — `500` | the measurement start's retry cadence | legacy `legacy/firmware/python/IndividualDrivers/asy_scd30_driver.py:77` | unknown until measured | the start sequence changes |
-| `scd30.not_ready_warn_at` | 5 | `src/asy_scd30_driver.py` — `5` | consecutive not-ready reads before one `SCD_NOT_READY` warning per episode (A.4) | estimated (agent, 2026-10-06) — measurement owed: the longest run of not-ready reads a healthy SCD30 gives on the dev bench, L3; the same count as ISL29125's periodic-only warning, so a line stuck high warns within five cycles | a late edge on up to four consecutive cycles stays silent | the measurement interval's range or the data-ready handling changes |
 | `sgp40.measure_wait_ms` | 100 ms | `src/asy_sgp40_driver.py` — `100` | every raw-signal read | owner decision (owner, 2026-07-21, `5ff8c0b`) | more than 3× the datasheet's 30 ms maximum (Table 8) | the chip's measurement command changes |
 | `sgp40.serial_read_wait_ms` | 3 ms | `src/asy_sgp40_driver.py` — `3` | — | owner decision (owner, 2026-07-13, `144873f`: owner-tested) | 3× the datasheet's 1 ms maximum (Table 8; M.3) | the chip's command set changes |
 | `sgp40.self_test_wait_ms` | 500 ms | `src/asy_sgp40_driver.py` — `500` | the self-test read | legacy `legacy/firmware/python/IndividualDrivers/asy_sgp40_driver/__init__.py:336` | 1.56× the datasheet's 320 ms maximum (Table 8; M.3) | the chip's command set changes |
@@ -12109,7 +12096,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `bmp3xx.cmd_rdy_timeout_ms` | 50 ms | `src/asy_bmp3xx_driver.py` — `50` | — | estimated (agent, `433e35e`) — measurement owed: none: the datasheet gives no bound, so it bounds a bus fault | unknown until measured | the command path changes |
 | `bmp3xx.meas_timeout_ms` | 300 ms | `src/asy_bmp3xx_driver.py` — `300` | — | estimated (agent, `433e35e`) — measurement owed: none: bounds a stuck STATUS past the datasheet's worst case (3.9.2) | about 2× the ~129-150 ms worst case at x32/x32 | the oversampling range changes |
 | `bmp3xx.status_poll_ms` | 2 ms | `src/asy_bmp3xx_driver.py` — `2` | the STATUS poll's loop share | estimated (agent, `433e35e`) — measurement owed: the poll rounds per conversion on the dev bench, L3 | unknown until measured | the conversion timing changes |
-| `bmp3xx.reset_settle_ms` | 3 ms | `src/asy_bmp3xx_driver.py` — `3` | — | Bosch's reference `bmp3_soft_reset()` waits 2 ms (the datasheet documents none for 0xB6, DS001 4.3.22), plus one tick: `sleep_ms()` can wake up to 1 ms early (agent, 2026-10-21) — measurement owed: none | one tick over the reference 2 ms | the reset path changes |
+| `bmp3xx.reset_settle_ms` | 2 ms | `src/asy_bmp3xx_driver.py` — `2` | — | Bosch's reference `bmp3_soft_reset()` waits 2 ms (the datasheet documents none for 0xB6, DS001 4.3.22) — measurement owed: none | the reference 2 ms | the reset path changes |
 | `i2c.probe_settle_ms` | 100 ms | `src/asy_i2c_driver.py` — `100` | the two waits around the zero-byte address probe | estimated (agent, `d40853e`) — measurement owed: the bus settle a probe needs on the dev bench, L3 | unknown until measured | the probe sequence changes |
 | `i2c.clear_half_period_us` | 5 µs | `src/asy_i2c_driver.py` — `5` | the bus clear's clock, at boot and in `I2C.clear()`/`I2C.recover()` (C.3): nine pulses and a STOP take about 0.1 ms before any SCL wait | datasheet SCD30 Interface Description p.2 (100 kHz SCL maximum, the lowest ceiling of any chip on the buses) | none below the ceiling; interpreter overhead between pin writes only lengthens the period | a chip with a lower SCL ceiling joins an I2C bus |
 | `i2c.timeout_max_us` | 200000 µs | `buildgen/validate.py` — `200000` | every `[bus.i2cN].timeout` (the build refuses one outside 1..200000 µs); the SCD30's `@requires bus.timeout>=200000`, whose floor equals the bound, so a bus carrying an SCD30 has exactly one legal timeout; the boot bus clear's budget (`wdt.timeout_ms`'s three quarters) | estimated (agent, 2026-10-07): the largest timeout any device TOML declares, the SCD30's own floor, far below the 2**29 µs `ticks_diff()` horizon — measurement owed: the longest clock stretch any chip on the buses holds on the dev bench, L3 | worst boot clear per bus is (`_CLEAR_PULSES` + 2) = 11 SCL waits of one timeout plus 2 × (`_CLEAR_PULSES` + 1) half periods: on a real device today at most one bus at 200000 µs and one at the 50000 µs default, about 2750 ms; the largest allowed shape, two buses at the bound, about 4400 ms, under the 6000 ms budget | a chip needing a longer stretch joins a bus, `_CLEAR_PULSES` changes, or `wdt.timeout_ms` changes |

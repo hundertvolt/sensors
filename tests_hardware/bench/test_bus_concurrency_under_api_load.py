@@ -83,7 +83,7 @@ _NTP_BLOCK_MARGIN_S = 10.0
 _COMMAND_AFTER_ANSWERED = 3
 _SYSTEM = "asy_system_service.py"
 # The read paths' new codes, named so a load arm that provokes one says which (catalog names, checked at run time).
-_LOAD_CODES = (("W", "BMP_CHIP_RESET"), ("E", "READ_RANGE"), ("W", "ISL_DIVERGED"))
+_LOAD_CODES = (("E", "READ_RANGE"), ("W", "ISL_DIVERGED"))
 
 
 @pytest.mark.provokes_log(

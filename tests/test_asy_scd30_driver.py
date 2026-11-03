@@ -135,8 +135,8 @@ def _entries(reader: SCD30_Reader) -> "list[tuple[str, int]]":
     return [(t, n) for t, n in zip(log["ErrType"], log["ErrNum"]) if t != "N"]
 
 
-async def _fake_chip_setup() -> bool:
-    return True
+async def _fake_chip_setup() -> None:
+    return
 
 
 def _fake_init(reader: SCD30_Reader) -> None:
@@ -402,20 +402,6 @@ def test_read_measurement_decodes_every_word_like_struct_unpack() -> None:
         assert run(scd.read_measurement()) is True
         expected = [struct.unpack(">f", frame[6 * k : 6 * k + 2] + frame[6 * k + 3 : 6 * k + 5])[0] for k in range(3)]
         assert [scd._co2, scd._temperature, scd._relative_humidity] == expected, frame
-
-
-def test_read_measurement_drops_the_crc_bytes_into_one_reused_word_buffer() -> None:
-    # The six data words land in place in the reader's own buffer, the same one every read: no slice copies per read.
-    scd, i2c = _make_scd()
-    words = scd._words
-    for values in ((400.0, 20.0, 50.0), (512.5, -3.25, 99.5)):
-        frame = data_frame(*values)
-        i2c.read_queue.append(register_frame(1))
-        i2c.read_queue.append(frame)
-        assert run(scd.read_measurement()) is True
-        assert scd._words is words
-        assert bytes(words) == bytes(frame[i] for i in range(18) if i % 3 != 2)
-        assert (scd._co2, scd._temperature, scd._relative_humidity) == values
 
 
 def test_asc_deactivate_matches_datasheet_example() -> None:
@@ -929,7 +915,7 @@ def test_setup_probes_reads_firmware_version_then_soft_resets_and_reads_the_temp
     i2c.read_queue.append(register_frame(0x0301))
     i2c.read_queue.append(register_frame(450))
     with FastAsyncSleep() as sleeps:
-        assert run(scd.setup()) is True
+        run(scd.setup())
     assert [seconds for _task, seconds, _ms in sleeps.slept].count(_SOFT_RESET_WAIT_MS / 1000) == 1
     ops = [entry[0] for entry in i2c.log]
     assert ops == ["writeto", "writeto", "readfrom_into", "writeto", "writeto", "readfrom_into"]
@@ -2133,52 +2119,9 @@ def test_a_not_ready_cycle_republishes_the_cached_reading_with_a_fresh_ts_and_no
     assert run(reader.get_error_counter())["SCD30"]["ErrCount"] == 0
 
 
-def test_five_not_ready_reads_warn_once_and_new_data_clears() -> None:
-    reader = _make_reader()
-    outcome: list[bool | None] = [False]
-
-    async def read_measurement() -> bool:
-        if outcome[0] is None:
-            raise OSError(5, "nak")
-        return outcome[0]
-
-    async def fake_value() -> float:
-        return 21.0
-
-    reader._scd.read_measurement = read_measurement  # type: ignore[method-assign]
-    reader._scd.get_CO2 = fake_value  # type: ignore[method-assign]
-    reader._scd.get_temperature = fake_value  # type: ignore[method-assign]
-    reader._scd.get_relative_humidity = fake_value  # type: ignore[method-assign]
-
-    def cycles(*outcomes: "bool | None") -> "list[int]":
-        warned = []
-        for value in outcomes:
-            outcome[0] = value
-            run(reader._read_scd())
-            warned.append(sum(1 for e in _entries(reader) if e == ("W", code("W", "SCD_NOT_READY"))))
-        return warned
-
-    assert cycles(False, False, False, False, False, False) == [0, 0, 0, 0, 1, 1]
-    assert reader._not_ready_reads == 5  # held at the threshold
-    assert cycles(True) == [1] and reader._not_ready_reads == 0
-    cycles(False, False, False, False, False)
-    log = run(reader.get_error_counter())["SCD30"]
-    assert log["ErrCount"] == 2 and log["ErrNum"].count(code("W", "SCD_NOT_READY")) == 1  # one slot, newest-entry rule
-    reader = _make_reader()
-    reader._scd.read_measurement = read_measurement  # type: ignore[method-assign]
-    reader._scd.get_CO2 = fake_value  # type: ignore[method-assign]
-    reader._scd.get_temperature = fake_value  # type: ignore[method-assign]
-    reader._scd.get_relative_humidity = fake_value  # type: ignore[method-assign]
-    assert cycles(False, False, False, None, False)[-1] == 0  # a raised read counts nothing toward it
-    assert reader._not_ready_reads == 4
-    _fake_init(reader)
-    assert run(reader._init_scd()) is True
-    assert reader._not_ready_reads == 0
-
-
-def test_an_unreadable_frc_config_is_logged_once_per_episode() -> None:
-    # The store refuses every read while it is invalid: one entry and its console line, not one per cycle; each cycle
-    # still publishes settling, and the next good read ends the episode.
+def test_an_unreadable_frc_config_is_logged_once_per_failed_read() -> None:
+    # The store refuses every read while it is invalid, and each refusal is its entry (the logger keeps one slot for
+    # the repeat); each cycle still publishes settling, and the next good read ends the run.
     reader = _make_reader()
     store = reader.cfgmgr
 
@@ -2192,14 +2135,11 @@ def test_an_unreadable_frc_config_is_logged_once_per_episode() -> None:
     for _ in range(5):
         run(reader._capture_frc_config())
         assert reader._frc_cfg_ok is False
-    assert store_errors() == before + 1
+    assert store_errors() == before + 5  # one refusal per capture: the int read is never made after a failed float one
     store.valid = True
     run(reader._capture_frc_config())
     assert reader._frc_cfg_ok is True
-    store.valid = False
-    for _ in range(3):
-        run(reader._capture_frc_config())
-    assert store_errors() == before + 2
+    assert store_errors() == before + 5
 
 
 def test_frc_readiness_reaches_ready_after_the_settle_count_and_one_closed_window() -> None:

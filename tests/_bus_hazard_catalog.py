@@ -265,7 +265,6 @@ async def _read_once_bmp3xx(instance: object) -> None:
     # occupant's own first read, exactly once, same as a real driver caller would do at boot.
     if not hasattr(instance, "_temp_calib"):
         await instance.setup()
-    assert await instance.take_por_detected() is False, "BMP3xx reported a chip reset nobody issued"  # the reader's per-cycle EVENT read
     pressure, temperature = await instance.get_pressure_and_temperature()
     assert abs(pressure - _BMP_EXPECTED_PRESSURE_HPA) < 1e-6, f"a concurrent hazard corrupted BMP3xx's own pressure read: {pressure!r}, expected {_BMP_EXPECTED_PRESSURE_HPA!r}"
     assert abs(temperature - BMP_EXPECTED_TEMPERATURE) < 1e-6, f"a concurrent hazard corrupted BMP3xx's own temperature read: {temperature!r}, expected {BMP_EXPECTED_TEMPERATURE!r}"
@@ -291,7 +290,6 @@ async def _exercise_bmp3xx(instance: object) -> None:
         instance.get_temperature_oversampling,
         instance.get_filter_coefficient,
         instance.get_config_snapshot,
-        instance.take_por_detected,
         lambda: instance.set_pressure_oversampling(2),
         lambda: instance.set_temperature_oversampling(2),
         lambda: instance.set_filter_coefficient(3),
@@ -375,12 +373,11 @@ def _bmp_data6(adc_p: int, adc_t: int) -> bytes:
 
 
 def _ready_bmp(fake_bus: FakeI2C, address: int, chip_id: int = 0x50) -> None:
-    # STATUS: cmd_rdy | drdy_press | drdy_temp; ERR_REG clear; EVENT clear - see test_asy_bmp3xx_driver.py's own
-    # ready_bmp() for the same shape. The driver's burst reads ERR_REG, STATUS and the data as one file from 0x02.
-    status = 0x10 | 0x60
-    fake_bus.registers[(address, 0x03)] = bytearray([status])  # _REGISTER_STATUS
-    fake_bus.registers[(address, 0x02)] = bytearray([0x00, status]) + _bmp_data6(_BMP_ADC_P, _BMP_ADC_T)  # _REGISTER_ERR to 0x09
-    fake_bus.registers[(address, 0x10)] = bytearray([0x00])  # _REGISTER_EVENT, por_detected clear
+    # STATUS: cmd_rdy | drdy_press | drdy_temp; ERR_REG clear - see test_asy_bmp3xx_driver.py's own ready_bmp() for
+    # the same shape, and the 6-byte burst from PRESSUREDATA.
+    fake_bus.registers[(address, 0x03)] = bytearray([0x10 | 0x60])  # _REGISTER_STATUS
+    fake_bus.registers[(address, 0x02)] = bytearray([0x00])  # _REGISTER_ERR
+    fake_bus.registers[(address, 0x04)] = bytearray(_bmp_data6(_BMP_ADC_P, _BMP_ADC_T))  # _REGISTER_PRESSUREDATA
     # _REGISTER_CHIPID: 0x50 (BMP384/388) by default, 0x60 (BMP390) on request - both documented IDs
     fake_bus.registers[(address, 0x00)] = bytearray([chip_id])
     fake_bus.registers[(address, 0x31)] = bytearray(_BMP_CAL_RAW)  # _REGISTER_CAL_DATA

@@ -24,7 +24,6 @@ import network  # noqa: E402 - imported after the prewarm and the UDP shim
 import run_generic_integration  # noqa: E402 - imported after the prewarm and the UDP shim
 from _async_harness import cancel, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim
-from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
 from _fake_time import DrivenTime  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -125,15 +124,13 @@ def _power_cycled_bmp3xx_on(device: str) -> None:
         async def body() -> None:
             sysfunct = module.sysfunct
             await _until(clock, f"{device}'s BMP3XX never read", lambda: reader._datastruct.Pres is not None)
-            osr, config = chip._osr, chip._config
             tasks = list(sysfunct._tasks)
             chip.power_cycle()
             before = reader._datastruct
             await _until(clock, f"{device}'s BMP3XX never read after the power cycle", lambda: reader._datastruct is not before and reader._datastruct.Pres is not None)
             log = (await reader.get_error_counter())["BMP3XX"]
-            resets = [log["ErrNum"][i] for i in range(len(log["ErrNum"])) if log["ErrType"][i] == "W"]
-            assert resets == [code("W", "BMP_CHIP_RESET")], f"{device}: the power cycle left {log}"
-            assert (chip._osr, chip._config) == (osr, config), f"{device}: OSR/CONFIG {chip._osr:#x}/{chip._config:#x} after the reset, not {osr:#x}/{config:#x}"
+            warnings = [log["ErrNum"][i] for i in range(len(log["ErrNum"])) if log["ErrType"][i] == "W"]
+            assert warnings == [], f"{device}: the power cycle left {log}"
             assert list(sysfunct._tasks) == tasks, "a task ended over the power cycle"
             assert watchdog.would_have_triggered_count == 0
 
@@ -235,9 +232,9 @@ def test_every_bus_attached_driver_recovers_from_a_replug_without_a_reboot() -> 
         _replug(driver)
 
 
-def test_a_power_cycled_bmp3xx_is_reconfigured_without_a_ladder_step() -> None:
-    # A supply blip resets OSR/CONFIG behind the driver's back: the next cycle notices, persists one W BMP_CHIP_RESET
-    # and writes its stored settings back; the task never ends (SPECIFICATION.md C.7's chip-reset row).
+def test_a_power_cycled_bmp3xx_reads_on_at_the_chip_defaults_without_a_ladder_step() -> None:
+    # A supply blip resets OSR/CONFIG behind the driver's back: forced mode is written every cycle, so the reads go on
+    # at the chip's defaults (x1, no IIR) with nothing logged, and the task never ends (SPECIFICATION.md A.4).
     for device in distinct_wirings("bmp3xx"):
         machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
         network.reset_test_state()

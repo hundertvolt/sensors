@@ -110,7 +110,7 @@ _GENERAL_CALL_ENTRY = ("writeto", 0x00, b"\x06", True)
 # smaller analogue of tests/_bus_hazard_catalog.py's mock-tier adapters (Part C.8); a new driver needs an entry first.
 _I2C_DRIVER_HEALTH_FIELD: "dict[str, str]" = {"scd30": "CO2", "sgp40": "VOC", "bmp3xx": "Pres", "isl29125": "Lux"}
 # The per-cycle register read a driver makes on its shared bus, each pointer write followed at once by its read.
-_PER_CYCLE_REGISTER = {"bmp3xx": 0x10, "isl29125": 0x01}  # BMP3XX's EVENT, ISL29125's CONFIG snapshot
+_PER_CYCLE_REGISTER = {"bmp3xx": 0x04, "isl29125": 0x01}  # BMP3XX's data burst, ISL29125's CONFIG snapshot
 # Every (device, bus, occupants) whose plan puts two or more chips on one bus: the shared-bus cases run on each.
 _SHARED = devices_with_shared_bus()
 # FRAM sits alone on its SPI bus on every device; its same-device hazards run once per distinct FRAM wiring (its SPI
