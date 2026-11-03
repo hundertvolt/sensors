@@ -426,6 +426,7 @@ def test_led_signal_is_refused_at_once_while_a_ramp_runs_and_nothing_is_queued()
     assert busy is True
     assert result is False
     assert not any(c[1] > 0 for c in _colours(driver))  # the refused colour never reaches the pixel
+    assert ("NEOPIXEL", "External LED command received.") in recorder.lines
     assert ("NEOPIXEL", "External LED command refused: busy, retry later.") in recorder.lines
 
 
@@ -554,7 +555,8 @@ def test_request_signal_queues_at_its_deadline_when_the_signal_task_never_runs()
     assert driver._rgbt == [0, 10, 0, 0.1]  # the request replaced the values still waiting in the slot (last wins)
     assert driver._start_signal_event.is_set() is True
     assert _pixel(driver).writes == []
-    assert [line for line in recorder.lines if line[0] == "NEOPIXEL"] == []  # queued with no line
+    received, started = ("NEOPIXEL", "Internal LED command received."), ("NEOPIXEL", "Internal LED command started.")
+    assert [line for line in recorder.lines if line[0] == "NEOPIXEL"] == [received, started]  # queued, no "dropped" line
 
 
 def test_request_signal_behind_a_running_ramp_returns_true_only_after_it_ends() -> None:

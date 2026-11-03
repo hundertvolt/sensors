@@ -135,6 +135,7 @@ class NeopixelDriver:
         return [self.pr]
 
     def led_signal(self, r: int, g: int, b: int, t: float) -> bool:
+        self.pr.evt("External LED command received.")
         if self._start_signal_event.is_set():
             self.pr.evt("External LED command refused: busy, retry later.")
             return False
@@ -152,11 +153,13 @@ class NeopixelDriver:
 
     # Internal requests are bounded in number and rate, so one waits for a running signal, then queues; an external command is refused instead, and told to retry (owner, 2026-10-02).
     async def request_signal(self, r: int, g: int, b: int, t: float) -> bool:
+        self.pr.evt("Internal LED command received.")
         deadline = time.ticks_add(time.ticks_ms(), _SIGNAL_WAIT_MS)
         while self._start_signal_event.is_set() and time.ticks_diff(deadline, time.ticks_ms()) > 0:
             await asyncio.sleep_ms(self._frame_ms)
         self._rgbt = [r, g, b, t]
         self._start_signal_event.set()
+        self.pr.evt("Internal LED command started.")
         return True
 
     async def reset_error_counter(self) -> bool:
