@@ -464,8 +464,13 @@ def test_a_config_log_its_class_keeps_off_fram_is_no_fram_backed_logger() -> Non
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_serves_the_settings_groups_of_the_one_table(device: str) -> None:
-    # Each page's settings groups are the one SETTINGS_GROUPS table's rows, in order.
+    # Each page's settings groups are the one SETTINGS_GROUPS table's rows, in order, and no other page has any but
+    # notification's, which comes from its schema at boot.
     source = _real(device).module_source
+    routes = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "RouteSources")
+    settings = next(k.value for k in routes.keywords if k.arg == "settings")
+    assert isinstance(settings, ast.Dict)
+    assert {k.value for k in settings.keys if isinstance(k, ast.Constant)} - {"notification"} == {row[0] for row in SETTINGS_GROUPS}
     for page in ("networking", "system"):
         expected = [(module, fields, dict([hook.split("=", 1)]) if hook else {}) for section, module, fields, hook in SETTINGS_GROUPS if section == page]
         assert _settings_groups(source, page) == expected

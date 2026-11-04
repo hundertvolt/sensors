@@ -82,8 +82,8 @@ _HOSTNAME_PREFIX = "SensorStation"
 # Bounds of values the build hands to the silicon or the port, each with its source.
 _HOTSPOT_TIME_MIN_MAX = (2**31 - 1) // 60000  # Timer.init(period=60000 x minutes) is a signed machine int: ports/rp2/machine_timer.c:79
 _I2C_FREQUENCY_MAX_HZ = 1000000  # RP2040 datasheet 4.3.3 (printed p.442): fast mode plus, up to 1000 kbps
-_UART_BUFFER_MIN = 32  # ports/rp2/machine_uart.c:67, :372-375 (v1.29.0): a smaller rxbuf/txbuf is raised to it silently
-_UART_BUFFER_MAX = 32766  # ports/rp2/machine_uart.c:68, :376-377: a larger one raises ValueError at boot
+_UART_BUFFER_MIN = 32  # ports/rp2/machine_uart.c:68, :372-373, :387-388 (v1.29.0): a smaller rxbuf/txbuf is raised to it silently
+_UART_BUFFER_MAX = 32766  # ports/rp2/machine_uart.c:69, :374-375, :389-390: a larger one raises ValueError at boot
 # The boot bus clear waits up to 11 SCL edges of one timeout per I2C bus, unfed after WDT() (Part A.7): 2 buses x 11 x
 # 200 ms = 4.4 s under the 8 s watchdog. rp2 keeps the timeout as a uint32_t (ports/rp2/machine_i2c.c:47, v1.29.0).
 # @tunable i2c.timeout_max_us = 200000
@@ -119,8 +119,6 @@ SETTINGS_GROUPS: "tuple[tuple[str, str, tuple[str, ...], str | None], ...]" = (
 
 class HardConsumer(NamedTuple):
     ms: int  # the loop time it tolerates held
-    what: str  # its name in a build error
-    relief: str  # what else frees it, appended to the fix text
 
 
 def _is_int(value: object) -> "TypeGuard[int]":
@@ -1322,14 +1320,13 @@ def smallest_hard_consumer(model: DeviceModel, src_dir: Path) -> HardConsumer:
     # scenario and the bench lag test read: the watchdog's room beside one supervisor sleep, and each uart_link's
     # reply timeout less its two polls, its idle poll and one GC pause; the first smallest wins (agent, 2026-10-21).
     task_check_s = module_int_const(src_dir, "asy_system_service.py", "_TASK_CHECK_TIME")
-    consumers = [HardConsumer(_WDT_TIMEOUT_MS - task_check_s * 1000, f"the watchdog's {_WDT_TIMEOUT_MS}ms less one {task_check_s}s supervisor sleep", "")]
+    consumers = [HardConsumer(_WDT_TIMEOUT_MS - task_check_s * 1000)]
     reply_ms, gc_pause = (module_int_const(src_dir, "asy_uart_comm.py", n) for n in ("_DEFAULT_TIMEOUT_MS", "_GC_PAUSE_WORST_MS"))
     buses = cast("dict[str, TomlDoc]", model.doc.get("bus", {}))
     for spec in _uart_links(model):
         bus = _checked_str(spec.fields["bus"])
         poll_wait, poll_idle = (_uart_bus_value(src_dir, buses[bus], n) for n in ("poll_wait_ms", "poll_idle_ms"))
-        what = f"{spec.label}'s reply slack ({reply_ms}ms reply timeout - 2 x poll_wait_ms {poll_wait} - poll_idle_ms {poll_idle} - {gc_pause}ms GC pause)"
-        consumers.append(HardConsumer(reply_ms - (2 * poll_wait + poll_idle + gc_pause), what, f", or lower poll_idle_ms on bus.{bus}"))
+        consumers.append(HardConsumer(reply_ms - (2 * poll_wait + poll_idle + gc_pause)))
     return min(consumers, key=lambda c: c.ms)
 
 
