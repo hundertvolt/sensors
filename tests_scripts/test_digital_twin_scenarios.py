@@ -659,6 +659,21 @@ def test_the_boots_own_untimestamped_sgp40_backup_is_no_scenarios_move(harness: 
     assert results == [[], [], []] and len(spawned) == 1, (results, spawned)
 
 
+def test_the_boots_backup_beside_an_unstated_repeat_of_the_newest_code_is_still_named(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A states SGP40's E110; B states nothing but repeats it in place while the boot's W35 lands: two counts moved.
+    _shared_stub(harness, tmp_path, monkeypatch, [])
+    e110, w35 = {"type": "E", "num": 110}, {"type": "W", "num": 35}
+    reads = iter([{"SGP40": {"counter": 0, "history": []}}, {"SGP40": {"counter": 1, "history": [e110]}}, {"SGP40": {"counter": 3, "history": [e110, w35]}}])
+    monkeypatch.setattr(harness, "_error_table", lambda _port: next(reads))
+    shared = harness.SharedBoot(harness.Context("fixture-device", "/nonexistent", -1, tmp_path, (), iter(range(20000, 20010)), "fixture"))
+    results = []
+    for name, moves, last in (("a", ("SGP40",), False), ("b", (), True)):
+        with harness.Context("fixture-device", "/nonexistent", -1, tmp_path, (), iter([]), "fixture", shared=shared).boot():
+            pass
+        results.append(shared.release(_item(harness, name, moves=moves), failed=False, last=last))
+    assert results[0] == [] and len(results[1]) == 1 and "'SGP40': (1, 3," in results[1][0], results
+
+
 def test_the_accept_queue_is_read_from_the_listening_row(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     table = tmp_path / "tcp"
     header = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n"

@@ -372,7 +372,7 @@ class SharedBoot:
         counters = {name: _counter(entry) for name, entry in table.items()}
         newest = {name: _newest_entries(entry) for name, entry in table.items()}
         moved = {name: (self.counters.get(name), counters.get(name)) for name in sorted(set(self.counters) | set(counters)) if self.counters.get(name) != counters.get(name)}
-        unstated = {name: (*move, newest.get(name, [])) for name, move in moved.items() if name not in item.moves and not self._own_backup(name, newest.get(name, []))}
+        unstated = {name: (*move, newest.get(name, [])) for name, move in moved.items() if name not in item.moves and not self._own_backup(name, move, newest.get(name, []))}
         if unstated:
             problems.append(f"moved error counts it does not state (before, after, newest entries): {unstated}")
         verdict = log_memory_verdict(twin.run.log_path)
@@ -381,12 +381,13 @@ class SharedBoot:
         self.counters, self.newest = counters, newest
         return problems
 
-    def _own_backup(self, name: str, now: "list[JSONValue]") -> bool:
+    def _own_backup(self, name: str, move: "tuple[int | None, int | None]", now: "list[JSONValue]") -> bool:
         # The boot's own background, never a scenario's: an SGP40 that never syncs writes its backup untimestamped (W35)
-        # about 90 s after the spawn, then each backup period; its only new slot is that W35, or W35 repeated in place.
+        # about 90 s after the spawn, then each backup period: one count, a new W35 slot or W35 repeated in place.
         backup = ["W", _src_int("asy_sgp40_driver.py", "_WRN_SGP_WRITTEN_NO_TS")]
         before = self.newest.get(name, [])
-        return name.split("_", 1)[0] == "SGP40" and now[-1:] == [backup] and (now == before or now[:-1] == before[-1:])
+        once = (move[1] or 0) - (move[0] or 0) == 1
+        return name.split("_", 1)[0] == "SGP40" and once and now[-1:] == [backup] and (now == before or now[:-1] == before[-1:])
 
     def release(self, item: Scenario, *, failed: bool, last: bool) -> "list[str]":
         # After one sharing scenario: its idle check unless it failed, then the shutdown a failure or the group's end
