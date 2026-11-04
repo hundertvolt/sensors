@@ -1,6 +1,6 @@
-"""Every broad handler in src/ and the generated device modules records a C-stack overflow (SPECIFICATION.md F.1): it hands
-its exception to a logger entry, which records it, or starts with report_if_fatal(<its name>), unless it ends in a bare
-raise; so do Microdot's errorhandler(Exception) function and its rebound print_exception."""
+"""Every broad handler in src/ and the generated device modules records a C-stack overflow (SPECIFICATION.md F.1):
+it hands its exception to a logger entry, which records it, or starts with report_if_fatal(<its name>), unless it ends
+in a bare raise; so do Microdot's errorhandler(Exception) function and its rebound print_exception."""
 
 import ast
 from pathlib import Path
