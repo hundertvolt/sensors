@@ -6,7 +6,7 @@ import errno
 import struct
 import time
 
-from _async_harness import run
+from _async_harness import cancel, run
 from _bus_hazard_catalog import PollRoundClock
 from _fast_sleep import check_sleep_ms
 from _src_const import src_int
@@ -1566,6 +1566,30 @@ def test_recover_re_constructs_even_after_a_held_scl() -> None:
     status, _made = _clear(i2c, recover=True)
     assert status == _REC_SCL_HELD
     assert _fake(i2c).log == [("deinit",), ("init", 100000, _HELD_SCL_TIMEOUT_US)]
+
+
+def test_a_runtime_clear_whose_scl_is_held_lets_another_task_run_before_it_reports_it() -> None:
+    # The runtime clear's SCL wait is awaited (Part F.3): a sibling task runs while a held line runs out the bus timeout.
+    i2c = _build(timeout=_HELD_SCL_TIMEOUT_US)
+    Pin.set_external_level(_SCL, 0)
+    turns = [0]
+
+    async def sibling() -> None:
+        while True:
+            turns[0] += 1
+            await asyncio.sleep_ms(0)
+
+    async def scenario() -> "tuple[int, int]":
+        task = asyncio.create_task(sibling())
+        await asyncio.sleep_ms(0)
+        before = turns[0]
+        status = await i2c.clear()
+        ran = turns[0] - before
+        await cancel(task)
+        return status, ran
+
+    status, ran = run(scenario())
+    assert status == _REC_SCL_HELD and ran > 0, f"status {status}, the sibling ran {ran} times during the clear"
 
 
 def test_each_clear_and_recover_steps_recoveries_once_and_the_sequence_wraps() -> None:

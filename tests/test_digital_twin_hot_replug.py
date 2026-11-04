@@ -18,6 +18,7 @@ skip_idle_flag_polls()  # no 1 ms poll wait per step while a flag waits, as on r
 
 import asyncio  # noqa: E402 - imported after the prewarm and the UDP shim
 
+import _bmp3xx_chip  # noqa: E402 - imported after the prewarm and the UDP shim
 import machine  # noqa: E402 - imported after the prewarm and the UDP shim
 import microtest  # noqa: E402 - imported after the prewarm and the UDP shim
 import network  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -123,12 +124,15 @@ def _power_cycled_bmp3xx_on(device: str) -> None:
             sysfunct = module.sysfunct
             await _until(clock, f"{device}'s BMP3XX never read", lambda: reader._datastruct.Pres is not None)
             tasks = list(sysfunct._tasks)
+            count = (await reader.get_error_counter())["BMP3XX"]["ErrCount"]
             chip.power_cycle()
             before = reader._datastruct
             await _until(clock, f"{device}'s BMP3XX never read after the power cycle", lambda: reader._datastruct is not before and reader._datastruct.Pres is not None)
             log = (await reader.get_error_counter())["BMP3XX"]
-            warnings = [log["ErrNum"][i] for i in range(len(log["ErrNum"])) if log["ErrType"][i] == "W"]
-            assert warnings == [], f"{device}: the power cycle left {log}"
+            entries = [(log["ErrType"][i], log["ErrNum"][i]) for i in range(len(log["ErrNum"])) if log["ErrType"][i] != "N"]
+            assert (log["ErrCount"], entries) == (count, []), f"{device}: the power cycle left {log}"
+            # The chip's own reset values (the twin model's), which the driver leaves as they are.
+            assert (chip._osr, chip._config) == (_bmp3xx_chip._OSR_RESET, _bmp3xx_chip._CONFIG_RESET), f"{device}: OSR/CONFIG read {chip._osr:#04x}/{chip._config:#04x}"
             assert list(sysfunct._tasks) == tasks, "a task ended over the power cycle"
             assert watchdog.would_have_triggered_count == 0
 
@@ -232,7 +236,7 @@ def test_every_bus_attached_driver_recovers_from_a_replug_without_a_reboot() -> 
 
 def test_a_power_cycled_bmp3xx_reads_on_at_the_chip_defaults_without_a_ladder_step() -> None:
     # A supply blip resets OSR/CONFIG behind the driver's back: forced mode is written every cycle, so the reads go on
-    # at the chip's defaults (x1, no IIR) with nothing logged, and the task never ends (SPECIFICATION.md A.4).
+    # at the chip's reset values with nothing logged, and the task never ends (SPECIFICATION.md A.4).
     for device in distinct_wirings("bmp3xx"):
         machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
         network.reset_test_state()
