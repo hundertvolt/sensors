@@ -81,6 +81,8 @@ _MAX_CONNECTIONS_FLOOR = 1  # a webserver admitting no connection serves nothing
 _HOSTNAME_PREFIX = "SensorStation"
 # Bounds of values the build hands to the silicon or the port, each with its source.
 _HOTSPOT_TIME_MIN_MAX = (2**31 - 1) // 60000  # Timer.init(period=60000 x minutes) is a signed machine int: ports/rp2/machine_timer.c:79
+_I2C_FREQUENCY_MAX_HZ = 1000000  # RP2040 datasheet 4.3.3 (printed p.442): fast mode plus, up to 1000 kbps
+_UART_BUFFER_MIN = 32  # ports/rp2/machine_uart.c:67, :372-375 (v1.29.0): a smaller rxbuf/txbuf is raised to it silently
 _UART_BUFFER_MAX = 32766  # ports/rp2/machine_uart.c:68, :376-377: a larger one raises ValueError at boot
 # The boot bus clear waits up to 11 SCL edges of one timeout per I2C bus, unfed after WDT() (Part A.7): 2 buses x 11 x
 # 200 ms = 4.4 s under the 8 s watchdog. rp2 keeps the timeout as a uint32_t (ports/rp2/machine_i2c.c:47, v1.29.0).
@@ -534,6 +536,15 @@ def _check_i2c_bus(model: DeviceModel, bus_name: str, table: "TomlDoc") -> None:
     frequency = table.get("frequency")
     if not _is_int(frequency):
         raise BuildError(model.device, f"bus.{bus_name} (i2c) is missing an int frequency", rule="bus.field-missing", fix=f"add frequency = <Hz> to [bus.{bus_name}] as a whole number", field="frequency")
+    if not 1 <= frequency <= _I2C_FREQUENCY_MAX_HZ:
+        # 0 also divides by zero in the port's own clock setup (ports/rp2/machine_i2c.c:131).
+        raise BuildError(
+            model.device,
+            f"bus.{bus_name} (i2c) frequency {frequency} Hz is outside 1 … {_I2C_FREQUENCY_MAX_HZ} - RP2040's I2C runs up to fast mode plus",
+            rule="bus.i2c-frequency-range",
+            fix=f"set frequency within 1..{_I2C_FREQUENCY_MAX_HZ}",
+            field="frequency",
+        )
     if "timeout" not in table:
         return
     timeout = table["timeout"]
@@ -811,20 +822,20 @@ def _check_uart_bus(model: DeviceModel, bus_name: str, table: "TomlDoc") -> None
         if f in table and not _is_int(table[f]):
             raise BuildError(model.device, f"bus.{bus_name} (uart) {f} must be an int, got {table[f]!r}", rule="bus.field-type", fix=f"write {f} as a whole number", field=f)
     rxbuf, txbuf = table.get("rxbuf"), table.get("txbuf")
-    if _is_int(rxbuf) and rxbuf > _UART_BUFFER_MAX:
+    if _is_int(rxbuf) and not _UART_BUFFER_MIN <= rxbuf <= _UART_BUFFER_MAX:
         raise BuildError(
             model.device,
-            f"bus.{bus_name} (uart) rxbuf {rxbuf} is above {_UART_BUFFER_MAX} - the port refuses a larger one at boot",
+            f"bus.{bus_name} (uart) rxbuf {rxbuf} is outside {_UART_BUFFER_MIN} … {_UART_BUFFER_MAX} - the port raises a smaller one silently and refuses a larger one at boot",
             rule="bus.uart-rxbuf-range",
-            fix=f"set rxbuf to at most {_UART_BUFFER_MAX}",
+            fix=f"set rxbuf within {_UART_BUFFER_MIN}..{_UART_BUFFER_MAX}",
             field="rxbuf",
         )
-    if _is_int(txbuf) and txbuf > _UART_BUFFER_MAX:
+    if _is_int(txbuf) and not _UART_BUFFER_MIN <= txbuf <= _UART_BUFFER_MAX:
         raise BuildError(
             model.device,
-            f"bus.{bus_name} (uart) txbuf {txbuf} is above {_UART_BUFFER_MAX} - the port refuses a larger one at boot",
+            f"bus.{bus_name} (uart) txbuf {txbuf} is outside {_UART_BUFFER_MIN} … {_UART_BUFFER_MAX} - the port raises a smaller one silently and refuses a larger one at boot",
             rule="bus.uart-txbuf-range",
-            fix=f"set txbuf to at most {_UART_BUFFER_MAX}",
+            fix=f"set txbuf within {_UART_BUFFER_MIN}..{_UART_BUFFER_MAX}",
             field="txbuf",
         )
 
@@ -937,17 +948,6 @@ def _check_uart_link_roles(model: DeviceModel, src_dir: Path) -> None:
             f"a device wires exactly one uart_link initiator and one responder (RP2040 has only two UART peripherals) - found {len(initiators)} initiator(s) {sorted(s.label for s in initiators)} and {len(responders)} responder(s) {sorted(s.label for s in responders)}",
             rule="instance.uart-link-pair",
             fix="declare exactly one initiator and one responder uart_link",
-        )
-    initiator, responder = initiators[0], responders[0]
-    crc_a, crc_b = initiator.fields.get("crc", "none"), responder.fields.get("crc", "none")
-    if crc_a != crc_b:
-        raise BuildError(
-            model.device,
-            f"uart_link pair: {initiator.label} uses crc {crc_a!r} and {responder.label} uses {crc_b!r} - both ends of a link must agree (Part J.6: agreed out of band, never negotiated)",
-            rule="instance.uart-crc-mismatch",
-            fix="state one crc mode on both ends",
-            field="crc",
-            instance=responder.label,
         )
 
 

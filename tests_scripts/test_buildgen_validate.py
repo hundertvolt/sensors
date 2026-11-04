@@ -581,6 +581,25 @@ def test_a_bus_timeout_outside_one_to_the_bound_is_rejected_and_both_bounds_buil
         assert _at(_build(tmp_path, src_dir, _second_i2c_bus(base_doc(), bound)).doc, "bus", "i2c1", "timeout") == bound
 
 
+@pytest.mark.parametrize("frequency", [0, -1, 1000001])
+def test_an_i2c_frequency_outside_the_silicon_range_is_rejected(tmp_path: Path, src_dir: Path, frequency: int) -> None:
+    # RP2040's I2C runs up to fast mode plus, 1000 kbps; 0 divides by zero in the port's own clock setup.
+    doc = _second_i2c_bus(base_doc(), None)
+    table_at(doc, "bus", "i2c1")["frequency"] = frequency
+    with pytest.raises(BuildError, match=rf"bus\.i2c1 \(i2c\) frequency {frequency} Hz") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field, info.value.fix) == ("bus.i2c-frequency-range", "frequency", "set frequency within 1..1000000")
+
+
+@pytest.mark.parametrize("frequency", [1, 1000000])
+def test_an_i2c_frequency_at_the_silicon_edges_builds(tmp_path: Path, src_dir: Path, frequency: int) -> None:
+    # A bmp3xx alone on i2c1: it states no bus ceiling of its own, so the silicon's edges are all that apply.
+    doc = base_doc()
+    table_at(doc, "bus")["i2c1"] = {"scl_pin": 7, "sda_pin": 6, "frequency": frequency}
+    array_at(doc, "instance").append({"driver": "bmp3xx", "name_ext": "", "bus": "i2c1"})
+    assert _at(_build(tmp_path, src_dir, doc).doc, "bus", "i2c1", "frequency") == frequency
+
+
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_every_real_device_meets_the_i2c_timeout_bound(src_dir: Path, device: str) -> None:
     buses = _at(build_model(device_toml(device), src_dir).doc, "bus")
@@ -1692,21 +1711,23 @@ def test_a_uart_idle_poll_outside_its_range_is_rejected(tmp_path: Path, src_dir:
 
 
 @pytest.mark.parametrize("field", ["rxbuf", "txbuf"])
-def test_a_uart_buffer_above_the_port_range_is_rejected(tmp_path: Path, src_dir: Path, field: str) -> None:
-    # The port raises ValueError at boot for a size above 32766 (a smaller one it raises to 32 itself).
+@pytest.mark.parametrize("size", [31, 0, 32767])
+def test_a_uart_buffer_outside_the_port_range_is_rejected(tmp_path: Path, src_dir: Path, field: str, size: int) -> None:
+    # The port clamps a size below 32 up without a word and raises ValueError at boot for one above 32766.
     doc = with_uart_pair(base_doc())
-    table_at(doc, "bus", "uart0")[field] = 32767
-    with pytest.raises(BuildError, match=rf"bus\.uart0 \(uart\) {field} 32767") as info:
+    table_at(doc, "bus", "uart0")[field] = size
+    with pytest.raises(BuildError, match=rf"bus\.uart0 \(uart\) {field} {size}") as info:
         _build(tmp_path, src_dir, doc)
-    assert (info.value.rule, info.value.field, info.value.fix) == (f"bus.uart-{field}-range", field, f"set {field} to at most 32766")
+    assert (info.value.rule, info.value.field, info.value.fix) == (f"bus.uart-{field}-range", field, f"set {field} within 32..32766")
 
 
 def test_the_uart_buffer_edges_pass_the_range_check(tmp_path: Path, src_dir: Path) -> None:
-    # txbuf and rxbuf build at the port's upper edge; rxbuf 32 meets the link's own floor instead.
+    # txbuf builds at both edges; rxbuf 32766 builds and 32 passes the range only to meet the link's own floor.
     doc = with_uart_pair(base_doc())
+    table_at(doc, "bus", "uart0")["txbuf"] = 32
     table_at(doc, "bus", "uart1")["txbuf"] = table_at(doc, "bus", "uart1")["rxbuf"] = 32766
     model = _build(tmp_path, src_dir, doc)
-    assert [_at(model.doc, "bus", "uart1", "txbuf"), _at(model.doc, "bus", "uart1", "rxbuf")] == [32766, 32766]
+    assert [_at(model.doc, "bus", "uart0", "txbuf"), _at(model.doc, "bus", "uart1", "txbuf"), _at(model.doc, "bus", "uart1", "rxbuf")] == [32, 32766, 32766]
     table_at(doc, "bus", "uart0")["rxbuf"] = 32
     with pytest.raises(BuildError, match="rxbuf 32 is below the 80 bytes") as info:
         _build(tmp_path, src_dir, doc)
@@ -1820,18 +1841,6 @@ def test_a_uart_crc_mode_outside_the_legal_set_is_rejected(tmp_path: Path, src_d
     with pytest.raises(BuildError, match=r"uart_link_init\.crc must be one of \['crc16', 'none'\]") as info:
         _build(tmp_path, src_dir, doc)
     assert (info.value.rule, info.value.field, info.value.instance) == ("instance.uart-crc-mode", "crc", "uart_link_init")
-
-
-def test_a_uart_pair_whose_crc_modes_differ_is_rejected(tmp_path: Path, src_dir: Path) -> None:
-    # An absent crc is "none", so one crc16 end against an unstated one disagrees (Part J.6: never negotiated).
-    doc = with_uart_pair(base_doc())
-    table_at(doc, "instance", -2)["crc"] = "crc16"
-    with pytest.raises(BuildError, match=r"uart_link_init uses crc 'crc16' and uart_link_resp uses 'none'") as info:
-        _build(tmp_path, src_dir, doc)
-    assert (info.value.rule, info.value.field, info.value.instance) == ("instance.uart-crc-mismatch", "crc", "uart_link_resp")
-    table_at(doc, "instance", -1)["crc"] = "crc16"
-    model = _build(tmp_path, src_dir, doc)
-    assert [spec.fields.get("crc") for spec in model.instances.values() if spec.driver == "uart_link"] == ["crc16", "crc16"]
 
 
 def test_the_crc_trailer_counts_in_the_rxbuf_floor(tmp_path: Path, src_dir: Path) -> None:

@@ -147,7 +147,9 @@ def _group(section: "JsonDict", key: str) -> "JsonDict":
 # ---------------------------------------------------------------------------
 
 
-def _group_problems(g: "JsonDict", where: str) -> "list[str]":
+def _group_problems(g: object, where: str) -> "list[str]":
+    if not isinstance(g, dict):
+        return [f"{where} is not an object"]  # validateDefinitions() throws on it: a rejection either way
     problems = []
     if not isinstance(g.get("key"), str) or not isinstance(g.get("label"), str):
         problems.append(f"{where} key/label")
@@ -799,7 +801,7 @@ def _section_problems(s: "JsonDict", where: str) -> "list[str]":
     groups = s.get("groups")
     if not isinstance(groups, list):
         return [*problems, f"{where}.groups"]
-    return problems + [p for index, g in enumerate(groups) if isinstance(g, dict) for p in _group_problems(g, f"{where}.groups[{index}]")]
+    return problems + [p for index, g in enumerate(groups) for p in _group_problems(g, f"{where}.groups[{index}]")]
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
