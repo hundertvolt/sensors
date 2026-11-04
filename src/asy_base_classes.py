@@ -47,7 +47,7 @@ if TYPE_CHECKING:
     PushFct = Callable[[CfgValue], Awaitable[bool]]  # a field's live push: True when the value reached the module
     NtpSyncFct = Callable[[], Awaitable[bool]]  # whether the clock is NTP-synced
     AsyncCallback = Callable[[], Awaitable[None]]
-    SetupFct = Callable[[], Awaitable[object]]  # one boot setup; what it answers is never read
+    SetupFct = Callable[[], Awaitable[None]]  # one boot setup
 
     class ErrorSource(Protocol):
         # One /status error-log entry: what every get_error_sources() list holds (Part C.14).

@@ -308,7 +308,7 @@ function confirmEach(group, groupBody) {
 }
 
 /**
- * A GET's non-ok, empty or non-object response, worded with the server's shaped-error `descr` when present (every
+ * A GET's non-ok or empty response, worded with the server's shaped-error `descr` when present (every
  * 400/404/405/413/500 envelope carries one, SPECIFICATION.md C.5.3) rather than a bare status code.
  * @param {{ok: boolean, status: number, body: unknown}} response
  * @param {string} url
@@ -319,7 +319,7 @@ function describeGetFailure(response, url) {
         const descr = isRecord(response.body) ? response.body.descr : undefined;
         return typeof descr === "string" && descr !== "" ? `GET ${url} failed: ${descr}` : `GET ${url} failed: HTTP ${response.status}`;
     }
-    return response.body === null ? `GET ${url} returned an empty body` : `GET ${url} returned no JSON object`;
+    return `GET ${url} returned an empty body`;
 }
 
 /**
@@ -616,10 +616,10 @@ export function renderSection(defs, section, mainEl, context = {}) {
      */
     async function getBody(url) {
         const response = await pollManager.request(url, undefined, undefined, onTheWire.signal, queued.signal);
-        if (!response.ok || !isRecord(response.body)) {
+        if (!response.ok || response.body === null) {
             throw new Error(describeGetFailure(response, url));
         }
-        return response.body;
+        return /** @type {Record<string, unknown>} */ (response.body);
     }
 
     /** One refresh: the section's GET, then /status when a group reads it; throws on any failure. */

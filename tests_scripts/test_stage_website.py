@@ -219,27 +219,6 @@ def test_the_stager_writes_only_inside_the_stage_and_creates_it(tmp_path: Path) 
     assert {p: after[p] for p in before} == before
 
 
-def test_a_firmware_build_s_date_is_stamped_into_the_page_and_a_plain_build_carries_none(tmp_path: Path) -> None:
-    # The firmware build hands its one build date to the site, so the page names the build its image carries; a site
-    # built on its own stays reproducible, with no stamp.
-    root = _site(tmp_path)
-    page, _bundle = _staged(root)
-    assert "build-date" not in page
-    result = _stage(root, "stamped", "--build-date", "2026-10-15T08:30:00Z")
-    assert result.returncode == 0, result.stderr
-    stamped = (root / "stamped" / "index.html").read_text(encoding="utf-8")
-    assert stamped == page.replace("</head>", '<meta name="build-date" content="2026-10-15T08:30:00Z">\n</head>')
-
-
-@pytest.mark.parametrize("stamp", ["2026-10-15", "2026-10-15T08:30:00", '2026-10-15T08:30:00Z"><script>'])
-def test_a_build_date_that_is_no_utc_stamp_is_refused_and_nothing_is_staged(tmp_path: Path, stamp: str) -> None:
-    root = _site(tmp_path)
-    result = _stage(root, "stage", "--build-date", stamp)
-    assert result.returncode == 1
-    assert result.stderr.startswith("error: --build-date: ") and "YYYY-MM-DDTHH:MM:SSZ" in result.stderr, result.stderr
-    assert not (root / "stage").exists()
-
-
 def test_the_real_tree_stages_main_js_import_closure_in_dependency_order(tmp_path: Path) -> None:
     # The real site against the first derived device's generated definitions: the banner's list is the
     # closure, every module follows the ones it imports, each has its separator, and the page names the device.

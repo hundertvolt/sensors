@@ -375,7 +375,7 @@ button.field-value.code-value {
     color: var(--color-text-muted);
 }
 
-/* Apply result: a left stripe on the card and on each field, double for invalid/failed (SPECIFICATION.md Part H.4). */
+/* Apply result: a left stripe on the card and on each field (SPECIFICATION.md Part H.4). */
 .card[data-apply-status="valid"] {
     border-left: 3px solid var(--color-success);
 }
@@ -385,11 +385,11 @@ button.field-value.code-value {
 }
 
 .card[data-apply-status="invalid"] {
-    border-left: 3px double var(--color-danger);
+    border-left: 3px solid var(--color-danger);
 }
 
 .card[data-apply-status="failed"] {
-    border-left: 3px double var(--color-warn);
+    border-left: 3px solid var(--color-warn);
 }
 
 .field[data-apply-status="valid"] {
@@ -402,12 +402,10 @@ button.field-value.code-value {
 
 .field[data-apply-status="invalid"] {
     border-left-color: var(--color-danger);
-    border-left-style: double;
 }
 
 .field[data-apply-status="failed"] {
     border-left-color: var(--color-warn);
-    border-left-style: double;
 }
 
 /* ---- Error / status counts ---- */

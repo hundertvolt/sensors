@@ -111,11 +111,9 @@ def stage_python_modules(stage_dir: Path, generated: GeneratedDevice, *, autosta
 def build_stage_dir(stage_dir: Path, device_toml: Path, *, autostart: bool = True, build_date: "str | None" = None, test_overrides: "tuple[str, ...]" = ()) -> None:
     generated = generate_device(device_toml, REPO_ROOT / "src", REPO_ROOT / "ext", build_date=build_date, test_overrides=test_overrides)
     stage_python_modules(stage_dir, generated, autostart=autostart)
-    # The site carries the module's own build date, so page and image name one build (frozen as frozen_html, Part A.9).
     device = generated.model.device
     log(f"Building the real website for device={device!r}")
-    stamp = ["--build-date", build_date] if build_date is not None else []
-    subprocess.run([str(REPO_ROOT / "scripts" / "build_website.sh"), *stamp, device, str(stage_dir / "frozen_html.py")], cwd=REPO_ROOT, check=True)
+    subprocess.run([str(REPO_ROOT / "scripts" / "build_website.sh"), device, str(stage_dir / "frozen_html.py")], cwd=REPO_ROOT, check=True)
 
 
 def render_manifest(board: str, stage_dir: Path) -> str:

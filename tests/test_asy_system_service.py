@@ -3223,12 +3223,11 @@ class _RecordingGc:
 
 
 def _setup_unit(events: "list[object]", wdt: "WDT", n: int, *, raises: bool = False) -> "SetupFct":
-    async def setup() -> bool:
+    async def setup() -> None:
         await asyncio.sleep(0)
         events.append(("setup", n, wdt.feed_count))
         if raises:
             raise RuntimeError("injected setup failure")
-        return n != 1  # a False answer is discarded like a True one
 
     return setup
 

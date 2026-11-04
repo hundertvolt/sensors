@@ -55,8 +55,8 @@ def _cells(line: str) -> "list[str]":
 
 
 def _device_terms(src: Path) -> "tuple[int, set[int], set[int]]":
-    # The largest I2C timeout of any device (unstated: the rp2 default), as buildgen's bus.i2c-timeout-consumer rule reads
-    # it; every uart_link's reply slack from buildgen's one source, smallest_hard_consumer(), given that link alone; every UART baud.
+    # The largest I2C timeout of any device (unstated: the rp2 default); every uart_link's reply slack from buildgen's
+    # one source, smallest_hard_consumer(), given that link alone; every UART baud.
     default_us = module_int_const(src, "asy_i2c_driver.py", "_DEFAULT_TIMEOUT_US")
     timeouts, slacks, bauds = [default_us], set(), set()
     for device in DEVICE_NAMES:

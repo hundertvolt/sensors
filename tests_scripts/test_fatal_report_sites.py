@@ -1,4 +1,4 @@
-"""Every broad handler in src/ and the generated modules records a C-stack overflow (SPECIFICATION.md F.1): it hands
+"""Every broad handler in src/ and the generated device modules records a C-stack overflow (SPECIFICATION.md F.1): it hands
 its exception to a logger entry, which records it, or starts with report_if_fatal(<its name>), unless it ends in a bare
 raise; so do Microdot's errorhandler(Exception) function and its rebound print_exception."""
 
@@ -164,13 +164,12 @@ def _all_findings(sources: "dict[str, str]") -> "list[str]":
 
 @pytest.fixture(scope="module")
 def sources() -> "dict[str, str]":
-    # src/ from disk, and each device's three generated modules in memory, under the paths they are written to.
+    # src/ from disk, and each generated device module in memory under its written path; the boot entries' handlers run
+    # once the loop has ended, where nothing reads the record.
     out = {f"src/{p.name}": p.read_text(encoding="utf-8") for p in sorted(SRC.glob("*.py"))}
     for device in DEVICE_NAMES:
         result = generate_device(REPO_ROOT / "devices" / f"{device}.toml", SRC, REPO_ROOT / "ext")
         out[f"build/generated_src/sensortask_{device}.py"] = result.module_source
-        out[f"build/generated_src/sensortask_{device}_main.py"] = result.boot_entry_source
-        out[f"build/generated_src/sensortask_{device}_main_noautostart.py"] = result.boot_entry_noautostart_source
     return out
 
 

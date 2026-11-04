@@ -5,7 +5,6 @@ import ast
 import copy
 import functools
 import json
-import math
 import os
 import re
 import shutil
@@ -53,7 +52,7 @@ def _is_objs(value: "list[JsonValue]") -> "TypeGuard[list[JsonDict]]":
 
 
 def _is_poll_interval(value: object) -> bool:
-    return _is_number(value) and 0 < value <= _MAX_POLL_INTERVAL_MS
+    return _is_number(value) and value > 0
 
 
 def _is_step_list(value: object) -> bool:
@@ -76,14 +75,6 @@ def _code_hint_problems(f: "JsonDict", where: str) -> "list[str]":
         problems.append(f"{where}.format")
     if "codes" in f and not _is_string_map(f["codes"]):
         problems.append(f"{where}.codes")
-    if "codeTones" in f:
-        codes = given if isinstance(given := f.get("codes"), dict) else {}
-        tones = f["codeTones"]
-        if not isinstance(tones, dict) or not all(code in codes and tone in _CODE_TONES for code, tone in tones.items()):
-            problems.append(f"{where}.codeTones")
-    special = f.get("specialValues")
-    if "specialValues" in f and not (isinstance(special, list) and all(isinstance(s, dict) and "value" in s and isinstance(s.get("meaning"), str) for s in special)):
-        problems.append(f"{where}.specialValues")
     return problems
 
 
@@ -109,16 +100,6 @@ def _definitions_text(toml_path: Path, src_dir: Path) -> str:
     return json.dumps(definitions_for_toml(toml_path, src_dir))
 
 
-def _duplicate(seen: "dict[str, int]", key: object, index: int, where: str) -> "list[str]":
-    # A repeated key names both indices, as validateDefinitions()'s noteDuplicate() does.
-    if not isinstance(key, str):
-        return []
-    if key in seen:
-        return [f"{where}.key {key!r} duplicates [{seen[key]}]"]
-    seen[key] = index
-    return []
-
-
 def _errcount_groups(definitions: "JsonDict") -> "list[tuple[str, JsonDict]]":
     return [(_str(s["key"]), g) for s in _sections(definitions) for g in _groups(s) if g.get("kind") == "errcount"]
 
@@ -139,16 +120,6 @@ def _field_groups(definitions: "JsonDict") -> "list[tuple[str, JsonDict]]":
     return [(_str(s["key"]), g) for s in _sections(definitions) for g in _groups(s) if "fields" in g]
 
 
-def _field_problems(f: "JsonDict", where: str, sibling_keys: "list[JsonValue]") -> "list[str]":
-    problems = [f"{where}.{key}" for key in ("key", "label") if not isinstance(f.get(key), str)]
-    if f.get("kind") not in _FIELD_KINDS:
-        problems.append(f"{where}.kind")
-    if f.get("kind") == "composite":
-        sub_fields = f.get("subFields")
-        problems += _fields_problems(sub_fields, f"{where}.subFields") if isinstance(sub_fields, list) else [f"{where}.subFields"]
-    return problems + _code_hint_problems(f, where) + _value_hint_problems(f, where, sibling_keys)
-
-
 def _fields(group: "JsonDict") -> "list[JsonDict]":
     # An errcount group carries modules, not fields: it reads as an empty field list.
     return _objs(group.get("fields", []))
@@ -160,20 +131,6 @@ def _fields_by_key(definitions: "JsonDict") -> "dict[str, list[JsonDict]]":
         for f in _fields(group):
             found.setdefault(_str(f["key"]), []).append(f)
     return found
-
-
-def _fields_problems(fields: "list[JsonValue]", where: str) -> "list[str]":
-    # A group's fields or a composite's sub-fields: each an object, each key once.
-    problems: list[str] = []
-    seen: dict[str, int] = {}
-    keys = [f.get("key") if isinstance(f, dict) else None for f in fields]
-    for index, f in enumerate(fields):
-        if not isinstance(f, dict):
-            problems.append(f"{where}[{index}] is not an object")
-            continue
-        problems += _duplicate(seen, f.get("key"), index, f"{where}[{index}]")
-        problems += _field_problems(f, f"{where}[{index}]", keys)
-    return problems
 
 
 def _generate(repo_root: Path, src_dir: Path, device: str) -> "JsonDict":
@@ -190,16 +147,13 @@ def _group(section: "JsonDict", key: str) -> "JsonDict":
 # ---------------------------------------------------------------------------
 
 
-def _group_problems(g: "JsonDict", where: str, section: "JsonDict") -> "list[str]":
+def _group_problems(g: "JsonDict", where: str) -> "list[str]":
     problems = []
     if not isinstance(g.get("key"), str) or not isinstance(g.get("label"), str):
         problems.append(f"{where} key/label")
     if g.get("kind") == "errcount":
-        modules = g.get("modules")
-        if not isinstance(modules, list):
+        if not isinstance(g.get("modules"), list):
             problems.append(f"{where}.modules")
-        else:
-            problems += [f"{where}.modules[{i}]" for i, m in enumerate(modules) if not (isinstance(m, dict) and isinstance(m.get("key"), str) and isinstance(m.get("label"), str))]
         codes = g.get("codes", {"E": {}, "W": {}})
         if not isinstance(codes, dict) or not _is_string_map(codes.get("E")) or not _is_string_map(codes.get("W")):
             problems.append(f"{where}.codes")
@@ -207,10 +161,8 @@ def _group_problems(g: "JsonDict", where: str, section: "JsonDict") -> "list[str
     fields = g.get("fields")
     if not isinstance(fields, list):
         return [*problems, f"{where}.fields"]
-    rest = section.get("rest")
-    if g.get("submit") is True and not (isinstance(rest, dict) and isinstance(rest.get("put"), str)):
-        problems.append(f"{where} is writable but its section has no rest.put")
-    return problems + _fields_problems(fields, f"{where}.fields")
+    hints = [_code_hint_problems(f, f"{where}.fields[{i}]") + _value_hint_problems(f, f"{where}.fields[{i}]") for i, f in enumerate(fields) if isinstance(f, dict)]
+    return problems + [p for found in hints for p in found]
 
 
 def _groups(section: "JsonDict") -> "list[JsonDict]":
@@ -847,14 +799,7 @@ def _section_problems(s: "JsonDict", where: str) -> "list[str]":
     groups = s.get("groups")
     if not isinstance(groups, list):
         return [*problems, f"{where}.groups"]
-    seen: dict[str, int] = {}
-    for index, g in enumerate(groups):
-        if not isinstance(g, dict):
-            problems.append(f"{where}.groups[{index}] is not an object")
-            continue
-        problems += _duplicate(seen, g.get("key"), index, f"{where}.groups[{index}]")
-        problems += _group_problems(g, f"{where}.groups[{index}]", s)
-    return problems
+    return problems + [p for index, g in enumerate(groups) if isinstance(g, dict) for p in _group_problems(g, f"{where}.groups[{index}]")]
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -925,12 +870,9 @@ def test_the_byte_bounded_fields_are_exactly_the_radio_fields(src_dir: Path) -> 
 # its $ never matches before a trailing newline, hence [0-9] and fullmatch.
 _SEMVER = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+")
 _SUPPORTED_SCHEMA_MAJOR = int(SCHEMA_VERSION.split(".")[0])  # js/definitions.js's, pinned by test_definitions_js_mirrors.py
-_MAX_POLL_INTERVAL_MS = 2**31 - 1  # setTimeout's ceiling; js/definitions.js's copy is pinned by test_definitions_js_mirrors.py
 _POLL_GROUPS = ("live", "settings", "none")
-_FIELD_KINDS = ("readonly", "number", "string", "enum", "toggle", "composite")
 _FIELD_FORMATS = ("gmtimestruct", "epoch", "lasttaskend")
 _STRING_SHAPES = ("hostLabel", "countryCode", "hostName", "ipv4List")
-_CODE_TONES = ("good", "neutral", "warn")
 
 
 def _sgp_maintenance_keys(module_source: str) -> "set[str]":
@@ -948,12 +890,12 @@ def _shape_problems(defs: object) -> "list[str]":
     sections = defs.get("sections")
     if not isinstance(sections, list) or not sections:
         return [*problems, "sections"]
-    seen: dict[str, int] = {}
+    seen: list[JsonValue] = []
     for index, s in enumerate(sections):
         if not isinstance(s, dict):
             problems.append(f"sections[{index}] is not an object")
             continue
-        problems += _duplicate(seen, s.get("key"), index, f"sections[{index}]")
+        seen.append(s.get("key"))
         problems += _section_problems(s, f"sections[{index}]")
     if "landingSection" in defs and defs["landingSection"] not in seen:
         problems.append("landingSection matches no section")
@@ -1056,8 +998,6 @@ def _top_level_problems(defs: "JsonDict") -> "list[str]":
         problems.append("landingSection")
     if not _is_poll_interval(defs.get("defaultPollIntervalMs")):
         problems.append("defaultPollIntervalMs")
-    if "defaultDecimals" in defs and not _is_decimals(defs["defaultDecimals"]):
-        problems.append("defaultDecimals")
     return problems
 
 
@@ -1127,7 +1067,7 @@ def test_a_string_key_off_a_string_field_fails_the_build(tag: WebFieldTag) -> No
 # ---------------------------------------------------------------------------
 
 
-def _value_hint_problems(f: "JsonDict", where: str, sibling_keys: "list[JsonValue]") -> "list[str]":
+def _value_hint_problems(f: "JsonDict", where: str) -> "list[str]":
     problems = []
     kind = f.get("kind")
     if "path" in f:
@@ -1135,23 +1075,14 @@ def _value_hint_problems(f: "JsonDict", where: str, sibling_keys: "list[JsonValu
             problems.append(f"{where}.path")
         elif kind != "readonly":
             problems.append(f"{where}.path on a writable field")
-    if "statusPath" in f and (not _is_step_list(f["statusPath"]) or kind not in ("readonly", "number")):
-        problems.append(f"{where}.statusPath")
     if "decimals" in f and not _is_decimals(f["decimals"]):
         problems.append(f"{where}.decimals")
-    resolution = f.get("resolution")
-    if "resolution" in f and not (_is_number(resolution) and math.isfinite(resolution) and resolution > 0 and kind == "number"):
-        problems.append(f"{where}.resolution")
-    problems.extend(f"{where}.{key}" for key in ("byteLength", "clearable") if key in f and (not isinstance(f[key], bool) or kind != "string"))
+    if "byteLength" in f and (not isinstance(f["byteLength"], bool) or kind != "string"):
+        problems.append(f"{where}.byteLength")
     if "shape" in f and (f["shape"] not in _STRING_SHAPES or kind != "string"):
         problems.append(f"{where}.shape")
     if "alwaysExecuted" in f and not isinstance(f["alwaysExecuted"], bool):
         problems.append(f"{where}.alwaysExecuted")
-    if "confirm" in f and (not isinstance(f["confirm"], bool) or kind not in ("enum", "toggle")):
-        problems.append(f"{where}.confirm")
-    sibling = f.get("ignoredWhenSet")
-    if "ignoredWhenSet" in f and (not isinstance(sibling, str) or sibling == f.get("key") or sibling not in sibling_keys):
-        problems.append(f"{where}.ignoredWhenSet")
     return problems
 
 

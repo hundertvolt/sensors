@@ -23,7 +23,6 @@ from _devices import DEVICE_NAMES, device_toml, devices_with
 from _script_loader import load_script_module
 from _toml_fixtures import array_at, base_doc, instance_of, instances, table, table_at, write_doc
 
-import buildgen.generate as generate_module
 from buildgen.codegen import _Ctx, _identifier, _lit, _sgp40_status_vars, generate_boot_entry_source, generate_module_source, trigger_spread
 from buildgen.definitions import definitions_for_toml
 from buildgen.errors import BuildError, BuildInternalError
@@ -144,20 +143,18 @@ def test_real_device_boot_entry_reserves_the_emergency_exception_buffer_before_t
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_boot_entry_records_every_exception_ending_the_loop_before_the_watchdog_resets(device: str) -> None:
     # asyncio's loop catches only CancelledError and Exception (extmod/asyncio/core.py:154, 194, v1.29.0): Ctrl-C is
-    # recorded and re-raised; any other exception recorded, printed and not re-raised (rp2 soft-resets on SystemExit).
+    # recorded and re-raised; any other exception recorded and not re-raised (rp2 soft-resets on SystemExit).
     stmts = _body(_real(device).boot_entry_source)
     record_import = "from asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record"
     assert _index(stmts, record_import) > _index(stmts, f"from sensortask_{device} import main")
-    assert _index(stmts, "from asy_print_log import report_if_fatal") > _index(stmts, f"from sensortask_{device} import main")
     tail = stmts[-1]
     assert isinstance(tail, ast.Try)
-    assert ast.unparse(stmts[-2]) == "ended: BaseException | None = None"  # bound first, so the handler's binding never grows the globals dict
     assert [ast.unparse(s) for s in tail.body] == ["asyncio.run(main(watchdog=watchdog))"]
     interrupt, other = tail.handlers
     assert interrupt.type is not None and ast.unparse(interrupt.type) == "KeyboardInterrupt" and interrupt.name is None
     assert [ast.unparse(s) for s in interrupt.body] == ["write_reset_record(RR_INTERRUPTED)", "raise"]
-    assert other.type is not None and ast.unparse(other.type) == "BaseException" and other.name == "ended"
-    assert [ast.unparse(s) for s in other.body] == ["report_if_fatal(ended)", "record_loop_end()", "sys.print_exception(ended)"]
+    assert other.type is not None and ast.unparse(other.type) == "BaseException" and other.name is None
+    assert [ast.unparse(s) for s in other.body] == ["record_loop_end()"]  # nothing printed, at every DebugLevel
     assert not tail.orelse
     assert [ast.unparse(s) for s in tail.finalbody] == ["asyncio.new_event_loop()"]
     # Every name the tail calls is one the entry binds before it.
@@ -467,7 +464,7 @@ def test_a_config_log_its_class_keeps_off_fram_is_no_fram_backed_logger() -> Non
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_serves_the_settings_groups_of_the_one_table(device: str) -> None:
-    # Guard: the build checks key collisions on the same SETTINGS_GROUPS rows codegen renders.
+    # Each page's settings groups are the one SETTINGS_GROUPS table's rows, in order.
     source = _real(device).module_source
     for page in ("networking", "system"):
         expected = [(module, fields, dict([hook.split("=", 1)]) if hook else {}) for section, module, fields, hook in SETTINGS_GROUPS if section == page]
@@ -626,7 +623,7 @@ def _setup_names(source: str) -> "list[str]":
 
 def _shared_head(stmts: "list[ast.stmt]") -> "list[str]":
     # Up to gc.threshold(), without the watchdog lines and the reset records' import.
-    own = {"from machine import WDT", f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})", "from asy_print_log import report_if_fatal", "from asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record"}
+    own = {"from machine import WDT", f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})", "from asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record"}
     texts = [ast.unparse(stmt) for stmt in stmts]
     return [t for t in texts[: texts.index("gc.threshold(32768)") + 1] if t not in own]
 
@@ -1516,13 +1513,6 @@ def test_an_sgp40_without_its_resolved_name_is_an_internal_error(tmp_path: Path,
     model.instances[("sgp40", "")].resolved_name = None
     with pytest.raises(BuildInternalError, match="resolved_name unresolved"):
         _sgp40_status_vars(model.construction_order, _Ctx(model))
-
-
-def test_a_generator_bug_emitting_invalid_python_is_an_internal_error(tmp_path: Path, src_dir: Path, ext_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # generate_device() compiles what it emits before returning it, so a template bug never reaches a file.
-    monkeypatch.setattr(generate_module, "generate_module_source", lambda *_args, **_kwargs: "def broken(:\n")
-    with pytest.raises(BuildInternalError, match="broken_template"):
-        generate_device(write_doc(tmp_path, "broken_template", base_doc()), src_dir, ext_dir)
 
 
 def test_cli_entry_point_writes_both_files_and_exits_zero(tmp_path: Path, repo_root: Path) -> None:

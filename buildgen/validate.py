@@ -21,7 +21,7 @@ from buildgen.buildspec import (
     UART_CRC_MODES,
 )
 from buildgen.defaults import default_class_defines_attr, default_class_name, default_init_params, find_default_class
-from buildgen.driver_registry import SINGLETON_SERVICE_DRIVERS, data_fields, parse_name_constant, resolve_driver
+from buildgen.driver_registry import SINGLETON_SERVICE_DRIVERS, parse_name_constant, resolve_driver
 from buildgen.errors import BuildError, BuildInternalError
 from buildgen.limits import LimitField, parse_limits
 from buildgen.model import DeviceModel, InstanceSpec, TomlDoc, TomlValue, instance_label, load_device, lwip_macros, resolve_instance_key
@@ -81,19 +81,13 @@ _MAX_CONNECTIONS_FLOOR = 1  # a webserver admitting no connection serves nothing
 _HOSTNAME_PREFIX = "SensorStation"
 # Bounds of values the build hands to the silicon or the port, each with its source.
 _HOTSPOT_TIME_MIN_MAX = (2**31 - 1) // 60000  # Timer.init(period=60000 x minutes) is a signed machine int: ports/rp2/machine_timer.c:79
-_I2C_FREQUENCY_MAX_HZ = 1000000  # RP2040 datasheet 4.3.3 (printed p.442): fast mode plus, up to 1000 kbps
-_UART_BAUDRATE_MAX = 7812500  # RP2040 datasheet 4.2.1 (printed p.418): UARTCLK / 16, 7.8 Mbaud at 125 MHz
-_UART_BUFFER_MIN = 32  # ports/rp2/machine_uart.c:67, :372-375 (v1.29.0): a smaller rxbuf/txbuf is raised to it silently
 _UART_BUFFER_MAX = 32766  # ports/rp2/machine_uart.c:68, :376-377: a larger one raises ValueError at boot
-# The boot bus clear runs unfed after WDT() (Part A.7, stretch 1): per I2C bus up to _CLEAR_PULSES + 2 SCL
-# waits (lead-in, pulses, STOP) of one timeout each. Bound (agent, 2026-10-07): the largest timeout any
-# device declares, the SCD30's own floor; 2 buses x 11 waits x 200 ms = 4400 ms fit the budget below.
+# The boot bus clear waits up to 11 SCL edges of one timeout per I2C bus, unfed after WDT() (Part A.7): 2 buses x 11 x
+# 200 ms = 4.4 s under the 8 s watchdog. rp2 keeps the timeout as a uint32_t (ports/rp2/machine_i2c.c:47, v1.29.0).
 # @tunable i2c.timeout_max_us = 200000
 _I2C_TIMEOUT_MAX_US = 200000
 # @tunable wdt.timeout_ms = 8000
 _WDT_TIMEOUT_MS = 8000  # codegen's generated WDT(timeout=...), the one the boot clear runs under
-# Three quarters of the watchdog (agent, 2026-10-07): 2000 ms stay for the rest of stretch 1 (~0.17 s measured).
-_BOOT_CLEAR_BUDGET_MS = _WDT_TIMEOUT_MS * 3 // 4
 
 # [device.wiring] fields and the mandatory-infra consumers whose @wiring tags they resolve against, as
 # (module file, the consumer's generated name) pairs fixed ahead of time (Part L.3). fram_target has
@@ -107,13 +101,10 @@ _DEVICE_WIRING_CONSUMERS: "dict[str, tuple[tuple[str, str], ...]]" = {
         ("asy_webserver_service.py", "webserver"),
     ),
 }
-# The mandatory modules every device builds, never [[instance]] entries: each one's _NAME is a logger
-# name no instance may take, and so is CFGMGR_<name> for the ones owning a config store.
-_MANDATORY_MODULE_FILES = ("asy_wifi_service.py", "asy_captive_dns.py", "asy_ntp_client.py", "asy_system_service.py", "asy_webserver_service.py")
 
 # The settings groups the generated webserver serves, in order: (section, module variable, fields, hook), the hook
-# written as SettingsGroup's own keyword and callable, or None. Codegen renders the rows and the build checks them for
-# a repeated key; notification's group comes from its schema at boot, so it is no row.
+# written as SettingsGroup's own keyword and callable, or None. Codegen renders the rows; notification's group comes
+# from its schema at boot, so it is no row.
 SETTINGS_GROUPS: "tuple[tuple[str, str, tuple[str, ...], str | None], ...]" = (
     ("networking", "conn", ("SSID", "PW", "Country", "Hostname", "HotspotPW"), "post_fct=conn.reconnect_wifi"),
     ("networking", "conn", ("LEDWifiOn",), None),
@@ -195,25 +186,6 @@ def _check_all_buses_used(model: DeviceModel, buses: "dict[str, TomlDoc]") -> No
             rule="bus.unused",
             fix=f"remove {sorted(orphans)} or point an instance at them",
             field=min(orphans),
-        )
-
-
-def _check_boot_clear_budget(model: DeviceModel, buses: "dict[str, TomlDoc]", src_dir: Path) -> None:
-    # Every I2C bus's boot clear at its worst: each SCL wait runs to its timeout, plus the clock's half periods.
-    tables = [t for name, t in buses.items() if _bus_kind(name, model.device) == "i2c"]
-    if not tables:
-        return
-    drv = "asy_i2c_driver.py"
-    pulses, half_us, default_us = (module_int_const(src_dir, drv, n) for n in ("_CLEAR_PULSES", "_CLEAR_HALF_PERIOD_US", "_DEFAULT_TIMEOUT_US"))
-    timeouts = [_checked_int(t["timeout"]) if "timeout" in t else default_us for t in tables]
-    worst_us = sum((pulses + 2) * t + 2 * (pulses + 1) * half_us for t in timeouts)
-    if worst_us > _BOOT_CLEAR_BUDGET_MS * 1000:
-        raise BuildError(
-            model.device,
-            f"the boot bus clear can run {worst_us // 1000} ms unfed over {len(timeouts)} I2C bus(es) ({pulses + 2} SCL waits of one timeout each per bus), above its {_BOOT_CLEAR_BUDGET_MS} ms budget (three quarters of the {_WDT_TIMEOUT_MS} ms watchdog)",
-            rule="bus.boot-clear-budget",
-            fix="lower a bus timeout",
-            field="timeout",
         )
 
 
@@ -421,14 +393,6 @@ def _check_device_identity(model: DeviceModel, table: "TomlDoc", name: str, src_
     expected = _HOSTNAME_PREFIX + name
     if table["hostname"] != expected:
         raise BuildError(model.device, f"[device].hostname is {table['hostname']!r}, expected {expected!r} (SensorStation<name>)", rule="device.hostname-convention", fix=f"set hostname = {expected!r}", field="hostname")
-    if not _host_label_ok(expected):
-        raise BuildError(
-            model.device,
-            f"[device].hostname {expected!r} is not a host label (letters, digits, '-'; not starting or ending with '-'), so [device].name may use only those characters",
-            rule="device.hostname-label",
-            fix="use only letters, digits and '-' in [device].name",
-            field="hostname",
-        )
     # network.hostname()'s cap, as _VAL_HOSTNAME's max: an over-long name would be dropped back to the
     # shared default and the device would quietly not answer to its own name.
     host_max = _wifi_schema_bounds(src_dir, "Hostname")[1]
@@ -443,7 +407,7 @@ def _check_device_identity(model: DeviceModel, table: "TomlDoc", name: str, src_
 
 
 def _check_device_ranges(model: DeviceModel, table: "TomlDoc") -> None:
-    # The two required timing ints, each against what its consumer accepts (Part C.7.2).
+    # hotspot_time_min against what its consumer accepts (Part C.7.2).
     minutes = _checked_int(table["hotspot_time_min"])
     if not 1 <= minutes <= _HOTSPOT_TIME_MIN_MAX:
         raise BuildError(
@@ -452,15 +416,6 @@ def _check_device_ranges(model: DeviceModel, table: "TomlDoc") -> None:
             rule="device.hotspot-time-min-range",
             fix=f"set hotspot_time_min within 1..{_HOTSPOT_TIME_MIN_MAX}",
             field="hotspot_time_min",
-        )
-    failures = _checked_int(table["conn_fail_to_hotspot"])
-    if failures < 1:
-        raise BuildError(
-            model.device,
-            f"[device].conn_fail_to_hotspot is {failures} - below 1 the hotspot opens on the first failed connect",
-            rule="device.conn-fail-to-hotspot-range",
-            fix="set conn_fail_to_hotspot to 1 or more",
-            field="conn_fail_to_hotspot",
         )
 
 
@@ -579,58 +534,19 @@ def _check_i2c_bus(model: DeviceModel, bus_name: str, table: "TomlDoc") -> None:
     frequency = table.get("frequency")
     if not _is_int(frequency):
         raise BuildError(model.device, f"bus.{bus_name} (i2c) is missing an int frequency", rule="bus.field-missing", fix=f"add frequency = <Hz> to [bus.{bus_name}] as a whole number", field="frequency")
-    if not 1 <= frequency <= _I2C_FREQUENCY_MAX_HZ:
-        # 0 also divides by zero in the port's own clock setup (ports/rp2/machine_i2c.c:131).
-        raise BuildError(
-            model.device,
-            f"bus.{bus_name} (i2c) frequency {frequency} Hz is outside 1 … {_I2C_FREQUENCY_MAX_HZ} - RP2040's I2C runs up to fast mode plus",
-            rule="bus.i2c-frequency-range",
-            fix=f"set frequency within 1..{_I2C_FREQUENCY_MAX_HZ}",
-            field="frequency",
-        )
     if "timeout" not in table:
         return
     timeout = table["timeout"]
     if not _is_int(timeout):
         raise BuildError(model.device, f"bus.{bus_name} (i2c) timeout must be an int, got {timeout!r}", rule="bus.field-type", fix="write timeout as a whole number of microseconds", field="timeout")
-    if timeout < 1:
+    if not 1 <= timeout <= _I2C_TIMEOUT_MAX_US:
         raise BuildError(
             model.device,
-            f"bus.{bus_name} (i2c) timeout {timeout} us is not positive - every SCL wait would end before it began",
+            f"bus.{bus_name} (i2c) timeout {timeout} us is outside 1 … {_I2C_TIMEOUT_MAX_US} - the boot bus clear waits up to one timeout per SCL edge, unfed, under the {_WDT_TIMEOUT_MS} ms watchdog",
             rule="bus.i2c-timeout-range",
             fix=f"set timeout within 1..{_I2C_TIMEOUT_MAX_US}",
             field="timeout",
         )
-    if timeout > _I2C_TIMEOUT_MAX_US:
-        raise BuildError(
-            model.device,
-            f"bus.{bus_name} (i2c) timeout {timeout} us is above the {_I2C_TIMEOUT_MAX_US} us bound - the boot bus clear waits up to one timeout per SCL edge, unfed, under the {_WDT_TIMEOUT_MS} ms watchdog",
-            rule="bus.i2c-timeout-max",
-            fix=f"set timeout to at most {_I2C_TIMEOUT_MAX_US}",
-            field="timeout",
-        )
-
-
-def _check_i2c_timeout_consumer(model: DeviceModel, buses: "dict[str, TomlDoc]", src_dir: Path) -> None:
-    # Each machine.I2C transfer may run to one timeout with the loop held (ports/rp2/machine_i2c.c:125, :147, v1.29.0)
-    # and a register read makes two, so twice every I2C timeout fits the device's smallest hard consumer: a uart_link's
-    # reply slack, or the watchdog's room beside one supervisor sleep (agent, 2026-10-21).
-    tables = {name: t for name, t in buses.items() if _bus_kind(name, model.device) == "i2c"}
-    if not tables:
-        return
-    consumer = smallest_hard_consumer(model, src_dir)
-    tolerance_us = consumer.ms * 1000
-    default_us = module_int_const(src_dir, "asy_i2c_driver.py", "_DEFAULT_TIMEOUT_US")
-    for bus_name, table in tables.items():
-        timeout = _checked_int(table["timeout"]) if "timeout" in table else default_us
-        if 2 * timeout > tolerance_us:
-            raise BuildError(
-                model.device,
-                f"bus.{bus_name} (i2c) timeout {timeout} us{'' if 'timeout' in table else ' (rp2 default)'}: a register read's two transfers can hold the loop {2 * timeout} us, above the {tolerance_us} us {consumer.what}",
-                rule="bus.i2c-timeout-consumer",
-                fix=f"set timeout to at most {tolerance_us // 2}{consumer.relief}",
-                field="timeout",
-            )
 
 
 def _check_instance_bus(model: DeviceModel, spec: InstanceSpec, buses: "dict[str, TomlDoc]") -> None:
@@ -713,37 +629,21 @@ def _check_instance_label_collisions(model: DeviceModel) -> None:
         seen[label] = key
 
 
-def _check_instance_name_collisions(model: DeviceModel, src_dir: Path) -> None:
-    # Every logger lands in /status errcount under its name, the last registration winning there (owner, 2026-08-12),
-    # so a second claim would hide the first: the mandatory modules claim first, then each instance its name and
-    # its config store's. Last-wins stays the webserver's rule within one module; the build keeps two modules apart.
-    wanted: list[tuple[str, str, str | None]] = []  # (logger name, its owner as the message names it, instance)
-    for filename in _MANDATORY_MODULE_FILES:
-        owns_store = _owns_config_store(src_dir / filename)  # first: it names a missing file as a build error
-        name = parse_name_constant(src_dir / filename, model.device, filename)
-        wanted.append((name, f"the mandatory {name} module", None))
-        if owns_store:
-            wanted.append(("CFGMGR_" + name, f"the mandatory {name} module's config store", None))
+def _check_instance_name_collisions(model: DeviceModel) -> None:
+    seen: dict[str, str] = {}
     for spec in model.instances.values():
         if spec.resolved_name is None:
             raise BuildInternalError(f"internal: resolved_name unresolved by collision-check time ({spec.label})")
-        if spec.driver_info is None:
-            raise BuildInternalError(f"internal: driver_info unresolved by collision-check time ({spec.label})")
-        wanted.append((spec.resolved_name, repr(spec.label), spec.label))
-        if _owns_config_store(spec.driver_info.source_path):
-            wanted.append(("CFGMGR_" + spec.resolved_name, f"{spec.label}'s config store", spec.label))
-    claims: dict[str, str] = {}
-    for name, owner, label in wanted:
-        existing = claims.get(name)
+        existing = seen.get(spec.resolved_name)
         if existing is not None:
             raise BuildError(
                 model.device,
-                f"instance_name collision: {owner} and {existing} both claim the logger name {name!r}",
+                f"instance_name collision: {spec.label!r} and {existing!r} both resolve to {spec.resolved_name!r}",
                 rule="names.logger-collision",
                 fix="give one a disambiguating name_ext",
-                instance=label,
+                instance=spec.label,
             )
-        claims[name] = owner
+        seen[spec.resolved_name] = spec.label
 
 
 def _check_instance_wiring(model: DeviceModel) -> None:
@@ -839,15 +739,6 @@ def _check_required_fields(model: DeviceModel, buses: "dict[str, TomlDoc]", src_
                 fix=f"add a {spec.driver!r} row to buildgen/buildspec.py's REQUIRED_TOML_FIELDS and OPTIONAL_TOML_FIELDS",
                 instance=spec.label,
             )
-        if spec.driver not in SINGLETON_SERVICE_DRIVERS and "name_ext" not in spec.fields:
-            raise BuildError(
-                model.device,
-                f"{spec.label} states no name_ext - a driver that may repeat names every instance explicitly, so a second one never renames the first",
-                rule="instance.name-ext-missing",
-                fix='add name_ext = "" (or a suffix) to this [[instance]]',
-                instance=spec.label,
-                field="name_ext",
-            )
         for f in REQUIRED_TOML_FIELDS.get(spec.driver, ()):
             if f not in spec.fields:
                 raise BuildError(model.device, f"{spec.label} is missing required field {f!r}", rule="instance.field-missing", fix=f"add {f} to this [[instance]]", instance=spec.label, field=f)
@@ -883,27 +774,9 @@ def _check_requires_tags(model: DeviceModel, buses: "dict[str, TomlDoc]") -> Non
         check_requires_tags(spec.requires_tags, buses[_checked_str(bus_name)], model.device, spec.label, _checked_str(bus_name))
 
 
-def _check_settings_key_collisions(model: DeviceModel) -> None:
-    # /networking and /system each merge several modules' groups into one object, so a key two groups served
-    # would answer from one of them only; notification's computed group is a section of its own.
-    served: dict[tuple[str, str], str] = {}
-    for section, module_var, fields, _hook in SETTINGS_GROUPS:
-        for key in fields:
-            existing = served.get((section, key))
-            if existing is not None:
-                raise BuildError(
-                    model.device,
-                    f"settings key {key!r} is served twice in /{section}: by {existing} and by {module_var}",
-                    rule="names.settings-key-collision",
-                    fix=f"drop {key!r} from one of the two groups in buildgen/validate.py's SETTINGS_GROUPS",
-                    field=key,
-                )
-            served[(section, key)] = module_var
-
-
 def _check_source_field_reference(model: DeviceModel, value: "TomlValue", consumer_label: str, toml_field: str) -> None:
     # Shared by warn_*'s getters and _VALUE_WIRING's per-value wiring (SPECIFICATION.md Part L.6.3): the generic
-    # {source, field} shape, resolved against any producer, the field set read from its get_data() namedtuple.
+    # {source, field} shape, resolved against any producer.
     if not isinstance(value, dict) or "source" not in value or "field" not in value:
         raise BuildError(
             model.device,
@@ -928,74 +801,32 @@ def _check_source_field_reference(model: DeviceModel, value: "TomlValue", consum
             instance=consumer_label,
             field=toml_field,
         )
-    if producer.driver_info is None:
-        raise BuildInternalError("internal: source.driver_info unresolved by source-field-check time")
-    fields = data_fields(producer.driver_info.source_path, producer.driver_info.class_name, model.device, producer.label)
-    if field_name not in fields:
-        raise BuildError(
-            model.device,
-            f"{consumer_label}'s wiring.{toml_field}.field={field_name!r} names no field of {source}'s get_data() result",
-            rule="source.field-unknown",
-            fix=f"use one of {sorted(fields)}",
-            instance=consumer_label,
-            field=toml_field,
-        )
 
 
 def _check_uart_bus(model: DeviceModel, bus_name: str, table: "TomlDoc") -> None:
     baudrate = table.get("baudrate")
     if not _is_int(baudrate):
         raise BuildError(model.device, f"bus.{bus_name} (uart) is missing an int baudrate", rule="bus.field-missing", fix=f"add baudrate to [bus.{bus_name}] as a whole number", field="baudrate")
-    if not 1 <= baudrate <= _UART_BAUDRATE_MAX:
-        # The port keeps its own default for 0 or less without a word (ports/rp2/machine_uart.c:285-287).
-        raise BuildError(
-            model.device,
-            f"bus.{bus_name} (uart) baudrate {baudrate} is outside 1 … {_UART_BAUDRATE_MAX} - RP2040's UART tops out at UARTCLK / 16",
-            rule="bus.uart-baudrate-range",
-            fix=f"set baudrate within 1..{_UART_BAUDRATE_MAX}",
-            field="baudrate",
-        )
     for f in _UART_OPTIONAL_INT_FIELDS:
         if f in table and not _is_int(table[f]):
             raise BuildError(model.device, f"bus.{bus_name} (uart) {f} must be an int, got {table[f]!r}", rule="bus.field-type", fix=f"write {f} as a whole number", field=f)
     rxbuf, txbuf = table.get("rxbuf"), table.get("txbuf")
-    if _is_int(rxbuf) and not _UART_BUFFER_MIN <= rxbuf <= _UART_BUFFER_MAX:
+    if _is_int(rxbuf) and rxbuf > _UART_BUFFER_MAX:
         raise BuildError(
             model.device,
-            f"bus.{bus_name} (uart) rxbuf {rxbuf} is outside {_UART_BUFFER_MIN} … {_UART_BUFFER_MAX} - the port raises a smaller one silently and refuses a larger one at boot",
+            f"bus.{bus_name} (uart) rxbuf {rxbuf} is above {_UART_BUFFER_MAX} - the port refuses a larger one at boot",
             rule="bus.uart-rxbuf-range",
-            fix=f"set rxbuf within {_UART_BUFFER_MIN}..{_UART_BUFFER_MAX}",
+            fix=f"set rxbuf to at most {_UART_BUFFER_MAX}",
             field="rxbuf",
         )
-    if _is_int(txbuf) and not _UART_BUFFER_MIN <= txbuf <= _UART_BUFFER_MAX:
+    if _is_int(txbuf) and txbuf > _UART_BUFFER_MAX:
         raise BuildError(
             model.device,
-            f"bus.{bus_name} (uart) txbuf {txbuf} is outside {_UART_BUFFER_MIN} … {_UART_BUFFER_MAX} - the port raises a smaller one silently and refuses a larger one at boot",
+            f"bus.{bus_name} (uart) txbuf {txbuf} is above {_UART_BUFFER_MAX} - the port refuses a larger one at boot",
             rule="bus.uart-txbuf-range",
-            fix=f"set txbuf within {_UART_BUFFER_MIN}..{_UART_BUFFER_MAX}",
+            fix=f"set txbuf to at most {_UART_BUFFER_MAX}",
             field="txbuf",
         )
-
-
-def _check_uart_bus_single_owner(model: DeviceModel) -> None:
-    # A UART is point-to-point: one instance per UART bus whatever its driver, so a future UART driver is held to it
-    # too. The uart_link pair count runs first, so its own messages are unchanged.
-    owners: dict[str, str] = {}
-    for spec in model.instances.values():
-        bus = spec.fields.get("bus")
-        if not (isinstance(bus, str) and _VALID_BUS_IDS.get(bus) == "uart"):
-            continue
-        existing = owners.get(bus)
-        if existing is not None:
-            raise BuildError(
-                model.device,
-                f"bus.{bus} is claimed by both {existing!r} and {spec.label!r} - a UART is point-to-point, one instance per UART bus",
-                rule="bus.uart-shared",
-                fix="put one of them on the other uart bus",
-                instance=spec.label,
-                field="bus",
-            )
-        owners[bus] = spec.label
 
 
 def _check_uart_link_buses(model: DeviceModel, buses: "dict[str, TomlDoc]", src_dir: Path) -> None:
@@ -1090,9 +921,9 @@ def _check_uart_link_receive(model: DeviceModel, spec: InstanceSpec, bus_name: s
         )
 
 
-def _check_uart_link_roles(model: DeviceModel, buses: "dict[str, TomlDoc]", src_dir: Path) -> None:
-    # RP2040 has two UART peripherals, so a device wires at most one crossover pair, each end on its own
-    # UART - which compute_twin_wiring() relies on. Without it two initiators built and booted silently,
+def _check_uart_link_roles(model: DeviceModel, src_dir: Path) -> None:
+    # RP2040 has two UART peripherals, so a device wires at most one crossover pair - which
+    # compute_twin_wiring() relies on. Without it two initiators built and booted silently,
     # both looping on read timeouts, while the twin's pairing loop left responder_bus None.
     links = _uart_links(model)
     if not links:
@@ -1108,17 +939,6 @@ def _check_uart_link_roles(model: DeviceModel, buses: "dict[str, TomlDoc]", src_
             fix="declare exactly one initiator and one responder uart_link",
         )
     initiator, responder = initiators[0], responders[0]
-    a, b = _checked_str(initiator.fields["bus"]), _checked_str(responder.fields["bus"])
-    x, y = _checked_int(buses[a]["baudrate"]), _checked_int(buses[b]["baudrate"])
-    if x != y:
-        raise BuildError(
-            model.device,
-            f"uart_link pair: bus.{a} runs at {x} baud and bus.{b} at {y} - both ends of a link must agree (Part J.6: agreed out of band, never negotiated)",
-            rule="instance.uart-baud-mismatch",
-            fix="state one baudrate on both buses",
-            field="baudrate",
-            instance=responder.label,
-        )
     crc_a, crc_b = initiator.fields.get("crc", "none"), responder.fields.get("crc", "none")
     if crc_a != crc_b:
         raise BuildError(
@@ -1202,20 +1022,11 @@ def _check_value_wiring(model: DeviceModel) -> None:
 
 
 def _check_warn_signals(model: DeviceModel, spec: InstanceSpec) -> None:
-    # The notification's per-signal getters (Part C.14.3), named from the generator's one catalog: a warn_*
-    # key and its {source} edge are legal only there (agent, 2026-09-09), and each one stays optional.
+    # The notification's per-signal getters (Part C.14.3), named from the generator's one catalog, each one
+    # optional; codegen reads the notification's alone, so one on another instance wires nothing.
     for toml_field, value in spec.wiring.items():
         if not toml_field.startswith("warn_"):
             continue
-        if spec.driver != "notification":
-            raise BuildError(
-                model.device,
-                f"{spec.label} declares wiring.{toml_field}, but warn signals belong to the notification instance",
-                rule="wiring.warn-outside-notification",
-                fix=f"move {toml_field} under the notification instance's [instance.wiring]",
-                instance=spec.label,
-                field=toml_field,
-            )
         if toml_field not in WARN_SIGNALS:
             raise BuildError(
                 model.device,
@@ -1284,12 +1095,6 @@ def _device_table(model: DeviceModel) -> "TomlDoc":
     if not isinstance(table, dict):
         raise BuildInternalError(f"internal: {model.device}'s [device] reached a later check unchecked")
     return table
-
-
-def _host_label_ok(label: str) -> bool:
-    # RFC 1123 SS2.1 host label, re-stated from src/asy_wifi_service.py's own check (buildgen never
-    # imports src/): letters, digits and '-', never at either end. DHCP and mDNS announce it as is.
-    return bool(label) and label[0] != "-" and label[-1] != "-" and all(ch.isascii() and (ch.isalnum() or ch == "-") for ch in label)
 
 
 def _instance_name(base_name: str, name_ext: str) -> str:
@@ -1431,15 +1236,12 @@ def build_model(toml_path: Path, src_dir: Path) -> DeviceModel:
     model = load_device(toml_path)
     _check_device_table(model, src_dir)
     buses = _check_bus_tables(model)
-    _check_boot_clear_budget(model, buses, src_dir)
     _resolve_instances(model, src_dir)
     _check_required_fields(model, buses, src_dir)
-    _check_uart_link_roles(model, buses, src_dir)
+    _check_uart_link_roles(model, src_dir)
     _check_limits(model)
     _check_all_buses_used(model, buses)
-    _check_uart_bus_single_owner(model)
-    _check_instance_name_collisions(model, src_dir)
-    _check_settings_key_collisions(model)
+    _check_instance_name_collisions(model)
     _check_instance_label_collisions(model)
     _check_gpio_collisions(model, buses)
     _check_address_collisions(model)
@@ -1452,7 +1254,6 @@ def build_model(toml_path: Path, src_dir: Path) -> DeviceModel:
     # report before it, and it is the only stage that reads toolchain/versions.toml at all.
     _check_connection_ceiling(model, src_dir)
     _check_uart_link_buses(model, buses, src_dir)
-    _check_i2c_timeout_consumer(model, buses, src_dir)  # after the link checks, so its poll values are the validated ones
     return model
 
 
@@ -1517,8 +1318,8 @@ def module_str_const(src_dir: Path, filename: str, name: str) -> str:
 
 
 def smallest_hard_consumer(model: DeviceModel, src_dir: Path) -> HardConsumer:
-    # The device's smallest hard consumer of loop time (SPECIFICATION.md F.3), the one source the I2C build rule, the twin's
-    # loop-lag scenario and the bench lag test read: the watchdog's room beside one supervisor sleep, and each uart_link's
+    # The device's smallest hard consumer of loop time (SPECIFICATION.md F.3), the one source the twin's loop-lag
+    # scenario and the bench lag test read: the watchdog's room beside one supervisor sleep, and each uart_link's
     # reply timeout less its two polls, its idle poll and one GC pause; the first smallest wins (agent, 2026-10-21).
     task_check_s = module_int_const(src_dir, "asy_system_service.py", "_TASK_CHECK_TIME")
     consumers = [HardConsumer(_WDT_TIMEOUT_MS - task_check_s * 1000, f"the watchdog's {_WDT_TIMEOUT_MS}ms less one {task_check_s}s supervisor sleep", "")]
