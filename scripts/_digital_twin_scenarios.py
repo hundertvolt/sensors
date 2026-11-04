@@ -122,6 +122,7 @@ _SSID = "digital-twin-test-ssid"
 _GMT_OFFSET_DEFAULT = 3600  # the GMTOffset default, which a write of it would answer "Unchanged"
 _TEST_WARN_CO2 = 1800  # a WarnCO2 the defaults do not hold
 _DNS_UDP_MAX = 512  # RFC 1035's UDP message limit
+_DNS_FLOOD_DATAGRAMS = 200  # a flood well past lwIP's per-socket queue (C.7.5), sent with no pause
 _SITE_MIN_BYTES = 1000  # a whole page or bundle, not a truncated or empty body
 _ISL_RESOLUTIONS = (12, 16)  # asy_isl29125_driver.py's _RESOLUTIONS
 
@@ -738,6 +739,18 @@ def _device(text: str) -> str:
     return text
 
 
+def _dns_answer(timeout_s: float) -> bytes:
+    # The reply to an A query from this host by the deadline, a query a second until one comes; b"" if none does.
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.settimeout(1.0)
+            sock.sendto(_dns_query(), (HOST, _DNS_PORT))
+            with contextlib.suppress(OSError):
+                return sock.recv(1024)
+    return b""
+
+
 def _dns_query(qname: str = "captive.example") -> bytes:
     header = struct.pack(">HHHHHH", 0x1234, 0x0100, 1, 0, 0, 0)  # ID, RD, one question
     labels = b"".join(bytes([len(p)]) + p.encode() for p in qname.split("."))
@@ -1024,23 +1037,23 @@ def _hotspot(twin: Twin) -> bool:
 
 @scenario("wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server", family="sensortask_integration", needs_exclusive_port_53=True)
 def _hotspot_dns(ctx: Context) -> None:
-    """Five STA failures drive the hotspot: its DNS server answers an A query with the AP's address, unknown paths redirect."""
+    """Five STA failures drive the hotspot: its DNS server answers an A query with the AP's address, unknown paths redirect, a malformed flood logs nothing."""
     with ctx.boot(*(["--wifi-outcome", "no_ap"] * _WIFI_SCRIPTED_FAILURES)) as twin:
         _request(twin.port, "PUT", "/networking", {"SSID": _SSID})
-        deadline = time.monotonic() + _HOTSPOT_WAIT_S
-        answer = b""
-        while time.monotonic() < deadline and not answer:
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-                sock.settimeout(1.0)
-                sock.sendto(_dns_query(), (HOST, _DNS_PORT))
-                with contextlib.suppress(OSError):
-                    answer = sock.recv(1024)
+        answer = _dns_answer(_HOTSPOT_WAIT_S)
         _expect(bool(answer), "the hotspot's DNS server never answered a query from this host (an off-subnet source is dropped by design)")
         networking = _group(_status(twin.port), "networking")
         _expect(len(answer) <= _DNS_UDP_MAX and answer[:2] == b"\x12\x34" and bool(answer[2] & 0x80), f"the DNS reply is no answer to the query ({len(answer)} bytes)")
         _expect(socket.inet_ntoa(answer[-4:]) == networking.get("IPv4"), f"the A record {socket.inet_ntoa(answer[-4:])} is not the AP's {networking.get('IPv4')!r}")
         redirect = _request(twin.port, "GET", "/generate_204")
         _expect(redirect.status == HTTPStatus.FOUND and redirect.headers.get("Location") == "/", f"/generate_204 in the hotspot answered {redirect.status}")
+        before = _counter(_errcount(twin.port, "DNSSRV"))
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            for _n in range(_DNS_FLOOD_DATAGRAMS):
+                sock.sendto(b"\x00\x01\x02", (HOST, _DNS_PORT))  # shorter than a DNS header: dropped unparsed
+        _expect(bool(_dns_answer(_REQUEST_TIMEOUT_S)), "no answer to a query after the flood")
+        after = _counter(_errcount(twin.port, "DNSSRV"))
+        _expect(after == before, f"the flood was logged: DNSSRV's count {before} -> {after}")
 
 
 @scenario("a_hung_shutdown_step_is_ended_by_the_watchdog", family="system_commands")
