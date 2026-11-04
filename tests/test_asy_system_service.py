@@ -3665,19 +3665,14 @@ def test_an_escalation_whose_entry_cannot_even_be_built_on_a_full_heap_still_reb
 
 def test_a_console_soft_reset_after_a_power_on_boot_reads_the_recorded_code() -> None:
     # A Ctrl-D inside the watchdog window re-runs main.py with no hard reset: the cause stays the power-on's, the regions
-    # keep the entry's 21 or 22, and the boot reads that code and clears it.
-    def interrupted() -> None:
-        write_reset_record(asy_system_service.RR_INTERRUPTED)
-
-    for record in (interrupted, asy_system_service.record_loop_end):
-        machine.power_on()
-        begin_boot()
-        _make_service().boot_phase(BOOT_DONE)
-        record()
-        expected = machine.mem_backup(0)[1]
-        assert machine.reset_cause() == machine.PWRON_RESET
-        assert begin_boot() == expected and expected in (21, _const("_RR_LOOP_ENDED")), expected
-        assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
+    # keep the Ctrl-C arm's 21 (a loop end resets the chip itself), and the boot reads that code and clears it.
+    machine.power_on()
+    begin_boot()
+    _make_service().boot_phase(BOOT_DONE)
+    write_reset_record(asy_system_service.RR_INTERRUPTED)
+    assert machine.reset_cause() == machine.PWRON_RESET
+    assert begin_boot() == asy_system_service.RR_INTERRUPTED == 21
+    assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
 
 
 def test_a_power_cycle_after_a_record_reads_1() -> None:
@@ -3695,20 +3690,6 @@ def test_a_torn_record_under_a_power_on_cause_reads_1() -> None:
     assert machine.reset_cause() == machine.PWRON_RESET
     assert begin_boot() == _const("_RR_POWER_ON")
     assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
-
-
-def test_a_console_soft_reset_after_a_boot_phase_failure_reads_10_plus_the_phase() -> None:
-    # A loop ended during boot records nothing; a Ctrl-D after a power-on boot keeps the cause and the phase marker.
-    for p in range(BOOT_CONSTRUCTION, BOOT_NTP + 1):
-        machine.power_on()
-        begin_boot()
-        svc = _make_service()
-        for q in range(BOOT_CONSTRUCTION, p + 1):
-            svc.boot_phase(q)
-        asy_system_service.record_loop_end()
-        assert list(machine.mem_backup(0)) == [0, 0, 0, 0], p
-        assert machine.reset_cause() == machine.PWRON_RESET
-        assert begin_boot() == _const("_RR_BOOT_FAILURE") + p, p
 
 
 def test_a_boot_done_marker_under_a_power_on_cause_reads_1() -> None:

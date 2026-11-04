@@ -7006,8 +7006,9 @@ also be read before the power-on check, so a console soft reset after a failure 
 Power-off and the RUN pin clear both regions (above), so either seen under a power-on cause means a
 soft reset: a friendly-REPL Ctrl-D (`shared/runtime/pyexec.c:676-681`) leaves for `soft_reset_exit`
 and main.py runs again (`ports/rp2/main.c:246-262`) while `reset_cause()` still reads the last hard
-reset, and that boot reports the 21 or 22 recorded before it, or the 10 + p of a loop that ended
-during boot (which records nothing, A.7), the REASON register showing no watchdog bit. A real power-on still
+reset, and that boot reports the 21 the Ctrl-C arm recorded before it, the one way to that REPL (A.7),
+the REASON register showing no watchdog bit. A loop end resets the chip itself (A.7), so its 22, or the
+10 + p of a loop that ended during boot (which records nothing), is read after that forced reset. A real power-on still
 reads 1, its regions being empty; so do a torn record under a power-on cause and a soft reset after
 a completed boot, whose marker reads `BOOT_DONE`, outside the boot range. A torn record beside an
 in-boot marker reads 10 + p under any cause. A write into the cleared record cannot tear it (`_write_region()` stores the magic last and
