@@ -26,11 +26,8 @@ if TYPE_CHECKING:
 
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
-# @tunable l3.isl29125_cross_device_concurrency_sgp40_cycles = 6
 _SGP40_CYCLES = 6
-# @tunable l3.isl29125_cross_device_concurrency_sibling_step_ms = 20
 _SIBLING_STEP_MS = 20
-# @tunable l3.isl29125_cross_device_concurrency_run_bound_s = 60.0
 _RUN_BOUND_S = 60.0
 
 

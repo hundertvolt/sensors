@@ -61,23 +61,14 @@ _LOG_ALL: int = src_int("src/asy_print_log.py", "_LOG_ALL")
 
 # @tunable ntp.fetch_timeout_ms = 5000
 _FETCH_TIMEOUT_MS = 5000
-# @tunable l1.asy_ntp_client_serve_wait_s = 5
 _SERVE_WAIT_S = 5
-# @tunable l1.asy_ntp_client_state_poll_ms = 20
 _STATE_POLL_MS = 20
-# @tunable l1.asy_ntp_client_synced_poll_tries = 50
 _SYNCED_POLL_TRIES = 50
-# @tunable l1.ntp_fram_system_integration_utc_tolerance_s = 5
 _UTC_TOLERANCE_S = 5
-# @tunable l1.ntp_fram_system_integration_supervisor_scan_wait_s = 2.5
 _SCAN_WAIT_S = 2.5
-# @tunable l1.ntp_fram_system_integration_start_poll_s = 0.01
 _START_POLL_S = 0.01
-# @tunable l1.ntp_fram_system_integration_start_poll_tries = 200
 _START_POLL_TRIES = 200
-# @tunable l1.asy_ntp_client_fake_server_poll_ms = 10
 _FAKE_SERVER_POLL_MS = 10
-# @tunable l1.asy_ntp_client_fake_server_poll_tries = 1000
 _FAKE_SERVER_POLL_TRIES = 1000
 
 
@@ -282,9 +273,7 @@ def test_fram_read_into_age_is_computed_from_the_real_ntp_chains_synced_clock() 
     assert age is not None and age >= 0  # age.is computed via a second real ntp.ntp_issynced() call
 
 
-# @tunable l1.fram_lock_fetch_timeout_ms = 2000
 _LOCK_HOLD_FETCH_TIMEOUT_MS = 2000
-# @tunable l1.fram_write_prompt_s = 1.0
 _WRITE_PROMPT_S = 1.0
 
 

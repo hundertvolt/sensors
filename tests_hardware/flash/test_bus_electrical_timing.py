@@ -16,13 +16,10 @@ class _ResultNote(Protocol):
 
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("scd30",)
 
-# @tunable l3.bus_electrical_timing_irq_script_timeout_s = 30.0
 _IRQ_SCRIPT_TIMEOUT_S = 30.0
 # Twelve timers armed back to back: past this the arming itself, not the scheduler, would be what is measured.
-# @tunable l3.bus_electrical_timing_arming_span_max_us = 1500
 _ARMING_SPAN_MAX_US = 1500
 # Three scans and two radio re-inits per value, three values.
-# @tunable l3.bus_electrical_timing_country_script_timeout_s = 120.0
 _COUNTRY_SCRIPT_TIMEOUT_S = 120.0
 
 

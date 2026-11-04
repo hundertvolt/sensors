@@ -68,11 +68,8 @@ if TYPE_CHECKING:
 microtest.after_each(machine.reset_test_state)
 microtest.after_each(network.reset_test_state)
 
-# @tunable l2.ntp_reply_wait_ms = 1000
 _REPLY_WAIT_MS = 1000  # a reply on loopback arrives within one responder poll; the bound only ends a lost one
-# @tunable l2.ntp_reply_poll_ms = 5
 _POLL_MS = 5
-# @tunable l2.ntp_run_bound_s = 10.0
 _RUN_BOUND_S = 10.0
 _REQUEST = b"\x1b" + bytes(47)  # the product's request: LI 0, VN 3, mode 3 (src/asy_ntp_client.py _fetch_ntp_reply())
 
@@ -275,9 +272,7 @@ def test_serving_never_starves_a_task_beside_it() -> None:
         task = asyncio.create_task(responder.serve())
         ticks = 0
         start = time.ticks_ms()
-        # @tunable l2.ntp_starve_window_ms = 200
         while time.ticks_diff(time.ticks_ms(), start) < 200:
-            # @tunable l2.ntp_starve_tick_ms = 1
             await asyncio.sleep_ms(1)
             ticks += 1
         task.cancel()
@@ -422,7 +417,6 @@ def test_a_send_to_a_refused_address_fails_on_the_products_own_path() -> None:
 # A generated device booted against the responder: the boot's first sync, an outage and its recovery, each failure
 # ---------------------------------------------------------------------------
 
-# @tunable l2.ntp_sync_wait_timeout_s = 20.0
 _SYNC_WAIT_TIMEOUT_S = 20.0  # the network up, one product fetch timeout (5 s), a check tick (10 s) if it came up late
 _SYNC_POLL_MS = 50
 _CHECK_S: int = src_int("src/asy_ntp_client.py", "_NTP_CHECK_INTERV")

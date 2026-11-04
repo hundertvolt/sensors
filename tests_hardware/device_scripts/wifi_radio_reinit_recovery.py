@@ -30,7 +30,6 @@ _SCRATCH_CFG_PATH = "hwtest-scratch/"
 # One attempt's own poll (5 s) plus the DHCP lease the bench AP gives.
 # @tunable l3.wifi_radio_reinit_connect_budget_ms = 20000
 _CONNECT_BUDGET_MS = 20000
-# @tunable l3.wifi_radio_reinit_poll_ms = 250
 _POLL_MS = 250
 # The radio's identity comes from the primed production config; one connect and one recovery never reach the hotspot.
 _STREAK, _WINDOW_MIN = 1, 1

@@ -23,38 +23,25 @@ COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency", "sensortask_i
 # ---------------------------------------------------------------------------
 
 
-# @tunable l4.end_to_end_timing_reboot_phase_timeout_s = 30.0
 _REBOOT_PHASE_TIMEOUT_S = 30.0
-# @tunable l4.end_to_end_timing_down_poll_s = 0.5
 _DOWN_POLL_S = 0.5
-# @tunable l4.end_to_end_timing_reboot_loss_margin_s = 1.5
 _REBOOT_LOSS_MARGIN_S = 1.5
-# @tunable l4.end_to_end_timing_poll_s = 1.0
 _POLL_S = 1.0
-# @tunable l4.end_to_end_timing_probe_timeout_s = 10.0
 _PROBE_TIMEOUT_S = 10.0
-# @tunable l4.end_to_end_timing_join_timeout_s = 15.0
 _JOIN_TIMEOUT_S = 15.0
-# @tunable l4.end_to_end_timing_recovery_sanity_timeout_s = 120.0
 _RECOVERY_SANITY_TIMEOUT_S = 120.0
-# @tunable l4.end_to_end_timing_reset_spacing_s = 25.0
 _RESET_SPACING_S = 25.0
-# @tunable l4.end_to_end_timing_reset_cycles = 3
 _RESET_CYCLES = 3
-# @tunable l4.end_to_end_timing_reset_recovery_timeout_s = 60.0
 _RESET_RECOVERY_TIMEOUT_S = 60.0
-# @tunable l4.end_to_end_timing_backup_advance_timeout_s = 90.0
 _BACKUP_ADVANCE_TIMEOUT_S = 90.0
-# @tunable l4.end_to_end_timing_backup_poll_s = 5.0
 _BACKUP_POLL_S = 5.0
-# @tunable l4.end_to_end_timing_restore_recovery_timeout_s = 20.0
 _RESTORE_RECOVERY_TIMEOUT_S = 20.0
 _SYSTEM = "asy_system_service.py"
 
 
 def test_real_reboot_sequencing_via_rest_completes_cleanly(board: Board, bench: "BenchBridge", dut_ip: str, result_note: "_load.Note") -> None:
     # Passive waits only (is_reachable() would stop the fresh main.py): the webserver serves within
-    # l4.dut_serving_after_sta_s of STA connect, the generated main() starting it before the first NTP sync.
+    # 30 s (conftest.py) of STA connect, the generated main() starting it before the first NTP sync.
     task_check_s = _load.src_number(_SYSTEM, "_TASK_CHECK_TIME")
     reset_delay_s = _load.src_number(_SYSTEM, "_RESET_DELAY")
     watchdog_ms = _load.buildgen_number("validate.py", "_WDT_TIMEOUT_MS")

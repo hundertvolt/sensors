@@ -31,7 +31,6 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
 
 
-# @tunable l1.asy_fram_driver_lock_wait_s = 1.0
 _LOCK_WAIT_S = 1.0
 
 

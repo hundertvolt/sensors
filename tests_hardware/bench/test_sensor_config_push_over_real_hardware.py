@@ -38,29 +38,21 @@ _BMP3XX_TEST_VALUES = {"PresOvers": 4, "TempOvers": 2, "FiltCoeff": 3}
 _ISL29125_TEST_VALUES = {"Resolution": 12, "Range": 375, "RangeAuto": False, "IRCompOffset": 1, "IRCompAdjust": 20}
 
 
-# @tunable l4.sensor_config_push_over_real_hardware_probe_timeout_s = 10.0
 _PROBE_TIMEOUT_S = 10.0
-# @tunable l4.sensor_config_push_over_real_hardware_override_poll_s = 1.0
 _OVERRIDE_POLL_S = 1.0
-# @tunable l4.sensor_config_push_over_real_hardware_override_poll_tries = 10
 _OVERRIDE_POLL_TRIES = 10
 _BMP3XX_SRC = "asy_bmp3xx_driver.py"
 _ISL29125_SRC = "asy_isl29125_driver.py"
 _SCD30_SRC = "asy_scd30_driver.py"
 _SGP40_SRC = "asy_sgp40_driver.py"
 # A shift the compensation must show, kept inside _VAL_ALTITUDE's range either way round.
-# @tunable l4.sensor_config_push_altitude_step_m = 1000
 _ALTITUDE_STEP_M = 1000
-# @tunable l4.sensor_config_push_altitude_settle_intervals = 3
 _SETTLE_INTERVALS = 3
-# @tunable l4.sensor_config_push_altitude_observe_intervals = 5
 _OBSERVE_INTERVALS = 5
 # A Calibrate run ends converged, or at the first read cycle past its window: the wait for its end allows that cycle
 # this margin.
-# @tunable l4.sensor_config_push_calibration_end_margin_s = 10.0
 _CAL_END_MARGIN_S = 10.0
 # A ResetVOC runs at the SGP40's next read cycle, after the PUT's answer: the test waits one cycle and this margin.
-# @tunable l4.sensor_config_push_reset_voc_settle_margin_s = 2.0
 _RESET_VOC_SETTLE_MARGIN_S = 2.0
 
 

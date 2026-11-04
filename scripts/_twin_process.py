@@ -33,19 +33,13 @@ EXIT_SIMULATED_POWER_LOSS = 5
 EXIT_SUITE_TIMEOUT = -256  # wait_exit()'s own give-up: no exit code or signal death can read as it
 _EXIT_NAMES = {0: "a clean exit", EXIT_SIMULATED_RESET: "a simulated reset", EXIT_SIMULATED_BOOTLOADER: "a simulated bootloader entry", EXIT_SIMULATED_POWER_LOSS: "a simulated power loss", EXIT_SUITE_TIMEOUT: "no exit before the caller's deadline"}
 
-# @tunable l2.kill_reap_timeout_s = 5.0
 _KILL_REAP_TIMEOUT_S = 5.0  # the wait for a SIGKILLed twin to be reaped
 # A twin that ignored its SIGINT: the wait for its interrupt's traceback (--test-kbd-traceback), then for a second SIGINT.
-# @tunable l2.kbd_traceback_wait_s = 1.0
 _KBD_TRACEBACK_WAIT_S = 1.0
-# @tunable l2.second_sigint_wait_s = 2.0
 _SECOND_SIGINT_WAIT_S = 2.0
 # A feed gap above this share of the armed watchdog timeout is a near reset; a run that starves it on purpose skips the check.
-# @tunable l2.feed_gap_share_max = 0.75
 FEED_GAP_SHARE_MAX = 0.75
-# @tunable l2.serving_poll_s = 0.25
 _SERVING_POLL_S = 0.25
-# @tunable l2.serving_probe_timeout_s = 1.0
 _SERVING_PROBE_TIMEOUT_S = 1.0
 _LOG_TAIL_LINES = 20
 # Past this many bytes the Unix port cannot intern an argument (from the script on), the script's directory or a

@@ -284,8 +284,8 @@ gates, traps).
   `bench/test_uart_link_under_api_load.py::test_a_hazard_run_under_the_readers_load_reports_every_verdict`:
   one `PUT /status {"UartHazards": true}` while 3 readers GET `/status` until the run ends.
   Expected: every hazard verdict as the twin judges it, the echo's `Failures` unchanged, the echo
-  resumed, the WEBSERVER counter at 0 and no task ended; the run's elapsed is recorded against Part
-  N's estimated `l4.uart_link_under_api_load_hazard_run_timeout_s` (600 s). Wear: none (the command
+  resumed, the WEBSERVER counter at 0 and no task ended; the run's elapsed is recorded against the
+  test's estimated 600 s run timeout. Wear: none (the command
   is dispatch-only). Twin row: `tests/test_digital_twin_uart_link.py`'s
   `test_a_hazard_run_put_through_the_api_while_readers_hammer_it_reports_every_verdict`.
 - **Hard resets during natural FRAM backups, the torn writes expected** — on `dev`, the gated
@@ -511,8 +511,7 @@ gates, traps).
   standing requirement as BACKLOG.md recorded it on 2026-09-17, `569c6bb`). Last measured 2026-09-25
   on the one-after-another reset since replaced: about 3.5 s per reader, three readers at
   13.2-14.7 s, four past the connection ceiling. Wear: none (the clears are FRAM writes). Twin row:
-  `_RESET_ERRORS_BUDGET_S` in `scripts/_digital_twin_ci_suite.py` (Part N
-  `l2.reset_errors_budget_ratio`).
+  `_RESET_ERRORS_BUDGET_S` in `scripts/_digital_twin_ci_suite.py`.
 - **S4, the six-hour soak** — on `dev`, after the round's FRAM evidence is saved and on top of a
   clean bench run, `scripts/run_bench_soak_tests.sh --duration long` (six hours,
   `tests_hardware/soak_durations.py`) runs the soak-duration tests, among them
@@ -1118,6 +1117,9 @@ gates, traps).
   **2026-11-04, lint config and the website build's arguments, no dependency or installer change**: `pyproject.toml`'s
   generated boot entry ignore is E402 alone; `scripts/build_website.sh` and `scripts/_stage_website.py` take no
   `--build-date` and `scripts/build_firmware.py` passes none. Nothing new to install.
+  **2026-11-04, test orchestration and CI only, no dependency or installer change**: the twin CI runs suite and
+  exclusive-port-53 scenarios in one job per device and GC stage (`scripts/run_digital_twin_ci.sh`, `ci.yml`), the
+  launcher stop file is gone, and `@tunable` lines outside Part N's scope left `scripts/`. Nothing new to install.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot

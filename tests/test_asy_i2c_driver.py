@@ -28,11 +28,8 @@ if TYPE_CHECKING:
     from typing import ClassVar
 
 
-# @tunable l1.asy_i2c_driver_gather_wait_s = 1.0
 _GATHER_WAIT_S = 1.0
-# @tunable l1.asy_i2c_driver_deadlock_wait_s = 0.2
 _DEADLOCK_WAIT_S = 0.2
-# @tunable l1.asy_i2c_driver_held_scl_timeout_us = 3000
 _HELD_SCL_TIMEOUT_US = 3000  # a short bus timeout: a line that never releases ends the wait at it
 # asy_i2c_driver's private _REC_* bits, read from source (tests/_src_const.py).
 _REC_SDA_LOW: int = src_int("src/asy_i2c_driver.py", "_REC_SDA_LOW")

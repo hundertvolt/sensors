@@ -76,39 +76,22 @@ _REFUSAL_ERRORS = (ConnectionResetError, BrokenPipeError, ConnectionAbortedError
 _SHARED_DIR = "shared_boots"  # the shared twins' logs and state, beside the scenarios' own directories
 _TCP_LISTEN = "0A"  # the LISTEN state in /proc/net/tcp (include/net/tcp_states.h)
 
-# @tunable l2.scenario_request_timeout_s = 10.0
 _REQUEST_TIMEOUT_S = 10.0
-# @tunable l2.scenario_serving_timeout_s = 30.0
 _SERVING_TIMEOUT_S = 30.0
-# @tunable l2.scenario_line_poll_s = 0.05
 _LINE_POLL_S = 0.05
-# @tunable l2.scenario_conn_status_interval_ms = 20
 _CONN_STATUS_INTERVAL_MS = 20  # the runner's CONN_SLOTS period: dense enough that a drain is seen within a few polls
-# @tunable l2.scenario_fault_status_interval_ms = 100
 _FAULT_STATUS_INTERVAL_MS = 100
-# @tunable l2.scenario_drain_wait_s = 10.0
 _DRAIN_WAIT_S = 10.0  # a slot outlives its response until its close completes (Part H.7.1)
-# @tunable l2.scenario_still_serving_s = 5.0
 _STILL_SERVING_S = 5.0
-# @tunable l2.scenario_flaky_hold_s = 0.05
 _FLAKY_HOLD_S = 0.05  # how long a flaky client keeps its partial request open before it hangs up
-# @tunable l2.scenario_slow_put_s = 1.0
 _SLOW_PUT_S = 1.0  # a slow but healthy PUT's pause between its two halves
-# @tunable l2.scenario_stall_ms = 200
 _STALL_MS = 200  # the stalled loop's length, past one SYN retry's worth of arrivals queued
-# @tunable l2.scenario_watchdog_window_s = 8.5
 _WATCHDOG_WINDOW_S = 8.5  # past the 8,000 ms watchdog: a hang's window is the property under test, so it is waited out
-# @tunable l2.scenario_refusal_feed_s = 10.0
 _REFUSAL_FEED_S = 10.0  # a refused command never stops the feed: watched past one watchdog period
-# @tunable l2.scenario_commanded_reset_margin_s = 10.0
 _COMMANDED_RESET_MARGIN_S = 10.0
-# @tunable l2.scenario_pause_countdown_s = 15.0
 _PAUSE_COUNTDOWN_S = 15.0
-# @tunable l2.scenario_hotspot_wait_s = 90.0
 _HOTSPOT_WAIT_S = 90.0  # five scripted connect failures, then the hotspot and its DNS server
-# @tunable l2.scenario_uart_load_s = 20.0
 _UART_LOAD_S = 20.0  # the concurrent-load window
-# @tunable l2.scenario_uart_load_faults = 3
 _UART_LOAD_FAULTS = 3  # SGP40 measure reads failed under the UART load: logged and persisted, below any restart
 _SGP40_MEASURE_RAW = 0x260F  # the command whose following read the fault matches, so setup stays healthy
 # Per sensor driver, the bus op and key of one read its config snapshot (get_config_snapshot()) makes, from src/: once the
@@ -121,11 +104,9 @@ _SNAPSHOT_READS = {
 _SNAPSHOT_FAULTS = 2  # ISL29125's verify takes at most one per 1 s cycle, so a GET loop always takes the other
 _VERIFY_FAILED = "Config read-back for reconciliation failed"  # asy_isl29125_driver.py's _verify_config(): a fault no GET took
 _UNAVAILABLE = {"error": "unavailable"}  # asy_base_classes.py's UNAVAILABLE marker, sent in place of a module's map
-# @tunable l2.loop_lag_load_s = 20.0
 _LOOP_LAG_LOAD_S = 20.0  # the storm's faults, one per read at the longest read trigger, then one whole LOOP_LAG window (agent, 2026-10-21)
 _LOOP_LAG_REST_MAX_MS = module_int_const(REPO_ROOT / "buildgen", "codegen.py", "_DNS_TIMEOUT_MS")  # one DNS query (`con.dns_query`), the generated module's
 _LOOP_LAG_RECOVERED_MS = 1000 // module_int_const(SRC_DIR, "asy_neopixel_driver.py", "_NEOPIXEL_FREQ_HZ")  # one LED frame (`con.led_frame`): once the load is over, the loop drops none
-# @tunable l2.loop_lag_period_ms = 10
 _LOOP_LAG_PERIOD_MS = 10
 # SGP40 measure reads failed in a row, setup spared: the longest streak with no give-up, the max_module_error the
 # generated module passes (buildgen/codegen.py), so the storm ends no task.
@@ -150,11 +131,8 @@ _OUTER_CAP_S = module_float_const(SRC_DIR, _WEBSERVER, "_DEFAULT_OUTER_CAP_S")  
 _UART_LOAD_REQUEST_S = _OUTER_CAP_S + module_float_const(SRC_DIR, _WEBSERVER, "_DEFAULT_PER_CALL_TIMEOUT_S") + 2 * module_int_const(SRC_DIR, "asy_uart_comm.py", "_FLASH_HOLD_MAX_MS") / 1000
 _WATCHDOG_FAULT_LINE = "WDT_AT_FAULT "  # the runner's fault instant, with the feed count the watchdog starves from
 _ZERO_THINK_READERS = 4  # F18's four zero-think-time readers
-# @tunable l2.zero_think_reads_per_reader = 20
 _ZERO_THINK_READS = 20  # a fixed count per reader, not a duration
-# @tunable l2.zero_think_reader_floor = 10
 _ZERO_THINK_FLOOR = 10  # degradation, not starvation: each reader is answered at least this often
-# @tunable l2.zero_think_writer_period_s = 0.5
 _ZERO_THINK_WRITER_PERIOD_S = 0.5
 # The storm's chunk writes are counted per event by the product's rules, not per second of a run the host sets the
 # length of (agent, 2026-10-22): each failed read cycle persists its failure and _error_check()'s streak entry, and each
@@ -165,7 +143,6 @@ _STORM_RUNGS_AT = tuple(module_int_const(SRC_DIR, "asy_base_classes.py", f"_RECO
 _NTP_NOT_SENT = module_int_const(SRC_DIR, "asy_ntp_client.py", "_ERR_NTP_NOT_SENT")
 _NTP_NO_REPLY = module_int_const(SRC_DIR, "asy_ntp_client.py", "_ERR_NTP_NO_REPLY")
 _NTP_SERVER_PORT = module_int_const(SRC_DIR, "asy_ntp_client.py", "_NTP_UDP_PORT")
-# @tunable l2.ntp_unreachable_write_period_s = 1.0
 _NTP_UNREACHABLE_WRITE_PERIOD_S = 1.0  # one stored GMTOffset write a second beside the readers, each its own flash write
 
 
@@ -1298,7 +1275,7 @@ def _loop_lag_under_load(ctx: Context) -> None:
     _expect(worst is not None and worst <= bound_us, f"the loop lagged {worst} us under load, past the {bound_us} us smallest hard consumer: {load}")
     _expect(boot_max is not None and boot_max <= bound_us, f"the loop lagged {boot_max} us in the window open when the load began, past the {bound_us} us smallest hard consumer: {boot}")
     # After the load 99 % of wakes fall within one LED frame and every wake within one DNS query: a single wake also
-    # carries the host's late resumption, the case Part N `l1.lwip_host_spin_window_rounds` records (agent, 2026-10-21).
+    # carries the host's late resumption, the case the host spin-round test's three-round window records (agent, 2026-10-21).
     rest_max_us = min(bound_us, _LOOP_LAG_REST_MAX_MS * 1000)
     _expect(settled_max is not None and settled_max <= rest_max_us, f"the loop lagged {settled_max} us in the window after the load, past the {rest_max_us} us of one DNS query or the smallest hard consumer: {stopped[1:]}")
     _expect(settled_p99 is not None and settled_p99 < _LOOP_LAG_RECOVERED_MS * 1000, f"the lag after the load did not settle under {_LOOP_LAG_RECOVERED_MS} ms, one LED frame, at its p99: {stopped[1:]}")

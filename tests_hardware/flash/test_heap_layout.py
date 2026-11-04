@@ -17,7 +17,6 @@ if TYPE_CHECKING:
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("construction",)
 
 _TWIN_BOUNDS = REPO_ROOT / "tests_scripts" / "test_digital_twin_boot_contiguity.py"
-# @tunable l3.heap_layout_script_timeout_s = 120.0
 _LAYOUT_SCRIPT_TIMEOUT_S = 120.0
 _UNRETRIEVED = "UNRETRIEVED"  # the script's always-printing report of a task that died unawaited
 

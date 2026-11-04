@@ -21,9 +21,7 @@ _VERSION = 3  # what the product's request carries (src/asy_ntp_client.py _fetch
 _LI_UNSYNCHRONIZED = 3
 # Below the client's 2025 plausibility floor, and above its 2100 ceiling once the client reads it as the next NTP era.
 _IMPLAUSIBLE_UNIX_S = 1000000000
-# @tunable twin.ntp_responder_poll_ms = 10
 _POLL_MS = 10
-# @tunable twin.ntp_responder_take_rounds = 20
 _TAKE_ROUNDS = 20  # a waiting responder tries the held port again every 20 rounds (200 ms)
 _MODES = ("serve", "silent", "unsync", "short", "implausible")
 _host_time = time.time  # bound at import: the runner's wall clock rebinds each module's `time`, never what this serves

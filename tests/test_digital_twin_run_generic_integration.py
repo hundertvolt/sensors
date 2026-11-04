@@ -76,57 +76,32 @@ require_fresh()  # the smoke boot loads a generated module and its plan
 microtest.after_each(machine.reset_test_state)
 microtest.after_each(network.reset_test_state)
 
-# @tunable l2.run_generic_integration_run_bound_s = 5.0
 _RUN_BOUND_S = 5.0
-# @tunable l2.run_generic_integration_main_run_bound_s = 15.0
 _MAIN_RUN_BOUND_S = 15.0
-# @tunable l2.run_generic_integration_prompt_bound_ms = 100
 _PROMPT_BOUND_MS = 100  # an entry, or a released hold, that finishes at once
-# @tunable l2.run_generic_integration_cut_wait_ms = 50
 _CUT_WAIT_MS = 50  # how long the cut entry is watched not to finish
-# @tunable l2.run_generic_integration_clearer_run_ms = 20
 _CLEARER_RUN_MS = 20
 _REACHED_LIMIT_MS = 1000  # the bound on the wait for a started task to reach its observable point
 _PROBE_LEAD_MS = 5  # the lag probe's first sleep is under way, its due time passed, when the stall begins
-# @tunable l2.run_generic_integration_drop_clear_bound_ms = 2000
 _DROP_CLEAR_BOUND_MS = 2000
-# @tunable l2.run_generic_integration_rearm_run_ms = 20
 _REARM_RUN_MS = 20
-# @tunable l2.run_generic_integration_stall_ms = 20
 _STALL_MS = 20
-# @tunable l2.run_generic_integration_lag_run_ms = 50
 _LAG_RUN_MS = 50
-# @tunable l2.run_generic_integration_lag_step_ms = 12
 _LAG_STEP_MS = 12
-# @tunable l2.run_generic_integration_offer_bound_ms = 1000
 _OFFER_BOUND_MS = 1000
-# @tunable l2.run_generic_integration_timer_watch_ms = 5
 _TIMER_WATCH_MS = 5
-# @tunable l2.run_generic_integration_served_poll_ms = 10
 _SERVED_POLL_MS = 10
-# @tunable l2.run_generic_integration_stop_write_delay_ms = 150
 _STOP_WRITE_DELAY_MS = 150
-# @tunable l2.run_generic_integration_hung_after_ms = 5
 _HUNG_AFTER_MS = 5  # a stand-in call still pending this long never returns
-# @tunable l2.run_generic_integration_ticker_period_ms = 3
 _TICKER_PERIOD_MS = 3
-# @tunable l2.run_generic_integration_drop_fire_ms = 15
 _DROP_FIRE_MS = 15  # the one-shot whose fire the drop flag loses
-# @tunable l2.run_generic_integration_rearm_fire_ms = 5
 _REARM_FIRE_MS = 5
-# @tunable l2.run_generic_integration_lag_report_ms = 20
 _LAG_REPORT_MS = 20
-# @tunable l2.run_generic_integration_lag_period_ms = 5
 _LAG_PERIOD_MS = 5
-# @tunable l2.run_generic_integration_lag_link_report_ms = 10
 _LAG_LINK_REPORT_MS = 10
-# @tunable l2.run_generic_integration_lag_link_period_ms = 2
 _LAG_LINK_PERIOD_MS = 2
-# @tunable l2.run_generic_integration_served_polls = 100
 _SERVED_POLLS = 100
-# @tunable l2.run_generic_integration_serve_bound_s = 30.0
 _SERVE_BOUND_S = 30.0  # a serving the stop file ends long before
-# @tunable l2.run_generic_integration_serve_short_s = 0.2
 _SERVE_SHORT_S = 0.2  # a serving with no stop file, waited out
 
 

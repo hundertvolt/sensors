@@ -35,24 +35,16 @@ BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 # Steady levels, ascending: ambient only, then up through the range switch into hard saturation.
 _LEVELS = (0, 2, 4, 8, 16, 40, 100, 255)
 # SampleInterval 1 s, the fixed 2-cycle settle and slack for a switch to land; then a sample stored after it.
-# @tunable l3.isl29125_mechanism_envelope_settle_s = 4.5
 _SETTLE_S = 4.5
-# @tunable l3.isl29125_mechanism_envelope_max_wait_s = 12.0
 _MAX_WAIT_S = 12.0
 # One up and one down is ideal; chatter would be dozens.
-# @tunable l3.isl29125_mechanism_envelope_max_switches = 4
 _MAX_SWITCHES = 4
 _OVERLAP_LEVEL = 4  # ~150 lx on this rig: ~40 % of the low range's full scale, so both ranges can represent it
 # A relative bound on the gain step, not a calibration claim: the ratio band 20-34 around 26.67 leaves ~25 % at worst.
-# @tunable l3.isl29125_mechanism_envelope_max_range_step = 0.25
 _MAX_RANGE_STEP = 0.25
-# @tunable l3.isl29125_mechanism_envelope_poll_ms = 200
 _POLL_MS = 200
-# @tunable l3.isl29125_mechanism_envelope_min_step_ratio = 0.75
 _MIN_STEP_RATIO = 0.75
-# @tunable l3.isl29125_mechanism_envelope_min_span_ratio = 10.0
 _MIN_SPAN_RATIO = 10.0
-# @tunable l3.isl29125_mechanism_envelope_bit_depth_rel_max = 0.5
 _BIT_DEPTH_REL_MAX = 0.5
 W_ISL_PERIODIC_ONLY = 32  # buildgen/error_catalog.json: five range decisions by the periodic path only
 # A scratch file: _set_dict_cfg() persists through write_config(), which would stamp the seeded cache over the

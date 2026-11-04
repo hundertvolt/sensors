@@ -24,7 +24,6 @@ BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
 # Three distinct (degC, %RH) inputs inside the datasheet's Table 10 range, the same three the mock and twin tiers send.
 _SESSIONS = ((25, 50), (10, 30), (35, 80))
-# @tunable l3.sgp40_same_device_concurrent_sessions_run_bound_s = 5.0
 _RUN_BOUND_S = 5.0
 
 

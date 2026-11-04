@@ -17,17 +17,11 @@ COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_10_watchdog_hang_backst
 
 _ARMED_BANNER = "WDT armed, starving now"  # printed by device_scripts/watchdog_starvation_reset.py
 _STARVE_BANNER = "STARVE flag set, feeding only through feed_watchdog() now"  # device_scripts/reboot_fallback_starves_the_watchdog.py
-# @tunable l3.watchdog_starvation_script_timeout_s = 15.0
 _SCRIPT_TIMEOUT_S = 15.0
-# @tunable l3.watchdog_starvation_reset_elapsed_max_s = 10.0
 _RESET_ELAPSED_MAX_S = 10.0
-# @tunable l3.watchdog_starvation_device_present_timeout_s = 15.0
 _DEVICE_PRESENT_TIMEOUT_S = 15.0
-# @tunable l3.watchdog_starvation_device_present_poll_s = 0.3
 _DEVICE_PRESENT_POLL_S = 0.3
-# @tunable l3.watchdog_starvation_fallback_script_timeout_s = 20.0
 _FALLBACK_SCRIPT_TIMEOUT_S = 20.0
-# @tunable l3.watchdog_starvation_fallback_elapsed_max_s = 12.0
 _FALLBACK_ELAPSED_MAX_S = 12.0
 
 

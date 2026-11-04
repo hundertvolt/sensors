@@ -13,11 +13,8 @@ if TYPE_CHECKING:
 
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ()
 
-# @tunable l3.toolchain_flash_boot_env_setup_timeout_s = 1200
 _ENV_SETUP_TIMEOUT_S = 1200
-# @tunable l3.toolchain_flash_boot_build_timeout_s = 600
 _BUILD_TIMEOUT_S = 600
-# @tunable l3.toolchain_flash_boot_reachability_calls = 5
 _REACHABILITY_CALLS = 5
 
 

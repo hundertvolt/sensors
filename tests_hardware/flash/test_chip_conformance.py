@@ -20,18 +20,14 @@ COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("scd30", "sgp40", "bmp3xx", "fram", "i
 
 _GC_STAGES = (-1, 32768)
 # The longest probe is the ISL29125's (~15 s of measured settles); the SCD30's waits up to one interval.
-# @tunable l3.chip_conformance_probe_timeout_s = 120.0
 _PROBE_TIMEOUT_S = 120.0
 # Two timed measurement periods per write, each up to two intervals: generous for the bench's interval.
-# @tunable l3.chip_conformance_argument_reaction_timeout_s = 240.0
 _ARGUMENT_REACTION_TIMEOUT_S = 240.0
 _SCD30_BOOT_MAX_MS = 2000  # "The boot-up time is < 2 s" (SCD30 Interface Description 1.1)
 _SCD30_INTERVAL_RANGE_S = (2, 1800)  # "Available range: [2 ... 1800]" (1.4.3)
 _BMP3XX_CHIP_IDS = ("50", "60")  # BMP384/BMP388 0x50, BMP390 0x60 (each datasheet's CHIP_ID register)
 # One ISL29125 12-bit conversion: tINT 101 ms at 16 bit over 16 (p.3, p.6), per channel or per RGB cycle of three.
-# @tunable l3.chip_conformance_isl29125_cycle_min_ms = 3
 _ISL_CYCLE_MIN_MS = 3
-# @tunable l3.chip_conformance_isl29125_cycle_max_ms = 40
 _ISL_CYCLE_MAX_MS = 40
 
 

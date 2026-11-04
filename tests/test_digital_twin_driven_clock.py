@@ -24,7 +24,6 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
-# @tunable l2.driven_clock_run_limit_s = 10
 _RUN_LIMIT_S = 10
 # Scenario timings, virtual ms unless named host: test inputs, none a bound on how long a run may take.
 _SLEEP_MS = 30

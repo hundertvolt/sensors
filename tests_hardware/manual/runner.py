@@ -23,7 +23,6 @@ if TYPE_CHECKING:
 # A manual step's level comes from its tier: a board on USB alone is L3, the bench's WiFi makes it L4.
 _LEVEL_OF_TIER = (("[USB+WiFi]", "L4"), ("[USB]", "L3"))
 _NO_JUDGMENT = "no pass/fail judgment recorded"
-# @tunable l4.manual_rest_timeout_s = 10.0
 _REST_TIMEOUT_S = 10.0
 
 

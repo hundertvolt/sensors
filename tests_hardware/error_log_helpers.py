@@ -53,9 +53,7 @@ class ErrcountEntry(TypedDict):
 
 # Above the server's 15.0 s outer_cap_s, never below: a legitimate concurrent reset stays under the
 # cap and WiFi latency is absorbed here. Timings: SPECIFICATION.md C.7.
-# @tunable l4.reset_errors_timeout_s = 30.0
 _RESET_ERRORS_TIMEOUT_S = 30.0
-# @tunable l4.error_log_helpers_errcount_timeout_s = 10.0
 _ERRCOUNT_TIMEOUT_S = 10.0
 # A task-level raise: a supervised task's, or the supervisor's own, which ends in a watchdog reset.
 _RAISED = (code("E", "TASK_RAISED"), code("E", "SUPERVISOR_RAISED"))

@@ -29,9 +29,7 @@ from network import (
     set_access_point_up,
 )
 
-# @tunable l2.network_neopixel_wait_timeout_s = 5.0
 _WAIT_TIMEOUT_S = 5.0
-# @tunable l2.network_neopixel_poll_ms = 20
 _POLL_MS = 20
 _UNSET = ("0.0.0.0", "0.0.0.0", "0.0.0.0", "0.0.0.0")
 

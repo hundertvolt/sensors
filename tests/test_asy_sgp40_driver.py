@@ -55,7 +55,6 @@ _SHARED_CFG_DIR = _scratch.dir()
 
 
 _CRC_POLY = 0x31  # datasheet Table 7
-# @tunable l1.asy_sgp40_driver_event_wait_s = 1
 _EVENT_WAIT_S = 1
 
 

@@ -35,7 +35,6 @@ _GUARD_BEFORE_PATTERN = bytes(range(0x10, 0x20))
 _ORIGINAL_TARGET_PATTERN = bytes(range(0x70, 0x80))
 _NEW_TARGET_PATTERN = bytes((0xCC,) * 16)  # what the reset-raced write attempts
 _GUARD_AFTER_PATTERN = bytes(range(0x30, 0x40))
-# @tunable l3.fram_reset_race_during_write_seed_and_race_victim_bound_s = 30.0
 _VICTIM_BOUND_S = 30.0
 # The line the host waits for: printed right before the raced write, so a run without it never reached the race.
 _BANNER = "RESET_RACE_ARMED"

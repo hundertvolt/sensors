@@ -10,7 +10,6 @@ _DNS_PORT = 53
 _QTYPE_A = 1  # RFC 1035 3.2.2
 _QCLASS_IN = 1  # RFC 1035 3.2.4
 _ANCOUNT_END = 8  # the header's ANCOUNT is bytes 6-7
-# @tunable l4.dns_probe_query_timeout_s = 5.0
 _QUERY_TIMEOUT_S = 5.0
 
 

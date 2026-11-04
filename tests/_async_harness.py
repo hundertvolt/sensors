@@ -26,7 +26,6 @@ if TYPE_CHECKING:
 _NESTED = "run() called from inside a coroutine - build the fixture in the test's synchronous scope"
 _UNENDED = "the reap could not end a task the run created:"
 # How long the reap lets a cancelled task go on running; a task nothing can wake again is named at once.
-# @tunable l1.async_harness_reap_limit_ms = 5000
 _REAP_LIMIT_MS = 5000
 _COMPACT_MIN = 8
 _START_ROUNDS = 8  # scheduler rounds newest_start() gives a just-created task to begin

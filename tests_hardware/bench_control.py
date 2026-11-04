@@ -25,19 +25,12 @@ _INJECTION_CHAINS = (("filter", "FORWARD"), ("nat", "PREROUTING"))
 _TIMEOUT_ENDED_EXIT = 124
 
 
-# @tunable l4.bench_control_nmcli_timeout_s = 30.0
 _NMCLI_TIMEOUT_S = 30.0
-# @tunable l4.bench_control_nmcli_short_timeout_s = 15.0
 _NMCLI_SHORT_TIMEOUT_S = 15.0
-# @tunable l4.bench_control_cmd_timeout_s = 10.0
 _CMD_TIMEOUT_S = 10.0
-# @tunable l4.bench_control_udp_capture_timeout_s = 55.0
 _UDP_CAPTURE_TIMEOUT_S = 55.0
-# @tunable l4.bench_control_join_hotspot_timeout_s = 30.0
 _JOIN_HOTSPOT_TIMEOUT_S = 30.0
-# @tunable l4.bench_control_tcpdump_timeout_s = 60
 _TCPDUMP_TIMEOUT_S = 60
-# @tunable l4.bench_control_capture_wait_floor_s = 5.0
 _CAPTURE_WAIT_FLOOR_S = 5.0
 
 

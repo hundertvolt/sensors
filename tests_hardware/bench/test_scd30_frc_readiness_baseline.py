@@ -18,11 +18,8 @@ COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("scd30",)
 
 # The sensor's 63 % response time is 20 s (SCD30 datasheet v1.0, section 1, CO2 sensor specifications); windows of its
 # multiples up to 10 min.
-# @tunable l4.scd30_frc_baseline_window_step_s = 20.0
 _WINDOW_STEP_S = 20.0
-# @tunable l4.scd30_frc_baseline_window_max_s = 600.0
 _WINDOW_MAX_S = 600.0
-# @tunable l4.scd30_frc_baseline_probe_timeout_s = 5.0
 _PROBE_TIMEOUT_S = 5.0
 _PERCENTILES = (50, 90, 100)
 

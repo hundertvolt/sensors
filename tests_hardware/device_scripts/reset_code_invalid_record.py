@@ -25,7 +25,6 @@ _NOT_MAGIC = 0x12345678  # neither asy_system_service.py's record magic nor 0 (t
 # asy_system_service.py's _RR_REBOOT: a const() whose name starts with "_" is no module global on MicroPython, so it
 # cannot be imported and is restated here.
 _RR_REBOOT = 3
-# @tunable l4.reset_code_invalid_record_run_wait_s = 60
 _RUN_WAIT_S = 60
 
 

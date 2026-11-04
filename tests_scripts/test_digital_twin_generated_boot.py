@@ -37,15 +37,10 @@ if TYPE_CHECKING:
 
 _HOST = "127.0.0.1"
 _HTTP_OK = 200
-# @tunable l0.generated_boot_boot_timeout_s = 30.0
 _BOOT_TIMEOUT_S = 30.0
-# @tunable l0.generated_boot_shutdown_timeout_s = 15.0
 _SHUTDOWN_TIMEOUT_S = 15.0
-# @tunable l0.generated_boot_poll_timeout_s = 1.0
 _POLL_TIMEOUT_S = 1.0  # one readiness GET
-# @tunable l0.generated_boot_poll_step_s = 0.25
 _POLL_STEP_S = 0.25
-# @tunable l0.generated_boot_exit_wait_s = 5
 _EXIT_WAIT_S = 5  # a signalled twin's exit, before the next, harder signal
 # Must outlast real boot-to-serving latency plus the smoke loop's sequential round trips. The
 # old `3` passed only on unintentional slack in a slower shutdown sequence; removing that slack
@@ -58,7 +53,6 @@ _EXIT_WAIT_S = 5  # a signalled twin's exit, before the next, harder signal
 # Measured, not estimated: boot-to-first-200 lands between ~4.5s and ~6.3s across every generated
 # device. A boot-time-only, self-resolving cost that leaves steady-state serving untouched - and
 # boot latency is not a thing to optimise for its own sake (CLAUDE.md).
-# @tunable l0.generated_boot_twin_duration_s = 15
 _TWIN_DURATION_S = 15  # the bound: the run ends on its stop file once the smoke loop is done
 # No real static content is needed - this suite never requests "/" (asy_webserver_service.py's own
 # static route only touches frozen_html lazily, per request - see this file's own module docstring
@@ -67,9 +61,7 @@ _STUB_FROZEN_HTML = '"""Test-only stub - digital_twin/machine.py has no static c
 _STOP_SEEN = "stop file seen, ending the run"  # digital_twin/run_generic_integration.py's _serve_until()
 _UART_CLOCK_FLAG = "--test-uart-driven-clock"
 _UART_CLOCK_LINE = re.compile(r"^UART_CLOCK driven modules=[1-9]", re.MULTILINE)  # _test_uart_driven_clock()'s, once lent
-# @tunable l0.generated_boot_link_poll_gap_s = 3.0
 _LINK_POLL_GAP_S = 3.0  # between the two link-counter reads: a few exercise rounds at the link's own pace
-# @tunable l0.generated_boot_reset_wait_s = 120.0
 _RESET_WAIT_S = 120.0  # a sustained SGP40 fault spending the supervisor's restart budget, then the reset
 _RESET_EXIT = 3  # digital_twin/run_generic_integration.py's _EXIT_SIMULATED_RESET
 _RESET_LINE = re.compile(r"\] machine reset: kind=reset reset_count=1 ")

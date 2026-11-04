@@ -161,72 +161,40 @@ _ERROR_LEVEL = 2  # pins src/asy_print_log.py _LOG_WARN
 
 # The usual run_timed() bound: section F below exercises timeout/hang scenarios, so a genuine bug in the
 # implementation under test (or in one of the fakes below) must surface as a fast FAIL, never a whole-suite stall.
-# @tunable l1.asy_webserver_service_run_bound_s = 5.0
 _RUN_BOUND_S = 5.0
 # The other run_timed() bounds, and the service timeouts and real waits of the timeout cases: one constant per value and
 # role. A case waits out a per-call timeout or cap it names; a headroom is a timeout its request must finish under.
-# @tunable l1.asy_webserver_service_serve_bound_s = 2.0
 _SERVE_BOUND_S = 2.0  # one _serve() whose reclaim it waits out
-# @tunable l1.asy_webserver_service_serve_long_bound_s = 3.0
 _SERVE_LONG_BOUND_S = 3.0  # one _serve() under a headroom timeout
-# @tunable l1.asy_webserver_service_run_long_bound_s = 10.0
 _RUN_LONG_BOUND_S = 10.0  # a scenario of many connections
-# @tunable l1.asy_webserver_service_rewedge_run_bound_s = 15.0
 _REWEDGE_RUN_BOUND_S = 15.0  # the repeated-rewedging scenario
-# @tunable l1.asy_webserver_service_proxy_timeout_ms = 50
 _PROXY_TIMEOUT_MS = 50  # a stream proxy's per-call bound that a hung wait_closed() waits out
-# @tunable l1.asy_webserver_service_proxy_bound_ms = 1000
 _PROXY_BOUND_MS = 1000  # a stream proxy's per-call bound on forwards that return at once
-# @tunable l1.asy_webserver_service_tiny_per_call_s = 0.01
 _TINY_PER_CALL_S = 0.01
-# @tunable l1.asy_webserver_service_fast_per_call_s = 0.02
 _FAST_PER_CALL_S = 0.02
-# @tunable l1.asy_webserver_service_reclaim_per_call_s = 0.05
 _RECLAIM_PER_CALL_S = 0.05
-# @tunable l1.asy_webserver_service_tiny_outer_cap_s = 0.1
 _TINY_OUTER_CAP_S = 0.1
-# @tunable l1.asy_webserver_service_short_outer_cap_s = 0.2
 _SHORT_OUTER_CAP_S = 0.2
-# @tunable l1.asy_webserver_service_wedge_outer_cap_s = 0.5
 _WEDGE_OUTER_CAP_S = 0.5
-# @tunable l1.asy_webserver_service_slowloris_per_call_s = 0.02
 _SLOWLORIS_PER_CALL_S = 0.02  # a trickled byte comes every half of it
-# @tunable l1.asy_webserver_service_slowloris_outer_cap_s = 0.1
 _SLOWLORIS_OUTER_CAP_S = 0.1
-# @tunable l1.asy_webserver_service_mid_headroom_s = 1.0
 _MID_HEADROOM_S = 1.0
-# @tunable l1.asy_webserver_service_headroom_s = 2.0
 _HEADROOM_S = 2.0
-# @tunable l1.asy_webserver_service_long_headroom_s = 5.0
 _LONG_HEADROOM_S = 5.0  # the held connections outlive the case
-# @tunable l1.asy_webserver_service_cancel_outer_cap_s = 10.0
 _CANCEL_OUTER_CAP_S = 10.0  # must not fire before the test cancels
 _ADMIT_LIMIT_MS = 1000  # the bound on the wait for held connections to be admitted
-# @tunable l1.asy_webserver_service_task_reach_s = 0.05
 _TASK_REACH_S = 0.05  # real wait for a started task to reach its server or handler wait
-# @tunable l1.asy_webserver_service_close_poll_s = 0.01
 _CLOSE_POLL_S = 0.01  # step of the poll for a connection's close
-# @tunable l1.asy_webserver_service_close_poll_tries = 200
 _CLOSE_POLL_TRIES = 200
-# @tunable l1.asy_webserver_service_flat_dict_piece_max_bytes = 1200
 _FLAT_DICT_PIECE_MAX_BYTES = 1200  # each streamed piece of the 30-field dict stays below it
-# @tunable l1.asy_webserver_service_make_service_per_call_s = 0.2
 _MAKE_SERVICE_PER_CALL_S = 0.2  # _make_service()'s per-call timeout, for a case that sets none
-# @tunable l1.asy_webserver_service_make_service_outer_cap_s = 0.5
 _MAKE_SERVICE_OUTER_CAP_S = 0.5  # _make_service()'s outer cap, for a case that sets none
-# @tunable l1.asy_webserver_service_wire_per_call_ms = 2000
 _WIRE_PER_CALL_MS = 2000  # _get_on_the_wire()'s per-call timeout: a loaded host never cuts a body short
-# @tunable l1.asy_webserver_service_wire_outer_cap_ms = 4000
 _WIRE_OUTER_CAP_MS = 4000  # _get_on_the_wire()'s outer cap, under _RUN_BOUND_S
-# @tunable l1.asy_webserver_service_slowloris_trickle_ratio = 0.5
 _SLOWLORIS_TRICKLE_RATIO = 0.5  # the slowloris trickle's byte interval, as a share of its per-call timeout
-# @tunable l1.asy_webserver_service_reset_release_bound_s = 0.5
 _RESET_RELEASE_BOUND_S = 0.5  # how long a suspended reset waits for every other one to start
-# @tunable l1.asy_webserver_service_soak_warmup_cycles = 20
 _SOAK_WARMUP_CYCLES = 20  # the lifecycle soak's warm-up
-# @tunable l1.asy_webserver_service_soak_rate_from_cycle = 80
 _SOAK_RATE_FROM_CYCLE = 80  # the soak's retention rate runs from this cycle to its last
-# @tunable l1.asy_webserver_service_soak_cycles = 200
 _SOAK_CYCLES = 200  # the lifecycle soak's cycles
 
 
@@ -2258,7 +2226,6 @@ def test_f1_a_slot_is_held_until_the_close_completes_not_until_the_response_is_w
 # Connection lifecycle: mid-request, the request line and headers
 
 
-# @tunable l1.serve_backstop_cap_mult = 20
 _SERVE_BACKSTOP_CAP_MULT = 20  # run_timed()'s backstop over the outer cap under test
 
 
@@ -2994,7 +2961,6 @@ def test_f8_start_serving_runs_a_real_asyncio_start_server_backed_task() -> None
 
 # Bytes the service may keep per cycle. A planted 16-byte-per-cycle leak exceeds it, the healthy path stays under it
 # (both measured once; SPECIFICATION.md E.7 records the calibration).
-# @tunable l1.webserver_leak_rate_max_b = 8
 _LEAK_RATE_MAX_B = 8
 
 

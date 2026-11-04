@@ -62,9 +62,7 @@ if TYPE_CHECKING:
         def get_timer_starters(self) -> "list[TimerStarter]": ...
         def get_trigger_starters(self) -> "list[TimerStarter]": ...
 
-# @tunable l2.hot_replug_wait_s = 40.0
 _WAIT_S = 40.0
-# @tunable l2.hot_replug_run_bound_s = 90.0
 _RUN_BOUND_S = 90.0
 # The reading field that proves a driver read (as the bus-hazard tier's _I2C_DRIVER_HEALTH_FIELD).
 _HEALTH_FIELD = {"scd30": "CO2", "sgp40": "VOC", "bmp3xx": "Pres", "isl29125": "Lux"}

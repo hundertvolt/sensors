@@ -27,7 +27,6 @@ _REGIONS = ("_SCRATCH_REGIONS", "_EVIDENCE_REGIONS")
 _MICROPYPATH = "build/generated_src:src:tests:frozen_modules:.frozen"
 # @tunable l1.unix_heapsize = 16M
 _HEAPSIZE = "16M"
-# @tunable l0.fram_regions_boot_timeout_s = 120
 _BOOT_TIMEOUT_S = 120
 _ALLOCATION_PROBE = """
 import sys

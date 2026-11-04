@@ -638,7 +638,7 @@ The chip-fake and fake-module tests are deterministic — no wall-clock waiting,
 short-period/generous-timeout smoke test in `tests/test_digital_twin_machine.py`
 (`test_timer_fires_for_real_on_a_short_period`) that proves the real-time scheduling mechanism itself
 works at all, not a precise-cadence assertion. The tiers that boot a device's real graph run on real
-time and wait for each state by a bounded poll (`tests/_twin_readiness.py`), every bound a Part N row.
+time and wait for each state by a bounded poll (`tests/_twin_readiness.py`).
 
 ## Running device scripts in the twin
 
@@ -703,7 +703,7 @@ SPECIFICATION.md Part I.4(e)'s standing rule applied to the *entire* suite, not 
 check (run 11, below) — every run's log is checked for zero `MemoryError`/`memory allocation
 failed` (caught-and-logged included; a missing, unreadable or empty log fails the gate) and for
 `public_destinations_refused=0` on its shutdown line, and every suite and harness shutdown line for a
-feed gap above 75 % of the armed watchdog timeout (`l2.feed_gap_share_max`), except the runs that
+feed gap above 75 % of the armed watchdog timeout, except the runs that
 starve the watchdog on purpose (run 10, the hung-step scenario). The routes a run walks come from the
 device's API reference, `build/generated_src/api/sensortask_<device>.json`, whose absence fails the
 pass naming it. A device wiring a `uart_link` pair runs Run 3 again on a TOML derived with
@@ -808,7 +808,7 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
    that NTP logs `NTP_NO_REPLY` where the host has a route for the request and `NTP_NOT_SENT`
    where it has none (a network namespace holding only `lo`), never both, and that no task ended and
    was restarted meanwhile. The watch ends on the second NTP failure event, then one supervisor pass
-   (`l2.ntp_unreachable_failures`, inside the 90 s `l2.ntp_unreachable_watch_s` bound): the unsynced
+   (inside a 90 s bound): the unsynced
    retry, one attempt every 60 s after a failed one, puts the failures at about 4 and 64 s of serving
    (the first measured on `dev`, 2026-10-15) and the third at about 124 s, past the bound.
 10. **The dedicated watchdog-backstop case** — one bounded real, *blocking* (`time.sleep()`, not
@@ -823,7 +823,7 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
     errors (run 3) cannot demonstrate — that the watchdog backstop itself actually engages
     (`would_have_triggered_count >= 1`), matching CLAUDE.md's recovery-ladder rule: a transfer that
     never returns is the watchdog's. Each run ends on its `WATCHDOG_WOULD_TRIGGER` line, inside the
-    45 s `l2.hang_run_exit_wait_s` bound.
+    45 s bound.
 11. **Clean soak run — host-driven, not a twin-side `--soak` flag.** A fresh clean-boot twin
     subprocess is armed with `--mem-sample-interval-ms` only; the *host* (this script's own
     `_run_11_soak()`, plain CPython) drives warm-up cycles until no cycle has set a new `MEM_SAMPLE`
@@ -938,7 +938,7 @@ Almost every request-driving and response-observing job moved host-side (SPECIFI
   counts the rest, so a unit test with direct object access can assert what crossed the wire, and
   every such test clears it itself. This process has no such access — it boots the twin as a
   subprocess and never reads the log — so `_wire_log_clearer()` clears each log in place on a timer
-  (`l2.twin_wire_log_clear_interval_ms`); unbounded and uncleared, it grew for as long as the link
+  (every 5 s); unbounded and uncleared, it grew for as long as the link
   carried traffic, which made Run 11's memory trend fail for the one device with a wired pair.
   Clearing it changes nothing over-the-wire: nothing in the request path or `asy_uart_comm.py` ever
   reads it back.

@@ -93,22 +93,14 @@ if TYPE_CHECKING:
 
 # Each wait counts its polls or loop yields, so no scenario carries a wall-clock bound a slow host would trip (agent,
 # 2026-10-20); a hang is the per-file timeout's (scripts/test.sh), whose abort line names the test.
-# @tunable l2.sensortask_integration_wait_poll_s = 0.25
 _WAIT_POLL_S = 0.25
-# @tunable l2.sensortask_integration_wait_timeout_s = 5.0
 _WAIT_TIMEOUT_S = 5.0
-# @tunable l2.sensortask_integration_restart_wait_timeout_s = 6.0
 _RESTART_WAIT_TIMEOUT_S = 6.0
 # Five real failure cycles at the WiFi loop's 5 s period, then the hotspot's own settles.
-# @tunable l2.sensortask_integration_hotspot_wait_timeout_s = 40.0
 _HOTSPOT_WAIT_TIMEOUT_S = 40.0
-# @tunable l2.sensortask_integration_bind_poll_s = 0.01
 _BIND_POLL_S = 0.01
-# @tunable l2.sensortask_integration_window_wait_s = 10.0
 _WINDOW_WAIT_S = 10.0
-# @tunable l2.wdt_overrun_wait_s = 9.0
 _WDT_OVERRUN_WAIT_S = 9.0
-# @tunable l2.sensortask_integration_idle_window_s = 3.0
 _IDLE_WINDOW_S = 3.0
 _BURST = 6  # DNS queries sent with no yield between them: more than lwIP queues for one socket (asy_captive_dns.py)
 _DNS_QUESTION = b"\x07captive\x07example\x00\x00\x01\x00\x01"  # one A record (RFC 1035 4.1.2)
@@ -138,7 +130,6 @@ _HEAP_DRIFT_BYTES = 2048
 # that (agent, 2026-10-27).
 _DRIFT_SLOPE_BYTES = 32  # one GC block a death on the twin, the least a leak can retain
 _SETTLED_DEATH = 3  # the readings before it still settle: the second and third hold up to 0.8 KB the fourth does not
-# @tunable l2.sensortask_integration_heap_floor_reads = 3
 _FLOOR_READS = 3
 # A seeded SCD30 reading: the compensation the SGP40 reads before it measures.
 _SCD30_READING = SCD30(800, 22.0, 45.0, None, None, None, None, None)

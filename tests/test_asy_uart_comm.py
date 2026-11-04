@@ -104,54 +104,31 @@ _CUR = 4  # pins src/asy_uart_comm.py _MSG_CUR_CHUNK
 _PAYLOAD = 5  # pins src/asy_uart_comm.py _MSG_PAYLOAD
 _FRAME = 5 + PAYLOAD_SIZE
 
-# @tunable l1.asy_uart_comm_short_reply_timeout_ms = 30
 _SHORT_REPLY_TIMEOUT_MS = 30
-# @tunable l1.asy_uart_comm_step_bound_s = 10
 _STEP_BOUND_S = 10
-# @tunable l1.asy_uart_comm_loop_survival_wait_ms = 20
 _LOOP_SURVIVAL_WAIT_MS = 20
-# @tunable l1.asy_uart_comm_silent_bound_s = 15
 _SILENT_BOUND_S = 15
-# @tunable l1.asy_uart_comm_listener_run_bound_s = 25
 _LISTENER_RUN_BOUND_S = 25
-# @tunable l1.asy_uart_comm_short_bound_s = 5
 _SHORT_BOUND_S = 5
-# @tunable l1.asy_uart_comm_past_deadline_bound_s = 2
 _PAST_DEADLINE_BOUND_S = 2
-# @tunable l1.asy_uart_comm_flood_step_ms = 1
 _FLOOD_STEP_MS = 1
-# @tunable l1.asy_uart_comm_run_bound_s = 20
 _RUN_BOUND_S = 20
-# @tunable l1.asy_uart_comm_listener_park_ms = 10
 _LISTENER_PARK_MS = 10
 _INSIDE_LOCK_LIMIT_MS = 1000  # the bound on the wait for a task to hold the bus
-# @tunable l1.asy_uart_comm_listener_short_bound_s = 8
 _LISTENER_SHORT_BOUND_S = 8
-# @tunable l1.asy_uart_comm_async_callback_yield_ms = 1
 _ASYNC_CALLBACK_YIELD_MS = 1
-# @tunable l1.asy_uart_comm_bsec_run_bound_s = 60
 _BSEC_RUN_BOUND_S = 60
-# @tunable l1.asy_uart_comm_prompt_hold_ms = 5
 _PROMPT_HOLD_MS = 5
-# @tunable l1.asy_uart_comm_recorder_poll_ms = 1
 _RECORDER_POLL_MS = 1  # the test's own real look at the sleep recorder's delays
-# @tunable l1.asy_uart_comm_gate_look_ms = 5
 _GATE_LOOK_MS = 5  # a real sleep in which the write gate takes its looks, its clock held
-# @tunable l1.asy_uart_comm_past_cancel_ack_hold_ms = 1300
 _PAST_CANCEL_ACK_HOLD_MS = 1300
-# @tunable l1.asy_uart_comm_cap_refusals = 50
 _REFUSALS = 50
-# @tunable l1.asy_uart_comm_hammer_rounds = 200
 _HAMMER_ROUNDS = 200
-# @tunable l1.asy_uart_comm_hammer_run_bound_s = 120
 _HAMMER_RUN_BOUND_S = 120
-# @tunable l1.asy_uart_comm_flush_recovery_tries = 5
 _FLUSH_RECOVERY_TRIES = 5
-# @tunable l1.asy_uart_comm_hold_off_look_ms = 30
 _HOLD_OFF_LOOK_MS = 30
 # The drain of a listener whose stall is permanent, no frame ever reaching its next round: the verdict does not depend
 # on it, so it only has to outlast a listener that does finish (agent, 2026-10-27).
-# @tunable l1.asy_uart_comm_stall_drain_s = 1
 _STALL_DRAIN_S = 1
 
 

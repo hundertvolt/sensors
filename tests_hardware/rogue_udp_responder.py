@@ -5,9 +5,7 @@ source it answered so a test can prove the injection reached the DUT (bench_cont
 import socket
 import threading
 
-# @tunable l4.rogue_udp_responder_recv_timeout_s = 0.5
 _RECV_TIMEOUT_S = 0.5
-# @tunable l4.rogue_udp_responder_join_timeout_s = 5.0
 _JOIN_TIMEOUT_S = 5.0
 
 

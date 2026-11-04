@@ -25,20 +25,13 @@ if TYPE_CHECKING:
 
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("construction", "sensortask_integration")
 
-# @tunable l4.boot_order_status_poll_s = 0.5
 _STATUS_POLL_S = 0.5
-# @tunable l4.boot_order_window_s = 90.0
 _BOOT_WINDOW_S = 90.0
-# @tunable l4.boot_order_console_read_timeout_s = 0.2
 _CONSOLE_READ_TIMEOUT_S = 0.2
-# @tunable l4.boot_order_console_reopen_s = 0.2
 _CONSOLE_REOPEN_S = 0.2
 # Host-side arrival stamps carry the USB poll and print scheduling jitter on top of the planned gap.
-# @tunable l4.boot_order_trigger_stamp_tolerance_ms = 20.0
 _STAMP_TOLERANCE_MS = 20.0
-# @tunable l4.boot_order_probe_timeout_s = 5.0
 _PROBE_TIMEOUT_S = 5.0
-# @tunable l4.boot_order_join_timeout_s = 10.0
 _JOIN_TIMEOUT_S = 10.0
 _BAUDRATE = 115200
 _SYSTEM = "asy_system_service.py"
@@ -79,7 +72,7 @@ def test_webserver_answers_before_the_first_ntp_sync_completes(board: Board, ben
     assert rtc_at is None or first_ok < rtc_at or in_first_sync, f"the first 200 ({first_ok - reset_at:.2f}s) came after the first RTC set ({rtc_at - reset_at:.2f}s) with no sync under way"
     sta_at = _first(log, _STA_LINE)
     assert sta_at is not None, "no STA-connect line in the stamped log"
-    result_note(f"STA connect to the first 200: {first_ok - sta_at:.2f}s (l4.dut_serving_after_sta_s's measured figure); reset to the first 200: {first_ok - reset_at:.2f}s")
+    result_note(f"STA connect to the first 200: {first_ok - sta_at:.2f}s (the measured figure behind the conftest's 30 s); reset to the first 200: {first_ok - reset_at:.2f}s")
 
 
 @pytest.mark.soak_duration

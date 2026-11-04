@@ -12,7 +12,6 @@ if TYPE_CHECKING:
 
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_5_recovery_after_bounded_fault",)
 
-# @tunable l3.task_supervisor_script_timeout_s = 15.0
 _SCRIPT_TIMEOUT_S = 15.0
 _TASK_RETURNED = code("E", "TASK_RETURNED")
 

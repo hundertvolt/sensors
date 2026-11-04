@@ -27,16 +27,11 @@ if TYPE_CHECKING:
 
 _PAYLOAD = 8
 _BAUD = 115200  # J.6's line rate
-# @tunable l2.uart_field_sweep_timeout_ms = 30
 _TIMEOUT_MS = 30
 # A rejected frame is answered by silence, so each verdict waits one window past the responder's own timeout.
-# @tunable l2.uart_field_sweep_quiet_window_ms = 45
 _QUIET_WINDOW_MS = 45
-# @tunable l2.uart_field_sweep_run_limit_s = 120
 _RUN_LIMIT_S = 120
-# @tunable l2.uart_field_sweep_settle_ms = 5
 _SETTLE_MS = 5  # the responder's last read after the clean exchange's call returned
-# @tunable l2.uart_field_sweep_return_poll_ms = 1
 _RETURN_POLL_MS = 1  # a real look at whether the responder's call has returned
 
 

@@ -47,36 +47,21 @@ _POS = 5  # pins src/asy_uart_comm.py _MSG_PAYLOAD
 
 _ERROR_LOG = LogConfig(None, DEFAULT_LOG.history_length, ERROR_LEVEL)  # a UARTComm built here logs as the pairs do
 
-# @tunable l1.uart_comm_hazard_limit_s = 10
 _LIMIT_S = 10
-# @tunable l1.uart_comm_hazard_task_bound_s = 8
 _TASK_BOUND_S = 8
-# @tunable l1.uart_comm_hazard_listener_settle_ms = 5
 _LISTENER_SETTLE_MS = 5
-# @tunable l1.uart_comm_hazard_concurrency_limit_s = 25
 _CONCURRENCY_LIMIT_S = 25
-# @tunable l1.uart_comm_hazard_lock_take_ms = 1
 _LOCK_TAKE_MS = 1
 _IN_FLIGHT_LIMIT_MS = 1000  # the bound on the wait for a transaction to hold the link
-# @tunable l1.uart_comm_hazard_listener_park_ms = 5
 _LISTENER_PARK_MS = 5
-# @tunable l1.uart_comm_hazard_recovery_limit_s = 30
 _RECOVERY_LIMIT_S = 30
-# @tunable l1.uart_comm_hazard_retention_limit_s = 120
 _RETENTION_LIMIT_S = 120
-# @tunable l1.uart_comm_hazard_fragment_gap_ms = 3
 _FRAGMENT_GAP_MS = 3
-# @tunable l1.uart_comm_hazard_mismatch_limit_s = 60
 _MISMATCH_LIMIT_S = 60
-# @tunable l1.uart_comm_hazard_hammer_limit_s = 300
 _HAMMER_LIMIT_S = 300
-# @tunable l1.uart_comm_hazard_sustained_timeout_factor = 8
 _SUSTAINED_TIMEOUT_FACTOR = 8
-# @tunable l1.uart_comm_hazard_recovery_attempts = 4
 _RECOVERY_ATTEMPTS = 4
-# @tunable l1.uart_comm_hazard_retention_per_transaction_max_bytes = 6.0
 _RETENTION_PER_TRANSACTION_MAX_BYTES = 6.0
-# @tunable l1.uart_comm_hazard_retention_per_failure_max_bytes = 16.0
 _RETENTION_PER_FAILURE_MAX_BYTES = 16.0
 
 
@@ -602,9 +587,7 @@ def _check_a_train_whose_chunks_total_changes_is_rejected_before_the_data_is_kep
 
 # ---- steady-state memory (audit pass) --------------------------------------------------------
 
-# @tunable l1.uart_comm_hazard_warmup_rounds = 20
 _WARMUP = 20
-# @tunable l1.uart_comm_hazard_measured_rounds = 100
 _MEASURED = 100
 
 
@@ -1205,7 +1188,6 @@ def _hammer_faulted(crc: "CrcMaker", stall_after: int = 0, stall_ms: int = 0) ->
 # are different claims.
 # ---------------------------------------------------------------------------
 
-# @tunable l1.uart_comm_hazard_hammer_rounds = 150
 _HAMMER_ROUNDS = 150
 _HAMMER_SAMPLE_AT = _HAMMER_ROUNDS // 3  # the warm-up that absorbs first-touch allocation
 _HAMMER_MEASURED = _HAMMER_ROUNDS - _HAMMER_SAMPLE_AT - 1  # transactions the heap delta spans
@@ -1395,7 +1377,6 @@ def raw_frame(
 # A clean SET and its listener on the driven clock: the bytes land at once, every UART wait is a driven sleep, so the
 # duration is exact on any host. J.7 states no figure; the bound is the measured 4 ms in both CRC modes with no margin
 # (agent, 2026-10-21); a delay planted in the frame write exceeds it (20 ms measured 44 ms, 100 ms 204 and 279 ms).
-# @tunable l1.uart_comm_hazard_clean_transaction_virtual_ms = 4
 _CLEAN_TRANSACTION_VIRTUAL_MS = 4
 
 

@@ -38,7 +38,6 @@ ISL29125 = ProbeTable(
     {},
 )
 
-# @tunable l3.conformance_twin_probe_timeout_s = 180.0
 _TWIN_PROBE_TIMEOUT_S = 180.0
 
 

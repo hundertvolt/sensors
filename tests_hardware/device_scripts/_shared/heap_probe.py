@@ -16,12 +16,9 @@ if TYPE_CHECKING:
 
 # Search bounds: 64 B is below anything worth reporting; 192 KiB is above the RP2040's free heap, so the search
 # always converges on a real failure rather than running off the top.
-# @tunable l3.heap_probe_min = 64
 _PROBE_MIN = 64
-# @tunable l3.heap_probe_max_kib = 192
 _PROBE_MAX = 192 * 1024
 # Rereads while the probe still holds its own buffer through a stale root (one has always been enough).
-# @tunable l3.heap_probe_retries = 3
 _PROBE_RETRIES = 3
 
 

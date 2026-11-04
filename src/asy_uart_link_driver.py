@@ -48,11 +48,8 @@ _HAZARD_CMD_ID = const(0x07)  # the command id the raw first chunks carry
 _HEADER_BYTES = const(5)  # uid, cmd, size, chunks, cur_chunk (J.3)
 # In reply budgets: an answered frame's wait, past the peer's train timeout and resync window (2.5, J.6), as the bench
 # script's; and the ACK window and pre-recovery wait, past its longest listen backoff too (5 more, J.5).
-# @tunable uart.hazard_quiet_timeouts = 3
 _QUIET_TIMEOUTS = const(3)
-# @tunable uart.hazard_window_timeouts = 8
 _WINDOW_TIMEOUTS = const(8)
-# @tunable uart.hazard_recovery_attempts = 2
 _HAZARD_RECOVERY_ATTEMPTS = const(2)  # after a hazard, a clean exchange within this many tries
 # Each field of a legal first-chunk SET and the boundary values it is swept over: the bench hazard script's set.
 _HAZARD_FIELDS = (

@@ -51,7 +51,6 @@ _CMD_RESPONSE_WAIT_MS: int = src_int("src/asy_scd30_driver.py", "_CMD_RESPONSE_W
 _ASC_ENABLE_WAIT_MS: int = src_int("src/asy_scd30_driver.py", "_ASC_ENABLE_WAIT_MS")
 _SOFT_RESET_WAIT_MS: int = src_int("src/asy_scd30_driver.py", "_SOFT_RESET_WAIT_MS")
 _STACK_EXHAUSTED = src_const("src/asy_print_log.py", "_STACK_EXHAUSTED")  # the interpreter's own C-stack overflow text
-# @tunable l1.asy_scd30_driver_event_wait_s = 1
 _EVENT_WAIT_S = 1
 
 

@@ -31,9 +31,7 @@ if TYPE_CHECKING:
 
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
-# @tunable l3.sgp40_fram_backup_restore_backup_wait_s = 75.0
 _BACKUP_WAIT_S = 75.0  # 60 s to the first natural BackupPeriod=1min trigger, plus margin
-# @tunable l3.sgp40_fram_backup_restore_restore_wait_s = 10.0
 _RESTORE_WAIT_S = 10.0
 _POLL_MS = 1000  # one read cycle of the reader's own 1 s trigger
 

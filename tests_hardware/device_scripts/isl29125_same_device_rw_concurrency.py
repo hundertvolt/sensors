@@ -24,18 +24,12 @@ if TYPE_CHECKING:
 
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
-# @tunable l3.isl29125_same_device_rw_concurrency_read_iterations = 20
 _READ_ITERATIONS = 20
-# @tunable l3.isl29125_same_device_rw_concurrency_write_iterations = 6
 _WRITE_ITERATIONS = 6
-# @tunable l3.isl29125_same_device_rw_concurrency_read_step_ms = 50
 _READ_STEP_MS = 50
-# @tunable l3.isl29125_same_device_rw_concurrency_write_step_ms = 90
 _WRITE_STEP_MS = 90
 # The writer starts once the reader completed its first read, at most this long after (a deadline, not a head start).
-# @tunable l3.isl29125_same_device_rw_concurrency_writer_delay_ms = 120
 _WRITER_DELAY_MS = 120
-# @tunable l3.isl29125_same_device_rw_concurrency_writer_poll_ms = 10
 _WRITER_POLL_MS = 10
 _IR_ADJUST_VALUES = (0, 16, 32, 40, 48, 63)  # every one legal per FN8424 p.10's 0-63 field
 _STATUS_RESERVED_MASK = 0xC8  # B7:B6 and B3 read zero on a working part (FN8424 p.12, Table 15)

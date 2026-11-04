@@ -68,7 +68,6 @@ if TYPE_CHECKING:
         # PrintLogHistory.err_s()'s own signature, for a stand-in that forwards to the real one.
         async def __call__(self, *args: object, errno: int = ..., sep: str = ..., end: str = ...) -> None: ...
 
-# @tunable l1.system_service_run_bound_s = 5
 _RUN_BOUND_S = 5
 _SRC = "src/asy_system_service.py"
 _LOG_SRC = "src/asy_print_log.py"
@@ -603,9 +602,7 @@ def test_an_arm_failure_falls_back_to_a_sleep_and_still_starts_every_trigger() -
 # The reset path: reboot_system()/reboot_bootloader() through the command gate, and _reboot() - record, flush, pause, arm
 # ---------------------------------------------------------------------------
 
-# @tunable l1.system_service_sequence_bound_ms = 30_000
 _SETTLE_MS = 30_000  # a limit, not a timing claim: the 256 KB erase's sequence ends far inside it
-# @tunable l1.system_service_sequence_poll_ms = 1
 _SEQUENCE_POLL_MS = 1  # how often _sequence_done() looks at the sequence's task again, in real time
 
 
@@ -952,19 +949,12 @@ def test_a_write_accepted_inside_the_countdown_is_on_flash_before_the_reset() ->
 # ---------------------------------------------------------------------------
 
 _ERASE_UNIT: int = src_int("src/asy_fram_manager.py", "_ERASE_UNIT")
-# @tunable l1.system_service_hang_watch_ms = 1000
 _HANG_WATCH_MS = 1000  # real time a hung step is watched: a fed step feeds well inside it
-# @tunable l1.system_service_hang_reach_ms = 300
 _HANG_REACH_MS = 300  # real time a command's sequence gets to reach the step a hang is planted in
-# @tunable l1.system_service_poll_ms = 10
 _POLL_MS = 10  # how often a bounded real-time wait for the supervisor's escalation looks again
-# @tunable l1.system_service_budget_poll_ms = 20
 _BUDGET_POLL_MS = 20  # how often the starved-supervisor wait looks again within the watchdog's budget
-# @tunable l1.system_service_quiet_window_ms = 20
 _QUIET_WINDOW_MS = 20  # real time a command's refusal or its wait for the supervisor is watched not to move on
-# @tunable l1.system_service_held_window_ms = 50
 _HELD_WINDOW_MS = 50  # real time a sequence is watched holding behind an in-flight write or a PUT's lock
-# @tunable l1.system_service_stalled_window_ms = 100
 _STALLED_WINDOW_MS = 100  # real time a sequence is watched hung in its flush step
 _PURPOSES = ("_RR_REBOOT", "_BOOTLOADER", "_RR_CONFIG_RESET", "_RR_FRAM_ERASED")
 _REST_WORDS = {"_RR_REBOOT": "reboot", "_BOOTLOADER": "bootloader", "_RR_CONFIG_RESET": "resetconfig", "_RR_FRAM_ERASED": "erasefram"}

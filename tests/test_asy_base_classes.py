@@ -597,7 +597,6 @@ def test_piecebuffer_read_at_copies_exactly_its_range_across_piece_ends() -> Non
     assert buf.read_at(10, bytearray(0))
 
 
-# @tunable l1.asy_base_classes_piece_rounds = 50
 _PIECE_ROUNDS = 50
 _ROUNDS_BUF = PieceBuffer(40, 16)
 _ROUNDS_SRC = bytes(range(33))  # crosses two piece ends from every offset used
@@ -1028,7 +1027,6 @@ def test_tickseconds_ignores_a_zero_or_negative_delta() -> None:
         _restore_time()
 
 
-# @tunable l1.asy_base_classes_fired_bound_ms = 100
 _FIRED_BOUND_MS = 100  # a hang bound on a flag the triggered timer sets at once
 
 

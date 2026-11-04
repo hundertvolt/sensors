@@ -38,13 +38,10 @@ gc.threshold(-1)
 # A scratch directory: every setup() finds its file absent here and writes its defaults once, never a production file.
 _SCRATCH_CFG_PATH = "hwtest-scratch/"
 # 4 s after the timers start, so this reading is the run phase, not the list: the started tasks churn with no collect.
-# @tunable l3.heap_layout_after_full_boot_sequence_starter_settle_ms = 4000
 _STARTER_SETTLE_MS = 4000
 # Bounds mirroring tests/_boot_contiguity_probe.py's, so a twin reading and a board reading share their positions; a
 # feeder task keeps the watchdog fed across both bounded waits.
-# @tunable l3.heap_layout_after_full_boot_sequence_starter_loop_timeout_ms = 20000
 _STARTER_LOOP_TIMEOUT_MS = 20000
-# @tunable l3.heap_layout_after_full_boot_sequence_timers_timeout_s = 15
 _TIMERS_TIMEOUT_S = 15
 _ARM_LIVE = "collects"
 _ARM_SUPPRESSED = "suppressed"

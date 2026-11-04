@@ -15,7 +15,6 @@ from _bmp3xx_chip import BMP3XXChip
 from _twin_common import Walk
 from _twin_random import FixedRandom
 
-# @tunable l2.bmp3xx_probe_hang_s = 0.05
 _PROBE_HANG_S = 0.05
 
 

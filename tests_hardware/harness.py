@@ -98,66 +98,37 @@ _PICOTOOL_NO_DEVICE_EXIT = 249
 _NM_SIZED_FIELDS = 4  # `nm -S`: address, size, type, name
 _TRANSIENT_MARKERS = ("may be in use by another program", "could not enter raw repl", "could not open")
 
-# @tunable l4.harness_wait_until_poll_s = 1.0
 _WAIT_UNTIL_POLL_S = 1.0
-# @tunable l4.harness_serving_probe_timeout_s = 10.0
 _SERVING_PROBE_TIMEOUT_S = 10.0
-# @tunable l4.harness_serving_restore_timeout_s = 90.0
 _SERVING_RESTORE_TIMEOUT_S = 90.0
-# @tunable l4.harness_serving_restore_poll_s = 3.0
 _SERVING_RESTORE_POLL_S = 3.0
-# @tunable l4.harness_script_server_timeout_s = 120.0
 _SCRIPT_SERVER_TIMEOUT_S = 120.0
-# @tunable l4.harness_script_server_handover_s = 20.0
 _SCRIPT_SERVER_HANDOVER_S = 20.0
-# @tunable l4.harness_script_server_probe_timeout_s = 3.0
 _SCRIPT_SERVER_PROBE_TIMEOUT_S = 3.0
-# @tunable l4.harness_script_server_handover_poll_s = 0.5
 _SCRIPT_SERVER_HANDOVER_POLL_S = 0.5
-# @tunable l4.harness_script_server_poll_s = 1.0
 _SCRIPT_SERVER_POLL_S = 1.0
-# @tunable l4.ceiling_hold_check_timeout_s = 0.05
 _HOLD_CHECK_TIMEOUT_S = 0.05
-# @tunable l4.harness_usb_rebind_cmd_timeout_s = 10.0
 _USB_REBIND_CMD_TIMEOUT_S = 10.0
-# @tunable l4.harness_usb_unbind_settle_max_s = 2.0
 _USB_UNBIND_SETTLE_MAX_S = 2.0
-# @tunable l4.harness_usb_bind_settle_max_s = 3.0
 _USB_BIND_SETTLE_MAX_S = 3.0
 # Bounded for the same reason the USB unbind/rebind escalation below is: a node that keeps
 # vanishing and reappearing under an alternating name would otherwise extend the grace window
 # forever, and no single subprocess timeout breaks out of _mpremote()'s own loop.
-# @tunable l4.harness_max_device_rebinds = 2
 _MAX_DEVICE_REBINDS = 2
-# @tunable l4.harness_mpremote_default_timeout_s = 60.0
 _MPREMOTE_DEFAULT_TIMEOUT_S = 60.0
-# @tunable l4.harness_usb_grace_s = 10.0
 _USB_GRACE_S = 10.0
-# @tunable l4.harness_usb_grace_poll_s = 0.5
 _USB_GRACE_POLL_S = 0.5
-# @tunable l4.harness_mpremote_short_timeout_s = 10.0
 _MPREMOTE_SHORT_TIMEOUT_S = 10.0
-# @tunable l4.harness_presence_probe_timeout_s = 0.2
 _PRESENCE_PROBE_TIMEOUT_S = 0.2
-# @tunable l4.harness_mpremote_reset_timeout_s = 15.0
 _MPREMOTE_RESET_TIMEOUT_S = 15.0
-# @tunable l4.harness_log_tail_read_timeout_s = 0.5
 _LOG_TAIL_READ_TIMEOUT_S = 0.5
-# @tunable l4.harness_elf_symbols_timeout_s = 120
 _ELF_SYMBOLS_TIMEOUT_S = 120
-# @tunable l4.observe_during_tail_after_s = 5.0
 _OBSERVE_TAIL_AFTER_S = 5.0
-# @tunable l4.observe_during_tail_step_s = 1.0
 _OBSERVE_TAIL_STEP_S = 1.0
-# @tunable l3.toolchain_flash_boot_picotool_load_attempts = 5
 _PICOTOOL_LOAD_ATTEMPTS = 5
-# @tunable l3.toolchain_flash_boot_load_timeout_s = 120
 _PICOTOOL_LOAD_TIMEOUT_S = 120
-# @tunable l3.toolchain_flash_boot_load_retry_backoff_s = 2.0
 _PICOTOOL_RETRY_BACKOFF_S = 2.0
-# @tunable l3.reflash_present_timeout_s = 30.0
 _REFLASH_PRESENT_TIMEOUT_S = 30.0
-# @tunable l3.reflash_boot_timeout_s = 60.0
 _REFLASH_BOOT_TIMEOUT_S = 60.0
 
 
@@ -258,7 +229,6 @@ def _inline(text: str, rendering: _Rendering, source: Path) -> str:
     return "".join(out)
 
 
-# @tunable l4.ceiling_probe_connect_timeout_s = 2.0
 def _open_probe(host: str, port: int, connect_timeout_s: float = 2.0) -> "socket.socket | None":
     # A connected socket, or None when the connect itself fails - its own timeout, apart from the
     # probe's read timeout, so a slow handshake is never mistaken for a held-open connection.
@@ -359,9 +329,6 @@ def _usb_reset_device(device: str) -> "tuple[bool, str]":
     return True, f"unbind+bind of {usb_id}" + (f" ({'; '.join(notes)})" if notes else "")
 
 
-# @tunable l4.ceiling_drain_timeout_s = 10.0
-# @tunable l4.ceiling_drain_release_s = 1.0
-# @tunable l4.ceiling_drain_hold_s = 0.3
 def _wait_for_slots_to_drain(host: str, port: int, admitted: int, timeout_s: float = 10.0, release_s: float = 1.0, hold_s: float = 0.3) -> None:
     # Block until `admitted` connections are held at once again - the whole ceiling, not one slot -
     # then give that check's own connections `release_s` to free theirs: a slot outlives its client's
@@ -479,9 +446,6 @@ def device_toml(device: "str | None" = None) -> Path:
     return DEVICES_DIR / f"{device or bench_device()}.toml"
 
 
-# @tunable l4.ceiling_probe_limit = 40
-# @tunable l4.ceiling_settle_s = 1.0
-# @tunable l4.ceiling_dwell_s = 0.3
 def discover_max_connections(host: str, port: int = 80, probe_limit: int = 40, settle_s: float = 1.0, dwell_s: float = 0.3) -> int:
     # The ceiling the BOARD actually holds, found by holding connections open one at a time until
     # one is refused. The only figure that is silicon's own rather than the tree's, and the one a

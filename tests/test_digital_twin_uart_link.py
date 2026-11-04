@@ -90,69 +90,44 @@ _specs: "list[tuple[int, int, int, asy_uart_driver.UART, str, TransferLimits]]" 
 _BANNER: bytes = src_bytes("src/asy_uart_link_driver.py", "_BANNER")
 _ERROR_LOG = LogConfig(None, DEFAULT_LOG.history_length, ERROR_LEVEL)  # a link end built here logs as the booted device's
 
-# @tunable l2.uart_link_run_limit_s = 30
 _RUN_LIMIT_S = 30
-# @tunable l2.uart_link_listener_settle_s = 5
 _LISTENER_SETTLE_S = 5
-# @tunable l2.uart_link_exchange_limit_s = 60
 _EXCHANGE_LIMIT_S = 60
-# @tunable l2.uart_link_ticker_step_ms = 2
 _TICKER_STEP_MS = 2
-# @tunable l2.uart_link_pause_step_ms = 3
 _PAUSE_STEP_MS = 3
-# @tunable l2.uart_link_pause_rounds = 6
 _PAUSE_ROUNDS = 6
 # The worst measured collection pause, mirrored from asy_uart_comm.py (a _-prefixed const() is no module attribute)
 # @tunable uart.gc_pause_worst_ms = 21
 _WORST_GC_PAUSE_MS = 21
-# @tunable l2.uart_link_max_train_limit_s = 240
 _MAX_TRAIN_LIMIT_S = 240
 # A host stall past the link's 1000 ms reply timeout, after this many ticker rounds (mid-train: about 1550 in all)
 _MAX_TRAIN_STALL_MS = 1100
 _MAX_TRAIN_STALL_AFTER = 750
-# @tunable l2.uart_link_hammer_limit_s = 300
 _HAMMER_LIMIT_S = 300
-# @tunable l2.uart_link_leak_rounds = 300
 _LEAK_ROUNDS = 300
-# @tunable l2.uart_link_leak_warmup_rounds = 20
 _LEAK_WARMUP_ROUNDS = 20
 # Heap retained per transfer, read after a collection at two transfer counts: a rate, never an absolute delta. Calibrated
 # on the Unix port (agent, 2026-10-14): at most 0.6 B clean, 78 B with a planted 16-byte-per-transfer leak.
-# @tunable l2.uart_link_leak_rate_bytes_per_transfer = 16
 _LEAK_RATE_BYTES_PER_TRANSFER = 16
-# @tunable l2.uart_link_crc16_rounds = 3
 _CRC16_ROUNDS = 3
-# @tunable l2.uart_link_hammer_rounds = 120
 _HAMMER_ROUNDS = 120
-# @tunable l2.uart_link_hammer_warmup_rounds = 20
 _HAMMER_WARMUP_ROUNDS = 20
-# @tunable l2.uart_link_hammer_noise_consumers = 3
 _HAMMER_NOISE_CONSUMERS = 3
-# @tunable l2.uart_link_churn_step_ms = 1
 _CHURN_STEP_MS = 1
-# @tunable l2.uart_link_cancel_settle_ms = 5
 _CANCEL_SETTLE_MS = 5
-# @tunable l2.uart_link_churn_limit_s = 180
 _CHURN_LIMIT_S = 180
-# @tunable l2.uart_link_churn_transfers = 10
 _CHURN_TRANSFERS = 10
-# @tunable l2.uart_link_noise_step_ms = 1
 _NOISE_STEP_MS = 1
-# @tunable l2.uart_link_coexist_noise_tasks = 4
 _COEXIST_NOISE_TASKS = 4
 # The hazard run under API load (owner, 2026-10-21, asked "Leave the UART hazards under API load untested?": "b - system
 # shall be proven stable unter max load allover"): readers GET /status meanwhile, each response write a pause as a
 # socket's send is, so requests stay in flight while the link's driven clock moves.
-# @tunable l2.uart_link_hazard_readers = 3
 _HAZARD_READERS = 3
-# @tunable l2.uart_link_hazard_write_pause_ms = 1
 _HAZARD_WRITE_PAUSE_MS = 1
 # Each reader starts a GET at every multiple of this on the driven clock and pauses its writes on that clock too, so a
 # run serves the same reads on any host and at either GC stage (agent, 2026-10-21).
-# @tunable l2.uart_link_hazard_read_period_ms = 2500
 _HAZARD_READ_PERIOD_MS = 2500
 # From the request to the run's end on the driven clock, exact on any host: the measured figure, no margin (agent, 2026-10-21).
-# @tunable l2.uart_link_hazard_run_virtual_ms = 208370
 _HAZARD_RUN_VIRTUAL_MS = 208370
 _EXERCISE_PERIOD_MS = src_int("src/asy_uart_link_driver.py", "_EXERCISE_PERIOD_MS")
 _HAZARD_RECOVERY_ATTEMPTS = src_int("src/asy_uart_link_driver.py", "_HAZARD_RECOVERY_ATTEMPTS")

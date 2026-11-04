@@ -61,7 +61,6 @@ _SGP_ADDR = 0x59
 _ISL_ADDR = 0x44  # hard-wired (FN8424 p15), sharing i2c1 with SCD30 and SGP40 where a TOML puts it there
 _GENERAL_CALL_ADDR = 0x00
 # How long a sibling's loop may take to finish beside a faulting device; a lock the fault stranded never finishes.
-# @tunable l1.bus_fault_isolation_bound_s = 5
 _ISOLATION_BOUND_S = 5
 # The BMP3XX pressure the catalog's planted calibration and ADC bytes give, by hand: BMP388 datasheet §9.1 and §9.3
 # (its temperature is the catalog's BMP_EXPECTED_TEMPERATURE).
@@ -406,7 +405,6 @@ def test_a_recovery_during_a_held_bus_clear_lets_no_sibling_transfer_in() -> Non
     assert_no_transfer_inside_the_recovery(fake_bus, marks[0])
 
 
-# @tunable l1.bus_hazard_multi_device_host_stall_ms = 60
 _HOST_STALL_MS = 60  # a stall past asy_i2c_driver's 50 ms SCL-release bound
 
 

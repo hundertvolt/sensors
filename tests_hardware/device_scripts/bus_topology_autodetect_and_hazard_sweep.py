@@ -36,13 +36,9 @@ BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 _GENERAL_CALL_ADDRESS = 0x00  # I2C-bus specification 3.1.13: the general call
 _RESERVED_RANGES = ((0x00, 0x07), (0x78, 0x7F))  # I2C-bus specification Table 4: reserved addresses
 _OTHER_RESERVED = [a for lo, hi in _RESERVED_RANGES for a in range(lo, hi + 1) if a != _GENERAL_CALL_ADDRESS]
-# @tunable l3.bus_topology_autodetect_and_hazard_sweep_broadcast_step_s = 0.2
 _BROADCAST_STEP_S = 0.2
-# @tunable l3.bus_topology_autodetect_and_hazard_sweep_run_bound_s = 30.0
 _RUN_BOUND_S = 30.0
-# @tunable l3.bus_topology_autodetect_and_hazard_sweep_self_reads = 8
 _SELF_READS = 8
-# @tunable l3.bus_topology_autodetect_and_hazard_sweep_broadcasts = 3
 _BROADCASTS = 3
 
 

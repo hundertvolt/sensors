@@ -23,11 +23,8 @@ if TYPE_CHECKING:
 
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
-# @tunable l3.scd30_plausibility_read_settle_s = 45.0
 _SETTLE_S = 45.0  # the datasheet's response time (tau63 above 10 s) plus margin
-# @tunable l3.scd30_plausibility_read_step_s = 0.5
 _STEP_S = 0.5
-# @tunable l3.scd30_plausibility_read_poll_tries = 30
 _POLL_TRIES = 30
 _TRIGGER_S = 3
 # The synthetic FRC window: FRCWindow's 3600 s maximum at the 2 s minimum interval, CO2 a fixed integer pattern

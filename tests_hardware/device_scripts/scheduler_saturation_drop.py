@@ -22,11 +22,8 @@ if TYPE_CHECKING:
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
 _N_TIMERS = 12  # more than the scheduler's depth (BENCH["depth"]), so a drop is forced, never hoped for
-# @tunable l3.scheduler_saturation_drop_timer_period_ms = 1
 _TIMER_PERIOD_MS = 1
-# @tunable l3.scheduler_saturation_drop_busy_step_us = 900
 _BUSY_STEP_US = 900
-# @tunable l3.scheduler_saturation_drop_heal_window_ms = 500
 _HEAL_WINDOW_MS = 500
 
 _fire_counts = [0] * _N_TIMERS

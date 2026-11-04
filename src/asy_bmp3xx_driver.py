@@ -75,7 +75,6 @@ _CMD_RDY_TIMEOUT_MS = const(50)  # cmd_rdy is set whenever no command is executi
 _MEAS_TIMEOUT_MS = const(300)  # ~150 ms worst case at x32/x32 (3.9.2 typical + Table 22 max margin); 300 ms bounds a stuck STATUS
 # @tunable bmp3xx.status_poll_ms = 2
 _STATUS_POLL_MS = const(2)  # the STATUS poll step
-# @tunable bmp3xx.reset_settle_ms = 2
 _RESET_SETTLE_MS = const(2)  # Bosch's reference bmp3_soft_reset() settles 2 ms (DS001 4.3.22 gives none for 0xB6)
 
 _OSR_SETTINGS = const((1, 2, 4, 8, 16, 32))  # pressure/temperature oversampling settings -

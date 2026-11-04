@@ -33,11 +33,8 @@ if TYPE_CHECKING:
 
 _CFG_FAIL_INTERVAL_MS: int = src_int("src/asy_notification_service.py", "_CFG_FAIL_INTERVAL_S") * 1000
 _LOOP_TICK_MS: int = src_int("src/asy_notification_service.py", "_LOOP_TICK_S") * 1000
-# @tunable l1.asy_notification_service_elapsed_stimulus_ms = 50
 _ELAPSED_STIMULUS_MS = 50
-# @tunable l1.asy_notification_service_override_secs = 2
 _OVERRIDE_SECS = 2
-# @tunable l1.asy_notification_service_next_sleep_min_ms = 59000
 _NEXT_SLEEP_MIN_MS = 59000
 
 
@@ -132,7 +129,6 @@ def _make_signal(
 
 
 # A hang guard in scheduler rounds, never waited out in real time: a condition here holds within a few dozen.
-# @tunable l1.asy_notification_service_max_rounds = 200
 _MAX_ROUNDS = 200
 
 

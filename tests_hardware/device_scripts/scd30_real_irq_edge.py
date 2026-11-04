@@ -24,10 +24,8 @@ if TYPE_CHECKING:
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
 # Above the SCD30's own ~2 s interval plus the IRQ latency, below the self-healing fallback's ~10 s (_TRIGGER_S).
-# @tunable l3.scd30_real_irq_edge_fast_path_deadline_s = 5.0
 _FAST_PATH_DEADLINE_S = 5.0
 _TRIGGER_S = 10
-# @tunable l3.scd30_real_irq_edge_poll_ms = 100
 _POLL_MS = 100
 
 

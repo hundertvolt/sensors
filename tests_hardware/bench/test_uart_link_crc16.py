@@ -26,12 +26,9 @@ COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("uart_link",)
 _CRC_MODE = "crc16"
 _LINK_DRIVER = re.compile(r'^driver = "uart_link"\n', re.MULTILINE)
 # A firmware build from scratch on the bench host: minutes, never hours.
-# @tunable l4.uart_link_crc16_build_timeout_s = 1800.0
 _BUILD_TIMEOUT_S = 1800.0
-# @tunable l4.uart_link_crc16_serving_timeout_s = 120.0
 _SERVING_TIMEOUT_S = 120.0
 # Two polls one exercise period or more apart, after the board is serving the round's image again.
-# @tunable l4.uart_link_crc16_failure_poll_gap_s = 3.0
 _FAILURE_POLL_GAP_S = 3.0
 
 

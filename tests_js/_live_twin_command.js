@@ -16,9 +16,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 // full map is in SPECIFICATION.md Part E.1): a twin tier running on the same host at the same time
 // would otherwise refuse this one's bind. 19482 is _live_matrix_command.js's, in one `npm test` run.
 const PORT = 19481;
-// @tunable l0.live_twin_section_wait_ms = 10000
 const SECTION_WAIT_MS = 10000;
-// @tunable l0.live_twin_tab_wait_ms = 20000
 const TAB_WAIT_MS = 20000;
 // The page's own request timeout (pinned equal to the server's outer cap by test_request_timeout_ceiling.py) and its
 // longest retry wait: a tab or a recovery taking longer than these is the page's failure, not the network's.

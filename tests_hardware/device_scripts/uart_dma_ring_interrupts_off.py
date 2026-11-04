@@ -56,16 +56,12 @@ _FLASH_WINDOWS_US = (3000, 45000, 400000)
 _OVER_BOUND_STEP_US = 100000
 _STREAM_MARGIN_US = 50000  # the stream runs this long on each side of a window
 _AFTER_FRAMES = 4  # sent once the drain is done: every frame after a resync arrives intact
-# @tunable l3.uart_dma_ring_interrupts_off_quiet_ms = 50
 _QUIET_MS = 50
 # Long past the 32-byte FIFO's fill at line rate (2.8 ms at 115200 baud).
-# @tunable l3.uart_dma_ring_interrupts_off_oe_bound_us = 20000
 _OE_BOUND_US = 20000
 _SENTINEL = 0xA5
-# @tunable l3.uart_dma_ring_interrupts_off_untouched_ms = 1000
 _UNTOUCHED_MS = 1000
 # The stream the harness's trailing soft reset lands in: far longer than that reset takes to arrive.
-# @tunable l3.uart_dma_ring_interrupts_off_reset_stream_ms = 2000
 _RESET_STREAM_MS = 2000
 _LINK_TRANSACTIONS = 5
 _BREAK_AFTER_MS = 2  # inside the 4.6 ms a 53-byte frame takes at 115200 baud

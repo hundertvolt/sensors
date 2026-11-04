@@ -74,11 +74,8 @@ if TYPE_CHECKING:
 _POOL = 16  # rp2's alarm pool: digital_twin/machine.py's _ALARM_POOL_SIZE
 _RR_STARVE_ARM_FAILED = src_const("src/asy_system_service.py", "_RR_STARVE_ARM_FAILED")
 _RR_MAGIC = src_const("src/asy_system_service.py", "_RR_MAGIC")
-# @tunable l2.timer_pool_wait_s = 20.0
 _WAIT_S = 20.0
-# @tunable l2.timer_pool_run_bound_s = 60.0
 _RUN_BOUND_S = 60.0
-# @tunable l2.timer_pool_poll_s = 0.1
 _POLL_S = 0.1  # how often a real-time wait below looks again
 
 _scratch = TmpScratch("dt_timer_pool_" + device)  # per device: two devices' jobs of this file may run at once

@@ -46,7 +46,6 @@ _GET = 0x02  # the wire's GET command byte (J.3)
 _ACK = 0x01  # the wire's ACK command byte (J.3)
 _TRAIN_BYTES = PAYLOAD_SIZE * 2 + 7  # three data chunks: room for a mid-train race
 # A rejected frame is answered by silence: each verdict waits the responder's timeout and its resync window past it.
-# @tunable l3.uart_comm_hazards_quiet_window_ms = 300
 _QUIET_WINDOW_MS = 300
 # The fields of a first-chunk SET and the boundary values each is swept over: the L2 field sweep's CRC arm set.
 _H3_FIELDS = (
@@ -56,7 +55,6 @@ _H3_FIELDS = (
     ("cur_chunk", 4, (0, 1, 2, 255)),
     ("uid", 0, (0x00, 0xFE, 0xFF)),
 )
-# @tunable l3.uart_comm_hazards_recovery_attempts = 2
 _RECOVERY_ATTEMPTS = 2  # after H2 or the stalled TX, both ends recover within this many attempts
 # The stalled TX: the initiator's line re-initialised this slow, so a filler is still draining when the frame is due.
 _STALL_BAUD = 300

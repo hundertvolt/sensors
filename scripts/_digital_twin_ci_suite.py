@@ -129,13 +129,10 @@ _LEFT_OUT = {
     ("wlan", "fault", "*"): "every WLAN raise_on method is tests/test_asy_wifi_service.py's; Run 7 drives connect outcomes by --wifi-outcome",
     ("uart_link", "fault", "bounded"): "drop, corrupt and truncate are tests/test_digital_twin_uart_link.py's; Run 3 carries uart_link:silent",
 }
-# @tunable l2.ntp_unreachable_watch_s = 90.0
 _NTP_UNREACHABLE_WATCH_S = 90.0  # Run 9's bound - past the old NTP give-up (~60s), see that run
 # The attempts the unsynced NTP retry (at once, then every 60 s) makes inside that bound, failing at about 4 and 64 s
 # of serving, the next at ~124 s: Run 9's watch ends once that many failed (agent, 2026-11-03).
-# @tunable l2.ntp_unreachable_failures = 2
 _NTP_UNREACHABLE_FAILURES = 2
-# @tunable l2.bus_fault_error_count = 500
 _BUS_FAULT_ERROR_COUNT = 500  # sustained/high-repeat-count - see Run 3's own comment for why.
 # Driver to its own REST/error-log `_NAME`, read from each driver's source and pinned to it by an L0 test; an
 # instance's name appends "_<name_ext>" (instance_name()). Not driver.upper(): uart_link's is "UART".
@@ -165,11 +162,9 @@ _TEST_WARN_CO2 = 1800
 _TEST_SCD30_MEAS_INT = 4
 _TEST_SSID = "digital-twin-test-ssid"
 _MIN_VERBOSE_LOG_LINES = 5
-# @tunable l2.bounded_fault_count = 3
 _BOUNDED_FAULT_COUNT = 3  # injected bus failures per bounded-fault run - SGP40's measure reads in Run 5/5b, then
 # one link per chip instance in Run 5c; each injected fault fails one SGP40 measure read, and three exhaust the
 # supervisor's restart budget elsewhere, which is why the count stays this small.
-# @tunable l2.wifi_scripted_failures = 5
 _WIFI_SCRIPTED_FAILURES = 5  # asy_wifi_service.py's conn_fail_to_hotspot - the failure count that trips hotspot fallback
 # The five identical verdicts spend ONE history slot (the central newest-entry rule, asy_print_log.py) and count
 # five; the fifth's fallback to the hotspot persists its own WLAN_TO_HOTSPOT warning in a second slot (Part C.7.1).
@@ -189,12 +184,10 @@ _SHUTDOWN_S5_PREFIXES = ("Shutdown: resetconfig", "Shutdown: erasefram")
 # README.md has the derivation and SPECIFICATION.md Part C.7 the real-hardware measurements.
 # @tunable web.outer_cap_s = 15.0
 _SERVER_OUTER_CAP_S = 15.0  # mirrors asy_webserver_service.py's _DEFAULT_OUTER_CAP_S - keep in sync
-# @tunable l2.reset_errors_timeout_margin_s = 2.0
 _RESET_ERRORS_TIMEOUT_S = _SERVER_OUTER_CAP_S + 2.0  # loopback: no WiFi close latency to absorb
 # The BUDGET rather than the timeout above, which only catches a call that never finished. Sized from both datasets -
 # twin 8.259s worst, hardware 6.32s idle and 11.58s under load - so 80% of the cap sits ~45% above anything legitimate,
 # and a device wiring the most FRAM-backed sources still leaves ~10 before the budget.
-# @tunable l2.reset_errors_budget_ratio = 0.8
 _RESET_ERRORS_BUDGET_S = _SERVER_OUTER_CAP_S * 0.8
 
 # Run 11 (soak), host-side ("Driver/DUT process separation"): every soak request goes over real HTTP, so the client's
@@ -220,35 +213,21 @@ _MEM_TREND_TOLERANCE_SD_MULTIPLIER = 4.0
 
 # Wait budgets and poll steps, one per purpose. Each wait polls for its condition and returns early;
 # the fixed sleeps wait for an absence, which no probe can observe.
-# @tunable l2.error_count_wait_s = 30.0
 _ERROR_COUNT_WAIT_S = 30.0  # an error-log entry a fault or a restore has to land
-# @tunable l2.first_fault_wait_s = 45.0
 _FIRST_FAULT_WAIT_S = 45.0  # a faulted driver's first "E" entry after its boot
-# @tunable l2.long_wait_s = 90.0
 _LONG_WAIT_S = 90.0  # a bounded fault settling, and WiFi falling back to the hotspot and its DNS
-# @tunable l2.escalation_wait_s = 120.0
 _ESCALATION_WAIT_S = 120.0  # the supervisor's escalation, then its reset: Run 3's restart budget spent, Run 12's stack overflow
-# @tunable l2.ntp_first_sync_wait_s = 60.0
 _NTP_FIRST_SYNC_WAIT_S = 60.0  # a station link's first sync against the twin's local NTP responder
-# @tunable l2.read_cycle_wait_s = 30.0
 _READ_CYCLE_WAIT_S = 30.0  # two observed SGP40 read cycles after Run 5's fault is spent
-# @tunable l2.hang_run_exit_wait_s = 45.0
 _HANG_RUN_EXIT_WAIT_S = 45.0  # Run 10's --duration 15 run, hung bus call included
-# @tunable l2.failed_run_exit_wait_s = 5.0
 _FAILED_RUN_EXIT_WAIT_S = 5.0
 # A commanded reset runs the controlled shutdown, whose first step may wait one supervisor period, then the
 # reset's own delay; the margin covers the twin's scheduling on a loaded host.
-# @tunable l2.commanded_reset_margin_s = 10.0
 _COMMANDED_RESET_MARGIN_S = 10.0
-# @tunable l2.verbose_poll_s = 0.5
 _VERBOSE_POLL_S = 0.5
-# @tunable l2.errcount_poll_s = 1.0
 _ERRCOUNT_POLL_S = 1.0
-# @tunable l2.dns_poll_s = 0.5
 _DNS_POLL_S = 0.5
-# @tunable l2.concurrent_get_join_margin_s = 5.0
 _JOIN_MARGIN_S = 5.0  # past a burst's own timeout, so a thread is joined only once its request gave up
-# @tunable l2.slot_release_wait_s = 1.0
 _SLOT_RELEASE_WAIT_S = 1.0  # a readiness probe would occupy a max_connections slot, the property under test
 
 # A fixed, recognizable DNS transaction ID, so a real answer from CaptiveDNS can be told
@@ -312,7 +291,6 @@ class RunContext:
 # OK/FAIL line is tagged with which gc.threshold() pass produced it, set once per run_suite() call,
 # so no run function needs a per-message edit.
 _CURRENT_PASS_LABEL = ""
-# @tunable l2.ceiling_rounds = 3
 _CEILING_ROUNDS = 3  # back-to-back, so a leaked slot or a pool that only fills over time shows up
 
 

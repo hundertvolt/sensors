@@ -64,11 +64,8 @@ _BOOT_SETUP = src_int(_SRC, "BOOT_SETUP")
 _WATCHDOG_REASON, _CHIP_RESET = 0x40058008, 0x40064008  # the chip's reset flags, as the twin's registers hold them
 _TIMER_BIT, _FORCED_BIT = 0x1, 0x2  # WATCHDOG REASON: TIMER and FORCE
 _HAD_POR_BIT = 0x100  # CHIP_RESET HAD_POR: power-on or brown-out
-# @tunable l2.loop_end_boot_limit_ms = 20000
 _BOOT_LIMIT_MS = 20000  # a boot past it is a failure of its own, never a planted fault
-# @tunable l2.loop_end_run_timeout_s = 30.0
 _RUN_TIMEOUT_S = 30.0
-# @tunable l2.loop_end_poll_ms = 5
 _POLL_MS = 5  # one look of the boot watcher on the driven clock, and of the next boot's /status wait in real time
 
 _scratch = TmpScratch(f"dtle_{device}")

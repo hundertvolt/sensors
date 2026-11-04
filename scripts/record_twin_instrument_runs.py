@@ -34,7 +34,6 @@ RECORD = TESTS_HARDWARE / "twin_record.json"
 RUNNER_FILES = (REPO_ROOT / "digital_twin" / "run_device_script.py", TESTS_HARDWARE / "twin_board.py")
 BENCH_REASON = "needs the bench bridge (network, WLAN role-reversal)"
 _INCLUDE = "# @include _shared/"
-# @tunable l3.record_twin_flash_run_timeout_s = 3600.0
 _FLASH_RUN_TIMEOUT_S = 3600.0  # the whole flash tier under --twin, one pytest process
 # MicroPython's own reactive default, the stage the whole design must hold at, then the firmware boot entry's value.
 GC_THRESHOLDS = (-1, 32768)

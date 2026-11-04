@@ -42,21 +42,13 @@ if TYPE_CHECKING:
     T = TypeVar("T")
 
 
-# @tunable l1.asy_dns_client_prompt_return_max_ms = 200
 _PROMPT_RETURN_MAX_MS = 200
-# @tunable l1.asy_dns_client_fake_server_wait_ms = 2000
 _FAKE_SERVER_WAIT_MS = 2000
-# @tunable l1.asy_dns_client_fake_server_poll_ms = 5
 _FAKE_SERVER_POLL_MS = 5
-# @tunable l1.asy_dns_client_reply_timeout_ms = 1000
 _REPLY_TIMEOUT_MS = 1000
-# @tunable l1.asy_dns_client_no_reply_timeout_ms = 100
 _NO_REPLY_TIMEOUT_MS = 100
-# @tunable l1.asy_dns_client_bad_reply_timeout_ms = 300
 _BAD_REPLY_TIMEOUT_MS = 300
-# @tunable l1.asy_dns_client_fallback_timeout_ms = 200
 _FALLBACK_TIMEOUT_MS = 200
-# @tunable l1.asy_dns_client_cname_reply_timeout_ms = 500
 _CNAME_REPLY_TIMEOUT_MS = 500
 
 

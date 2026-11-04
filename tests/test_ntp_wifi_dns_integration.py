@@ -62,26 +62,17 @@ _PHASE_STA_ESTABLISHED = src_const("src/asy_wifi_service.py", "_PHASE_STA_ESTABL
 _LOG_ALL: int = src_int("src/asy_print_log.py", "_LOG_ALL")
 _RETRY_UNSYNCED_S: int = src_int("src/asy_ntp_client.py", "_NTP_RETRY_UNSYNCED_S")
 
-# @tunable l1.ntp_wifi_dns_integration_lock_blocked_wait_s = 0.05
 _LOCK_BLOCKED_WAIT_S = 0.05
-# @tunable l1.asy_ntp_client_serve_wait_s = 5
 _SERVE_WAIT_S = 5
-# @tunable l1.asy_ntp_client_state_poll_ms = 20
 _STATE_POLL_MS = 20
-# @tunable l1.asy_ntp_client_synced_poll_tries = 50
 _SYNCED_POLL_TRIES = 50
 # @tunable ntp.fetch_timeout_ms = 5000
 _FETCH_TIMEOUT_MS = 5000  # the generated wiring's fetch timeout (buildgen/codegen.py), which _make_ntp() passes by default
-# @tunable l1.asy_ntp_client_no_reply_fetch_timeout_ms = 100
 _FETCH_TIMEOUT_NO_REPLY_MS = 100
-# @tunable l1.ntp_wifi_dns_integration_past_fetch_timeout_ms = 150
 _PAST_FETCH_TIMEOUT_MS = 150
-# @tunable l1.ntp_wifi_dns_integration_failure_cycles = 8
 _FAILURE_CYCLES = 8
 _SETTLE_YIELDS = 200  # a bound in scheduling steps for one hand-over between the NTP and WiFi tasks
-# @tunable l1.asy_ntp_client_fake_server_poll_ms = 10
 _FAKE_SERVER_POLL_MS = 10
-# @tunable l1.asy_ntp_client_fake_server_poll_tries = 1000
 _FAKE_SERVER_POLL_TRIES = 1000
 
 

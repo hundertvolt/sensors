@@ -27,18 +27,12 @@ if TYPE_CHECKING:
 
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
-# @tunable l3.uart_idle_poll_rate_sample_ms = 3000
 _SAMPLE_MS = 3000
-# @tunable l3.uart_idle_poll_rate_min_ratio = 5
 _MIN_RATIO = 5  # measured 20.6x; anything under 5x means the idle rate is not being selected
-# @tunable l3.uart_idle_poll_rate_expected_rounds_factor = 2
 _EXPECTED_ROUNDS_FACTOR = 2
 # The listener has reached its parked wait once its round counter moved: a deadline, not a fixed settle.
-# @tunable l3.uart_idle_poll_rate_park_settle_ms = 500
 _PARK_SETTLE_MS = 500
-# @tunable l3.uart_idle_poll_rate_cancel_settle_ms = 400
 _CANCEL_SETTLE_MS = 400
-# @tunable l3.uart_idle_poll_rate_stop_poll_ms = 10
 _STOP_POLL_MS = 10
 
 

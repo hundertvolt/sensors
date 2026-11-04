@@ -68,27 +68,16 @@ _next_port = _PORT_BASE
 
 
 # Every run() is bounded in real time, so a defect under test fails fast instead of stalling the suite.
-# @tunable l1.asy_webserver_connections_run_limit_s = 30.0
 _RUN_LIMIT_S = 30.0
-# @tunable l1.asy_webserver_connections_per_call_s = 1.0
 _PER_CALL_S = 1.0  # _make_service()'s per-call timeout for a case that sets none
-# @tunable l1.asy_webserver_connections_outer_cap_s = 2.0
 _OUTER_CAP_S = 2.0
-# @tunable l1.asy_webserver_connections_stuck_per_call_s = 0.5
 _STUCK_PER_CALL_S = 0.5  # what each unsendable response's spinning write waits out
-# @tunable l1.asy_webserver_connections_eof_bound_s = 2.0
 _EOF_BOUND_S = 2.0
-# @tunable l1.asy_webserver_connections_response_bound_s = 5.0
 _RESPONSE_BOUND_S = 5.0
-# @tunable l1.asy_webserver_connections_reach_ms = 50
 _REACH_MS = 50  # a started serve task reaches its listen, or its spinning send
-# @tunable l1.asy_webserver_connections_until_poll_ms = 5
 _UNTIL_POLL_MS = 5
-# @tunable l1.asy_webserver_connections_until_polls = 400
 _UNTIL_POLLS = 400
-# @tunable l1.asy_webserver_connections_feeder_tick_ms = 10
 _FEEDER_TICK_MS = 10
-# @tunable l1.asy_webserver_connections_refusal_per_call_s = 30.0
 _REFUSAL_PER_CALL_S = 30.0  # the per-call bound of the refusal, window and reset tests, which no call nears
 
 

@@ -72,37 +72,21 @@ if TYPE_CHECKING:
         ctrl: int | None
         trigger: bool
 
-# @tunable l1.asy_uart_driver_run_bound_s = 5
 _RUN_BOUND_S = 5
-# @tunable l1.asy_uart_driver_data_timeout_ms = 200
 _DATA_TIMEOUT_MS = 200
-# @tunable l1.asy_uart_driver_no_data_timeout_ms = 20
 _NO_DATA_TIMEOUT_MS = 20
-# @tunable l1.asy_uart_driver_task_inside_ms = 5
 _TASK_INSIDE_MS = 5
-# @tunable l1.asy_uart_driver_step_bound_s = 2
 _STEP_BOUND_S = 2
-# @tunable l1.asy_uart_driver_no_delimiter_timeout_ms = 100
 _NO_DELIMITER_TIMEOUT_MS = 100
-# @tunable l1.asy_uart_driver_locked_work_ms = 30
 _LOCKED_WORK_MS = 30
-# @tunable l1.asy_uart_driver_short_cancel_ack_ms = 50
 _SHORT_CANCEL_ACK_MS = 50
-# @tunable l1.asy_uart_driver_ready_timeout_ms = 100
 _READY_TIMEOUT_MS = 100
-# @tunable l1.asy_i2c_driver_deadlock_wait_s = 0.2
 _DEADLOCK_WAIT_S = 0.2
-# @tunable l1.asy_uart_driver_poll_wait_ms = 1
 _FAST_POLL_WAIT_MS = 1
-# @tunable l1.asy_uart_driver_idle_poll_ms = 40
 _IDLE_POLL_MS = 40
-# @tunable l1.asy_uart_driver_ringless_poll_ms = 1
 _RINGLESS_POLL_MS = 1  # both rates of the ring-less UART: its two waits have deadlines, so only poll_wait_ms is slept
-# @tunable l1.asy_uart_driver_silent_line_timeout_ms = 30
 _SILENT_LINE_TIMEOUT_MS = 30
-# @tunable l1.asy_uart_driver_feed_delay_ms = 3
 _FEED_DELAY_MS = 3
-# @tunable l1.asy_uart_driver_hammer_bound_s = 60
 _HAMMER_BOUND_S = 60
 
 # asy_uart_driver.py's private const()s, read from its source (tests/_src_const.py).
@@ -1021,7 +1005,7 @@ def test_cancel_with_a_wedged_holder_is_bounded_and_counted() -> None:
         task = asyncio.create_task(wedged())
         try:
             await asyncio.sleep_ms(_TASK_INSIDE_MS)
-            # A product bound waited out (the cancel acknowledgement), tagged as such.
+            # A product bound waited out: the cancel acknowledgement.
             result = await asyncio.wait_for(uart.cancel_read_timeout(timeout_ms=_SHORT_CANCEL_ACK_MS), _STEP_BOUND_S)
             return result, uart.cancel_unacknowledged
         finally:

@@ -32,17 +32,11 @@ _TIMER_BIT, _FORCED_BIT = 0x1, 0x2  # the watchdog's REASON bits 0-1, TIMER and 
 # Read after the serving boot: the exec's Ctrl-C and soft reset change no reset register (the bench's record).
 _READ_REASON_BITS = "from machine import mem32\nprint('REASON_BITS', mem32[0x40058008] & 3)\n"
 _SCRATCH_REMOVE = "import os\nif 'hwtest-scratch' in os.listdir():\n    for n in os.listdir('hwtest-scratch/'):\n        os.remove('hwtest-scratch/' + n)\n    os.rmdir('hwtest-scratch/')\n"
-# @tunable l4.reset_reasons_script_timeout_s = 120.0
 _SCRIPT_TIMEOUT_S = 120.0
-# @tunable l4.reset_reasons_serving_timeout_s = 90.0
 _SERVING_TIMEOUT_S = 90.0
-# @tunable l4.reset_reasons_serving_poll_s = 2.0
 _SERVING_POLL_S = 2.0
-# @tunable l4.reset_reasons_status_timeout_s = 10.0
 _STATUS_TIMEOUT_S = 10.0
-# @tunable l4.reset_reasons_loss_margin_s = 2.0
 _LOSS_MARGIN_S = 2.0
-# @tunable l4.reset_reasons_picotool_timeout_s = 30.0
 _PICOTOOL_TIMEOUT_S = 30.0
 _BOOT_PHASES = (1, 2, 3, 4, 5)  # asy_system_service.py's BOOT_CONSTRUCTION .. BOOT_NTP: a hang in each reads 10 + phase
 

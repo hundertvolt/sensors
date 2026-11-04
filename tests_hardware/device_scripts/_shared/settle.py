@@ -17,7 +17,6 @@ if TYPE_CHECKING:
         def done(self) -> bool: ...
 
 
-# @tunable l3.settle_step_ms = 100
 _SETTLE_STEP_MS = 100
 # @tunable l3.settle_budget_ms = 2000
 _SETTLE_BUDGET_MS = 2000

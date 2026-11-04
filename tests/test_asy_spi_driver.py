@@ -17,9 +17,7 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-# @tunable l1.asy_i2c_driver_gather_wait_s = 1.0
 _GATHER_WAIT_S = 1.0
-# @tunable l1.asy_i2c_driver_deadlock_wait_s = 0.2
 _DEADLOCK_WAIT_S = 0.2
 
 

@@ -5,7 +5,6 @@ import { pollManager, startPolling } from "../js/poll-manager.js";
 import pollManagerSource from "../js/poll-manager.js?raw";
 import { readIntConst } from "./_source_constants.js";
 
-// @tunable l0.poll_manager_poll_ms = 20
 const STUB_DELAY_MS = 20;
 
 /**

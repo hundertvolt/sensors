@@ -55,13 +55,9 @@ if TYPE_CHECKING:
         debug: int | None
 
 PAYLOAD_SIZE = 8
-# @tunable l1.uart_comm_harness_timeout_ms = 100
 TIMEOUT_MS = 100
-# @tunable l1.uart_comm_harness_poll_wait_ms = 1
 POLL_WAIT_MS = 1
-# @tunable l1.uart_comm_harness_run_limit_s = 10
 RUN_LIMIT_S = 10
-# @tunable l1.uart_comm_harness_listener_drain_s = 5
 LISTENER_DRAIN_S = 5
 # The console level a load test's pair passes as debug: a caught MemoryError reaches the memory gate's stream, logged as
 # an error or a warning (owner, 2026-10-20, paraphrase: those unit tests log at error level or above).

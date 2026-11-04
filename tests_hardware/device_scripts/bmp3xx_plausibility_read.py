@@ -22,9 +22,7 @@ if TYPE_CHECKING:
 
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
-# @tunable l3.bmp3xx_plausibility_read_poll_s = 0.5
 _POLL_S = 0.5
-# @tunable l3.bmp3xx_plausibility_read_poll_tries = 30
 _POLL_TRIES = 30
 
 

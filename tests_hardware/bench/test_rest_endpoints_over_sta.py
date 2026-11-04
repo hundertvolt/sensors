@@ -20,9 +20,7 @@ COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("real_website_integration", "sensortas
 # ---------------------------------------------------------------------------
 
 
-# @tunable l4.rest_endpoints_over_sta_probe_timeout_s = 10.0
 _PROBE_TIMEOUT_S = 10.0
-# @tunable l4.rest_endpoints_over_sta_reboot_ready_timeout_s = 120.0
 _REBOOT_READY_TIMEOUT_S = 120.0
 _GAIN_RATIO_PROBES = (24.5, 27.25)  # inside the driver's [20, 34] band, exactly representable as floats
 
