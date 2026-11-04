@@ -367,21 +367,6 @@ def test_a_real_device_wires_a_notification_and_a_warn_signal() -> None:
     assert any(_wired_warn_signals(device) for device in _NOTIFICATION_DEVICES), "no notification wires a warn signal, so the warn-field check compares two empty lists"
 
 
-@pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
-def test_the_notification_status_publishes_why_its_signals_were_not_evaluated(repo_root: Path, src_dir: Path, device: str) -> None:
-    # State rides beside Triggered in the published order, its codes the catalog's NotifyState table (SPECIFICATION.md A.4).
-    source = _module_source(device_toml(device), src_dir, repo_root / "ext")
-    status = _section(_generate(repo_root, src_dir, device), "status")
-    group = next((g for g in _groups(status) if g["key"] == "notification"), None)
-    assert group is not None, f"{device} declares a notification, yet its status lists no notification group"
-    assert [f["key"] for f in _fields(group)] == _returned_keys(source, "_notification_status") == ["Triggered", "State", "TS", "PauseTime"]
-    assert _fields(group)[1] == {
-        "key": "State", "label": "Evaluation State", "kind": "readonly",
-        "description": "Whether the last notification cycle evaluated every signal, and why not, as a numeric code.",
-        "codes": {num: row["text"] for num, row in _CATALOG["status"]["NotifyState"].items()},
-    }
-
-
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_networking_status_carries_the_address_once_and_says_what_the_link_counts(repo_root: Path, src_dir: Path, device: str) -> None:
     fields = {_str(f["key"]): f for f in _fields(_group(_section(_generate(repo_root, src_dir, device), "status"), "networking"))}
@@ -532,14 +517,13 @@ def test_every_maintenance_field_reads_its_instance_and_field_by_path(repo_root:
 
 
 @pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
-def test_the_notification_status_time_is_the_last_cycles_and_pause_time_reads_from_status(repo_root: Path, src_dir: Path, device: str) -> None:
+def test_the_notification_status_is_the_pause_alone_read_from_status(repo_root: Path, src_dir: Path, device: str) -> None:
+    # /status's notification block answers the remaining pause only, the Status page's notification row with it.
     sections = {_str(s["key"]): s for s in _sections(_generate(repo_root, src_dir, device))}
     assert "notification" in sections, f"{device} declares a notification, yet its definitions have no notification section"
-    status_fields = {_str(f["key"]): f for g in _groups(sections["status"]) if g["key"] == "notification" for f in _fields(g)}
-    assert status_fields["TS"] == {
-        "key": "TS", "label": "Last Cycle Time", "kind": "readonly", "format": "epoch",
-        "description": "When the last notification cycle ran, whether or not it evaluated a signal (see Evaluation State).",
-    }
+    status_fields = [f for g in _groups(sections["status"]) if g["key"] == "notification" for f in _fields(g)]
+    assert status_fields == [{"key": "PauseTime", "label": "Remaining Pause Time", "unit": "s", "kind": "readonly"}]
+    assert _returned_keys(_module_source(device_toml(device), src_dir, repo_root / "ext"), "_notification_status") == ["PauseTime"]
     (pause,) = [f for g in _groups(sections["notification"]) if g["key"] == "pause" for f in _fields(g)]
     assert (pause["key"], pause["kind"], pause["statusPath"]) == ("PauseTime", "number", ["notification", "PauseTime"])
 
@@ -695,10 +679,6 @@ def _returned_keys(module_source: str, function: str) -> "list[str]":
     return [k.value for k in returned.keys if isinstance(k, ast.Constant) and isinstance(k.value, str)]
 
 
-# The Status page's own rows whose key is not their table's name; every other catalog row names its table by its key.
-_STATUS_ROW_TABLES = {"State": "NotifyState"}
-
-
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_every_field_codes_table_equals_its_catalog_status_table(repo_root: Path, src_dir: Path, device: str) -> None:
     # A catalog row (the Status page's own fields) names its table by its key; a tagged field by codes=.
@@ -708,7 +688,7 @@ def test_every_field_codes_table_equals_its_catalog_status_table(repo_root: Path
         for f in _fields(group):
             if "codes" in f:
                 key = _str(f["key"])
-                table = named.get(key, _STATUS_ROW_TABLES.get(key, key))
+                table = named.get(key, key)
                 assert table in tables, f"{f['key']} carries codes but the catalog has no status table {table!r}"
                 assert f["codes"] == {num: row["text"] for num, row in tables[table].items()}, f["key"]
 
@@ -721,7 +701,7 @@ def test_every_code_tone_block_equals_its_catalog_tables_tones(repo_root: Path, 
     for _section, group in _field_groups(_generate(repo_root, src_dir, device)):
         for f in _fields(group):
             key = _str(f["key"])
-            table = named.get(key, _STATUS_ROW_TABLES.get(key, key)) if "codes" in f else None
+            table = named.get(key, key) if "codes" in f else None
             tones = {num: row["tone"] for num, row in tables[table].items() if "tone" in row} if table is not None else {}
             assert f.get("codeTones", {}) == tones, f["key"]
 

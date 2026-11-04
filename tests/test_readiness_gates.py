@@ -282,7 +282,7 @@ def test_neopixel_driver_answers_before_and_after_a_setup_whose_logger_cannot_re
         "toggle": ((), _is(None)),
     }
     assert _answers(driver, calls) == []
-    assert run(driver.setup()) is True  # ready: a logger that cannot reach its store has logged it and runs in RAM
+    assert run(driver.setup()) is None  # a logger that cannot reach its store has logged it and runs in RAM
     assert driver.pr.initialized is False
     assert _answers(driver, calls) == []
 
@@ -291,8 +291,6 @@ def test_notification_service_answers_before_and_after_a_failed_setup() -> None:
     svc = NotificationService(_signal, _no_local_time, (), cfg_path=_blocked_dir("NOTIFY"), log=LogConfig(None, 4, None))
     calls = _reader_calls(svc)
     calls.update({
-        "get_data": ((), lambda r: isinstance(r, tuple) and tuple(r) == (False, None, None)),
-        "get_dict_data": ((), lambda r: r == {"NOTIFY": {"Triggered": False, "State": None, "TS": None}}),
         "get_dict_cfg": ((), lambda r: r == {"NOTIFY": {"error": "unavailable"}}),
         "get_override_led": ((), lambda r: r == 0),
         "get_timer_starters": ((), lambda r: r == []),

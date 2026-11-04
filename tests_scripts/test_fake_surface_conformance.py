@@ -26,8 +26,9 @@ _TWIN_FAKE = "digital_twin/machine.py"
 # Twin classes that declare no TEST_API yet, so their surface cannot be compared; the list only shrinks.
 _TWIN_PENDING: "tuple[str, ...]" = ()
 _MODULE_DOUBLES_FILE = "tests/test_asy_webserver_service.py"
-# Each webserver module double and the product classes whose surface it stands in for.
-_MODULE_DOUBLES = {"_FakeModule": ("src/asy_base_classes.py", "SensorReaderConfig"), "_FakeLogger": ("src/asy_print_log.py", "PrintLogHistory")}
+# Each webserver module double, the product class whose surface it stands in for and the method marking the subclasses
+# it plays (the webserver's sensors publish get_dict_data(); the notification service publishes no sample).
+_MODULE_DOUBLES = {"_FakeModule": ("src/asy_base_classes.py", "SensorReaderConfig", "get_dict_data"), "_FakeLogger": ("src/asy_print_log.py", "PrintLogHistory", None)}
 
 
 def _class(tree: ast.Module, name: str) -> ast.ClassDef:
@@ -72,9 +73,9 @@ def _locals_dict_names(checkout: Path, path: str, table: str) -> set[str]:
     return names
 
 
-def _product_surface(path: str, name: str) -> set[str]:
-    # The class, its bases in the same module, and the methods every subclass in src/ shares (the interface a caller
-    # dispatches on), so a double of the abstract base may answer what each concrete one does.
+def _product_surface(path: str, name: str, role: "str | None") -> set[str]:
+    # The class, its bases in the same module, and the methods every subclass in src/ that has `role` shares (the
+    # interface a caller dispatches on), so a double of the abstract base may answer what each concrete one does.
     tree = ast.parse((REPO_ROOT / path).read_text(encoding="utf-8"))
     names: set[str] = set()
     pending = [name]
@@ -87,7 +88,8 @@ def _product_surface(path: str, name: str) -> set[str]:
         for node in ast.parse(source.read_text(encoding="utf-8")).body:
             if isinstance(node, ast.ClassDef) and any(ast.unparse(base).rsplit(".", 1)[-1] == name for base in node.bases):
                 own = _public_names(node)
-                shared = own if shared is None else shared & own
+                if role is None or role in own:
+                    shared = own if shared is None else shared & own
     return names | (shared or set())
 
 

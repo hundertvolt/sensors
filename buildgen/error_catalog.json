@@ -36,7 +36,7 @@
       "12": {"owner": "shared", "name": "CHIP_GET", "text": "reading a setting back from the chip failed"},
       "13": {"owner": "shared", "name": "CHIP_SET", "text": "applying a setting or command to the chip failed"},
       "14": {"owner": "shared", "name": "CALLBACK", "text": "a caller-supplied callback raised or returned an unusable result"},
-      "15": {"owner": "shared", "name": "SOURCE", "text": "a producer's get_data() raised or returned a non-numeric field"},
+      "15": {"owner": "shared", "name": "SOURCE", "text": "a producer's get_data() raised"},
       "17": {"owner": "shared", "name": "TIMER", "text": "arming a machine.Timer failed"},
       "18": {"owner": "shared", "name": "NOT_INIT", "text": "called before a successful setup"},
       "19": {"owner": "shared", "name": "LOCK_TIMEOUT", "text": "a lock was not acquired in time"},
@@ -159,7 +159,6 @@
       "61": {"owner": "webserver", "name": "HTTP_BAD_HEAD", "text": "an oversized request head or a Content-Length that is not digits or comes twice was refused; answered 400"},
       "63": {"owner": "fram", "name": "FRAM_BLOCK_INVALID", "text": "a chunk block held invalid data; it is repaired from the other copy"},
       "65": {"owner": "sgp40", "name": "SGP_NO_BACKUP", "text": "no algorithm-state backup was found"},
-      "67": {"owner": "notify", "name": "NOTIFY_SIGNAL_DROPPED", "text": "a requested LED signal was refused (LED busy) and dropped"},
       "77": {"owner": "wifi", "name": "WLAN_STATIONS_UNKNOWN", "text": "the hotspot's station list could not be read (the query raised, or the chip-down 32-entry answer); counted as no client"},
       "78": {"owner": "wifi", "name": "WLAN_STATUS_UNREADABLE", "text": "the WLAN status could not be read; the last link state and uptime are kept"},
       "79": {"owner": "wifi", "name": "WLAN_TO_HOTSPOT", "text": "repeated STA connect failures reached the limit; the unit falls back to its hotspot"},
@@ -205,13 +204,6 @@
       "1": {"text": "suitable for Calibrate Gain Ratio", "tone": "good"},
       "2": {"text": "too dark", "tone": "warn"},
       "3": {"text": "too bright", "tone": "warn"}
-    },
-    "NotifyState": {
-      "0": {"text": "every signal evaluated"},
-      "1": {"text": "not evaluated by setting (AutoOn off, paused, or outside the window)"},
-      "2": {"text": "not evaluated: no local time (no NTP sync yet this boot, or the clock callback failed)"},
-      "3": {"text": "evaluated in part (a value unavailable, stale or not numeric)"},
-      "4": {"text": "the service's own configuration unreadable"}
     }
   }
 }

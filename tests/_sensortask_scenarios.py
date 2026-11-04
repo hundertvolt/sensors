@@ -106,7 +106,6 @@ if TYPE_CHECKING:
     from asy_bmp3xx_driver import BMP3XX_Reader
     from asy_i2c_driver import I2CDevice
     from asy_isl29125_driver import ISL29125_Reader
-    from asy_notification_service import NotificationService
 
     T = TypeVar("T")
 
@@ -1299,22 +1298,6 @@ def _obj(value: object) -> "dict[str, object]":
     # A parsed JSON object, checked as one before a scenario reads its keys (test_asy_webserver_service's own _obj()).
     assert isinstance(value, dict), value
     return value
-
-
-def _one_notification_cycle(notification: "NotificationService") -> None:
-    # One _monitor_loop() cycle of the built service, until it stores its sample, then the task cancelled.
-    before = notification._datastruct
-
-    async def cycle() -> bool:
-        task = notification.start_asy_monitor()
-        for _ in range(_NOTIFY_CYCLE_ROUNDS):
-            if notification._datastruct is not before:
-                break
-            await asyncio.sleep(0)
-        await cancel(task)
-        return notification._datastruct is not before
-
-    assert run(cycle()), "no monitor cycle stored its sample"
 
 
 def _out_of_field(store: "asy_config_manager.ConfigManager") -> "dict[str, object] | None":
@@ -3379,71 +3362,12 @@ def _scenario_status_get(device: str) -> None:
     assert system["LastTaskEnd"] is None, system  # no supervised task has ended
     assert "WifiUptime" in networking and "NTPSynced" in networking and "WifiTS" in networking
     assert networking["HTTPDropped"] == 0  # a clean boot has dropped no connection
-    assert "Triggered" in notification and "PauseTime" in notification
+    assert set(notification) == {"PauseTime"}, notification  # the remaining pause alone
     # One entry per real module + per real ConfigManager + this service's own "WEBSERVER" entry,
     # from _all_loggers()'s reflected shape. By NAME, not count: the website's errcount rows are
     # keyed by name (Part H.6), so a published key nothing matches renders nothing at all.
     assert {logger.name for logger in _all_loggers(module)} == set(errcount.keys())
     assert len(errcount) == len(_all_loggers(module)), "two loggers sharing a name would collapse into one row"
-
-
-class _Rp2Gmtime:
-    # Stands in for the NTP client's `time`: rp2's gmtime() has 8 fields, this Unix port's 9, and cettime() answers
-    # local time only in rp2's shape (the stand-in tests/test_notification_neopixel_integration.py uses too).
-    def gmtime(self, *secs: int) -> "tuple[int, ...]":
-        return tuple(time.gmtime(*secs))[:8]
-
-    def mktime(self, t: "tuple[int, ...]") -> int:
-        return time.mktime(t)
-
-    def time(self) -> int:
-        return time.time()
-
-
-class _ReadableSample:
-    # A producer's sample: each field a signal reads at a value no threshold triggers on, and no TS yet (current).
-    def __init__(self) -> None:
-        self.TS = None
-
-
-# A hang guard in scheduler rounds: a monitor cycle that flashes nothing stores its sample within a few.
-# @tunable l1.sensortask_notify_cycle_rounds = 200
-_NOTIFY_CYCLE_ROUNDS = 200
-
-
-@_register("webserver_status_notification_state_says_why_signals_were_not_evaluated")
-def _scenario_status_notification_state(device: str) -> None:
-    # GET /status's notification State: none before any cycle, 2 for a cycle before the first sync, 0 for one after
-    # it with every producer readable; a whole-day window keeps the answer off the hour of the run.
-    module = build(device)
-    if not _has(module, "notification"):
-        raise microtest.Skip(f"{device} declares no notification")
-    notification = module.notification
-    window = {"OnH": 0, "OnM": 0, "OffH": 23, "OffM": 59}
-    result = _strict(_dispatch(module, "PUT", "/notification", window).body, "result")
-    assert all(result[key] in ("Valid", "Unchanged") for key in window), result  # OnM keeps its default 0
-
-    def state() -> object:
-        return _strict(status_body(_dispatch(module, "GET", "/status")), "notification")["State"]
-
-    assert state() is None
-    _one_notification_cycle(notification)
-    assert state() == 2
-    samples: dict[int, tuple[Any, _ReadableSample]] = {}
-    for notif in notification._registered:
-        sample = samples.setdefault(id(notif.value.source), (notif.value.source, _ReadableSample()))[1]
-        setattr(sample, notif.value.field, 0.0 if notif.above else 1e9)
-    for source, sample in samples.values():
-        run(source._set_meas_data(sample))
-    original = asy_ntp_client.time
-    asy_ntp_client.time = _Rp2Gmtime()  # type: ignore[assignment]  # a stand-in for the module's time, restored below
-    asy_base_classes.set_utc_valid()  # the boot's first sync
-    try:
-        _one_notification_cycle(notification)
-        assert state() == 0
-    finally:
-        asy_ntp_client.time = original
-        asy_base_classes._utc_valid = False
 
 
 class _ReadFails(WriteCountingOpen):

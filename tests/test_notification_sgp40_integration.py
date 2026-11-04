@@ -56,7 +56,7 @@ _CRC_POLY = 0x31  # SGP40 datasheet Table 7 - same polynomial as test_asy_sgp40_
 
 async def _cycle(clock: DrivenTime, notify: NotificationService, flashes: int) -> None:
     # The monitor's first cycle by the service's own rule: 2 x FlashDur after each triggered flash, so 1 ms before that
-    # end nothing is stored yet; then the loop parks on its next cycle, FlashInterval after its start.
+    # end the loop has not parked on its next cycle yet; then it parks there, FlashInterval after its start.
     cfg = (await notify.get_dict_cfg())["NOTIFY"]
     flash_dur, interval = cfg["FlashDur"], cfg["FlashInterval"]
     assert isinstance(flash_dur, float) and isinstance(interval, float), cfg
@@ -64,9 +64,8 @@ async def _cycle(clock: DrivenTime, notify: NotificationService, flashes: int) -
     end = start + flashes * round(flash_dur * 2000)
     if end > start:
         await clock.elapse(end - 1 - start)
-        assert notify._datastruct[1] is None, f"the cycle was stored by virtual t={clock.now} ms"  # State: None until stored
+        assert start + round(interval * 1000) not in clock.wakes(), f"the cycle ended by virtual t={clock.now} ms: {clock.wakes()}"
     await clock.elapse(end - clock.now)
-    assert notify._datastruct[1] is not None, f"no cycle stored at virtual t={clock.now} ms"
     assert clock.wakes()[-1] == start + round(interval * 1000), f"at virtual t={clock.now} ms the loop waits for {clock.wakes()}"
 
 
@@ -123,9 +122,7 @@ def _make_sgp_reader() -> "tuple[SGP40_Reader, _MachineI2C]":
 def _make_stack(sgp_reader: SGP40_Reader) -> "tuple[NeopixelDriver, NotificationService]":
     # A ValueRef(source, field) reference (SPECIFICATION.md Part C.14.2), the registration shape the generated
     # build_system() emits.
-    pixel = NeopixelDriver(0)
-    pixel.neopixel_freq = 100  # the driver's own fixed state, set from outside
-    pixel._frame_ms = 10
+    pixel = NeopixelDriver(0, neopixel_freq=100)
 
     signal = NotificationSignal("WarnVOC", ValueRef(sgp_reader, "VOC"), (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0))
     notify = NotificationService(pixel.request_signal, _local_time, (signal,), cfg_path=_tmp_cfg_dir())
@@ -213,9 +210,9 @@ def test_i2c_bus_fault_degrades_to_not_triggered_and_stays_isolated_to_sgp40s_ow
     assert isinstance(err_count, int)
     assert err_count >= 1
     assert notify_log["NOTIFY"]["ErrCount"] == 0
-    # One off-state frame from the signal loop's start and one from the overlay task's start, nothing else: no signal
-    # was triggered, data.VOC being None on a faulted cycle, so _check_one() never counts it as above threshold.
-    assert [w[0] for w in pixel._pixel.writes] == [(0, 0, 0), (0, 0, 0)]
+    # One off-state frame from the signal loop's start, nothing else: no signal was triggered, data.VOC being None on a
+    # faulted cycle, so _check_one() never counts it as above threshold.
+    assert [w[0] for w in pixel._pixel.writes] == [(0, 0, 0)]
 
 
 def test_recovers_and_triggers_normally_after_a_prior_fault() -> None:

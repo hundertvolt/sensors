@@ -42,9 +42,7 @@ _scratch = TmpScratch("neopixel_wifi")
 
 
 def test_real_neopixel_driver_on_off_toggle_through_wifi_service_ext_led() -> None:
-    pixel = NeopixelDriver(0)
-    pixel.neopixel_freq = 100  # the driver's own fixed state, set from outside
-    pixel._frame_ms = 10
+    pixel = NeopixelDriver(0, neopixel_freq=100)
     run(pixel.setup())  # the boot batch's setup(), before any task starts
     conn = WifiService(WifiConfig("SensorNode", "12345678", 5, 5), ext_led=pixel, cfg_path=_tmp_cfg_dir())
     run(conn.setup())
