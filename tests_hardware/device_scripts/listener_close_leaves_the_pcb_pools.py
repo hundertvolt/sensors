@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
 _HOST = "127.0.0.1"  # the listener's address changes nothing in its pcb's life, and loopback exposes no port
-_PORT = 50100  # any free port: production is stopped, and the twin's loopback needs an unprivileged one
+_PORT = 30100  # unprivileged for the twin's loopback, below the host's ephemeral range (32768-60999) and every port band
 _PAYLOAD = b"listener close round trip"
 _EXCHANGE_S = 2.0  # each blocking step of the twin's loopback exchange
 _WORD = 0xFFFFFFFF  # machine.mem32 returns a signed small int (extmod/machine_mem.c:85, v1.29.0)
