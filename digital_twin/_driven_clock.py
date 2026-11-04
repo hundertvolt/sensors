@@ -19,7 +19,6 @@ if TYPE_CHECKING:
 
 # How long the driver waits before looking again at a compute still taking turns: a twin scheduler round is about 1 ms,
 # so looking at every one would double a CRC16 frame's rounds.
-# @tunable l2.twin_uart_clock_recheck_ms = 10
 _BUSY_RECHECK_MS = 10
 
 

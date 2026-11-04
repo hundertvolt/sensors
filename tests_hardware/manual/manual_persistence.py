@@ -16,15 +16,10 @@ if TYPE_CHECKING:
 
 from buildgen.validate import module_int_const
 
-# @tunable l4.manual_persistence_power_cut_window_s = 20
 _POWER_CUT_WINDOW_S = 20
-# @tunable l4.manual_persistence_power_off_s = 10
 _POWER_OFF_S = 10
-# @tunable l4.manual_persistence_serving_timeout_s = 120.0
 _SERVING_TIMEOUT_S = 120.0
-# @tunable l4.manual_persistence_script_timeout_s = 180.0
 _SCRIPT_TIMEOUT_S = 180.0
-# @tunable l4.manual_persistence_repl_prompt_s = 3.0
 _REPL_PROMPT_S = 3.0
 _MID_WRITE_ROUNDS = 3
 _POWER_ON_BIT = 0x100  # CHIP_RESET's HAD_POR, read by reset_code_invalid_record.py (STATE boot_phase) with the REASON bits

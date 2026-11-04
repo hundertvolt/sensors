@@ -158,8 +158,7 @@ the UDP shim or the NTP responder (see "Running the twin's own tests" below).
   hotspot's `status("stations")` answer 32 unfilled entries, as rp2 does when its radio cannot be
   brought up. `raise_on` fails a method a given number of times, `status` optionally only for one
   query, and `script_connect_outcomes()` queues connect outcomes. `NeoPixel` stores its pixels as
-  micropython-lib's driver does, a GRB `bytearray`, and keeps a bounded log of written frames;
-  `power_dip()` blanks what `displayed()` shows until the next `write()`.
+  micropython-lib's driver does, a GRB `bytearray`, and keeps a bounded log of written frames.
 - `_http_client.py` — minimal hand-rolled HTTP/1.1 client over `asyncio.open_connection()`: real
   HTTP over real sockets (owner, 2026-08-13; no HTTP client
   library is frozen into the pinned Unix-port build). Every response it sees is `Connection: close`
@@ -639,7 +638,7 @@ The chip-fake and fake-module tests are deterministic — no wall-clock waiting,
 short-period/generous-timeout smoke test in `tests/test_digital_twin_machine.py`
 (`test_timer_fires_for_real_on_a_short_period`) that proves the real-time scheduling mechanism itself
 works at all, not a precise-cadence assertion. The tiers that boot a device's real graph run on real
-time and wait for each state by a bounded poll (`tests/_twin_readiness.py`), every bound a Part N row.
+time and wait for each state by a bounded poll (`tests/_twin_readiness.py`).
 
 ## Running device scripts in the twin
 
@@ -667,7 +666,7 @@ it checks and why; this section is the practical how-to.
 
 ```bash
 scripts/run_digital_twin_ci.sh <device>                     # a device of devices/*.toml: build -> suite -> harness, both GC stages
-scripts/run_digital_twin_ci.sh <device> --gc-threshold -1 --part suite   # one stage, one part: what one CI job runs
+scripts/run_digital_twin_ci.sh <device> --gc-threshold -1   # one stage: what one CI job runs
 uv run scripts/_digital_twin_ci_suite.py --micropython-bin <path> --device <device> --only 5,5b --repeat 3   # diagnosis
 ```
 
@@ -704,7 +703,7 @@ SPECIFICATION.md Part I.4(e)'s standing rule applied to the *entire* suite, not 
 check (run 11, below) — every run's log is checked for zero `MemoryError`/`memory allocation
 failed` (caught-and-logged included; a missing, unreadable or empty log fails the gate) and for
 `public_destinations_refused=0` on its shutdown line, and every suite and harness shutdown line for a
-feed gap above 75 % of the armed watchdog timeout (`l2.feed_gap_share_max`), except the runs that
+feed gap above 75 % of the armed watchdog timeout, except the runs that
 starve the watchdog on purpose (run 10, the hung-step scenario). The routes a run walks come from the
 device's API reference, `build/generated_src/api/sensortask_<device>.json`, whose absence fails the
 pass naming it. A device wiring a `uart_link` pair runs Run 3 again on a TOML derived with
@@ -718,9 +717,9 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
    warning entry from any module but each config store's one `CFG_FILE_UNREADABLE`, its file not
    found, and each SGP40's `SGP_NO_BACKUP`, waited for, its first restore finding the backup chunk
    blank — then clear them (`ResetErrors`); with no station link the clock
-   has never synced, so `UTCTime`, `LocalTime` and `TimeStale` read null. Shut down cleanly through
-   the stop file (`main()`'s clean path, which flushes the FRAM/SCD30 state as the `SIGINT` handler
-   does; `SIGINT` is the fallback, never `SIGTERM`) and confirm the state files landed on disk. Then
+   has never synced, so `UTCTime`, `LocalTime` and `TimeStale` read null. Shut down cleanly by
+   `SIGINT` (its handler flushes the FRAM/SCD30 state; never `SIGTERM`) and confirm the state files
+   landed on disk. Then
    relaunch on an emptied config directory beside the kept FRAM state, as a reformatted filesystem
    leaves a unit: each config store logs its file not found and each SGP40 its blank backup chunk,
    as Run 1 (kept in `runs/`), and a setting is
@@ -809,7 +808,7 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
    that NTP logs `NTP_NO_REPLY` where the host has a route for the request and `NTP_NOT_SENT`
    where it has none (a network namespace holding only `lo`), never both, and that no task ended and
    was restarted meanwhile. The watch ends on the second NTP failure event, then one supervisor pass
-   (`l2.ntp_unreachable_failures`, inside the 90 s `l2.ntp_unreachable_watch_s` bound): the unsynced
+   (inside a 90 s bound): the unsynced
    retry, one attempt every 60 s after a failed one, puts the failures at about 4 and 64 s of serving
    (the first measured on `dev`, 2026-10-15) and the third at about 124 s, past the bound.
 10. **The dedicated watchdog-backstop case** — one bounded real, *blocking* (`time.sleep()`, not
@@ -824,7 +823,7 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
     errors (run 3) cannot demonstrate — that the watchdog backstop itself actually engages
     (`would_have_triggered_count >= 1`), matching CLAUDE.md's recovery-ladder rule: a transfer that
     never returns is the watchdog's. Each run ends on its `WATCHDOG_WOULD_TRIGGER` line, inside the
-    45 s `l2.hang_run_exit_wait_s` bound.
+    45 s bound.
 11. **Clean soak run — host-driven, not a twin-side `--soak` flag.** A fresh clean-boot twin
     subprocess is armed with `--mem-sample-interval-ms` only; the *host* (this script's own
     `_run_11_soak()`, plain CPython) drives warm-up cycles until no cycle has set a new `MEM_SAMPLE`
@@ -878,8 +877,9 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
     The command states, the hazards and a hang at each shutdown step are the scenario harness's.
 
 **The host-side scenario harness** (`scripts/_digital_twin_scenarios.py`, SPECIFICATION.md E.9)
-runs after the suite at each GC stage, holding port 53 (`--exclusive-port-53`), so its DNS scenarios
-run too; without that lock they are deselected and listed. Each scenario boots the device's
+runs, in `scripts/run_digital_twin_ci.sh`, after the suite at each GC stage, holding port 53
+(`--exclusive-port-53`): only its DNS scenarios, which `scripts/test.sh`'s scenario jobs, on a shared
+port 53, deselect and list. Each scenario boots the device's
 generated graph in a twin and drives it over HTTP, reading only the runner's stdout and its
 `--test-*` lines. Every boot logs at warning level, so a caught allocation failure's line reaches the
 memory gate (the owner's option 1 for the unit tests, owner, 2026-10-20, asked, paraphrase, whether
@@ -898,9 +898,8 @@ per group, with an idle check between two of them — the twin alive, every slot
 accept queue empty, the error counts after the drain, the memory gate — and a failure names its
 scenario and sends the next to a fresh boot. A shared twin's first count snapshot waits for each
 SGP40's `SGP_NO_BACKUP` (a fresh FRAM's blank backup chunk), a boot without it failing there, and
-the twin is retired before `l2.scenario_shared_boot_deadline_s`, the earliest its own SGP40
-untimestamped-backup warning can land with no NTP sync in the hotspot, and a count an idle check
-reads moved past it fails by name (agent, 2026-10-19). The hung-step scenario ends on the runner's
+an idle check reads a move whose only new slot is SGP40's untimestamped backup (W35, with no NTP sync
+in the hotspot) as the boot's own background. The hung-step scenario ends on the runner's
 `WATCHDOG_WOULD_TRIGGER` line (S1 on its `HUNG S1` line); the UART-load scenario
 (`uart_ring_under_concurrent_load`) drives both links of a device that wires a pair through a
 webserver hammer at the ceiling, FRAM log writes and config flushes, each flush stalling the loop as
@@ -939,7 +938,7 @@ Almost every request-driving and response-observing job moved host-side (SPECIFI
   counts the rest, so a unit test with direct object access can assert what crossed the wire, and
   every such test clears it itself. This process has no such access — it boots the twin as a
   subprocess and never reads the log — so `_wire_log_clearer()` clears each log in place on a timer
-  (`l2.twin_wire_log_clear_interval_ms`); unbounded and uncleared, it grew for as long as the link
+  (every 5 s); unbounded and uncleared, it grew for as long as the link
   carried traffic, which made Run 11's memory trend fail for the one device with a wired pair.
   Clearing it changes nothing over-the-wire: nothing in the request path or `asy_uart_comm.py` ever
   reads it back.

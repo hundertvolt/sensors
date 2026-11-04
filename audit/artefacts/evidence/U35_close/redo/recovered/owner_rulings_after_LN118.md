@@ -585,3 +585,31 @@ their context). From now on every owner word is appended here as it is given.
 - 2026-11-04 08:34 UTC (time taken at reading), B8 at its 80 % mark: "As we are at 34 right now and the upcoming points
   are self contained, this is no alarm. Go on." Decided: B8 goes on (the falsification, one fix round with the
   CRC-pair check's removal, the merge and the snapshot); the meter read 34 %.
+- 2026-11-04 11:23 UTC (time taken at reading), R2 question 1 (Part N's scope, "hardware-tier budgets"): "the
+  tunables' main target is firmware. Buildgen may also be included. But generally, it's option a with it" Decided:
+  option (a), the narrow reading: the register's core is the firmware's and buildgen's tuned values; of the hardware
+  tier only its soak durations, heap floors and named budgets stay (12 rows); each test's own waits, polls, timeouts
+  and counts leave the register and keep their values in code. The other in-scope test-suite rows of the list's (a)
+  stay (CI, runners, heap size, twin durations). About 197 rows remain.
+- 2026-11-04 11:27 UTC (time taken at reading), R2 question 2 (rp2's REPL banner after a loop end, at DebugLevel 0):
+  "option c" Decided: after `record_loop_end()` the generated boot entry resets the chip at once (`machine.reset()`),
+  so the REPL never starts and nothing is printed; how the next boot reads that reset is checked with the change.
+  The lead had recommended (b), a silent wait for the watchdog. The no-autostart entry and Ctrl-C keep the console.
+- 2026-11-04, time not taken at reading (between 11:27 and 11:32 UTC), R2's questions: "what is your third question?"
+  Answered: none is left; of the three items announced, the lead settled the sleep-form test (P-sleep) as no change,
+  since the firmware already meets it and narrowing it would add test code; the owner may still take it. C1 (a) was
+  never asked: option (b) gives the CI cut without touching the local `scripts/test.sh`.
+- 2026-11-04 11:32 UTC (time taken at reading), budget: "current usage reads 36%. where does that leave us?" Recorded
+  as: a meter reading, 36 % of the week, R2's phase A done, phase B just started. Answered: the plan's running total
+  through R2 is 34 %; R1 closed about 6 points over its plan (the overrun accepted at 06:11); B8 and R2 so far inside
+  their shares, so the overrun is no longer growing. R2 began near 35 % (estimated, no reading), its 80 % stop near
+  39 %. Forecast: about 56 % at the end if R2 to D run to plan, inside the 50-60 % target.
+- 2026-11-04 11:35 UTC (time taken at reading), budget at 36 %: "Fine, go on." Decided: R2's phase B goes on; its 80 %
+  stop stays near 39 % on the owner's meter.
+- 2026-11-04 15:38 UTC (time taken at reading), budget: "39% usage so far, does this match expectation so far?"
+  Recorded as: a meter reading, 39 % of the week, R2's fix round (F1-F6) running. Answered: yes for the whole (R2 on
+  course to close at about 40 %, its full 5-point share; the 6-point overrun from R1 not growing; about 56 % at the
+  end), but 39 % is R2's 80 % mark (its start, near 35 %, estimated), so a unit stop: the round in flight finishes,
+  nothing else starts until the owner answers. Recommended: let R2 close (merge, checks, snapshot, about 1 point).
+- 2026-11-04 15:49 UTC (time taken at reading), R2 at its 80 % mark: "let it close, go on" Decided: R2 closes (the
+  merge, the merged-head checks, snapshot 34 and its CI, the report), then R3.

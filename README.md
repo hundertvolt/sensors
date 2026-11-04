@@ -714,9 +714,10 @@ drives `digital_twin/run_generic_integration.py` through its runs and asserts ev
 boot, every GET/PUT endpoint, `DebugLevel=5` verbose logging, bus fault injection, settings/error
 persistence across a real reboot, the reset reasons and system commands, soak at both
 `gc.threshold()` configurations and the full-ceiling burst (`digital_twin/README.md`'s "Automated CI
-suite" lists each run), then the host-side scenario harness (`scripts/_digital_twin_scenarios.py`).
-It runs against the device named by its required argument, at both GC stages and both parts unless
-`--gc-threshold` or `--part` names one — CI runs one job per device, stage and part. Builds the Unix
+suite" lists each run), then the scenario harness's (`scripts/_digital_twin_scenarios.py`) DNS scenarios,
+which need port 53 alone (`scripts/test.sh` runs the rest). It runs against the device named by its
+required argument, at both GC stages and both parts unless `--gc-threshold` or `--part` names one — CI
+runs one job per device and stage. Builds the Unix
 port and the real website for that device first if either is missing (same
 `$PICO_TOOLCHAIN_DIR`/`SKIP_APT` convention as `scripts/test.sh`):
 

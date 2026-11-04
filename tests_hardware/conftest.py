@@ -34,31 +34,18 @@ _STANDARD_DEBUG_LEVEL = 5  # source: src/asy_system_service.py _VAL_DEBUG_LEVEL 
 _REST_SAVED = pytest.StashKey[bool]()
 _BENCH_DEVICE_BEFORE = pytest.StashKey["str | None"]()
 
-# @tunable l4.hotspot_role_reversal_hotspot_scan_timeout_s = 30.0
 _HOTSPOT_SCAN_TIMEOUT_S = 30.0
-# @tunable l4.hotspot_role_reversal_hotspot_scan_poll_s = 2.0
 _HOTSPOT_SCAN_POLL_S = 2.0
-# @tunable l4.hotspot_role_reversal_join_hotspot_timeout_s = 45.0
 _JOIN_HOTSPOT_TIMEOUT_S = 45.0
-# @tunable l4.conftest_provision_put_timeout_s = 10.0
 _PROVISION_PUT_TIMEOUT_S = 10.0
-# @tunable l4.conftest_dut_ip_exec_timeout_s = 15.0
 _DUT_IP_EXEC_TIMEOUT_S = 15.0
-# @tunable l4.conftest_http_ready_probe_timeout_s = 5.0
 _HTTP_READY_PROBE_TIMEOUT_S = 5.0
-# @tunable l4.conftest_http_ready_poll_s = 2.0
 _HTTP_READY_POLL_S = 2.0
-# @tunable l4.conftest_ip_and_http_timeout_s = 60.0
 _IP_AND_HTTP_TIMEOUT_S = 60.0
-# @tunable l4.dut_serving_after_sta_s = 30.0
 _DUT_SERVING_AFTER_STA_S = 30.0
-# @tunable l4.conftest_sta_tail_step_s = 2.0
 _STA_TAIL_STEP_S = 2.0
-# @tunable l4.conftest_vl805_read_timeout_s = 20.0
 _VL805_READ_TIMEOUT_S = 20.0
-# @tunable l4.conftest_end_present_timeout_s = 15.0
 _END_PRESENT_TIMEOUT_S = 15.0
-# @tunable l4.conftest_end_boot_timeout_s = 30.0
 _END_BOOT_TIMEOUT_S = 30.0
 
 # The VL805 USB-controller firmware from which the bench Pi 4 no longer hangs the RP2040's USB device (RP2040-E15).

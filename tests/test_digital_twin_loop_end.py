@@ -1,6 +1,6 @@
 """Digital-twin tier of the boot entry's loop-end record for the device named by TEST_DEVICE: its generated main.py run
-over the device's real graph on the twin, an exception made to leave the loop, the starved watchdog's reset applied,
-then the next boot's GET /status ResetReason (SPECIFICATION.md A.7, F.5.4); Part E.2.1 has the per-device split."""
+over the device's real graph on the twin, an exception made to leave the loop, the entry's own reset (a Ctrl-C: the
+starved watchdog's), then the next boot's GET /status ResetReason (SPECIFICATION.md A.7, F.5.4; per device: E.2.1)."""
 
 import asyncio
 import asyncio.core as _core  # type: ignore[import-not-found]  # the loop's own queue and cur_task; no stub covers them
@@ -64,11 +64,8 @@ _BOOT_SETUP = src_int(_SRC, "BOOT_SETUP")
 _WATCHDOG_REASON, _CHIP_RESET = 0x40058008, 0x40064008  # the chip's reset flags, as the twin's registers hold them
 _TIMER_BIT, _FORCED_BIT = 0x1, 0x2  # WATCHDOG REASON: TIMER and FORCE
 _HAD_POR_BIT = 0x100  # CHIP_RESET HAD_POR: power-on or brown-out
-# @tunable l2.loop_end_boot_limit_ms = 20000
 _BOOT_LIMIT_MS = 20000  # a boot past it is a failure of its own, never a planted fault
-# @tunable l2.loop_end_run_timeout_s = 30.0
 _RUN_TIMEOUT_S = 30.0
-# @tunable l2.loop_end_poll_ms = 5
 _POLL_MS = 5  # one look of the boot watcher on the driven clock, and of the next boot's /status wait in real time
 
 _scratch = TmpScratch(f"dtle_{device}")
@@ -164,7 +161,7 @@ def _run_entry(plant: _Plant) -> "BaseException | None":
     try:
         exec(code, {"__name__": "__main__"})  # noqa: S102 - the generated entry, run as rp2 runs its frozen main.py
     except BaseException as e:  # what escapes the entry is the observation
-        if e is not plant.interrupt:
+        if e is not plant.interrupt and not isinstance(e, machine.SimulatedResetError):
             raise  # an interrupt the plant did not raise is the per-file timeout's: it ends the run
         return e
     finally:
@@ -230,8 +227,8 @@ def _next_boot_reads(cfg_path: str) -> "dict[str, object]":
 
 
 def _case(kind: str, phase: int, reset: str = "watchdog") -> "tuple[_Plant, BaseException | None, dict[str, object]]":
-    # One ended run from power-on and the boot after the starved watchdog's reset (cause WDT_RESET, REASON TIMER), after a
-    # console soft reset (no hard reset: the power-on's cause and both regions kept) or after a power cycle (both cleared).
+    # One ended run from power-on and the boot after the entry's reset (cause WDT_RESET, REASON FORCE) or the starved
+    # watchdog's (REASON TIMER), a console soft reset (the power-on's cause and both regions kept) or a power cycle.
     machine.power_on()
     cfg_path = _cfg_dir(kind + str(phase) + reset)
     module = _fresh_board()
@@ -240,7 +237,7 @@ def _case(kind: str, phase: int, reset: str = "watchdog") -> "tuple[_Plant, Base
         escaped = _run_entry(plant)
     assert plant.raised_in_phase, f"the boot never reached phase {phase}"
     assert plant.watchdog is not None and plant.watchdog.timeout == 8000, plant.watchdog
-    if reset == "watchdog":
+    if reset == "watchdog" and not isinstance(escaped, machine.SimulatedResetError):
         plant.watchdog._record_would_trigger()  # the armed watchdog, fed by no one once the entry has ended
         machine.reset_cause_value = machine.WDT_RESET
     elif reset == "power":
@@ -267,6 +264,13 @@ def _watchdog_bits() -> None:
     assert bits & _TIMER_BIT and not bits & _FORCED_BIT, bits
 
 
+def _forced_bits(escaped: "BaseException | None") -> None:
+    # The entry's machine.reset() (rp2: watchdog_reboot(), ports/rp2/modmachine.c:74-79, v1.29.0): REASON reads FORCE.
+    assert isinstance(escaped, machine.SimulatedResetError), escaped  # recorded, never re-raised, then reset
+    bits = machine.mem32[_WATCHDOG_REASON]
+    assert bits & _FORCED_BIT and not bits & _TIMER_BIT, bits
+
+
 def _power_on_bits() -> None:
     # No watchdog reset since the power-on: REASON reads neither TIMER nor FORCE, CHIP_RESET keeps HAD_POR.
     reason, chip = machine.mem32[_WATCHDOG_REASON], machine.mem32[_CHIP_RESET]
@@ -275,26 +279,23 @@ def _power_on_bits() -> None:
 
 def test_a_loop_core_failure_after_boot_reads_22_at_the_next_boot() -> None:
     _plant, escaped, system = _case("core", _BOOT_DONE)
-    assert escaped is None, escaped  # recorded, never re-raised
     assert system.get("ResetReason") == 22, system
-    _watchdog_bits()
+    _forced_bits(escaped)
 
 
 def test_a_non_exception_raised_in_a_task_after_boot_reads_22() -> None:
     _per_distinct_wiring()
     _plant, escaped, system = _case("task", _BOOT_DONE)
-    assert escaped is None, escaped  # a SystemExit too, which rp2 would turn into a soft reset
-    assert system.get("ResetReason") == 22, system
-    _watchdog_bits()
+    assert system.get("ResetReason") == 22, system  # a SystemExit too, which rp2 would turn into a soft reset
+    _forced_bits(escaped)
 
 
 def test_a_loop_ended_during_boot_reads_10_plus_its_phase() -> None:
     _per_distinct_wiring()
     plant, escaped, system = _case("core", _BOOT_SETUP)
-    assert escaped is None, escaped
     assert _BOOT_SETUP <= plant.raised_in_phase < _BOOT_DONE, plant.raised_in_phase
     assert system.get("ResetReason") == src_int(_SRC, "_RR_BOOT_FAILURE") + plant.raised_in_phase, system
-    _watchdog_bits()
+    _forced_bits(escaped)
 
 
 def test_a_console_interrupt_after_boot_still_reads_21() -> None:
@@ -311,24 +312,6 @@ def test_a_console_soft_reset_after_ctrl_c_reads_21() -> None:
     plant, escaped, system = _case("interrupt", _BOOT_DONE, "soft")
     assert escaped is plant.interrupt, escaped
     assert system.get("ResetReason") == src_int(_SRC, "RR_INTERRUPTED"), system
-    _power_on_bits()
-
-
-def test_a_console_soft_reset_after_a_loop_end_reads_22() -> None:
-    _per_distinct_wiring()
-    _plant, escaped, system = _case("core", _BOOT_DONE, "soft")
-    assert escaped is None, escaped
-    assert system.get("ResetReason") == 22, system
-    _power_on_bits()
-
-
-def test_a_console_soft_reset_after_a_loop_ended_during_boot_reads_10_plus_its_phase() -> None:
-    # No record during boot: the soft reset's boot reads the phase marker it kept, though the cause is the power-on's.
-    _per_distinct_wiring()
-    plant, escaped, system = _case("core", _BOOT_SETUP, "soft")
-    assert escaped is None, escaped
-    assert _BOOT_SETUP <= plant.raised_in_phase < _BOOT_DONE, plant.raised_in_phase
-    assert system.get("ResetReason") == src_int(_SRC, "_RR_BOOT_FAILURE") + plant.raised_in_phase, system
     _power_on_bits()
 
 

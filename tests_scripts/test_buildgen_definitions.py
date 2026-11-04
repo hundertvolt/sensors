@@ -2,7 +2,6 @@
 every device's output passes the shared shape corpus, and the catalog-derived blocks equal their sources."""
 
 import ast
-import copy
 import functools
 import json
 import os
@@ -204,41 +203,6 @@ def test_every_tagged_field_lands_once_in_its_group(repo_root: Path, src_dir: Pa
     assert _hidden_problems(model, src_dir, generated) == []
 
 
-def test_the_tag_oracle_bites(repo_root: Path, src_dir: Path) -> None:
-    device = DEVICE_NAMES[0]
-    model = build_model(device_toml(device), src_dir)
-    expected = _expected_tagged_fields(model, src_dir)
-    generated = _generate(repo_root, src_dir, device)
-    dropped = copy.deepcopy(generated)
-    _section, group = next((s, g) for s, g in _field_groups(dropped) if _fields(g) and g["key"] != "build")
-    removed = _fields(group).pop(0)
-    assert _tag_placement_problems(expected, dropped), f"dropping {removed['key']} went unnoticed"
-    duplicated = copy.deepcopy(generated)
-    _section, group = next((s, g) for s, g in _field_groups(duplicated) if _fields(g) and g["key"] != "build")
-    _fields(group).append(dict(_fields(group)[0]))
-    assert _tag_placement_problems(expected, duplicated), "a duplicated field went unnoticed"
-
-
-def test_the_hidden_oracle_bites(repo_root: Path, src_dir: Path) -> None:
-    # A device with an instance whose file hides a field: that field planted in its card, or as its maintenance row, is found.
-    for device in DEVICE_NAMES:
-        model = build_model(device_toml(device), src_dir)
-        spec = next((s for s in model.instances.values() if s.driver_info is not None and any(t.hidden for t in parse_web_tags(s.driver_info.source_path, device, s.label))), None)
-        if spec is not None:
-            break
-    else:
-        pytest.fail("no device has an instance with a hidden= field, so the oracle below bites on nothing")
-    assert spec.driver_info is not None
-    name = next(t.field_name for t in parse_web_tags(spec.driver_info.source_path, device, spec.label) if t.hidden)
-    generated = _generate(repo_root, src_dir, device)
-    assert _hidden_problems(model, src_dir, generated) == []
-    for key in (name, f"{spec.resolved_name}_{name}"):
-        planted = copy.deepcopy(generated)
-        _section, group = next((s, g) for s, g in _field_groups(planted) if g["key"] == (spec.resolved_name if key == name else "sensors"))
-        _fields(group).append({"key": key, "label": key, "kind": "readonly"})
-        assert _hidden_problems(model, src_dir, planted), f"a hidden {key} went unnoticed"
-
-
 # ---------------------------------------------------------------------------
 # Per-device structural variation
 # ---------------------------------------------------------------------------
@@ -308,11 +272,6 @@ def test_each_status_group_lists_the_keys_its_generated_source_returns(repo_root
 
 # The devices whose TOML declares a notification: the notification checks below run on each of them.
 _NOTIFICATION_DEVICES = devices_with("notification")
-
-
-def _obj(value: "JsonValue") -> "JsonDict":
-    assert isinstance(value, dict), value
-    return value
 
 
 def test_a_real_device_wires_a_notification_and_a_warn_signal() -> None:

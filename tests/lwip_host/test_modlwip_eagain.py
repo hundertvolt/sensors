@@ -11,27 +11,19 @@ import lwip
 
 # One write's bound; the unpatched ERR_MEM loop holds a non-blocking write for up to 10,000 ms
 # (extmod/modlwip.c, 200 rounds of mp_hal_delay_ms(50)).
-# @tunable l1.lwip_host_write_bound_ms = 250
 _WRITE_BOUND_MS = 250
 # How long a fresh connection's handshake may take before the pool counts as exhausted.
-# @tunable l1.lwip_host_connect_bound_ms = 200
 _CONNECT_BOUND_MS = 200
 # Covers modlwip's 10 s close-abort (MICROPY_PY_LWIP_TCP_CLOSE_TIMEOUT_MS) with margin.
-# @tunable l1.lwip_host_recovery_s = 15
 _RECOVERY_S = 15
-# @tunable l1.lwip_host_rounds = 20
 _ROUNDS = 20
-# @tunable l1.lwip_host_spin_rounds = 1000
 _SPIN_ROUNDS = 1000
 # One drain() round on this host includes select's own 1 ms poll() sleep (modselect.c); the
 # unpatched path sleeps 50 ms per round instead, so the bound stays well below that.
-# @tunable l1.lwip_host_spin_round_max_us = 20000
 _SPIN_ROUND_MAX_US = 20000
-# @tunable l1.lwip_host_spin_round_alloc_max_b = 64
 _SPIN_ROUND_ALLOC_MAX_B = 64
 # The bound holds for the fastest of every run of this many consecutive rounds, so one late wake-up
 # of the host is not a failure while a round that sleeps every time still is (owner, 2026-10-13).
-# @tunable l1.lwip_host_spin_window_rounds = 3
 _SPIN_WINDOW_ROUNDS = 3
 
 _HOST = "127.0.0.1"
@@ -50,7 +42,6 @@ _SETTLE_MS = 100
 _REFUSED = -1
 _MAX_WRITES = 400
 _ARENA_FULL_WRITES = 20
-# @tunable l1.lwip_host_fill_attempts = 10
 _FILL_ATTEMPTS = 10
 
 

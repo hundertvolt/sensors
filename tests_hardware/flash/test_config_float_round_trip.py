@@ -12,7 +12,6 @@ if TYPE_CHECKING:
 
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_2_reboot_settings_persistence",)
 
-# @tunable l3.config_float_round_trip_script_timeout_s = 60.0
 _SCRIPT_TIMEOUT_S = 60.0
 
 

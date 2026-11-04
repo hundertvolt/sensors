@@ -1,12 +1,10 @@
 """Recomputes SPECIFICATION.md Part F.3's code-derived timing rows from src/, buildgen/codegen.py, the UART span device
 script and the device TOMLs, never importing src/: a wrong Value or missing term, an unmarked or stale crossing, an
-unknown Part N ID, an I2C timeout past its bound, differing reply slacks, a lost row or table fail; each bites below."""
+unknown Part N ID, an I2C timeout past its bound, differing reply slacks, a lost row or table fail."""
 
 import ast
 import math
 import re
-import shutil
-import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -25,18 +23,9 @@ _FIGURE_RE, _LEADING_RE = re.compile(_FIGURE), re.compile(r"^" + _FIGURE)
 _TO_US = {"µs": 1, "us": 1, "ms": 1000, "s": 1_000_000}
 _CONSUMER_RE = re.compile(r"`(con\.[a-z_]+)`(\s*\(crossed)?")
 _ID_RE = re.compile(r"`([a-z][a-z0-9_]*\.[a-z][a-z0-9_]*)`")
-_SRC_FILES = (
-    "asy_system_service.py", "asy_uart_comm.py", "asy_uart_driver.py", "asy_scd30_driver.py", "asy_i2c_driver.py", "asy_neopixel_driver.py",
-    "asy_spi_driver.py", "asy_webserver_service.py", "asy_wifi_service.py",
-)
 # What the running device takes from outside src/: the generated module's DNS timeout, and the UART span script's frame.
 _CODEGEN_DIR = Path(__file__).resolve().parent.parent / "buildgen"
 _SPAN_SCRIPT_DIR = Path(__file__).resolve().parent.parent / "tests_hardware" / "device_scripts"
-
-def _bitten(spec_text: str, old: str, new: str) -> str:
-    table = spec_text[spec_text.index(_BEGIN) : spec_text.index(_END)]
-    assert table.count(old) == 1, f"the bite's anchor {old!r} must occur once in F.3's tables"
-    return spec_text.replace(table, table.replace(old, new))
 
 
 def _calls_in(path: Path, function: str, callee: str, arg: "str | None" = None) -> int:
@@ -202,61 +191,3 @@ def test_the_code_derived_rows_match_the_code(spec_text: str, repo_root: Path) -
     assert not problems, "\n".join(problems)
 
 
-@pytest.mark.parametrize(
-    ("old", "new", "expected"),
-    [
-        ("| 50 ms per session", "| 60 ms per session", "the code gives 50000 µs"),
-        ("`con.led_frame` (crossed: a stutter)", "`con.led_frame`", "past it, and not marked crossed"),
-        ("`con.uart_reply` (its floor holds it)", "`con.uart_reply` (crossed: its floor holds it)", "a stale crossing"),
-        ("`scd30.cmd_response_wait_ms` |", "`scd30.cmd_wait_ms` |", "`scd30.cmd_wait_ms`, which is not a Part N row"),
-        ("| `hold.i2c_probe` |", "| `hold.i2c_probe_settle` |", "no `hold.i2c_probe` row"),
-        ("`con.led_frame` (crossed: a stutter)", "`con.led_frames` (crossed: a stutter)", "which the consumer table lacks"),
-        ("4 task ends", "5 task ends", "makes 4 task ends"),
-        ("50,000 µs (`_DEFAULT_TIMEOUT_US`", "the rp2 default (`_DEFAULT_TIMEOUT_US`", "50000 µs is a term of its derivation"),
-        ("| `hold.scd30_snapshot` |", "| `hold.scd30_command` |", "is unnamed or named twice"),
-        ("| `rate.trigger_spacing` |", "| rate.trigger_spacing |", "is unnamed or named twice"),
-        ("| Consumer | Tolerance |", "| Item | Tolerance |", "needs both its consumer table and its budget table"),
-        ("| 500 ms per server", "| 900 ms per server", "`con.dns_query`: its value opens"),
-        ("| 5 s per stream call", "| 7 s per stream call", "`con.http_call`: its value opens"),
-        ("| 1,533 µs:", "| 9,533 µs:", "`stall.uart_call`: its value opens"),
-        ("| 5 µs per wait", "| 50 µs per wait", "`stall.sync_wait`: its value opens"),
-        ("| 10 s, the longest hold", "| 20 s, the longest hold", "`hold.wifi_lock`: its value opens"),
-        ("| 2129 ms", "| 400 ms", "`stall.flash_program`: its value opens"),
-    ],
-)
-def test_each_failure_class_bites(spec_text: str, repo_root: Path, old: str, new: str, expected: str) -> None:
-    problems = check_table(_bitten(spec_text, old, new), repo_root / "src")
-    assert any(expected in p for p in problems), problems
-
-
-def test_an_i2c_timeout_above_its_register_bound_bites(spec_text: str, repo_root: Path) -> None:
-    # Part N's bound, not F.3's table, moves: a copy of the register row, never an edit of Part N.
-    row = next(line for line in spec_text.splitlines() if line.startswith("| `i2c.timeout_max_us` | "))
-    problems = check_table(spec_text.replace(row, row.replace("| 200000 µs |", "| 100000 µs |", 1)), repo_root / "src")
-    assert any("is above Part N `i2c.timeout_max_us` (100000 µs)" in p for p in problems), problems
-
-
-def test_reply_slacks_that_differ_across_devices_bite(spec_text: str, repo_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    timeout_us, slacks, bauds = _device_terms(repo_root / "src")
-    monkeypatch.setattr(sys.modules[__name__], "_device_terms", lambda _src: (timeout_us, {*slacks, max(slacks) + 5}, bauds))
-    assert any("the uart_link reply slacks differ across devices" in p for p in check_table(spec_text, repo_root / "src"))
-
-
-def test_uart_bauds_that_differ_across_buses_bite(spec_text: str, repo_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    timeout_us, slacks, bauds = _device_terms(repo_root / "src")
-    monkeypatch.setattr(sys.modules[__name__], "_device_terms", lambda _src: (timeout_us, slacks, {*bauds, max(bauds) // 2}))
-    assert any("the UART bauds differ across buses" in p for p in check_table(spec_text, repo_root / "src"))
-
-
-def test_lost_markers_bite(spec_text: str, repo_root: Path) -> None:
-    assert any("exactly once between" in p for p in check_table(spec_text.replace(_END, ""), repo_root / "src"))
-
-
-def test_a_reset_delay_past_the_watchdog_bites(spec_text: str, repo_root: Path, tmp_path: Path) -> None:
-    # The code side moves, and the table with it: the relation, not the copy, has to fail.
-    for name in _SRC_FILES:
-        shutil.copy(repo_root / "src" / name, tmp_path / name)
-    system = tmp_path / "asy_system_service.py"
-    system.write_text(system.read_text(encoding="utf-8").replace("_RESET_DELAY = const(4)", "_RESET_DELAY = const(9)"), encoding="utf-8")
-    problems = check_table(_bitten(spec_text, "| 4000 ms countdown", "| 9000 ms countdown"), tmp_path)
-    assert any("`feed.reset_path`: 9000000 µs between two feeds is not below" in p for p in problems), problems

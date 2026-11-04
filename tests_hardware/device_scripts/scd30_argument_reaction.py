@@ -30,17 +30,12 @@ _CRC_POLY, _CRC_INIT = 0x31, 0xFF
 _INTERVAL_MIN_S, _INTERVAL_MAX_S = 2, 1800  # "Available range: [2 ... 1800]" (1.4.3)
 _RP2_I2C_TIMEOUT_US = 50000  # machine.I2C's own default (ports/rp2/machine_i2c.c:38, v1.29.0)
 # "the read header should be send with a delay of > 3ms following the write sequence" (1.4.4).
-# @tunable l3.scd30_argument_reaction_read_delay_ms = 5
 _READ_DELAY_MS = 5
-# @tunable l3.scd30_argument_reaction_ready_poll_ms = 100
 _READY_POLL_MS = 100
 # Two data-ready events at the original interval, with one interval and this slack to spare.
-# @tunable l3.scd30_argument_reaction_period_slack_ms = 2000
 _PERIOD_SLACK_MS = 2000
 # The power-cut loop: at most this many writes, spaced so the operator's cut can land between two of them.
-# @tunable l3.scd30_argument_reaction_loop_writes = 20
 _LOOP_WRITES = 20
-# @tunable l3.scd30_argument_reaction_loop_step_ms = 500
 _LOOP_STEP_MS = 500
 
 

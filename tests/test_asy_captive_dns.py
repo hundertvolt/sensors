@@ -41,52 +41,30 @@ if TYPE_CHECKING:
     from _mpy_shed.time_mp import _TicksMs
 
 
-# The suite's waits, bounds and backoff-gap bands, one constant each (SPECIFICATION.md Part N).
+# The suite's waits, bounds and backoff-gap bands, one constant each.
 _ERROR_RETRY_WAIT_S: int = src_int("src/asy_captive_dns.py", "_ERROR_RETRY_WAIT_S")
 _RECV_FAIL_BACKOFF_INITIAL_MS: int = src_int("src/asy_captive_dns.py", "_RECV_FAIL_BACKOFF_INITIAL_MS")
 _RECV_FAIL_BACKOFF_MAX_MS: int = src_int("src/asy_captive_dns.py", "_RECV_FAIL_BACKOFF_MAX_MS")
 _RECV_FAIL_BACKOFF_MULTIPLIER: int = src_int("src/asy_captive_dns.py", "_RECV_FAIL_BACKOFF_MULTIPLIER")
-# @tunable l1.captive_dns_wait_until_timeout_ms = 1000
 _WAIT_UNTIL_TIMEOUT_MS = 1000
-# @tunable l1.captive_dns_wait_until_poll_ms = 10
 _WAIT_UNTIL_POLL_MS = 10
-# @tunable l1.captive_dns_stray_reply_wait_ms = 20
 _STRAY_REPLY_WAIT_MS = 20
-# @tunable l1.captive_dns_no_backoff_elapsed_max_ms = 1000
 _NO_BACKOFF_ELAPSED_MAX_MS = 1000
-# @tunable l1.captive_dns_reach_recv_ms = 20
 _REACH_RECV_MS = 20
-# @tunable l1.captive_dns_bind_wait_ms = 50
-_BIND_WAIT_MS = 50
-# @tunable l1.captive_dns_cycle_wait_ms = 100
 _CYCLE_WAIT_MS = 100
-# @tunable l1.captive_dns_cleanup_tick_ms = 10
 _CLEANUP_TICK_MS = 10
-# @tunable l1.captive_dns_cleanup_tick_count = 10
 _CLEANUP_TICK_COUNT = 10
-# @tunable l1.captive_dns_backoff_wait_timeout_ms = 5000
 _BACKOFF_WAIT_TIMEOUT_MS = 5000
-# @tunable l1.captive_dns_backoff_series_timeout_ms = 15000
 _BACKOFF_SERIES_TIMEOUT_MS = 15000
-# @tunable l1.captive_dns_gap_initial_min_ms = 400
 _GAP_INITIAL_MIN_MS = 400
-# @tunable l1.captive_dns_gap_initial_max_ms = 800
 _GAP_INITIAL_MAX_MS = 800
-# @tunable l1.captive_dns_gap_doubled_min_ms = 900
 _GAP_DOUBLED_MIN_MS = 900
-# @tunable l1.captive_dns_gap_doubled_max_ms = 1400
 _GAP_DOUBLED_MAX_MS = 1400
-# @tunable l1.captive_dns_gap_quad_min_ms = 1900
 _GAP_QUAD_MIN_MS = 1900
-# @tunable l1.captive_dns_gap_quad_max_ms = 2600
 _GAP_QUAD_MAX_MS = 2600
-# @tunable l1.captive_dns_gap_no_backoff_max_ms = 300
 _GAP_NO_BACKOFF_MAX_MS = 300
-# @tunable l1.captive_dns_backoff_cap_timeout_ms = 20000
 _BACKOFF_CAP_TIMEOUT_MS = 20000
-# @tunable l1.captive_dns_gap_cap_min_ms = 4700
 _GAP_CAP_MIN_MS = 4700
-# @tunable l1.captive_dns_gap_cap_max_ms = 5400
 _GAP_CAP_MAX_MS = 5400
 
 
@@ -912,7 +890,7 @@ def test_run_handles_real_loopback_traffic_without_crashing() -> None:
         replies: list[bytes] = []
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
-            await asyncio.sleep_ms(_BIND_WAIT_MS)  # let the server bind
+            assert await _wait_until(lambda: server._udps.connected)  # the server bound
             peer.sendto(_make_query(["a", "io"]), _resolved("127.0.0.1", server_port))
             await _wait_until(lambda: _read_replies(peer, replies))
             return not task.done(), replies  # still running - no uncaught exception killed it
@@ -1137,8 +1115,7 @@ def test_run_reuses_same_dns_server_instance_across_multiple_hotspot_cycles() ->
         peer.bind(peer_addr)
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
-            await asyncio.sleep_ms(_BIND_WAIT_MS)  # let it bind
-            assert server._udps._sock is not None  # real bind succeeded this cycle
+            assert await _wait_until(lambda: server._udps.connected)  # real bind succeeded this cycle
             peer.sendto(_make_query(["cycle"]), _resolved("127.0.0.1", server_port))
             await asyncio.sleep_ms(_CYCLE_WAIT_MS)
             return not task.done()  # still alive - no uncaught exception killed it
@@ -1169,7 +1146,7 @@ def test_run_real_socket_survives_a_burst_of_consecutive_malformed_datagrams() -
         replies: list[bytes] = []
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
-            await asyncio.sleep_ms(_BIND_WAIT_MS)
+            assert await _wait_until(lambda: server._udps.connected)
             server_addr = _resolved("127.0.0.1", server_port)
             for bad in malformed_query_cases():
                 peer.sendto(bad, server_addr)
@@ -1203,7 +1180,7 @@ def test_integration_survives_the_wifi_services_fire_and_forget_cancel_pattern()
         server._udps = UDPSocket(("127.0.0.1", server_port), mode="server")
         evtloop = asyncio.get_event_loop()
         task = evtloop.create_task(server.run("127.0.0.1", "255.0.0.0"))
-        await asyncio.sleep_ms(_BIND_WAIT_MS)  # let it bind and reach the pending recvfrom()
+        assert await _wait_until(lambda: server._udps.connected)  # bound, then on to the pending recvfrom()
         task.cancel()  # exactly WifiService's own pattern - never awaited by the caller
         # Nothing observes `task` from here on, matching the real caller exactly. Only give the
         # event loop a few ticks so the cancelled task's own cleanup actually gets to run, the way

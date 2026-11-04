@@ -103,8 +103,3 @@ def test_the_drawer_and_backdrop_do_not_animate_under_reduced_motion() -> None:
     assert re.search(r"transition:\s*none\s*;", rule.group(1))
 
 
-def test_the_ratio_reader_bites() -> None:
-    # The formula against WCAG's own anchors: black on white is 21, a colour on itself is 1.
-    assert round(_contrast("#000", "#fff"), 2) == 21.0
-    assert _contrast("#197f45", "#197f45") == 1.0
-    assert round(_contrast("#1f9d55", "#e5f7ec"), 2) == 3.13

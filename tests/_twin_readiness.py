@@ -12,7 +12,6 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-# @tunable l2.twin_readiness_poll_ms = 10
 _POLL_MS = 10
 
 

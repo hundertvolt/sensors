@@ -20,9 +20,7 @@ except ImportError:  # typing has no runtime presence on MicroPython
 if TYPE_CHECKING:
     from _shared.facts import done, fact
 
-# @tunable l3.starvation_wdt_ms = 1500
 _WATCHDOG_TIMEOUT_MS = 1500  # short, as watchdog_starvation_reset.py: the host bounds the whole run
-# @tunable l3.reboot_fallback_starves_the_watchdog_feed_attempt_ms = 250
 _FEED_ATTEMPT_MS = 250
 # asy_system_service.py's _RR_REBOOT: a const() whose name starts with "_" is no module global on
 # MicroPython, so it cannot be imported and is restated here.

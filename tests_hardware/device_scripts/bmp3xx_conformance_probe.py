@@ -29,7 +29,6 @@ OSR_WRITTEN, CONFIG_WRITTEN = 0x0B, 0x04  # osr_p x8 and osr_t x2; IIR coefficie
 _CALIBRATION_BYTES = 21  # T1 at 0x31 through P11 at 0x45 (3.11.1)
 _STARTUP_MS = 2  # "Time to first communication", tstartup 2 ms (Table 2)
 # A forced conversion at the reset OSR (x4, x1) takes ~11 ms (3.9.2); at x8, x2 ~21 ms: this covers both with margin.
-# @tunable l3.bmp3xx_conformance_probe_conversion_ms = 50
 _CONVERSION_MS = 50
 _RP2_I2C_TIMEOUT_US = 50000  # machine.I2C's own default (ports/rp2/machine_i2c.c:38, v1.29.0)
 

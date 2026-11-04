@@ -58,9 +58,7 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
-# @tunable l2.clock_jump_wait_timeout_s = 20.0
 _WAIT_TIMEOUT_S = 20.0
-# @tunable l2.clock_jump_poll_ms = 50
 _POLL_MS = 50  # how often a wait below looks again
 _RETRY_UNSYNCED_S: int = src_int("src/asy_ntp_client.py", "_NTP_RETRY_UNSYNCED_S")
 _TICKS_TO_RETRY = _RETRY_UNSYNCED_S // src_int("src/asy_ntp_client.py", "_NTP_CHECK_INTERV")  # check ticks toward the next attempt

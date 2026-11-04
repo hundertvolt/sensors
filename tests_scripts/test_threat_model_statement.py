@@ -116,5 +116,3 @@ def test_a11_names_every_dispatch_field() -> None:
     assert not missing, f"SPECIFICATION.md A.11 does not name the dispatch field(s) {missing} - add each to its unauthenticated-writes row"
 
 
-def test_the_check_bites() -> None:
-    assert _missing("... `reboot` ... `mempause` ...", ["reboot", "erasefram", "mempause"]) == ["erasefram"]

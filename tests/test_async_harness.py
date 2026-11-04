@@ -22,13 +22,9 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
 
 _scratch = TmpScratch("async_harness")
-# @tunable l1.async_harness_answer_bound_s = 5
 _ANSWER_BOUND_S = 5  # a hang bound on a coroutine that answers at once
-# @tunable l1.async_harness_sleeper_bound_s = 0.01
 _SLEEPER_BOUND_S = 0.01  # waited out: the sleeper never returns
-# @tunable l1.async_harness_stuck_reap_ms = 60_000
 _STUCK_REAP_MS = 60_000  # the reap bound a task nothing can end is named inside of, never waited out
-# @tunable l1.async_harness_stubborn_reap_ms = 5
 _STUBBORN_REAP_MS = 5  # waited out: the reap bound a task running on after its cancellation outlasts
 
 

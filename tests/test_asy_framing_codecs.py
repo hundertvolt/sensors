@@ -11,7 +11,6 @@ import asy_framing_codecs
 from asy_framing_codecs import COBS_DELIMITER, FramingCOBS, FramingPass
 from asy_print_log import PrintLog
 
-# @tunable l1.framing_codecs_run_bound_s = 5
 _RUN_BOUND_S = 5
 
 

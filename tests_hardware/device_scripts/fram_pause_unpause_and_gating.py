@@ -30,13 +30,9 @@ CHUNK_SIZE = 32
 PATTERN_A = bytes((i * 7 + 3) % 256 for i in range(CHUNK_SIZE))
 PATTERN_B = bytes((i * 11 + 29) % 256 for i in range(CHUNK_SIZE))  # distinct, so a stale read can't masquerade as a fresh one
 
-# @tunable l3.fram_pause_unpause_and_gating_pause_s = 2
 _PAUSE_S = 2
-# @tunable l3.fram_pause_unpause_and_gating_rearm_s = 6
 _REARM_S = 6
-# @tunable l3.fram_pause_unpause_and_gating_pause_margin_s = 1.5
 _PAUSE_MARGIN_S = 1.5  # the unpause lands at most one 1 s uptime pass late, so 0.5 s of headroom is left
-# @tunable l3.fram_pause_unpause_and_gating_rearm_margin_s = 0.5
 _REARM_MARGIN_S = 0.5
 _POOL_BOUND = 64  # above the real alarm pool, which is small and fixed (timer_alarm_pool_exhaustion.py measures it)
 failures: list[str] = []

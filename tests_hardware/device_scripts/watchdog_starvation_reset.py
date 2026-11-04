@@ -14,7 +14,6 @@ except ImportError:  # typing has no runtime presence on MicroPython
 if TYPE_CHECKING:
     from _shared.facts import fact
 
-# @tunable l3.starvation_wdt_ms = 1500
 _WATCHDOG_TIMEOUT_MS = 1500
 
 machine.WDT(timeout=_WATCHDOG_TIMEOUT_MS)

@@ -1,6 +1,6 @@
 """Every src/ sleep takes whole milliseconds (SPECIFICATION.md D.4): asyncio.sleep() an int literal or a module
 `const(<int>)` name, every timeout wait_for_ms(), no float literal, float constant or true division in a sleep_ms() or
-wait_for_ms() delay, a synchronous time.sleep*() only at Part N's `loop.sync_wait_max_us` named waits, each in place."""
+wait_for_ms() delay, a synchronous time.sleep*() only at the named sub-millisecond waits, each in place."""
 
 import ast
 import shutil
@@ -163,12 +163,6 @@ def test_every_named_synchronous_wait_is_still_in_place() -> None:
 def test_a_removed_named_wait_is_a_stale_waiver(tmp_path: Path) -> None:
     src = _src_copy(tmp_path, "asy_spi_driver.py", "self._cs_pin.value(not self._cs_active_value)\n        time.sleep_us(_CS_SETTLE_US)\n", "self._cs_pin.value(not self._cs_active_value)\n")
     assert named_wait_problems(src) == ["stale waiver: no asy_spi_driver.py:session_end() time.sleep*(_CS_SETTLE_US) left"]
-
-
-def test_an_asyncio_blind_scan_bites(tmp_path: Path) -> None:
-    for path in SRC.glob("*.py"):  # every asyncio import renamed: the scan sees no asyncio module, so no asyncio sleep
-        (tmp_path / path.name).write_text(path.read_text(encoding="utf-8").replace("import asyncio", "import aio_unread"), encoding="utf-8")
-    assert "the scan found no asyncio sleep - it reads nothing" in named_wait_problems(tmp_path)
 
 
 @pytest.mark.parametrize(

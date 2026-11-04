@@ -29,9 +29,7 @@ from network import (
     set_access_point_up,
 )
 
-# @tunable l2.network_neopixel_wait_timeout_s = 5.0
 _WAIT_TIMEOUT_S = 5.0
-# @tunable l2.network_neopixel_poll_ms = 20
 _POLL_MS = 20
 _UNSET = ("0.0.0.0", "0.0.0.0", "0.0.0.0", "0.0.0.0")
 
@@ -510,17 +508,6 @@ def test_neopixel_stores_bytes_in_grb_order_as_the_library_does() -> None:
     except TypeError:
         pass
     assert pixel.buf[1] == 10  # R, stored before G raised
-
-
-def test_a_power_dip_blanks_what_the_pixel_shows_until_the_next_write() -> None:
-    pixel = NeoPixel(_Pin(), 1)
-    assert pixel.displayed() == [(0, 0, 0)]
-    pixel[0] = (5, 6, 7)
-    pixel.write()
-    pixel.power_dip()
-    assert (pixel.displayed(), pixel[0]) == ([(0, 0, 0)], (5, 6, 7))
-    pixel.write()
-    assert pixel.displayed() == [(5, 6, 7)]
 
 
 def test_neopixel_writes_stays_bounded_across_many_writes() -> None:

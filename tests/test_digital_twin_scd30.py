@@ -649,24 +649,6 @@ def test_power_cycle_drops_the_unread_measurement_and_keeps_the_nvm_interval() -
     assert _get(chip, 0x46, 0x00) == word(5)
 
 
-def test_rdy_stuck_high_holds_the_line_high_while_no_new_measurement_arrives() -> None:
-    pin = _LevelPin()
-    chip = SCD30Chip(rdy_pin=pin, random_source=FixedRandom(uniform_values=[500.0, 22.0, 45.0, 0.0, 0.0, 0.0]))
-    chip.rdy_stuck_high = True
-    chip._produce_new_reading()
-    assert pin.level == 1
-    assert _get(chip, 0x02, 0x02) == word(0)
-    chip.handle_writeto(b"\x03\x00")
-    chip.handle_readfrom_into(18)
-    assert pin.level == 1  # the read-out does not drop a stuck line
-    chip.rdy_stuck_high = False
-    chip._produce_new_reading()
-    assert _get(chip, 0x02, 0x02) == word(1)
-    chip.handle_writeto(b"\x03\x00")
-    chip.handle_readfrom_into(18)
-    assert pin.level == 0
-
-
 def test_nvm_writes_counts_each_accepted_nvm_command_and_nothing_else() -> None:
     # The six NVM-writing argument commands and the bare stop (Interface Description 1.4.1-1.4.3,
     # 1.4.6-1.4.8); register reads, data-ready, read-out, firmware version and soft reset write none.

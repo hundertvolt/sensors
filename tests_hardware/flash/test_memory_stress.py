@@ -25,26 +25,17 @@ if TYPE_CHECKING:
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("construction", "loop_lag")
 _P = ParamSpec("_P")
 
-# @tunable l3.memory_stress_headroom_script_timeout_s = 120.0
 _HEADROOM_SCRIPT_TIMEOUT_S = 120.0
-# @tunable l3.memory_stress_probe_map_tolerance_blocks = 2
 _PROBE_MAP_TOLERANCE_BLOCKS = 2
-# @tunable l3.memory_stress_presence_timeout_s = 30.0
 _PRESENCE_TIMEOUT_S = 30.0
-# @tunable l3.memory_stress_boot_timeout_s = 30.0
 _BOOT_TIMEOUT_S = 30.0  # the boot line after the soak's first hard reset
 # Past the boot's one-time setup lines, so a DebugLevel at or above 3 cannot print them into the window as a reboot.
-# @tunable l3.memory_stress_boot_settle_s = 30.0
 _BOOT_SETTLE_S = 30.0
-# @tunable l3.memory_stress_stretch_script_timeout_s = 60.0
 _STRETCH_SCRIPT_TIMEOUT_S = 60.0
-# @tunable l3.memory_stress_flash_gap_script_timeout_s = 30.0
 _FLASH_GAP_SCRIPT_TIMEOUT_S = 30.0
 # The lag script's own 30 s window plus the shipped boot and the scratch cleanup.
-# @tunable l3.memory_stress_loop_lag_script_timeout_s = 90.0
 _LOOP_LAG_SCRIPT_TIMEOUT_S = 90.0
 # The C-stack script's own 10 s window plus the build, its setup batch and the timer stagger.
-# @tunable l3.memory_stress_c_stack_script_timeout_s = 60.0
 _C_STACK_SCRIPT_TIMEOUT_S = 60.0
 # The twin run's server: the script's scratch-config main() binds it inside the run's own network namespace.
 _TWIN_SERVER = ("127.0.0.1", 8080)

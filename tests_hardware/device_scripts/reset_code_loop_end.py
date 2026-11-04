@@ -1,6 +1,6 @@
 """Isolated-driver device script: the frozen boot entry imported again under the board's own config, the loop core's
 wait patched to raise KIND (exception: OSError, base: SystemExit) at its first wait after this boot marks BOOT_DONE: the
-entry records reset code 22 and returns, and the armed watchdog resets the board; no flash write, no FRAM seeding."""
+entry records reset code 22 and resets the chip at once (machine.reset()); no flash write, no FRAM seeding."""
 
 import asyncio.core as core  # type: ignore[import-not-found]  # noqa: PLR0402 - the loop's own IOQueue; no stub covers it
 import errno
@@ -40,6 +40,4 @@ def _wait(queue: object, dt: int) -> None:
 
 core.IOQueue.wait_io_event = _wait
 sys.path.insert(0, ".frozen")  # the frozen entry, never a filesystem main.py, as the entry itself orders its path
-import main  # type: ignore[import-not-found]  # noqa: E402, F401 - the frozen boot entry, ended by the planted exception
-
-fact("record", list(machine.mem_backup(0)))  # [magic, code, check, 0]: written before the watchdog's reset
+import main  # type: ignore[import-not-found]  # noqa: E402, F401 - the frozen boot entry: it never returns

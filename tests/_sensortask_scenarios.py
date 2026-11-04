@@ -74,12 +74,10 @@ _MIN_READ_SEPARATION_MS = 100
 
 # A refused LED command answers at once; the bound also ends a regression that waits instead of
 # letting it hang the file.
-# @tunable l1.sensortask_led_refusal_ms = 100
 _LED_REFUSAL_MS = 100
 
 # A status read never waits on wifi_mode_lock; the bound only ends a regression that does, instead of
 # letting it hang the file (one GET /status here takes 0.1-0.3 s).
-# @tunable l1.sensortask_locked_status_ms = 5000
 _LOCKED_STATUS_MS = 5000
 
 _HOUR_MS = 3_600_000
@@ -2507,9 +2505,7 @@ class _SilentNtpPeer:
 
 
 # One NTP attempt's end, polled in real time: at most _NTP_ATTEMPT_POLLS looks, _NTP_ATTEMPT_POLL_MS apart.
-# @tunable l1.sensortask_ntp_attempt_polls = 2000
 _NTP_ATTEMPT_POLLS = 2000
-# @tunable l1.sensortask_ntp_attempt_poll_ms = 1
 _NTP_ATTEMPT_POLL_MS = 1
 
 

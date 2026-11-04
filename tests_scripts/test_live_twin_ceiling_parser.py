@@ -16,7 +16,6 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SRC_DIR = _REPO_ROOT / "src"
 _MODULE_URL = (_REPO_ROOT / "tests_js" / "_live_twin_command.js").as_uri()
 _NVMRC = _REPO_ROOT / ".nvmrc"
-# @tunable l0.live_twin_ceiling_parser_timeout_s = 120
 _NODE_TIMEOUT_S = 120
 
 

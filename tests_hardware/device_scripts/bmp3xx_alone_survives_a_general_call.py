@@ -26,11 +26,8 @@ BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
 _GENERAL_CALL = (0x00, b"\x06")  # I2C-bus specification 3.1.13: the general call and its reset second byte
 _DISTINCT = (8, 2, 3)  # pressure OSR, temperature OSR, IIR coefficient: none of them a post-reset default
-# @tunable l3.bmp3xx_alone_survives_a_general_call_broadcasts = 10
 _BROADCASTS = 10
-# @tunable l3.bmp3xx_alone_survives_a_general_call_broadcast_step_ms = 200
 _BROADCAST_STEP_MS = 200
-# @tunable l3.bmp3xx_alone_survives_a_general_call_run_bound_s = 60.0
 _RUN_BOUND_S = 60.0
 
 

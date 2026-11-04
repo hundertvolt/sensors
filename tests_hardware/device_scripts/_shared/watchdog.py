@@ -9,7 +9,6 @@ import machine
 
 # @tunable wdt.timeout_ms = 8000
 _WDT_TIMEOUT_MS = 8000
-# @tunable l3.device_script_feed_step_ms = 2000
 _FEED_STEP_MS = 2000
 
 

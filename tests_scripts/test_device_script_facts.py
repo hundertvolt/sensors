@@ -173,33 +173,3 @@ def test_every_loop_in_an_async_def_awaits_on_every_path_back() -> None:
     assert not found, f"loops in an async def that can loop back without an await (script: loop lines): {found}"
 
 
-_LOOP_BITES = {
-    "async def f():\n    while True:\n        if ok():\n            await asyncio.sleep(0)\n": True,
-    "async def f():\n    for i in range(3):\n        try:\n            await read()\n        except OSError:\n            continue\n": True,
-    "async def f():\n    while True:\n        if not ok():\n            break\n        await asyncio.sleep(0)\n": False,
-    "async def f():\n    for i in range(3):\n        try:\n            x = await read()\n        except OSError:\n            errors += 1\n        await asyncio.sleep(0)\n": False,
-    "async def f():\n    async with lock:\n        for i in range(3):\n            read_sync(i)\n": False,
-    "async def f():\n    while not stop:\n        read_sync()\n": True,
-    "def f():\n    while True:\n        spin()\n": False,
-}
-
-
-@pytest.mark.parametrize(("source", "starves"), list(_LOOP_BITES.items()), ids=["if-only", "continue-unawaited", "break-then-await", "await-after-try", "bounded-sync-for", "sync-while", "sync-def"])
-def test_the_loop_check_bites(source: str, *, starves: bool) -> None:
-    assert bool(_starving_loops(source)) is starves
-
-
-def test_the_print_and_parse_checks_bite(tmp_path: Path) -> None:
-    script = tmp_path / "script.py"
-    script.write_text('print(f"RESULT: PASS {x}")\nprint("RESULT: " + y)\nprint("FACT a=1")\n', encoding="utf-8")
-    assert _result_prints(script) == [1, 2]
-    host = tmp_path / "test_host.py"
-    host.write_text(
-        "def test_a(board):\n    out = board.run_isolated(S)\n    assert 'ok' in out\n\n\n"
-        "def test_b(board):\n    harness.parse_facts(board.run_isolated_expect_reset(S))\n\n\n"
-        "def test_c(board):\n    harness.parse_facts(board.run_isolated_expect_reset(S), allow_missing_done=True)\n\n\n"
-        "def test_d(board):\n    conformance.parse(board.run_isolated(S))\n\n\n"
-        "def test_e(board):\n    other.parse(board.run_isolated(S))\n",
-        encoding="utf-8",
-    )
-    assert [o.split(" ", 1)[0] for o in _unparsed_runs(host)] == ["test_a", "test_b", "test_e"]

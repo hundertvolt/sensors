@@ -34,7 +34,6 @@ _STATUS_CONVENF = 0x02  # B1, p.12 Table 17
 _STATUS_BOUTF = 0x04  # B2, p.12 Table 18
 _STATUS_RGBCF_MASK = 0x30  # B5:B4, p.12 Table 19
 _DEVICE_ID = 0x7D  # p.9 Table 2
-# @tunable l2.isl29125_probe_hang_s = 0.05
 _PROBE_HANG_S = 0.05
 
 

@@ -114,11 +114,8 @@ _WIFI_OUTCOME_MAP = {
 
 _SSID = "digital-twin-ssid"
 _PASSWORD = "digital-twin-password"
-# @tunable l2.twin_wdt_feed_interval_s = 1.0
 _WDT_FEED_INTERVAL_S = 1.0  # well under the 8000 ms WDT timeout
-# @tunable l2.launch_sensor_poll_interval_s = 2.0
 _SENSOR_POLL_INTERVAL_S = 2.0
-# @tunable l2.launch_wifi_poll_interval_s = 0.1
 _WIFI_POLL_INTERVAL_S = 0.1
 _I2C_FREQ_HZ = 50000
 _SOURCE = "launch.py"

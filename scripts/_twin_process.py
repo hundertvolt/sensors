@@ -33,19 +33,13 @@ EXIT_SIMULATED_POWER_LOSS = 5
 EXIT_SUITE_TIMEOUT = -256  # wait_exit()'s own give-up: no exit code or signal death can read as it
 _EXIT_NAMES = {0: "a clean exit", EXIT_SIMULATED_RESET: "a simulated reset", EXIT_SIMULATED_BOOTLOADER: "a simulated bootloader entry", EXIT_SIMULATED_POWER_LOSS: "a simulated power loss", EXIT_SUITE_TIMEOUT: "no exit before the caller's deadline"}
 
-# @tunable l2.kill_reap_timeout_s = 5.0
 _KILL_REAP_TIMEOUT_S = 5.0  # the wait for a SIGKILLed twin to be reaped
 # A twin that ignored its SIGINT: the wait for its interrupt's traceback (--test-kbd-traceback), then for a second SIGINT.
-# @tunable l2.kbd_traceback_wait_s = 1.0
 _KBD_TRACEBACK_WAIT_S = 1.0
-# @tunable l2.second_sigint_wait_s = 2.0
 _SECOND_SIGINT_WAIT_S = 2.0
 # A feed gap above this share of the armed watchdog timeout is a near reset; a run that starves it on purpose skips the check.
-# @tunable l2.feed_gap_share_max = 0.75
 FEED_GAP_SHARE_MAX = 0.75
-# @tunable l2.serving_poll_s = 0.25
 _SERVING_POLL_S = 0.25
-# @tunable l2.serving_probe_timeout_s = 1.0
 _SERVING_PROBE_TIMEOUT_S = 1.0
 _LOG_TAIL_LINES = 20
 # Past this many bytes the Unix port cannot intern an argument (from the script on), the script's directory or a
@@ -83,15 +77,12 @@ class TwinLaunch:
 
 @dataclass
 class TwinRun:
-    # One launched twin: its process, the log it writes, the stop file shutdown() ends it through, whether that stop
-    # went unanswered (SIGINT then ended it) and whether this module killed it.
+    # One launched twin: its process, the log it writes and whether this module killed it.
     proc: "subprocess.Popen[str]"
     log_path: Path
     log_file: IO[str]
     device: str
     state_dir: Path
-    stop_file: Path | None = None
-    stop_ignored: bool = False
     killed: bool = False
 
 
@@ -391,17 +382,9 @@ def send_line(run: TwinRun, line: str) -> None:
     run.proc.stdin.flush()
 
 
-def shutdown(run: TwinRun, label: str, timeout_s: float = 15.0, *, interrupt: bool = False) -> int:
-    # The stop file first: the runner ends on main()'s clean path, which flushes the persisted state as its SIGINT handler
-    # does (never SIGTERM). SIGINT is the fallback (run.stop_ignored), or the first step with interrupt=True; a twin that
-    # ignores it is described (/proc, a second SIGINT's outcome, the log tail), then killed: run.killed, the SIGKILL code.
-    if run.proc.poll() is None and run.stop_file is not None and not interrupt:
-        run.stop_file.touch()
-        with contextlib.suppress(subprocess.TimeoutExpired):
-            run.proc.wait(timeout=timeout_s)
-        if run.proc.poll() is None:
-            run.stop_ignored = True
-            print(f"DIAG: {label}: the stop file was not acted on within {timeout_s}s - falling back to SIGINT")
+def shutdown(run: TwinRun, label: str, timeout_s: float = 15.0) -> int:
+    # SIGINT, whose handler flushes the persisted state (never SIGTERM); a twin that ignores it is described (/proc, a
+    # second SIGINT's outcome, the log tail), then killed: run.killed, the SIGKILL code.
     if run.proc.poll() is None:
         run.proc.send_signal(signal.SIGINT)
         start = time.monotonic()
@@ -424,27 +407,23 @@ def shutdown(run: TwinRun, label: str, timeout_s: float = 15.0, *, interrupt: bo
 
 def spawn(launch: TwinLaunch, *, state_dir: Path, log_path: Path, args: "tuple[str, ...] | list[str]" = ()) -> TwinRun:
     # Every state path goes inside state_dir, so a launch never writes the manual run's defaults in digital_twin/; one the
-    # interpreter would die on before the runner starts is refused before anything is created. The stop file is spawn()'s.
-    if "--stop-file" in args:
-        raise ValueError("spawn() owns --stop-file: shutdown() ends the twin through it")
+    # interpreter would die on before the runner starts is refused before anything is created.
     paths = state_paths(state_dir)
-    stop_file = state_dir / "stop"
     env = twin_env(launch.micropypath)
     cmd = [
         launch.micropython_bin, RUNNER, "--module", launch.module, "--wiring-plan", str(launch.wiring_plan), "--device", launch.device,
         "--host", launch.host, "--port", str(launch.port), "--fram-state-path", str(paths.fram), "--scd30-state-path", str(paths.scd30),
         "--mem-backup-state-path", str(paths.mem_backup), "--config-dir", str(paths.config_dir) + "/", "--gc-threshold", str(launch.gc_threshold),
-        "--stop-file", str(stop_file), *args,
+        *args,
     ]
     refused = _uninternable(cmd[1:], env)
     if refused:
         raise ValueError(f"the twin was not started: {', '.join(refused)} - the Unix port interns each as a qstr of at most {_QSTR_MAX_BYTES} bytes and dies before the runner starts")
     paths.config_dir.mkdir(parents=True, exist_ok=True)
-    stop_file.unlink(missing_ok=True)  # a previous launch's on the same state would end this one at once
     print(f"== Launching: {' '.join(cmd)} (log: {log_path})")
     log_file = log_path.open("w", encoding="utf-8")  # closed by shutdown()/wait_exit(), which end the process first
     proc = subprocess.Popen(cmd, cwd=REPO_ROOT, env=env, stdin=subprocess.PIPE, stdout=log_file, stderr=subprocess.STDOUT, text=True)
-    return TwinRun(proc=proc, log_path=log_path, log_file=log_file, device=launch.device, state_dir=state_dir, stop_file=stop_file)
+    return TwinRun(proc=proc, log_path=log_path, log_file=log_file, device=launch.device, state_dir=state_dir)
 
 
 def state_paths(state_dir: Path) -> StatePaths:

@@ -21,7 +21,6 @@ from asy_base_classes import COUNTER_CAP, Lockable
 _SCRATCH_SIZE = const(32)
 # @tunable i2c.probe_settle_ms = 100
 _PROBE_SETTLE_MS = const(100)  # the settle before and after _probe_for_device()'s zero-byte write
-# @tunable i2c.clear_half_period_us = 5
 _CLEAR_HALF_PERIOD_US = const(5)  # 100 kHz clock-out, the SCD30's ceiling (Interface Description p.2)
 _CLEAR_PULSES = const(9)  # one byte plus its acknowledge: an I2C protocol constant
 _MAX_ADDRSIZE = const(32)  # machine.I2C's own addrsize ceiling, in bits (fill_memaddr_buf())

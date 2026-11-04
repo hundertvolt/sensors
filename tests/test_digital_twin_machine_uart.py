@@ -24,19 +24,13 @@ from machine import UART, LinkPoller, Pin, UARTLink
 
 import asy_uart_driver
 
-# @tunable l2.machine_uart_wire_time_floor_ms = 100
 _WIRE_TIME_FLOOR_MS = 100
-# @tunable l2.machine_uart_pump_deadline_ms = 500
 _PUMP_DEADLINE_MS = 500
-# @tunable l2.machine_uart_frame_wire_ms = 5
 _FRAME_WIRE_MS = 5
-# @tunable l2.machine_uart_frame_timeout_ms = 50
 _FRAME_TIMEOUT_MS = 50
 # The flash-stall cases' slow wire, 260 us a byte: a 32-page stall (12.8 ms) still spans more than the FIFO's 32 bytes
 # when the code run before it starts takes up to 8 ms of the 64-byte burst's 16.7 ms.
-# @tunable l2.machine_uart_stall_baud = 38400
 _STALL_BAUD = 38400
-# @tunable l2.machine_uart_stall_pages = 32
 _STALL_PAGES = 32
 _STALL_BURST = bytes(range(64))  # twice the 32-byte RX FIFO
 

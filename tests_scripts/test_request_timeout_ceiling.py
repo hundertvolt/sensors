@@ -19,9 +19,7 @@ from _script_loader import load_script_module
 from buildgen.validate import device_max_connections, webserver_init_default
 
 # Join bounds on the loopback fixtures' threads below.
-# @tunable l0.request_timeout_ceiling_join_timeout_s = 5.0
 _JOIN_TIMEOUT_S = 5.0
-# @tunable l0.request_timeout_ceiling_hammer_join_timeout_s = 2.0
 _HAMMER_JOIN_TIMEOUT_S = 2.0
 
 

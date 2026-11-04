@@ -31,15 +31,10 @@ if TYPE_CHECKING:
     from buildgen.jsontypes import JsonDict, JsonValue
     from buildgen.model import DeviceModel
 
-# @tunable l4.bench_load_probe_timeout_s = 10.0
 _PROBE_TIMEOUT_S = 10.0
-# @tunable l4.network_resilience_ntp_resync_after_reset_timeout_s = 120.0
 _NTP_RESYNC_AFTER_RESET_TIMEOUT_S = 120.0
-# @tunable l4.network_resilience_ntp_retry_chain_margin_s = 10.0
 _NTP_RETRY_CHAIN_MARGIN_S = 10.0
-# @tunable l4.network_resilience_sync_age_slack_s = 2.0
 _SYNC_AGE_SLACK_S = 2.0
-# @tunable l4.network_resilience_wait_poll_s = 2.0
 _WAIT_POLL_S = 2.0
 _ISL29125_DRIVER = "asy_isl29125_driver.py"
 _MATH_HELPERS = "math_helpers.py"

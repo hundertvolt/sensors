@@ -177,14 +177,14 @@
       "7": {"text": "reboot after \"Reset to defaults\""},
       "8": {"text": "reboot after \"Erase FRAM\""},
       "9": {"text": "a system command that did not complete: its shutdown did not finish, its delete, erase or config flush fell short, or the bootloader command never reached BOOTSEL"},
-      "11": {"text": "boot failure in phase 1 (construction), the watchdog reset or a console soft reset followed"},
-      "12": {"text": "boot failure in phase 2 (setup batch), the watchdog reset or a console soft reset followed"},
-      "13": {"text": "boot failure in phase 3 (task starts), the watchdog reset or a console soft reset followed"},
-      "14": {"text": "boot failure in phase 4 (timer starts), the watchdog reset or a console soft reset followed"},
-      "15": {"text": "boot failure in phase 5 (first NTP sync), the watchdog reset or a console soft reset followed"},
+      "11": {"text": "boot failure in phase 1 (construction), the watchdog reset or the boot entry's reset followed"},
+      "12": {"text": "boot failure in phase 2 (setup batch), the watchdog reset or the boot entry's reset followed"},
+      "13": {"text": "boot failure in phase 3 (task starts), the watchdog reset or the boot entry's reset followed"},
+      "14": {"text": "boot failure in phase 4 (timer starts), the watchdog reset or the boot entry's reset followed"},
+      "15": {"text": "boot failure in phase 5 (first NTP sync), the watchdog reset or the boot entry's reset followed"},
       "20": {"text": "supervisor escalation (a handler recorded a C-stack overflow)"},
       "21": {"text": "interrupted: Ctrl-C on the console ended the run, the watchdog reset or a console soft reset followed"},
-      "22": {"text": "the event loop ended with an exception after boot, the watchdog reset or a console soft reset followed"}
+      "22": {"text": "the event loop ended with an exception after boot, and the boot entry reset the chip"}
     },
     "VOCState": {
       "0": {"text": "blackout (first 46 samples, index 0)"},

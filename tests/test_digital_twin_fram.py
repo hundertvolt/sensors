@@ -66,7 +66,6 @@ _STATUS_IDLE = src_const("src/asy_fram_manager.py", "_STATUS_IDLE")
 _STATUS_BUSY = src_const("src/asy_fram_manager.py", "_STATUS_BUSY")
 _PAYLOAD = bytes(range(40))  # 41 bytes with its CRC8 byte: over the twin bus's 32-byte RX-overrun threshold
 _FAULT_TIMES = 64  # more chip reads than one chunk read makes: the fault lasts until cleared
-# @tunable l2.fram_booted_until_yields = 2000
 _UNTIL_YIELDS = 2000
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
@@ -210,7 +209,7 @@ def _twin_manager(status: int = 0x00) -> "tuple[FRAMManager, machine.SPI, FRAMCh
 
 
 async def _until(what: str, condition: "Callable[[], bool]") -> None:
-    # Polls on scheduler yields (the sleeps are fast), bounded by a tagged number of them.
+    # Polls on scheduler yields (the sleeps are fast), bounded by a count of them.
     for _ in range(_UNTIL_YIELDS):
         if condition():
             return

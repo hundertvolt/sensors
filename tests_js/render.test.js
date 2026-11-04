@@ -5,11 +5,8 @@ import { installMockFetch } from "../js/mock-server.js";
 import { hideBanner, renderSection, showBanner } from "../js/render.js";
 import { mustQuery } from "./_dom_helpers.js";
 
-// @tunable l0.render_wait_timeout_ms = 2000
 const WAIT_TIMEOUT_MS = 2000;
-// @tunable l0.render_poll_ms = 10
 const WAIT_POLL_MS = 10;
-// @tunable l0.render_banner_wait_ms = 5000
 const BANNER_WAIT_MS = 5000;
 
 // Polls `check` instead of a fixed sleep: some flows chain two requests, so a fixed wait would be flaky or slow.

@@ -39,17 +39,11 @@ _READ_AFTER_BOOT = (
 _SEED = (code("E", "TEST_SEED_A"), code("E", "TEST_SEED_B"), code("E", "TEST_SEED_C"))  # the erase script's ring
 _RR_WATCHDOG, _RR_REBOOT, _RR_CONFIG_RESET, _RR_FRAM_ERASED, _RR_COMMAND_INCOMPLETE = (module_int_const(SRC_DIR, "asy_system_service.py", name) for name in ("_RR_WATCHDOG", "_RR_REBOOT", "_RR_CONFIG_RESET", "_RR_FRAM_ERASED", "_RR_COMMAND_INCOMPLETE"))
 # The erase's own feed cadence: one feed per 256 B unit or chunk, each well under this (agent, 2026-10-14).
-# @tunable l3.system_commands_erase_feed_gap_max_ms = 100
 _ERASE_FEED_GAP_MAX_MS = 100
-# @tunable l3.system_commands_script_timeout_s = 90.0
 _SCRIPT_TIMEOUT_S = 90.0
-# @tunable l3.system_commands_refusal_script_timeout_s = 120.0
 _REFUSAL_SCRIPT_TIMEOUT_S = 120.0
-# @tunable l3.system_commands_boot_timeout_s = 60.0
 _BOOT_TIMEOUT_S = 60.0
-# @tunable l3.system_commands_present_timeout_s = 30.0
 _PRESENT_TIMEOUT_S = 30.0
-# @tunable l3.system_commands_picotool_timeout_s = 30.0
 _PICOTOOL_TIMEOUT_S = 30.0
 _MID_ERASE_RESETS_MS = (50, 150, 250)  # inside the 256 KB erase: its wire time alone is ~266 ms at the 8 MHz bus
 # The shutdown's four step lines, in the order SPECIFICATION.md Part A.8 runs them.

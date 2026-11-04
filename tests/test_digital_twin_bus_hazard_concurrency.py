@@ -69,41 +69,28 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
-# @tunable l2.twin_wdt_feed_interval_s = 1.0
 _WDT_FEED_INTERVAL_S = 1.0
-# @tunable l2.bus_hazard_concurrency_run_bound_s = 20.0
 _RUN_BOUND_S = 20.0
-# @tunable l2.bus_hazard_concurrency_run_seconds = 9.0
 _RUN_SECONDS = 9.0
-# @tunable l2.bus_hazard_concurrency_established_poll_s = 0.5
 _ESTABLISHED_POLL_S = 0.5
-# @tunable l2.bus_hazard_concurrency_reconnect_poll_s = 1.0
 _RECONNECT_POLL_S = 1.0
-# @tunable l2.bus_hazard_concurrency_flap_window_s = 75.0
 _FLAP_WINDOW_S = 75.0
-# @tunable l2.bus_hazard_concurrency_flap_run_bound_s = 95.0
 _FLAP_RUN_BOUND_S = 95.0
-# @tunable l2.bus_hazard_concurrency_state_run_bound_s = 30.0
 _STATE_RUN_BOUND_S = 30.0
-# @tunable l2.bus_hazard_recovery_offsets = 6
 _RECOVERY_OFFSETS = 6
-# @tunable l2.bus_hazard_recovery_reads = 6
 _RECOVERY_READS = 6
-# @tunable l2.bus_hazard_command_wait_s = 20.0
 _COMMAND_WAIT_S = 20.0
 _SEED = bytes(range(5, 45))  # 40 bytes: over rp2's 32-byte DMA threshold, the only SPI reads that can raise
 _DROPPED_WRENS = 8  # more WRENs than one write's retry sends: the write fails rather than recovering inside the driver
 _RUNG_OFFSETS = 6  # as many offsets as each loop has reads, the recovery case's own count
 _CANCEL_TURNS = 40  # scheduler turns into the SGP40's setup and measurement, which end well before
 _HOLD_SCD30_CYCLES = 3  # whole SCD30 cycles of real bus load the driven 60 s retry is held open for
-# @tunable l2.bus_hazard_concurrency_poll_s = 0.1
 _POLL_S = 0.1  # how often the ladder runs and the command waits look again
 _POLL_MS = int(_POLL_S * 1000)  # the same look on a driven clock
 _ERASE_UNIT: int = src_int("src/asy_fram_manager.py", "_ERASE_UNIT")
 _I2C_DEFAULT_TIMEOUT_US: int = src_int("src/asy_i2c_driver.py", "_DEFAULT_TIMEOUT_US")
 _STA_RETRY_S: int = src_int("src/asy_wifi_service.py", "_STA_RETRY_AFTER_LOSS_S")
 _STA_ESTABLISHED: int = src_int("src/asy_wifi_service.py", "_PHASE_STA_ESTABLISHED")
-# @tunable l2.bus_hazard_concurrency_erase_us_per_byte = 8
 _ERASE_US_PER_BYTE = 8  # an 8x-slow bus: the product's 8 MHz FRAM clock moves a byte in 1 us
 _GENERAL_CALL_ENTRY = ("writeto", 0x00, b"\x06", True)
 # Which get_data() field, per driver, proves that driver produced a real reading under load - the twin tier's much

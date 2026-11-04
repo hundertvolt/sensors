@@ -64,11 +64,8 @@ if TYPE_CHECKING:
 
 PAYLOAD_SIZE = 8
 _HARNESS_RATES: "PollRates" = {"poll_wait_ms": POLL_WAIT_MS, "poll_idle_ms": POLL_WAIT_MS}
-# @tunable l1.asy_uart_link_driver_round_poll_s = 0.005
 _ROUND_POLL_S = 0.005
-# @tunable l1.asy_uart_link_driver_ticker_step_ms = 1
 _TICKER_STEP_MS = 1
-# @tunable l1.asy_uart_link_driver_task_end_rounds = 200
 _TASK_END_ROUNDS = 200
 # One host deschedule longer than the reply budget, planted at the second UART sleep: on the wall clock it expires a
 # wait before the peer runs and a correct exchange fails; on the poll-round clock it cannot (SPECIFICATION.md Part J.7).
@@ -665,7 +662,6 @@ def _shipped_rates() -> "tuple[PollRates, PollRates]":
 _SHIPPED_RATES = _shipped_rates()
 # From the request to the run's end on the driven clock, exact on any host: the measured figure in both CRC modes at
 # _SHIPPED_RATES, with no margin (agent, 2026-10-27).
-# @tunable l1.asy_uart_link_driver_hazard_run_virtual_ms = 22440
 _HAZARD_RUN_VIRTUAL_MS = 22440
 
 

@@ -1,6 +1,6 @@
-"""Regression test: every reset goes through SystemService._reboot(), and the watchdog is armed once, first, in each
-generated boot entry - another call site would reintroduce an unpaused reset or a circumventable watchdog. Strings and
-comments are blanked before a scan, so a start line printing `WDT(` is no construction."""
+"""Regression test: every reset goes through SystemService._reboot() but the boot entry's own after a loop end (A.7),
+and the watchdog is armed once, first, in each generated boot entry - another site would reintroduce an unpaused reset
+or a circumventable watchdog. Strings and comments are blanked first, so a line printing `WDT(` is no construction."""
 
 import os
 
@@ -107,7 +107,7 @@ def test_the_watchdog_is_armed_once_first_in_each_generated_boot_entry_and_nowhe
 
 def _wdt_problems(product: "list[str]", entries: "list[str]", noautostart: "list[str]", timeout: int) -> "list[str]":
     problems = [f"{path}: constructs a WDT" for path in product + noautostart if "WDT(" in _read(path) and "WDT(" in _code(_read(path))]
-    first = ["from machine import WDT", f"watchdog = WDT(timeout={timeout})"]
+    first = ["from machine import WDT, reset", f"watchdog = WDT(timeout={timeout})"]
     for path in entries:
         code = _code(_read(path))
         if code.count("WDT(") != 1 or _statements(code)[:2] != first:
@@ -126,7 +126,7 @@ def test_a_planted_alias_reset_and_a_generated_watchdog_are_found() -> None:
     printed = _planted("printed.py", '"""Doc."""\n\nprint("asyncio.run(main(watchdog=WDT(timeout=8000)))")\n')
     assert _wdt_problems([module], [entry], [printed], 8000) == [
         module + ": constructs a WDT",
-        entry + ": the watchdog is not armed once, by its first two statements ['from machine import WDT', 'watchdog = WDT(timeout=8000)']",
+        entry + ": the watchdog is not armed once, by its first two statements ['from machine import WDT, reset', 'watchdog = WDT(timeout=8000)']",
     ]
 
 

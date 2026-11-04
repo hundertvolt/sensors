@@ -250,3 +250,22 @@ did, corrected the stale texts and removed the CRC agreement check (a mismatched
 time). `redo/r1/B8/` holds the action list with the lead's decisions, brief, hand-back, falsification brief and
 result, the sizes and the merged head's checks (`int/`). One gate and one fix round, as budgeted; 236 lines added,
 1,478 removed.
+
+## Thirty-fourth snapshot (2026-11-04): R2, tests, tooling, CI and the register
+
+The plan's R2 round, on the standing go-ahead, with the owner's answers on its list (2026-11-04 11:23: "the tunables'
+main target is firmware. Buildgen may also be included. But generally, it's option a with it"; 11:27, on the console
+banner after a loop end: "option c"). A loop end now resets the chip at once, so rp2's REPL and its banner never start
+and the next boot reads 22. Three audit-born convention gates, the 48 tests that only showed a check could fail, five
+twin and fake knobs read only by their own tests, the shared twin's 89 s retirement and the launcher stop file go;
+seven sleep-then-assert tests wait for their condition. The twin CI runs one job per device and GC stage (12, from
+24), each with the suite and the scenarios that need port 53 alone; `scripts/test.sh` runs the rest; no timeout
+changed. Part N keeps the firmware, build and suite-level values (192 rows); the 1,086 others and their tags go, each
+literal staying where it was. The three port locks stay: one lock would need a new wrapper (lead decision, action
+list item 1). The falsification refuted parts of five claims (one of them the lead's own wording); the one fix round
+restored the BMP3xx twin's EVENT register (the bench conformance probe reads it), made the idle check excuse only one
+backup count and the captive DNS waits wait for the bind, aligned F.5.4 and two unit tests with the loop end, freed
+the bench loop-end test from the old watchdog delay (its first run is owed to round 1) and corrected stale texts.
+`redo/r2/` holds the list, the briefs, the hand-back, the falsification, the action list with the lead's decisions
+and the merged head's checks (`int/`). One gate and one fix round, as budgeted; 374 lines added, 3,771 removed;
+`SPECIFICATION.md` 1,589,923 B to 1,129,050 B.

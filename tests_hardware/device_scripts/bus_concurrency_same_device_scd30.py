@@ -25,17 +25,12 @@ if TYPE_CHECKING:
 
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
-# @tunable l3.bus_concurrency_same_device_scd30_reader_iterations = 120
 _READER_ITERATIONS = 120
-# @tunable l3.bus_concurrency_same_device_scd30_snapshotter_iterations = 40
 _SNAPSHOTTER_ITERATIONS = 40
 # setup()'s soft reset leaves the measurement interval running, so data-ready rises on the first unsettled conversion;
 # scd30_same_device_rw_concurrency.py consumes it the same way.
-# @tunable l3.scd30_same_device_rw_concurrency_settle_s = 12.0
 _SETTLE_S = 12.0
-# @tunable l3.scd30_same_device_rw_concurrency_settle_step_s = 0.5
 _SETTLE_STEP_S = 0.5
-# @tunable l3.bus_concurrency_same_device_scd30_run_bound_s = 90.0
 _RUN_BOUND_S = 90.0
 
 

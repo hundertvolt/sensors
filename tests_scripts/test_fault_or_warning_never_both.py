@@ -263,37 +263,6 @@ def test_the_scan_sees_the_trees_logging() -> None:
 # ---- planted pairs -----------------------------------------------------------------------------------
 
 
-_PLANT = """
-class Mod:
-    async def _err(self, errno, *args):
-        await self.pr.err_s("x", *args, errno=errno)
-
-    async def f(self, ok):
-        await self.pr.wrn_s("w", wrnno=_WRN_A)
-        {second}
-"""
-
-
-_PLANTED_PAIR = {("src/plant.py", "f", ("W", "A"), ("E", "B"))}
-
-
-@pytest.mark.parametrize(
-    ("second", "expected"),
-    [
-        ('await self.pr.err_s("e", errno=_ERR_B)', _PLANTED_PAIR),  # a warning then a fault for one occurrence
-        ("await self._err(_ERR_B)", _PLANTED_PAIR),  # the same pair, the fault written through a wrapper
-        ('await self.pr.wrn_s("w2", wrnno=_WRN_C)', set()),  # same kind
-        ('if ok:\n            return\n        await self.pr.err_s("e", errno=_ERR_B)', _PLANTED_PAIR),  # one path still reaches it
-        ('return\n        await self.pr.err_s("e", errno=_ERR_B)', set()),  # a return between ends the path
-        ("await self.g()", set()),  # another function's entries are never paired
-    ],
-)
-def test_the_scan_bites_a_planted_pair(second: str, expected: "set[Pair]") -> None:
-    source = _PLANT.format(second=second) + "\n    async def g(self):\n        await self.pr.err_s('g', errno=_ERR_D)\n"
-    pairs = _pairs([_parse("src/plant.py", source)])
-    assert pairs == expected, _describe(pairs)
-
-
 def test_the_scan_sees_a_handler_entered_after_a_warning() -> None:
     source = "async def f(pr):\n    try:\n        await pr.wrn_s('w', wrnno=_WRN_A)\n        step()\n    except OSError:\n        await pr.err_s('e', errno=_ERR_B)\n"
     assert _pairs([_parse("src/plant.py", source)]) == {("src/plant.py", "f", ("W", "A"), ("E", "B"))}

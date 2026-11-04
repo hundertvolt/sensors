@@ -4,7 +4,6 @@ A failure list is one fact, its total beside the first few, so a persistent faul
 
 import json
 
-# @tunable l3.device_script_errors_kept = 5
 _ERRORS_KEPT = 5
 
 

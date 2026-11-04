@@ -12,9 +12,7 @@ import { acquirePortLock } from "./_port_lock.js";
 import { twinStartFailure } from "./_twin_start_failure.js";
 
 export const HOST = "127.0.0.1";
-// @tunable l0.live_twin_ready_timeout_ms = 20000
 export const READY_TIMEOUT_MS = 20000;
-// @tunable l0.live_twin_shutdown_timeout_ms = 15000
 export const SHUTDOWN_TIMEOUT_MS = 15000;
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // The twin layout of the one MICROPYPATH definition, read once.

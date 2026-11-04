@@ -50,7 +50,6 @@ _CHIP_GAIN_RATIO = 25.9  # _isl29125_chip.py's own per-instance default - the va
 _SWITCH_UP_LUX = 0.85 * 375.0
 
 # Twin time a red-dominant scene runs for; the read loop's own SampleInterval for it.
-# @tunable l2.isl29125_autorange_red_scene_window_s = 20
 _RED_SCENE_WINDOW_S = 20
 _RED_SCENE_INTERVAL_S = 5
 

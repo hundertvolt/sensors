@@ -10,7 +10,6 @@ import pytest
 _RUNNER = "tests/_threshold_runner.py"
 # @tunable gc.threshold_bytes = 32768
 _SHIPPED_THRESHOLD = 32768  # what buildgen emits into the generated boot entry (codegen.py)
-# @tunable l0.threshold_runner_timeout_s = 60
 _RUN_TIMEOUT_S = 60
 
 

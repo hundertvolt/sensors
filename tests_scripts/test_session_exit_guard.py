@@ -28,7 +28,6 @@ pytest_runtest_setup = _module.pytest_runtest_setup
 pytest_runtest_call = _module.pytest_runtest_call
 pytest_runtest_teardown = _module.pytest_runtest_teardown
 """
-# @tunable l0.session_exit_guard_timeout_s = 60
 _RUN_TIMEOUT_S = 60
 
 

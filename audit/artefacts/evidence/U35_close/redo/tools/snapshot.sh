@@ -23,7 +23,7 @@ cp $S/u35/lead/snap2/README.md "$X/README.md"
 EX=(--exclude='*.log' --exclude='*.out' --exclude='*.diff' --exclude=fz --exclude=ftmp --exclude=xtmp --exclude=probe
   --exclude='*_25c.py' --exclude='trial_*' --exclude=AGENT_IDS.txt --exclude='.*')
 for e in ${SNAP_EXCLUDE:-}; do EX+=("--exclude=$e"); done
-for d in r0 r1 knowledge findings; do [ -d $S/u35r/$d ] && (cd $S/u35r && tar "${EX[@]}" -cf - $d) | tar -xf - -C "$R"; done
+for d in r0 r1 r2 knowledge findings; do [ -d $S/u35r/$d ] && (cd $S/u35r && tar "${EX[@]}" -cf - $d) | tar -xf - -C "$R"; done
 [ -f $S/u35r/tools/review_hunks.py ] && cp $S/u35r/tools/review_hunks.py "$R/tools/"
 [ -d $S/u35r/hw_handover ] && (cd $S/u35r && tar --exclude=hw_handover/logs --exclude=__pycache__ -cf - hw_handover) | tar -xf - -C "$R"
 [ -f $S/u35r/int_history.txt ] && gzip -c $S/u35r/int_history.txt > "$R/int_history.txt.gz"

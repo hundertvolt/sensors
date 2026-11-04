@@ -242,20 +242,15 @@ _DEFAULT_ENVIRONMENT = RunEnvironment(_CONFIG_DIR_DEFAULT, False, _NO_TEST_FLAGS
 _PERSISTENT_STATE = StatePaths(_FRAM_STATE_DEFAULT, _SCD30_STATE_DEFAULT, _MEM_BACKUP_STATE_DEFAULT)
 
 
-# @tunable l2.twin_ready_poll_ms = 20
 _READY_POLL_MS = 20
 
 
-# @tunable l2.twin_wire_log_clear_interval_ms = 5000
 _WIRE_LOG_CLEAR_INTERVAL_MS = 5000
 
 
-# @tunable l2.twin_stop_file_poll_ms = 100
 _STOP_FILE_POLL_MS = 100
 
-# @tunable l2.twin_test_stdin_poll_ms = 50
 _TEST_STDIN_POLL_MS = 50  # how often a --test-* trigger line on stdin is looked for
-# @tunable l2.twin_loop_lag_report_ms = 5000
 _LOOP_LAG_REPORT_MS = 5000  # one LOOP_LAG line per window of this length, its figures that window's alone
 _LOOP_LAG_BUCKETS = 64  # 1 ms histogram bins, the last one open-ended: a fixed fold, no list grows with the run
 _DROP_WINDOW_CALLBACKS = 1_000_000  # more soft callbacks than any one-shot's window can see: the queue stays full to its fire
@@ -263,7 +258,6 @@ _KBD_CAPTURE_SPINS = 1000  # loop passes after the self-SIGINT, each jump a pend
 
 # The WDT keeps its newest 200 feed times: a span it dropped between two folds lasts under one fold period,
 # well below the gaps worth flagging, so folding this often loses none of them; the harness judges the gap.
-# @tunable l2.twin_feed_gap_fold_ms = 5000
 _FEED_GAP_FOLD_MS = 5000
 
 

@@ -38,7 +38,6 @@ HOST_MODULES = sorted(p for p in TESTS_HARDWARE.rglob("*.py") if "device_scripts
 PUSH_MODULE = TESTS_HARDWARE / "bench" / "test_sensor_config_push_over_real_hardware.py"
 REPAIR_MODULES = [TESTS_HARDWARE / "bench" / "test_network_resilience.py", PUSH_MODULE]
 
-# @tunable l0.bench_helpers_stop_wait_s = 2.0
 _STOP_WAIT_S = 2.0  # how soon a set stop must end the script-server wait
 # The handlers a fetch's failures need: a cut-off answer is an HTTPException, beside OSError's transport errors.
 _CATCH_ALL = frozenset({"Exception", "BaseException"})

@@ -28,11 +28,8 @@ BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
 _SELF_LIGHT_LEVEL = 20  # ~750 lx at this geometry: inside range 1, far from clipping
 # Lit by the board itself, anything this dark is a real fault rather than a dark bench.
-# @tunable l3.isl29125_plausibility_read_room_light_min_lux = 5.0
 _ROOM_LIGHT_MIN_LUX = 5.0
-# @tunable l3.isl29125_plausibility_read_poll_s = 0.5
 _POLL_S = 0.5
-# @tunable l3.isl29125_plausibility_read_poll_tries = 30
 _POLL_TRIES = 30
 # A sample stored after the pixel write may have integrated partly unlit; the second one after it never has.
 _FRESH_SAMPLES = 2

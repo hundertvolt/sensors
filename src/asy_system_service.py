@@ -91,7 +91,7 @@ _RR_COMMAND_INCOMPLETE = const(9)
 _RR_BOOT_FAILURE = const(10)  # + the boot phase that never completed
 _RR_STACK_EXHAUSTED = const(20)  # outside the 10 + phase band of boot failures
 RR_INTERRUPTED = const(21)  # Ctrl-C on the console ended the run and the watchdog reset followed; the boot entry imports it
-_RR_LOOP_ENDED = const(22)  # any other exception ended the event loop after boot, the watchdog reset followed
+_RR_LOOP_ENDED = const(22)  # any other exception ended the event loop after boot, and the boot entry reset the chip
 # The bootloader's purpose is its acceptance's code: a BOOTSEL round trip loses both regions (the next boot reads 2),
 # so the command writes no code of its own.
 _BOOTLOADER = const(_RR_COMMAND_INCOMPLETE)

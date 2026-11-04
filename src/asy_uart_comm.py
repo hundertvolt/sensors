@@ -93,8 +93,7 @@ _GATE_STEP_MS = const(20)  # longest single sleep inside the write gate, so a ca
 _GC_PAUSE_WORST_MS = const(21)  # measured worst-case collection pause, SPECIFICATION.md Part I
 # The longest one synchronous flash operation holds the loop: a config flush, whose sector erases and page
 # programs littlefs runs without yielding, at the W25Q16JV maxima (tSE 400 ms, tPP 3 ms).
-# @tunable uart.flash_hold_max_ms = 2129
-_FLASH_HOLD_MAX_MS = const(2129)  # 5 erases x 400 + 43 page programs x 3, traced at v1.29.0 (Part N)
+_FLASH_HOLD_MAX_MS = const(2129)  # 5 erases x 400 + 43 page programs x 3, traced at v1.29.0 (J.6)
 # @tunable uart.poll_jitter_ms = 5
 _POLL_JITTER_MS = const(5)  # scheduling slack added to poll_wait_ms when sizing rxbuf
 _BACKOFF_MULT = const(2)
@@ -108,7 +107,6 @@ _TICKS_HORIZON_MS = const(0x1FFFFFFF)  # 2**29 - 1: the longest delay ticks_add(
 _POLL_WAIT_MAX_MS = const(9)  # J.6: a transaction polls at single-digit milliseconds
 _DEFAULT_PAYLOAD_SIZE = const(48)  # agreed out of band with the peer, never tuned on one side (J.6)
 _DEFAULT_TIMEOUT_MS = const(1000)  # agreed out of band with the peer, never tuned on one side (J.6)
-# @tunable uart.chunk_bytes = 256
 _DEFAULT_CHUNK_BYTES = const(256)  # the webserver's piece size (Part I.3): the largest receive allocation
 # @tunable uart.max_transfer_bytes = 12192
 _DEFAULT_MAX_TRANSFER_BYTES = const(12192)  # (_CHUNKS_MAX - 1) x the default payload: no default train is refused

@@ -18,13 +18,9 @@ if TYPE_CHECKING:
 
     from http_client import JSONObject
 
-# @tunable l4.manual_bus_electrical_recovery_watch_s = 30.0
 _RECOVERY_WATCH_S = 30.0
-# @tunable l4.manual_bus_electrical_reboot_watch_s = 30.0
 _REBOOT_WATCH_S = 30.0
-# @tunable l4.manual_bus_electrical_lead_window_s = 20
 _LEAD_WINDOW_S = 20
-# @tunable l4.manual_bus_electrical_fram_detect_watch_s = 120.0
 _FRAM_DETECT_WATCH_S = 120.0
 _POLL_S = 1.0  # a recorded latency's resolution: one /status read a second
 _RR_WATCHDOG, _RR_TASK_BUDGET = (module_int_const(SRC_DIR, "asy_system_service.py", name) for name in ("_RR_WATCHDOG", "_RR_TASK_BUDGET"))

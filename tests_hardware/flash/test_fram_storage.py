@@ -15,19 +15,12 @@ if TYPE_CHECKING:
 
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("fram", "construction", "fram_crash_points", "ci_suite._run_5b_error_log_restore_is_all_or_nothing", "ci_suite._run_5c_storage_paused_shutdown_never_loses_the_error_log")
 
-# @tunable l3.fram_storage_short_script_timeout_s = 30.0
 _SHORT_SCRIPT_TIMEOUT_S = 30.0
-# @tunable l3.fram_storage_backup_script_timeout_s = 150.0
 _BACKUP_SCRIPT_TIMEOUT_S = 150.0
-# @tunable l3.fram_storage_reachable_timeout_s = 30.0
 _REACHABLE_TIMEOUT_S = 30.0
-# @tunable l3.fram_storage_reachable_poll_s = 1.0
 _REACHABLE_POLL_S = 1.0
-# @tunable l3.fram_storage_script_timeout_s = 60.0
 _SCRIPT_TIMEOUT_S = 60.0
-# @tunable l3.fram_storage_pause_script_timeout_s = 90.0
 _PAUSE_SCRIPT_TIMEOUT_S = 90.0
-# @tunable l3.fram_storage_lockout_script_timeout_s = 45.0
 _LOCKOUT_SCRIPT_TIMEOUT_S = 45.0
 _TEST_BAND = (code("E", "TEST_SEED_A"), code("E", "TEST_SEED_B"), code("E", "TEST_SEED_C"))  # every seed script's codes
 _SEQUENCES = 3 ** 3  # the reset-race nonce picks one of the test band's three-code sequences

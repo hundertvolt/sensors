@@ -63,23 +63,14 @@ _STA_DISCONNECT_WAIT_ITERS: int = src_int("src/asy_wifi_service.py", "_STA_DISCO
 _STA_RETRY_AFTER_LOSS_S: int = src_int("src/asy_wifi_service.py", "_STA_RETRY_AFTER_LOSS_S")
 _STAT_JOINED_NO_IP: int = src_int("src/asy_wifi_service.py", "_STAT_JOINED_NO_IP")
 
-# @tunable l1.asy_wifi_service_connect_bound_s = 2.0
 _CONNECT_BOUND_S = 2.0
-# @tunable l1.asy_wifi_service_sent_poll_ms = 10
 _SENT_POLL_MS = 10
-# @tunable l1.asy_wifi_service_sent_poll_tries = 100
 _SENT_POLL_TRIES = 100
-# @tunable l1.asy_wifi_service_off_subnet_wait_s = 0.2
 _OFF_SUBNET_WAIT_S = 0.2
-# @tunable l1.asy_wifi_service_connect_poll_ms = 50
 _CONNECT_POLL_MS = 50
-# @tunable l1.asy_wifi_service_connect_poll_tries = 200
 _CONNECT_POLL_TRIES = 200
-# @tunable l1.asy_wifi_service_phase_poll_ms = 20
 _PHASE_POLL_MS = 20
-# @tunable l1.asy_wifi_service_phase_poll_tries = 100
 _PHASE_POLL_TRIES = 100
-# @tunable l1.asy_wifi_service_flash_cancel_bound_s = 1
 _FLASH_CANCEL_BOUND_S = 1
 
 try:

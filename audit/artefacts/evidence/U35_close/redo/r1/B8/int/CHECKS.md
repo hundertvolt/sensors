@@ -15,3 +15,5 @@ fix round gated. `chain.sh` here, one step after another through `run.sh`, label
 Sizes from the unit (src/ untouched by the fix round): `src/` 194,883 B; dev `imageFreeBytes` 60,492 B (58,708 B at
 d5c90b71, the falsification's plant reproduced both). The full suite at both GC stages ran in the unit's gate on
 6f24e171; the fix round changed buildgen's checks and tests only, so CI's full run on the snapshot is its next proof.
+
+CI on snapshot 33 (44892a2b): green, run 41809026294 (2026-11-04 10:11 UTC).

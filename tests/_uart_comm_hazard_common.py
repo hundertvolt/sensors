@@ -24,15 +24,11 @@ if TYPE_CHECKING:
 # A short timeout keeps each recovery cycle cheap: this tier is about which frames pass validation and what is
 # emitted, not about real-world durations, and every value still clears the module's own floor of 2 x poll_wait_ms +
 # poll_idle_ms plus the worst-case GC pause - 24ms here, the harness setting poll_idle_ms equal to poll_wait_ms.
-# @tunable l1.uart_comm_hazard_timeout_ms = 30
 _TIMEOUT_MS = 30
 _PAYLOAD = 8
 
-# @tunable l1.uart_comm_hazard_exchange_limit_s = 20
 _EXCHANGE_LIMIT_S = 20
-# @tunable l1.uart_comm_hazard_step_bound_s = 5
 _STEP_BOUND_S = 5
-# @tunable l1.uart_comm_hazard_crc_timeout_factor = 8
 _CRC_TIMEOUT_FACTOR = 8
 
 

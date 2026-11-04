@@ -34,12 +34,9 @@ _LEGAL = {"cmd": lambda v: v == _CMD_SET, "size": lambda v: v == 1, "chunks": la
 _FLASH_WINDOW_MAX_US = 400000  # W25Q16JV tSE max: the longest interrupts-off stretch the ring must hold (the script's own)
 _RING_LINK_TRANSACTIONS = 5
 
-# @tunable l3.uart_crossover_script_timeout_s = 120.0
 _SCRIPT_TIMEOUT_S = 120.0
-# @tunable l3.uart_crossover_long_script_timeout_s = 180.0
 _LONG_SCRIPT_TIMEOUT_S = 180.0
 # Sized from the twin run (12 s with the stalled-TX settle): four hazard classes, the boundary set at 300 ms a verdict.
-# @tunable l3.uart_crossover_hazards_timeout_s = 120.0
 _HAZARDS_TIMEOUT_S = 120.0
 
 

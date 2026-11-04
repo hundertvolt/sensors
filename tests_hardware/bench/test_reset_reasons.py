@@ -32,17 +32,11 @@ _TIMER_BIT, _FORCED_BIT = 0x1, 0x2  # the watchdog's REASON bits 0-1, TIMER and 
 # Read after the serving boot: the exec's Ctrl-C and soft reset change no reset register (the bench's record).
 _READ_REASON_BITS = "from machine import mem32\nprint('REASON_BITS', mem32[0x40058008] & 3)\n"
 _SCRATCH_REMOVE = "import os\nif 'hwtest-scratch' in os.listdir():\n    for n in os.listdir('hwtest-scratch/'):\n        os.remove('hwtest-scratch/' + n)\n    os.rmdir('hwtest-scratch/')\n"
-# @tunable l4.reset_reasons_script_timeout_s = 120.0
 _SCRIPT_TIMEOUT_S = 120.0
-# @tunable l4.reset_reasons_serving_timeout_s = 90.0
 _SERVING_TIMEOUT_S = 90.0
-# @tunable l4.reset_reasons_serving_poll_s = 2.0
 _SERVING_POLL_S = 2.0
-# @tunable l4.reset_reasons_status_timeout_s = 10.0
 _STATUS_TIMEOUT_S = 10.0
-# @tunable l4.reset_reasons_loss_margin_s = 2.0
 _LOSS_MARGIN_S = 2.0
-# @tunable l4.reset_reasons_picotool_timeout_s = 30.0
 _PICOTOOL_TIMEOUT_S = 30.0
 _BOOT_PHASES = (1, 2, 3, 4, 5)  # asy_system_service.py's BOOT_CONSTRUCTION .. BOOT_NTP: a hang in each reads 10 + phase
 
@@ -230,14 +224,14 @@ def test_a_console_interrupt_is_attributed(board: "Board", bench: "BenchBridge",
 @pytest.mark.parametrize("kind", ["exception", "base"])
 def test_a_loop_ended_by_an_exception_after_boot_is_attributed(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]", kind: str) -> None:
     # mpremote's Ctrl-C records 21, which the script's boot clears; its loop then ends by an OSError or a SystemExit at the
-    # first wait after BOOT_DONE: the entry records 22 and returns, and the watchdog resets. Normal boot, no flash write.
+    # first wait after BOOT_DONE: the entry records 22 and resets the chip at once. Normal boot, no flash write.
     try:
         _evidence(board, bench, dut_ip, f"reset-reason-loop-end-{kind}")
         facts = parse_facts(board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "reset_code_loop_end.py", timeout_s=_SCRIPT_TIMEOUT_S, KIND=kind, BOOT_DONE=str(_BOOT_DONE)), allow_missing_done=True)
-        record = facts.get("record")
-        assert facts.get("raised_in_phase") == _BOOT_DONE and isinstance(record, list) and record[1:2] == [_RR["LOOP_ENDED"]], f"{kind}: the loop did not end after BOOT_DONE with its record written: {facts}"
-        wait_until(lambda: not board.is_device_present(), timeout_s=_WDT_TIMEOUT_MS / 1000 + _LOSS_MARGIN_S, description="the watchdog reset after the loop ended")
+        # No drop-off wait: the reset is immediate. Its phase fact may be lost in rp2's CDC queue, so only a wrong one
+        # fails: 22 alone proves BOOT_DONE, written only then over a record the script's boot cleared (A.7).
+        assert facts.get("raised_in_phase", _BOOT_DONE) == _BOOT_DONE, f"{kind}: the loop ended in another phase: {facts}"
         bits = _attributed(board, dut_ip, _RR["LOOP_ENDED"], result_note, f"loop ended by {kind}")
-        assert bits & _TIMER_BIT and not bits & _FORCED_BIT, f"{kind}: the loop end's watchdog reset must set the timer bit, never the forced one: {bits}"
+        assert bits & _FORCED_BIT and not bits & _TIMER_BIT, f"{kind}: the entry's machine.reset() must set the forced bit, never the timer one: {bits}"
     finally:
         restore_board_to_serving(board, bench, dut_ip)

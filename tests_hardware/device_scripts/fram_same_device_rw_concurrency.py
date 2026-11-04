@@ -30,9 +30,7 @@ _READ_REGION = _EVIDENCE_REGIONS[0]
 _WRITE_REGION = _SCRATCH_REGIONS[0]
 _WRITE_PATTERN = bytes((32 - i) & 0xFF for i in range(_WRITE_REGION[1]))
 
-# @tunable l3.fram_same_device_rw_concurrency_read_iterations = 30
 _READ_ITERATIONS = 30
-# @tunable l3.fram_same_device_rw_concurrency_run_bound_s = 60.0
 _RUN_BOUND_S = 60.0
 
 

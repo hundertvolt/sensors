@@ -26,32 +26,21 @@ DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 # Every registered JSON GET route, plus the page and the largest static file it fetches next (a static mount, not a
 # REST route).
 _PATHS = (*get_routes(), "/", "/js/app.js")
-# @tunable l4.serving_heap_at_default_gc_rounds = 12
 _ROUNDS = 12
-# @tunable l4.network_resilience_slot_release_wait_s = 1.0
 _ROUND_SETTLE_S = 1.0  # a slot outlives the response its client holds (Part I.6)
-# @tunable l4.serving_heap_at_default_gc_level_gap_s = 3.0
 _LEVEL_GAP_S = 3.0  # between levels - under the device script's own 10 s quiet-to-leave
-# @tunable l4.serving_heap_at_default_gc_pre_idle_s = 30.0
 _PRE_IDLE_S = 30.0  # the device starts dumping 20 s into its own boot: this leaves ~4 idle dumps first
 # Fixed, the worst route needs 320-336 B (board and 32-bit twin); pre-fix needs were 512-1,536 B.
 # Between rungs 24 (measures 384-400 B) and 32 (512 B), so the measured rung cannot flip the
 # verdict either way (SPECIFICATION.md Part I.3).
-# @tunable l4.serving_heap_at_default_gc_max_route_need = 480
 _MAX_ROUTE_NEED = 480
 
 
-# @tunable l4.serving_heap_at_default_gc_connect_timeout_s = 30.0
 _CONNECT_TIMEOUT_S = 30.0
-# @tunable l4.serving_heap_at_default_gc_barrier_timeout_s = 30.0
 _BARRIER_TIMEOUT_S = 30.0
-# @tunable l4.serving_heap_at_default_gc_burst_join_s = 60.0
 _BURST_JOIN_S = 60.0
-# @tunable l4.serving_heap_at_default_gc_need_script_timeout_s = 300.0
 _NEED_SCRIPT_TIMEOUT_S = 300.0
-# @tunable l4.serving_heap_at_default_gc_serving_script_timeout_s = 900.0
 _SERVING_SCRIPT_TIMEOUT_S = 900.0
-# @tunable l4.serving_heap_at_default_gc_driver_join_s = 90.0
 _DRIVER_JOIN_S = 90.0
 
 

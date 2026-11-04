@@ -15,7 +15,6 @@ import pytest
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
 
-# @tunable l4.board_image_system_timeout_s = 10.0
 _SYSTEM_TIMEOUT_S = 10.0
 _REFLASH = "manual step: reflash the round's standard image (scripts/build_firmware.py), or rebuild from this tree"
 _TICK_OFFSET = "the board runs the tick-offset test image"

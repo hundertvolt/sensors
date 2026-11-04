@@ -28,27 +28,19 @@ COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency", "sensortask_i
 _HAMMER_DURATION_S = 120.0
 _HAMMER_PATHS = tuple(get_routes())  # every registered JSON GET route
 _HAMMER_THREAD_COUNT = configured_max_connections()  # the build's own ceiling: the hammer saturates admission
-# @tunable l4.memory_stress_bench_fetch_timeout_s = 5.0
 _FETCH_TIMEOUT_S = 5.0
-# @tunable l4.memory_stress_bench_join_timeout_s = 10.0
 _JOIN_TIMEOUT_S = 10.0
-# @tunable l4.memory_stress_bench_voc_reset_interval_s = 3.0
 _VOC_RESET_INTERVAL_S = 3.0
 _CEILING_ENTRIES = frozenset({("W", code("W", "HTTP_REFUSED")), ("W", code("W", "HTTP_PEER_RESET"))})  # src/asy_webserver_service.py's drop traces
 # Readers' answered requests, the writer's never counted: writer starvation is accepted degradation (owner, 2026-09-28).
-# @tunable l4.memory_stress_bench_min_answered = 100
 _MIN_ANSWERED = 100
-# @tunable l4.memory_stress_bench_soak_request_step_s = 0.2
 _SOAK_REQUEST_STEP_S = 0.2
 # Failed soak requests as a share of those sent, so the bound scales with the chosen duration.
 # @tunable l4.soak_request_failure_rate = 0.001
 _SOAK_REQUEST_FAILURE_RATE = 0.001
-# @tunable l4.memory_stress_bench_recovery_timeout_s = 30.0
 _RECOVERY_TIMEOUT_S = 30.0
-# @tunable l4.memory_stress_bench_recovery_poll_s = 1.0
 _RECOVERY_POLL_S = 1.0
 # The lag script's own 30 s window plus the shipped boot on the board's own config, its WiFi connect included.
-# @tunable l4.memory_stress_bench_loop_lag_script_timeout_s = 90.0
 _LOOP_LAG_SCRIPT_TIMEOUT_S = 90.0
 
 

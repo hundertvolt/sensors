@@ -29,22 +29,16 @@ BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
 # A 30 s trigger affords the largest PRST (8 RGB cycles, ~2424 ms at 16 bit) plus the 2-cycle settle, ~3030 ms worst
 # case; 6 s is still 5x under the periodic fallback, so a reading inside it means the INT line.
-# @tunable l3.isl29125_real_irq_edge_fast_path_deadline_s = 6.0
 _FAST_PATH_DEADLINE_S = 6.0
 _TRIGGER_S = 30  # deliberately long: only a real interrupt can beat it
 _CYCLE_MS_16BIT = 303  # 3 x tINT, tINT = 101 ms typical (FN8424 p.3)
 _CHANNEL_MS_16BIT = 101
 _PERSIST = 4  # the PRST setting the unit question is timed at (FN8424 p.11 Table 12)
-# @tunable l3.isl29125_real_irq_edge_int_poll_ms = 50
 _INT_POLL_MS = 50
-# @tunable l3.isl29125_real_irq_edge_fast_path_poll_ms = 100
 _FAST_PATH_POLL_MS = 100
-# @tunable l3.isl29125_real_irq_edge_cycle_margin_ms = 50
 _CYCLE_MARGIN_MS = 50
-# @tunable l3.isl29125_real_irq_edge_int_poll_tries = 30
 _INT_POLL_TRIES = 30
 # A WS2812 latches its last value; the dark scene needs this long to reach the part before the first conversion.
-# @tunable l3.isl29125_real_irq_edge_dark_settle_ms = 300
 _DARK_SETTLE_MS = 300
 
 

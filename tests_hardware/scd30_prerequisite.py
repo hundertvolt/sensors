@@ -15,9 +15,7 @@ WAIT_SCRIPT = DEVICE_SCRIPTS_DIR / "scd30_data_ready_wait.py"
 START_SCRIPT = DEVICE_SCRIPTS_DIR / "scd30_start_continuous_measurement.py"
 
 # One setup and a register read bound both the interval read and the start script (one read-back, one send).
-# @tunable l3.scd30_prerequisite_interval_read_timeout_s = 30.0
 _INTERVAL_READ_TIMEOUT_S = 30.0
-# @tunable l3.scd30_prerequisite_wait_margin_s = 60
 _WAIT_MARGIN_S = 60
 
 

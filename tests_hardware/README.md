@@ -556,8 +556,8 @@ named beside it; a script runs rendered (`harness.render_device_script()`), and 
 | A STATE-dispatched script needs the `persistence_write` marker only on the runs that pass a writing STATE | `tests_scripts/test_persistence_write_marker_completeness.py` |
 | Run it in the twin first, at both GC stages (`scripts/record_twin_instrument_runs.py`; the flash tier once per stage, refused if its twin board never took the stage): each entry's `stages` holds `"-1"` and `"32768"`, each `pass` or `exception`, and its `result` is `exception` if any stage failed; a script a flash test runs is charged with the outcomes of the flash tests that run it, not its whole module's. Then commit the record | review (the committed record returns on the final tree) |
 | Park the shared rig (the NeoPixel) dark in a `finally` | `tests_scripts/test_device_script_rig_parking.py` |
-| Feed the watchdog in short steps: `_shared/watchdog.py`'s fed waits, at most 2 s a step (`l3.device_script_feed_step_ms`) | `tests_scripts/test_device_script_watchdog.py` |
-| Shared code lives in `_shared/`, inlined at render by `# @include _shared/<name>.py` | `tests_scripts/test_hardware_clones.py` |
+| Feed the watchdog in short steps: `_shared/watchdog.py`'s fed waits, at most 2 s a step | `tests_scripts/test_device_script_watchdog.py` |
+| Shared code lives in `_shared/`, inlined at render by `# @include _shared/<name>.py` | review |
 
 Two habits stay judgment, each learned the hard way:
 
@@ -612,7 +612,7 @@ The rest, one fact each (occurrences: `HEAP_FRAGMENTATION_MEASUREMENTS.md` archi
 - An `mpremote` `exec`/`run` stops `main.py`, and nothing feeds the watchdog after it, so the board
   resets about 8 s later unless the session resets it first: a device script that never feeds it
   dies ~8 s after it attaches (bench, 2026-09-25), and every raw-REPL session ends in a hard reset.
-- A transient `mpremote` failure is retried - within `l4.harness_usb_grace_s`, then the device node
+- A transient `mpremote` failure is retried - within 10 s, then the device node
   re-resolved, then one USB rebind - only while the script has printed nothing: a script never runs
   twice, and every retry and rebind is a recovery event in the run record.
 - The bench's USB CDC can stop entering the raw REPL until the port is rebound (recorded 2026-09-02,
@@ -624,7 +624,7 @@ The rest, one fact each (occurrences: `HEAP_FRAGMENTATION_MEASUREMENTS.md` archi
   (`scripts/build_firmware.py <device> --no-autostart`), whose REPL keeps reading stdin
   (`shared/tinyusb/mp_usbd_cdc.c`, `ports/rp2/mphalport.c`, v1.29.0).
 - A Ctrl-C into the autostart image ends its whole event loop: the board records reset reason 21
-  (any other exception ending the loop after boot records 22) and the watchdog resets it within its timeout, unless a Ctrl-D at the REPL soft-resets it first, whose boot reads the same code (SPECIFICATION.md Part F.5.4); a change answered `Valid` whose deferred flush has
+  and the watchdog resets it within its timeout, unless a Ctrl-D at the REPL soft-resets it first, whose boot reads the same code (any other exception ending the loop after boot records 22 and the entry resets the chip at once; SPECIFICATION.md Part F.5.4); a change answered `Valid` whose deferred flush has
   not run yet is lost.
 - Every flash run ends with one hard reset to a serving board (`flash/conftest.py`'s
   `leave_board_serving`).
@@ -664,16 +664,16 @@ check.
 
 | defect | where | bound | removal trigger | last checked |
 |---|---|---|---|---|
-| the bench's USB CDC stops entering the raw REPL until the port is rebound (recorded 2026-09-02) | `harness._usb_reset_device()`, from `Board._mpremote()` | one unbind and bind per `mpremote` call (`l4.harness_usb_rebind_cmd_timeout_s`, `l4.harness_usb_unbind_settle_max_s`, `l4.harness_usb_bind_settle_max_s`); a refused sudo fails the run | a full round records no rebind in `Board.recovery_events` | 2026-10-14, `v1.29.0` (code read) |
-| a transient USB-settle failure of `mpremote` right after a reset | `Board._mpremote()` | retried within `l4.harness_usb_grace_s`, polled every `l4.harness_usb_grace_poll_s`, never once the script printed | a round records no transient retry | 2026-10-14, `v1.29.0` (code read) |
-| a reset re-enumerates the CDC device under another node | `Board._mpremote()`, `_rebind_device_if_moved()` | `l4.harness_max_device_rebinds` re-resolves per call | a round records no node rebind | 2026-10-14, `v1.29.0` (code read) |
+| the bench's USB CDC stops entering the raw REPL until the port is rebound (recorded 2026-09-02) | `harness._usb_reset_device()`, from `Board._mpremote()` | one unbind and bind per `mpremote` call (a 10 s command timeout, at most 2 s to unbind and 3 s to bind); a refused sudo fails the run | a full round records no rebind in `Board.recovery_events` | 2026-10-14, `v1.29.0` (code read) |
+| a transient USB-settle failure of `mpremote` right after a reset | `Board._mpremote()` | retried within 10 s, polled every 0.5 s, never once the script printed | a round records no transient retry | 2026-10-14, `v1.29.0` (code read) |
+| a reset re-enumerates the CDC device under another node | `Board._mpremote()`, `_rebind_device_if_moved()` | 2 re-resolves per call | a round records no node rebind | 2026-10-14, `v1.29.0` (code read) |
 | a stale AP-side station entry survives the DUT's reset and blocks its reassociation (recorded 2026-09-02) | `BenchBridge.kick_client()`, through `kick_all_stations()` before every expected reconnect | one `iw station del` per station before each reset | a round records no stale-entry reconnect failure | 2026-10-14, `v1.29.0` (code read) |
 | `nmcli -g` escapes `:` as `\:` in an SSID or PSK | `BenchBridge.ap_ssid()`, `ap_password()` | `--escape no` on every SSID/PSK read | `nmcli -g` stops escaping | 2026-10-14, `v1.29.0` (code read) |
 | `nmcli connection down` errors on an inactive connection | `BenchBridge.ap_down()` | that one error taken as already down, once per call | `nmcli` makes `down` idempotent | 2026-10-14, `v1.29.0` (code read) |
-| nmcli's own rescan can miss a hotspot `is_ssid_visible()` just saw (recorded 2026-09-08) | `bench/test_hotspot_role_reversal.py`'s `_join_dut_hotspot_with_reverify_retry()` | `l4.hotspot_role_reversal_join_attempts` joins, each retry a recovery note | a round records no re-verify retry | 2026-10-14, `v1.29.0` (code read) |
-| a ceiling refusal under concurrent API load is the stack's reject-when-full, not a fault | `bench/test_bus_concurrency_under_api_load.py`'s `fetch()` | `l4.bus_concurrency_under_api_load_ceiling_retry_attempts` attempts per call, `l4.bus_concurrency_under_api_load_ceiling_retry_backoff_s` apart, each counted | the arms run below the ceiling | 2026-10-14, `v1.29.0` (code read) |
-| one header line resets the server's per-call read timeout | `harness.HELD_PAD_LINE`, in the ceiling probe's walk | one line per held connection per step (`l4.ceiling_dwell_s`) | the walk no longer outlasts `web.per_call_timeout_s` | 2026-10-14, `v1.29.0` (code read) |
-| DNAT to 127.0.0.1 does not deliver to a local socket on this bench (`route_localnet` 0) | `BenchBridge.start_udp_source_capture()`, read by `read_captured_udp_source_port()` | one `tcpdump -c 1` capture per test (`l4.bench_control_tcpdump_timeout_s`) | the redirect delivers locally | 2026-10-14, `v1.29.0` (code read) |
+| nmcli's own rescan can miss a hotspot `is_ssid_visible()` just saw (recorded 2026-09-08) | `bench/test_hotspot_role_reversal.py`'s `_join_dut_hotspot_with_reverify_retry()` | 5 joins, each retry a recovery note | a round records no re-verify retry | 2026-10-14, `v1.29.0` (code read) |
+| a ceiling refusal under concurrent API load is the stack's reject-when-full, not a fault | `bench/test_bus_concurrency_under_api_load.py`'s `fetch()` | 3 attempts per call, 0.25 s apart, each counted | the arms run below the ceiling | 2026-10-14, `v1.29.0` (code read) |
+| one header line resets the server's per-call read timeout | `harness.HELD_PAD_LINE`, in the ceiling probe's walk | one line per held connection per step (0.3 s) | the walk no longer outlasts `web.per_call_timeout_s` | 2026-10-14, `v1.29.0` (code read) |
+| DNAT to 127.0.0.1 does not deliver to a local socket on this bench (`route_localnet` 0) | `BenchBridge.start_udp_source_capture()`, read by `read_captured_udp_source_port()` | one `tcpdump -c 1` capture per test (60 s) | the redirect delivers locally | 2026-10-14, `v1.29.0` (code read) |
 
 ## Measuring heap and serving under load
 
@@ -751,8 +751,8 @@ bench tests' assertion messages carry only `output[-2000:]` of device output and
 after it, so a one-boot sweep loses which level broke: per-level answers need one boot per level.
 
 **The OpenHAB case** (`bench/test_network_resilience.py::test_openhab_case_two_pollers_and_an_open_website_are_all_served`):
-for 120 s (`l4.openhab_window_s`), two pollers - `GET /measurements` and `GET /status`, each every
-`l4.openhab_poll_interval_s` (5 s) - and one website client, which loads the index page's assets
+for 120 s, two pollers - `GET /measurements` and `GET /status`, each every
+5 s - and one website client, which loads the index page's assets
 once and then polls the landing section's GET route at its `pollIntervalMs` from the generated
 definitions. Every response must be complete, with no ceiling refusal, no reboot (`BootSignature`
 unchanged) and no task end; the per-route maximum and median latency go into the run record.
@@ -760,8 +760,8 @@ unchanged) and no task end; the per-route maximum and median latency go into the
 **Client-triggered console output cannot starve the watchdog**: the gated bench test
 `test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog`
 (`bench/test_network_resilience.py`) sets `DebugLevel` 0, holds the serial port open with DTR
-asserted and never reads it, and drives the adversarial load for 60 s (`l4.console_starvation_load_s`:
-six slowloris clients, a refused head, a truncated PUT and two resetting clients) - `BootSignature`
+asserted and never reads it, and drives the adversarial load for 60 s
+(six slowloris clients, a refused head, a truncated PUT and two resetting clients) - `BootSignature`
 and `ResetReason` unchanged, then `DebugLevel` 5 restored. Its two `DebugLevel` writes are owned, so
 it runs only with `--allow-persistence-write`.
 
@@ -778,13 +778,12 @@ HTTP — in its own `finally`. `harness.discover_max_connections()` and
 headers and it answers what was asked, so a held socket costs only a small 405 and is released
 the normal way (a reset is handled as well, SPECIFICATION.md Part H.7.1).
 
-- **The ceiling probe** (`discover_max_connections()`) dwells 0.3 s per step (`l4.ceiling_dwell_s`)
+- **The ceiling probe** (`discover_max_connections()`) dwells 0.3 s per step
   and pads every held connection with a header line (`HELD_PAD_LINE`) per step, so the per-call
-  timeout never frees a slot mid-walk and only the outer cap bounds it (`probe_limit` 40 × 0.3 s,
-  `l4.ceiling_probe_limit`). It fails loudly if a held connection answers instead of staying open,
+  timeout never frees a slot mid-walk and only the outer cap bounds it (`probe_limit` 40 × 0.3 s). It fails loudly if a held connection answers instead of staying open,
   and re-checks every counted socket is still open when the refusal lands. A connect that is refused
   or times out is the wall itself, counted rather than raised, with its own 2 s timeout
-  (`l4.ceiling_probe_connect_timeout_s`) apart from the read's, so a slow handshake is never read as
+  apart from the read's, so a slow handshake is never read as
   a held connection. After a successful walk it waits until the whole discovered ceiling can be held
   at once again — not one slot — then allows `settle_s` for its own check connections to release
   theirs, backing off the same interval after a partial set; after a failed walk it drains one slot
@@ -1699,7 +1698,7 @@ consecutive attempts, not just one. `_join_dut_hotspot_with_reverify_retry()`'s 
 retry loop on attempt 1 instead of exhausting all attempts) and catches `TimeoutError` alongside
 `HardwareTestFailureError`. A repro with both fixes in place once exhausted 3 attempts; its cause is
 still open, and the next hardware round investigates it. The join keeps its five attempts
-(`l4.hotspot_role_reversal_join_attempts`) on that nmcli race, each retry a recovery note (owner,
+on that nmcli race, each retry a recovery note (owner,
 2026-10-20: 'The Hotspot remains untouched.'). An AP-reconfiguration theory recorded the same day was
 ruled out against the pinned source: an AP that is up reports `STAT_GOT_IP`, so `_run_hotspot_mode()`
 only manages its stations, and `_configure_hotspot_ap()` configures only an inactive AP.

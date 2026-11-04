@@ -68,7 +68,6 @@ if TYPE_CHECKING:
         # PrintLogHistory.err_s()'s own signature, for a stand-in that forwards to the real one.
         async def __call__(self, *args: object, errno: int = ..., sep: str = ..., end: str = ...) -> None: ...
 
-# @tunable l1.system_service_run_bound_s = 5
 _RUN_BOUND_S = 5
 _SRC = "src/asy_system_service.py"
 _LOG_SRC = "src/asy_print_log.py"
@@ -603,9 +602,7 @@ def test_an_arm_failure_falls_back_to_a_sleep_and_still_starts_every_trigger() -
 # The reset path: reboot_system()/reboot_bootloader() through the command gate, and _reboot() - record, flush, pause, arm
 # ---------------------------------------------------------------------------
 
-# @tunable l1.system_service_sequence_bound_ms = 30_000
 _SETTLE_MS = 30_000  # a limit, not a timing claim: the 256 KB erase's sequence ends far inside it
-# @tunable l1.system_service_sequence_poll_ms = 1
 _SEQUENCE_POLL_MS = 1  # how often _sequence_done() looks at the sequence's task again, in real time
 
 
@@ -952,19 +949,12 @@ def test_a_write_accepted_inside_the_countdown_is_on_flash_before_the_reset() ->
 # ---------------------------------------------------------------------------
 
 _ERASE_UNIT: int = src_int("src/asy_fram_manager.py", "_ERASE_UNIT")
-# @tunable l1.system_service_hang_watch_ms = 1000
 _HANG_WATCH_MS = 1000  # real time a hung step is watched: a fed step feeds well inside it
-# @tunable l1.system_service_hang_reach_ms = 300
 _HANG_REACH_MS = 300  # real time a command's sequence gets to reach the step a hang is planted in
-# @tunable l1.system_service_poll_ms = 10
 _POLL_MS = 10  # how often a bounded real-time wait for the supervisor's escalation looks again
-# @tunable l1.system_service_budget_poll_ms = 20
 _BUDGET_POLL_MS = 20  # how often the starved-supervisor wait looks again within the watchdog's budget
-# @tunable l1.system_service_quiet_window_ms = 20
 _QUIET_WINDOW_MS = 20  # real time a command's refusal or its wait for the supervisor is watched not to move on
-# @tunable l1.system_service_held_window_ms = 50
 _HELD_WINDOW_MS = 50  # real time a sequence is watched holding behind an in-flight write or a PUT's lock
-# @tunable l1.system_service_stalled_window_ms = 100
 _STALLED_WINDOW_MS = 100  # real time a sequence is watched hung in its flush step
 _PURPOSES = ("_RR_REBOOT", "_BOOTLOADER", "_RR_CONFIG_RESET", "_RR_FRAM_ERASED")
 _REST_WORDS = {"_RR_REBOOT": "reboot", "_BOOTLOADER": "bootloader", "_RR_CONFIG_RESET": "resetconfig", "_RR_FRAM_ERASED": "erasefram"}
@@ -1715,12 +1705,9 @@ def test_the_chip_fake_counts_only_the_data_bytes_that_land() -> None:
     chip = _bare_chip()
     _raw_write(chip, 0x10, b"\x11" * 3)
     _raw_write(chip, 0x20, b"\x22" * 4, enable=False)  # no WEL: the WRITE is not performed (p.7)
-    chip.silent = 0xFF
-    _raw_write(chip, 0x30, b"\x33" * 2)  # a silent chip acts on nothing
-    chip.silent = None
     chip.corrupt_next_write_data = b"\x55"
     _raw_write(chip, 0x40, b"\x44" * 2)  # what lands is the disturbed payload
-    assert (chip.bytes_written, chip.write_transactions) == (4, 4)
+    assert (chip.bytes_written, chip.write_transactions) == (4, 3)
 
 
 def test_a_chip_read_fault_names_the_command_it_hits() -> None:
@@ -3678,19 +3665,14 @@ def test_an_escalation_whose_entry_cannot_even_be_built_on_a_full_heap_still_reb
 
 def test_a_console_soft_reset_after_a_power_on_boot_reads_the_recorded_code() -> None:
     # A Ctrl-D inside the watchdog window re-runs main.py with no hard reset: the cause stays the power-on's, the regions
-    # keep the entry's 21 or 22, and the boot reads that code and clears it.
-    def interrupted() -> None:
-        write_reset_record(asy_system_service.RR_INTERRUPTED)
-
-    for record in (interrupted, asy_system_service.record_loop_end):
-        machine.power_on()
-        begin_boot()
-        _make_service().boot_phase(BOOT_DONE)
-        record()
-        expected = machine.mem_backup(0)[1]
-        assert machine.reset_cause() == machine.PWRON_RESET
-        assert begin_boot() == expected and expected in (21, _const("_RR_LOOP_ENDED")), expected
-        assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
+    # keep the Ctrl-C arm's 21 (a loop end resets the chip itself), and the boot reads that code and clears it.
+    machine.power_on()
+    begin_boot()
+    _make_service().boot_phase(BOOT_DONE)
+    write_reset_record(asy_system_service.RR_INTERRUPTED)
+    assert machine.reset_cause() == machine.PWRON_RESET
+    assert begin_boot() == asy_system_service.RR_INTERRUPTED == 21
+    assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
 
 
 def test_a_power_cycle_after_a_record_reads_1() -> None:
@@ -3708,20 +3690,6 @@ def test_a_torn_record_under_a_power_on_cause_reads_1() -> None:
     assert machine.reset_cause() == machine.PWRON_RESET
     assert begin_boot() == _const("_RR_POWER_ON")
     assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
-
-
-def test_a_console_soft_reset_after_a_boot_phase_failure_reads_10_plus_the_phase() -> None:
-    # A loop ended during boot records nothing; a Ctrl-D after a power-on boot keeps the cause and the phase marker.
-    for p in range(BOOT_CONSTRUCTION, BOOT_NTP + 1):
-        machine.power_on()
-        begin_boot()
-        svc = _make_service()
-        for q in range(BOOT_CONSTRUCTION, p + 1):
-            svc.boot_phase(q)
-        asy_system_service.record_loop_end()
-        assert list(machine.mem_backup(0)) == [0, 0, 0, 0], p
-        assert machine.reset_cause() == machine.PWRON_RESET
-        assert begin_boot() == _const("_RR_BOOT_FAILURE") + p, p
 
 
 def test_a_boot_done_marker_under_a_power_on_cause_reads_1() -> None:

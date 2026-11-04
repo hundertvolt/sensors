@@ -22,19 +22,12 @@ COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("network_neopixel", "ci_suite._run_9_n
 # ---------------------------------------------------------------------------
 
 
-# @tunable l4.wifi_networking_boot_tail_s = 45.0
 _BOOT_TAIL_S = 45.0
-# @tunable l4.wifi_networking_sync_tail_s = 60.0
 _SYNC_TAIL_S = 60.0
-# @tunable l4.wifi_networking_ntp_fault_tail_s = 90.0
 _ROGUE_TAIL_S = 90.0
-# @tunable l4.wifi_networking_reconnect_timeout_s = 60.0
 _RECONNECT_TIMEOUT_S = 60.0
-# @tunable l4.wifi_networking_association_attempts = 2
 _ASSOCIATION_ATTEMPTS = 2
-# @tunable l4.wifi_networking_probe_timeout_s = 10.0
 _PROBE_TIMEOUT_S = 10.0
-# @tunable l4.wifi_networking_ntp_resync_margin_s = 10.0
 _NTP_RESYNC_MARGIN_S = 10.0
 _RTC_SET_LINE = "RTC set to:"  # src/asy_ntp_client.py, the line a completed sync prints
 

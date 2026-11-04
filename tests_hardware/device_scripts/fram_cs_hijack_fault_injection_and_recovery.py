@@ -38,7 +38,6 @@ _HIJACKED_WRITE_PATTERN = bytes((0xAA,) * 16)
 _READ_SEED_PATTERN = bytes(range(0x60, 0x70))
 _POST_RECOVERY_PATTERN = bytes(range(0x40, 0x50))
 _WREN = b"\x06"  # MB85RS2MTA datasheet p.6: Write Enable Latch set, its own one-byte CS cycle
-# @tunable l3.fram_cs_hijack_fault_injection_and_recovery_victim_bound_s = 30.0
 _VICTIM_BOUND_S = 30.0
 
 

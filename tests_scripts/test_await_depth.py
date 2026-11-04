@@ -9,8 +9,8 @@ from _await_depth import Chain, Program, load_program, program_from_sources
 from _devices import DEVICE_NAMES
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-# @tunable mem.max_await_depth = 28
-_MAX_AWAIT_DEPTH = 28
+# @tunable mem.max_await_depth = 25
+_MAX_AWAIT_DEPTH = 25
 # A base, a sibling one level deep like it and a subclass whose step is three levels: the precision rules' fixture.
 _FAMILY = (
     "import asyncio\n\n\nclass Base:\n    async def step(self):\n        pass\n\n\n"

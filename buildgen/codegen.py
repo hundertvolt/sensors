@@ -847,7 +847,7 @@ def generate_boot_entry_source(device: str, *, autostart: bool = True) -> str:
     return (
         docstring
         + 'Arms the watchdog before any product import (owner, 2026-09-25)."""\n\n'
-        + "from machine import WDT\n\n"
+        + "from machine import WDT, reset\n\n"
         + f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})\n\n"
         + head
         + "\nfrom asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record\n"
@@ -860,10 +860,11 @@ def generate_boot_entry_source(device: str, *, autostart: bool = True) -> str:
         "    write_reset_record(RR_INTERRUPTED)\n"
         "    raise\n"
         "except BaseException:\n"
-        "    # Any other exception ending the loop: recorded, then this entry ends and the armed watchdog resets the unit.\n"
+        "    # Any other exception ending the loop: recorded, then the chip resets at once, so rp2's REPL never starts (A.7).\n"
         "    # Never re-raised: rp2 soft-resets on a SystemExit, running main.py again at once with no I2C or SPI\n"
         "    # controller reset (SPECIFICATION.md F.5.4).\n"
         "    record_loop_end()\n"
+        "    reset()\n"
         "finally:\n"
         "    asyncio.new_event_loop()\n"
     )

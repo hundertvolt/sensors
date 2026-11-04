@@ -59,7 +59,6 @@ _STATUS_POLL_MS: int = src_int("src/asy_bmp3xx_driver.py", "_STATUS_POLL_MS")
 _MEAS_TIMEOUT_MS: int = src_int("src/asy_bmp3xx_driver.py", "_MEAS_TIMEOUT_MS")
 
 
-# @tunable l1.asy_bmp3xx_driver_event_wait_s = 1
 _EVENT_WAIT_S = 1
 
 
@@ -2390,7 +2389,6 @@ def test_init_bmp_runs_on_the_defaults_when_its_config_file_cannot_be_written() 
     assert run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.name]["ErrNum"][-1] == code("E", "CFG_FILE_WRITE")
 
 
-# @tunable l1.asy_bmp3xx_driver_reset_run_bound_s = 2
 _RESET_RUN_BOUND_S = 2  # far past one reset's polls and settle: a reset() that never ends fails here, the file goes on
 
 

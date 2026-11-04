@@ -18,27 +18,19 @@ class _ResultNote(Protocol):
 
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("scd30", "sgp40", "bmp3xx", "isl29125", "isl29125_autorange")
 
-# @tunable l3.sensor_accuracy_scd30_script_timeout_s = 100.0
 _SCD30_SCRIPT_TIMEOUT_S = 100.0
-# @tunable l3.sensor_accuracy_bmp3xx_script_timeout_s = 60.0
 _BMP3XX_SCRIPT_TIMEOUT_S = 60.0
-# @tunable l3.sensor_accuracy_sgp40_script_timeout_s = 150.0
 _SGP40_SCRIPT_TIMEOUT_S = 150.0
-# @tunable l3.sensor_accuracy_isl29125_script_timeout_s = 30.0
 _ISL29125_SCRIPT_TIMEOUT_S = 30.0
-# @tunable l3.sensor_accuracy_envelope_script_timeout_s = 420.0
 _ENVELOPE_SCRIPT_TIMEOUT_S = 420.0
-# @tunable l3.sensor_accuracy_scenarios_script_timeout_s = 900.0
 _SCENARIOS_SCRIPT_TIMEOUT_S = 900.0
 # The script's fixed 600 s window plus the boot it runs first.
-# @tunable l3.sensor_accuracy_sgp40_cadence_script_timeout_s = 660.0
 _SGP40_CADENCE_SCRIPT_TIMEOUT_S = 660.0
 _RANGES = (375, 10000)  # the ISL29125's two full scales, FN8424 p.10 Table 5
 _CCT_SPAN_K = (2000.0, 12500.0)  # source: McCamy (1992)'s usable span, the formula the driver's CCT uses
 _FRC_SCRIPT = "scd30_plausibility_read.py"
 _FRC_MODE = "frc_window"
 # The window's figures from the float32 sums may differ from the double-precision ones by at most this, relative.
-# @tunable l3.sensor_accuracy_frc_sum_rel_max = 0.001
 _FRC_SUM_REL_MAX = 0.001
 
 

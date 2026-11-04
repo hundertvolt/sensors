@@ -28,15 +28,10 @@ if TYPE_CHECKING:
 
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
-# @tunable l3.bus_concurrency_cross_device_scd30_sgp40_sgp40_cycles = 6
 _SGP40_CYCLES = 6
-# @tunable l3.bus_concurrency_cross_device_scd30_sgp40_run_bound_s = 60.0
 _RUN_BOUND_S = 60.0
-# @tunable l3.bus_concurrency_cross_device_resume_s = 2.5
 _SCD30_RESUME_S = 2.5
-# @tunable l3.bus_concurrency_cross_device_sibling_step_ms = 15
 _SIBLING_STEP_MS = 15
-# @tunable l3.bus_concurrency_cross_device_rung_traffic_ms = 1000
 _RUNG_TRAFFIC_MS = 1000
 
 

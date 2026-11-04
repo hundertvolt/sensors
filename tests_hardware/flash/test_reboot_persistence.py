@@ -13,11 +13,8 @@ COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_2_reboot_settings_persi
 
 # One exec when the read phase never ran: the test-only file goes, absent or not.
 _REMOVE_MARKER_FILE = "import os\ntry:\n  os.remove('config_HWTEST_REBOOT.cfg')\nexcept OSError:\n  pass"
-# @tunable l3.reboot_persistence_reachable_timeout_s = 30.0
 _REACHABLE_TIMEOUT_S = 30.0
-# @tunable l3.reboot_persistence_reachable_poll_s = 1.0
 _REACHABLE_POLL_S = 1.0
-# @tunable l3.reboot_persistence_boot_log_tail_s = 20.0
 _BOOT_LOG_TIMEOUT_S = 20.0
 
 

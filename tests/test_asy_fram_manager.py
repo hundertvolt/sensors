@@ -63,7 +63,6 @@ _CUT_STARTS = (None, (0, (_STATUS_BUSY, _STATUS_BUSY)), (1, (_STATUS_BUSY, _STAT
 _INJECTED_FAILURE = 1 << 20
 
 
-# @tunable l1.asy_fram_manager_read_wait_s = 5
 _READ_WAIT_S = 5
 
 

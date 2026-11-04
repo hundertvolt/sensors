@@ -31,15 +31,10 @@ _RR_WATCHDOG, _RR_REBOOT, _RR_CONFIG_RESET, _RR_FRAM_ERASED = (module_int_const(
 _SAVED_SET = "config-files-before-reset.txt"  # the dump's verbatim output, under each run's evidence directory
 # Whole-string equality is the dispatch's one check: each of these is one edit away from a command word.
 _NEAR_MISSES = ("Reboot", "reboot ", "REBOOT", "erase", "erasefram!", "eraseFRAM", "resetConfig", "boot", "", "mempause1", 1, None)
-# @tunable l4.system_commands_put_timeout_s = 10.0
 _PUT_TIMEOUT_S = 10.0
-# @tunable l4.system_commands_serving_timeout_s = 120.0
 _SERVING_TIMEOUT_S = 120.0
-# @tunable l4.system_commands_serving_poll_s = 2.0
 _SERVING_POLL_S = 2.0
-# @tunable l4.system_commands_hotspot_up_s = 60.0
 _HOTSPOT_UP_S = 60.0
-# @tunable l4.system_commands_picotool_timeout_s = 30.0
 _PICOTOOL_TIMEOUT_S = 30.0
 
 

@@ -27,7 +27,6 @@ _REGIONS = ("_SCRATCH_REGIONS", "_EVIDENCE_REGIONS")
 _MICROPYPATH = "build/generated_src:src:tests:frozen_modules:.frozen"
 # @tunable l1.unix_heapsize = 16M
 _HEAPSIZE = "16M"
-# @tunable l0.fram_regions_boot_timeout_s = 120
 _BOOT_TIMEOUT_S = 120
 _ALLOCATION_PROBE = """
 import sys
@@ -190,19 +189,3 @@ def test_the_session_saves_evidence_before_any_script_runs(repo_root: Path) -> N
     assert keywords.get("scope") == "session" and keywords.get("autouse") is True, keywords
 
 
-_BITES = {
-    "_SCRATCH_REGIONS = ((0x3FF00, 0x100),)\n_A = _SCRATCH_REGIONS[0][0]\n\n\ndef f(chip, buf):\n    chip.set_values_sync(buf, _A + 8)\n": [],
-    "def f(chip, buf):\n    chip.set_values_sync(buf, 0x100)\n": [2],
-    "async def f(fram, buf):\n    for addr in range(0, 64, 8):\n        await fram.get_values(buf, addr_start=addr)\n": [3],
-    "chunk = fram.get_chunk(8, crc=c, owner='x')\n\n\nasync def f(dev, block_addr):\n    await dev.set_values(b'\\x01', block_addr[0] + 9)\n\nf(d, chunk._block_addr)\n": [],
-}
-
-
-@pytest.mark.parametrize(("source", "lines"), list(_BITES.items()), ids=["from-region", "literal", "loop-literal", "chunk-scoped"])
-def test_the_region_check_bites(source: str, lines: "list[int]") -> None:
-    assert undeclared_raw_calls(source) == lines
-
-
-def test_the_overlap_and_bounds_reading_bites() -> None:
-    regions = _regions("_SCRATCH_REGIONS = ((BENCH['fram_max_size'] - 0x100, 0x100),)\n", {"fram_max_size": 0x40000})
-    assert regions == {"_SCRATCH_REGIONS": [(0x3FF00, 0x100)]}

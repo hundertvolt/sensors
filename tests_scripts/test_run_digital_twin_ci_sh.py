@@ -15,7 +15,6 @@ from _devices import DEVICE_NAMES, devices_with
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 _RUNNER = "scripts/run_digital_twin_ci.sh"
-# @tunable l0.run_digital_twin_ci_sh_timeout_s = 60
 _TIMEOUT_S = 60
 # The real files the runner sources or runs, and the toolchain files its probe hashes against the record.
 _COPIED = ("scripts/run_digital_twin_ci.sh", "scripts/run_unix_port_integration.sh", "scripts/_devices.sh", "scripts/_port_lock.sh", "scripts/_unix_port.sh", "scripts/_archive_evidence.py", "scripts/micropypath.toml")

@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from buildgen.buildspec import BUS_ATTACHED_DRIVERS
 from buildgen.model import instance_label, load_device
-from buildgen.validate import device_max_connections_by_name, module_float_const, module_int_const
+from buildgen.validate import device_max_connections_by_name, module_int_const
 from scripts._port_lock import PortHeldError, port_lock
 from scripts._summary_block import Summary
 from scripts._twin_process import (
@@ -129,13 +129,10 @@ _LEFT_OUT = {
     ("wlan", "fault", "*"): "every WLAN raise_on method is tests/test_asy_wifi_service.py's; Run 7 drives connect outcomes by --wifi-outcome",
     ("uart_link", "fault", "bounded"): "drop, corrupt and truncate are tests/test_digital_twin_uart_link.py's; Run 3 carries uart_link:silent",
 }
-# @tunable l2.ntp_unreachable_watch_s = 90.0
 _NTP_UNREACHABLE_WATCH_S = 90.0  # Run 9's bound - past the old NTP give-up (~60s), see that run
 # The attempts the unsynced NTP retry (at once, then every 60 s) makes inside that bound, failing at about 4 and 64 s
 # of serving, the next at ~124 s: Run 9's watch ends once that many failed (agent, 2026-11-03).
-# @tunable l2.ntp_unreachable_failures = 2
 _NTP_UNREACHABLE_FAILURES = 2
-# @tunable l2.bus_fault_error_count = 500
 _BUS_FAULT_ERROR_COUNT = 500  # sustained/high-repeat-count - see Run 3's own comment for why.
 # Driver to its own REST/error-log `_NAME`, read from each driver's source and pinned to it by an L0 test; an
 # instance's name appends "_<name_ext>" (instance_name()). Not driver.upper(): uart_link's is "UART".
@@ -165,11 +162,9 @@ _TEST_WARN_CO2 = 1800
 _TEST_SCD30_MEAS_INT = 4
 _TEST_SSID = "digital-twin-test-ssid"
 _MIN_VERBOSE_LOG_LINES = 5
-# @tunable l2.bounded_fault_count = 3
 _BOUNDED_FAULT_COUNT = 3  # injected bus failures per bounded-fault run - SGP40's measure reads in Run 5/5b, then
 # one link per chip instance in Run 5c; each injected fault fails one SGP40 measure read, and three exhaust the
 # supervisor's restart budget elsewhere, which is why the count stays this small.
-# @tunable l2.wifi_scripted_failures = 5
 _WIFI_SCRIPTED_FAILURES = 5  # asy_wifi_service.py's conn_fail_to_hotspot - the failure count that trips hotspot fallback
 # The five identical verdicts spend ONE history slot (the central newest-entry rule, asy_print_log.py) and count
 # five; the fifth's fallback to the hotspot persists its own WLAN_TO_HOTSPOT warning in a second slot (Part C.7.1).
@@ -189,12 +184,10 @@ _SHUTDOWN_S5_PREFIXES = ("Shutdown: resetconfig", "Shutdown: erasefram")
 # README.md has the derivation and SPECIFICATION.md Part C.7 the real-hardware measurements.
 # @tunable web.outer_cap_s = 15.0
 _SERVER_OUTER_CAP_S = 15.0  # mirrors asy_webserver_service.py's _DEFAULT_OUTER_CAP_S - keep in sync
-# @tunable l2.reset_errors_timeout_margin_s = 2.0
 _RESET_ERRORS_TIMEOUT_S = _SERVER_OUTER_CAP_S + 2.0  # loopback: no WiFi close latency to absorb
 # The BUDGET rather than the timeout above, which only catches a call that never finished. Sized from both datasets -
 # twin 8.259s worst, hardware 6.32s idle and 11.58s under load - so 80% of the cap sits ~45% above anything legitimate,
 # and a device wiring the most FRAM-backed sources still leaves ~10 before the budget.
-# @tunable l2.reset_errors_budget_ratio = 0.8
 _RESET_ERRORS_BUDGET_S = _SERVER_OUTER_CAP_S * 0.8
 
 # Run 11 (soak), host-side ("Driver/DUT process separation"): every soak request goes over real HTTP, so the client's
@@ -220,35 +213,21 @@ _MEM_TREND_TOLERANCE_SD_MULTIPLIER = 4.0
 
 # Wait budgets and poll steps, one per purpose. Each wait polls for its condition and returns early;
 # the fixed sleeps wait for an absence, which no probe can observe.
-# @tunable l2.error_count_wait_s = 30.0
 _ERROR_COUNT_WAIT_S = 30.0  # an error-log entry a fault or a restore has to land
-# @tunable l2.first_fault_wait_s = 45.0
 _FIRST_FAULT_WAIT_S = 45.0  # a faulted driver's first "E" entry after its boot
-# @tunable l2.long_wait_s = 90.0
 _LONG_WAIT_S = 90.0  # a bounded fault settling, and WiFi falling back to the hotspot and its DNS
-# @tunable l2.escalation_wait_s = 120.0
 _ESCALATION_WAIT_S = 120.0  # the supervisor's escalation, then its reset: Run 3's restart budget spent, Run 12's stack overflow
-# @tunable l2.ntp_first_sync_wait_s = 60.0
 _NTP_FIRST_SYNC_WAIT_S = 60.0  # a station link's first sync against the twin's local NTP responder
-# @tunable l2.read_cycle_wait_s = 30.0
 _READ_CYCLE_WAIT_S = 30.0  # two observed SGP40 read cycles after Run 5's fault is spent
-# @tunable l2.hang_run_exit_wait_s = 45.0
 _HANG_RUN_EXIT_WAIT_S = 45.0  # Run 10's --duration 15 run, hung bus call included
-# @tunable l2.failed_run_exit_wait_s = 5.0
 _FAILED_RUN_EXIT_WAIT_S = 5.0
 # A commanded reset runs the controlled shutdown, whose first step may wait one supervisor period, then the
 # reset's own delay; the margin covers the twin's scheduling on a loaded host.
-# @tunable l2.commanded_reset_margin_s = 10.0
 _COMMANDED_RESET_MARGIN_S = 10.0
-# @tunable l2.verbose_poll_s = 0.5
 _VERBOSE_POLL_S = 0.5
-# @tunable l2.errcount_poll_s = 1.0
 _ERRCOUNT_POLL_S = 1.0
-# @tunable l2.dns_poll_s = 0.5
 _DNS_POLL_S = 0.5
-# @tunable l2.concurrent_get_join_margin_s = 5.0
 _JOIN_MARGIN_S = 5.0  # past a burst's own timeout, so a thread is joined only once its request gave up
-# @tunable l2.slot_release_wait_s = 1.0
 _SLOT_RELEASE_WAIT_S = 1.0  # a readiness probe would occupy a max_connections slot, the property under test
 
 # A fixed, recognizable DNS transaction ID, so a real answer from CaptiveDNS can be told
@@ -312,7 +291,6 @@ class RunContext:
 # OK/FAIL line is tagged with which gc.threshold() pass produced it, set once per run_suite() call,
 # so no run function needs a per-message edit.
 _CURRENT_PASS_LABEL = ""
-# @tunable l2.ceiling_rounds = 3
 _CEILING_ROUNDS = 3  # back-to-back, so a leaked slot or a pool that only fills over time shows up
 
 
@@ -394,12 +372,9 @@ def _check_crc16_links(ctx: RunContext) -> None:
 
 
 def _check_exit(run: TwinRun, ec: int, run_label: str) -> None:
-    # A negative exit the suite did not cause is a crash, reported as one with the log tail, beside the caller's check;
-    # a stop file the twin never acted on fails too, though the SIGINT fallback then ended the run cleanly.
+    # A negative exit the suite did not cause is a crash, reported as one with the log tail, beside the caller's check.
     if ec < 0 and not run.killed:
         _fail(f"{run_label}: {exit_reason(ec, killed=run.killed)}; last log lines:\n{log_tail(run)}")
-    if run.stop_ignored:
-        _fail(f"{run_label}: the twin never acted on its stop file, so only the SIGINT fallback ended it; last log lines:\n{log_tail(run)}")
 
 
 def _check_no_memory_error_in_log(log_path: Path, run_label: str) -> None:
@@ -409,19 +384,16 @@ def _check_no_memory_error_in_log(log_path: Path, run_label: str) -> None:
     _check(condition=verdict is None, msg=f"{run_label}: log carries none of {_MEMORY_ERROR_MARKERS}" + (f" - {verdict}" if verdict else ""))
 
 
-def _check_quiet_boot(label: str, spawned_at: float, keep: Path, *, fresh_config: bool = False, blank_backups: "tuple[str, ...]" = ()) -> None:
+def _check_quiet_boot(label: str, keep: Path, *, fresh_config: bool = False, blank_backups: "tuple[str, ...]" = ()) -> None:
     # One /status read, its errcount kept at keep, whose E and W slots are exactly what the boot owes (no tolerance list):
     # over a fresh config directory each config store's W CFG_FILE_UNREADABLE (the launcher writes NTP's file), and each
-    # blank SGP40 backup chunk's W SGP_NO_BACKUP, its first restore's, waited for; else none.
+    # blank SGP40 backup chunk's W SGP_NO_BACKUP, its first restore's, waited for; else none (a late read: SGP40's W35).
     for name in blank_backups:
         _wait_for_error_type_count(name, 1, _FIRST_FAULT_WAIT_S, "W")
     status, body = _http("GET", "/status")
-    age_s = time.monotonic() - spawned_at
     table = errcount_table(status, body)
     keep.parent.mkdir(parents=True, exist_ok=True)
     keep.write_text(json.dumps(table, indent=1) + "\n", encoding="utf-8")
-    deadline_s = _quiet_boot_deadline_s()
-    _check(condition=age_s < deadline_s, msg=f"{label}: the errcount was read {age_s:.1f}s after the spawn, before a boot's own first background warning can land ({deadline_s:.0f}s)")
     found = _boot_entries(table)
     owed = {name: code("W", "SGP_NO_BACKUP") for name in blank_backups}
     owed |= {name: code("W", "CFG_FILE_UNREADABLE") for name in table if fresh_config and name.startswith("CFGMGR_") and name != "CFGMGR_NTP"}
@@ -767,12 +739,6 @@ def _blank_backups(ctx: RunContext) -> "tuple[str, ...]":
     return tuple(inst.errcount_name for inst in ctx.instances if inst.driver == "sgp40" and fram)
 
 
-def _quiet_boot_deadline_s() -> float:
-    # Past its blank chunk's W65, a boot's own first error-count move, SGP40's untimestamped-backup warning, comes no
-    # earlier than the scenarios' shared-boot deadline after the spawn; one source for both readers of that background.
-    return module_float_const(REPO_ROOT / "scripts", "_digital_twin_scenarios.py", "_SHARED_BOOT_DEADLINE_S")
-
-
 def _real_reading(reading: object) -> bool:
     # A measurement that carries a value: a driver's fields stay null until its first good read, so an all-null
     # block is no reading at all, however truthy the dict holding it.
@@ -784,9 +750,9 @@ def _record(kind: str, full_msg: str) -> None:
     _CHECKS_PER_PASS[_CURRENT_PASS_LABEL] = _CHECKS_PER_PASS.get(_CURRENT_PASS_LABEL, 0) + 1
 
 
-def _relaunch_reason(ctx: RunContext, log_name: str, label: str, expected: int, *, system_entry: str | None = None, interrupt: bool = False) -> None:
+def _relaunch_reason(ctx: RunContext, log_name: str, label: str, expected: int, *, system_entry: str | None = None) -> None:
     # Boots on the same state and checks the reset reason the product read at boot (and, given its catalog name, the one
-    # SYSTEM entry that reset logged), then shuts down on its stop file, or by SIGINT with interrupt=True.
+    # SYSTEM entry that reset logged), then shuts down.
     proc = _spawn(ctx, [], ctx.logs_dir / log_name)
     try:
         _wait_until_serving(proc)
@@ -798,7 +764,7 @@ def _relaunch_reason(ctx: RunContext, log_name: str, label: str, expected: int, 
     except Exception as exc:
         _fail(f"{label}: {exc!r}")
     finally:
-        ec = _shutdown(proc, label, interrupt=interrupt)
+        ec = _shutdown(proc, label)
         _check(condition=ec == 0, msg=f"{label}: clean shutdown (exit code {ec})")
 
 
@@ -950,7 +916,7 @@ def _run_12_reset_reasons(ctx: RunContext) -> None:
     reset = parse_machine_reset_line(read_log(proc.log_path))
     _check(condition=reset is not None and reset.kind == "bootloader", msg=f"Run 12: the runner's machine reset line names the bootloader entry ({reset!r})")
     log_b = ctx.logs_dir / "run12_b_after_bootloader.log"
-    _relaunch_reason(ctx, log_b.name, "Run 12 (after bootloader)", _reset_code("_RR_WATCHDOG"), interrupt=True)  # what the SIGINT relaunch follows
+    _relaunch_reason(ctx, log_b.name, "Run 12 (after bootloader)", _reset_code("_RR_WATCHDOG"))  # what the SIGINT relaunch follows
     line = _shutdown_line(log_b, "Run 12 (after bootloader)")
     _check(condition=line is not None and line.mem_backup_r0 == (0, 0, 0, 0), msg=f"Run 12: the boot after the bootloader left no record (mem_backup r0 {line.mem_backup_r0 if line else None!r})")
     _relaunch_reason(ctx, "run12_c_sigint_relaunch.log", "Run 12 (SIGINT relaunch)", _reset_code("_RR_POWER_ON"))
@@ -1148,14 +1114,13 @@ def _run_1_baseline(ctx: RunContext) -> None:
     # (kept in runs/ before the reset). With no station link the clock never synced, so both time fields read null. Its
     # reformat relaunch PUTs the settings later runs carry forward. ----
     log1 = ctx.logs_dir / "run1_baseline.log"
-    spawned_at = time.monotonic()
     proc = _spawn(ctx, [], log1)
     try:
         _wait_until_serving(proc)
         for path in (*ctx.routes, "/"):
             status, _ = _http("GET", path)
             _check(condition=status == _HTTP_OK, msg=f"Run 1: GET {path} -> 200")
-        _check_quiet_boot("Run 1", spawned_at, ctx.runs_dir / "run1_errcount.json", fresh_config=True, blank_backups=_blank_backups(ctx))
+        _check_quiet_boot("Run 1", ctx.runs_dir / "run1_errcount.json", fresh_config=True, blank_backups=_blank_backups(ctx))
         times = (_status_field("system", "UTCTime"), _status_field("system", "LocalTime"))
         _check(condition=times == (None, None), msg=f"Run 1: UTCTime and LocalTime are null before the first NTP sync ({times!r})")
         stale = _status_field("system", "TimeStale")
@@ -1184,11 +1149,10 @@ def _run_1_reformat_relaunch(ctx: RunContext) -> None:
     except OSError as exc:
         _fail(f"{label}: emptying {config_dir} failed: {exc!r}")
         return
-    spawned_at = time.monotonic()
     proc = _spawn(ctx, [], ctx.logs_dir / "run1_reformat_relaunch.log")
     try:
         _wait_until_serving(proc)
-        _check_quiet_boot(label, spawned_at, ctx.runs_dir / "run1_reformat_errcount.json", fresh_config=True, blank_backups=_blank_backups(ctx))
+        _check_quiet_boot(label, ctx.runs_dir / "run1_reformat_errcount.json", fresh_config=True, blank_backups=_blank_backups(ctx))
 
         status, body = _http("PUT", "/system", {"DebugLevel": _TEST_DEBUG_LEVEL})
         _check(condition=status == _HTTP_OK and _field(body, "result", "DebugLevel") in ("Valid", "Unchanged"), msg=f"Run 1: PUT /system DebugLevel={_TEST_DEBUG_LEVEL} accepted")
@@ -1637,8 +1601,8 @@ def _save_fram_evidence(ctx: RunContext, label: str) -> None:
         shutil.copy2(fram, evidence / fram.name)
 
 
-def _shutdown(run: TwinRun, run_label: str, timeout_s: float = 15.0, *, starves_watchdog: bool = False, interrupt: bool = False) -> int:
-    ec = shutdown(run, run_label, timeout_s, interrupt=interrupt)
+def _shutdown(run: TwinRun, run_label: str, timeout_s: float = 15.0, *, starves_watchdog: bool = False) -> int:
+    ec = shutdown(run, run_label, timeout_s)
     _check_exit(run, ec, run_label)
     _check_run_log(run, run_label, starves_watchdog=starves_watchdog)
     return ec

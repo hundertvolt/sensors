@@ -22,18 +22,12 @@ if TYPE_CHECKING:
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("sensortask_integration",)
 
 # Several polls on each side of the wraps.
-# @tunable l4.ticks_rollover_poll_interval_s = 300.0
-_POLL_INTERVAL_S = 300.0
+_POLL_INTERVAL_S = 300.0  # source: this test's own poll, not the notification FlashInterval
 # The wraps fall about 15 minutes after boot; the rest of the two hours is margin.
-# @tunable l4.ticks_rollover_run_s = 7200.0
 _RUN_S = 7200.0
-# @tunable l4.ticks_rollover_sync_age_margin_s = 60.0
 _SYNC_AGE_MARGIN_S = 60.0
-# @tunable l4.ticks_rollover_serving_timeout_s = 120.0
 _SERVING_TIMEOUT_S = 120.0
-# @tunable l4.ticks_rollover_retry_s = 10.0
 _RETRY_S = 10.0
-# @tunable l4.ticks_rollover_probe_timeout_s = 10.0
 _PROBE_TIMEOUT_S = 10.0
 
 

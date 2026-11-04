@@ -205,33 +205,3 @@ def test_the_twin_runner_refuses_a_missing_or_unknown_device_naming_it_and_the_v
     assert f"valid devices: {' '.join(DEVICE_NAMES)}" in done.stderr, done.stderr
 
 
-def test_each_rule_bites_on_a_planted_script(tmp_path: Path) -> None:
-    planted = tmp_path / "planted.sh"
-    planted.write_text(
-        "#!/bin/bash\n# Runs a thing.\nset -eu\nscratch=\"$(mktemp -d)\"\ntrap 'rm -rf \"$scratch\"' EXIT\ntrap 'echo bye' EXIT\n"
-        'for f in $(ls); do :; done\nfor g in ${files[@]+"${files[@]}"}; do :; done\nfor h in "${files[@]}" devices/*.toml; do :; done\n',
-        encoding="utf-8",
-    )
-    sourced = tmp_path / "sourced.sh"
-    sourced.write_text("#!/usr/bin/env bash\n# Sourced helper.\nset -euo pipefail\ntrap 'rm -f x' EXIT\nf() {\n    set -x\n}\n", encoding="utf-8")
-    callable_lib = tmp_path / "callable.sh"
-    callable_lib.write_text('#!/usr/bin/env bash\n# Sourced, and callable as a command.\nf() { :; }\nif [ "${BASH_SOURCE[0]}" = "$0" ]; then\n    set -euo pipefail\n    f "$@"\nfi\n', encoding="utf-8")
-    reasoned = tmp_path / "reasoned.sh"
-    reasoned.write_text("#!/usr/bin/env bash\n# Runs a thing.\nset -uo pipefail  # not -e: the exit code is judged\n", encoding="utf-8")
-    assert convention_problems(planted, "planted.sh") == [
-        "planted.sh:1: line 1 is not #!/usr/bin/env bash",
-        "planted.sh:3: the first command is 'set -eu', not `set -euo pipefail` or a set line stating why on that line",
-        "planted.sh: 2 EXIT traps (lines 5, 6) - one trap removes every temporary file",
-        "planted.sh:4: mktemp before the EXIT trap that removes it (line 5)",
-        "planted.sh:7: a loop over an unquoted expansion ($(ls))",
-        'planted.sh:8: a loop over an unquoted expansion (${files[@]+"${files[@]}"})',
-    ]
-    assert convention_problems(sourced, "sourced.sh") == [
-        "sourced.sh:3: a sourced script sets shell options outside its command path - they would change its caller's",
-        "sourced.sh:6: a sourced script sets shell options outside its command path - they would change its caller's",
-        "sourced.sh:4: a sourced script arms an EXIT trap - it would replace its caller's",
-    ]
-    assert convention_problems(callable_lib, "callable.sh") == []
-    assert convention_problems(reasoned, "reasoned.sh") == []
-
-

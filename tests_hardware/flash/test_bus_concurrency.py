@@ -20,20 +20,13 @@ class _ResultNote(Protocol):
 
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("bus_hazard_concurrency", "bmp3xx", "fram", "setup_resets")
 
-# @tunable l3.bus_concurrency_long_script_timeout_s = 120.0
 _LONG_SCRIPT_TIMEOUT_S = 120.0
-# @tunable l3.bus_concurrency_script_timeout_s = 90.0
 _SCRIPT_TIMEOUT_S = 90.0
-# @tunable l3.bus_concurrency_short_script_timeout_s = 60.0
 _SHORT_SCRIPT_TIMEOUT_S = 60.0
-# @tunable l3.bus_concurrency_reset_script_timeout_s = 30.0
 _RESET_SCRIPT_TIMEOUT_S = 30.0
-# @tunable l3.bus_concurrency_reachable_timeout_s = 30.0
 _REACHABLE_TIMEOUT_S = 30.0
-# @tunable l3.bus_concurrency_reachable_poll_s = 1.0
 _REACHABLE_POLL_S = 1.0
 # The production boot after a system command's reset, before the raw dump reads the FRAM it left.
-# @tunable l3.bus_concurrency_command_boot_timeout_s = 60.0
 _COMMAND_BOOT_TIMEOUT_S = 60.0
 
 _REC_SDA_LOW = module_int_const(SRC_DIR, "asy_i2c_driver.py", "_REC_SDA_LOW")

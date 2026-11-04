@@ -76,13 +76,9 @@ _BMP_ADDR = 0x77
 _BMP_STATUS = 0x03  # the STATUS register; bit 4 is cmd_rdy (bst-bmp388-ds001 sec 4.3.3)
 _BMP_CMD_RDY = 0x10
 _LET_GO_READS = 5000  # a wait still running this many clock reads in is ended by the world, so a lost bound fails, not hangs
-# @tunable l1.ticks_rollover_neopixel_frame_ms = 10
 _NEOPIXEL_FRAME_MS = 10  # the neopixel driver's frame, so its polls: each a real sleep, only its `time` faked
-# @tunable l1.ticks_rollover_held_run_ms = 50
 _HELD_RUN_MS = 50  # a real sleep spanning several of the driver's 10 ms polls, the fake clock held
-# @tunable l1.ticks_rollover_finish_poll_ms = 5
 _FINISH_POLL_MS = 5
-# @tunable l1.ticks_rollover_finish_polls = 200
 _FINISH_POLLS = 200
 _SIGNAL_WAIT_MS: int = src_int("src/asy_neopixel_driver.py", "_SIGNAL_WAIT_MS")
 

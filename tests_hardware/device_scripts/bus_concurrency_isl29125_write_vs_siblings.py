@@ -30,14 +30,10 @@ BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
 # Varied, not a fixed cadence: 5 ms is back-to-back with a sibling's transaction, 120 ms is mid another sibling's
 # read; cycled so every run covers the whole spread rather than whichever phase natural jitter lands on.
-# @tunable l3.bus_concurrency_isl29125_write_vs_siblings_write_delays_ms = 5
 _WRITE_DELAYS_MS = (5, 15, 40, 80, 120)
-# @tunable l3.bus_concurrency_isl29125_write_vs_siblings_delay_repeats = 2
 _DELAY_REPEATS = 2
 _WRITE_CYCLES = len(_WRITE_DELAYS_MS) * _DELAY_REPEATS
-# @tunable l3.bus_concurrency_isl29125_write_vs_siblings_sibling_step_ms = 15
 _SIBLING_STEP_MS = 15
-# @tunable l3.bus_concurrency_isl29125_write_vs_siblings_run_bound_s = 60.0
 _RUN_BOUND_S = 60.0
 
 

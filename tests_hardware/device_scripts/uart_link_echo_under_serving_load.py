@@ -32,16 +32,11 @@ BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
 _CMD_ECHO = 0x02  # source: src/asy_uart_link_driver.py _CMD_ECHO (a folded const, unreadable at run time)
 # A fixed wait, never an in-process readiness request: one would share the heap under the load (SPECIFICATION.md E.9).
-# @tunable l3.heap_under_connection_ceiling_boot_wait_s = 20
 _BOOT_WAIT_S = 20
 # At least this many rounds, and rounds until the window has passed, so the echoes span the host's whole load.
-# @tunable l3.uart_link_echo_under_serving_load_rounds = 20
 _ROUNDS = 20
-# @tunable l3.uart_link_echo_under_serving_load_window_ms = 30000
 _WINDOW_MS = 30000
-# @tunable l3.uart_link_echo_under_serving_load_load_wait_ms = 90000
 _LOAD_WAIT_MS = 90000
-# @tunable l3.uart_link_echo_under_serving_load_poll_ms = 250
 _POLL_MS = 250
 # The product's own unretrieved-task report at the error level, so it prints whatever level the board's config holds.
 _REPORT = PrintLog(level=1, name="UNRETRIEVED TASK EXCEPTION:")

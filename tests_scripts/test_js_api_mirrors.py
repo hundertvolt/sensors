@@ -214,12 +214,6 @@ def test_src_spells_the_unavailable_marker_only_through_unavailable() -> None:
     assert _marker_spellings(_REPO_ROOT) == [], "build the marker from asy_base_classes.UNAVAILABLE, never a second spelling"
 
 
-def test_the_marker_spelling_scan_bites(tmp_path: Path) -> None:
-    shutil.copytree(_REPO_ROOT / "src", tmp_path / "src")
-    (tmp_path / "src" / "asy_planted.py").write_text('def degraded() -> dict[str, str]:\n    return {"error": "unavailable"}\n', encoding="utf-8")
-    assert _marker_spellings(tmp_path) == ["src/asy_planted.py:2: 'unavailable'"]
-
-
 @cache
 def _definitions(device: str) -> JsonDict:
     return definitions_for_toml(device_toml(device), _REPO_ROOT / "src")
@@ -276,31 +270,3 @@ def test_the_dispatch_fields_are_checked_on_some_device() -> None:
         assert any(_fields(_definitions(device), key) for device in DEVICE_NAMES), f"no device's definitions carry {key}"
 
 
-@pytest.mark.parametrize(
-    ("key", "member", "planted", "named"),
-    [("SystemCmd", "options", [{"value": "reboot", "label": "Reboot"}], "SystemCmd options"), ("PauseTime", "max", 7200, "PauseTime"), ("LightCmdLED", "subFields", [], "LightCmdLED sub-fields")],
-)
-def test_the_dispatch_check_bites(key: str, member: str, planted: JsonValue, named: str) -> None:
-    device = next(device for device in DEVICE_NAMES if _fields(_definitions(device), key))
-    definitions = json.loads(json.dumps(_definitions(device)))
-    assert isinstance(definitions, dict)
-    for field in _fields(definitions, key):
-        field[member] = planted
-    assert [problem for problem in _dispatch_problems(definitions, _REPO_ROOT) if problem.startswith(named)]
-
-
-def test_the_dispatch_check_bites_on_each_dropped_command_word() -> None:
-    # A definitions copy missing just one of _SYSTEM_CMDS' words, every other option kept, fails the SystemCmd pin.
-    device = next(device for device in DEVICE_NAMES if _fields(_definitions(device), "SystemCmd"))
-    words = _record(_py_values(_REPO_ROOT / _WEBSERVER, "_SYSTEM_CMDS")["_SYSTEM_CMDS"])
-    assert {"resetconfig", "erasefram"} <= set(words), "the two newest command words left _SYSTEM_CMDS"
-    for word in words:
-        definitions = json.loads(json.dumps(_definitions(device)))
-        assert isinstance(definitions, dict)
-        for field in _fields(definitions, "SystemCmd"):
-            options = field["options"]
-            assert isinstance(options, list)
-            kept = [option for option in options if not (isinstance(option, dict) and option.get("value") == word)]
-            assert len(kept) == len(options) - 1, f"{device}'s SystemCmd offers no {word!r} to drop"
-            field["options"] = kept
-        assert [problem for problem in _dispatch_problems(definitions, _REPO_ROOT) if problem.startswith("SystemCmd options")], f"dropping {word!r} left the pin silent"

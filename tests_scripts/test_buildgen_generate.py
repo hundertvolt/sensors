@@ -112,7 +112,7 @@ def test_real_device_module_constructs_no_watchdog_and_its_boot_entry_exactly_on
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_boot_entry_arms_the_watchdog_as_its_first_statement(device: str) -> None:
     stmts = _body(_real(device).boot_entry_source)
-    assert ast.unparse(stmts[0]) == "from machine import WDT"
+    assert ast.unparse(stmts[0]) == "from machine import WDT, reset"
     assert ast.unparse(stmts[1]) == f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})"
 
 
@@ -154,7 +154,7 @@ def test_real_device_boot_entry_records_every_exception_ending_the_loop_before_t
     assert interrupt.type is not None and ast.unparse(interrupt.type) == "KeyboardInterrupt" and interrupt.name is None
     assert [ast.unparse(s) for s in interrupt.body] == ["write_reset_record(RR_INTERRUPTED)", "raise"]
     assert other.type is not None and ast.unparse(other.type) == "BaseException" and other.name is None
-    assert [ast.unparse(s) for s in other.body] == ["record_loop_end()"]  # nothing printed, at every DebugLevel
+    assert [ast.unparse(s) for s in other.body] == ["record_loop_end()", "reset()"]  # nothing printed, at every DebugLevel
     assert not tail.orelse
     assert [ast.unparse(s) for s in tail.finalbody] == ["asyncio.new_event_loop()"]
     # Every name the tail calls is one the entry binds before it.
@@ -464,8 +464,13 @@ def test_a_config_log_its_class_keeps_off_fram_is_no_fram_backed_logger() -> Non
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_serves_the_settings_groups_of_the_one_table(device: str) -> None:
-    # Each page's settings groups are the one SETTINGS_GROUPS table's rows, in order.
+    # Each page's settings groups are the one SETTINGS_GROUPS table's rows, in order, and no other page has any but
+    # notification's, which comes from its schema at boot.
     source = _real(device).module_source
+    routes = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "RouteSources")
+    settings = next(k.value for k in routes.keywords if k.arg == "settings")
+    assert isinstance(settings, ast.Dict)
+    assert {k.value for k in settings.keys if isinstance(k, ast.Constant)} - {"notification"} == {row[0] for row in SETTINGS_GROUPS}
     for page in ("networking", "system"):
         expected = [(module, fields, dict([hook.split("=", 1)]) if hook else {}) for section, module, fields, hook in SETTINGS_GROUPS if section == page]
         assert _settings_groups(source, page) == expected
@@ -623,7 +628,7 @@ def _setup_names(source: str) -> "list[str]":
 
 def _shared_head(stmts: "list[ast.stmt]") -> "list[str]":
     # Up to gc.threshold(), without the watchdog lines and the reset records' import.
-    own = {"from machine import WDT", f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})", "from asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record"}
+    own = {"from machine import WDT, reset", f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})", "from asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record"}
     texts = [ast.unparse(stmt) for stmt in stmts]
     return [t for t in texts[: texts.index("gc.threshold(32768)") + 1] if t not in own]
 
