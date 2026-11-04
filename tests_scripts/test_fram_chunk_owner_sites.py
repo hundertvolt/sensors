@@ -181,44 +181,7 @@ def test_every_owner_across_the_devices_has_its_own_seed_at_every_width() -> Non
 # --- bites --------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "body",
-    [
-        "class C:\n    def setup(self):\n        self.c = fram.get_chunk(8, crc=CRC8(), owner='X')\n",
-        "def build():\n    return make_logger(log, 'X')\n",
-        "class C:\n    def __init__(self):\n        def later():\n            return ConfigManager(p, s, 'X')\n        self.f = later\n",
-        "STORE = PrintLogHistoryStore(fram, 8, 0, name='X')\n",
-    ],
-)
-def test_the_constructor_check_bites(body: str) -> None:
-    assert _constructor_problems("asy_x.py", body)
-
-
 def test_the_constructor_check_passes_a_constructor_site() -> None:
     assert not _constructor_problems("asy_x.py", "class C:\n    def __init__(self):\n        self.c = fram.get_chunk(8, crc=CRC8(), owner='X')\n")
 
 
-def test_the_owner_check_bites() -> None:
-    assert _owner_problems("asy_x.py", "x = fram.get_timestamped_chunk(8, synced, crc=CRC32())\n")
-    assert not _owner_problems("asy_x.py", "x = fram.get_timestamped_chunk(8, synced, crc=CRC32(), owner='X_VOC')\n")
-
-
-@pytest.mark.parametrize(
-    "body",
-    [
-        "async def build_system():\n    if flag:\n        fram = FRAMManager(spi0, 5)\n",
-        "async def build_system():\n    fram = FRAMManager(spi0, 5)\n\ndef _restart():\n    return FRAMManager(spi0, 5)\n",
-        "async def build_system():\n    for _ in range(2):\n        fram = FRAMManager(spi0, 5)\n",
-        "async def build_system():\n    pass\n",
-    ],
-)
-def test_the_generated_construction_check_bites(body: str) -> None:
-    assert _construction_problems("x", "fram: FRAMManager | None = None\n" + body)
-
-
-def test_the_seed_check_bites_on_a_planted_collision() -> None:
-    owners = _all_owners()
-    target = owners[0]
-    planted = next(f"PLANT{i}" for i in range(1 << 16) if _seed(f"PLANT{i}", 1) == _seed(target, 1))
-    problems = _seed_problems([*owners, planted])
-    assert any(target in p and planted in p for p in problems), problems

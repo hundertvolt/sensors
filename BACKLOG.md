@@ -798,8 +798,7 @@ gates, traps).
   `scripts/_strip_type_checking.py`, `scripts/build_firmware.py`, `toolchain/micropython_overrides.py`
   and `toolchain/setup_toolchain.py` drop `from __future__ import annotations` (Python 3.11 evaluates
   their annotations natively; `requires-python = ">=3.11"`), as do the host-side files of
-  `tests_scripts/` and `tests_hardware/`, which the new `tests_scripts/test_host_annotations.py` keeps
-  that way; the two `toolchain/` files change in that import line alone. `scripts/lint.sh`'s
+  `tests_scripts/` and `tests_hardware/`; the two `toolchain/` files change in that import line alone. `scripts/lint.sh`'s
   `gc.collect()` guard names `run_setups()` and `start_tasks()` and refuses any `gc.collect(` under
   `buildgen/`. `scripts/_generate_sensortask_modules.py` also writes each device's two boot entries
   (`sensortask_<d>_main.py`, `sensortask_<d>_main_noautostart.py`) and its expected boot facts
@@ -814,7 +813,7 @@ gates, traps).
   `test_buildgen_fuzz.py`, `test_buildgen_locale.py` (`dev`'s whole build under an ASCII locale with
   Python's UTF-8 mode off: `buildgen` now reads `src/` as UTF-8 whatever the host's locale),
   `test_buildgen_reproducible.py` (two CPython children under different `PYTHONHASHSEED`s),
-  `test_buildgen_source_agreement.py`, `test_host_annotations.py`, `test_toml_schema_contract.py` and
+  `test_buildgen_source_agreement.py`, `test_toml_schema_contract.py` and
   `test_twin_wiring_contract.py`. No dependency, pin or installer
   step changed: a chroot's lint, typecheck and `scripts/test.sh` legs cover all of it, the installer
   leg is not owed, and the ARM image build `build_firmware.py` feeds stays opt-in, its staging tested
@@ -984,7 +983,7 @@ gates, traps).
     `digital_twin/typecheck.ini` names its own `files`; `host_typecheck.ini` loses its
     `[mypy-scripts._digital_twin_ci_suite]` section.
   - every host text read or write in `scripts/`, `toolchain/` and `tests_scripts/` names
-    `encoding="utf-8"` (`tests_scripts/test_host_text_encoding.py`), so a chroot without a UTF-8 locale
+    `encoding="utf-8"`, so a chroot without a UTF-8 locale
     reads and writes the same bytes;
   - `scripts/_render_coverage.py`'s PEP 723 header pins `coverage==7.16.2`, the dev group's pin, and every
     script block follows `pyproject.toml` (`tests_scripts/test_script_metadata_pins.py`), so a `--coverage` run

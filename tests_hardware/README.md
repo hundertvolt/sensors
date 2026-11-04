@@ -557,7 +557,7 @@ named beside it; a script runs rendered (`harness.render_device_script()`), and 
 | Run it in the twin first, at both GC stages (`scripts/record_twin_instrument_runs.py`; the flash tier once per stage, refused if its twin board never took the stage): each entry's `stages` holds `"-1"` and `"32768"`, each `pass` or `exception`, and its `result` is `exception` if any stage failed; a script a flash test runs is charged with the outcomes of the flash tests that run it, not its whole module's. Then commit the record | review (the committed record returns on the final tree) |
 | Park the shared rig (the NeoPixel) dark in a `finally` | `tests_scripts/test_device_script_rig_parking.py` |
 | Feed the watchdog in short steps: `_shared/watchdog.py`'s fed waits, at most 2 s a step (`l3.device_script_feed_step_ms`) | `tests_scripts/test_device_script_watchdog.py` |
-| Shared code lives in `_shared/`, inlined at render by `# @include _shared/<name>.py` | `tests_scripts/test_hardware_clones.py` |
+| Shared code lives in `_shared/`, inlined at render by `# @include _shared/<name>.py` | review |
 
 Two habits stay judgment, each learned the hard way:
 

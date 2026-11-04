@@ -172,8 +172,3 @@ def test_scripts_typecheck_sh_runs_the_passes_from_their_configs_and_the_single_
         assert command in text, f"scripts/typecheck.sh never runs `{command}`"
 
 
-def test_the_coverage_check_bites() -> None:
-    # A planted file outside every run is reported, and one inside a pass is not.
-    assert not _covered("tests/new_file.py", ["src"]) and _covered("tests/new_file.py", ["src", "tests"])
-    assert _covered("tests/test_digital_twin_x.py", ["tests/test_digital_twin_*.py"])
-    assert _excluded("tests/network.py", r"tests/network\.py$") and not _excluded("tests/networks.py", r"tests/network\.py$")

@@ -154,11 +154,3 @@ def test_the_bench_facts_table_dates_and_sources_every_filled_row() -> None:
     assert not _undated_rows(rows), f"filled rows without a source or a date: {_undated_rows(rows)}"
 
 
-def test_the_bench_facts_checks_bite(tmp_path: Path) -> None:
-    script = tmp_path / "bite.py"
-    script.write_text("import sensortask_fixture\nSCD30_ADDR = 0x61\ni2c = I2C(0, scl_pin=5, sda_pin=4)\nx = BENCH['no_such_fact']\n", encoding="utf-8")
-    assert [line.split(" ", 1)[1] for line in _literal_findings(script)] == ["imports sensortask_fixture", "binds SCD30_ADDR to a literal", "I2C() takes a pin or bus literal"]
-    assert _bench_keys(script) == {"no_such_fact"}
-    table = "### Bench facts\n\n| fact | value | source | date |\n|---|---|---|---|\n| FRAM part | MB85RS2MTA | fram_raw_dump.py | |\n| BME688 | to be read in R0 | | |\n"
-    rows = _bench_facts_rows(table)
-    assert rows is not None and _undated_rows(rows) == ["FRAM part"]

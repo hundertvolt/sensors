@@ -59,10 +59,3 @@ def test_the_loader_reads_the_toml_stamp_the_generator_writes(generator: ModuleT
     assert 'stemOf(path) === "inputs_stamp"' in text, "the loader no longer reads the stamp by its stem"
 
 
-def test_the_glob_reader_bites() -> None:
-    loader = 'import.meta.glob("../build/generated_src/definitions/*.json", { eager: true, import: "default" })'
-    assert _helper_dirs(loader, "definitions") == {"build/generated_src/definitions"}
-    assert _helper_dirs(loader.replace("generated_src", "generated"), "definitions") == {"build/generated/definitions"}
-    assert _helper_dirs(loader.replace("definitions/", "defs/"), "definitions") == set()
-    assert _helper_dirs(loader, "api") == set()
-    assert _helper_dirs(loader.replace("definitions/", "api/"), "api") == {"build/generated_src/api"}

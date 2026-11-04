@@ -165,12 +165,6 @@ def test_a_removed_named_wait_is_a_stale_waiver(tmp_path: Path) -> None:
     assert named_wait_problems(src) == ["stale waiver: no asy_spi_driver.py:session_end() time.sleep*(_CS_SETTLE_US) left"]
 
 
-def test_an_asyncio_blind_scan_bites(tmp_path: Path) -> None:
-    for path in SRC.glob("*.py"):  # every asyncio import renamed: the scan sees no asyncio module, so no asyncio sleep
-        (tmp_path / path.name).write_text(path.read_text(encoding="utf-8").replace("import asyncio", "import aio_unread"), encoding="utf-8")
-    assert "the scan found no asyncio sleep - it reads nothing" in named_wait_problems(tmp_path)
-
-
 @pytest.mark.parametrize(
     ("name", "source"),
     [

@@ -11185,9 +11185,8 @@ could be wrong and refusing to proceed, rather than degrading (owner, 2026-09-09
   L1: `tests/test_generated_boot_entry.py` runs each device's `sensortask_<device>_main.py` and its
   no-autostart variant with the device module and the reset record stubbed.
 - Host code evaluates annotations natively (no `from __future__ import annotations`); a
-  `TYPE_CHECKING` name or a later class is quoted. `tests_scripts/test_host_annotations.py` holds
-  both over `buildgen/`, `scripts/`, `toolchain/`, `tests_scripts/` and `tests_hardware/` outside
-  `device_scripts/` (board code, checked with `src/`).
+  `TYPE_CHECKING` name or a later class is quoted; ruff's TC004 flags a `TYPE_CHECKING` import a runtime
+  annotation reads.
 
 ## L.6 Wiring defaults, per-value wiring, comment tags and pin legality
 
