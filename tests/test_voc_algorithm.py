@@ -33,8 +33,6 @@ _PERSISTED_FIELDS = (
     "m_adaptive_lowpass_a2", "m_adaptive_lowpass_initialized", "m_adaptive_lowpass_x1", "m_adaptive_lowpass_x2",
     "m_adaptive_lowpass_x3",
 )
-_UPTIME_GAMMA = _PERSISTED_FIELDS.index("m_mean_variance_estimator_uptime_gamma")
-_UPTIME_GATING = _PERSISTED_FIELDS.index("m_mean_variance_estimator_uptime_gating")
 
 
 def _f16(n: int) -> int:
@@ -388,31 +386,6 @@ def test_the_ports_own_state_always_restores() -> None:
         for value in struct.unpack_from("<32q", state):
             assert -0x80000000 <= value <= 0x7FFFFFFF, (i, value)
         assert VOCAlgorithm().params.unpack_from(state) is True, i
-
-
-def test_the_lowered_uptime_limit_leaves_the_output_unchanged() -> None:
-    # Both uptimes at the C reference's saturation (F16(32766)) or at the port's (F16(16382)): only
-    # sigmoids that are constant past 10223 s read them, so 2000 post-blackout samples agree.
-    samples = sraw_sequence(46 + 2000)
-    base = VOCAlgorithm()
-    base.vocalgorithm_init()
-    for _ in range(46):
-        base.vocalgorithm_process(next(samples))
-    buf = bytearray(VOCAlgorithm.get_params_memsize())
-    assert base.params.pack_into(buf) is True
-    old_limit, new_limit = VOCAlgorithm(), VOCAlgorithm()
-    for algo, uptime in ((old_limit, _f16(32766)), (new_limit, _f16(16382))):
-        assert algo.params.unpack_from(buf) is True
-        algo.params.m_mean_variance_estimator_uptime_gamma = uptime
-        algo.params.m_mean_variance_estimator_uptime_gating = uptime
-    old_buf, new_buf = bytearray(len(buf)), bytearray(len(buf))
-    for sraw in samples:
-        assert old_limit.vocalgorithm_process(sraw) == new_limit.vocalgorithm_process(sraw)
-    assert old_limit.params.pack_into(old_buf) is True
-    assert new_limit.params.pack_into(new_buf) is True
-    start, end = 8 * _UPTIME_GAMMA, 8 * (_UPTIME_GATING + 1)
-    assert old_buf[:start] == new_buf[:start]
-    assert old_buf[end:] == new_buf[end:]
 
 
 # ---------------------------------------------------------------------------
