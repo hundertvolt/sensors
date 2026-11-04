@@ -70,16 +70,6 @@ def _construction(source: str, var: str) -> str:
     return found[0]
 
 
-def _src_int(src_dir: Path, filename: str, name: str) -> int:
-    # A src/ file's module-level `NAME = const(<int>)`, read here independently of the reader under test.
-    for node in ast.parse((src_dir / filename).read_text(encoding="utf-8")).body:
-        if isinstance(node, ast.Assign) and [t.id for t in node.targets if isinstance(t, ast.Name)] == [name]:
-            value = node.value.args[0] if isinstance(node.value, ast.Call) else node.value
-            assert isinstance(value, ast.Constant) and isinstance(value.value, int), f"{filename}'s {name} is no int literal"
-            return value.value
-    raise AssertionError(f"{filename} has no {name}")
-
-
 def test_base_doc_is_valid(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
     model = _build(tmp_path, src_dir, doc)

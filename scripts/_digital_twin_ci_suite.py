@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from buildgen.buildspec import BUS_ATTACHED_DRIVERS
 from buildgen.model import instance_label, load_device
-from buildgen.validate import device_max_connections_by_name, module_float_const, module_int_const
+from buildgen.validate import device_max_connections_by_name, module_int_const
 from scripts._port_lock import PortHeldError, port_lock
 from scripts._summary_block import Summary
 from scripts._twin_process import (
@@ -394,12 +394,9 @@ def _check_crc16_links(ctx: RunContext) -> None:
 
 
 def _check_exit(run: TwinRun, ec: int, run_label: str) -> None:
-    # A negative exit the suite did not cause is a crash, reported as one with the log tail, beside the caller's check;
-    # a stop file the twin never acted on fails too, though the SIGINT fallback then ended the run cleanly.
+    # A negative exit the suite did not cause is a crash, reported as one with the log tail, beside the caller's check.
     if ec < 0 and not run.killed:
         _fail(f"{run_label}: {exit_reason(ec, killed=run.killed)}; last log lines:\n{log_tail(run)}")
-    if run.stop_ignored:
-        _fail(f"{run_label}: the twin never acted on its stop file, so only the SIGINT fallback ended it; last log lines:\n{log_tail(run)}")
 
 
 def _check_no_memory_error_in_log(log_path: Path, run_label: str) -> None:
@@ -409,19 +406,16 @@ def _check_no_memory_error_in_log(log_path: Path, run_label: str) -> None:
     _check(condition=verdict is None, msg=f"{run_label}: log carries none of {_MEMORY_ERROR_MARKERS}" + (f" - {verdict}" if verdict else ""))
 
 
-def _check_quiet_boot(label: str, spawned_at: float, keep: Path, *, fresh_config: bool = False, blank_backups: "tuple[str, ...]" = ()) -> None:
+def _check_quiet_boot(label: str, keep: Path, *, fresh_config: bool = False, blank_backups: "tuple[str, ...]" = ()) -> None:
     # One /status read, its errcount kept at keep, whose E and W slots are exactly what the boot owes (no tolerance list):
     # over a fresh config directory each config store's W CFG_FILE_UNREADABLE (the launcher writes NTP's file), and each
-    # blank SGP40 backup chunk's W SGP_NO_BACKUP, its first restore's, waited for; else none.
+    # blank SGP40 backup chunk's W SGP_NO_BACKUP, its first restore's, waited for; else none (a late read: SGP40's W35).
     for name in blank_backups:
         _wait_for_error_type_count(name, 1, _FIRST_FAULT_WAIT_S, "W")
     status, body = _http("GET", "/status")
-    age_s = time.monotonic() - spawned_at
     table = errcount_table(status, body)
     keep.parent.mkdir(parents=True, exist_ok=True)
     keep.write_text(json.dumps(table, indent=1) + "\n", encoding="utf-8")
-    deadline_s = _quiet_boot_deadline_s()
-    _check(condition=age_s < deadline_s, msg=f"{label}: the errcount was read {age_s:.1f}s after the spawn, before a boot's own first background warning can land ({deadline_s:.0f}s)")
     found = _boot_entries(table)
     owed = {name: code("W", "SGP_NO_BACKUP") for name in blank_backups}
     owed |= {name: code("W", "CFG_FILE_UNREADABLE") for name in table if fresh_config and name.startswith("CFGMGR_") and name != "CFGMGR_NTP"}
@@ -767,12 +761,6 @@ def _blank_backups(ctx: RunContext) -> "tuple[str, ...]":
     return tuple(inst.errcount_name for inst in ctx.instances if inst.driver == "sgp40" and fram)
 
 
-def _quiet_boot_deadline_s() -> float:
-    # Past its blank chunk's W65, a boot's own first error-count move, SGP40's untimestamped-backup warning, comes no
-    # earlier than the scenarios' shared-boot deadline after the spawn; one source for both readers of that background.
-    return module_float_const(REPO_ROOT / "scripts", "_digital_twin_scenarios.py", "_SHARED_BOOT_DEADLINE_S")
-
-
 def _real_reading(reading: object) -> bool:
     # A measurement that carries a value: a driver's fields stay null until its first good read, so an all-null
     # block is no reading at all, however truthy the dict holding it.
@@ -784,9 +772,9 @@ def _record(kind: str, full_msg: str) -> None:
     _CHECKS_PER_PASS[_CURRENT_PASS_LABEL] = _CHECKS_PER_PASS.get(_CURRENT_PASS_LABEL, 0) + 1
 
 
-def _relaunch_reason(ctx: RunContext, log_name: str, label: str, expected: int, *, system_entry: str | None = None, interrupt: bool = False) -> None:
+def _relaunch_reason(ctx: RunContext, log_name: str, label: str, expected: int, *, system_entry: str | None = None) -> None:
     # Boots on the same state and checks the reset reason the product read at boot (and, given its catalog name, the one
-    # SYSTEM entry that reset logged), then shuts down on its stop file, or by SIGINT with interrupt=True.
+    # SYSTEM entry that reset logged), then shuts down.
     proc = _spawn(ctx, [], ctx.logs_dir / log_name)
     try:
         _wait_until_serving(proc)
@@ -798,7 +786,7 @@ def _relaunch_reason(ctx: RunContext, log_name: str, label: str, expected: int, 
     except Exception as exc:
         _fail(f"{label}: {exc!r}")
     finally:
-        ec = _shutdown(proc, label, interrupt=interrupt)
+        ec = _shutdown(proc, label)
         _check(condition=ec == 0, msg=f"{label}: clean shutdown (exit code {ec})")
 
 
@@ -950,7 +938,7 @@ def _run_12_reset_reasons(ctx: RunContext) -> None:
     reset = parse_machine_reset_line(read_log(proc.log_path))
     _check(condition=reset is not None and reset.kind == "bootloader", msg=f"Run 12: the runner's machine reset line names the bootloader entry ({reset!r})")
     log_b = ctx.logs_dir / "run12_b_after_bootloader.log"
-    _relaunch_reason(ctx, log_b.name, "Run 12 (after bootloader)", _reset_code("_RR_WATCHDOG"), interrupt=True)  # what the SIGINT relaunch follows
+    _relaunch_reason(ctx, log_b.name, "Run 12 (after bootloader)", _reset_code("_RR_WATCHDOG"))  # what the SIGINT relaunch follows
     line = _shutdown_line(log_b, "Run 12 (after bootloader)")
     _check(condition=line is not None and line.mem_backup_r0 == (0, 0, 0, 0), msg=f"Run 12: the boot after the bootloader left no record (mem_backup r0 {line.mem_backup_r0 if line else None!r})")
     _relaunch_reason(ctx, "run12_c_sigint_relaunch.log", "Run 12 (SIGINT relaunch)", _reset_code("_RR_POWER_ON"))
@@ -1148,14 +1136,13 @@ def _run_1_baseline(ctx: RunContext) -> None:
     # (kept in runs/ before the reset). With no station link the clock never synced, so both time fields read null. Its
     # reformat relaunch PUTs the settings later runs carry forward. ----
     log1 = ctx.logs_dir / "run1_baseline.log"
-    spawned_at = time.monotonic()
     proc = _spawn(ctx, [], log1)
     try:
         _wait_until_serving(proc)
         for path in (*ctx.routes, "/"):
             status, _ = _http("GET", path)
             _check(condition=status == _HTTP_OK, msg=f"Run 1: GET {path} -> 200")
-        _check_quiet_boot("Run 1", spawned_at, ctx.runs_dir / "run1_errcount.json", fresh_config=True, blank_backups=_blank_backups(ctx))
+        _check_quiet_boot("Run 1", ctx.runs_dir / "run1_errcount.json", fresh_config=True, blank_backups=_blank_backups(ctx))
         times = (_status_field("system", "UTCTime"), _status_field("system", "LocalTime"))
         _check(condition=times == (None, None), msg=f"Run 1: UTCTime and LocalTime are null before the first NTP sync ({times!r})")
         stale = _status_field("system", "TimeStale")
@@ -1184,11 +1171,10 @@ def _run_1_reformat_relaunch(ctx: RunContext) -> None:
     except OSError as exc:
         _fail(f"{label}: emptying {config_dir} failed: {exc!r}")
         return
-    spawned_at = time.monotonic()
     proc = _spawn(ctx, [], ctx.logs_dir / "run1_reformat_relaunch.log")
     try:
         _wait_until_serving(proc)
-        _check_quiet_boot(label, spawned_at, ctx.runs_dir / "run1_reformat_errcount.json", fresh_config=True, blank_backups=_blank_backups(ctx))
+        _check_quiet_boot(label, ctx.runs_dir / "run1_reformat_errcount.json", fresh_config=True, blank_backups=_blank_backups(ctx))
 
         status, body = _http("PUT", "/system", {"DebugLevel": _TEST_DEBUG_LEVEL})
         _check(condition=status == _HTTP_OK and _field(body, "result", "DebugLevel") in ("Valid", "Unchanged"), msg=f"Run 1: PUT /system DebugLevel={_TEST_DEBUG_LEVEL} accepted")
@@ -1637,8 +1623,8 @@ def _save_fram_evidence(ctx: RunContext, label: str) -> None:
         shutil.copy2(fram, evidence / fram.name)
 
 
-def _shutdown(run: TwinRun, run_label: str, timeout_s: float = 15.0, *, starves_watchdog: bool = False, interrupt: bool = False) -> int:
-    ec = shutdown(run, run_label, timeout_s, interrupt=interrupt)
+def _shutdown(run: TwinRun, run_label: str, timeout_s: float = 15.0, *, starves_watchdog: bool = False) -> int:
+    ec = shutdown(run, run_label, timeout_s)
     _check_exit(run, ec, run_label)
     _check_run_log(run, run_label, starves_watchdog=starves_watchdog)
     return ec

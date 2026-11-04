@@ -21,7 +21,7 @@ from _devices import DEVICE_NAMES, device_toml
 import scripts._twin_process as twin_process
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable
 
 
 def _ctx(ci_suite: ModuleType, keys: "list[str]", logs_dir: Path = Path("/nonexistent")) -> object:
@@ -721,97 +721,6 @@ def test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recor
     assert twin_process.exit_reason(code, killed=run.killed) == "killed by the caller after it ignored SIGINT"
 
 
-# A twin as the runner ends on its stop file: SIGINT blocked or handled (it prints "interrupted" and exits 0), and the
-# stop file honoured or ignored.
-_STOP_CHILD = (
-    "import os, signal, sys, time\n"
-    "mode, stop = sys.argv[1], sys.argv[2]\n"
-    "signal.signal(signal.SIGINT, lambda _n, _f: (print('interrupted', flush=True), os._exit(0)))\n"
-    "signal.pthread_sigmask(signal.SIG_BLOCK if mode == 'sigint-blocked' else signal.SIG_UNBLOCK, {signal.SIGINT})\n"
-    "print('ready', flush=True)\n"
-    "while not (mode != 'ignores-stop' and os.path.exists(stop)):\n"
-    "    time.sleep(0.01)\n"
-    "print('stop file seen', flush=True)\n"
-)
-
-
-@pytest.fixture
-def stop_child(tmp_path: Path) -> "Iterator[Callable[[str], twin_process.TwinRun]]":
-    # Starts one such child per call; any still running at the end (a shutdown() that failed) is killed, never leaked.
-    runs: list[twin_process.TwinRun] = []
-
-    def start(mode: str) -> twin_process.TwinRun:
-        log_path, stop = tmp_path / "twin.log", tmp_path / "stop"
-        log_file = log_path.open("w", encoding="utf-8")
-        proc = subprocess.Popen([sys.executable, "-I", "-S", "-c", _STOP_CHILD, mode, str(stop)], stdin=subprocess.PIPE, stdout=log_file, stderr=subprocess.STDOUT, text=True)
-        run = twin_process.TwinRun(proc=proc, log_path=log_path, log_file=log_file, device="fixture-device", state_dir=tmp_path)
-        run.stop_file = stop  # as spawn() sets it
-        runs.append(run)
-        deadline = time.monotonic() + 10
-        while "ready" not in log_path.read_text(encoding="utf-8") and time.monotonic() < deadline:
-            time.sleep(0.01)
-        return run
-
-    yield start
-    for run in runs:
-        if run.proc.poll() is None:
-            run.proc.kill()
-            run.proc.wait(timeout=5)
-
-
-def test_a_twin_with_sigint_blocked_still_ends_cleanly_on_its_stop_file(ci_suite: ModuleType, stop_child: "Callable[[str], twin_process.TwinRun]", monkeypatch: pytest.MonkeyPatch) -> None:
-    # The in-band stop needs no signal: a twin the kernel never delivers SIGINT to ends on main()'s own clean path,
-    # through the suite's own shutdown, which records no failure for it.
-    monkeypatch.setattr(twin_process, "_KBD_TRACEBACK_WAIT_S", 0.0)
-    monkeypatch.setattr(twin_process, "_SECOND_SIGINT_WAIT_S", 0.05)
-    run = stop_child("sigint-blocked")
-    codes: list[int] = []
-    assert _failures_of(ci_suite, lambda: codes.append(ci_suite._shutdown(run, "fixture twin", timeout_s=5.0))) == []
-    assert (codes, run.killed, run.stop_ignored) == ([0], False, False), twin_process.read_log(run.log_path)
-    assert "stop file seen" in twin_process.read_log(run.log_path)
-
-
-def test_a_twin_that_ignores_its_stop_file_falls_back_to_sigint_and_says_so(ci_suite: ModuleType, stop_child: "Callable[[str], twin_process.TwinRun]", capsys: pytest.CaptureFixture[str]) -> None:
-    # The fallback's clean exit 0 hides that the in-band stop never worked: a DIAG line says so, and the suite fails the run.
-    run = stop_child("ignores-stop")
-    codes: list[int] = []
-    failures = _failures_of(ci_suite, lambda: codes.append(ci_suite._shutdown(run, "fixture twin", timeout_s=0.1)))
-    assert (codes, run.killed, run.stop_ignored) == ([0], False, True)
-    assert "interrupted" in twin_process.read_log(run.log_path)
-    assert "DIAG: fixture twin: the stop file was not acted on within 0.1s - falling back to SIGINT" in capsys.readouterr().out
-    assert len(failures) == 1 and "fixture twin: the twin never acted on its stop file" in failures[0] and "interrupted" in failures[0], failures
-
-
-def test_an_interrupt_shutdown_sends_sigint_at_once_and_leaves_the_stop_file_alone(ci_suite: ModuleType, stop_child: "Callable[[str], twin_process.TwinRun]") -> None:
-    # interrupt=True passes through the suite's own shutdown.
-    run = stop_child("honours-stop")
-    codes: list[int] = []
-    assert _failures_of(ci_suite, lambda: codes.append(ci_suite._shutdown(run, "fixture twin", timeout_s=5.0, interrupt=True))) == []
-    assert (codes, run.killed, run.stop_ignored) == ([0], False, False)
-    assert "interrupted" in twin_process.read_log(run.log_path)
-    assert run.stop_file is not None and not run.stop_file.exists()
-
-
-def test_spawn_hands_the_runner_a_fresh_stop_file_and_refuses_a_callers_own(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    started: list[list[str]] = []
-
-    def popen(cmd: "list[str]", **_kw: object) -> object:
-        started.append(cmd)
-        return SimpleNamespace(pid=0)
-
-    monkeypatch.setattr(subprocess, "Popen", popen)
-    launch = twin_process.TwinLaunch("/nonexistent/micropython", "sensortask_fixture", tmp_path / "plan.json", "fixture-device", "127.0.0.1", 20000, -1)
-    state_dir = tmp_path / "state"
-    state_dir.mkdir()
-    (state_dir / "stop").touch()  # a previous launch's: the relaunch on the same state must not end at once
-    run = twin_process.spawn(launch, state_dir=state_dir, log_path=tmp_path / "twin.log")
-    run.log_file.close()
-    assert run.stop_file == state_dir / "stop" and not run.stop_file.exists()
-    assert started[0][started[0].index("--stop-file") + 1] == str(state_dir / "stop"), started
-    with pytest.raises(ValueError, match="--stop-file"):
-        twin_process.spawn(launch, state_dir=state_dir, log_path=tmp_path / "twin2.log", args=("--stop-file", str(tmp_path / "own")))
-
-
 def test_an_empty_log_gives_no_memory_verdict(ci_suite: ModuleType, tmp_path: Path) -> None:
     failures = _memory_error_verdict(ci_suite, tmp_path, "")
     assert len(failures) == 1 and "empty" in failures[0], failures
@@ -856,13 +765,6 @@ def test_the_suites_own_kill_or_timeout_is_left_to_the_callers_check(ci_suite: M
 def test_a_clean_or_reset_exit_is_no_crash(ci_suite: ModuleType, tmp_path: Path) -> None:
     for ec in (0, 1, 3, 4):
         assert _failures_of(ci_suite, functools.partial(ci_suite._check_exit, _run_stub(tmp_path, killed=False), ec, "Run 1")) == []
-
-
-def test_an_ignored_stop_file_fails_even_a_clean_exit(ci_suite: ModuleType, tmp_path: Path) -> None:
-    run = _run_stub(tmp_path, killed=False)
-    run.stop_ignored = True  # type: ignore[attr-defined]
-    failures = _failures_of(ci_suite, lambda: ci_suite._check_exit(run, 0, "Run 2"))
-    assert len(failures) == 1 and "Run 2: the twin never acted on its stop file" in failures[0] and "Segmentation fault" in failures[0], failures
 
 
 def test_an_all_null_measurement_block_is_no_reading(ci_suite: ModuleType) -> None:
@@ -939,8 +841,7 @@ def test_run_10_ends_each_hang_run_on_the_runners_line_and_otherwise_waits_out_i
         log_path.write_text(("WATCHDOG_WOULD_TRIGGER count=1\n" if engaged else "") + line + "\n", encoding="utf-8")
         return twin_process.TwinRun(proc=SimpleNamespace(poll=lambda: None), log_path=log_path, log_file=log_path.open(encoding="utf-8"), device="fixture-device", state_dir=tmp_path)  # type: ignore[arg-type]
 
-    def interrupted(_run: object, _label: object, _timeout_s: object, *, interrupt: bool = False) -> int:
-        assert not interrupt
+    def interrupted(_run: object, _label: object, _timeout_s: object) -> int:
         ended.append("SIGINT")
         return 0
 
@@ -966,11 +867,10 @@ def test_run_10_ends_each_hang_run_on_the_runners_line_and_otherwise_waits_out_i
 # ---------------------------------------------------------------------------
 
 
-def _quiet_boot(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, body: "dict[str, object]", *, age_s: float = 1.0, fresh_config: bool = False, blank_backups: "tuple[str, ...]" = ()) -> "list[str]":
-    # One _check_quiet_boot() over a stubbed /status answer read age_s after the spawn; returns its failures.
+def _quiet_boot(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, body: "dict[str, object]", *, fresh_config: bool = False, blank_backups: "tuple[str, ...]" = ()) -> "list[str]":
+    # One _check_quiet_boot() over a stubbed /status answer; returns its failures.
     monkeypatch.setattr(ci_suite, "_http", lambda *_a, **_k: (200, body))
-    spawned_at = time.monotonic() - age_s
-    return _failures_of(ci_suite, lambda: ci_suite._check_quiet_boot("Run 1", spawned_at, tmp_path / "runs" / "kept.json", fresh_config=fresh_config, blank_backups=blank_backups))
+    return _failures_of(ci_suite, lambda: ci_suite._check_quiet_boot("Run 1", tmp_path / "runs" / "kept.json", fresh_config=fresh_config, blank_backups=blank_backups))
 
 
 def test_a_quiet_boot_passes_and_its_errcount_is_kept(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -1007,16 +907,10 @@ def test_a_blank_backup_chunk_owes_its_sgp40_no_backup_warning_once_waited_for(c
     assert len(failures) == 1 and "each blank SGP40 backup chunk's W SGP_NO_BACKUP" in failures[0], failures
 
 
-def test_a_read_past_the_boots_own_background_deadline_fails(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    # SGP40's untimestamped-backup warning can land past it, so a quiet read there could not be told from a lucky one.
-    failures = _quiet_boot(ci_suite, monkeypatch, tmp_path, {"errcount": {"SYSTEM": _entry()}}, age_s=ci_suite._quiet_boot_deadline_s() + 1.0)
-    assert len(failures) == 1 and "before a boot's own first background warning can land" in failures[0], failures
-
-
 def test_an_unreadable_status_raises_rather_than_reading_as_a_quiet_boot(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(ci_suite, "_http", lambda *_a, **_k: (500, None))
     with pytest.raises(RuntimeError, match="did not yield a readable body"):
-        ci_suite._check_quiet_boot("Run 1", time.monotonic(), tmp_path / "kept.json")
+        ci_suite._check_quiet_boot("Run 1", tmp_path / "kept.json")
 
 
 @pytest.mark.parametrize(("absent", "other", "ntp", "passes"), [(1, False, False, True), (0, False, False, False), (2, False, False, False), (1, True, False, False), (1, False, True, False)])
@@ -1084,23 +978,6 @@ def test_the_reformat_relaunch_boots_on_an_emptied_config_beside_the_kept_fram_t
     assert json.loads((tmp_path / "runs" / "run1_reformat_errcount.json").read_text(encoding="utf-8")) == table
     puts = [path for method, path in seen if method == "PUT"]
     assert puts == ["/system", "/notification", "/sensors", "/networking", "/status"], seen
-
-
-def test_run_12_ends_the_boot_its_sigint_relaunch_follows_by_sigint(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    # The stop file is every other run's shutdown; this one keeps the SIGINT path the relaunch's power-on reading is about.
-    relaunches: list[tuple[str, bool]] = []
-    log = tmp_path / "run12_a.log"
-    log.write_text("", encoding="utf-8")
-    monkeypatch.setattr(ci_suite, "_relaunch_reason", lambda _ctx, log_name, _label, _expected, **kw: relaunches.append((log_name, kw.get("interrupt", False))))
-    monkeypatch.setattr(ci_suite, "_archive_state", lambda _ctx, _label: None)
-    monkeypatch.setattr(ci_suite, "_spawn", lambda *_a: SimpleNamespace(log_path=log))
-    monkeypatch.setattr(ci_suite, "_wait_until_serving", lambda _proc: None)
-    monkeypatch.setattr(ci_suite, "_status_field", lambda *_a: ci_suite._reset_code("_RR_POWER_ON"))
-    monkeypatch.setattr(ci_suite, "_commanded_reset", lambda *_a: 0)
-    monkeypatch.setattr(ci_suite, "_shutdown_line", lambda *_a: None)
-    monkeypatch.setattr(ci_suite, "_run_12_stack_exhaustion", lambda _ctx: None)
-    _failures_of(ci_suite, lambda: ci_suite._run_12_reset_reasons(_ctx(ci_suite, [], tmp_path)))
-    assert relaunches == [("run12_b_after_bootloader.log", True), ("run12_c_sigint_relaunch.log", False)], relaunches
 
 
 @pytest.mark.parametrize(("answers", "synced"), [([False] * 9, False), ([False, True], True), ([1] * 9, False), ([None] * 9, False)])

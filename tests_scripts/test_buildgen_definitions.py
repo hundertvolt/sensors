@@ -274,11 +274,6 @@ def test_each_status_group_lists_the_keys_its_generated_source_returns(repo_root
 _NOTIFICATION_DEVICES = devices_with("notification")
 
 
-def _obj(value: "JsonValue") -> "JsonDict":
-    assert isinstance(value, dict), value
-    return value
-
-
 def test_a_real_device_wires_a_notification_and_a_warn_signal() -> None:
     # The floor of the per-device notification checks: none of them may pass by running on no device.
     assert _NOTIFICATION_DEVICES, "no device declares a notification, so the notification checks below run on nothing"

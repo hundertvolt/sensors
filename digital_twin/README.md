@@ -717,9 +717,9 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
    warning entry from any module but each config store's one `CFG_FILE_UNREADABLE`, its file not
    found, and each SGP40's `SGP_NO_BACKUP`, waited for, its first restore finding the backup chunk
    blank — then clear them (`ResetErrors`); with no station link the clock
-   has never synced, so `UTCTime`, `LocalTime` and `TimeStale` read null. Shut down cleanly through
-   the stop file (`main()`'s clean path, which flushes the FRAM/SCD30 state as the `SIGINT` handler
-   does; `SIGINT` is the fallback, never `SIGTERM`) and confirm the state files landed on disk. Then
+   has never synced, so `UTCTime`, `LocalTime` and `TimeStale` read null. Shut down cleanly by
+   `SIGINT` (its handler flushes the FRAM/SCD30 state; never `SIGTERM`) and confirm the state files
+   landed on disk. Then
    relaunch on an emptied config directory beside the kept FRAM state, as a reformatted filesystem
    leaves a unit: each config store logs its file not found and each SGP40 its blank backup chunk,
    as Run 1 (kept in `runs/`), and a setting is
@@ -897,9 +897,8 @@ per group, with an idle check between two of them — the twin alive, every slot
 accept queue empty, the error counts after the drain, the memory gate — and a failure names its
 scenario and sends the next to a fresh boot. A shared twin's first count snapshot waits for each
 SGP40's `SGP_NO_BACKUP` (a fresh FRAM's blank backup chunk), a boot without it failing there, and
-the twin is retired before `l2.scenario_shared_boot_deadline_s`, the earliest its own SGP40
-untimestamped-backup warning can land with no NTP sync in the hotspot, and a count an idle check
-reads moved past it fails by name (agent, 2026-10-19). The hung-step scenario ends on the runner's
+an idle check reads a move whose only new slot is SGP40's untimestamped backup (W35, with no NTP sync
+in the hotspot) as the boot's own background. The hung-step scenario ends on the runner's
 `WATCHDOG_WOULD_TRIGGER` line (S1 on its `HUNG S1` line); the UART-load scenario
 (`uart_ring_under_concurrent_load`) drives both links of a device that wires a pair through a
 webserver hammer at the ceiling, FRAM log writes and config flushes, each flush stalling the loop as

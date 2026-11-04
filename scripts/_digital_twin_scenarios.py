@@ -88,12 +88,6 @@ _CONN_STATUS_INTERVAL_MS = 20  # the runner's CONN_SLOTS period: dense enough th
 _FAULT_STATUS_INTERVAL_MS = 100
 # @tunable l2.scenario_drain_wait_s = 10.0
 _DRAIN_WAIT_S = 10.0  # a slot outlives its response until its close completes (Part H.7.1)
-# Past its first SGP40 restore's W65 (the blank chunk; acquire() waits for it), a fresh boot's first own move is SGP40's
-# untimestamped backup, 60 x BackupPeriod + WaitTimeNTP - 1 late-firing 1 s cycles after spawn: past it none is the scenario's.
-# @tunable l2.scenario_shared_boot_deadline_s = 89.0
-_SHARED_BOOT_DEADLINE_S = 89.0
-# @tunable l2.scenario_shared_boot_budget_s = 30.0
-_SHARED_BOOT_BUDGET_S = 30.0  # one sharing scenario's allowance: a twin this close to its deadline is retired before the next
 # @tunable l2.scenario_still_serving_s = 5.0
 _STILL_SERVING_S = 5.0
 # @tunable l2.scenario_flaky_hold_s = 0.05
@@ -361,24 +355,24 @@ class Context:
 @dataclass
 class SharedBoot:
     # The twin consecutive sharing scenarios run on: booted by the first that asks, idle-checked after each, shut down
-    # after a failure, at the group's end or once one more scenario could outlive _SHARED_BOOT_DEADLINE_S, so the next
-    # sharing scenario boots a fresh one.
+    # after a failure or at the group's end, so the next sharing scenario boots a fresh one.
     ctx: Context  # the boot's own: its logs, state and shutdown verdict
     stack: contextlib.ExitStack = field(default_factory=contextlib.ExitStack)
     twin: "Twin | None" = None
     counters: "dict[str, int]" = field(default_factory=dict)
     names: "list[str]" = field(default_factory=list)
     reported: int = 0
-    spawned_at: float = 0.0  # time.monotonic() just before the twin's spawn: its age is read against the deadline
+    newest: "dict[str, list[JSONValue]]" = field(default_factory=dict)  # each source's two newest slots at the last read
 
     def acquire(self) -> Twin:
         if self.twin is None:
-            self.spawned_at = time.monotonic()
             twin = self.stack.enter_context(self.ctx.boot(*_CONN))
             for _key, driver, ext in self.ctx.instances:
                 if driver == "sgp40":  # its first restore logs W65 for the blank backup chunk: the boot's move, never a scenario's
                     _expect(_wait_entry(twin.port, f"SGP40_{ext}" if ext else "SGP40", kind="W", num=_src_int("asy_sgp40_driver.py", "_WRN_SGP_NO_BACKUP")), "a shared boot's SGP40 never logged W SGP_NO_BACKUP for its blank backup chunk")
-            self.counters = {name: _counter(entry) for name, entry in _error_table(twin.port).items()}
+            table = _error_table(twin.port)
+            self.counters = {name: _counter(entry) for name, entry in table.items()}
+            self.newest = {name: _newest_entries(entry) for name, entry in table.items()}
             self.twin = twin
         return self.twin
 
@@ -398,19 +392,24 @@ class SharedBoot:
             problems.append(f"no socket listens on port {twin.port}" if queued is None else f"{queued} connection(s) still in the accept queue after {_DRAIN_WAIT_S}s")
         # Read once every slot is back: a connection's own log entry lands before its slot is released.
         table = _error_table(twin.port)
-        age = time.monotonic() - self.spawned_at  # once the answer is in: the table it read is no older than this
         counters = {name: _counter(entry) for name, entry in table.items()}
+        newest = {name: _newest_entries(entry) for name, entry in table.items()}
         moved = {name: (self.counters.get(name), counters.get(name)) for name in sorted(set(self.counters) | set(counters)) if self.counters.get(name) != counters.get(name)}
-        unstated = {name: (*move, _newest_entries(table.get(name, {}))) for name, move in moved.items() if name not in item.moves}
-        if unstated and age > _SHARED_BOOT_DEADLINE_S:  # the boot's own background may have moved it: never the scenario's
-            problems.append(f"the shared boot outlived its SGP40 backup deadline ({age:.1f} s > {_SHARED_BOOT_DEADLINE_S:g} s), so these moves cannot be told from its own background: {unstated}")
-        elif unstated:
+        unstated = {name: (*move, newest.get(name, [])) for name, move in moved.items() if name not in item.moves and not self._own_backup(name, newest.get(name, []))}
+        if unstated:
             problems.append(f"moved error counts it does not state (before, after, newest entries): {unstated}")
         verdict = log_memory_verdict(twin.run.log_path)
         if verdict is not None:
             problems.append(verdict)
-        self.counters = counters
+        self.counters, self.newest = counters, newest
         return problems
+
+    def _own_backup(self, name: str, now: "list[JSONValue]") -> bool:
+        # The boot's own background, never a scenario's: an SGP40 that never syncs writes its backup untimestamped (W35)
+        # about 90 s after the spawn, then each backup period; its only new slot is that W35, or W35 repeated in place.
+        backup = ["W", _src_int("asy_sgp40_driver.py", "_WRN_SGP_WRITTEN_NO_TS")]
+        before = self.newest.get(name, [])
+        return name.split("_", 1)[0] == "SGP40" and now[-1:] == [backup] and (now == before or now[:-1] == before[-1:])
 
     def release(self, item: Scenario, *, failed: bool, last: bool) -> "list[str]":
         # After one sharing scenario: its idle check unless it failed, then the shutdown a failure or the group's end
@@ -422,10 +421,7 @@ class SharedBoot:
                 problems = [f"idle check after {item.name}: {p}" for p in self.idle_problems(item)]
             except _SCENARIO_ERRORS as exc:
                 problems = [f"idle check after {item.name}: {type(exc).__name__}: {exc}"]
-        near = self.twin is not None and time.monotonic() - self.spawned_at + _SHARED_BOOT_BUDGET_S > _SHARED_BOOT_DEADLINE_S
-        if near and not (failed or problems or last):
-            print(f"== shared boot {self.ctx.boots} retired after {item.name}: one more scenario could outlive its SGP40 backup deadline", flush=True)
-        if failed or problems or last or near:
+        if failed or problems or last:
             self.stack.close()  # the boot's SIGINT shutdown and log gate, into self.ctx.failures
             self.twin = None
         problems += [f"shared boot {self.ctx.boots} ({', '.join(self.names)}): {f}" for f in self.ctx.failures[self.reported :]]
