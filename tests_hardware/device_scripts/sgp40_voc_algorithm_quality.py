@@ -28,7 +28,7 @@ BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 # The 45 s documented blackout plus margin for the real 1 s read loop to catch up.
 _BLACKOUT_WAIT_S = 60.0
 _N_QUALITY_SAMPLES = 8
-_SAMPLE_INTERVAL_S = 2.0
+_SAMPLE_INTERVAL_S = 2.0  # source: this script's own sampling step, not the BMP3xx SampleInterval
 # Generous against the algorithm's own adaptive low-pass smoothing.
 _MAX_SINGLE_STEP_JUMP = 300
 # The compensation the datasheet's Table 10 defaults to: fixed, not sensor-derived (SPECIFICATION.md Part L.6.3).

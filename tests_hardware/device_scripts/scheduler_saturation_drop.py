@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
 _N_TIMERS = 12  # more than the scheduler's depth (BENCH["depth"]), so a drop is forced, never hoped for
-_TIMER_PERIOD_MS = 1
+_TIMER_PERIOD_MS = 1  # source: the shortest period, so the timers outrun the scheduler; no BackupPeriod
 _BUSY_STEP_US = 900
 _HEAL_WINDOW_MS = 500
 

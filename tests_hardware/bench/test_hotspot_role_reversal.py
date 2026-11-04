@@ -53,7 +53,7 @@ _RAW_SOCKET_TIMEOUT_S = 10.0
 _SPOOF_CAPTURE_S = 5.0
 _LINK_ADVANCE_TIMEOUT_S = 30.0
 # Added to each wait derived from the Wi-Fi service's own timeline: the bench's scan cadence, a link loss noticed late.
-_DERIVED_WAIT_MARGIN_S = 30.0
+_DERIVED_WAIT_MARGIN_S = 30.0  # source: this test's own margin, not the SGP40's WaitTimeNTP
 _WIFI = "asy_wifi_service.py"
 # The AP's DHCP server is MicroPython's shared/netutils/dhcpserver.c (v1.29.0): it leases the server's own first three
 # octets and a last octet 16 + n, n < 8 (dhcpserver.h:31-32, dhcpserver.c:238).

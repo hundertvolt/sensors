@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("sensortask_integration",)
 
 # Several polls on each side of the wraps.
-_POLL_INTERVAL_S = 300.0
+_POLL_INTERVAL_S = 300.0  # source: this test's own poll, not the notification FlashInterval
 # The wraps fall about 15 minutes after boot; the rest of the two hours is margin.
 _RUN_S = 7200.0
 _SYNC_AGE_MARGIN_S = 60.0

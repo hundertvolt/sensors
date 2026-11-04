@@ -30,7 +30,7 @@ _HOLD_S = 55.0
 # No connection can be held past the server's own outer_cap_s (15.0), and one that says nothing is
 # closed after per_call_timeout_s (5.0) - measured on silicon at 5.12-5.16s plain, 15.1s dripping
 # (SPECIFICATION.md Part H.7.1). A full ceiling is therefore SUSTAINED by recycling, never held.
-_DRIP_INTERVAL_S = 2.0
+_DRIP_INTERVAL_S = 2.0  # source: this test's drip step, under per_call_timeout_s; no sample interval
 # Recycled well inside the 15s cap, and STAGGERED: workers started together would also expire
 # together, so the live count would collapse to zero every 15s instead of staying at the ceiling.
 _RECYCLE_S = 10.0
