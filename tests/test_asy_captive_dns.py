@@ -56,8 +56,6 @@ _STRAY_REPLY_WAIT_MS = 20
 _NO_BACKOFF_ELAPSED_MAX_MS = 1000
 # @tunable l1.captive_dns_reach_recv_ms = 20
 _REACH_RECV_MS = 20
-# @tunable l1.captive_dns_bind_wait_ms = 50
-_BIND_WAIT_MS = 50
 # @tunable l1.captive_dns_cycle_wait_ms = 100
 _CYCLE_WAIT_MS = 100
 # @tunable l1.captive_dns_cleanup_tick_ms = 10
@@ -912,7 +910,7 @@ def test_run_handles_real_loopback_traffic_without_crashing() -> None:
         replies: list[bytes] = []
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
-            await asyncio.sleep_ms(_BIND_WAIT_MS)  # let the server bind
+            assert await _wait_until(lambda: server._udps._sock is not None)  # the server bound
             peer.sendto(_make_query(["a", "io"]), _resolved("127.0.0.1", server_port))
             await _wait_until(lambda: _read_replies(peer, replies))
             return not task.done(), replies  # still running - no uncaught exception killed it
@@ -1137,8 +1135,7 @@ def test_run_reuses_same_dns_server_instance_across_multiple_hotspot_cycles() ->
         peer.bind(peer_addr)
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
-            await asyncio.sleep_ms(_BIND_WAIT_MS)  # let it bind
-            assert server._udps._sock is not None  # real bind succeeded this cycle
+            assert await _wait_until(lambda: server._udps._sock is not None)  # real bind succeeded this cycle
             peer.sendto(_make_query(["cycle"]), _resolved("127.0.0.1", server_port))
             await asyncio.sleep_ms(_CYCLE_WAIT_MS)
             return not task.done()  # still alive - no uncaught exception killed it
@@ -1169,7 +1166,7 @@ def test_run_real_socket_survives_a_burst_of_consecutive_malformed_datagrams() -
         replies: list[bytes] = []
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
-            await asyncio.sleep_ms(_BIND_WAIT_MS)
+            assert await _wait_until(lambda: server._udps._sock is not None)
             server_addr = _resolved("127.0.0.1", server_port)
             for bad in malformed_query_cases():
                 peer.sendto(bad, server_addr)
@@ -1203,7 +1200,7 @@ def test_integration_survives_the_wifi_services_fire_and_forget_cancel_pattern()
         server._udps = UDPSocket(("127.0.0.1", server_port), mode="server")
         evtloop = asyncio.get_event_loop()
         task = evtloop.create_task(server.run("127.0.0.1", "255.0.0.0"))
-        await asyncio.sleep_ms(_BIND_WAIT_MS)  # let it bind and reach the pending recvfrom()
+        assert await _wait_until(lambda: server._udps._sock is not None)  # bound, then on to the pending recvfrom()
         task.cancel()  # exactly WifiService's own pattern - never awaited by the caller
         # Nothing observes `task` from here on, matching the real caller exactly. Only give the
         # event loop a few ticks so the cancelled task's own cleanup actually gets to run, the way

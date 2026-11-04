@@ -60,6 +60,7 @@ from _strict_json import strict_loads  # noqa: E402 - imported after the prewarm
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_common import Injections, StatePaths  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_devices import distinct_wirings, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
+from _twin_readiness import wait_for_value  # noqa: E402 - imported after the prewarm and the UDP shim
 from _untraced import untraced  # noqa: E402 - imported after the prewarm and the UDP shim
 
 import asy_config_manager  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -85,8 +86,8 @@ _PROMPT_BOUND_MS = 100  # an entry, or a released hold, that finishes at once
 _CUT_WAIT_MS = 50  # how long the cut entry is watched not to finish
 # @tunable l2.run_generic_integration_clearer_run_ms = 20
 _CLEARER_RUN_MS = 20
-# @tunable l2.run_generic_integration_reach_ms = 5
-_REACH_MS = 5  # a started task reaches its first wait
+_REACHED_LIMIT_MS = 1000  # the bound on the wait for a started task to reach its observable point
+_PROBE_LEAD_MS = 5  # the lag probe's first sleep is under way, its due time passed, when the stall begins
 # @tunable l2.run_generic_integration_drop_clear_bound_ms = 2000
 _DROP_CLEAR_BOUND_MS = 2000
 # @tunable l2.run_generic_integration_rearm_run_ms = 20
@@ -101,8 +102,6 @@ _LAG_STEP_MS = 12
 _OFFER_BOUND_MS = 1000
 # @tunable l2.run_generic_integration_timer_watch_ms = 5
 _TIMER_WATCH_MS = 5
-# @tunable l2.run_generic_integration_slot_reach_ms = 1
-_SLOT_REACH_MS = 1
 # @tunable l2.run_generic_integration_served_poll_ms = 10
 _SERVED_POLL_MS = 10
 # @tunable l2.run_generic_integration_stop_write_delay_ms = 150
@@ -605,8 +604,8 @@ def test_the_held_system_entry_waits_for_its_release_and_lets_every_other_entry_
         release = runner._test_hold_system_entry(_as_module(booted), 25, said.append)
         await asyncio.wait_for_ms(logger.err_s("Task error counter above", errno=24), _PROMPT_BOUND_MS)  # another errno: not held
         held = asyncio.create_task(logger.err_s("C stack exhausted - reboot triggered", errno=25))
-        await asyncio.sleep_ms(_REACH_MS)
-        assert logger.written == [24] and not held.done() and said == ["ENTRY_HELD"], (logger.written, said)
+        assert await wait_for_value(lambda: said, ["ENTRY_HELD"], _REACHED_LIMIT_MS), said
+        assert logger.written == [24] and not held.done(), logger.written
         release()
         await asyncio.wait_for_ms(held, _PROMPT_BOUND_MS)
         await asyncio.wait_for_ms(logger.err_s("again", errno=25), _PROMPT_BOUND_MS)  # released for good
@@ -671,7 +670,7 @@ def test_the_loop_lag_flag_prints_each_windows_maximum_p99_and_samples() -> None
 
     async def drive() -> None:
         lag = asyncio.create_task(runner._test_loop_lag(_LAG_PERIOD_MS, said.append))
-        await asyncio.sleep_ms(_REACH_MS)
+        await asyncio.sleep_ms(_PROBE_LEAD_MS)
         time.sleep_ms(_STALL_MS)  # one synchronous stall of the whole loop
         await asyncio.sleep_ms(_LAG_RUN_MS)
         lag.cancel()
@@ -868,8 +867,8 @@ def test_the_held_closing_slot_releases_on_its_trigger() -> None:
         booted = _Booted(asyncio.create_task(_forever()))
         release = runner._test_hold_closing_slot(_as_module(booted))
         closing = asyncio.create_task(booted.webserver._close_writer(object()))
-        await asyncio.sleep_ms(_SLOT_REACH_MS)
-        assert booted.webserver.closed == 1 and not closing.done()  # the real close ran; the slot is still held
+        assert await wait_for_value(lambda: booted.webserver.closed, 1, _REACHED_LIMIT_MS)
+        assert not closing.done()  # the real close ran; the slot is still held
         release()
         await asyncio.wait_for_ms(closing, _PROMPT_BOUND_MS)
         await cancel_all([t for t in booted.sysfunct._tasks if t is not None])

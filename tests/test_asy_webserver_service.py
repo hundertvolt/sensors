@@ -32,6 +32,7 @@ from _src_schema import src_schema
 from _stack_overflow import stack_overflow
 from _strict_json import strict_loads
 from _tmp_scratch import TmpScratch
+from _twin_readiness import wait_for_value
 from _write_counters import WriteCountingOpen
 from freezefs.ffsmount import VfsFrozen  # type: ignore[import-not-found]
 from microdot import Microdot, Request, Response
@@ -200,8 +201,7 @@ _HEADROOM_S = 2.0
 _LONG_HEADROOM_S = 5.0  # the held connections outlive the case
 # @tunable l1.asy_webserver_service_cancel_outer_cap_s = 10.0
 _CANCEL_OUTER_CAP_S = 10.0  # must not fire before the test cancels
-# @tunable l1.asy_webserver_service_admit_settle_s = 0.01
-_ADMIT_SETTLE_S = 0.01  # real wait for held connections to be admitted
+_ADMIT_LIMIT_MS = 1000  # the bound on the wait for held connections to be admitted
 # @tunable l1.asy_webserver_service_task_reach_s = 0.05
 _TASK_REACH_S = 0.05  # real wait for a started task to reach its server or handler wait
 # @tunable l1.asy_webserver_service_close_poll_s = 0.01
@@ -2173,8 +2173,7 @@ def test_f1_connections_up_to_ceiling_accepted_beyond_ceiling_closed_and_logged(
         held_tasks = [
             asyncio.get_event_loop().create_task(service._serve(_HangingReader(), w)) for w in held_writers
         ]
-        await asyncio.sleep(_ADMIT_SETTLE_S)
-        assert await service._open_conns.get_value() == 2
+        assert await wait_for_value(lambda: service._open_conns.value, 2, _ADMIT_LIMIT_MS)
 
         # A third, well-formed connection arrives while at the ceiling.
         extra_writer = _ScriptedWriter()

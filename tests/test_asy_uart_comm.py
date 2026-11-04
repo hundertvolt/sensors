@@ -17,6 +17,7 @@ from _recording_print import record_prints
 from _src_const import src_int
 from _stack_overflow import stack_overflow
 from _ticks30 import TICKS_PERIOD, Ticks30Time
+from _twin_readiness import wait_for_value
 from _uart_comm_harness import (
     ERROR_LEVEL,
     PAYLOAD_SIZE,
@@ -123,8 +124,7 @@ _FLOOD_STEP_MS = 1
 _RUN_BOUND_S = 20
 # @tunable l1.asy_uart_comm_listener_park_ms = 10
 _LISTENER_PARK_MS = 10
-# @tunable l1.asy_uart_comm_inside_lock_ms = 5
-_INSIDE_LOCK_MS = 5
+_INSIDE_LOCK_LIMIT_MS = 1000  # the bound on the wait for a task to hold the bus
 # @tunable l1.asy_uart_comm_listener_short_bound_s = 8
 _LISTENER_SHORT_BOUND_S = 8
 # @tunable l1.asy_uart_comm_async_callback_yield_ms = 1
@@ -1635,7 +1635,8 @@ def test_only_a_rise_in_the_drivers_unacked_count_is_reported() -> None:
 
     async def scenario(hold_ms: int) -> None:
         holder = asyncio.create_task(hold(hold_ms))
-        await asyncio.sleep_ms(_INSIDE_LOCK_MS)
+        await asyncio.sleep_ms(0)  # one turn: the holder takes the bus (its hold may be shorter than a poll)
+        assert bus.session_lock.locked()
         await pair.initiator.clear()
         await holder
 
@@ -3126,10 +3127,9 @@ def test_a_cancelled_transaction_still_releases_the_re_entrancy_flag() -> None:
 
     async def cancel_midway(work: "Coroutine[object, object, object]") -> None:
         task = asyncio.create_task(work)
-        await asyncio.sleep_ms(_INSIDE_LOCK_MS)  # long enough to be inside the transaction, not before it
-        # Asserted rather than assumed: cancelling a task that had not started yet would leave
+        # Waited for rather than assumed: cancelling a task that had not started yet would leave
         # _busy False for the trivial reason and read as a pass without testing anything.
-        assert bus.session_lock.locked() is True, "the transaction was not in flight when cancelled"
+        assert await wait_for_value(bus.session_lock.locked, True, _INSIDE_LOCK_LIMIT_MS), "the transaction was not in flight when cancelled"
         task.cancel()
         try:
             await task

@@ -98,8 +98,6 @@ _FIRED_PROBE_S = 0.05
 _STATE_POLL_MS = 20
 # @tunable l1.asy_ntp_client_no_answer_wait_s = 1
 _NO_ANSWER_WAIT_S = 1
-# @tunable l1.asy_ntp_client_reply_process_s = 0.2
-_REPLY_PROCESS_S = 0.2
 # @tunable l1.asy_ntp_client_no_reply_fetch_timeout_ms = 100
 _NO_REPLY_FETCH_TIMEOUT_MS = 100
 # @tunable l1.asy_ntp_client_past_fetch_timeout_ms = 200
@@ -2806,6 +2804,7 @@ def test_integration_full_task_stays_not_synced_when_nobody_answers() -> None:
 
 def test_integration_full_task_stays_not_synced_on_a_malformed_reply() -> None:
     client = _make_integration_client()
+    finished = _counted(client)
     garbage_reply = b"not-a-real-ntp-packet-at-all-way-too-short"
 
     async def scenario() -> bool:
@@ -2815,7 +2814,7 @@ def test_integration_full_task_stays_not_synced_on_a_malformed_reply() -> None:
                 task = asyncio.create_task(client._sync_loop())
                 client._ntp_sync_trigger_event.set()
                 assert await server.serve_once(garbage_reply) is True
-                await asyncio.sleep(_REPLY_PROCESS_S)
+                await _attempt_ended(finished)  # the attempt that got the garbage reply is over
                 synced = await client.ntp_issynced()
                 task.cancel()
                 try:

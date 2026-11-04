@@ -8,6 +8,7 @@ import gc
 from _async_harness import run
 from _error_codes import code
 from _fake_time import DrivenTime
+from _twin_readiness import wait_for_value
 from _uart_comm_harness import ERROR_LEVEL, RUN_LIMIT_S, Pair, PollRoundClock, accept_set, copied_out, echo_get, frames, transfer_limits
 from _uart_comm_hazard_common import _EXCHANGE_LIMIT_S, _PAYLOAD, _STEP_BOUND_S, _TIMEOUT_MS, hazard_pair, register_both_crc_modes
 
@@ -56,8 +57,7 @@ _LISTENER_SETTLE_MS = 5
 _CONCURRENCY_LIMIT_S = 25
 # @tunable l1.uart_comm_hazard_lock_take_ms = 1
 _LOCK_TAKE_MS = 1
-# @tunable l1.uart_comm_hazard_in_flight_ms = 2
-_IN_FLIGHT_MS = 2
+_IN_FLIGHT_LIMIT_MS = 1000  # the bound on the wait for a transaction to hold the link
 # @tunable l1.uart_comm_hazard_listener_park_ms = 5
 _LISTENER_PARK_MS = 5
 # @tunable l1.uart_comm_hazard_recovery_limit_s = 30
@@ -518,7 +518,7 @@ def _check_a_reentrant_call_reports_its_own_errno(crc: "CrcMaker") -> None:
 
     async def scenario() -> None:
         first = asyncio.create_task(pair.initiator.uart_get(0x01))
-        await asyncio.sleep_ms(_IN_FLIGHT_MS)
+        assert await wait_for_value(pair.driver_a.session_lock.locked, True, _IN_FLIGHT_LIMIT_MS)
         assert await pair.initiator.uart_get(0x01) is None  # refused while the first holds the link
         await asyncio.wait_for(first, _STEP_BOUND_S)
 
@@ -655,7 +655,8 @@ def _check_clear_racing_a_transaction_leaves_it_completed_or_cleanly_failed(crc:
     async def scenario() -> "tuple[bool, bytes]":
         listener = asyncio.create_task(pair.responder.uart_listen())
         transfer = asyncio.create_task(pair.initiator.uart_set(1, bytes(_PAYLOAD * 2)))
-        await asyncio.sleep_ms(_IN_FLIGHT_MS)
+        await asyncio.sleep_ms(0)  # one turn: the transfer takes the link, which it may release before a poll
+        assert pair.driver_a.session_lock.locked()
         await asyncio.wait_for(pair.initiator.clear(), _TASK_BOUND_S)
         sent = await asyncio.wait_for(transfer, _TASK_BOUND_S)
         await asyncio.sleep_ms(_LISTENER_SETTLE_MS)
