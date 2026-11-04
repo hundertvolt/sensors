@@ -11,8 +11,6 @@ import { pollManager } from "../js/poll-manager.js";
 
 const SUPPORTED_SCHEMA_MAJOR = readIntConst(definitionsSource, "SUPPORTED_SCHEMA_MAJOR");
 const DEFAULT_TIMEOUT_MS = readIntConst(pollManagerSource, "DEFAULT_TIMEOUT_MS");
-// setTimeout's own ceiling: a larger delay fires at once.
-const TIMEOUT_CEILING_MS = 2 ** 31 - 1;
 
 const MINIMAL_VALID = {
     schemaVersion: "1.0.0",
@@ -99,27 +97,6 @@ describe("validateDefinitions", () => {
     it("rejects a missing or non-positive defaultPollIntervalMs", () => {
         for (const defaultPollIntervalMs of [undefined, 0, -1, "3000"]) {
             expect(validateDefinitions({ ...MINIMAL_VALID, defaultPollIntervalMs }).some((p) => p.includes("defaultPollIntervalMs"))).toBe(true);
-        }
-    });
-
-    it("holds both poll intervals to setTimeout's ceiling", () => {
-        const sectionWith = (/** @type {number} */ pollIntervalMs) => ({ ...MINIMAL_VALID, sections: [{ ...MINIMAL_VALID.sections[0], pollIntervalMs }] });
-        expect(validateDefinitions({ ...MINIMAL_VALID, defaultPollIntervalMs: TIMEOUT_CEILING_MS })).toEqual([]);
-        expect(validateDefinitions(sectionWith(TIMEOUT_CEILING_MS))).toEqual([]);
-        expect(validateDefinitions({ ...MINIMAL_VALID, defaultPollIntervalMs: TIMEOUT_CEILING_MS + 1 })).toEqual([
-            "defaultPollIntervalMs must be a positive number of at most 2147483647 ms",
-        ]);
-        expect(validateDefinitions(sectionWith(TIMEOUT_CEILING_MS + 1))).toEqual(["sections[0].pollIntervalMs must be a positive number of at most 2147483647 ms"]);
-    });
-
-    it("takes the site's default decimals as an integer from 0 to 100 only", () => {
-        for (const defaultDecimals of [0, 2, 100]) {
-            expect(validateDefinitions({ ...MINIMAL_VALID, defaultDecimals })).toEqual([]);
-        }
-        for (const defaultDecimals of [-1, 1.5, 101, "2", null]) {
-            expect(validateDefinitions({ ...MINIMAL_VALID, defaultDecimals }), JSON.stringify(defaultDecimals)).toEqual([
-                "defaultDecimals must be an integer from 0 to 100 when present",
-            ]);
         }
     });
 
@@ -220,22 +197,6 @@ describe("validateDefinitions", () => {
     it("rejects a path on a writable field, where a PUT body is always flat", () => {
         const problems = validateDefinitions(withField({ key: "R", label: "Red", kind: "number", path: ["RGB", "R"] }));
         expect(problems.some((p) => p.includes(".path is only valid on a readonly field"))).toBe(true);
-    });
-
-    it("asks for confirmation on an enum or a toggle only, and only with a boolean", () => {
-        const options = [{ value: "reboot", label: "Reboot" }];
-        expect(validateDefinitions(withField({ key: "C", label: "Command", kind: "enum", options, confirm: true }))).toEqual([]);
-        expect(validateDefinitions(withField({ key: "R", label: "Reset", kind: "toggle", confirm: false }))).toEqual([]);
-        for (const field of [
-            { key: "C", label: "Command", kind: "enum", options, confirm: "yes" },
-            { key: "N", label: "Number", kind: "number", confirm: true },
-            { key: "S", label: "Text", kind: "string", confirm: true },
-            { key: "R", label: "Reading", kind: "readonly", confirm: true },
-        ]) {
-            expect(validateDefinitions(withField(field)), JSON.stringify(field)).toEqual([
-                "sections[0].groups[0].fields[0].confirm must be a boolean on an enum or toggle field when present",
-            ]);
-        }
     });
 
     it("rejects a malformed decimals hint", () => {

@@ -533,7 +533,8 @@ their context). From now on every owner word is appended here as it is given.
   mock data; `PauseTime` stays where it is; tests observe a flash through the LED fake's frames. Relayed to B7.
 - 2026-11-03 20:40 UTC (time taken at reading), B8 question 2 (the boot entry at DebugLevel 0): "drop the traceback
   print and keep the start line, as you recommended" Decided: the generated main.py's `sys.print_exception(ended)` goes
-  (reset reason 22 stays the record, with its pre-bind, comment and F811 exemption); the no-autostart start line stays.
+  with its pre-bind, comment and F811 exemption (B8 rows 6 and 7 as drafted; reset reason 22 stays the record); the
+  no-autostart start line stays. (Lead's wording corrected 2026-11-04: it had read as if the pre-bind stayed.)
 - 2026-11-03 20:43 UTC (time taken at reading), B8 question 3 (the page's build-date stamp): "Remove it" Decided: the
   meta stamp, its read and compare in the page code and its build steps go; `BuildDate` stays in GET /system.
 - 2026-11-03 20:45 UTC (time taken at reading), B8 question 4 (the "returned no JSON object" banner): "Yes, restore"
@@ -575,3 +576,12 @@ their context). From now on every owner word is appended here as it is given.
 - 2026-11-04 06:32 UTC (time taken at reading), the SGP40 consequence: "Totally correct implementation, following the
   rules, this is fine." Decided: kept; the SGP40 pauses its VOC readings while its compensation source has no values,
   a stopped or stalled SCD30 included; no default-compensation fallback.
+- 2026-11-04 07:49 UTC (time taken at reading), budget and the hardware rounds: "33% and I only see scripts working.
+  Fine? By the way, just for my reassurance, you do have an in depth real hardware session in your plans?" Answered:
+  fine; B8 is in its gate (machine time); its unit tier failed one comment-cap check in a build-chain test file at
+  both stages, every MicroPython test passed; B8's 80 % stop is near 35 %. Yes: PLAN's round 1 (the bench session on
+  the final firmware, its own go-ahead, the queue R3 prepares) and the last round (the two-image GC proof, what round
+  1 left, the twin corrections); the 2026-10-29 campaign's answers are not repeated.
+- 2026-11-04 08:34 UTC (time taken at reading), B8 at its 80 % mark: "As we are at 34 right now and the upcoming points
+  are self contained, this is no alarm. Go on." Decided: B8 goes on (the falsification, one fix round with the
+  CRC-pair check's removal, the merge and the snapshot); the meter read 34 %.

@@ -42,15 +42,6 @@ class GeneratedDevice:
         self.expected_facts = expected_facts
 
 
-def _compiled(device: str, filename: str, source: str) -> str:
-    # The generator emits only Python that compiles: a SyntaxError is its own bug, never the TOML's.
-    try:
-        compile(source, filename, "exec")
-    except SyntaxError as e:
-        raise BuildInternalError(f"{device}: generated {filename} does not compile: line {e.lineno}: {e.msg}") from e
-    return source
-
-
 def _config_log_on_fram(path: Path, device: str) -> bool:
     # False where a class in the module sets _CFG_LOG_FRAM = False at class level, keeping its config store's log off
     # FRAM (asy_base_classes.SensorReaderConfig reads it); read from the driver source, so buildgen names no module.
@@ -153,13 +144,12 @@ def generate_device(toml_path: Path, src_dir: Path, ext_dir: "Path | None" = Non
     # test_overrides names the test-only firmware overrides an image carries in its build info; never set for a release.
     model = build_model(toml_path, src_dir)
     build_construction_order(model)
-    module_name, entry_name, noautostart_name = _output_names(model.device)
-    module_source = _compiled(model.device, module_name, generate_module_source(model, model.construction_order, build_date if build_date is not None else current_build_date(), src_dir, test_overrides=test_overrides))
+    module_source = generate_module_source(model, model.construction_order, build_date if build_date is not None else current_build_date(), src_dir, test_overrides=test_overrides)
     return GeneratedDevice(
         model,
         module_source,
-        _compiled(model.device, entry_name, generate_boot_entry_source(model.device)),
-        _compiled(model.device, noautostart_name, generate_boot_entry_source(model.device, autostart=False)),
+        generate_boot_entry_source(model.device),
+        generate_boot_entry_source(model.device, autostart=False),
         # A caller giving no ext/ root resolves the closure against src/ alone, as it always did.
         compute_frozen_modules(module_source, src_dir, src_dir if ext_dir is None else ext_dir, device=model.device),
         expected_facts(model, src_dir),

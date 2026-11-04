@@ -275,7 +275,7 @@ def _power_on_bits() -> None:
 
 def test_a_loop_core_failure_after_boot_reads_22_at_the_next_boot() -> None:
     _plant, escaped, system = _case("core", _BOOT_DONE)
-    assert escaped is None, escaped  # recorded and printed, never re-raised
+    assert escaped is None, escaped  # recorded, never re-raised
     assert system.get("ResetReason") == 22, system
     _watchdog_bits()
 

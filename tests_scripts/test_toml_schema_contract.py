@@ -10,7 +10,7 @@ from _devices import DEVICE_NAMES
 
 import buildgen.validate as validate_mod
 from buildgen.buildspec import OPTIONAL_TOML_FIELDS, REQUIRED_TOML_FIELDS
-from buildgen.driver_registry import SINGLETON_SERVICE_DRIVERS, resolve_driver
+from buildgen.driver_registry import resolve_driver
 from buildgen.signals import WARN_SIGNALS
 from buildgen.value_wiring import parse_value_wiring
 from buildgen.wiring import parse_wiring
@@ -49,7 +49,7 @@ def _build_rows(src_dir: Path) -> "set[_Row]":
         rows |= {(table, key, key in required) for key in validate_mod._BUS_ALLOWED_FIELDS[kind]}
     for driver in REQUIRED_TOML_FIELDS:
         table = f"[[instance]] {driver}"
-        rows |= {(table, "driver", True), (table, "name_ext", driver not in SINGLETON_SERVICE_DRIVERS)}
+        rows |= {(table, "driver", True), (table, "name_ext", False)}
         rows |= {(table, key, True) for key in REQUIRED_TOML_FIELDS[driver]} | {(table, key, False) for key in OPTIONAL_TOML_FIELDS[driver]}
         path = resolve_driver(driver, src_dir, "schema").source_path
         wiring = f"[instance.wiring] {driver}"

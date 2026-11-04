@@ -169,7 +169,7 @@ def test_loop_lag_under_combined_load_stays_under_the_uart_reply_budget(board: "
     finally:
         stop.set()
         load.join(2 * _LOOP_LAG_SCRIPT_TIMEOUT_S)
-    bound_us = smallest_hard_consumer(load_device(device_toml()), SRC_DIR).ms * 1000  # the build rule's and the twin scenario's one source
+    bound_us = smallest_hard_consumer(load_device(device_toml()), SRC_DIR).ms * 1000  # the twin scenario's one source too
     lag_max, lag_p99, samples = facts.get("lag_max_us"), facts.get("lag_p99_us"), facts.get("samples")
     result_note(f"loop lag under combined load: max {lag_max} us, p99 {lag_p99} us over {facts.get('samples')} samples (bound {bound_us} us); answers per route {served}")
     assert not load.is_alive() and not failures, f"the HTTP load did not end cleanly: {failures}"

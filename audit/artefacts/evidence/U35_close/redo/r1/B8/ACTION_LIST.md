@@ -212,3 +212,45 @@ did, why it went, code at `d6bc7617`). Gate: a website change also runs npm lint
 3. Row 9 follows PLAN over plancheck B8.5 (PLAN wins, brief). Row 16 as drafted: `BuildDate` has OR43.a (2).
 4. The drafter's source copy (`validate_pre.py.txt`) is deleted; nothing of it is kept.
 5. B7 has taken the TS row (label and format included) with item 7; row 21 stands for the rest.
+
+## Lead decisions after the hand-back (2026-11-04)
+
+6. Decision 2 corrected: row 17 keeps U6's validator hints. U6 is an owner foundation, part of PLAN 0's target state
+   (`25caf528` plus U1-U8); the hints added after U10 go, as the agent did. The falsification checks the scope claim.
+7. Row 2's `instance.irq-pull-up-type` stays (the agent's boot-loop reading; the falsification checks it).
+   `instance.uart-crc-mismatch` goes with the baud check: neither existed at `25caf528`, and a mismatched pair is a
+   dead link diagnosed at run time (CLAUDE.md's UART rule), no boot refusal or loop. `instance.uart-crc-mode` stays
+   if its violation raises at construction (row 3's reasoning). In the one fix round.
+8. Carried to R2, unchanged here: `_UART_BUFFER_MAX`'s stale `machine_uart.c` line numbers, `SETTINGS_GROUPS` and
+   `_owns_config_store()` left with no reader in `validate.py`, `HardConsumer.what`/`.relief` (row 20).
+
+## Lead decisions on the falsification (2026-11-04 09:16 UTC, `B8/FALSIFY.md`, each refutation re-read by the lead)
+
+9. Fix round (the one round), items F1-F6:
+   - F1 restore `bus.i2c-frequency-range` (1..1,000,000 Hz, `_I2C_FREQUENCY_MAX_HZ`) as at d5c90b71, with its tests.
+     Decision 1 read frequency 0 only; 2,147,483,648 builds and the I2C constructor raises OverflowError at every
+     boot (`ports/rp2/machine_i2c.c:68` MP_ARG_INT, `py/objint_mpz.c:438`): a boot loop, the PLAN B8 exception.
+   - F2 restore the rxbuf/txbuf lower bound `_UART_BUFFER_MIN` as at d5c90b71. Row 2's basis was wrong for txbuf <= 0:
+     the port keeps its own 256 (`machine_uart.c:385`) but the driver keeps 0 and `_write_all()` never advances
+     (`asy_uart_driver.py:379`): the link hangs with no log.
+   - F3 the Python mirror rejects a non-object group again, U10's line (`41b47f1d` test_buildgen_definitions.py:348-349),
+     with no `isinstance(g, dict)` filter at the call; the corpus case "a group that is a string" back; "a group that is
+     null" back only if the JS corpus runner counts a throw as a rejection.
+   - F4 stale texts: SPEC `:831`, `:13227` (the build's boot-clear refusal), `:11938` (`_BOOT_CLEAR_BUDGET_MS`),
+     `:10881-10883` (`_compiled()`), `:4392` (`SetupFct` -> `Awaitable[None]`); comments
+     `test_digital_twin_scenarios.py:252`, `tests_hardware/flash/test_memory_stress.py:172` ("the build rule").
+   - F5 decision 7: `instance.uart-crc-mismatch` goes (validate.py, EC row, TV, SPEC `:11138`); `instance.uart-crc-mode`
+     stays if its violation raises at construction, else it goes too.
+10. Not changed: `source.field-unknown` stays removed (PLAN B8's exception is a boot refusal or loop; a misnamed field
+    reads None, the pre-audit behaviour, as row 2 recorded; the claim's "logged error" wording was the lead's, stricter
+    than the plan). The fatal-report scan leaving the boot entries stands: their handlers run after the loop, where
+    nothing reads the record (fixture comment). The hostname length check is pre-audit (`25caf528` validate.py:64).
+11. Finding A: the change follows the owner's answer ("as you recommended": rows 6 and 7 as drafted, which remove the
+    pre-bind, comment and F811 exemption); the lead's rulings-file wording said otherwise and is corrected.
+12. Carried to R2: rp2's REPL banner after the boot entry returns at a loop end, at every DebugLevel
+    (`ports/rp2/main.c:246-259`, `shared/runtime/pyexec.c:626-631`; pre-audit, port behaviour; judge against "level 0
+    ... silent on the console, ever"); the settings-group guard's narrowing (with decision 8's `SETTINGS_GROUPS`).
+13. F5 (09:29 UTC): `instance.uart-crc-mode` stays. A bad mode never reaches construction (codegen renders only a
+    known mode's class, `codegen.py:185`), but without the check the build dies on a raw KeyError traceback
+    (`validate.py:1211`), against the kept error contract (row 18: one line, no traceback). Fix round 8a32d826 reviewed:
+    F1/F2 are d5c90b71's text, no row grew past it.

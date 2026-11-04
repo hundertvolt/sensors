@@ -232,3 +232,21 @@ rounds in all, one of them from the lead's too-wide relay of the pause-time answ
 list, brief, hand-back, falsification brief and result, the sizes and the merged head's checks (`int/`);
 `redo/r1/OWNER_QUESTIONS_B7_B8.md` the owner's questions for B7 and B8 with their answers. The unit took about twice
 its budget share; the owner chose to go on with each unit stopping at 80 % of its share (2026-11-04 06:11).
+
+## Thirty-third snapshot (2026-11-04): R1's eighth unit, the build chain
+
+The plan's B8 unit, on the standing go-ahead, with the owner's care asked for (2026-11-04 06:11: "take extra care that
+we are not currently creating a runaway, self-inflicted complexity increase."). The build checks no device TOML can
+trip short of a boot that refuses or loops go; the I2C timeout is one 1..200,000 us range; the logger-name check is
+the pre-audit one again; the generator's own compile step goes. The boot entry records a loop end and prints nothing
+(owner, 2026-11-03 20:40: "drop the traceback print and keep the start line, as you recommended"). On the website the
+build-date stamp goes ("Remove it"), a GET answering no JSON object paints the pre-audit banner again ("Yes, restore"),
+the Apply stripes are solid again ("No, don't keep it, ... color alone is fine."), "65535+" stays ("Yes, that was a
+good addition, keep it"), and the browser validator and its Python mirror check what U6's one-source definitions
+checked, with today's formats and shapes. The falsification refuted six of thirteen claims; the one fix round restored
+the I2C frequency range (a frequency of 2^31 or more builds and raises OverflowError at every boot) and the UART
+buffer floor (a txbuf of 0 or less hangs the link with no log), made the mirror reject a non-object group as U10's
+did, corrected the stale texts and removed the CRC agreement check (a mismatched pair is a dead link, diagnosed at run
+time). `redo/r1/B8/` holds the action list with the lead's decisions, brief, hand-back, falsification brief and
+result, the sizes and the merged head's checks (`int/`). One gate and one fix round, as budgeted; 236 lines added,
+1,478 removed.

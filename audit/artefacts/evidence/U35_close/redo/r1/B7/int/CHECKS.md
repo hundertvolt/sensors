@@ -17,3 +17,6 @@ Exit 3 is "tests passed, coverage short" (SPECIFICATION.md E.5.3). The render st
 which the offline namespace cannot fetch and the cache lacks (`b7i_render_probe`: "Packages were unavailable because
 the network was disabled"); CI's coverage job has the network. The settrace build's test result, this check's purpose
 (snapshot 29's failure was one), is green.
+
+Snapshot 32 (dc9e84ab, parent f625b077, int d5c90b71): CI green, run 41787560999 (pull_request, 06:44-07:19 UTC),
+the coverage and twin jobs included; the push run 41787553852 was cancelled by the pull_request run. B7 closed.

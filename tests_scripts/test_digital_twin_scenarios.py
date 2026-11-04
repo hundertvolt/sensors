@@ -249,7 +249,7 @@ def test_a_device_independent_scenario_runs_on_its_first_device_with_the_propert
 
 def test_the_lag_bound_is_each_devices_smallest_hard_consumer_from_one_source(harness: ModuleType) -> None:
     # The watchdog's room beside one supervisor sleep, and each uart_link's reply slack (SPECIFICATION.md F.3), read
-    # here from the sources; the build rule, the twin scenario and the bench lag test all call buildgen's one export.
+    # here from the sources; the twin scenario and the bench lag test both call buildgen's one export.
     src = harness.REPO_ROOT / "src"
     task_check_s, reply_ms, gc_pause = module_int_const(src, "asy_system_service.py", "_TASK_CHECK_TIME"), module_int_const(src, "asy_uart_comm.py", "_DEFAULT_TIMEOUT_MS"), module_int_const(src, "asy_uart_comm.py", "_GC_PAUSE_WORST_MS")
     linked = []

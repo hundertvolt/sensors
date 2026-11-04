@@ -384,13 +384,12 @@ device: the staged modules and the rendered manifest in `build/firmware/<device>
 website stage with its gzip tree in `build/website/<device>/` (`build/frozen_html/<name>/` for
 `scripts/build_frozen_html.sh` run on its own).
 It never flashes or touches real hardware — see "Flashing a real board" below for that step. Under
-the hood it also stages and freezes the real website for that one device, stamped with the
-firmware's build date, runnable on its own for just that step, for one device or for every device:
+the hood it also stages and freezes the real website for that one device, runnable on its own for
+just that step, for one device or for every device:
 
 ```sh
 scripts/build_website.sh wozi                                 # -> frozen_modules/frozen_html.py
 scripts/build_website.sh wozi build/frozen_website_wozi.py    # explicit output path
-scripts/build_website.sh --build-date 2026-10-15T12:00:00Z wozi   # stamps that UTC build date into the page; none by default
 scripts/build_website.sh --stage-only wozi <dir>              # stages index.html and js/app.js into <dir>, freezes nothing
 scripts/build_device_websites.sh                              # every device -> build/generated_html/<device>/frozen_html.py
 scripts/build_device_websites.sh --stage-only                 # every device, staged only -> build/staged_html/<device>/,

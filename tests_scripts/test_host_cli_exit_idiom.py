@@ -103,7 +103,7 @@ def _malformed_runs(tmp_path: Path) -> "dict[str, list[str]]":
         "buildgen.generate": ["-m", "buildgen.generate", str(bad_toml)],
         "buildgen.definitions": ["-m", "buildgen.definitions", str(bad_toml)],
         "_generate_sensortask_modules": ["scripts/_generate_sensortask_modules.py", "--device-toml", str(bad_toml), "--out-dir", str(tmp_path / "out")],
-        "_stage_website": ["scripts/_stage_website.py", "--build-date", "yesterday", str(tmp_path / "definitions.json"), str(tmp_path / "stage")],
+        "_stage_website": ["scripts/_stage_website.py", str(tmp_path / "definitions.json"), str(tmp_path / "stage")],
         "_render_coverage": ["scripts/_render_coverage.py", "--raw-dir", str(empty)],
     }
 

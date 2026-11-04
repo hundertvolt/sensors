@@ -1116,6 +1116,9 @@ gates, traps).
   `scripts/_digital_twin_scenarios.py`'s storm bound expect each config store's not-found warning. Nothing new to install.
   **2026-11-03, `pyproject.toml`'s ruff per-file-ignores, lint only, no build impact**: the notification module's entry
   is ARG002 alone (the default LED sink an instance method again, no NaN self-compare left); nothing new to install.
+  **2026-11-04, lint config and the website build's arguments, no dependency or installer change**: `pyproject.toml`'s
+  generated boot entry ignore is E402 alone; `scripts/build_website.sh` and `scripts/_stage_website.py` take no
+  `--build-date` and `scripts/build_firmware.py` passes none. Nothing new to install.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot

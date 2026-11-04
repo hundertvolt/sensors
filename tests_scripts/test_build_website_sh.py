@@ -1,5 +1,5 @@
 """Tests scripts/build_website.sh directly - structural checks (which paths get archived/renamed/
-excluded, the work directory, the device check, the build stamp) complementing tests/test_website_build_integration.py,
+excluded, the work directory, the device check) complementing tests/test_website_build_integration.py,
 which proves the served content. Same literal-path-string grep technique as test_build_frozen_html_sh.py."""
 
 import json
@@ -145,7 +145,7 @@ def test_stage_only_fills_the_given_directory_and_freezes_nothing(repo_root: Pat
 def test_stage_only_without_a_stage_directory_is_a_usage_error(repo_root: Path) -> None:
     result = subprocess.run([str(repo_root / "scripts" / "build_website.sh"), "--stage-only", DEVICE_NAMES[0]], cwd=repo_root, capture_output=True, text=True, check=False)
     assert result.returncode == 2, (result.returncode, result.stderr)
-    assert "Usage: scripts/build_website.sh [--stage-only] [--build-date STAMP] <device> [output]" in result.stderr
+    assert "Usage: scripts/build_website.sh [--stage-only] <device> [output]" in result.stderr
 
 
 def test_the_work_dir_is_wiped_at_the_start_and_kept_after_the_build(repo_root: Path, tmp_path: Path) -> None:
@@ -159,11 +159,3 @@ def test_the_work_dir_is_wiped_at_the_start_and_kept_after_the_build(repo_root: 
     assert sorted(p.relative_to(work / "stage").as_posix() for p in (work / "stage").rglob("*") if p.is_file()) == ["index.html", "js/app.js"]
     assert (work / "scratch" / "definitions.json").is_file() and (work / "gzipped" / "index.html.gz").is_file()
     assert str(work) in result.stdout
-
-
-def test_a_build_date_reaches_the_staged_page(repo_root: Path, tmp_path: Path) -> None:
-    # The firmware build's one stamp: its site's page names the build its image carries (scripts/build_firmware.py).
-    stage = tmp_path / "stage"
-    result = _run_build_website(repo_root, DEVICE_NAMES[0], stage, "--stage-only", "--build-date", "2026-10-15T08:30:00Z", check=False)
-    assert result.returncode == 0, result.stderr
-    assert '<meta name="build-date" content="2026-10-15T08:30:00Z">' in (stage / "index.html").read_text(encoding="utf-8")
