@@ -280,7 +280,7 @@ def test_a_full_scheduler_queue_loses_every_soft_callback_for_a_spell_and_every_
         finally:
             await _stop_graph(supervisor)
 
-    machine.Timer.init = recording_init  # type: ignore[method-assign, assignment]  # the class's own, put back in finally
+    machine.Timer.init = recording_init  # type: ignore[assignment, method-assign]  # the class's own, put back in finally
     try:
         run_timed(_run_on_clock(scenario), timeout_s=_RUN_BOUND_S)
     finally:
