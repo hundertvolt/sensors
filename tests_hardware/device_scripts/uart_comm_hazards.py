@@ -167,9 +167,9 @@ async def _h2(wdt: "machine.WDT", pair: _Pair) -> None:
     while not task.done():
         await settled(wdt, task)
     failed = await task is False
-    log, evidence = log_record(await pair.initiator.get_error_counter(), pair.initiator.name), await _evidence(pair)
+    evidence = await _evidence(pair)
     attempts, recovered = await _recover(wdt, pair)
-    fact("h2", {"raw_get_written": wrote, "failed": failed, "log": log, "attempts": attempts, "recovered": recovered, "evidence": evidence})
+    fact("h2", {"raw_get_written": wrote, "failed": failed, "log": log_record(await pair.initiator.get_error_counter(), pair.initiator.name), "attempts": attempts, "recovered": recovered, "evidence": evidence})
 
 
 async def _h3(wdt: "machine.WDT", pair: _Pair) -> None:

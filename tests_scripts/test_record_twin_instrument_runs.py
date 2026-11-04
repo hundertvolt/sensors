@@ -67,6 +67,11 @@ def test_the_flash_runs_twin_board_takes_the_stage(recorder: ModuleType) -> None
     with pytest.raises(StopIteration) as done:
         hook.send(board)
     assert done.value.value is board and board.gc_threshold == 32768
+    # The summary's staged line, the word the refusal reads, written only once a board took the stage.
+    for summarised, expected in ((config, [recorder.staged_line(32768)]), (types.SimpleNamespace(getoption=config.getoption, stash=pytest.Stash()), [])):
+        lines: list[str] = []
+        recorder.pytest_terminal_summary(types.SimpleNamespace(write_line=lines.append), 0, summarised)
+        assert lines == expected, lines
 
 
 def test_a_device_scripts_hash_covers_its_includes_and_the_src_modules_it_imports(recorder: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

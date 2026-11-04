@@ -263,10 +263,12 @@ def test_a_full_scheduler_queue_loses_every_soft_callback_for_a_spell_and_every_
             await _until(clock, "a one-second timer never fired before the spell", lambda: all(fired[i] for i in fast))
             for key, reader in _readers():  # each first read before the counts, the SGP40's boot-owed W SGP_NO_BACKUP with it
                 await _until(clock, key + " never read before the spell", _read_after(reader, None, _HEALTH_FIELD[key.split("_", 1)[0]]))
-            counts = await _error_counts()
+            counts, spell_start = await _error_counts(), list(fired)
             machine.Timer.drop_next_soft_callbacks = _SPELL_CALLBACKS
             await _until(clock, "the spell's callbacks were never all lost", lambda: machine.Timer.drop_next_soft_callbacks == 0)
             spell_end, samples = list(fired), {key: reader._datastruct for key, reader in _readers()}
+            # Every callback in the spell was lost: a one-second timer fired at most once, in the wake that ended it.
+            assert all(spell_end[i] - spell_start[i] <= 1 for i in fast), f"{device}: fires went on in the spell: {spell_start} -> {spell_end}"
 
             # Each once more, a one-second one twice, so a timer its first wake after the spell stopped is caught.
             def refired() -> bool:

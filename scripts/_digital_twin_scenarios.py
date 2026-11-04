@@ -122,7 +122,7 @@ _SSID = "digital-twin-test-ssid"
 _GMT_OFFSET_DEFAULT = 3600  # the GMTOffset default, which a write of it would answer "Unchanged"
 _TEST_WARN_CO2 = 1800  # a WarnCO2 the defaults do not hold
 _DNS_UDP_MAX = 512  # RFC 1035's UDP message limit
-_DNS_FLOOD_DATAGRAMS = 200  # a flood well past lwIP's per-socket queue (C.7.5), sent with no pause
+_DNS_FLOOD_DATAGRAMS = 200  # sent with no pause: on rp2 well past lwIP's per-socket queue (C.7.5); the host's queues all
 _SITE_MIN_BYTES = 1000  # a whole page or bundle, not a truncated or empty body
 _ISL_RESOLUTIONS = (12, 16)  # asy_isl29125_driver.py's _RESOLUTIONS
 
@@ -1043,15 +1043,27 @@ def _hotspot_dns(ctx: Context) -> None:
         answer = _dns_answer(_HOTSPOT_WAIT_S)
         _expect(bool(answer), "the hotspot's DNS server never answered a query from this host (an off-subnet source is dropped by design)")
         networking = _group(_status(twin.port), "networking")
-        _expect(len(answer) <= _DNS_UDP_MAX and answer[:2] == b"\x12\x34" and bool(answer[2] & 0x80), f"the DNS reply is no answer to the query ({len(answer)} bytes)")
-        _expect(socket.inet_ntoa(answer[-4:]) == networking.get("IPv4"), f"the A record {socket.inet_ntoa(answer[-4:])} is not the AP's {networking.get('IPv4')!r}")
+
+        def answered(reply: bytes, when: str) -> None:
+            _expect(len(reply) <= _DNS_UDP_MAX and reply[:2] == b"\x12\x34" and bool(reply[2] & 0x80), f"the DNS reply {when} is no answer to the query ({len(reply)} bytes)")
+            _expect(socket.inet_ntoa(reply[-4:]) == networking.get("IPv4"), f"the A record {when} {socket.inet_ntoa(reply[-4:])} is not the AP's {networking.get('IPv4')!r}")
+
+        answered(answer, "before the flood")
         redirect = _request(twin.port, "GET", "/generate_204")
         _expect(redirect.status == HTTPStatus.FOUND and redirect.headers.get("Location") == "/", f"/generate_204 in the hotspot answered {redirect.status}")
         before = _counter(_errcount(twin.port, "DNSSRV"))
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             for _n in range(_DNS_FLOOD_DATAGRAMS):
                 sock.sendto(b"\x00\x01\x02", (HOST, _DNS_PORT))  # shorter than a DNS header: dropped unparsed
-        _expect(bool(_dns_answer(_REQUEST_TIMEOUT_S)), "no answer to a query after the flood")
+            after_flood = _dns_answer(_REQUEST_TIMEOUT_S)
+            _expect(bool(after_flood), "no answer to a query after the flood")
+            answered(after_flood, "after the flood")
+            sock.setblocking(False)  # the server answers in arrival order, so a reply to the flood would be here by now
+            try:
+                stray = sock.recv(1024)
+            except BlockingIOError:
+                stray = b""
+            _expect(stray == b"", f"the flood was answered: {stray!r}")
         after = _counter(_errcount(twin.port, "DNSSRV"))
         _expect(after == before, f"the flood was logged: DNSSRV's count {before} -> {after}")
 
