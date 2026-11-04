@@ -230,14 +230,13 @@ def test_a_console_interrupt_is_attributed(board: "Board", bench: "BenchBridge",
 @pytest.mark.parametrize("kind", ["exception", "base"])
 def test_a_loop_ended_by_an_exception_after_boot_is_attributed(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]", kind: str) -> None:
     # mpremote's Ctrl-C records 21, which the script's boot clears; its loop then ends by an OSError or a SystemExit at the
-    # first wait after BOOT_DONE: the entry records 22 and returns, and the watchdog resets. Normal boot, no flash write.
+    # first wait after BOOT_DONE: the entry records 22 and resets the chip at once. Normal boot, no flash write.
     try:
         _evidence(board, bench, dut_ip, f"reset-reason-loop-end-{kind}")
         facts = parse_facts(board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "reset_code_loop_end.py", timeout_s=_SCRIPT_TIMEOUT_S, KIND=kind, BOOT_DONE=str(_BOOT_DONE)), allow_missing_done=True)
-        record = facts.get("record")
-        assert facts.get("raised_in_phase") == _BOOT_DONE and isinstance(record, list) and record[1:2] == [_RR["LOOP_ENDED"]], f"{kind}: the loop did not end after BOOT_DONE with its record written: {facts}"
-        wait_until(lambda: not board.is_device_present(), timeout_s=_WDT_TIMEOUT_MS / 1000 + _LOSS_MARGIN_S, description="the watchdog reset after the loop ended")
+        assert facts.get("raised_in_phase") == _BOOT_DONE, f"{kind}: the loop did not end after BOOT_DONE: {facts}"
+        wait_until(lambda: not board.is_device_present(), timeout_s=_WDT_TIMEOUT_MS / 1000 + _LOSS_MARGIN_S, description="the entry's reset after the loop ended")
         bits = _attributed(board, dut_ip, _RR["LOOP_ENDED"], result_note, f"loop ended by {kind}")
-        assert bits & _TIMER_BIT and not bits & _FORCED_BIT, f"{kind}: the loop end's watchdog reset must set the timer bit, never the forced one: {bits}"
+        assert bits & _FORCED_BIT and not bits & _TIMER_BIT, f"{kind}: the entry's machine.reset() must set the forced bit, never the timer one: {bits}"
     finally:
         restore_board_to_serving(board, bench, dut_ip)

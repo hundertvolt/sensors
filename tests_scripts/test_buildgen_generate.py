@@ -112,7 +112,7 @@ def test_real_device_module_constructs_no_watchdog_and_its_boot_entry_exactly_on
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_boot_entry_arms_the_watchdog_as_its_first_statement(device: str) -> None:
     stmts = _body(_real(device).boot_entry_source)
-    assert ast.unparse(stmts[0]) == "from machine import WDT"
+    assert ast.unparse(stmts[0]) == "from machine import WDT, reset"
     assert ast.unparse(stmts[1]) == f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})"
 
 
@@ -154,7 +154,7 @@ def test_real_device_boot_entry_records_every_exception_ending_the_loop_before_t
     assert interrupt.type is not None and ast.unparse(interrupt.type) == "KeyboardInterrupt" and interrupt.name is None
     assert [ast.unparse(s) for s in interrupt.body] == ["write_reset_record(RR_INTERRUPTED)", "raise"]
     assert other.type is not None and ast.unparse(other.type) == "BaseException" and other.name is None
-    assert [ast.unparse(s) for s in other.body] == ["record_loop_end()"]  # nothing printed, at every DebugLevel
+    assert [ast.unparse(s) for s in other.body] == ["record_loop_end()", "reset()"]  # nothing printed, at every DebugLevel
     assert not tail.orelse
     assert [ast.unparse(s) for s in tail.finalbody] == ["asyncio.new_event_loop()"]
     # Every name the tail calls is one the entry binds before it.
@@ -623,7 +623,7 @@ def _setup_names(source: str) -> "list[str]":
 
 def _shared_head(stmts: "list[ast.stmt]") -> "list[str]":
     # Up to gc.threshold(), without the watchdog lines and the reset records' import.
-    own = {"from machine import WDT", f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})", "from asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record"}
+    own = {"from machine import WDT, reset", f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})", "from asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record"}
     texts = [ast.unparse(stmt) for stmt in stmts]
     return [t for t in texts[: texts.index("gc.threshold(32768)") + 1] if t not in own]
 

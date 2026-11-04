@@ -656,9 +656,9 @@ same 21 (A.8, F.5.4). Every other exception leaving `asyncio.run()` (a non-`Exce
 `BaseException` out of a task, the loop core failing outside any task) goes to the entry's second
 clause: `record_loop_end()` writes 22 after `BOOT_DONE` unless a valid record already names the reset
 underway, which is kept, and writes nothing during boot, so 10 + phase stands (agent, 2026-10-26); the
-exception is neither printed (at every `DebugLevel`) nor re-raised, so the entry ends and the watchdog
-resets the unit, unless a Ctrl-D at the REPL soft-resets it first, whose boot reads the same 22 or 10 + phase
-(F.5.4, which also has what a `SystemExit` reaching rp2's `pyexec` would do). The no-autostart entry
+exception is neither printed (at every `DebugLevel`) nor re-raised, and the entry then calls `machine.reset()`,
+so rp2's REPL and its banner never start (owner, 2026-11-04: "option c"); both regions survive that reset, so
+the next boot reads 22 or 10 + phase (F.5.4, which also has what a `SystemExit` reaching rp2's `pyexec` would do). The no-autostart entry
 `sensortask_<device>_main_noautostart.py` arms nothing and prints the manual start line (B.11).
 `main(*, watchdog, cfg_path="", debug=None, web_host="0.0.0.0", web_port=80)`: the four keywords
 after `watchdog` are the documented manual-start options (owner, 2026-09-30: 'they are worth for
@@ -1040,7 +1040,7 @@ settings.
 | 15 | boot failure in phase 5 (first NTP sync), the watchdog reset or a console soft reset followed |
 | 20 | supervisor escalation (a handler recorded a C-stack overflow) |
 | 21 | interrupted: Ctrl-C on the console ended the run, the watchdog reset or a console soft reset followed |
-| 22 | the event loop ended with an exception after boot, the watchdog reset or a console soft reset followed |
+| 22 | the event loop ended with an exception after boot, and the boot entry reset the chip |
 
 - **Real production bug, fixed**: `_get_measurements()`/`_get_sensors()` must build results with
   `.update()`, never `result[name] = await module.get_dict_data()` — every driver's own return is
@@ -6982,12 +6982,12 @@ command incomplete, 10 + p a boot failure in phase p (region 1's marker, phases 
 C-stack overflow (the supervisor's escalation, outside the boot-failure band), 21 a run
 ended by an interrupt (Ctrl-C on the console), which the boot entry records before the armed
 watchdog resets the unit (A.7), 22 a run whose event loop any other exception ended after boot,
-recorded by the boot entry's `record_loop_end()` (A.7). The entry never re-raises that exception. A
+recorded by the boot entry's `record_loop_end()`, which then resets the chip (A.7). The entry never re-raises it. A
 `SystemExit` leaving main.py would be rp2's soft-reset request (`shared/runtime/pyexec.c:166-185`,
 `ports/rp2/main.c:246-249`, v1.29.0): `soft_reset_exit` (`main.c:265-305`) releases the network,
 DMA, PIO, PWM, pins, UARTs and soft timers, but not the I2C or SPI controllers (F.5.1), and main.py
 runs again at once, its boot keeping the recorded 22 (the decode order below); unraised, every loop
-end ends in the watchdog's reset, whose REASON register reads TIMER.
+end ends in the entry's `machine.reset()`, whose REASON register reads FORCE (below).
 That is the reset class the 2026-09-08 `WDT_RESET` investigation
 could not diagnose (see CLAUDE.md's FRAM-log rule). Every generated device calls `begin_boot()` as
 `build_system()`'s first statement and marks each boot phase from `main()` (A.7), and `/status`

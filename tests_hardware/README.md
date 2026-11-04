@@ -624,7 +624,7 @@ The rest, one fact each (occurrences: `HEAP_FRAGMENTATION_MEASUREMENTS.md` archi
   (`scripts/build_firmware.py <device> --no-autostart`), whose REPL keeps reading stdin
   (`shared/tinyusb/mp_usbd_cdc.c`, `ports/rp2/mphalport.c`, v1.29.0).
 - A Ctrl-C into the autostart image ends its whole event loop: the board records reset reason 21
-  (any other exception ending the loop after boot records 22) and the watchdog resets it within its timeout, unless a Ctrl-D at the REPL soft-resets it first, whose boot reads the same code (SPECIFICATION.md Part F.5.4); a change answered `Valid` whose deferred flush has
+  and the watchdog resets it within its timeout, unless a Ctrl-D at the REPL soft-resets it first, whose boot reads the same code (any other exception ending the loop after boot records 22 and the entry resets the chip at once; SPECIFICATION.md Part F.5.4); a change answered `Valid` whose deferred flush has
   not run yet is lost.
 - Every flash run ends with one hard reset to a serving board (`flash/conftest.py`'s
   `leave_board_serving`).

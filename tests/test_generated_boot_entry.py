@@ -1,6 +1,6 @@
 """Every generated boot entry is executed at L1 (each generated module and its entry runs in at least one tier): it
-arms the watchdog, sets the shipped GC threshold before main(), records a console interrupt and any other exception
-ending the loop, and always leaves a fresh loop; the no-autostart entry prints the start line. main() is a stub."""
+arms the watchdog, sets the shipped GC threshold before main(), records a console interrupt, and records any other
+exception ending the loop and resets the chip; the no-autostart entry prints the start line. main() is a stub."""
 
 import asyncio
 import gc
@@ -108,20 +108,22 @@ def test_each_entry_arms_the_watchdog_and_sets_the_threshold_before_main() -> No
         assert threshold == _shipped_threshold(device) > 0, (device, threshold)
         assert micro.buffers == [100], device  # the entry ran past its emergency buffer
         assert loops == [1], device  # the finally left a fresh loop
-        assert stub.records == [], device
+        assert stub.records == [] and machine.reset_count == 0, device
 
 
-def test_any_other_exception_ending_the_loop_is_recorded_and_ends_the_entry_printing_nothing() -> None:
-    # Not re-raised: rp2 soft-resets on a SystemExit leaving main.py (shared/runtime/pyexec.c:166-185, v1.29.0).
+def test_any_other_exception_ending_the_loop_is_recorded_then_resets_the_chip_printing_nothing() -> None:
+    # Not re-raised: rp2 soft-resets on a SystemExit leaving main.py (shared/runtime/pyexec.c:166-185, v1.29.0); reset
+    # at once, so rp2's REPL and its banner never start (owner, 2026-11-04: "option c").
     require_fresh()
     for device in devices():
         for planted in (RuntimeError("stub"), SystemExit(3), GeneratorExit()):
             stub = _Stub(planted)
-            _micro, loops, printed, raised = _boot(device, "sensortask_" + device + "_main.py", stub)
-            assert raised is None, (device, planted, raised)
-            assert stub.records == [_LOOP_ENDED], (device, planted, stub.records)
+            resets = machine.reset_count
+            _micro, _loops, printed, raised = _boot(device, "sensortask_" + device + "_main.py", stub)
+            assert isinstance(raised, machine.SimulatedResetError), (device, planted, raised)  # the fake's never-returning reset
+            assert machine.reset_count == resets + 1, (device, planted)
+            assert stub.records == [_LOOP_ENDED], (device, planted, stub.records)  # recorded before the reset
             assert (stub.tracebacks, printed) == ([], []), (device, stub.tracebacks, printed)  # silent at every DebugLevel
-            assert loops == [1], device
 
 
 def test_a_console_interrupt_is_recorded_before_it_propagates() -> None:
@@ -131,7 +133,7 @@ def test_a_console_interrupt_is_recorded_before_it_propagates() -> None:
         _micro, loops, _printed, raised = _boot(device, "sensortask_" + device + "_main.py", stub)
         assert isinstance(raised, KeyboardInterrupt), (device, raised)
         assert stub.records == [_RR_INTERRUPTED], device  # its own code, never the loop-ended one
-        assert loops == [1], device
+        assert loops == [1] and machine.reset_count == 0, device  # the console keeps the REPL
 
 
 def test_the_no_autostart_entry_prints_the_start_line_and_starts_nothing() -> None:
