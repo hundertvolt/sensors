@@ -34,7 +34,7 @@ class FakeMB85RS64V(FakeSPI):
     TEST_API = (
         "RDID", "SIZE", "bytes_written", "corrupt_next_write_data", "cut_after_bytes", "disturb_write_autoclear",
         "disturb_wrsr_autoclear", "drop_next_wrdi", "drop_next_wren", "drop_wren", "drop_wrsr", "memory", "opcodes",
-        "rdid_count", "rdid_once", "rdid_response", "silent", "size", "status", "wel", "wp_pin", "write_transactions",
+        "rdid_count", "rdid_once", "rdid_response", "size", "status", "wel", "wp_pin", "write_transactions",
     )  # fmt: skip
 
     def __init__(self, *args: object, **kwargs: object) -> None:
@@ -52,9 +52,6 @@ class FakeMB85RS64V(FakeSPI):
         self.drop_next_wren = 0  # simulate N consecutive WREN transfers getting corrupted
         self.drop_next_wrdi = 0  # simulate N consecutive WRDI transfers getting corrupted
         self.drop_wrsr = False  # simulate WRSR's status-byte transfer getting corrupted
-        # A chip gone silent (deselected, unpowered, dead): every write vanishes and SO reads this
-        # byte constantly - 0x00 for a line pulled low, 0xFF for one floating high. None: a live chip.
-        self.silent: int | None = None
         # These two suppress the datasheet's own auto-clear specifically so FRAM_SPI's explicit WRDI-
         # verification and retry path - defense in depth against that auto-clear itself glitching - stays
         # exercised by a real simulated fault rather than being permanently unreachable.
@@ -116,9 +113,7 @@ class FakeMB85RS64V(FakeSPI):
         # Raising before the buffer is filled matches the base fake; on real hardware an overrun leaves
         # partial garbage there, which is why the caller must not trust it either way.
         self._maybe_raise("readinto", len(buf), self._pending_op)
-        if self.silent is not None:
-            buf[:] = bytes([self.silent]) * len(buf)
-        elif self._pending_op == _OPCODE_READ and self._pending_addr is not None:
+        if self._pending_op == _OPCODE_READ and self._pending_addr is not None:
             n = len(buf)
             buf[:] = self.memory[self._pending_addr : self._pending_addr + n]
         elif self._pending_op == _OPCODE_RDSR:
@@ -137,10 +132,8 @@ class FakeMB85RS64V(FakeSPI):
         return bool(self.status & 0x02)
 
     def write(self, buf: object) -> None:
-        # The recorders (opcodes, rdid_count, write_transactions) count what the controller clocked out;
-        # a silent chip still sees the command framing but acts on none of it.
+        # The recorders (opcodes, rdid_count, write_transactions) count what the controller clocked out.
         data = bytes(buf)  # type: ignore[call-overload]
-        live = self.silent is None
         if self._pending_op == _OPCODE_WRITE and self._pending_addr is not None:
             # data phase of a previously-opened WRITE (opcode+address arrived in the prior call)
             self.write_transactions += 1
@@ -149,12 +142,12 @@ class FakeMB85RS64V(FakeSPI):
             if cut is not None:
                 stored = stored[:cut]
                 self.cut_after_bytes = cut - min(cut, len(data))
-            if live and self.wel:  # a WRITE without WEL is not performed (p.7, p.11)
+            if self.wel:  # a WRITE without WEL is not performed (p.7, p.11)
                 end = self._pending_addr + len(stored)
                 self.memory[self._pending_addr : end] = stored
                 self.bytes_written += len(stored)
                 self.corrupt_next_write_data = None
-            if live and not self.disturb_write_autoclear:
+            if not self.disturb_write_autoclear:
                 self.status &= ~0x02  # WEL auto-clears at the CS rising edge after WRITE recognition (p.6)
             self._pending_op = None
             self._pending_addr = None
@@ -169,7 +162,7 @@ class FakeMB85RS64V(FakeSPI):
             self._pending_addr = self._decode_addr(data)
         elif opcode in (_OPCODE_RDSR, _OPCODE_RDID):
             self._pending_op = opcode
-        elif live:
+        else:
             self._latch_command(opcode, data)
 
 

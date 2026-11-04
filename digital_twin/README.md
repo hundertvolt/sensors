@@ -158,8 +158,7 @@ the UDP shim or the NTP responder (see "Running the twin's own tests" below).
   hotspot's `status("stations")` answer 32 unfilled entries, as rp2 does when its radio cannot be
   brought up. `raise_on` fails a method a given number of times, `status` optionally only for one
   query, and `script_connect_outcomes()` queues connect outcomes. `NeoPixel` stores its pixels as
-  micropython-lib's driver does, a GRB `bytearray`, and keeps a bounded log of written frames;
-  `power_dip()` blanks what `displayed()` shows until the next `write()`.
+  micropython-lib's driver does, a GRB `bytearray`, and keeps a bounded log of written frames.
 - `_http_client.py` — minimal hand-rolled HTTP/1.1 client over `asyncio.open_connection()`: real
   HTTP over real sockets (owner, 2026-08-13; no HTTP client
   library is frozen into the pinned Unix-port build). Every response it sees is `Connection: close`

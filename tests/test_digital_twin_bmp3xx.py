@@ -210,16 +210,6 @@ def test_err_register_reports_no_error() -> None:
     assert _read(chip, 0x02, 1) == b"\x00"
 
 
-def test_event_reports_por_detected_after_power_up_and_a_soft_reset_and_clears_on_read() -> None:
-    # DS001 4.3.7: por_detected is 1 after a power-up or a soft reset, cleared by reading EVENT (0x10).
-    chip = BMP3XXChip()
-    assert _read(chip, 0x10, 1) == b"\x01"  # constructed = just powered up
-    assert _read(chip, 0x10, 1) == b"\x00"
-    _write(chip, 0x7E, [0xB6])
-    assert _read(chip, 0x10, 1) == b"\x01"
-    assert _read(chip, 0x10, 1) == b"\x00"
-
-
 def test_an_8_byte_read_at_err_reg_returns_err_status_and_the_data_bytes() -> None:
     chip = BMP3XXChip(random_source=FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0]))
     _write(chip, 0x1B, [0x13])
@@ -228,15 +218,6 @@ def test_an_8_byte_read_at_err_reg_returns_err_status_and_the_data_bytes() -> No
     assert block[1] == _read(chip, 0x03, 1)[0]
     assert block[2:] == _read(chip, 0x04, 6)  # ERR_REG, STATUS and the data are one contiguous file
     assert _read(chip, 0x03, 7) == block[1:]
-
-
-def test_the_fatal_err_knob_sets_err_reg_bit_0() -> None:
-    chip = BMP3XXChip()
-    chip.fatal_err = True
-    assert _read(chip, 0x02, 1) == b"\x01"
-    assert _read(chip, 0x02, 8)[0] == 0x01
-    chip.fatal_err = False
-    assert _read(chip, 0x02, 1) == b"\x00"
 
 
 def test_unknown_register_returns_zero_bytes_without_raising() -> None:
@@ -332,13 +313,11 @@ def test_power_cycle_restores_the_power_up_registers_and_keeps_the_walk() -> Non
     _write(chip, 0x1B, [0x13])
     _write(chip, 0x1C, [0x15])
     _write(chip, 0x1F, [0x06])
-    assert _read(chip, 0x10, 1) == b"\x01"  # the construction's power-up, now read and cleared
     walked = (chip._temp_c, chip._pressure_hpa)
     chip.power_cycle()
     fresh = BMP3XXChip()
     assert _read(chip, 0x03, 1) == b"\x10"  # command-ready, no data ready
     assert _read(chip, 0x04, 6) == bytes(6)
-    assert _read(chip, 0x10, 1) == b"\x01"
     assert _read(chip, 0x1C, 1) == _read(fresh, 0x1C, 1)
     assert _read(chip, 0x1F, 1) == _read(fresh, 0x1F, 1)
     assert (chip._temp_c, chip._pressure_hpa) == walked

@@ -1715,12 +1715,9 @@ def test_the_chip_fake_counts_only_the_data_bytes_that_land() -> None:
     chip = _bare_chip()
     _raw_write(chip, 0x10, b"\x11" * 3)
     _raw_write(chip, 0x20, b"\x22" * 4, enable=False)  # no WEL: the WRITE is not performed (p.7)
-    chip.silent = 0xFF
-    _raw_write(chip, 0x30, b"\x33" * 2)  # a silent chip acts on nothing
-    chip.silent = None
     chip.corrupt_next_write_data = b"\x55"
     _raw_write(chip, 0x40, b"\x44" * 2)  # what lands is the disturbed payload
-    assert (chip.bytes_written, chip.write_transactions) == (4, 4)
+    assert (chip.bytes_written, chip.write_transactions) == (4, 3)
 
 
 def test_a_chip_read_fault_names_the_command_it_hits() -> None:

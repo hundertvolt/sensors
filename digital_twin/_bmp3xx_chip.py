@@ -27,7 +27,6 @@ _REGISTER_CHIPID = 0x00
 _REGISTER_ERR = 0x02
 _REGISTER_STATUS = 0x03
 _REGISTER_PRESSUREDATA = 0x04
-_REGISTER_EVENT = 0x10
 _REGISTER_CONTROL = 0x1B
 _REGISTER_OSR = 0x1C
 _REGISTER_CONFIG = 0x1F
@@ -40,8 +39,6 @@ _CONTROL_FORCED_MODE = 0x13
 _CMD_SOFT_RESET = 0xB6
 _OSR_RESET = 0x02  # OSR's default value (DS001 register map)
 _CONFIG_RESET = 0x00  # CONFIG's default value (DS001 register map)
-_EVENT_POR_DETECTED = 0x01  # EVENT bit 0: set by a power-up or a soft reset, clear-on-read (DS001 4.3.7)
-_FATAL_ERR_BIT = 0x01  # ERR_REG bit 0 fatal_err (DS001 4.3.2)
 
 # Not datasheet-derived: room ranges inside the BMP388's 300-1250 hPa, -40-85 C operating range (DS001 Table 1);
 # the step is a plausibility bound.
@@ -100,7 +97,7 @@ def _invert_temperature(t1: float, t2: float, t3: float, target_c: float, guess:
 
 
 class BMP3XXChip:
-    TEST_API = ("fatal_err", "fault", "power_cycle")
+    TEST_API = ("fault", "power_cycle")
     REGISTER_ADDRSIZE = 8  # register-addressed: machine.I2C routes an address-prefixed writeto() here
 
     def __init__(
@@ -114,7 +111,6 @@ class BMP3XXChip:
         self._min_pressure_hpa, self._max_pressure_hpa = pressure.lo, pressure.hi
         self._temp_step_c, self._pressure_step_hpa = temp.step, pressure.step
         self._power_up()  # the register state a powered-up chip holds
-        self.fatal_err = False  # twin-only test knob: ERR_REG reports fatal_err
         self.fault = FaultInjector()
         self._temp_calib, self._pressure_calib = _decode_calibration(_CAL_RAW)
         # One uniform draw within [min,max] at construction; every later value steps from the
@@ -127,7 +123,6 @@ class BMP3XXChip:
         return max(lo, min(hi, value))
 
     def _power_up(self) -> None:
-        self._event = 0  # the soft reset below raises por_detected, EVENT's power-up value (DS001 register map)
         self._soft_reset()
         self._burst = bytes(6)
 
@@ -136,7 +131,6 @@ class BMP3XXChip:
         self._status = _STATUS_CMD_RDY
         self._osr = _OSR_RESET
         self._config = _CONFIG_RESET
-        self._event |= _EVENT_POR_DETECTED  # por_detected "'1' after device power up or softreset" (DS001 4.3.7)
 
     def _trigger_measurement(self) -> None:
         self._temp_c = self._clamp(self._temp_c + self._random.uniform(-self._temp_step_c, self._temp_step_c), self._min_temp_c, self._max_temp_c)
@@ -170,11 +164,8 @@ class BMP3XXChip:
         elif _REGISTER_ERR <= reg_addr <= _REGISTER_PRESSUREDATA + 5:
             # ERR_REG, STATUS and the six data bytes are one auto-incremented file (0x02-0x09), so a burst
             # from any of them reads on through the rest, as the driver's 8-byte burst from ERR_REG does.
-            block = bytes([_FATAL_ERR_BIT if self.fatal_err else 0x00, self._status]) + self._burst
+            block = bytes([0x00, self._status]) + self._burst
             reply = block[reg_addr - _REGISTER_ERR :]
-        elif reg_addr == _REGISTER_EVENT:
-            reply = bytes([self._event])
-            self._event = 0  # clear-on-read
         elif reg_addr == _REGISTER_OSR:
             reply = bytes([self._osr])
         elif reg_addr == _REGISTER_CONFIG:
