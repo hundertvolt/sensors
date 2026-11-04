@@ -78,12 +78,12 @@ if TYPE_CHECKING:
 
     from _mpy_shed.time_mp import _TicksMs
     from _scd30_chip import SCD30Chip
-    from _sgp40_chip import SGP40Chip
     from launch import _Plan
 
     from asy_base_classes import TaskStarter, TickSeconds
     from asy_fram_manager import FRAMChunkTimestampedBuffer
     from asy_neopixel_driver import NeopixelDriver
+    from asy_ntp_client import GMTimeStruct
     from asy_sgp40_driver import SGP40_Reader
     from asy_system_service import SystemService
     from asy_udp_socket import UDPSocket
@@ -118,14 +118,8 @@ _HOTSPOT_PHASE = src_const("src/asy_wifi_service.py", "_PHASE_HOTSPOT")
 _JOINED_NO_IP = src_int("src/asy_wifi_service.py", "_STAT_JOINED_NO_IP")
 _RETRY_UNSYNCED_S = src_int("src/asy_ntp_client.py", "_NTP_RETRY_UNSYNCED_S")
 _WIFI_STORE = str(src_const("src/asy_wifi_service.py", "_NAME"))
-_NO_CLOCK = src_const("src/asy_notification_service.py", "_STATE_NO_CLOCK")
-_EVALUATED = src_const("src/asy_notification_service.py", "_STATE_EVALUATED")
-_PARTIAL = src_const("src/asy_notification_service.py", "_STATE_PARTIAL")
-# Past its age bound a sample is unavailable to the notification's checks.
-_STALE_AFTER_S = src_int("src/asy_notification_service.py", "_SAMPLE_MAX_AGE_S") + 1
 _FLASH_DUR_S = 0.5  # FlashDur's schema floor
 _FLASH_HOLD_MS = round(_FLASH_DUR_S * 2000)  # the monitor's wait after a flash it asked for (asy_notification_service.py)
-_MEASURE_RAW = b"\x26\x0f"  # the SGP40's measure command (datasheet Table 9), as asy_sgp40_driver.py sends it
 _RUNG_AT = src_int("src/asy_base_classes.py", "_RECOVER_DEVICE_AT")  # consecutive failed iterations to the device rung
 _WIFI_STEP_MS = src_int("src/asy_wifi_service.py", "_STA_CONNECT_POLL_MS")  # the connect poll's step: _SteppedAsyncio's cap
 _NO_IP_STEP_MS = 100  # ten polls outlast the twin's 0.7 s join (digital_twin/network.py), so each attempt ends joined without an IP
@@ -494,13 +488,6 @@ async def _ring_in_fram(clock: DrivenTime, conn: "WifiService") -> None:
 async def _seed_compensation() -> None:
     # The SCD30's reading the SGP40 compensates with, seeded through the store a real read cycle uses.
     await module.scd30._set_meas_data(_SCD30_READING)
-
-
-async def _sgp40_cycle(sgp: "SGP40_Reader") -> None:
-    # Triggers one read cycle of a running SGP40 task and waits until it has begun: of two in a row, the first has ended.
-    before = sgp._backup_counter
-    sgp._read_event.set()
-    assert await _wait_until(lambda: sgp._backup_counter != before, _WAIT_TIMEOUT_S, interval_s=_BIND_POLL_S), "an SGP40 read cycle never began"
 
 
 class _FastSupervisorAsyncio:
@@ -1274,13 +1261,14 @@ def test_the_notification_window_spanning_midnight_flashes_red() -> None:
         chip.co2 = Walk(warn_co2 + 100, warn_co2 + 100, 0.0)
         _step_sensor_waits(on=True)
         tasks = [starter() for starter in module.scd30.get_task_starters()]
+        asked: list[object] = []  # each local time the monitor read: a cycle outside its window ends right after one
 
-        async def triggered() -> bool:
-            return bool((await notif.get_data()).Triggered)
+        async def local_time() -> "GMTimeStruct | None":  # the callback the boot wired, each answer recorded
+            answer: GMTimeStruct | None = await ntp.cettime()
+            asked.append(answer)
+            return answer
 
-        async def not_triggered() -> bool:
-            return not await triggered()
-
+        notif._local_time_callback = local_time  # an instance attribute swap, undone in the finally
         try:
             for starter in module.scd30.get_timer_starters():
                 starter()
@@ -1290,18 +1278,19 @@ def test_the_notification_window_spanning_midnight_flashes_red() -> None:
             assert await _wait_until(lambda: len(_red_frames(list(pixel._pixel.writes))) > 0, _WINDOW_WAIT_S, interval_s=_BIND_POLL_S), (
                 f"no red frame with the window {on_h}:00-{off_h}:00 around local {hour}:{local.minute:02d}"
             )
-            assert await _wait_until_async(triggered, _WINDOW_WAIT_S, interval_s=_BIND_POLL_S), "the cycle that flashed never reported Triggered"
             await cancel(tasks.pop())  # the monitor now sleeps its whole FlashInterval; the next window gets a fresh cycle
             assert await _wait_until(lambda: not pixel._start_signal_event.is_set(), _WINDOW_WAIT_S, interval_s=_BIND_POLL_S)
             seen = len(pixel._pixel.writes)
 
             await _apply_window(off_h, on_h)  # the complementary, same-day window: the current hour is outside
+            n = len(asked)
             tasks.append(notif.start_asy_monitor())
-            assert await _wait_until_async(not_triggered, _WINDOW_WAIT_S, interval_s=_BIND_POLL_S), "a cycle outside the window reported Triggered"
+            assert await _wait_until(lambda: len(asked) > n, _WINDOW_WAIT_S, interval_s=_BIND_POLL_S), "the cycle outside the window never ran"
             assert _red_frames(list(pixel._pixel.writes)[seen:]) == [], "a cycle outside the window flashed"
         finally:
             for task in tasks:
                 await cancel(task)
+            notif._local_time_callback = ntp.cettime
             _step_sensor_waits(on=False)
             asy_base_classes._utc_valid = False
 
@@ -1309,99 +1298,54 @@ def test_the_notification_window_spanning_midnight_flashes_red() -> None:
 
 
 def test_a_stopped_scd30_ends_its_alerts() -> None:
-    # CO2 above WarnCO2 read for real, then ContMeas off through the path PUT /sensors calls and the wall clock stepped
-    # past the sample age bound: the next monitor cycle flashes nothing and reports State 3. Driver-specific (an SCD30
-    # feeding both); both modules' L1 suites cover every device.
-    _driver_specific("notification", "scd30", "sgp40")
-
-    async def partial() -> bool:
-        data = await module.notification.get_data()
-        return (data.State, data.Triggered) == (_PARTIAL, False)
+    # CO2 above WarnCO2 read for real, then ContMeas off through the path PUT /sensors calls: the stopped SCD30 publishes
+    # no values (owner, 2026-11-04: "option c, the clean solution"), so the next monitor cycle flashes nothing.
+    # Driver-specific (an SCD30 feeding WarnCO2); both modules' L1 suites cover every device.
+    _driver_specific("notification", "scd30")
 
     async def scenario() -> None:
         await _boot()
-        clock = _wall_clock.install(run_generic_integration.product_modules())
-        scd30, sgp, pixel = module.scd30, module.sgp40, module.neopixel
-        # Synced and the RTC flag only: the SGP40's few cycles on a blank FRAM reach neither a backup nor a dated
-        # restore, and nothing reads UTCTime, so ntp_clock_valid() is never asked.
+        _wall_clock.install(run_generic_integration.product_modules())
+        scd30, notif, pixel = module.scd30, module.notification, module.neopixel
+        # Synced and the RTC flag only: the window reads cettime(), and nothing here reads ntp_clock_valid().
         await module.ntp._set_synced(value=True)
         asy_base_classes.set_utc_valid()
         warn_co2 = await _warn_co2()
         chip = cast("SCD30Chip", _chip("scd30"))
         chip.co2 = Walk(warn_co2 + 100, warn_co2 + 100, 0.0)
-        sgp_chip: SGP40Chip = cast("SGP40Chip", _chip("sgp40"))
-        real_write = sgp_chip.handle_writeto
-        measures: list[bytes] = []
-
-        def handle_writeto(data: bytes) -> None:  # the chip's own, its measure commands recorded
-            if data[0:2] == _MEASURE_RAW:
-                measures.append(data)
-            real_write(data)
-
-        sgp_chip.handle_writeto = handle_writeto  # type: ignore[method-assign]  # the instance's own, deleted in finally
         _step_sensor_waits(on=True)
         tasks = [starter() for starter in scd30.get_task_starters()]
+        ended: list[int] = []
+        real_next_sleep = notif._next_sleep_ms
+
+        def next_sleep(interv: float, t0: "_TicksMs") -> int:  # a monitor cycle's last step: its sleep to the next one
+            ended.append(1)
+            sleep_ms: int = real_next_sleep(interv, t0)
+            return sleep_ms
+
+        async def blanked() -> bool:
+            return (await scd30.get_data()).CO2 is None
+
+        notif._next_sleep_ms = next_sleep  # an instance attribute, deleted in the finally
         try:
             for starter in scd30.get_timer_starters():
                 starter()
             assert await _measured_above(chip, warn_co2), "the SCD30 never read the CO2 above the warning"
-            tasks.append(sgp.start_asy_read())
-            await _sgp40_cycle(sgp)
-            await _sgp40_cycle(sgp)
-            assert measures, "a fresh SCD30 sample never compensated an SGP40 measurement"
             results = await scd30._set_dict_cfg({"ContMeas": False}, scd30.get_cfg_schema())
             assert results == {"ContMeas": "Valid"}, results
-            clock.step(_STALE_AFTER_S)
+            assert await _wait_until_async(blanked, _WINDOW_WAIT_S, interval_s=_BIND_POLL_S), f"a stopped SCD30 published {await scd30.get_data()}"
             local = await module.ntp.cettime()
             assert local is not None
             await _apply_window(*_window_around(local.hour))
             seen = len(pixel._pixel.writes)
-            tasks += [pixel.start_asy_signal(), module.notification.start_asy_monitor()]
-            assert await _wait_until_async(partial, _WINDOW_WAIT_S, interval_s=_BIND_POLL_S), f"a stale CO2 sample reported as {await module.notification.get_data()}"
-            assert _red_frames(list(pixel._pixel.writes)[seen:]) == [], "a stale CO2 sample flashed"
+            tasks += [pixel.start_asy_signal(), notif.start_asy_monitor()]
+            assert await _wait_until(lambda: bool(ended), _WINDOW_WAIT_S, interval_s=_BIND_POLL_S), "no monitor cycle ended"
+            assert _red_frames(list(pixel._pixel.writes)[seen:]) == [], "a stopped SCD30's last CO2 sample flashed"
         finally:
             for task in tasks:
                 await cancel(task)
-            del sgp_chip.handle_writeto
+            del notif._next_sleep_ms
             _step_sensor_waits(on=False)
-            asy_base_classes._utc_valid = False
-
-    run(scenario())
-
-
-def test_a_boot_without_ntp_reports_no_local_time() -> None:
-    # Booted with no NTP responder, the notification's status data reports no clock (State 2) and no trigger; once a
-    # sync has set the clock, the next cycle inside its window evaluates (State 0). Driver-specific (the signals' three
-    # drivers); tests/test_asy_notification_service.py covers every device.
-    _driver_specific("notification", "scd30", "sgp40")
-
-    async def notified(state: object) -> bool:
-        data = await module.notification.get_data()
-        return (data.State, data.Triggered) == (state, False)
-
-    async def scenario() -> None:
-        await _boot()
-        _wall_clock.install(run_generic_integration.product_modules())
-        notif, ntp = module.notification, module.ntp
-        await _seed_compensation()  # every signal's value present and below its warning
-        await module.sgp40._set_meas_data(SGP40(100, None, None, None))
-        task = notif.start_asy_monitor()
-        try:
-            assert await _wait_until_async(lambda: notified(_NO_CLOCK), _WINDOW_WAIT_S), f"no clock reported as {await notif.get_data()}"
-        finally:
-            await cancel(task)
-        # Synced and the RTC flag only: the window reads cettime(), and nothing here reads ntp_clock_valid() (UTCTime,
-        # a VOC backup).
-        await ntp._set_synced(value=True)
-        asy_base_classes.set_utc_valid()
-        try:
-            local = await ntp.cettime()
-            assert local is not None
-            await _apply_window(*_window_around(local.hour))
-            task = notif.start_asy_monitor()
-            assert await _wait_until_async(lambda: notified(_EVALUATED), _WINDOW_WAIT_S), f"a set clock reported as {await notif.get_data()}"
-        finally:
-            await cancel(task)
             asy_base_classes._utc_valid = False
 
     run(scenario())

@@ -77,3 +77,5 @@ checked by parsing the snapshot-30 file (not canonical) and the fixed one (canon
 `test_comment_block_cap.py` from tests_scripts for d922323b; the whole tier is the check for a test-file change.
 Fix **a97ec884**: the trailer back as it was, the top-level import kept (as `test_asy_webserver_service.py` has both).
 On it: lint, the three mypy passes and the whole tests_scripts tier (7,113 passed, 6 skipped) green.
+Snapshot 31 (f625b077): CI green, run 41716670309 (pull_request, 20:53-21:28 UTC), the twin and coverage jobs included;
+the push run 41716654193 was cancelled by the newer run of the same sha. B3+B6 are closed.

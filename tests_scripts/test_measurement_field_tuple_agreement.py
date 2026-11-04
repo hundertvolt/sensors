@@ -83,8 +83,8 @@ _MODULES_WITH_FIELDS = sorted(p.name for p in _SRC.glob("*.py") if _declarations
 
 def test_the_guard_actually_found_the_modules_it_guards() -> None:
     # Without this the whole file passes vacuously the day the declaration shape changes - the same
-    # guard-is-blind trap SPECIFICATION.md Part E.8 describes. Seven today; a new driver adds one.
-    assert len(_MODULES_WITH_FIELDS) >= 7, f"expected every measurement-publishing src/ module to be found, got {_MODULES_WITH_FIELDS}"
+    # guard-is-blind trap SPECIFICATION.md Part E.8 describes. Six today; a new driver adds one.
+    assert len(_MODULES_WITH_FIELDS) >= 6, f"expected every measurement-publishing src/ module to be found, got {_MODULES_WITH_FIELDS}"
 
 
 def _reader_tuple(path: Path, tuples: "dict[str, tuple[str, ...]]") -> "str | None":

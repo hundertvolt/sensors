@@ -280,7 +280,7 @@ def test_stations_rule_settings_change_and_silent_mode_in_one_boot() -> None:
             await _await_hotspot_window(clock, conn, "(a) the settings change's failed streak")
             _count, log = await _wifi_log(conn)
             assert (log.count(to_hotspot), log.count(silent_entry)) == (2, 0), ("(a)", log)
-            assert len(pixel._pixel.writes) > 0 and all(frame == [(0, 0, 0)] for frame in pixel._pixel.writes), ("(a) LEDWifiOn off", list(pixel._pixel.writes))
+            assert all(frame == [(0, 0, 0)] for frame in pixel._pixel.writes), ("(a) LEDWifiOn off", list(pixel._pixel.writes))
             # LEDWifiOn on through its own group, a live push that reconnects nothing: the silent mode is then dark although enabled.
             results = await webserver._apply_settings_groups("networking", {"LEDWifiOn": True})
             assert results == {"LEDWifiOn": "Valid"} and not conn._reconn_wifi, ("(b) LEDWifiOn on", results)

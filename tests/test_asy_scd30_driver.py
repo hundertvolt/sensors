@@ -2107,18 +2107,22 @@ def test_frc_readiness_restarts_on_a_gap_an_interval_change_a_pressure_write_and
     _queue_snapshot(i2c)
     assert run(reader._set_dict_cfg({"ContMeas": False}, reader.get_cfg_schema())) == {"ContMeas": "Valid"}
     after = run(reader.get_data())
-    assert (after.FRCState, after.FRCWait, after.TS, after.CO2) == (0, None, before.TS, before.CO2)
+    assert tuple(after) == (None, None, None, None, None, 0, None, before.TS)  # a stopped sensor publishes no values
     assert reader._frc_measuring is False
 
 
-def test_frc_readiness_publishes_not_measuring_after_two_intervals_without_data() -> None:
+def test_two_intervals_without_data_publish_not_measuring_with_no_values_until_the_next_measurement() -> None:
     reader = _frc_reader()
     run(_frc_feed(reader, [(800.0, 21.0)] * 3))
     _drive_irq_ticks(reader, [0] * 7)
     assert run(reader.get_data()).FRCState == 1
     _drive_irq_ticks(reader, [0])  # the eighth 500 ms tick: 4 x interval
     data = run(reader.get_data())
-    assert (data.FRCState, data.FRCWait, data.TS) == (0, None, 1000)
+    assert tuple(data) == (None, None, None, None, None, 0, None, 1000)  # the values blanked, the sample's own TS
+    run(_frc_feed(reader, [(810.0, 21.0)]))  # the next real measurement
+    data = run(reader.get_data())
+    assert (data.CO2, data.Temp, data.Hum, data.TS) == (810.0, 21.0, 50.0, 1000), data
+    assert data.WetBulb is not None and data.DewPoint is not None, data
 
 
 def test_frc_counters_saturate_at_their_targets() -> None:
@@ -2158,7 +2162,7 @@ def test_a_store_interleaved_with_a_republish_keeps_the_fresh_sample() -> None:
 
     run(scenario())
     data = run(reader.get_data())
-    assert (data.CO2, data.TS) == (900.0, 2000)
+    assert (data.CO2, data.TS) == (None, 2000)  # the stop blanks the fresh sample; a stale copy would carry TS 1000
 
 
 def test_a_full_length_frc_window_keeps_every_stored_sum_a_small_float() -> None:

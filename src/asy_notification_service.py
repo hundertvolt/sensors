@@ -12,8 +12,8 @@ from collections import namedtuple
 
 from micropython import const
 
-from asy_base_classes import SensorReaderConfig, TickSeconds, utc_now
-from asy_config_manager import make_dict, name_cfg, schema_names
+from asy_base_classes import SensorReaderConfig, TickSeconds
+from asy_config_manager import name_cfg, schema_names
 from asy_print_log import DEFAULT_LOG, LogConfig
 
 try:
@@ -55,7 +55,6 @@ _ERR_CFG_READ = const(26)
 _WRN_CFG_READ = const(13)
 _WRN_NOTIFY_NAME_COLLISION = const(44)
 _WRN_NOTIFY_SCHEMA_SHAPE = const(45)
-_WRN_NOTIFY_SIGNAL_DROPPED = const(67)
 
 _MAX_OVERRIDE_TIME = const(3600)
 _NAME = const("NOTIFY")
@@ -65,16 +64,6 @@ _LOOP_TICK_S = const(1)  # _pause_loop()'s round: how late a measured pause can 
 _MIN_SLEEP_MS = const(100)  # floor of _monitor_loop()'s sleep to its next cycle
 # @tunable notify.cfg_fail_interval_s = 600
 _CFG_FAIL_INTERVAL_S = const(600)  # cycle interval while the own configuration cannot be read
-# Three times the longest configurable producer interval (BMP3XX SampleInterval 3600 s): a slow
-# producer is never cut off (agent, 2026-10-06).
-# @tunable notify.sample_max_age_s = 10800
-_SAMPLE_MAX_AGE_S = const(10800)
-# State: 0 evaluated, 1 off by setting, 2 no clock, 3 a value unavailable, 4 own config unreadable (SPECIFICATION.md A.4).
-_STATE_EVALUATED = const(0)
-_STATE_OFF = const(1)
-_STATE_NO_CLOCK = const(2)
-_STATE_PARTIAL = const(3)
-_STATE_CFG_UNREADABLE = const(4)
 
 # This driver's live cross-instance dependencies (Parts C.14 and L.4): the LED it signals through,
 # required, in "attr" mode - the resolved NeopixelDriver's own request_signal bound method is passed
@@ -90,9 +79,7 @@ class _DefaultSignalSink:
 
     # Signature and return-value contract match NeopixelDriver.request_signal exactly, so codegen's
     # existing attr-mode rendering (f"{var}.{wf.target}") needs no special-casing for a defaulted field.
-    # Static, so an instance's attribute is this very function: the service recognises it by identity.
-    @staticmethod
-    async def request_signal(r: int, g: int, b: int, t: float) -> bool:
+    async def request_signal(self, r: int, g: int, b: int, t: float) -> bool:
         return False
 
 # Own schema; config keys carry no "Led" prefix (`WarnCO2`, not `LedWarnCO2`): the new API is the
@@ -130,11 +117,8 @@ _VAL_FLOAT_FIELDS = _VAL_FLASH_INTERVAL + _VAL_FLASH_DUR
 _VAL_BOOL_FIELDS = _VAL_AUTO_ON
 _VAL_OWN_SCHEMA = _VAL_INT_FIELDS + _VAL_FLOAT_FIELDS + _VAL_BOOL_FIELDS
 
-# Minimal but real measurement snapshot in C.4.2's get_data() shape, like every other Reader:
-# whether anything was triggered as of the last completed poll cycle, and why not if nothing was evaluated.
-# A literal tuple, not `_FIELDS`: mypy's namedtuple plugin infers field names only from a literal at the call site.
-NOTIFY = namedtuple("NOTIFY", ("Triggered", "State", "TS"))
-_FIELDS = const(("Triggered", "State", "TS"))  # kept in sync with NOTIFY's own fields above
+# SensorReaderConfig takes an initial sample; the service publishes none, its /status block being the pause alone.
+NOTIFY = namedtuple("NOTIFY", ())
 
 
 def _in_window(on_min: int, off_min: int, cur_min: int) -> bool:
@@ -198,7 +182,7 @@ class NotificationService(SensorReaderConfig):
                 combined = combined + notif.field_schema
         self._registered = tuple(accepted)
         super().__init__(
-            NOTIFY(Triggered=False, State=None, TS=None),
+            NOTIFY(),
             _NAME,
             combined,
             max_module_error=0,  # no failure streak: a restart re-reads nothing _monitor_loop() doesn't (Part C.7.2)
@@ -208,50 +192,38 @@ class NotificationService(SensorReaderConfig):
         for msg, _wrnno in self._pending_wrn:
             self.pr.wrn(msg)
         self._request_signal_cb = request_signal_cb
-        # The default sink's False means "no LED", never a dropped signal.
-        self._sink_is_default = request_signal_cb is _DefaultSignalSink.request_signal
         self._local_time_callback = local_time_callback
         self._pause = TickSeconds(count_down=True)
         self._auto_active = True
 
-    async def _check_one(self, notif: NotificationSignal) -> bool | None:
+    async def _check_one(self, notif: NotificationSignal) -> bool:
         # Direct read of the producer's own get_data() (SPECIFICATION.md Part C.14) - get_data()
         # never raises, but the specific field can legitimately be None (not yet measured, or the
-        # producer's own error streak gave up). None: the signal could not be evaluated.
-        value: object
+        # producer's own error streak gave up) - a normal, expected input here, not exceptional.
+        value: int | float | None
         source: _ValueSource = notif.value.source  # the annotated local narrows the namedtuple field (C.4.2)
         try:
             data = await source.get_data()
             value = getattr(data, notif.value.field, None)
-            ts = getattr(data, "TS", None)
         except Exception as e:
             await self.pr.err_s(notif.name, "Value read failed:", e, errno=_ERR_SOURCE)
-            return None
-        now = utc_now()  # outside the try: a raise here (it allocates on rp2) is not the producer's failed read
-        # Older than the bound, a sample is unavailable like a missing one; one without a TS (before the
-        # first sync) counts as current - the same rule as asy_sgp40_driver.py's compensation input.
-        if now is not None and isinstance(ts, int) and now - ts > _SAMPLE_MAX_AGE_S:
-            value = None
+            return False
         if value is None:
-            return None
-        if not isinstance(value, (int, float, bool)):  # bool listed: MicroPython's bool is no int subclass
-            await self.pr.err_s(notif.name, "Value not numeric:", type(value).__name__, errno=_ERR_SOURCE)
-            return None
-        if value != value:  # NaN is never evaluated
-            return None
+            return False
         thresholds = await self.cfgmgr.get_float_values(notif.field_schema)  # works for an "int" schema field too - float(cached_int) never raises
         if thresholds is None:
             await self.pr.err_s(notif.name, "Threshold config read failed!", errno=_ERR_CFG_READ)
-            return None
+            return False
         threshold = thresholds[0]  # exactly one field - the constructor refuses any other shape
-        numeric_value = float(value)  # float() cannot raise here: value is numeric.
+        # float(value): getattr()'s own return is untyped even after the None-check above (the field name is
+        # dynamic, not a literal) - narrows to a real numeric comparison; a NaN compares False both ways.
+        numeric_value = float(value)
         return (numeric_value >= threshold) if notif.above else (numeric_value <= threshold)
 
     async def _monitor_loop(self) -> None:
         # No self._auto_active = True here, unlike __init__/_pause_loop() which own it - this
         # task only reads it. A supervisor-driven restart of this task used to reset it, clobbering
         # an override set mid-run: two independently-restartable tasks over one unlocked flag.
-        cfg_unreadable = False  # a run of cycles whose own config could not be read, logged once
         while True:
             t0 = time.ticks_ms()
             cfg_int = await self.cfgmgr.get_int_values(_VAL_INT_FIELDS)
@@ -266,36 +238,23 @@ class NotificationService(SensorReaderConfig):
                 or len(cfg_bool) != 1
             ):
                 interv: float = _CFG_FAIL_INTERVAL_S  # an int here, FlashInterval's float on a good read
-                if not cfg_unreadable:  # one entry and one console line per episode: a good read or a task restart ends it
-                    cfg_unreadable = True
-                    await self.pr.wrn_s("Error reading own configuration!", wrnno=_WRN_CFG_READ)
-                await self._store_notif_data(any_triggered=False, state=_STATE_CFG_UNREADABLE)
+                # Persisted every failing cycle; a repeat spends no slot (the newest-entry rule).
+                await self.pr.wrn_s("Error reading own configuration!", wrnno=_WRN_CFG_READ)
             else:
-                cfg_unreadable = False
                 on_h, on_m, off_h, off_m, flash_bri = cfg_int
                 interv, flash_dur = cfg_float
                 auto_on = cfg_bool[0]
-                any_triggered = False
-                state = _STATE_OFF
                 if auto_on and self._auto_active:
                     cur_time = await self._safe_local_time()
-                    if cur_time is None:  # no NTP sync, missing config, or a raising callback
-                        state = _STATE_NO_CLOCK
-                    else:
+                    if cur_time is not None:  # no NTP sync, missing config, or a raising callback
                         on_min_of_day = (on_h * 60) + on_m
                         off_min_of_day = (off_h * 60) + off_m
                         cur_min_of_day = (cur_time.hour * 60) + cur_time.minute
                         if _in_window(on_min_of_day, off_min_of_day, cur_min_of_day):
-                            state = _STATE_EVALUATED
                             for notif in self._registered:
-                                triggered = await self._check_one(notif)
-                                if triggered is None:
-                                    state = _STATE_PARTIAL
-                                elif triggered:
-                                    any_triggered = True
+                                if await self._check_one(notif):
                                     await self._trigger_signal(notif, flash_bri, flash_dur)
                                     await asyncio.sleep_ms(round(flash_dur * 2000))
-                await self._store_notif_data(any_triggered=any_triggered, state=state)
             await asyncio.sleep_ms(self._next_sleep_ms(interv, t0))
 
     def _next_sleep_ms(self, interv: float, t0: "_TicksMs") -> int:  # t0: an opaque ticks_ms() value - only ever compared via time.ticks_diff()
@@ -323,18 +282,12 @@ class NotificationService(SensorReaderConfig):
             await self.pr.err_s("local_time_callback failed:", e, errno=_ERR_CALLBACK)
             return None
 
-    async def _store_notif_data(self, *, any_triggered: bool, state: int) -> None:
-        await self._set_meas_data(NOTIFY(any_triggered, state, utc_now()))
-
     async def _trigger_signal(self, notif: NotificationSignal, flash_bri: int, flash_dur: float) -> None:
         r, g, b = notif.color
         try:  # caller-supplied callback, could legitimately misbehave
-            ok = await self._request_signal_cb(r * flash_bri, g * flash_bri, b * flash_bri, flash_dur)
+            await self._request_signal_cb(r * flash_bri, g * flash_bri, b * flash_bri, flash_dur)
         except Exception as e:
             await self.pr.err_s(notif.name, "request_signal_cb failed:", e, errno=_ERR_CALLBACK)
-            return
-        if not ok and not self._sink_is_default:  # outside the try: a raise here is not the callback's failure
-            await self.pr.wrn_s(notif.name, "LED signal dropped: LED busy.", wrnno=_WRN_NOTIFY_SIGNAL_DROPPED)
 
     def get_task_starters(self) -> "list[TaskStarter]":
         return [self.start_asy_monitor, self.start_asy_pause]
@@ -350,18 +303,10 @@ class NotificationService(SensorReaderConfig):
         evtloop = asyncio.get_event_loop()
         return evtloop.create_task(self._pause_loop())
 
-    async def get_data(self) -> NOTIFY:
-        # Narrows to this Reader's concrete NOTIFY - see SPECIFICATION.md C.4.2's get_data() convention.
-        return await self._get_meas_data()  # type: ignore[return-value]
-
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         # self._cfg_schema is the full combined schema (own fields + every kept signal's field),
         # built once at construction, so this covers everything in one call.
         return await self._get_dict_cfg(self.name, self._cfg_schema)
-
-    async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
-        data = await self.get_data()
-        return make_dict(data, _FIELDS, name=self.name)
 
     async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()

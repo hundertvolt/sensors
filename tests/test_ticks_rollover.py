@@ -266,9 +266,7 @@ def _install_stepping(module: object, start: int, step_ms: int, on_read: "Callab
 def _neopixel_wait_outcome(start: int, wait_ms: int, *, release_after_ms: "int | None") -> "tuple[bool, bool, bool]":
     # request_signal() behind a queued signal, its deadline armed at `start`: (still pending one ms before the deadline
     # or after the release, finished at the deadline, returned True); release_after_ms clears the signal that far in.
-    driver = NeopixelDriver(0, log=LogConfig(None, 10, None))
-    driver.neopixel_freq = 100  # the driver's own fixed state, set from outside: 10 ms polls
-    driver._frame_ms = _NEOPIXEL_FRAME_MS
+    driver = NeopixelDriver(0, neopixel_freq=1000 // _NEOPIXEL_FRAME_MS, log=LogConfig(None, 10, None))
     run(driver.setup())
     fake = _install(asy_neopixel_driver, start)
 
@@ -683,13 +681,13 @@ def test_next_sleep_ms_crosses_the_ticks_wrap() -> None:
 
 
 def test_neopixel_signal_deadline_crosses_the_ticks_wrap() -> None:
-    # Armed half a wait before the wrap, the deadline lands past it: held one ms before, dropped at it.
+    # Armed half a wait before the wrap, the deadline lands past it: held one ms before, queued at it.
     wait_ms = _SIGNAL_WAIT_MS
     start = TICKS_PERIOD - wait_ms // 2
     assert start + wait_ms > TICKS_PERIOD
     wrapped = _neopixel_wait_outcome(start, wait_ms, release_after_ms=None)
     assert wrapped == _neopixel_wait_outcome(_REFERENCE_NOW, wait_ms, release_after_ms=None)
-    assert wrapped == (True, True, False)
+    assert wrapped == (True, True, True)
 
 
 def test_neopixel_signal_released_past_the_wrap_is_taken() -> None:

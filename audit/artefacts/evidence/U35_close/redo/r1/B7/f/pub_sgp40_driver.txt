@@ -1,0 +1,12 @@
+get_data
+get_dict_cfg
+get_dict_data
+get_error_counter
+get_mem_status
+get_task_starters
+get_timer_starters
+get_trigger_starters
+reset_voc
+start_asy_read
+start_timer
+stop_timer

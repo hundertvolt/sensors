@@ -374,9 +374,10 @@ class SCD30_Reader(SensorReaderConfig):
         return _FRC_READY
 
     async def _frc_not_measuring(self) -> None:
-        # The last sample again with state 0 and its own TS, in one data-lock hold (no await inside).
+        # The sample's own TS with no values and state 0, in one data-lock hold (no await inside): a stopped sensor
+        # publishes nothing stale (owner, 2026-11-04: "For the stopped sensor, option c, the clean solution").
         self._frc_measuring = False
-        await self._republish(_FIELDS, FRCState=_FRC_NOT_MEASURING, FRCWait=None)
+        await self._republish(_FIELDS, CO2=None, Temp=None, Hum=None, WetBulb=None, DewPoint=None, FRCState=_FRC_NOT_MEASURING, FRCWait=None)
 
     def _frc_reset(self) -> None:
         # Readiness starts over: a soft reset, an interval change, a measurement start, a stop or a missed measurement.

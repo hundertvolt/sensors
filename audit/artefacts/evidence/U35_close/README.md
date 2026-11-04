@@ -216,3 +216,19 @@ records the measurements.
 The previous snapshot's fix also moved one import out of the test file's closing `__main__` block, which a build-chain
 test requires in every test file, so both unit-test lanes failed that one check. The block is back as it was; the whole
 build-chain test tier passes. Test-only, no firmware byte changes; `redo/r1/B36/GATE.md` records it.
+
+## Thirty-second snapshot (2026-11-04): R1's seventh unit, the LED and the notification
+
+The plan's B7 unit, on the standing go-ahead. The LED driver and the notification service go back to their pre-audit
+forms: the overlay is written only when it changes, the ramp clamps and floors its own values, an internal request
+queues instead of dropping (W67 goes), and the request event lines print again. `/status`'s notification block keeps
+the remaining pause time alone (owner, 2026-11-03 20:35: "As you said that code functionality can be tested without
+all that, we do as recommended, only keep pause time"); the Status page keeps its pause row. The falsification found
+the stopped SCD30's last CO2 still flashing once the sample-age bound had gone; the owner chose the clean fix
+(2026-11-04 05:28: "For the stopped sensor, option c, the clean solution"): after two missed intervals or a stop, the
+SCD30 publishes its values as unavailable until its next measurement, and the SGP40 pauses for as long (owner, 06:32:
+"Totally correct implementation, following the rules, this is fine."). Three fix
+rounds in all, one of them from the lead's too-wide relay of the pause-time answer. `redo/r1/B7/` holds the action
+list, brief, hand-back, falsification brief and result, the sizes and the merged head's checks (`int/`);
+`redo/r1/OWNER_QUESTIONS_B7_B8.md` the owner's questions for B7 and B8 with their answers. The unit took about twice
+its budget share; the owner chose to go on with each unit stopping at 80 % of its share (2026-11-04 06:11).

@@ -540,3 +540,38 @@ their context). From now on every owner word is appended here as it is given.
   Decided: the page's GET check goes back to the pre-audit form (an empty body refused, a typing cast otherwise).
 - 2026-11-03 20:47 UTC (time taken at reading), B8 question 5 (a saturated counter shown as "65535+"): "Yes, that was a
   good addition, keep it" Decided: kept, now with the owner's agreement on record.
+- 2026-11-03 20:53 UTC (time taken at reading), B8 question 6 (double stripes for Invalid and Failed): "No, don't keep
+  it, it would make the page move strangely on errors, color alone is fine." Decided: solid stripes again, as before
+  the audit (`25caf528:html/style.css:325-346`); the state shows by colour alone.
+- 2026-11-03 21:55 UTC (time taken at reading), budget: "28% usage - still within expectation?" Answered: a little
+  over the plan, inside the owner's range: the plan's running total through B7 is 25 %, B7 closes near 29 % (its gate,
+  falsification, merge and snapshot still to run), so about 3 points over, under the 5-point stop; the two CI-fix
+  snapshots (30, 31) cost about a point. At the same overrun the whole job ends near 57-58 %, not 55 %.
+- 2026-11-04 05:28 UTC (time taken at reading), B7 question 7 (a stopped SCD30 keeps driving the LED): "For the
+  stopped sensor, option c, the clean solution" Decided: once the SCD30 has missed two of its own measurement intervals
+  (FRCState "not measuring"), it publishes CO2, Temp, Hum, WetBulb and DewPoint as unavailable; the notification skips
+  them; the website shows them unavailable while stopped. The 3 h sample-age bound stays removed. Relayed to B7.
+- 2026-11-04 06:03 UTC (time taken at reading), scheduled check-ins: "I already told you several times not to schedule
+  check ins but use hooks" Decided: no scheduled check-ins of any kind (no send_later, no scheduled task, no wakeup
+  loop). Waiting is event-driven only: PR #107's activity subscription and the background agents' completion notices.
+  The pending 06:46 check-in is deleted; no enabled scheduled task remains. Binding for the rest of the job.
+- 2026-11-04 06:07 UTC (time taken at reading), budget: "Usage at 31%.Still within the plan?" Answered: no. The plan's
+  running total through B7 is 25 %; B7 is not closed (round 3 in flight, then merge, coverage run, snapshot, about 1
+  point), so 6 points over now and about 7 at its close, past section 5's 5-point stop. B7 alone took about twice its
+  3-point share and was already past 80 % of it at the 21:55 reading; the lead missed that stop. Forecast: 57 % if the
+  remaining 25 planned points run to plan, 63-64 % at B1-B7's overrun. Put to the owner as a budget stop (close B7 and
+  go on with the unit stop applied strictly, close B7 and pause, or stop the round in flight); recommended the first.
+  The round in flight finishes; nothing else starts until the owner answers.
+- 2026-11-04 06:11 UTC (time taken at reading), budget stop: "Option 1, keep rolling, and take extra care that we are
+  not currently creating a runaway, self-inflicted complexity increase." Decided: close B7, then go on; from B8 on, a
+  unit reaching 80 % of its share stops with a report at once. Standing check from now on: every round's diff is read
+  for self-inflicted complexity (new mechanisms, tests or docs beyond what the item needs; net growth against
+  pre-audit) before it is merged, and B7's round 3 is checked that way first.
+- 2026-11-04 06:29 UTC (time taken at reading), the SGP40 consequence of B7 round 3: "What is the \"SGP40 knock on
+  effect\"?" Answered: the SGP40 compensates with the SCD30's Temp and Hum and skips its cycle when either is None (the
+  pre-audit rule, unchanged); a stopped or stalled SCD30 now publishes None, so VOC readings pause until the SCD30
+  measures again, where before they ran on its last values. No decision asked; the alternative named (the datasheet
+  defaults while the source is empty), not recommended.
+- 2026-11-04 06:32 UTC (time taken at reading), the SGP40 consequence: "Totally correct implementation, following the
+  rules, this is fine." Decided: kept; the SGP40 pauses its VOC readings while its compensation source has no values,
+  a stopped or stalled SCD30 included; no default-compensation fallback.
