@@ -115,11 +115,14 @@ def _round_trip() -> "bool | int | None":
         try:
             conn.settimeout(_EXCHANGE_S)
             conn.send(conn.recv(len(_PAYLOAD)))
+            echoed = client.recv(len(_PAYLOAD)) == _PAYLOAD
+            client.close()  # closed first, so its TIME_WAIT holds its own ephemeral port, never _PORT for the next run
         finally:
             conn.close()
-        return client.recv(len(_PAYLOAD)) == _PAYLOAD
     except OSError as e:
         return e.errno
+    else:
+        return echoed
     finally:
         client.close()
         server.close()
