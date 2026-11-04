@@ -95,3 +95,15 @@ be done anyway and which is independent and does not cause interference can alre
       unknown command would fall into the last case, erasefram.
     - To the findings list: twin.md's uart_crossover row holds one (c) case; the SGP40 quality red at 32768 only is
       unexplained; `named.fram_alloc`'s "comparable allocation" reading is contested.
+17. **Close**: fast-forward of `S/wt-u35int` to `66e42f05`; merged-head checks `r3_int` (lint, three mypy passes, 739
+    tests_scripts tests); snapshot 35 `d6bd2d45` (parent `d14239ce`), pushed 22:19 UTC; the red-flag walk's JSON and
+    the coverage run's missed-line JSON left out as regenerable (snap35_exclude.txt). Next PARENT: `d6bd2d45`.
+18. **CI on snapshot 35** (run 41924236136, 33 of 34 jobs green): `Unit tests (shipped gc.threshold)` red on
+    `test_buildgen_validate.py::test_a_warn_signal_off_the_notification_instance_builds_and_is_emitted_nowhere`.
+    Root cause: the test compares two generated modules whole, and each embeds `_BUILD_DATE` to the second
+    (`buildgen/version.py` `current_build_date()`): two generations straddling a second boundary differ. Born in R1
+    (`6f24e171`, B8), not R3's; reproduced 5 of 40 back-to-back runs (`r3_ci_buildgen_seed`). Fix: the file's
+    `_generated()` helper pins `build_date`, the generator's own parameter for this (Part L.7); an in-memory moving
+    date (`r3_ci_date_plant3`) checks every tests_scripts file for the same race.
+    Fixed in `c78bbcf1`: red on the old test with the moving date, green on the new (`r3_ci_date_red`); merged-head
+    checks `r3_int2` clean (1,401 tests); snapshot 36 on parent `d6bd2d45`.

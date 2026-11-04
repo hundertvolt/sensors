@@ -1,0 +1,3 @@
+tests_scripts/test_buildgen_validate.py
+tests_scripts/test_buildgen_generate.py
+tests_scripts/test_comment_block_cap.py

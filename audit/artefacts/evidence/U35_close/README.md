@@ -286,3 +286,11 @@ lanes' records (`d1/`, `d2/`, `m/`, round 1's sheet in `d2/`), the falsification
 round 1 scripts are in `redo/hw_handover/mp/`. Left out as regenerable: the red-flag walk's JSON (`audit/sweeps/
 redflags.py` at `17688315`, 2.5 MB) and the coverage run's missed-line JSON. 371 lines added, 56 removed; `src/`
 bytecode unchanged (194,883 B).
+
+## Thirty-sixth snapshot (2026-11-04): R3's CI fix, a build date that moved between two generations
+
+Snapshot 35's CI (run 41924236136) was green but for one tests_scripts test, born in R1's build-chain unit: it compares
+two generated modules whole, and each carries its build date to the second, so two generations straddling a second
+boundary differ (5 of 40 back-to-back runs). The file's helper now pins the date through the generator's own
+parameter. With a date that moves on every in-process call, no other tests_scripts test races the clock (the six that
+check the default is the real current date aside). `redo/r3/ACTION_LIST.md` item 18 has the account.

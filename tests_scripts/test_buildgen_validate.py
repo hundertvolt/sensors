@@ -34,6 +34,9 @@ if TYPE_CHECKING:
     from buildgen.model import DeviceModel
 
 
+_BUILD_DATE ="2026-09-12T10:00:00Z"  # any fixed stamp: the generator's own wall-clock default moves between calls
+
+
 @pytest.fixture
 def src_dir(repo_root: Path) -> Path:
     return repo_root / "src"
@@ -58,8 +61,9 @@ def _at(doc: "Mapping[str, object]", *keys: str) -> object:
 
 
 def _generated(tmp_path: Path, src_dir: Path, doc: "TomlDoc") -> "tuple[DeviceModel, str]":
-    # The model and the generated module of one fixture, so an accept test checks what reaches the device.
-    result = generate_device(write_doc(tmp_path, "fixture", doc), src_dir)
+    # The model and the generated module of one fixture, so an accept test checks what reaches the device; the build
+    # date pinned, so two generations compare equal across a second boundary (Part L.7).
+    result = generate_device(write_doc(tmp_path, "fixture", doc), src_dir, build_date=_BUILD_DATE)
     return result.model, result.module_source
 
 
