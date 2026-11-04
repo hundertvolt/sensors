@@ -666,7 +666,7 @@ it checks and why; this section is the practical how-to.
 
 ```bash
 scripts/run_digital_twin_ci.sh <device>                     # a device of devices/*.toml: build -> suite -> harness, both GC stages
-scripts/run_digital_twin_ci.sh <device> --gc-threshold -1 --part suite   # one stage, one part: what one CI job runs
+scripts/run_digital_twin_ci.sh <device> --gc-threshold -1   # one stage: what one CI job runs
 uv run scripts/_digital_twin_ci_suite.py --micropython-bin <path> --device <device> --only 5,5b --repeat 3   # diagnosis
 ```
 
@@ -877,8 +877,9 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
     The command states, the hazards and a hang at each shutdown step are the scenario harness's.
 
 **The host-side scenario harness** (`scripts/_digital_twin_scenarios.py`, SPECIFICATION.md E.9)
-runs after the suite at each GC stage, holding port 53 (`--exclusive-port-53`), so its DNS scenarios
-run too; without that lock they are deselected and listed. Each scenario boots the device's
+runs, in `scripts/run_digital_twin_ci.sh`, after the suite at each GC stage, holding port 53
+(`--exclusive-port-53`): only its DNS scenarios, which `scripts/test.sh`'s scenario jobs, on a shared
+port 53, deselect and list. Each scenario boots the device's
 generated graph in a twin and drives it over HTTP, reading only the runner's stdout and its
 `--test-*` lines. Every boot logs at warning level, so a caught allocation failure's line reaches the
 memory gate (the owner's option 1 for the unit tests, owner, 2026-10-20, asked, paraphrase, whether

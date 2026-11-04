@@ -638,7 +638,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--gc-threshold", type=int, default=-1, help="gc.threshold() of every twin booted (default -1)")
     parser.add_argument("--only", type=_run_selection, help="run only these scenarios, comma-separated")
     ports = parser.add_mutually_exclusive_group()
-    ports.add_argument("--exclusive-port-53", action="store_true", help="run the DNS scenarios too; the caller holds port 53's lock")
+    ports.add_argument("--exclusive-port-53", action="store_true", help="run only the DNS scenarios; the caller holds port 53's lock")
     ports.add_argument("--shared-port-53", action="store_true", help="deselect the DNS scenarios (the default)")
     parser.add_argument("--run-record", type=Path, help="write each scenario's outcome as JSON here")
     return parser
@@ -2389,7 +2389,7 @@ def run_order(chosen: "list[tuple[Scenario, str | None]]") -> "list[tuple[Scenar
 
 def select(device: str, only: "frozenset[str] | None", *, exclusive_port_53: bool) -> "list[tuple[Scenario, str | None]]":
     # Every registered scenario with why it does not run (None: it runs): a driver the device does not wire, a
-    # device-independent mechanism another device runs, a shared port 53, or not named by --only.
+    # device-independent mechanism another device runs, the other side of the port-53 split, or not named by --only.
     drivers = {driver for _key, driver, _ext in _instances(device)}
     chosen: list[tuple[Scenario, str | None]] = []
     for item in SCENARIOS.values():
@@ -2403,6 +2403,8 @@ def select(device: str, only: "frozenset[str] | None", *, exclusive_port_53: boo
             chosen.append((item, f"skipped: a device-independent mechanism, run on {runner or 'no device'} only (SPECIFICATION.md E.2.1)"))
         elif item.needs_exclusive_port_53 and not exclusive_port_53:
             chosen.append((item, "deselected: needs exclusive port 53 - run_digital_twin_ci.sh runs it"))
+        elif exclusive_port_53 and not item.needs_exclusive_port_53:
+            chosen.append((item, "deselected: runs on a shared port 53 - scripts/test.sh runs it"))
         else:
             chosen.append((item, None))
     return chosen

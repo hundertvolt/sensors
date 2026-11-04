@@ -212,12 +212,14 @@ def test_a_shared_port_53_deselects_the_dns_scenarios_by_reason(harness: ModuleT
     assert exclusive, "no scenario needs port 53 alone - the deselection rule has nothing to hold"
     chosen = {item.name: why for item, why in harness.select(DEVICE_NAMES[0], None, exclusive_port_53=False)}
     assert all(chosen[name] == "deselected: needs exclusive port 53 - run_digital_twin_ci.sh runs it" for name in exclusive), chosen
-    assert all(why is None for item, why in harness.select(DEVICE_NAMES[0], None, exclusive_port_53=True) if item.needs_exclusive_port_53)
+    exclusive_run = harness.select(DEVICE_NAMES[0], None, exclusive_port_53=True)
+    assert all(why is None for item, why in exclusive_run if item.needs_exclusive_port_53)
+    assert all(why == "deselected: runs on a shared port 53 - scripts/test.sh runs it" for item, why in exclusive_run if not item.needs_exclusive_port_53 and not str(why).startswith("skipped:"))
 
 
 def test_a_device_without_a_scenarios_driver_skips_it_by_name(harness: ModuleType) -> None:
     device = next(d for d in DEVICE_NAMES if "isl29125" not in {driver for _k, driver, _e in harness._instances(d)})
-    chosen = {item.name: why for item, why in harness.select(device, None, exclusive_port_53=True)}
+    chosen = {item.name: why for item, why in harness.select(device, None, exclusive_port_53=False)}
     assert chosen["isl29125_config_put_during_get_loops"] == "skipped: device wires no isl29125", chosen
 
 
@@ -227,7 +229,7 @@ def test_a_device_independent_scenario_runs_on_its_first_device_with_the_propert
     for item in firsts:
         having = [d for d in harness.generated_devices() if harness._has_property(d, item.first_device)]
         assert having, f"{item.name}: no generated device has {item.first_device}"
-        runs = {d: {s.name: why for s, why in harness.select(d, None, exclusive_port_53=True)}[item.name] for d in harness.generated_devices()}
+        runs = {d: {s.name: why for s, why in harness.select(d, None, exclusive_port_53=item.needs_exclusive_port_53)}[item.name] for d in harness.generated_devices()}
         assert runs[having[0]] is None and all(why == f"skipped: a device-independent mechanism, run on {having[0]} only (SPECIFICATION.md E.2.1)" for d, why in runs.items() if d != having[0]), runs
 
 

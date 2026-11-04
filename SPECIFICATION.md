@@ -6043,8 +6043,8 @@ FRAM's backup chunk blank. Its own later background is told apart by its event, 
 fresh hotspot-mode boot never syncs NTP, so each SGP40 writes its backup untimestamped (W35) about
 90 s after the spawn, then each backup period, and an idle check reads a move whose only new slot
 is that W35 as the boot's own, never the scenario's.
-Both runners drive it: `scripts/run_digital_twin_ci.sh` runs it for its device at each GC stage,
-holding port 53 (`--exclusive-port-53`), so the scenarios that need an exclusive port 53 run;
+Both runners drive it, each scenario once per device and GC stage: `scripts/run_digital_twin_ci.sh`
+runs, holding port 53 (`--exclusive-port-53`), only the scenarios that need an exclusive port 53;
 `scripts/test.sh` runs one `scenarios[<device>]` job per derived device at the run's GC stage on a
 shared port 53 (`--shared-port-53`), those scenarios deselected and listed, and counts each job's run
 record into its summary block (none under `--coverage`). Run alone, the harness takes port 53 itself

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # L2 for one device: archives that device's previous logs, builds its site and generated modules, runs
-# scripts/_digital_twin_ci_suite.py at both GC stages, then the host-side scenario harness at both, and exits with the
-# worst result. Reference: digital_twin/README.md "Automated CI suite"; ci.yml runs it per device, GC stage and part.
+# scripts/_digital_twin_ci_suite.py at both GC stages, then the scenarios needing port 53 alone at both, and exits with
+# the worst result. Reference: digital_twin/README.md "Automated CI suite"; ci.yml runs it per device and GC stage.
 #
 # Archive: the previous run's logs and state (digital_twin_ci_logs/<device>/) move into
 # build/archive/digital_twin_ci_<device>/ (last three kept); nothing is deleted.
@@ -11,9 +11,10 @@ if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
     cat <<EOF
 $usage_line
 Runs scripts/_digital_twin_ci_suite.py for one devices/<device>.toml, Run 3 again on a CRC16-derived
-TOML for a device wiring a uart_link pair (the suite part), then scripts/_digital_twin_scenarios.py (the
-harness part), and exits with the worst result. Each runs at both GC stages, -1 then 32768, or with
---gc-threshold at that one only; --part runs one part only (one CI job per device, stage and part).
+TOML for a device wiring a uart_link pair (the suite part), then scripts/_digital_twin_scenarios.py's
+scenarios that need port 53 alone (the harness part; scripts/test.sh runs the rest), and exits with the
+worst result. Each runs at both GC stages, -1 then 32768, or with --gc-threshold at that one only;
+--part runs one part only.
 --only and --repeat go to the suite's own options of those names (diagnosis).
 
 Environment:
