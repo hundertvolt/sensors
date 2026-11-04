@@ -613,3 +613,25 @@ their context). From now on every owner word is appended here as it is given.
   nothing else starts until the owner answers. Recommended: let R2 close (merge, checks, snapshot, about 1 point).
 - 2026-11-04 15:49 UTC (time taken at reading), R2 at its 80 % mark: "let it close, go on" Decided: R2 closes (the
   merge, the merged-head checks, snapshot 34 and its CI, the report), then R3.
+- 2026-11-04 16:16 UTC (time taken at reading), parallelism and budget: "Our guidelines about parallel work still
+  apply. Work which has to be done anyway and which is independent and does not cause interference can already be
+  started. The weekly budget count I want to keep bounded is overall, not per hour." Decided: work owed anyway that is
+  independent of R3 and of the snapshot 34 CI, and does not interfere with them, starts now in parallel; the budget
+  bound is the week's total, so parallel running is fine when the work is owed anyway; the unit stops stay.
+- 2026-11-04 16:30 UTC (time taken at reading), datasheets: ""There are no RP2040, flash-chip or Wi-Fi-chip
+  datasheets in the repository."   No idea why that information so stubbornly persists again and again. They are all
+  in the private subrepo and you have access." Recorded as: a repeat of the 2026-10 fact (line 68, "You have access
+  to the datasheets repo and may fetch whatever you need"); phase A read the main checkout's stale plain folder, not
+  the `datasheets` submodule (`hundertvolt/datasheets`, pinned 786c947c). Fix: the submodule is fetched for R3, the
+  limit withdrawn, and the location goes into common_r1.md so no brief repeats the error.
+- 2026-11-04 19:50 UTC (time taken at reading), budget: "Good estimate. We are at 43. What would you expect as all
+  final sum?" Recorded as: a meter reading, 43 % of the week, with R3's phase B done and its fix round prepared, not
+  sent. R3 began near 40 % (estimated), so about 3 of its 5 points are spent and its 80 % stop (near 44 %) is not
+  reached: the fix round starts under the standing go-ahead. Answered with the forecast of the final sum.
+- 2026-11-04 19:51 UTC (time taken at reading), R3's 80 % mark: "let R3 close, go on" Decided: R3 runs through its
+  80 % mark to its close (the fix round, the gate, the falsification, the merge, the merged-head checks, a snapshot
+  and its CI, the report) with no stop at the mark, then the plan goes on to round 1 (which still needs the owner's
+  hardware go-ahead in this session).
+- 2026-11-04 20:16 UTC (time taken at reading), open questions: "do you have open questions for me?" Recorded as: a
+  check, no ruling. Answered: nothing blocks R3; D1 and M report no owner item (no U35-37 class (a) hit, no dead
+  line). The next question is round 1's hardware go-ahead, asked once R3 has closed.

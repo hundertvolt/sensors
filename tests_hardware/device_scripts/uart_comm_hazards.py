@@ -120,6 +120,14 @@ async def _clean(wdt: "machine.WDT", pair: _Pair) -> bool:
     return (await _listened(wdt, pair, pair.initiator.uart_set(_CMD_ECHO, b"ok")))[0]
 
 
+async def _evidence(pair: _Pair) -> "dict[str, object]":
+    # A failing exchange's evidence: both drivers' ring counters and each link logger's held, newest entries.
+    logs = []
+    for comm in (pair.initiator, pair.responder):
+        logs.append(log_record(await comm.get_error_counter(), comm.name))
+    return {"rx_overruns": [driver.rx_overruns for driver in pair.drivers], "discarded_bytes": [driver.discarded_bytes for driver in pair.drivers], "logs": logs}
+
+
 async def _h1a(wdt: "machine.WDT", pair: _Pair) -> None:
     # Two initiations at once on one instance: one completes, the other is refused as re-entrant; whole frames only.
     await pair.initiator.reset_error_counter()
@@ -134,7 +142,7 @@ async def _h1a(wdt: "machine.WDT", pair: _Pair) -> None:
     await settled(wdt, listener)
     fact("h1a", {
         "results": [await first, await second], "log": log_record(await pair.initiator.get_error_counter(), pair.initiator.name),
-        "frames_seen": pair.recorder.seen - seen, "frames_whole": pair.recorder.whole - whole,
+        "frames_seen": pair.recorder.seen - seen, "frames_whole": pair.recorder.whole - whole, "evidence": await _evidence(pair),
     })
 
 
@@ -159,8 +167,9 @@ async def _h2(wdt: "machine.WDT", pair: _Pair) -> None:
     while not task.done():
         await settled(wdt, task)
     failed = await task is False
+    evidence = await _evidence(pair)
     attempts, recovered = await _recover(wdt, pair)
-    fact("h2", {"raw_get_written": wrote, "failed": failed, "log": log_record(await pair.initiator.get_error_counter(), pair.initiator.name), "attempts": attempts, "recovered": recovered})
+    fact("h2", {"raw_get_written": wrote, "failed": failed, "log": log_record(await pair.initiator.get_error_counter(), pair.initiator.name), "attempts": attempts, "recovered": recovered, "evidence": evidence})
 
 
 async def _h3(wdt: "machine.WDT", pair: _Pair) -> None:
@@ -180,7 +189,10 @@ async def _h3(wdt: "machine.WDT", pair: _Pair) -> None:
             if not await settled(wdt, listener):
                 await pair.responder.clear()
                 await settled(wdt, listener)
-        sweeps.append({"field": name, "verdicts": verdicts, "clean_after": await _clean(wdt, pair)})
+        sweep: dict[str, object] = {"field": name, "verdicts": verdicts, "clean_after": await _clean(wdt, pair)}
+        if not sweep["clean_after"]:
+            sweep["evidence"] = await _evidence(pair)
+        sweeps.append(sweep)
     fact("h3", sweeps)
 
 
@@ -222,7 +234,10 @@ async def _race(wdt: "machine.WDT", pair: _Pair, point: str) -> "dict[str, objec
     if not await settled(wdt, listener):
         await pair.responder.clear()
         await settled(wdt, listener)
-    return {"point": point, "result": await task, "next_ok": await _clean(wdt, pair)}
+    race: dict[str, object] = {"point": point, "result": await task, "next_ok": await _clean(wdt, pair)}
+    if not (race["result"] and race["next_ok"]):
+        race["evidence"] = await _evidence(pair)
+    return race
 
 
 async def _recover(wdt: "machine.WDT", pair: _Pair) -> "tuple[int, bool]":
@@ -242,11 +257,11 @@ async def _stalled_tx(wdt: "machine.WDT", pair: _Pair) -> None:
     pair.reinit_initiator(_STALL_BAUD)
     filled = await pair.write_raw(0, bytearray(_STALL_FILLER_BYTES))
     failed = (await _listened(wdt, pair, pair.initiator.uart_set(_CMD_ECHO, b"stalled")))[0] is False
-    log = log_record(await pair.initiator.get_error_counter(), pair.initiator.name)
+    log, evidence = log_record(await pair.initiator.get_error_counter(), pair.initiator.name), await _evidence(pair)
     pair.reinit_initiator(pair.buses[0]["baudrate"])
     await fed_sleep_ms(wdt, _STALL_SETTLE_MS)
     attempts, recovered = await _recover(wdt, pair)
-    fact("stalled_tx", {"filled": filled, "failed": failed, "log": log, "attempts": attempts, "recovered": recovered})
+    fact("stalled_tx", {"filled": filled, "failed": failed, "log": log, "attempts": attempts, "recovered": recovered, "evidence": evidence})
 
 
 async def _main() -> None:

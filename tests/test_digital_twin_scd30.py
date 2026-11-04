@@ -142,6 +142,35 @@ def _largest_offset_on(device: str) -> None:
     assert temperature is not None and abs(temperature - (sensed - 655.35)) < 0.01
 
 
+def _missed_edge_on(device: str) -> None:
+    # The test below on one device.
+    reader, chip = _reader_on_the_twin_bus(device, cfg_path=_scratch.dir())
+
+    async def scenario() -> "tuple[list[bool], bool, int, int]":
+        await reader.setup()
+        assert reader.cfgmgr.valid is True
+        assert await reader._init_scd() is True
+        errors = (await reader.get_error_counter())["SCD30"]["ErrCount"]
+        reader._read_event.clear()
+        chip._produce_new_reading()  # data ready, the line held high; no IRQ is registered, so its rising edge is missed
+        loop = asyncio.get_event_loop().create_task(reader._irq_loop())
+        due = []
+        for _ in range(reader._trigger_half_ticks):  # base ticks with the line high, up to the fallback's threshold
+            reader._base_trigger_event.set()
+            for _turn in range(3):
+                await asyncio.sleep(0)
+            due.append(bool(reader._read_event.state))
+        await cancel(loop)
+        results, new_data = await reader._read_scd()  # the one read the read loop then makes
+        assert await reader._error_check(results, condition=results[0] is None)
+        return due, new_data, errors, (await reader.get_error_counter())["SCD30"]["ErrCount"]
+
+    with FastAsyncSleep():
+        due, new_data, errors, after = run(scenario())
+    assert due == [False] * (len(due) - 1) + [True], f"the read fell due at ticks {due}, not at the threshold's last"
+    assert new_data is True and after == errors, f"the fallback read found no data ({new_data}) or logged {after - errors} entr(ies)"
+
+
 def _reader_on_the_twin_bus(device: str, cfg_path: str) -> "tuple[SCD30_Reader, SCD30Chip]":
     # The real reader on the bus the device wires its SCD30 on, built as its plan and generated module build it, every
     # neighbour on it; the measurement Timers of the chip and of each neighbour are stopped, so each test produces what
@@ -704,6 +733,14 @@ def test_a_silent_scd30_publishes_not_measuring_and_runs_no_cycle_streak_or_entr
     for device in distinct_wirings("scd30"):
         machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
         _silent_scd30_on(device)
+
+
+def test_a_missed_data_ready_edge_is_read_by_the_fallback_at_its_threshold_with_no_entry() -> None:
+    # The RDY edge missed with the line held high: the irq loop's base ticks count it, the read falls due at the
+    # _trigger_half_ticks-th tick and not before, and it reads the waiting measurement with nothing logged.
+    for device in distinct_wirings("scd30"):
+        machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
+        _missed_edge_on(device)
 
 
 def test_fault_injection_on_writeto_and_readfrom_into() -> None:

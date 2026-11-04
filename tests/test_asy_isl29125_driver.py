@@ -2901,9 +2901,12 @@ def test_start_timer_degrades_when_the_alarm_pool_is_exhausted() -> None:
         _i2c, reader = _make_reader("timer_" + exc.__name__)
         with RaiseOnArm(exc):
             reader.start_timer()  # must not raise
+        assert reader._trigger_timer.period == -1  # never actually armed
+        assert reader._trigger_timer.callback is None  # nothing wired to _base_trigger_event either
+        assert run(reader.get_error_counter())["ISL29125"]["ErrCount"] == 0  # a console line, never a persisted entry
         # The IRQ is still wired even though the timer could not arm - the interrupt path is
         # independent of the divider, which is what requirement 17 relies on in reverse.
-        assert reader.irq_pin.irq_handler is not None
+        assert reader.irq_pin.irq_handler == reader._on_irq
 
 
 def test_stop_timer_deinits_the_real_timer() -> None:

@@ -16,6 +16,10 @@ module"): a downstream fault is an error at its level; the level above that hand
   named in your brief; it starts at the integration head.
 - Shell setup for every command: `export PATH=S/uvenv/bin:/root/pico-toolchain/node/node-v24.22.1-linux-x64/bin:$PATH
   UV_OFFLINE=1 UV_PROJECT_ENVIRONMENT=S/wt-base/.venv; source S/wt-base/.venv/bin/activate` (the run wrapper does it).
+- Datasheets: the private repository `hundertvolt/datasheets`, cloned read-only at `/home/user/datasheets/` (every
+  chip, the RP2040, W25Q16JV and CYW43439 included, under `pico w/`). A worktree's `datasheets/` submodule is not
+  initialised and `/home/user/sensors/datasheets/` is a stale plain folder: never conclude from either that a
+  datasheet is missing (owner, 2026-11-04 16:30 UTC: "They are all in the private subrepo and you have access.").
 - Every run, a short probe included, goes through `S/u35/lead/run.sh <worktree> <label> "<command>"` (network
   namespace, nice 19, run log lines, a disk check; output in `S/u35/lead/<label>.log`). Prefix labels with your unit.
 - One MicroPython test file, both GC stages: `TZ=UTC MICROPYPATH=build/generated_src:src:tests:frozen_modules:.frozen

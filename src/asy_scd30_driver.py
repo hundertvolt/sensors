@@ -168,7 +168,7 @@ _FIELDS = const(("CO2", "Temp", "Hum", "WetBulb", "DewPoint", "FRCState", "FRCWa
 # @web FRCWait section=measurements submitGroup=self kind=readonly label="FRC Settling Left" unit="s" decimals=0
 # @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" format=epoch
 
-# Datasheets/scd30/..._Interface_Description.pdf p.2: clock stretching is normally <=30ms but
+# datasheets/scd30/..._Interface_Description.pdf p.2: clock stretching is normally <=30ms but
 # reaches 150ms once a day for internal calibration, past rp2's own 50ms I2C default. Enforced as a
 # generator-checked build requirement (Part L.5), not a comment each TOML author must remember.
 # @requires bus.timeout>=200000

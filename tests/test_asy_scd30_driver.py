@@ -1244,6 +1244,25 @@ def test_set_dict_cfg_reports_contmeas_false_as_valid_when_the_real_stop_succeed
     assert i2c.log[-1] == ("writeto", _ADDR, bytes([0x01, 0x04]), True)
 
 
+def test_set_dict_cfg_reports_contmeas_false_as_failed_when_the_stop_command_is_naked_after_the_snapshot() -> None:
+    # The snapshot answered, then the chip NAKs: the stop command's write fails, so ContMeas fails in a body the
+    # snapshot let through, with one E CHIP_SET.
+    reader = _make_reader()
+    i2c = _reader_fake_i2c(reader)
+    _queue_snapshot(i2c)
+    real = reader._config_snapshot
+
+    async def snapshot_then_nak() -> "dict[str, CfgValue] | None":
+        got = await real()
+        i2c.nak_addresses.add(_ADDR)
+        return got
+
+    reader._config_snapshot = snapshot_then_nak  # type: ignore[method-assign]
+    result = run(reader._set_dict_cfg({"ContMeas": False}, reader.get_cfg_schema()))
+    assert result == {"ContMeas": "Failed"}
+    assert _entries(reader) == [("E", code("E", "CHIP_SET"))]
+
+
 def test_set_dict_cfg_reports_contmeas_false_as_failed_on_bus_fault() -> None:
     # The NAK fails the snapshot first: the body is refused whole, nothing is sent.
     reader = _make_reader()

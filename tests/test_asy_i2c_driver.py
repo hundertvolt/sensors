@@ -6,7 +6,7 @@ import errno
 import struct
 import time
 
-from _async_harness import run
+from _async_harness import cancel, run
 from _bus_hazard_catalog import PollRoundClock
 from _fast_sleep import check_sleep_ms
 from _src_const import src_int
@@ -1566,6 +1566,36 @@ def test_recover_re_constructs_even_after_a_held_scl() -> None:
     status, _made = _clear(i2c, recover=True)
     assert status == _REC_SCL_HELD
     assert _fake(i2c).log == [("deinit",), ("init", 100000, _HELD_SCL_TIMEOUT_US)]
+
+
+def test_a_runtime_clear_whose_scl_is_held_lets_another_task_run_between_any_two_reads_of_it() -> None:
+    # The runtime clear's SCL wait is awaited (Part F.3): a sibling task runs between any two reads of the held line.
+    i2c = _build(timeout=_HELD_SCL_TIMEOUT_US)
+    reads = [0]
+
+    def held(_id: int, _log: object) -> int:
+        reads[0] += 1
+        return 0
+
+    Pin.set_external_level(_SCL, held)
+    seen: list[int] = []
+
+    async def sibling() -> None:
+        while True:
+            seen.append(reads[0])
+            await asyncio.sleep_ms(0)
+
+    async def scenario() -> int:
+        task = asyncio.create_task(sibling())
+        await asyncio.sleep_ms(0)
+        status = await i2c.clear()
+        seen.append(reads[0])  # the reads after the sibling's last turn count too
+        await cancel(task)
+        return status
+
+    status = run(scenario())
+    gaps = [seen[i + 1] - seen[i] for i in range(len(seen) - 1)]  # MicroPython has no itertools.pairwise()
+    assert status == _REC_SCL_HELD and reads[0] > 1 and gaps and max(gaps) <= 1, f"status {status}, {reads[0]} reads, at most {max(gaps, default=0)} between two sibling turns"
 
 
 def test_each_clear_and_recover_steps_recoveries_once_and_the_sequence_wraps() -> None:

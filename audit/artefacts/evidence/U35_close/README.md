@@ -269,3 +269,20 @@ the bench loop-end test from the old watchdog delay (its first run is owed to ro
 `redo/r2/` holds the list, the briefs, the hand-back, the falsification, the action list with the lead's decisions
 and the merged head's checks (`int/`). One gate and one fix round, as budgeted; 374 lines added, 3,771 removed;
 `SPECIFICATION.md` 1,589,923 B to 1,129,050 B.
+
+## Thirty-fifth snapshot (2026-11-04): R3, the proof reading, the runs and round 1's preparation
+
+The plan's R3 round, on the standing go-ahead (owner, 2026-11-04 19:51: "let R3 close, go on"). Three lanes: one ran
+every test run (the hardware tier's collect-only, coverage, the plant run, the twin instrument runner at both stages,
+the per-file heap probe, the bench probes on the twin), two read the tree (proof rows, tables, round 1's sheet). No
+product defect and no new mechanism; the twin runner's 39 reds are 31 twin fidelity and 8 test. The twin record stays
+out of the tree, only the evidence holds it (lead decision on the owner's behalf). Added: the full soft-callback queue
+test and a malformed DNS flood inside the existing hotspot boot; the gaps the lead admitted, each test seen red on a
+planted break first; five fidelity rows; one flash-tier permanent skip. Removed: one VOC test pinning a limit no longer
+in `src/`. The falsification refuted parts of five claims; the one fix round made four tests fail on the break they
+name, restored the h2 hazard log's order and corrected two texts. One dead line, a generated guard, is listed for the
+owner and kept. `redo/r3/` holds the rows, the action list with the lead's decisions, the briefs, the hand-backs, the
+lanes' records (`d1/`, `d2/`, `m/`, round 1's sheet in `d2/`), the falsification and the carries to R4; the throwaway
+round 1 scripts are in `redo/hw_handover/mp/`. Left out as regenerable: the red-flag walk's JSON (`audit/sweeps/
+redflags.py` at `17688315`, 2.5 MB) and the coverage run's missed-line JSON. 371 lines added, 56 removed; `src/`
+bytecode unchanged (194,883 B).

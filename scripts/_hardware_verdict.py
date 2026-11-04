@@ -34,6 +34,8 @@ GATE_OPTIONS = {
 PERMANENT_SKIPS = (
     # A real rogue-NTP spoof needs an off-subnet host the bench lacks (owner, 2026-09-26; attempted on the bench first).
     "tests_hardware/bench/test_hotspot_role_reversal.py::test_spoofed_off_subnet_source_address_is_ignored",
+    # Silicon's run needs the bench network to reach the script's server, so it is the bench tier's test (twin only here).
+    "tests_hardware/flash/test_memory_stress.py::test_loop_lag_under_combined_load_stays_under_the_uart_reply_budget",
 )
 
 _NOT_COVERED = "not covered by this run"
