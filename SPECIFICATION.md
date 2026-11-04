@@ -11740,8 +11740,10 @@ refuses one, and all its state is RAM-only:
 | 3 | CO2 noisy |
 | 4 | ready for a forced recalibration |
 
-1. **Continuous measurement running**: two measurement intervals without data republish the last
-   sample with state 0 and its own `TS`.
+1. **Continuous measurement running**: two measurement intervals without data, or `ContMeas=false`,
+   republish the sample with `CO2`, `Temp`, `Hum`, `WetBulb` and `DewPoint` `null`, state 0 and its own
+   `TS`; the next measurement stores a full sample again (owner, 2026-11-04: "For the stopped sensor,
+   option c, the clean solution").
 2. **At the configured interval, uninterrupted** for `max(⌈360 / interval⌉, 5)` samples — 6 minutes or
    5 intervals, whichever is longer (Low Power Mode note); a missed measurement (more than 1.5
    intervals), a `MeasInterval` or `AmbPres` write, `ContMeas=false` or a soft reset starts it over.

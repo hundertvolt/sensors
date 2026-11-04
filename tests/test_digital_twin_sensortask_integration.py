@@ -1297,6 +1297,60 @@ def test_the_notification_window_spanning_midnight_flashes_red() -> None:
     run(scenario())
 
 
+def test_a_stopped_scd30_ends_its_alerts() -> None:
+    # CO2 above WarnCO2 read for real, then ContMeas off through the path PUT /sensors calls: the stopped SCD30 publishes
+    # no values (owner, 2026-11-04: "option c, the clean solution"), so the next monitor cycle flashes nothing.
+    # Driver-specific (an SCD30 feeding WarnCO2); both modules' L1 suites cover every device.
+    _driver_specific("notification", "scd30")
+
+    async def scenario() -> None:
+        await _boot()
+        _wall_clock.install(run_generic_integration.product_modules())
+        scd30, notif, pixel = module.scd30, module.notification, module.neopixel
+        # Synced and the RTC flag only: the window reads cettime(), and nothing here reads ntp_clock_valid().
+        await module.ntp._set_synced(value=True)
+        asy_base_classes.set_utc_valid()
+        warn_co2 = await _warn_co2()
+        chip = cast("SCD30Chip", _chip("scd30"))
+        chip.co2 = Walk(warn_co2 + 100, warn_co2 + 100, 0.0)
+        _step_sensor_waits(on=True)
+        tasks = [starter() for starter in scd30.get_task_starters()]
+        ended: list[int] = []
+        real_next_sleep = notif._next_sleep_ms
+
+        def next_sleep(interv: float, t0: "_TicksMs") -> int:  # a monitor cycle's last step: its sleep to the next one
+            ended.append(1)
+            sleep_ms: int = real_next_sleep(interv, t0)
+            return sleep_ms
+
+        async def blanked() -> bool:
+            return (await scd30.get_data()).CO2 is None
+
+        notif._next_sleep_ms = next_sleep  # an instance attribute, deleted in the finally
+        try:
+            for starter in scd30.get_timer_starters():
+                starter()
+            assert await _measured_above(chip, warn_co2), "the SCD30 never read the CO2 above the warning"
+            results = await scd30._set_dict_cfg({"ContMeas": False}, scd30.get_cfg_schema())
+            assert results == {"ContMeas": "Valid"}, results
+            assert await _wait_until_async(blanked, _WINDOW_WAIT_S, interval_s=_BIND_POLL_S), f"a stopped SCD30 published {await scd30.get_data()}"
+            local = await module.ntp.cettime()
+            assert local is not None
+            await _apply_window(*_window_around(local.hour))
+            seen = len(pixel._pixel.writes)
+            tasks += [pixel.start_asy_signal(), notif.start_asy_monitor()]
+            assert await _wait_until(lambda: bool(ended), _WINDOW_WAIT_S, interval_s=_BIND_POLL_S), "no monitor cycle ended"
+            assert _red_frames(list(pixel._pixel.writes)[seen:]) == [], "a stopped SCD30's last CO2 sample flashed"
+        finally:
+            for task in tasks:
+                await cancel(task)
+            del notif._next_sleep_ms
+            _step_sensor_waits(on=False)
+            asy_base_classes._utc_valid = False
+
+    run(scenario())
+
+
 async def _yield_until_above(read: "Callable[[], int]", floor: int) -> bool:
     return await _yield_until(lambda: read() > floor)
 
