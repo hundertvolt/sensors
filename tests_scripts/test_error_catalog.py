@@ -1,6 +1,6 @@
 """buildgen/error_catalog.json against every logging call in src/ and the generated modules, and every
 test-side mirror of it: one number per meaning, passed by keyword through a named constant, and no test
-or mock history holding a code the catalog does not give (SPECIFICATION.md C.7.1). Each check bites a plant."""
+or mock history holding a code the catalog does not give (SPECIFICATION.md C.7.1)."""
 
 import ast
 import gc
@@ -757,7 +757,7 @@ def test_the_status_tables_carry_text_and_a_tone_only_where_the_page_colours_the
     assert {num: _obj(row)["tone"] for num, row in _obj(status["CalLight"]).items()} == {"0": "neutral", "1": "good", "2": "warn", "3": "warn"}
 
 
-# ---- planted violations: each check above bites ---------------------------------------------------
+# ---- the checks on a planted catalog and module ----------------------------------------------------
 
 
 _PLANT_CATALOG: "JsonDict" = {
@@ -795,7 +795,7 @@ def _planted(source: str, path: str = "src/net.py") -> "tuple[_Module, ...]":
 
 
 def test_the_plants_start_clean() -> None:
-    # Every bite below changes one thing from this baseline, so a bite cannot pass on a second fault.
+    # The clean baseline: no check flags a well-formed planted catalog and module.
     modules = _planted(_PLANT_NET)
     assert not _shape_problems(_PLANT_CATALOG)
     assert not _keyword_problems(modules)[0] + _expression_problems(modules) + _constant_problems(_PLANT_CATALOG, modules)

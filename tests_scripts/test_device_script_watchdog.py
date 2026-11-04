@@ -16,7 +16,8 @@ _TESTS_HARDWARE = Path(__file__).resolve().parents[1] / "tests_hardware"
 _SCRIPTS = _TESTS_HARDWARE / "device_scripts"
 _MAX_STEP_MS = 2000
 _WATCHDOG_PERIOD_S = 8
-# The scripts whose subject is the watchdog reset itself: they starve it on purpose.
+# The scripts this scan cannot see fed: two starve the watchdog on purpose, and the loop-end one runs the frozen entry,
+# whose product feeds it until the entry resets the chip.
 _STARVATION_SCRIPTS = {"watchdog_starvation_reset.py", "reboot_fallback_starves_the_watchdog.py", "reset_code_loop_end.py"}
 _SLEEP_SCALE_MS = {"sleep": 1000.0, "sleep_ms": 1.0, "sleep_us": 0.001}
 _FEEDS = frozenset({"feed", "fed_sleep_ms", "fed_wait_ms", "settled"})

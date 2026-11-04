@@ -178,9 +178,6 @@ def test_every_owner_across_the_devices_has_its_own_seed_at_every_width() -> Non
     assert not problems, "\n".join(problems)
 
 
-# --- bites --------------------------------------------------------------------------------------
-
-
 def test_the_constructor_check_passes_a_constructor_site() -> None:
     assert not _constructor_problems("asy_x.py", "class C:\n    def __init__(self):\n        self.c = fram.get_chunk(8, crc=CRC8(), owner='X')\n")
 

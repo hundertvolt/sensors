@@ -1033,11 +1033,11 @@ settings.
 | 7 | reboot after "Reset to defaults" |
 | 8 | reboot after "Erase FRAM" |
 | 9 | a system command that did not complete: its shutdown did not finish, its delete, erase or config flush fell short, or the bootloader command never reached BOOTSEL |
-| 11 | boot failure in phase 1 (construction), the watchdog reset or a console soft reset followed |
-| 12 | boot failure in phase 2 (setup batch), the watchdog reset or a console soft reset followed |
-| 13 | boot failure in phase 3 (task starts), the watchdog reset or a console soft reset followed |
-| 14 | boot failure in phase 4 (timer starts), the watchdog reset or a console soft reset followed |
-| 15 | boot failure in phase 5 (first NTP sync), the watchdog reset or a console soft reset followed |
+| 11 | boot failure in phase 1 (construction), the watchdog reset or the boot entry's reset followed |
+| 12 | boot failure in phase 2 (setup batch), the watchdog reset or the boot entry's reset followed |
+| 13 | boot failure in phase 3 (task starts), the watchdog reset or the boot entry's reset followed |
+| 14 | boot failure in phase 4 (timer starts), the watchdog reset or the boot entry's reset followed |
+| 15 | boot failure in phase 5 (first NTP sync), the watchdog reset or the boot entry's reset followed |
 | 20 | supervisor escalation (a handler recorded a C-stack overflow) |
 | 21 | interrupted: Ctrl-C on the console ended the run, the watchdog reset or a console soft reset followed |
 | 22 | the event loop ended with an exception after boot, and the boot entry reset the chip |
@@ -12047,7 +12047,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 |---|---|---|---|---|---|---|
 | `l0.vitest_test_timeout_ms` | 20000 ms | `vitest.config.js` — `20000` | — | estimated (agent, `803ffaf`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
 | `l0.vitest_timeout_retries` | 2 | `vitest.config.js` — `2` | `retry.count`, on vitest's own `Test timed out in <n>ms` or `Hook timed out in <n>ms` message only (`retry.condition`), inside a test with its `beforeEach`/`afterEach` (a suite's `beforeAll`/`afterAll` runs once); three of a test's timeouts (`l0.vitest_test_timeout_ms`, or a live file's own), the first attempt and the two retries, are its retry budget inside its web job's minutes (B.10.1); a pass after a retry reads `Passed only on retry` | owner decision (owner, 2026-10-20: 'Simply put, do the consistent rule adaptation to tests only and only for those running into timeout.') | two transient timeouts absorbed | the timeout retry rule changes (E.3.1) |
-| `mem.max_await_depth` | 25 levels | `tests_scripts/test_await_depth.py` — `25` | the C-stack budget (F.1): the board peak from `c_stack_budget.py` held to half the 7,936 B limit (`flash/test_memory_stress.py`) | measured 2026-11-04, the longest static await chain `tests_scripts/_await_depth.py` finds over src/ and every device's generated modules at fde57f45 (a `GET /status` through Microdot's dispatch and a config store's FRAM-backed log write to the FRAM manager's own log, F.1); the per-level cost is owed to the flash tier | none: a tripwire at the measured depth | a chain grows past it, or the board reading lands |
+| `mem.max_await_depth` | 25 levels | `tests_scripts/test_await_depth.py` — `25` | the C-stack budget (F.1): the board peak from `c_stack_budget.py` held to half the 7,936 B limit (`flash/test_memory_stress.py`) | measured 2026-11-04, the longest static await chain `tests_scripts/_await_depth.py` finds over src/ and every device's generated modules at fb447c7e, the change that set it (a `GET /status` through Microdot's dispatch and a config store's FRAM-backed log write to the FRAM manager's own log, F.1); the per-level cost is owed to the flash tier | none: a tripwire at the measured depth | a chain grows past it, or the board reading lands |
 
 **L1 (unit tier)**
 
