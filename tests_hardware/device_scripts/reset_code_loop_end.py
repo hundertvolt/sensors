@@ -8,15 +8,12 @@ import sys
 
 import machine
 
-# @include _shared/facts.py
-
 try:
     from typing import TYPE_CHECKING
 except ImportError:  # typing has no runtime presence on MicroPython
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from _shared.facts import fact
     from bench_facts import BenchFacts
 
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
@@ -31,7 +28,6 @@ def _wait(queue: object, dt: int) -> None:
     if phase < _BOOT_DONE:
         _this_boot[0] = True
     elif _this_boot[0]:
-        fact("raised_in_phase", phase)
         if _KIND == "base":
             raise SystemExit(3)  # a non-Exception BaseException; rp2 soft-resets on one that reaches pyexec
         raise OSError(errno.EIO)

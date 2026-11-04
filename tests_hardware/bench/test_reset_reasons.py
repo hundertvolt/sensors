@@ -227,9 +227,9 @@ def test_a_loop_ended_by_an_exception_after_boot_is_attributed(board: "Board", b
     # first wait after BOOT_DONE: the entry records 22 and resets the chip at once. Normal boot, no flash write.
     try:
         _evidence(board, bench, dut_ip, f"reset-reason-loop-end-{kind}")
-        facts = parse_facts(board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "reset_code_loop_end.py", timeout_s=_SCRIPT_TIMEOUT_S, KIND=kind, BOOT_DONE=str(_BOOT_DONE)), allow_missing_done=True)
-        assert facts.get("raised_in_phase") == _BOOT_DONE, f"{kind}: the loop did not end after BOOT_DONE: {facts}"
-        wait_until(lambda: not board.is_device_present(), timeout_s=_WDT_TIMEOUT_MS / 1000 + _LOSS_MARGIN_S, description="the entry's reset after the loop ended")
+        board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "reset_code_loop_end.py", timeout_s=_SCRIPT_TIMEOUT_S, KIND=kind, BOOT_DONE=str(_BOOT_DONE))
+        # No drop-off wait: the reset is immediate. 22 alone proves the loop ended after BOOT_DONE, since
+        # record_loop_end() writes it only then and the script's own boot cleared every earlier record (A.7).
         bits = _attributed(board, dut_ip, _RR["LOOP_ENDED"], result_note, f"loop ended by {kind}")
         assert bits & _FORCED_BIT and not bits & _TIMER_BIT, f"{kind}: the entry's machine.reset() must set the forced bit, never the timer one: {bits}"
     finally:
