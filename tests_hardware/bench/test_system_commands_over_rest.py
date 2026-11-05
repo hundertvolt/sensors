@@ -2,7 +2,6 @@
 saved first and written back after, the FRAM erase with its evidence first, the near misses, and commands raced against
 each other; each reads the board's log across the window through the shared markers and restores serving after."""
 
-import subprocess
 import threading
 import time
 from typing import TYPE_CHECKING
@@ -12,7 +11,7 @@ import evidence
 import http_client
 import pytest
 from error_log_helpers import code, get_errcount, save_errcount
-from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, REPO_ROOT, SRC_DIR, HardwareTestFailureError, crash_lines, dut_hostname_candidates, fram_backed_logger_names, hotspot_password, observe_during, parse_facts, restore_board_to_serving, save_fram_raw, wait_until
+from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, REPO_ROOT, SRC_DIR, HardwareTestFailureError, crash_lines, dut_hostname_candidates, fram_backed_logger_names, hotspot_password, observe_during, parse_facts, picotool, restore_board_to_serving, save_fram_raw, wait_until
 
 from buildgen.validate import module_int_const
 
@@ -71,11 +70,6 @@ def _newest_saved_set() -> "Path | None":
     # An aborted earlier run's saved files: the newest dump any run's evidence holds.
     saved = sorted((REPO_ROOT / "build" / "archive").rglob(_SAVED_SET.replace(".txt", "*.txt")), key=lambda p: p.stat().st_mtime)
     return saved[-1] if saved else None
-
-
-def _picotool_reboot() -> int:
-    # picotool answers only a BOOTSEL device: no load, no flash write.
-    return subprocess.run(["sudo", "picotool", "reboot"], capture_output=True, text=True, timeout=_PICOTOOL_TIMEOUT_S, check=False).returncode  # sudo and picotool from the bench host's PATH
 
 
 def _race(dut_ip: str, words: "tuple[str, ...]") -> "dict[str, str]":
@@ -215,8 +209,7 @@ def test_reboot_and_bootloader_at_once(board: "Board", bench: "BenchBridge", dut
         assert sorted(answers.values()) == ["Failed", "Valid"], f"exactly one of reboot and bootloader must win: {answers}"
         if answers["bootloader"] == "Valid":
             wait_until(lambda: not board.is_device_present(), timeout_s=_PUT_TIMEOUT_S, description="the board leaving USB for BOOTSEL")
-            reboot = _picotool_reboot()
-            assert reboot == 0, f"picotool reboot found no BOOTSEL device (exit {reboot})"
+            picotool(board, "reboot", timeout_s=_PICOTOOL_TIMEOUT_S)  # answers only a BOOTSEL device: no load, no flash write
         expected = _RR_WATCHDOG if answers["bootloader"] == "Valid" else _RR_REBOOT  # BOOTSEL loses the record: 2
         system = _serving_status(dut_ip, replied, result_note, "the raced reboot and bootloader")
         assert system.get("ResetReason") == expected, f"the winner's code {expected} not read: {system.get('ResetReason')} ({answers})"

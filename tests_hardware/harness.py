@@ -125,7 +125,7 @@ _LOG_TAIL_READ_TIMEOUT_S = 0.5
 _ELF_SYMBOLS_TIMEOUT_S = 120
 _OBSERVE_TAIL_AFTER_S = 5.0
 _OBSERVE_TAIL_STEP_S = 1.0
-_PICOTOOL_LOAD_ATTEMPTS = 5
+_PICOTOOL_ATTEMPTS = 5
 _PICOTOOL_LOAD_TIMEOUT_S = 120
 _PICOTOOL_RETRY_BACKOFF_S = 2.0
 _REFLASH_PRESENT_TIMEOUT_S = 30.0
@@ -590,23 +590,29 @@ def recover_by_reset(
         wait_until(ready, retry_wait_s, description=f"{description} (after one recovery kick + hard_reset())")
 
 
-def reflash(board: "Board", uf2_path: Path) -> None:
-    # The board onto `uf2_path`, an image its caller built: bootloader, then `picotool load` retried only while no BOOTSEL
-    # device is enumerated yet (each retry recorded), then a passive wait for presence and a boot line. Builds nothing.
-    board.enter_bootloader()
-    for attempt in range(1, _PICOTOOL_LOAD_ATTEMPTS + 1):
+def picotool(board: "Board", *args: str, timeout_s: float) -> None:
+    # `sudo picotool <args>` against the board in BOOTSEL, retried only while no BOOTSEL device is enumerated yet (each
+    # retry recorded on the board); any other failed exit, or the last, raises with picotool's own output.
+    for attempt in range(1, _PICOTOOL_ATTEMPTS + 1):
         try:
-            load = subprocess.run(["sudo", "picotool", "load", "-x", "-v", str(uf2_path)], cwd=REPO_ROOT, capture_output=True, text=True, timeout=_PICOTOOL_LOAD_TIMEOUT_S, check=False)
+            done = subprocess.run(["sudo", "picotool", *args], cwd=REPO_ROOT, capture_output=True, text=True, timeout=timeout_s, check=False)
         except FileNotFoundError as exc:
             raise HardwareNotAvailableError(f"picotool not on sudo's PATH: {exc}") from exc
         except subprocess.TimeoutExpired as exc:
-            raise HardwareTestFailureError(f"picotool load {uf2_path} timed out after {_PICOTOOL_LOAD_TIMEOUT_S}s") from exc
-        if load.returncode == 0:
-            break
-        if not _retryable_picotool_exit(load.returncode) or attempt == _PICOTOOL_LOAD_ATTEMPTS:
-            raise HardwareTestFailureError(f"picotool load -x -v {uf2_path} failed on attempt {attempt} (exit {load.returncode}):\n{load.stdout}\n{load.stderr}")
-        board.recovery_events.append(f"picotool load attempt {attempt}: exit {load.returncode} (no BOOTSEL device yet), retried after {_PICOTOOL_RETRY_BACKOFF_S}s")
+            raise HardwareTestFailureError(f"picotool {' '.join(args)} timed out after {timeout_s}s") from exc
+        if done.returncode == 0:
+            return
+        if not _retryable_picotool_exit(done.returncode) or attempt == _PICOTOOL_ATTEMPTS:
+            raise HardwareTestFailureError(f"picotool {' '.join(args)} failed on attempt {attempt} (exit {done.returncode}):\n{done.stdout}\n{done.stderr}")
+        board.recovery_events.append(f"picotool {args[0]} attempt {attempt}: exit {done.returncode} (no BOOTSEL device yet), retried after {_PICOTOOL_RETRY_BACKOFF_S}s")
         time.sleep(_PICOTOOL_RETRY_BACKOFF_S)
+
+
+def reflash(board: "Board", uf2_path: Path) -> None:
+    # The board onto `uf2_path`, an image its caller built: bootloader, then `picotool load` (picotool()'s retry), then a
+    # passive wait for presence and a boot line. Builds nothing.
+    board.enter_bootloader()
+    picotool(board, "load", "-x", "-v", str(uf2_path), timeout_s=_PICOTOOL_LOAD_TIMEOUT_S)
     wait_until(board.is_device_present, timeout_s=_REFLASH_PRESENT_TIMEOUT_S, description=f"board back on USB after flashing {uf2_path.name}")
     wait_for_boot(board, _REFLASH_BOOT_TIMEOUT_S)
 

@@ -691,6 +691,26 @@ def test_reflash_retries_only_while_no_bootsel_device_is_enumerated(monkeypatch:
     assert len(board.recovery_events) == loads - 1, board.recovery_events
 
 
+@pytest.mark.parametrize(("exits", "runs", "outcome"), [([249, 249, 0], 3, "rebooted"), ([1], 1, "raises"), ([249] * 5, 5, "raises")])
+def test_a_picotool_reboot_retries_as_the_reflash_does_while_no_bootsel_device_is_enumerated(monkeypatch: pytest.MonkeyPatch, exits: "list[int]", runs: int, outcome: str) -> None:
+    # The bootloader tests' way out of BOOTSEL: a device not enumerated yet (249) is retried, each retry recorded.
+    calls: list[str] = []
+    board = _Recorder()
+
+    def run(argv: "list[str]", **_kwargs: object) -> "subprocess.CompletedProcess[str]":
+        calls.append(" ".join(argv))
+        return subprocess.CompletedProcess(argv, exits.pop(0), stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    if outcome == "raises":
+        with pytest.raises(harness.HardwareTestFailureError, match=r"picotool reboot failed"):
+            harness.picotool(board, "reboot", timeout_s=30.0)  # type: ignore[arg-type]
+    else:
+        harness.picotool(board, "reboot", timeout_s=30.0)  # type: ignore[arg-type]
+    assert calls == ["sudo picotool reboot"] * runs and len(board.recovery_events) == runs - 1, board.recovery_events
+
+
 def test_the_no_sync_rule_sees_a_list_without_it() -> None:
     assert _no_sync_offenders(ast.parse('cmd = ["uv", "run", "mpremote"]\nok = ["uv", "run", "--no-sync", "x"]\n')) == ["line 1: ['uv', 'run', 'mpremote']"]
 
