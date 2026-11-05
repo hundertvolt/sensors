@@ -1,6 +1,6 @@
 """Covers tests_hardware/'s shared host helpers offline against fakes: serving restore and recovery, boot/crash line
-observers, errcount oracles, script rendering and facts, mpremote/picotool wrappers, the bench's route set and the
-thread-worker, join, reset and no-sync rules over every host module of the hardware tier."""
+observers, errcount oracles, script rendering and facts, mpremote/picotool wrappers, the bench's route set, hardware
+tests' own checks, and the thread-worker, join, reset and no-sync rules over every host module of the hardware tier."""
 
 import ast
 import functools
@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 import tomllib
 from _devices import DEVICE_NAMES, device_toml
+from _script_loader import load_script_module
 
 from buildgen.schema_ast import extract_field_schemas
 from buildgen.source_ast import parse_source
@@ -982,3 +983,23 @@ def test_a_probe_with_any_connection_closed_answered_or_reset_is_voided_by_index
     with pytest.raises(AssertionError, match=r"connection 1 was no longer held") as info:
         harness._assert_probe_held([_HeldSocket(TimeoutError), _HeldSocket(outcome)], time.monotonic())  # type: ignore[list-item]
     assert shown in str(info.value), info.value
+
+
+@pytest.mark.parametrize(("after", "outcome"), [([0, 1, 2], "freed"), ([0, 1, 3], "one kept")])
+def test_the_soft_reset_check_compares_the_channel_sets_not_their_claim_order(after: "list[int]", outcome: str) -> None:
+    # Before the reset the sender claims first, so the fact lists [rx, reload, sender]; after it the script's two come
+    # first: the same three channels in another order are free, a channel never freed is not.
+    crossover = load_script_module(TESTS_HARDWARE / "flash" / "test_uart_crossover.py", "uart_crossover_under_test")
+    outputs = {"soft_reset": "FACT setup=true\nFACT channels=[1, 2, 0]\nDONE\n", "after_soft_reset": f"FACT channels_free={after}\nFACT streamed=true\nFACT ring_untouched=true\nDONE\n"}
+
+    class Scripted(_Recorder):
+        def run_isolated(self, _path: Path, **extras: object) -> str:
+            return outputs[str(extras["STATE"])]
+
+    board = Scripted()
+    if outcome == "freed":
+        crossover.test_a_soft_reset_during_traffic_leaves_no_running_ring(board, "none")
+    else:
+        with pytest.raises(AssertionError, match="not free after the soft reset"):
+            crossover.test_a_soft_reset_during_traffic_leaves_no_running_ring(board, "none")
+    assert board.calls == (["hard_reset"] if outcome == "freed" else [])
