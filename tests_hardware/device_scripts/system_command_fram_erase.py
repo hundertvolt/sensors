@@ -130,7 +130,8 @@ async def _main() -> None:
         answer = await webserver._dispatch_system_cmd("erasefram")
         fact("answer", answer)
         if answer == "Valid":  # the product owns the feed from here: never fed
-            while not stop[0]:  # the erase runs after the answer and can outlast the wait (16.5 s on silicon): it counts from the arm
+            # The erase runs after the answer and can outlast the wait (16.5 s on silicon): it counts from the arm.
+            while not stop[0]:
                 await asyncio.sleep_ms(_WAIT_STEP_MS)
             for _ in range(_RESET_WAIT_MS // _WAIT_STEP_MS):
                 await asyncio.sleep_ms(_WAIT_STEP_MS)
