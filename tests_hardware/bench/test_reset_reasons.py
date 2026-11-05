@@ -2,7 +2,6 @@
 the production boot serves - each test saves errcount and the raw FRAM first, reads the watchdog REASON bits, asserts
 the half the reset kind fixes, and restores serving after. Code 1 (a power cut) is the manual power-cycle step's."""
 
-import subprocess
 import time
 from typing import TYPE_CHECKING
 
@@ -10,7 +9,7 @@ import http_client
 import pytest
 import serial
 from error_log_helpers import code, get_errcount, save_errcount
-from harness import DEVICE_SCRIPTS_DIR, SRC_DIR, HardwareTestFailureError, fram_backed_logger_names, kick_then_reset, parse_facts, restore_board_to_serving, save_fram_raw, scratch_config_entries, wait_until
+from harness import DEVICE_SCRIPTS_DIR, SRC_DIR, fram_backed_logger_names, kick_then_reset, parse_facts, picotool, restore_board_to_serving, save_fram_raw, scratch_config_entries, wait_until
 
 from buildgen.validate import _WDT_TIMEOUT_MS, module_int_const
 
@@ -92,9 +91,7 @@ def test_a_bootloader_reboot_is_attributed(board: "Board", bench: "BenchBridge",
         bound = _TASK_CHECK_TIME + _RESET_DELAY + _LOSS_MARGIN_S
         wait_until(lambda: not board.is_device_present(), timeout_s=bound, description="the board leaving USB after the bootloader command")
         result_note(f"reply to USB loss: {time.monotonic() - replied:.1f} s (bound {bound} s, watchdog {_WDT_TIMEOUT_MS} ms)")
-        reboot = subprocess.run(["sudo", "picotool", "reboot"], capture_output=True, text=True, timeout=_PICOTOOL_TIMEOUT_S, check=False)  # sudo and picotool from the bench host's PATH
-        if reboot.returncode != 0:
-            raise HardwareTestFailureError(f"picotool reboot found no BOOTSEL device (exit {reboot.returncode}):\n{reboot.stdout}\n{reboot.stderr}")
+        picotool(board, "reboot", timeout_s=_PICOTOOL_TIMEOUT_S)  # answers only a BOOTSEL device: no load, no flash write
         reason = _system_status(dut_ip).get("ResetReason")
         result_note(f"bootloader: ResetReason {reason}")
         # The bootrom's own reboot into BOOTSEL overwrites both scratch regions, so the boot after it reads 2, no record.

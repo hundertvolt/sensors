@@ -41,6 +41,9 @@ PUSH_MODULE = TESTS_HARDWARE / "bench" / "test_sensor_config_push_over_real_hard
 REPAIR_MODULES = [TESTS_HARDWARE / "bench" / "test_network_resilience.py", PUSH_MODULE]
 
 _STOP_WAIT_S = 2.0  # how soon a set stop must end the script-server wait
+# The modules that run picotool themselves: the retry's own, and the manual tier's load, which a person at the board
+# watches, kept a single try (agent, 2026-11-05).
+_OWN_PICOTOOL_RUNS = frozenset({"harness.py", "manual_toolchain.py"})
 # The handlers a fetch's failures need: a cut-off answer is an HTTPException, beside OSError's transport errors.
 _CATCH_ALL = frozenset({"Exception", "BaseException"})
 _HTTP_ERROR = frozenset({"http_client.HTTP_ERROR", "HTTP_ERROR"})
@@ -793,6 +796,13 @@ def test_the_no_sync_rule_sees_a_list_without_it() -> None:
 def test_no_hardware_module_runs_uv_without_no_sync(module: Path) -> None:
     # Nothing inside a hardware run syncs, so a lock change or a third party's outage cannot read as a board fault.
     assert _no_sync_offenders(_module_tree(module)) == [], module.name
+
+
+@pytest.mark.parametrize("module", [m for m in HOST_MODULES if m.name not in _OWN_PICOTOOL_RUNS], ids=lambda p: str(p.relative_to(TESTS_HARDWARE)))
+def test_every_automated_picotool_run_goes_through_the_retried_helper(module: Path) -> None:
+    # A single try leaves a board that enumerates late in BOOTSEL for the rest of the run.
+    own = [node.lineno for node in ast.walk(_module_tree(module)) if isinstance(node, ast.List) and [e.value for e in node.elts[:2] if isinstance(e, ast.Constant)] == ["sudo", "picotool"]]
+    assert own == [], f"{module.name} runs picotool itself at lines {own}: call harness.picotool()"
 
 
 def test_parse_facts_reads_every_fact_and_needs_done() -> None:
