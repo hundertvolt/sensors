@@ -1,7 +1,7 @@
 # SPECIFICATION
 
-Central specification: architecture, build/toolchain mechanics, sensor-driver architecture,
-`src/` production-quality checklist, testing/coverage.
+Central specification: design principles, architecture, build/toolchain mechanics, sensor-driver
+architecture, `src/` production-quality checklist, testing/coverage.
 
 **Not here, by design:** `CLAUDE.md` (AI-session operating constraints — hard rules, working
 agreements, PR workflow, pre-push verification, code-quality tooling) and `BACKLOG.md` (active
@@ -10,6 +10,7 @@ would recreate the scattering problem this document exists to fix).
 
 ## Table of contents
 
+- **Part 0** — Design principles (the concept, the pillars, the conventions catalog)
 - **Part A** — Repository & Architecture Overview
 - **Part B** — Toolchain & Build
 - **Part C** — Sensor Driver Architecture Specification
@@ -24,6 +25,98 @@ would recreate the scattering problem this document exists to fix).
 - **Part L** — Build Chain: Device TOML Schema & the `buildgen` Generator
 - **Part M** — Chip Reference (per-chip measured behaviour and settled requirements)
 - **Part N** — Tunable Parameters
+
+---
+
+# Part 0 — Design principles
+
+Sections: 0.1 The concept · 0.2 The pillars · 0.3 Structural patterns · 0.4 Where each code
+convention is written · 0.5 From principles to the checklist.
+
+## 0.1 The concept
+
+The product is, in the owner's words, "a device which can run indefinitely long without any user
+interaction once configured, handles all issues inside, and although barely reachable has multiple
+fallback layers, has premium quality code, has all its main cases all the way through rare corner
+cases tested, and runs efficiently and compact on a low end hardware device" (owner, 2026-09-26).
+The lifetime target is "indefinitely": no span of months or years is a design limit. Every
+principle binds the whole tree — firmware, generated code, tests, build chain, website, docs — and a
+case no rule covers is decided by this concept (agent, 2026-11-05). The refactor keeps the deployed
+system's top-level features (CLAUDE.md, working agreements).
+
+## 0.2 The pillars
+
+| # | Pillar | Carried out by |
+|---|---|---|
+| P1 | Unattended indefinitely: nothing drifts or saturates over months or years (counter wrap, clock and NTP, heap fragmentation, log flooding, flash and NVM wear); no step needs a person | D.3; C.9; F.1 (tick wrap, wall clock); Part I; Part N |
+| P2 | Handles everything inside: every error caught at the right layer, recovered locally, nothing left hanging | D.2; C.7; C.13; A.5 |
+| P3 | Layered fallbacks for a barely reachable device: degrade, retry, re-setup, task restart, reboot, watchdog; the hotspot fallback; evidence in FRAM that survives a reboot | F.2 (the ladder); A.4 (the supervisor, the hotspot); A.7 (FRAM logs) |
+| P4 | Premium code: lean, consistent, one shape per job, no test artifacts in the product, current-state docs | 0.3; 0.4; Parts C, D, G; CLAUDE.md's comment rule |
+| P5 | Tested from the main case to rare corner cases: biting tests at every layer, combination and interleaving, both GC stages | Part E (E.2.3); C.8 (bus hazards); I.4 |
+| P6 | Efficient and compact on low-end hardware: heap, frozen size, CPU and loop latency, never starving the watchdog | D.4; D.5; F.1; F.3; Part I |
+| P7 | One source of truth: a fact is generated from its one home, never copied | Part L; H.5 |
+| P8 | Operating and testing wear nothing a test does not own | F.1 (the stores that wear); E.6; CLAUDE.md's wear rule |
+| P9 | Grounded and traceable: a hardware or runtime claim cites its primary source at the pinned version; a decision names its actor and date | A.6; Part F; CLAUDE.md's decision records |
+| P10 | Contracts at boundaries: one normative text and a conformance check per interface the project cannot change in one commit | Part J; A.8; L.3 |
+| P11 | A workaround names its defect and what retires it | F.9 |
+
+P1-P6, checked from every perspective (runtime, code, tests, build chain and CI, docs, website and
+API, real-hardware operation), are the owner's (owner, 2026-09-26: "the pillars are only pillars,
+they may still have gaps you are invited to fill"); P7-P11 fill such gaps (agent, 2026-11-05).
+**P4 in practice**: "Generally target low complexity" (owner, 2026-11-03) — of two forms that both
+hold, the one with fewer lines, branches and states (agent, 2026-11-03); and "nothing proven good
+shall be removed, but checked if it can be leaner" (owner, 2026-11-02), proven good meaning it fixes
+or prevents an observed or reproduced failure, measurably improves the device or the build, or the
+owner approved it (agent, 2026-11-02).
+
+## 0.3 Structural patterns
+
+Recorded as owner-specified on 2026-07-13 (`07c7896`, `7c653fe`, `2421948`), each now carried by
+the Part named:
+
+- Configuration and behaviour used at several sites are defined in exactly one place (Part L, G).
+- Device, sensor and functional configuration are stored separately, one `config_<name>.cfg` per
+  configured module (C.5).
+- Code shrinks and reads better through inheritance (`SensorReader`/`SensorReaderConfig`, the FRAM
+  chunk classes; C.4, A.7); startup and error recovery are generalised (C.4, A.4).
+- Error codes are traced in FRAM and survive a reboot; they are stored alongside console prints,
+  never instead of them (A.7, C.7).
+- No error that can plausibly occur ends in an uncaught exception, and each `try` catches at the
+  layer that can handle the fault; the watchdog is a last resort, not routine recovery (D.2, F.2).
+- Nothing leaks or drifts: the system can run indefinitely without exhausting any resource (D.3,
+  Part I).
+- A bus survives a live disconnect and reconnect without a reboot, and every bus and sensor is
+  driven back to a defined state as completely as its hardware allows (C.8, F.2).
+- A call that can block has a timeout or another unblock mechanism; where the platform offers none,
+  the watchdog is that mechanism (F.2). The per-bus locks cover every complete bus access and never
+  block each other (C.8).
+
+## 0.4 Where each code convention is written
+
+Each convention is written once, in the section named here, and binds generated code and code
+derived from third parties too, attribution kept; layout is hand-kept, no formatter runs (agent,
+2026-11-05). Outside every row: the UART wire format (Part J), vendored `ext/` and the legacy tree.
+
+| Convention | Written in | Enforced by |
+|---|---|---|
+| File, module, class and instance naming; private by default | C.2, C.14 | `tests_scripts/test_code_conventions.py`; review |
+| One shape per job: parameter names, order and optionality, return convention | D.10 | ruff `max-args` (`pyproject.toml`); review |
+| Member and function order | D.15 | `tests_scripts/test_code_conventions.py` (`src/`); review elsewhere |
+| Early returns; the comment form and its three-line cap | D.11; CLAUDE.md's comment rule | `tests_scripts/test_comment_block_cap.py`; review |
+| Typing idiom | C.10, D.6 | the three mypy passes (B.15); ruff `UP007` |
+| Error and logging contract | C.7 | `tests_scripts/test_code_conventions.py`; `tests_scripts/test_error_catalog.py` |
+| Config schema and each value's scope | C.5 | unit tests; review |
+| Shared primitives before new code | G.2, G.3 | G.3's shape grep; review |
+| Test conventions | E.2, E.3 | review |
+| Website layering | H.3 | `tests_scripts/test_website_layering.py`; ESLint |
+| Build-script bar | L.5 | ruff; the host mypy pass |
+| Comment tags | L.6.4 | the `tests_scripts/test_buildgen_*` grammar tests |
+
+## 0.5 From principles to the checklist
+
+Anything added — a module, a driver, a service, a route, a test, a build step, a device — walks Part
+K's ordered checklist, whose steps apply these principles and cite the reference Parts. CLAUDE.md's
+bird's-eye scan checks new code against this Part.
 
 ---
 
@@ -130,7 +223,7 @@ scripts/                 lint.sh/typecheck.sh/test.sh, the build and runner scri
   through `SystemService._reboot()` (reset reason recorded, the config stores it is handed flushed,
   FRAM paused, reset `_RESET_DELAY` later); a reset timer that cannot be armed leaves the watchdog to reset the device.
   A C-stack overflow a logger call or a handler recorded (`report_if_fatal()`, C.7) skips the pass's scan and takes the
-  same escalation, with its own reset code (20, F.1). Units run years unattended.
+  same escalation, with its own reset code (20, F.1). Units run indefinitely unattended (0.1).
 - **Frontend** — hand-written HTML/CSS/vanilla JS, gzipped and packed into `frozen_html.py` via
   `freezefs` at build time, served through Microdot's `send_file(..., compressed=True)`.
 
@@ -138,7 +231,7 @@ scripts/                 lint.sh/typecheck.sh/test.sh, the build and runner scri
 
 Targets the latest *stable* MicroPython/pico-sdk/picotool/Microdot, expands error handling/fault
 recovery, adds unit tests/mypy/ruff/CI (every tool its own CI job; the job list and why each is
-shaped as it is: B.10). Files land in `src/` once reviewed against Part D.
+shaped as it is: B.10). Code lands in `src/` by Part K's checklist.
 
 Originally prototyped as hand-written `src/sensortask_wozi.py` ("wozi", A.7) and
 `src/sensortask_dev.py` (dev bench, physically flashed, B.11/H.5) — not yet `arzi`/`neu`. That
@@ -477,6 +570,9 @@ features as today's deployed units, not a feature change.
   device TOML the SGP40 skips its read while that value is unavailable, no fallback substitution,
   and reads compensated once it is; with no live source it reads with the constant the TOML states
   (`{default = true, …}`; datasheet default 25 °C / 50 %RH, Table 9).
+- **SCD30 pressure compensation is a manually set, static `AmbPres` on every device**, one with a
+  barometric sensor included; a device without one has no live compensation at all (owner,
+  2026-07-13, recorded in `b64857d`).
 - **`asy_uart_driver.py` exposes no hardware flow control** (owner, 2026-07-23, `c9006dc`).
 - **SCD30's `get_ambient_pressure()` reuses the set command word** — leave as-is, no alternate
   documented read-back exists to switch to (owner, 2026-07-22, `75f2e11`).
@@ -607,9 +703,11 @@ annotates `get`/`put` (then `tests/test_setter_microdot_integration.py`'s decora
 ## A.6 Datasheets
 
 `datasheets/` (repo root) holds real datasheet PDFs for the chips this codebase drives (`bmp3xx/`,
-`fram/`, `isl29125/`, `pico w/`, `scd30/`, `sgp40/`, `ws2812/`) — read the PDF first for any hardware-interaction claim,
-rather than reconstructing from training memory/web search. If a needed one isn't there and can't
-be fetched, say so explicitly. The folder is a git submodule of the private repository
+`fram/`, `isl29125/`, `pico w/`, `scd30/`, `sgp40/`, `ws2812/`) — read the PDF first for any
+hardware-interaction claim and cite its page, section or table; the datasheet's text wins over
+reference implementations, and training memory is never a source. A document not here is named to
+the owner; the work continues from the next-best primary source (the vendor's reference code or
+documentation), the finding marked open until the owner provides it (owner, 2026-09-25). The folder is a git submodule of the private repository
 `hundertvolt/datasheets`, fetched by `git submodule update --init datasheets` with the owner's grant;
 nothing in the build, lint, test or CI needs it.
 
@@ -2956,8 +3054,8 @@ reaches the device; not part of `scripts/lint.sh` or CI) do not apply. `zizmor` 
 Extracted from the three drivers first promoted to `src/` (`asy_scd30_driver.py`,
 `asy_bmp3xx_driver.py`, `asy_sgp40_driver.py`) plus shared infrastructure (`asy_base_classes.py`,
 `asy_i2c_driver.py`/`asy_spi_driver.py`, `asy_config_manager.py`, `asy_print_log.py`,
-`asy_system_service.py`). The shape a *new* driver should take; Part D is the separate "is it good
-enough to move" checklist. Writing a new driver needs only this Part, the datasheet, and C.11.
+`asy_system_service.py`). The shape a *new* driver should take; Part D is the quality bar, and
+Part K the ordered checklist that applies both.
 
 ## C.1 Layered architecture
 
@@ -3325,6 +3423,14 @@ allowed-value set** (tuple/list, for non-continuous legal values, e.g. BMP3xx's 
 `1/2/4/8/16/32` — set `min`/`max` to `None` for a pure enum, or combine both for a range plus bypass
 values). A schema constant referenced inside another `const()`-wrapped tuple must itself be
 `const()`-wrapped — `const()` only folds references to other `const()`-defined names.
+
+**Every config value has one explicit scope** (owner, 2026-07-13, as recorded in `144873f`:
+per device, per feature or explicitly global, never implicitly coupled to something unrelated):
+per instance, a field of a driver's own schema in that instance's `config_<name>.cfg`; per device, a
+`devices/<device>.toml` value fixed at build time; global to the device, a field of a module each
+device has once (Wi-Fi and identity, NTP, the system module, the notification service), one file
+each. The scope is read from where the field is declared, so no module's schema carries another
+module's setting.
 
 **`FiltCoeff` keeps two meanings** (owner, 2026-09-26): the BMP3XX IIR filter coefficient (one of 0,
 1, 3 … 127, `_IIR_SETTINGS`; the chip's CONFIG register holds its index) and the ISL29125 output EMA
@@ -4695,23 +4801,22 @@ fallback duck-typed to the same `get_data()` contract.
 
 Files land in `src/` once they clear this bar in full (CLAUDE.md). "Production quality": correct
 against real documentation, never raises an uncaught exception, safe unattended indefinitely,
-respectful of RP2040's limited resources, never blocks, always returns a well-defined value. For a
-new sensor driver, see Part C first for the shape; this checklist is how you know it's good enough.
+respectful of RP2040's limited resources, never blocks, always returns a well-defined value. Part
+K's ordered checklist applies this bar (K.2); Part C gives a driver's shape.
 
 ## D.0 Understand the function's purpose first
 
-Read it alongside its callers and existing comments before judging correctness — "mathematically
-consistent" isn't "does what it's meant to." If purpose/domain/expectations are genuinely unclear,
-ask up to 10 targeted questions rather than guess.
+Part K holds this step (K.1, item 0).
 
 ## D.1 Correctness, verified against real documentation
 
 Identify the authoritative source for every non-obvious claim and verify against *current* sources
 — never training memory; note it in a comment. Verify coefficients/sign/order/units actually match
-— don't assume deployed code is correct. **If verification surfaces a discrepancy, do not silently
-change it** — flag and ask before altering real output. Verify the coded validity range matches the
-source's *actual* domain, not whatever the code already had (found: `wet_bulb_temperature`'s
-humidity lower bound was `0.5%`; Stull (2011) only validates to `5%`). Where a formula's domain is
+— don't assume deployed code is correct. **A discrepancy proven by the datasheet or the
+specification is fixed with a regression test for the correct behaviour** (E.2.2); one short of
+that proof goes to BACKLOG.md's owner-question list and is not changed (owner, 2026-09-25). Verify
+the coded validity range matches the source's *actual* domain, not whatever the code already had
+(Stull (2011) validates `wet_bulb_temperature` only from 5 % humidity). Where a formula's domain is
 wider than its use, cross-check against the real caller's hardware constraints instead
 (`pressure_at_height()`'s range comes from the BMP388/390 datasheet, not the formula). Look
 specifically for functions with **no validity range check at all**. A genuine quirk found on review
@@ -4721,10 +4826,14 @@ specifically for functions with **no validity range check at all**. A genuine qu
 
 Every function returns a "no data" sentinel — **never raises, under any input** — for missing
 input, out-of-domain input (a guard clause before computation), and any residual computational
-failure (wrap only the computation, catch specific types, never bare `except:`). **Don't defend
-against out-of-contract input at runtime if static typing already enforces it (mypy)** — dead
-weight for a scenario that can't occur. Do verify `NaN`/`inf` (real sensor faults can produce them)
-degrade cleanly through range checks — confirm, don't assume, and test it. Walk the function line
+failure (wrap only the computation, catch specific types, never bare `except:`). **Don't re-check
+at runtime what static typing already enforces at every call site in CI (mypy)** — the types the
+project's own callers pass (owner, 2026-08-06, `b5502c8`: "don't guard against inputs violating
+their already-declared types"); that is dead weight for a scenario that cannot occur. Do guard
+`NaN`, ±inf and out-of-domain values of correctly typed inputs — real sensor faults produce them —
+and verify they degrade cleanly through range checks: confirm, don't assume, and test it. **Every
+input that arrives untyped is validated at its entry point**: REST JSON bodies, TOML fields at build
+time, and state restored from FRAM or the flash filesystem (agent, 2026-11-05). Walk the function line
 by line to confirm the exception net is complete. **Two kinds of raise are allowed.** A raw hardware
 bus transaction lets a real `OSError` propagate out of the low-level bus driver. And a raise the
 controlled-raise schema covers: raising is allowed only in a documented, controlled way, and only
@@ -4741,7 +4850,7 @@ bus a wrapper whose bus is not initialised answers `None`/`False`, never a raise
 
 ## D.3 Stability for indefinite, unattended operation
 
-Units run years without a reboot: no unbounded growth; no retained state unless deliberately
+Units run indefinitely without a reboot (0.1): no unbounded growth; no retained state unless deliberately
 stateful (prefer pure functions); no resource acquisition without a guaranteed release on every
 exit path, exception paths included. Verified via design discipline and reading — no CI gate for
 "ran a simulated year."
@@ -4860,7 +4969,7 @@ Much of this codebase predates MicroPython 1.20; the build target has moved to t
 relevant changes — note findings even when nothing needs to change. Look for old `u`-prefixed
 module names (`uasyncio`, `ustruct`) — a clear tell of pre-consolidation code. Same "without
 changing functionality" constraint as D.8 for a pure modernization; a genuine semantic difference
-(not just a rename/speedup) is a D.1-style behavior change — flag and ask.
+(not just a rename/speedup) is a behaviour change and follows D.1.
 
 ## D.10 API consistency, within a file and across the project
 
@@ -4907,13 +5016,11 @@ the actual real chain to the real consumer.
 
 ## D.13 Wire into the existing pipeline
 
-Extend the lint/typecheck config's scope and CI's explicit path arguments to the new location. Add
-the file's tests to the existing test-runner script.
+Part K holds this step (K.10).
 
 ## D.14 Verify, don't assume
 
-Actually run lint/typecheck/tests and read the output after every change — don't report success
-without having done so. Diff the finding count before/after against untouched files.
+Part K holds this step (K.10).
 
 ## D.15 Member ordering within a class and a module
 
@@ -4955,7 +5062,7 @@ pre-reorder baseline.
 
 ## D.16 Only then
 
-Move the file into `src/`, only once all of the above is actually done and passing.
+Part K holds this step (K.11, its last item).
 
 ---
 
@@ -5152,7 +5259,7 @@ scripts included, agent, 2026-10-05); a fixed delay stays only where there is no
 probe would disturb the property under test, named, measured and a Part N row (agent, 2026-09-16,
 `a335923`).
 
-## E.2.1 Per-device scenario libraries: one process per device
+### E.2.1 Per-device scenario libraries: one process per device
 
 Every device of `devices/*.toml` runs the per-device tiers, each split the same way: a file whose
 own line reads `PER_DEVICE = True` is run by `scripts/test.sh` once per derived device (`TEST_DEVICE`),
@@ -5198,7 +5305,18 @@ fresh-boot state, the silent mode) with the WiFi service's own sleeps 5
 times shorter — its transitions are under test, not its periods — about 26 s, in a file of its own
 so neither file nears the per-file limit (agent, 2026-10-12).
 
-## E.2.3 The test standard and hygiene
+### E.2.2 A test changes only mechanically
+
+A failing test is a regression to fix, never to work around (owner, 2026-09-25: "So if any test
+fails, fix the regression and do not try to work around."). A test follows a firmware change only
+mechanically — a renamed symbol, a moved module, a changed signature — never in its goal (owner,
+2026-09-25: "Adapting tests to firmware changes is only allowed for mechanical corrections, but not
+for changing the actual test goal."). An expectation is corrected only where datasheet or
+specification proof shows it pinned a defect, and then together with a regression test for the
+correct behaviour (owner, 2026-09-25); the proof goes into the commit message, and no test is
+deleted, skipped or weakened without a recorded reason (agent, 2026-11-05).
+
+### E.2.3 The test standard and hygiene
 
 **A test bites**: it asserts (an `assert`, `AssertionError` or `pytest.raises` in the test or a
 helper it calls — never a `raise` in the code under test), and none of these red flags holds: no
@@ -9373,27 +9491,6 @@ enough requests through); the headroom the system starts from is asserted separa
 (Part F.5.3 for the 1.29 figures). Note the 91,312 B above is a *loaded* floor and the F.5.3
 numbers are at rest — don't compare them directly.
 
----
-
-# Part J — UART Message Protocol (`asy_uart_comm.py`)
-
-The wire protocol and role model of `src/asy_uart_comm.py`, the point-to-point UART message
-transport. No vendor document or prior specification exists — this Part **is** the specification,
-reconstructed from the field-proven legacy implementation
-(`legacy/firmware/python/IndividualDrivers/asy_uart_comm.py`) and confirmed by the project owner
-(2026-09-11). Read it before changing anything about the protocol.
-
-**The module is promoted.** It sits above `asy_uart_driver.UART` the way `asy_fram_manager.py` sits
-above `asy_fram_driver.py`: a sync allocate-only constructor with a readiness gate, an injected
-logger by either route, `get_task_starters()`/`get_timer_starters()`/`get_error_counter()`/
-`reset_error_counter()` for generic supervision and observability, and a sentinel for every link
-fault on every entry point (a receive piece the heap cannot serve is the one `MemoryError` let
-through, J.8). `dev` carries two instances across its crossover jumper (A.7 step 13b); `wozi`
-carries none. The jumper uses UART0 on GP0/GP1 and UART1 on GP8/GP9: of the other legal pin-mux
-pairs, GPIO24/25 and GPIO28/29 each have a half the wireless chip takes (A.6), and GPIO16/17 is
-left free because a BME688's BSEC coprocessor wants UART0 there and one peripheral serves one pair. Everything below describes what the promoted module does, not what the legacy one
-did — the differences are enumerated in `UART_C_PORT_CHANGELOG.md`.
-
 ## I.6 The request-body cap, and why both of Microdot's limits must move together
 
 Microdot exposes two independent limits, and the gap between them was the firmware's largest
@@ -9529,6 +9626,26 @@ for the identical lag. This does not weaken it: `wait_until()` retries a check t
 raises `TimeoutError` when its bound expires, verified against a silent address and a dead port, and
 all four cap assertions are untouched. W5 has run green three times since.
 
+---
+
+# Part J — UART Message Protocol (`asy_uart_comm.py`)
+
+The wire protocol and role model of `src/asy_uart_comm.py`, the point-to-point UART message
+transport. No vendor document or prior specification exists — this Part **is** the specification,
+reconstructed from the field-proven legacy implementation
+(`legacy/firmware/python/IndividualDrivers/asy_uart_comm.py`) and confirmed by the project owner
+(2026-09-11). Read it before changing anything about the protocol.
+
+**The module is promoted.** It sits above `asy_uart_driver.UART` the way `asy_fram_manager.py` sits
+above `asy_fram_driver.py`: a sync allocate-only constructor with a readiness gate, an injected
+logger by either route, `get_task_starters()`/`get_timer_starters()`/`get_error_counter()`/
+`reset_error_counter()` for generic supervision and observability, and a sentinel for every link
+fault on every entry point (a receive piece the heap cannot serve is the one `MemoryError` let
+through, J.8). `dev` carries two instances across its crossover jumper (A.7 step 13b); `wozi`
+carries none. The jumper uses UART0 on GP0/GP1 and UART1 on GP8/GP9: of the other legal pin-mux
+pairs, GPIO24/25 and GPIO28/29 each have a half the wireless chip takes (A.6), and GPIO16/17 is
+left free because a BME688's BSEC coprocessor wants UART0 there and one peripheral serves one pair. Everything below describes what the promoted module does, not what the legacy one
+did — the differences are enumerated in `UART_C_PORT_CHANGELOG.md`.
 
 ## J.1 Scope and the two-implementation contract
 
@@ -10161,20 +10278,37 @@ same either way.
 
 # Part K — Adding a New Sensor/Module: The Full Checklist
 
-The procedural counterpart to Parts C/D: those describe what a driver's own code and quality bar
-must look like; this Part is the concrete, ordered list of every file a promotion actually has to
-touch to go from "a tested driver exists" to "wired into buildgen, generating correctly for every
-device that needs it, with real coverage at every tier." Distilled from two real promotions done
-this way — UART (`asy_uart_comm.py`/`asy_uart_link_driver.py`, PRs #70/#80) and ISL29125
-(`asy_isl29125_driver.py`, PR #83) plus its own two immediate follow-ups (PR #86's `irq_pull_up`
-TOML field, PR #87's `math_helpers` test gap) — not theorized in advance. Use it as a literal
-checklist; the "Certification" list at the end (K.11) is the one to actually check off per
-promotion. Where a step doesn't apply to a given driver (no interrupt pin, no shared-bus neighbour,
-nothing datasheet-worthy), say so explicitly rather than silently skipping it — the same "flag,
-don't silently change" instinct CLAUDE.md applies everywhere else.
+The one ordered checklist for anything added to the product — a module, a service, a route, a
+build step, a device. A sensor driver is a module with a hardware counterpart: it takes every step
+marked *every module* and the steps marked *a sensor driver* on top (owner, 2026-09-25: "modules
+are the general case, sensors a specific one with extensions"). Each step is done or stated as not
+applying, with its reason; K.11 is the list checked off per addition. The steps apply Part 0's
+principles and cite the reference Parts for their content — C (a driver's shape), D (the quality
+bar), G (shared primitives), E (tests), H (website), L (build chain) — without restating them. The
+repository skill `.claude/skills/integrate-module/SKILL.md` starts an agent on this list and holds
+no copy of it (owner, 2026-09-25).
+
+## K.0 The owner-discussion stage
+
+*Every module.* The addition starts from its datasheet (a sensor driver) and one discussion with the
+owner of its top-level features, its API (routes, `/status` and `/measurements` keys, config values
+with their scope, C.5) and its website (fields, groups, controls, H.1), so that the rest of this
+list runs without further explanation (owner, 2026-09-25: "My goal is to be able to do a full
+integration of a new sensor starting with just a datasheet, a discussion about top level features,
+API and website design."). **Its record** is the module's owner list, each item with its
+"(owner, date)" tag, in the Part section the module owns — Part M for a chip, M.1.1 the shape —
+and the commit message cites it; K.4's tags and C.5's schema implement it. A question the
+discussion leaves open goes to BACKLOG.md's owner-question list, never into a guessed design
+(agent, 2026-11-05).
 
 ## K.1 Before writing any code
 
+*Every module; item 1 a sensor driver.*
+
+0. **Understand the purpose first**: read the code alongside its callers and comments;
+   "mathematically consistent" is not "does what it is meant to". What stays unclear after the
+   callers, the git history, the legacy driver and the datasheet goes to BACKLOG.md's
+   owner-question list and the code is left as it is, never a guessed change (owner, 2026-09-25).
 1. **Read the datasheet first, not training memory** (CLAUDE.md's datasheets rule, Part A.6). Place
    the real PDF under `datasheets/<name>/` if it isn't there yet; every hardware-interaction claim
    in code comments cites a page number against it, same as every existing driver.
@@ -10195,17 +10329,16 @@ don't silently change" instinct CLAUDE.md applies everywhere else.
 
 ## K.2 Write the driver, to the Part C/D bar
 
-Layered shape (Part C.1–C.10), config schema (C.5), error/logging contract (C.7), concurrency model
-(C.8), the full `src/` promotion checklist (Part D, all of D.0–D.15) — nothing in this Part changes
-any of that. Two buildgen-era additions worth calling out because they're easy to miss reading Part
-C/D alone:
+*Every module; the shape a sensor driver.* Layered shape (Part C.1–C.10), config schema (C.5),
+error/logging contract (C.7), concurrency model (C.8), the quality bar (Part D in full), and every
+row of 0.4's conventions catalog checked for the new code. Two points easy to miss reading Part C/D
+alone:
 
 - **Keyword-only past the required positional leaders.** Ruff's `FBT001`/`FBT002` (boolean-trap,
   live under this project's `select = ["ALL"]`) reject a `bool`-typed parameter that isn't
   keyword-only. Every existing bare-`bool` constructor parameter in `src/` already is (e.g.
-  `asy_fram_driver.py`'s `wp`); a new one needs a `*,` separator before it (PR #86's own fix,
-  found by `ruff check` after the fact rather than anticipated — run lint before assuming a new
-  parameter's shape is fine).
+  `asy_fram_driver.py`'s `wp`); a new one needs a `*,` separator before it — run lint before
+  assuming a new parameter's shape is fine.
 - **A constructor parameter with a real "off"/"no-op" value needs that value to actually mean
   nothing changes, checked against the real underlying API, not assumed.** `irq_pull_up=False`
   constructs a bare `machine.Pin(id, mode=Pin.IN)`, omitting `pull=`; on rp2 that is the same as
@@ -10216,7 +10349,7 @@ C/D alone:
 
 ## K.3 Wire into `buildgen`
 
-Every file below; a driver following the `asy_<name>_driver.py` → `*_Reader(SensorReader |
+*Every module buildgen constructs; items 5 and 6 a sensor driver.* Every file below; a driver following the `asy_<name>_driver.py` → `*_Reader(SensorReader |
 SensorReaderConfig)` naming convention (C.2) needs items 1, 3 and 4 (item 2 only when a driver
 cannot follow that convention) — confirm by actually running `buildgen/generate.py` against a
 fixture TOML (or a real `devices/*.toml` with a draft instance added), not by inspection alone.
@@ -10228,8 +10361,8 @@ fixture TOML (or a real `devices/*.toml` with a draft instance added), not by in
    AST or pinned both ways, and `tests_scripts/test_buildgen_source_agreement.py` fails on a
    resolvable driver missing a row of either table, before any TOML uses it. Add rows to
    `REQUIRED_TOML_FIELDS`/`OPTIONAL_TOML_FIELDS` (every constructor parameter with no default is
-   required; every one with a default your device might want to override is optional — see PR #86
-   for adding a single optional field to an already-promoted driver). If the driver sits on a bus,
+   required; every one with a default your device might want to override is optional). If the
+   driver sits on a bus,
    add it to `BUS_KIND_BY_DRIVER` too. **Check the datasheet for a real address-select pin before
    deciding `ADDRESS_CAPABLE_DRIVERS` vs. `FIXED_ADDRESS_DRIVERS`** — ISL29125's own datasheet
    states its address is hardwired with no select pin (FN8424 p15), which is why it lands in
@@ -10242,8 +10375,7 @@ fixture TOML (or a real `devices/*.toml` with a draft instance added), not by in
    add a `_OVERRIDES` entry if the driver genuinely can't follow that convention (today: `fram`,
    `neopixel`, `notification`, `uart_link` — none define a `SensorReader`/`SensorReaderConfig`
    subclass at all, or `uart_link`'s file isn't even `_driver.py`-shaped the same way). Confirm the
-   auto-resolution path actually works rather than assuming — it did for ISL29125 with zero code
-   here.
+   auto-resolution path actually works rather than assuming.
 3. **`buildgen/codegen.py`** — a new `_build_args_<name>()` handler (closest existing shape:
    `_build_args_scd30` for a bare `SensorReader` with an interrupt pin, `_build_args_bmp3xx` for a
    `SensorReaderConfig` with none — `_build_args_isl29125` is the one driver combining both, a
@@ -10268,13 +10400,12 @@ fixture TOML (or a real `devices/*.toml` with a draft instance added), not by in
 
 ## K.4 `@web`/`@web-group` tags — the website comes from these, never hand-edited JSON
 
-Every device's `definitions.json` is generated at build time from every tagged `src/` file (Part
+*Every module with a website field.* Every device's `definitions.json` is generated at build time from every tagged `src/` file (Part
 H.5.1); it is never hand-maintained. Add `# @web-group`/`# @web <Field> ...` tags for
 every field the website should show, in both the `measurements` and `sensors` sections as
 applicable — `src/asy_bmp3xx_driver.py` (simple) and `src/asy_isl29125_driver.py` (uses `special:`
 sentinel labels, `decimals` rounding hints, and `path="A.B"` for a value nested inside the
-measurement body — the newest tag capabilities, added specifically because ISL29125 needed them,
-Part H.5.1) are the two worked examples to copy from. If a bus prerequisite exists (a minimum I2C
+measurement body, Part H.5.1 and L.6.4) are the two worked examples to copy from. If a bus prerequisite exists (a minimum I2C
 bus timeout, say), add a `# @requires bus.<field><op><value>` tag too (C.2/SPECIFICATION.md Part L); if
 a cross-instance reference exists beyond the generic `fram_target` shape, check whether `@wiring`/
 `@value-wiring` already cover it before inventing a new tag family. Every tag family gets full
@@ -10285,21 +10416,22 @@ SPECIFICATION.md Part L's own standing rule) — extending a tag family's own gr
 
 ## K.5 Digital twin
 
-A chip fake is **required, not optional**, the same session as promotion (C.11 item 9) —
-`digital_twin/_<name>_chip.py`, wired into `digital_twin/machine.py`'s `_build_i2c_chip()`/
-`_build_spi_chip()` dispatch (matched by `driver` string, reading whatever `buildgen.twin_wiring`
-put in the attachment dict — K.3 item 5 above). If the chip's own datasheet has real
-`# @requires`-worthy facts or interrupt-line electrical requirements (open-drain needing a pull-up,
-active-low vs. active-high), model them in the fake too, not just the driver — ISL29125's own chip
-fake needed the INT line to idle HIGH and the conversion timer to keep running through a range
-switch, both found by writing real digital-twin tests against it, not by inspection. Add
+*A sensor driver.* A chip fake is **required, not optional**, in the same change as the driver
+(C.11 item 9) — `digital_twin/_<name>_chip.py`, wired into `digital_twin/machine.py`'s
+`_build_i2c_chip()` dispatch (I2C, matched by `driver` string, reading whatever
+`buildgen.twin_wiring` put in the attachment dict — K.3 item 5 above) or `_wire_spi_device()` (SPI);
+`tests_scripts/test_twin_fake_catalog.py` fails for a bus-attached driver without its fake, dispatch
+and twin test. If the chip's own datasheet has real `# @requires`-worthy facts or interrupt-line
+electrical requirements (open-drain needing a pull-up, active-low vs. active-high), model them in
+the fake too, not just the driver — ISL29125's chip fake idles its INT line HIGH and keeps the
+conversion timer running through a range switch, each pinned by a digital-twin test. Add
 `Pin.PULL_UP`/whatever other `machine`-fake constant the real driver now references to **both**
 `tests/machine.py` and `digital_twin/machine.py` if it's the first driver needing it (ISL29125 was,
 for `PULL_UP`).
 
 ## K.6 Tests, every tier — "biting," not just executing
 
-**A dedicated unit-test file for the driver itself**
+*Every module; the bus-hazard coverage a sensor driver.* **A dedicated unit-test file for the driver itself**
 (`tests/test_asy_<name>_driver.py`, Part D.12's own bar): every parameter individually and in
 combination, sanity-bounded typical values (not exact reference numbers unless independently
 verifiable — see below), out-of-range on both sides of every bound, exact boundary values accepted,
@@ -10307,14 +10439,11 @@ verifiable — see below), out-of-range on both sides of every bound, exact boun
 
 **If the driver pulls in or extends a *shared* module** (Part G's own catalog, or `math_helpers`
 specifically), **that module needs its own direct, dedicated tests too — exercising it only
-incidentally through the new driver's own fixture values is not enough.** This is a real gap found
-and fixed in PR #87: `math_helpers.py` gained five new functions for ISL29125 (colour-
-space conversion, McCamy CCT, the shared EMA), and the promotion's own PR left `tests/
-test_math_helpers.py` untouched — every other function there has its own suite, and these silently
-didn't. Where possible, check new formula code against an independently-known reference value, not
-just "returns not None" — PR #87's own `rgb_to_xyz(1,1,1)` → the D65 white point → chromaticity →
-~6500K round-trip is the model: each step is a real, checkable number from outside this codebase,
-not a self-referential assertion.
+incidentally through the new driver's own fixture values is not enough** (`tests/
+test_math_helpers.py` holds one suite per `math_helpers.py` function). Where possible, check new
+formula code against an independently-known reference value, not just "returns not None" —
+`rgb_to_xyz(1,1,1)` → the D65 white point → chromaticity → ~6500K round-trip is the model: each step
+is a real, checkable number from outside this codebase, not a self-referential assertion.
 
 **Digital-twin test(s)** (`tests/test_digital_twin_<name>.py`, plus a dedicated behavior suite if
 the driver has a real state machine worth its own file — ISL29125's autorange logic is the
@@ -10327,17 +10456,16 @@ host-side pytest, not MicroPython:
 - `test_buildgen_driver_registry.py` — confirm the new driver resolves (or, if it needed one,
   confirm the `_OVERRIDES` entry resolves correctly).
 - `test_buildgen_generate.py` — the new `_build_args_<name>()` handler renders correctly with every
-  optional field present, and correctly *omits* each one when absent from the TOML (PR #86's own
-  `test_isl29125_irq_pull_up_false_is_rendered_into_the_constructor_call`/companion omission test
-  is the exact shape).
+  optional field present, and correctly *omits* each one when absent from the TOML
+  (`test_isl29125_irq_pull_up_false_is_rendered_into_the_constructor_call` and its omission
+  companion are the shape).
 - `test_buildgen_definitions.py` — the driver's `@web` tags produce the expected website-JSON
   shape.
 - `test_buildgen_web_tag.py` — if a new tag capability was added (K.4), its own accept/reject
   coverage; otherwise, at minimum the real-driver field-name/group assertions every existing driver
   gets there.
-- `test_device_tomls.py` — which real devices carry this driver (an explicit allow-list assertion,
-  matching `test_isl29125_only_present_on_dev`'s own shape — never let a new instance land on a
-  device by omission of a check).
+- `test_device_tomls.py` — every real device still builds, and no declared or fixed address of the
+  driver falls in a reserved I2C range.
 - `tests_scripts/buildgen_fixtures/novel_combo.toml` — extend the synthetic multi-driver fixture so
   the driver is exercised there too, the same way `uart_link`/`isl29125` both were.
 
@@ -10350,8 +10478,7 @@ a shared bus, and an address/command sweep:
   write budget) that no generic template could derive. Add the digital-twin/`tests_hardware/flash/`/
   `tests_hardware/bench/` equivalents too, following the shape of the driver's closest existing
   precedent there.
-- **Cross-sensor hazard coverage is automatic for the generic scenario catalog, no longer
-  hand-paired per driver.** Add the new driver to `tests/_bus_hazard_catalog.py`'s
+- **Cross-sensor hazard coverage is generated from the scenario catalog.** Add the new driver to `tests/_bus_hazard_catalog.py`'s
   `I2C_HAZARD_CATALOG` (an adapter: construct/seed/read_once/exercise, plus write_once/general_call
   if it has a safe write or a real broadcast) and `tests/test_bus_hazard_generated.py` picks up
   every real bus this driver shares with another occupant automatically, on every real device TOML,
@@ -10363,31 +10490,31 @@ a shared bus, and an address/command sweep:
 
 ## K.7 `devices/*.toml`
 
-Add the `[[instance]]` block **only to the real devices that actually carry this hardware** —
+*Every module; the wiring facts a sensor driver.* Add the `[[instance]]` block **only to the real devices that actually carry this hardware** —
 `wozi` never gets a bench-only or not-yet-deployed-everywhere sensor just because `dev` does (C.f.
 ISL29125: dev-only, `wozi` and the other four devices untouched). Wiring facts (bus, pin numbers,
 any `irq_pull_up`-style board-specific override) must come from **real, bench-validated hardware**,
 never invented — cite where the fact came from in a TOML comment (a prior hand-written
 `sensortask_<device>.py`'s own construction comment, a real bench measurement, a datasheet page).
 Placement within the `[[instance]]` list sets that build's FRAM chunk order (Part A.7); any
-placement is valid, since the layout need not survive a reflash (owner, 2026-09-26). The TOML is now the only host-side copy of these
-facts: `tests_hardware/bus_topology.py`, a hand-kept mirror that nothing imported and no tooling
-cross-checked, was deleted (2026-09-18). Its one enforced invariant — no device
-address inside an I2C-reserved range — moved to `tests_scripts/test_device_tomls.py`, where it runs
-against the real device set rather than two hardcoded tuples. The on-target sweep
-(`device_scripts/bus_topology_autodetect_and_hazard_sweep.py`) keeps its own address table, since it
-is MicroPython on the board and cannot import host test code; it detects the live topology anyway,
-so it does not need the wiring half at all.
+placement is valid, since the layout need not survive a reflash (owner, 2026-09-26). The TOML is
+the only host-side copy of these facts; `tests_scripts/test_device_tomls.py` keeps every declared
+address out of the I2C-reserved ranges. The on-target sweep
+(`device_scripts/bus_topology_autodetect_and_hazard_sweep.py`) reads the bench TOML's addresses
+through its rendered `BENCH` facts and detects the live topology; a new I2C driver gets its reader in
+`device_scripts/_shared/bus_reader_loops.py`.
 
 ## K.8 Regenerate and spot-check generated artifacts
 
-Run `npm run build:site` and read the generated definitions of every device carrying the driver
+*Every module with a website field.* Run `npm run build:site` and read the generated definitions of every device carrying the driver
 (`build/generated_src/definitions/<device>.json`): each new field in its group, with its label, unit
 and range. Add the driver's sample to `mockdata/samples.json` (keyed by the driver's logger name) so
 the prototype and the mock tests render it; the composer throws naming the group when a sample is
 missing, and an `errcount` module's missing sample too, naming its group and module.
 
 ## K.9 Documentation
+
+*Every module; Part M a sensor driver.*
 
 - **SPECIFICATION.md Part M** — a new `M.<n>` section for any real, datasheet-derived findings or
   settled project-owner rulings specific to this chip (M.1, the ISL29125's, is the shape to follow:
@@ -10399,17 +10526,19 @@ missing, and an `errcount` module's missing sample too, naming its group and mod
   behavior worth explaining to someone operating a deployed unit — not a routine promotion step for
   most drivers.
 - **`digital_twin/README.md`** — the new chip fake's own "What's here" entry, matching the doc's
-  current section structure (don't clobber sections added since, e.g. PR #82's "Driver/DUT process
-  separation").
+  current section structure.
 - **`THIRD_PARTY_LICENSES.md`** — if the driver is adapted from third-party/vendor code (a three-line
   header — `# SPDX-FileCopyrightText:`, `# SPDX-License-Identifier:`, one line pointing to
   `THIRD_PARTY_LICENSES.md`, in that order, before the docstring — and exactly one entry;
   `tests_scripts/test_third_party_attribution.py` checks both).
-- **BACKLOG.md** — only for a genuinely still-open question this promotion surfaced but didn't
-  resolve (e.g. "no pytest gate wired for the new conformance-probe script yet" — PR #83's own
-  disclosed, not-silently-resolved gap). Never process narrative (CLAUDE.md's pruning rule).
+- **BACKLOG.md** — only for a genuinely still-open question this addition surfaced but did not
+  resolve. Never process narrative (CLAUDE.md's pruning rule).
 
 ## K.10 Verification, before calling it done
+
+*Every module.* The addition joins the lint, type-check and test scope from its first commit, and
+every command below is run and its output read, the finding counts compared with the untouched
+files' — nothing is reported as passing unrun.
 
 - `scripts/lint.sh` (ruff, full scope + shellcheck + actionlint + zizmor) — clean.
 - `scripts/typecheck.sh` (all three mypy passes: main, `digital_twin/`, host build chain) — clean.
@@ -10429,10 +10558,17 @@ missing, and an `errcount` module's missing sample too, naming its group and mod
   (a flipped comparison, a dropped call or await, a swallowed exception, a removed guard or clamp,
   an off-by-one bound) turns a named test red, and nothing from the worktree is kept (owner,
   2026-09-25, paraphrase).
+- **The gate** (owner, 2026-09-26): the specification walked paragraph by paragraph against the
+  code; every hardware and runtime claim rechecked at its primary source (A.6, Part F); every new
+  test shown to fail against broken code; no knowledge lost against the tree before the change;
+  every issue the change opened closed or entered in BACKLOG.md.
 
 ## K.11 Certification checklist
 
-Check off per promotion; note explicitly (not silently) anywhere a step didn't apply:
+*Every module; the items naming a chip, a bus or the twin a sensor driver.* Check off per addition;
+note explicitly (not silently) anywhere a step did not apply:
+
+- [ ] K.0's owner discussion held and its record written
 
 - [ ] Datasheet in `datasheets/<name>/`; Part G catalog checked for reuse first
 - [ ] Driver written to the Part C/D bar; keyword-only past required positionals; new "off" values
@@ -10448,19 +10584,20 @@ Check off per promotion; note explicitly (not silently) anywhere a step didn't a
       needs it; confirmed unneeded otherwise
 - [ ] `@web`/`@web-group` (+ `@requires`/`@wiring` as needed) tags, with grammar tests if a tag
       capability was extended
-- [ ] `digital_twin/_<name>_chip.py`, wired into `machine.py`'s dispatch
+- [ ] `digital_twin/_<name>_chip.py`, wired into `machine.py`'s dispatch;
+      `tests_scripts/test_twin_fake_catalog.py` green
 - [ ] Unit tests: functionality + resilience/error-path + biting boundary/NaN/inf coverage
 - [ ] Any shared/`math_helpers`-style function this driver added has its **own** direct test suite,
       not just incidental coverage through the driver's fixtures
 - [ ] Digital-twin tests (+ dedicated behavior suite if the driver has real internal state)
 - [ ] `tests_scripts/test_buildgen_*.py` coverage (registry, codegen present/absent-field rendering,
       definitions, web_tag, device_tomls allow-list, `novel_combo.toml`)
-- [ ] Bus-hazard, all four tiers: sensor-specific (hand-written) + cross-sensor (auto-generated if
-      that capability has landed by the time you read this — check; hand-paired otherwise)
+- [ ] Bus-hazard, all four tiers: sensor-specific (hand-written) + cross-sensor (generated from the
+      driver's `I2C_HAZARD_CATALOG` adapter, K.6)
 - [ ] `devices/*.toml` — only the real devices that carry this hardware, wiring facts cited to a
       real source (the only host-side copy there is; see K.7)
-- [ ] `device_scripts/bus_topology_autodetect_and_hazard_sweep.py`'s `KNOWN_ADDRESSES` — the
-      on-target table, which cannot import host code, so it needs the new address added by hand
+- [ ] `device_scripts/_shared/bus_reader_loops.py` — the on-target sweep's reader for a new I2C
+      driver
 - [ ] generated definitions read for every device carrying the driver; `mockdata/samples.json` has
       its sample
 - [ ] SPECIFICATION.md Part C (+ C.7.1/C.8 if applicable), `DEVICE_REFERENCE.md`,
@@ -10471,6 +10608,8 @@ Check off per promotion; note explicitly (not silently) anywhere a step didn't a
       `gc.threshold` values for every affected device
 - [ ] Own branch off the current tracking branch, PR with a real description (not a file list),
       subscribed for CI/review activity, driven to green
+- [ ] Every item above done or stated as not applying; only then does the code count as landed in
+      `src/`
 
 ---
 
