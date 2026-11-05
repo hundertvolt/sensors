@@ -1230,6 +1230,8 @@ the same change.
 - **`tests_hardware/README.md`** — the real-hardware tier: prerequisites, environment variables, each
   tier's runs, the opt-in wear gates and their budget, the bench's wiring, chips and host network;
   BACKLOG.md's "Real-hardware work still owed" says what is owed, this file how.
+- **[`.claude/skills/integrate-module/SKILL.md`](.claude/skills/integrate-module/SKILL.md)** — the
+  integrate-module skill: the inputs a session gathers for a new module, pointing into Part K.
 - **`legacy/README.md`** — the reference-only legacy tree: `legacy/firmware/` (what the owner's legacy
   units run, MicroPython 1.24.1, with `legacy/firmware/update_and_install.txt`) and
   `legacy/dev_drivers/` (the dev unit's 2026-08-27 snapshot).
