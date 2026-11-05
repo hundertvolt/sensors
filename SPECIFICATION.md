@@ -9214,7 +9214,7 @@ decoupled from the soak's request/response path entirely — E.9) purely to sett
 before sampling it for the host-side memory-trend leak check (`scripts/_digital_twin_ci_suite.py`'s
 Run 11). It runs nowhere near a request/response and cannot mask a real `MemoryError` (every
 `fetch()` call already catches and records its own, independently). Without it the check is
-*worse*: with no settled baseline, `gc.mem_free()` swings with reactive-GC timing alone (a healthy
+*worse*: with no post-collection baseline, `gc.mem_free()` swings with reactive-GC timing alone (a healthy
 `wozi` run: `min=99808, max=1347104` across 20 cycles, a false "trend declined by 413990 bytes"
 against an 18318-byte tolerance, 2026-09-14). It
 is the twin's one exception (owner, 2026-09-26), kept while a sparser sampling interval gives Run 11
@@ -9352,30 +9352,28 @@ numbers are at rest — don't compare them directly.
 
 ## I.6 The request-body cap, and why both of Microdot's limits must move together
 
-Microdot exposes two independent limits, and the gap between them was the firmware's largest
-attacker-reachable contiguous allocation.
+Microdot exposes two independent limits, and this project sets both:
 
 - `Request.max_content_length` — the largest body that is *accepted*; anything over it is answered
-  413. This project sets it.
+  413.
 - `Request.max_body_length` — the largest body that is *buffered* into `request.body`; a larger one
-  (up to `max_content_length`) is left unread and reached through `request.stream` instead. This
-  project did **not** set it, so it stayed at Microdot's 16 KB default.
+  (up to `max_content_length`) is left unread and reached through `request.stream` instead. At
+  Microdot's 16 KB default it would be the firmware's largest attacker-reachable contiguous allocation.
 
-**The ordering makes the gap live** [SRC]: `handle_request()` calls `Request.create()` (`:1418`),
-which reads the body at `:426`, and only then `dispatch_request()` (`:1428`), whose 413 check is at
-`:1461`. A body between the two limits is therefore read into one contiguous allocation and
-immediately thrown away. Verified against the vendored v2.7.0 and against upstream `main`, which
-carries the same defaults and the same ordering — this is not fixed by a version bump, and
-`ext/microdot.py` is never edited (Part A.5's vendoring rule), so the fix is ours to apply from
-outside. A negative `Content-Length` is refused with the head, before Microdot reads anything
+**The ordering makes a gap between them live** [SRC]: `handle_request()` calls `Request.create()`
+(`:1418`), which reads the body at `:426`, and only then `dispatch_request()` (`:1428`), whose 413
+check is at `:1461`, so a body between the two limits is read into one contiguous allocation and
+immediately thrown away. The vendored v2.7.0 and upstream `main` carry the same defaults and the
+same ordering, and `ext/microdot.py` is never edited (Part A.5's vendoring rule), so both limits are
+set from outside. A negative `Content-Length` is refused with the head, before Microdot reads anything
 (`readexactly(n)` with `n < 0` reads everything, F.1): the reader proxy takes only ASCII digits, once
 (A.5).
 
-**The exposure was per-request, not per-server.** `readexactly(content_length)` allocates a fresh
-`bytes` per request, and `max_connections` is 6, so up to **six** such buffers could be live at
-once: 6 x 16,384 = 98,304 B of contiguous demand before the fix, against roughly 105,000 B free
-after boot. Nothing legitimate could provoke it — every accepted body is far smaller — but a client
-sending six concurrent oversized PUTs could, and each would be answered 413 *after* allocating. The
+**The exposure is per-request, not per-server.** `readexactly(content_length)` allocates a fresh
+`bytes` per request, and `max_connections` is 6, so at the 16 KB default up to **six** such buffers
+could be live at once: 6 x 16,384 = 98,304 B of contiguous demand against roughly 105,000 B free
+after boot. No legitimate body provokes it — every body the cap admits is far smaller — but six concurrent
+oversized PUTs would, each answered 413 *after* allocating. The
 whole per-connection demand, request and response side, is derived in H.7.
 
 **What the caps are set to, and why 2048.** Measured against the real schemas, per **route**
