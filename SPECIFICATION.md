@@ -4,7 +4,8 @@ Central specification: design principles, architecture, build/toolchain mechanic
 architecture, `src/` production-quality checklist, testing/coverage.
 
 **Not here, by design:** `CLAUDE.md` (AI-session operating constraints — hard rules, working
-agreements, PR workflow, pre-push verification, code-quality tooling) and `BACKLOG.md` (active
+agreements, PR workflow, code-quality tooling; README.md holds the owner's periodic
+build-environment check) and `BACKLOG.md` (active
 working memory — open questions, deferred work; churns as items resolve, so folding it in here
 would recreate the scattering problem this document exists to fix).
 
@@ -191,8 +192,8 @@ scripts/                 lint.sh/typecheck.sh/test.sh, the build and runner scri
 
 - **Sensor Reader/Driver split** — every `asy_<chip>_driver.py` pairs a low-level chip driver
   (register-level I2C/SPI, several adapted from Adafruit) with a `*_Reader` wrapper giving the
-  common async-task surface (`start_asy_read`/`start_asy_trigger`/`start_timer`, a locked
-  `DataManager`, an error counter, config callbacks). Full spec: Part C.
+  common async-task surface (`start_asy_read`/`start_asy_trigger`/`start_timer`, its last
+  sample under a lock, an error counter, config callbacks). Full spec: Part C.
 - **Bus layer** — `asy_i2c_driver.py`/`asy_spi_driver.py` wrap `machine.I2C`/`machine.SPI` with an
   `asyncio.Lock` and an `async with device as dev:` pattern so multiple sensors share one bus.
 - **Config management** — the legacy firmware (`legacy/firmware/`) uses
@@ -206,10 +207,9 @@ scripts/                 lint.sh/typecheck.sh/test.sh, the build and runner scri
   `asy_base_classes.py`'s `_set_dict_cfg()` gives every `SensorReaderConfig` a generic schema-driven
   setter; `asy_api_response.py`'s `make_response()`/`handle_set_cmd()` replace the
   per-endpoint glue with one response envelope (C.5.3).
-- **FRAM storage** (every real device — confirmed against all 6 `devices/*.toml`, each declaring a
-  `driver = "fram"` instance) — a bump allocator handing out chunks as two redundant copies, so
-  power-loss/watchdog reset mid-write leaves one valid copy. Used today for SGP40's VOC baseline
-  backup.
+- **FRAM storage** (on every device whose TOML declares a `fram` instance, today all of them) — a
+  bump allocator handing out chunks as two redundant copies, so a power-loss/watchdog reset mid-write
+  leaves one valid copy. Used for the per-module error logs (A.7) and SGP40's VOC baseline backup.
 - **LED notification signalling** — `asy_neopixel_driver.py` (pure LED hardware: overlay toggle,
   dimmed ramp, internal/external arbitration for the one shared pixel; no config schema) +
   `asy_notification_service.py` (`NotificationService`: generic threshold signalling replacing
@@ -787,7 +787,7 @@ back to mandatory infra first, then TOML declaration order. With `[device.wiring
 `led_target` both set, which every real device's own TOML does today, `conn` waits on `fram` and
 `neopixel`, so the order is `fram → neopixel → conn → ntp → sysfunct →` sensors, and every module
 after `fram` — `conn`'s own `CaptiveDNS` and the webserver included — logs into it via `log=log_fram`
-under CLAUDE.md's implicit-FRAM-wiring rule):
+under the implicit FRAM-wiring rule below the list):
 
 1. `reset_reason = begin_boot()` — this boot's reset reason, decoded before anything is built
    (A.8); the watchdog is the boot entry's, passed in as `watchdog=`.
@@ -937,6 +937,14 @@ is fixed within one build and free to change in the next (owner, 2026-09-26). (A
 `[device.wiring].fram_target` keeps `conn`/`ntp`/`sysfunct`/
 `webserver` RAM-only and none of them draw a chunk at all; a `uart_link` instance with no `fram_target` in its own `[instance.wiring]` stays
 RAM-only the same way, unaffected by whether the device's `fram_target` is set anywhere else.)
+
+**The implicit FRAM-wiring rule.** Every module but the FRAM module itself gets a FRAM-backed logger
+when its instance is wired to FRAM (step 4's owner rule): an `[[instance]]` through its own
+`fram_target`; `conn` (its `CaptiveDNS` included), `ntp`, `sysfunct` and the webserver whenever
+`[device.wiring].fram_target` is set; a module's `CFGMGR_<name>` logger with it, where its config
+log stays on FRAM. The set is one fact per device, computed by buildgen from the TOML
+(`fram_wired`, `fram_backed_loggers`: `buildgen/generate.py`'s `expected_facts()`); every test and
+the bench harness read it, keeping no list of their own.
 
 **Boot latency (the evidence behind CLAUDE.md's "boot latency is not a metric" rule).** Every logger
 store, the webserver's included, is set up in the batch (step 15), before any task starts, so no
@@ -1327,9 +1335,7 @@ body (a HEAD or cut-short response's at the next collection, its finaliser), in 
 before reusing a page and a reflashed site is never served stale (agent, 2026-09-30; owner-reviewed,
 2026-10-02) — Part I.3, "Static files"). With `gzip -n` that makes the archive byte-reproducible, the
 build time living only in `buildgen/version.py`'s stamp. Output goes to `frozen_modules/` (gitignored), not
-`.frozen/`: `.frozen/` is a hardcoded MicroPython import-machinery sentinel
-(`MP_FROZEN_PATH_PREFIX`) — any path starting with that string routes to the compiled-in frozen
-table, so a real on-disk file there is silently unimportable. **The merge of several source dirs is
+`.frozen/`, MicroPython's import sentinel (F.1). **The merge of several source dirs is
 recursive, not flat**: each one's nested subtree keeps its relative paths, so a staged website build
 (`<staged>/index.html`, `<staged>/js/app.js`) and a shared dir
 can each contribute part of the tree — freezefs's archiver already walks nested paths and Microdot's
@@ -1680,8 +1686,8 @@ artefacts, and the toolchain record is written after them (B.3).
 
 ## B.7 Evidence this actually works
 
-The installer is verified from scratch in clean `debootstrap` chroots by CLAUDE.md's
-"Build-environment verification" recipe; an in-place version update leaves no stale state, and a
+The installer is verified from scratch in clean `debootstrap` chroots by README.md's
+"Build-environment verification", the owner's periodic check, not a pre-push gate; an in-place version update leaves no stale state, and a
 hostile environment (poisoned `PATH`, garbage `CFLAGS`/`CMAKE_*`, non-English `LANG`) leaks nothing
 into the build.
 **Every build is warning-free**: a `warning:` or `error:` in any build's output — `mpy-cross`, the
@@ -1783,7 +1789,7 @@ passed, 60 of 60 files, and the 30-minute cap cancelled the job 13m24s into the 
   pushes or comments, and only `web-changes` calls the API, adding `actions: read` to read this
   workflow's run list for its filter base. zizmor enforces it.
 - **Every job runs on `ubuntu-24.04`, never the floating `ubuntu-latest`** (agent, 2026-10-20): the
-  OS the docs target (noble, CLAUDE.md's build-environment recipe) and the image every Part N CI
+  OS the docs target (noble, README.md's build-environment check) and the image every Part N CI
   budget was measured on. `ubuntu-latest` moved to Ubuntu 26.04 on 2026-10-20 and broke two jobs
   from outside the tree: WebKitGTK's driver package was renamed (the installer takes either name,
   H.7), and uutils coreutils replaces GNU's, whose `timeout` the test runner's interrupt-then-kill
@@ -3012,15 +3018,15 @@ Part K the ordered checklist that applies both.
 ## C.1 Layered architecture
 
 ```
-sensortask-*.py               (per-device integration: wires Readers to REST routes, task supervisor)
+sensortask_<device>.py        (generated per device: construction, wiring, routes, supervision)
 *_Reader(SensorReader[Config]) (layer 3 - asyncio task/config/data-distribution; never raises)
 *_I2C / *_SPI                  (layer 2 - chip protocol: registers/CRC/compensation; raises on failure)
 I2CDevice / SPIDevice           (project-wide bus wrapper - not sensor-specific, never touched)
 machine.I2C / machine.SPI      (MicroPython hardware bus)
 ```
 
-A new driver adds layers 2-3 only (one file, `asy_<sensor>_driver.py`) plus a `_Reader` wiring
-block in the relevant `sensortask-*.py`.
+A new driver adds layers 2-3 only (one file, `asy_<sensor>_driver.py`) plus its `[[instance]]` in
+each device TOML that carries it; the generated `sensortask_<device>.py` wires it (Part L).
 
 ## C.2 File & naming conventions
 
@@ -4261,21 +4267,14 @@ optional polish (owner, 2026-09-15, `f9df9a2`):**
   (its assertions only make sense for one driver's own quirk) moves into that driver's own test file
   instead — the file's own bar is "genuinely generic," not "not yet generated."
 
-**Per-real-device applicability**: "cross-device interleaving if sharing a bus" applies only to a
-device that does. Against every real `devices/*.toml`: `wozi` wires `sgp40`+`bmp3xx` together
-on `i2c1`, and `dev` wires `scd30`+`sgp40`+`isl29125` together on `i2c1` (the `isl29125` instance is
-dev-only — the ISL29125 migration's own scoping) — the only two real devices with any sensor pair
-sharing a bus at all. `arzi`/`klkizi`/`grkizi`/`schlafzi` each wire `scd30` alone on `i2c0` and
-`sgp40` alone on `i2c1` (no `bmp3xx`/`isl29125` instance at all) — there is no cross-device
-interleaving window on these 4 devices for tier 2's own
-`test_<device>_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call()`
-scenario to prove anything about, so that test staying wozi/dev-only is complete coverage, not a
-gap to extend. FRAM's own same-device hazard coverage (tier 2's remaining tests: injected-fault
-recovery, RX-overrun absorption, write-protect/storage-pause gating) and the WiFi-disconnect-under-
-load scenario are device-independent by construction (FRAM sits alone on its own dedicated SPI bus
-on every real device, unaffected by which other sensors exist alongside it) — proven once, against
-one real assembled object graph (wozi), rather than six times over at six times the real
-wall-clock cost (the WiFi-disconnect scenario alone is an unavoidable real ~75s).
+**Which devices a cross-device check applies to is derived, never listed.** Cross-device
+interleaving applies to every device whose TOML puts two or more sensors on one bus; the L2
+scenarios take that set from the generated wiring plans (`tests/_twin_devices.py`'s
+`devices_with_shared_bus()`), so a new device or a rewired bus joins them with no test edit. FRAM's
+same-device hazards (injected-fault recovery, RX-overrun absorption, write-protect and storage-pause
+gating) run once per distinct FRAM wiring (`distinct_wirings("fram")`), and the WiFi-disconnect-
+under-load scenario (a real ~75 s) on the first shared-bus device: neither depends on which sensors
+a device carries.
 
 ## C.9 Timer/task/IRQ integration contract
 
@@ -4437,7 +4436,10 @@ retry loop never ends its task to "retry by restart" — that spends the reboot 
 
 ## C.10 Typing conventions
 
-`TYPE_CHECKING` guarded via `try/except ImportError: TYPE_CHECKING = False`, never unconditional.
+Annotations are parsed but never evaluated, and `typing` is not importable at run time on the
+Unix-port test interpreter, so `TYPE_CHECKING` is guarded via `try/except ImportError:
+TYPE_CHECKING = False`, never unconditional, and every typing-only import (`TypeVar`, `Protocol`,
+aliases) sits under `if TYPE_CHECKING:`.
 PEP 604 `X | None` everywhere, never `typing.Union`. A caller-supplied object touched only
 structurally gets a `Protocol` fully inside `if TYPE_CHECKING:` (`asy_print_log.py`'s `_FramChunk`/
 `_FramManager`, `asy_api_response.py`'s `_RequestLike`, `asy_wifi_service.py`'s `LEDControl`).
@@ -4473,10 +4475,9 @@ the SGP40 compensation read and BMP3XX `set_trigger_s()` among them); it never n
    (SGP40's VOC-algorithm backup is the only, and largest, current example)?
 8. **Errno/wrnno numbering**: take numbers from the catalog's bands (C.7, C.7.1).
 9. **Digital-twin extension — required, not optional.** A matching chip fake under `digital_twin/`
-   (`_<name>_chip.py`, same shape as the existing three), wired into `machine.py`'s bus maps, plus
-   `tests/test_digital_twin_<name>.py` (`digital_twin/README.md`'s "Adding a new chip fake"). A new
-   SPI sensor sharing an already-occupied SPI bus id with the FRAM chip is **not** automatically
-   supported by the twin's single-device-per-bus-id wiring. Do this the same session as promotion —
+   (`_<name>_chip.py`, the same shape as the existing ones), wired into `machine.py`'s bus maps, plus
+   `tests/test_digital_twin_<name>.py` (K.5; `digital_twin/README.md`'s "Adding a new chip fake").
+   Do this the same session as promotion —
    a driver with no twin counterpart silently regresses the Unix-port integration run's coverage
    (A.10). **Also tag every field the website should show** (`# @web`/`# @web-group`, K.4) —
    every device's definitions are generated from those tags alone (H.5), so a driver with no tags
@@ -4833,11 +4834,8 @@ Neopixel animation (F.3).
 
 ## D.6 Typing
 
-Type-hint every parameter/return. Verify annotation syntax is safe on the target runtime against
-*current* docs (`X | None` is parsed but never evaluated at runtime, confirmed on every MicroPython
-version checked). Not over/under-typed. Typing-only utilities beyond plain annotations (`TypeVar`,
-`Protocol`, `TYPE_CHECKING` itself) go behind `if TYPE_CHECKING:` with a `try/except ImportError`
-fallback — `typing` isn't importable at all on the Unix-port test interpreter. **`mpy-cross` does
+Type-hint every parameter/return, not over/under-typed; the runtime-safe idiom is C.10's, checked
+against *current* docs. **`mpy-cross` does
 not dead-code-eliminate `if TYPE_CHECKING:` blocks** the way it does `const(0)` — the guard is still
 correct/required; stripping these from the frozen build is `build_firmware.py`'s job (B.11), not an
 individual file's own concern.
@@ -5299,9 +5297,7 @@ out instead or reaches `tests/`.
 
 `.frozen` is required in `MICROPYPATH` because it replaces the interpreter's default `sys.path`
 rather than extending it, and the default path is what makes frozen-in modules (`asyncio` included)
-importable. **`.frozen` is a literal MicroPython sentinel, not an ordinary directory** — any path
-starting with `MP_FROZEN_PATH_PREFIX` routes to the compiled-in frozen table, never the real
-filesystem. `frozen_modules` is a separate, ordinary, gitignored directory (A.9's output) needed
+importable; it is MicroPython's import sentinel, not a directory (F.1). `frozen_modules` is a separate, ordinary, gitignored directory (A.9's output) needed
 too, since `sensortask_wozi.py`'s `import frozen_html` needs it. Where the Unix-port rig differs
 from rp2 is F.7; on it, `asyncio` (a frozen Python package) takes attribute assignments and the C
 builtin modules (`time`, `socket`) do not, so a test that must see a C module's calls replaces the
@@ -5712,7 +5708,11 @@ normal image (owner, 2026-09-26).
 every lower level first (`scripts/_run_lower_levels.sh`); (b) scenarios — L3 ∪ L4 ⊇ L2 and L4 ⊇ L3
 (`tests_scripts/test_level_containment.py`). `manual` is an execution mode of L3/L4, not a level: it
 rides on a flash or bench board and a human closes the loop (unplug/replug, genuine power loss, a
-real second device joining a hotspot).
+real second device joining a hotspot). Nor are `toolchain/setup_toolchain.py env --tier
+{generic,flash,bench}` (setup environments: which host packages and services a machine gets) and
+the soak durations (`--soak-duration {short,mid,long}`, 60 s, 600 s, 6 h: opt-in runs on top of a
+clean L4 run, never bundled into a runner, owner, 2026-09-04, paraphrase), which prove liveness
+only; a leak claim needs a rate bound (E.7) (agent, 2026-09-28).
 
 **Credential rotation is deliberately not a bench capability** (owner decision, 2026-09-22). The
 harness carried a real `nmcli`-driven `BenchBridge.rotate_ap_password()` with zero call sites, so
@@ -5748,7 +5748,8 @@ modules directly, then a soft reset restores normal operation — free/unlimited
 about *flashing* only). **One load-bearing exception**: a trailing soft reset only restores the
 *appearance* of normal operation — it doesn't resume a specific live system state a test depends on
 (e.g. the already-running `main.py`'s own WiFi task); only a genuine `hard_reset()` reliably
-resumes the live system.
+resumes the live system. No GC-instrumented firmware image exists at L3/L4 (owner, 2026-09-18,
+paraphrase): the two-image release proof (E.6.1) covers both GC stages on silicon.
 
 A hardware run's verdict reads its run record (E.10), never a grep of its output. Each runner
 passes its own marker floor (`scripts/_require_clean_hardware_run.sh --marker-floor`): L3 and L4
@@ -5921,6 +5922,11 @@ is a rule rather than an anecdote. E.7 is the largest of them and keeps its own 
   MicroPython asyncio, so listeners an earlier test left parked would keep allocating; microtest's
   after-each check now fails such a test and cancels its tasks (E.2), but isolate before believing a
   per-test number.
+- **A heap figure counts only with its scope written beside it**: the GC threshold in force (a
+  measuring script sets its own, never assumes the firmware's), the image, its point in the boot or
+  serving sequence, production boot or isolated build, the instrument's own cost, and whether it is
+  a sampled minimum; a figure without its threshold is void. How to take one is
+  `HEAP_FRAGMENTATION_MEASUREMENTS.md`'s method (agent, 2026-09-24).
 - **A heap figure about serving load is only as good as the twin that produced it** (the
   connection-limit work, 2026-09-22/24; evidence `HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7Q/§7R/§9).
   A 64-bit twin doubles dicts, lists and frames but not strings, so it ranks the wrong allocation
@@ -6207,7 +6213,10 @@ fails on an import inside a function body or a dynamic load, except the sites it
 `_NAMED_EXCEPTIONS` names with their reasons and a pending list (`_PENDING`) that only shrinks — a
 second check fails on a pending entry that no longer occurs.
 
-**The boot entry puts `.frozen` first on `sys.path`** (owner, 2026-09-26: a filesystem `.py`/`.mpy`
+**`.frozen` is MicroPython's import sentinel, never a directory**: a path entry starting with it
+(`MP_FROZEN_PATH_PREFIX`) is answered from the compiled-in frozen-module table and never reads the
+filesystem, so a real file under `.frozen/` is silently unimportable; tooling writes its generated
+modules to `frozen_modules/` (A.9). **The boot entry puts `.frozen` first on `sys.path`** (owner, 2026-09-26: a filesystem `.py`/`.mpy`
 may not replace a frozen module; A.7), so a stray file of a product module's name on the filesystem
 is never imported in its place. An extensible built-in (`MP_REGISTER_EXTENSIBLE_MODULE`: `machine`,
 `time`, `os`, `json`, `socket`, `select`, `struct`, `errno`, `collections`, …) is looked up on
@@ -8117,6 +8126,12 @@ page tag for the same field; a hidden field appears in no group and on no API-re
 untagged field or a schema constant that cannot be read at build time fails the build
 (`web.schema-field-untagged`, naming every untagged field of the file at once).
 
+**The browser does not re-validate the hints.** `js/definitions.js`'s `validateDefinitions()` checks
+the file's foundations (version, shape, poll groups and intervals, `path`, `decimals`, `format`,
+codes, `alwaysExecuted`, `byteLength`); every other hint is held at build time by buildgen's `web.*`
+rules, and the stager's `_check_inlined()` (`scripts/_stage_website.py`) proves the page inlines that
+same file unchanged.
+
 **The served page is checked against this generator on real hardware.**
 `tests_hardware/website_identity.py` runs `buildgen.definitions.definitions_for_toml()` (the
 model, its construction order, then `generate_definitions()`) for the device under test, pulls every
@@ -9452,10 +9467,10 @@ did — the differences are enumerated in `UART_C_PORT_CHANGELOG.md`.
 The module is **standalone and self-contained** — a general message transport over a point-to-point
 serial link, with no sensor, device or application semantics of its own. Command IDs, payload layouts
 and expected sizes all belong to the caller. Its first use case (a BME688/BSEC coprocessor) is
-explicitly *not* part of its scope and does not constrain its design.
+explicitly *not* part of its scope and does not constrain its design (owner, 2026-08-20; 2026-09-11):
+no sensor sits behind the link today, a known limitation.
 
-**Not constraining it is not the same as not serving it**, and that was checked rather than assumed
-(2026-09-13). `legacy/dev_drivers/asy_bsec_driver.py`'s whole `BSEC_UART` control flow replays
+**Not constraining it is not the same as not serving it** (checked, agent, 2026-09-13). `legacy/dev_drivers/asy_bsec_driver.py`'s whole `BSEC_UART` control flow replays
 over the promoted module at the sizes `legacy/dev_drivers/sensortask-dev.py` actually deployed — 13
 datafields, a 221-byte BSEC state, `payload_size` 20, an 8-byte system status — covering all five
 shapes it used: a fixed-size GET decoded with `struct`, a don't-care GET for when the stored state
@@ -9602,7 +9617,9 @@ like any invalid frame (no ACK; changelog A14).
 bounds), append `SIZE` payload bytes, acknowledge. `SIZE = 0` on chunk 2 means a genuinely empty
 payload, a distinct outcome from failure. An expected total size may be supplied — *don't care*,
 *exactly empty*, or *exactly N* — enforced both incrementally (reject as soon as the running total
-would overshoot) and finally (exact match).
+would overshoot) and finally (exact match). **The receiver's header refusal is the one size
+refusal**: a sender checks no cap of its own, and a train whose header declares more than the
+receiver's `max_transfer_bytes` is refused at that header, before its ACK and any allocation (J.6, J.8).
 
 **Rejection is signalled by withholding an ACK.** There is no NAK. The final chunk's acknowledgement
 is deliberately deferred until after the total-size check passes, so a sender learns its transfer was
@@ -10221,7 +10238,9 @@ SPECIFICATION.md Part L's own standing rule) — extending a tag family's own gr
 *A sensor driver.* A chip fake is **required, not optional**, in the same change as the driver
 (C.11 item 9) — `digital_twin/_<name>_chip.py`, wired into `digital_twin/machine.py`'s
 `_build_i2c_chip()` dispatch (I2C, matched by `driver` string, reading whatever
-`buildgen.twin_wiring` put in the attachment dict — K.3 item 5 above) or `_wire_spi_device()` (SPI);
+`buildgen.twin_wiring` put in the attachment dict — K.3 item 5 above) or `_wire_spi_device()` (SPI:
+one device per bus id and no chip-select routing, so an SPI driver sharing a bus with the FRAM chip
+comes only together with chip-select routing in the twin);
 `tests_scripts/test_twin_fake_catalog.py` fails for a bus-attached driver without its fake, dispatch
 and twin test. If the chip's own datasheet has real `# @requires`-worthy facts or interrupt-line
 electrical requirements (open-drain needing a pull-up, active-low vs. active-high), model them in
@@ -10901,15 +10920,14 @@ needs CPython 3.11 (`tomllib`, `datetime.UTC`).
   boot sequence of A.7 runs as on the board, and its shutdown line reads that WDT.
   `tests_scripts/test_digital_twin_generated_boot.py` generates a device, writes its module source
   and wiring plan to a temp dir, spawns the real MicroPython Unix-port binary and asserts a real
-  `GET` against five REST endpoints returns 200 — for all six real devices plus both synthetic
-  fixtures. That is the point at which a generated module is proven to boot and serve, rather than
+  `GET` against five REST endpoints returns 200 — for every device of `devices/*.toml` plus both
+  synthetic fixtures. That is the point at which a generated module is proven to boot and serve, rather than
   merely to parse.
-- **Known twin limitation** (agent, 2026-09-13): `machine.py`'s single-chip SCD30/FRAM globals only persist the
-  *last-wired* instance's NVM state across a simulated reboot on a multi-instance device — see
-  `digital_twin/README.md`'s "SCD30 persistence" section.
+- **Twin persistence on a multi-instance device**: `digital_twin/README.md`'s fidelity table (the
+  Persistence row) states the limit and the change that lifts it.
 
 `.github/workflows/ci.yml`'s `firmware-build-verify` and `digital-twin-e2e` both run a real
-`strategy.matrix` over all six devices with `fail-fast: false`.
+`strategy.matrix` over every device of `devices/*.toml` with `fail-fast: false`.
 
 ## L.5 Build/generator script quality bar
 
@@ -11295,7 +11313,7 @@ beside the `@web`-derived per-driver sections for the same reason (owner, 2026-0
 
 ## L.7 Product versioning (firmware and website)
 
-Firmware and website carry **independent** version constants, both starting at `"2.0b0"`, so a
+Firmware and website carry **independent** version constants, so a
 website-only fix can bump one without forcing an unrelated firmware rebuild. `GET /system` gains
 one nested, never-flattened `"build"` sub-entry — `{"FirmwareVersion", "WebsiteVersion",
 "BuildDate"}` — supplied through `WebserverService.__init__`'s
@@ -11320,9 +11338,9 @@ build date is a build input (owner, 2026-10-05: 'They must differ for being genu
 for byte, and a second check proves that changing only the date changes only that line (B.11).
 Generated string literals are double-quoted,
 taken from `repr()` (`buildgen/codegen.py`'s `_lit()`), so a non-BMP character stays one code point.
-No
-bump mechanism exists: one clear, documented place to change the two constants, no automation,
-matching `toolchain/versions.toml`'s own precedent.
+Both
+are bumped by hand in that one file, with no bump automation (agent, 2026-09-12, a deferral, not a
+decision), as for `toolchain/versions.toml`'s pin.
 
 ---
 
