@@ -446,12 +446,11 @@ gates, traps).
   entry, 6 the starved-watchdog fallback, 0 an invalid record, 9 an incomplete command, 10 + phase a
   hang in boot phases 1-5, 20 a C-stack exhaustion, 21 a console interrupt; the board serving after
   each. Wear: no owned write (the tests carry no wear marker). Twin row: each script's twin run.
-- **The UART receive ring sized for the bench's interrupts-off window** — on `dev`, the receiving
-  link's `rx_ring` is the driver-default 512 B (SPECIFICATION.md J.6 and I.2; agent, 2026-10-08),
-  while a continuous sender puts 4,608 B into the 400 ms flash window at 115200 baud, so
-  `flash/test_uart_crossover.py::test_no_frame_is_lost_while_interrupts_are_off` fails up front
-  naming the size until `devices/dev.toml` sizes it. Then the run measures the ring's heap cost (the
-  test reports it). Expected: every frame intact with the overrun bit clear within the ring's bound,
+- **The UART receive ring sized for the bench's interrupts-off window** — on `dev`, the responder's
+  `rx_ring` is 8,192 B (`devices/dev.toml`), the power of two above the 4,608 B a continuous sender
+  puts into the 400 ms flash window at 115200 baud;
+  `flash/test_uart_crossover.py::test_no_frame_is_lost_while_interrupts_are_off` runs on it and
+  measures the ring's heap cost (the test reports it). Expected: every frame intact with the overrun bit clear within the ring's bound,
   an overrun reported past it, the frames after its resync intact, and the receive-DMA-off overrun
   failing one transaction and recovering. Wear: none (`uart_dma_ring_interrupts_off.py` holds
   interrupts off with a busy-wait, no flash write). Twin row: none.
@@ -1224,7 +1223,7 @@ gates, traps).
   targets not yet done" above).
 - **SystemService's settings store grows with device-wide settings** — the timezone offsets
   (`GMTOffset`/`DSTOffset`) now held by `NTPClient`'s config, future rsyslog settings;
-  `config_SYSTEM.cfg` holds only `DebugLevel` today (`src/asy_system_service.py:78, :121`).
+  `config_SYSTEM.cfg` holds only `DebugLevel` today (`src/asy_system_service.py`'s `_VAL_DEBUG_LEVEL`).
   Owner-deferred goal (owner-confirmed, 2026-08-11, `249f2ae`: 'per the owner's explicit intent,
   this is meant to grow into a general, module-independent system-settings store', paraphrase).
 - **Adopt a genuine non-blocking alternative to every currently-unavoidable blocking call as soon as
