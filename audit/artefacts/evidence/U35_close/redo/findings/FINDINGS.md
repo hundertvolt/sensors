@@ -120,3 +120,68 @@ done-criteria, observations. Each with its evidence, for the owner.
   from "about 105,000 B free", measurement owed) exceeds dev's measured idle free heap (57.6-58.2 KB). 4a's 32768 stage
   on the Pi: 4 files over the 240 s per-file timeout on all attempts, the slow-host class; PER_FILE_TIMEOUT_S is an
   environment setting (scripts/test.sh:91), so the bench raises it, no code change.
+- 12.16 (proof run 2 comparison, p10_lead/bmp3xx/COMPARE.md; to check in the last round) about the real tree: (a) an
+  address-capable driver with no TOML `address` raises KeyError in twin wiring (buildgen/twin_wiring.py:109-110) and
+  the collision check skips it (validate.py:152), latent since every TOML sets one; (b) sibling_inside_window() would
+  fail for a register-addressed chip flagged as releasing the bus mid-read, latent; (c) the real BMP3xx logs an
+  out-of-range reading as READ 11 where the shared READ_RANGE 27 describes that case, and declares no precision on its
+  values where the owner record's item 9 asks for one. Run 2 needed three K sentences beyond run 1's six (N1: lint and
+  the pyproject/spec rows a red result names; N2: C.11.1's conformance probe in K.6/K.11; N3: the skill reads cited
+  Parts step by step). The strip left module traces at SPECIFICATION.md lines 563, 4362, 5536, 7723, 8770-8773, 9347,
+  11193, 11809, 11837 of the stripped tree, so run 2 was not fully blind.
+- 12.17 (lead, 17:34; bench ROOT_CAUSES 12-13 at dad8d551) final image b7533307 on silicon: /status under 3 readers x
+  60 s, three runs: 3 of 156 answered 500 ("allocating 250 bytes", flush()'s join), no reset; improved from 10/32 and
+  8/45 on the control image, not clean, so 12.13's fix is partial on silicon (the twin predicted 0). 4b: 72 passed, 14
+  failed, none new, the cascade gone. Heap after a full dev build 128,384-128,576 B against the owner's 100,000 B bound
+  (2026-10-02: changes only through a new derivation), with 69,312 B already allocated before the build; the readings
+  the bound came from were 84,112-87,968 B in all, so about 40 KB is unexplained, likely the same shortfall as 12.15's
+  58 KB idle free heap. VOC: one vocalgorithm_process() 41,345 us against the 21,000 us GC term. C stack 4,020 B against
+  half the 7,936 B limit (chain fram.get_values_sync). UART_init Failures 0 idle, 4/8/11 under the /status load (the
+  control image shows the same resyncs). Decisions sent: no new image now; run 5 on b7533307 on day 2, then the
+  remaining 4a twins; the /status fix with the heap root cause, VOC, C stack, UART under load and twin conformance go
+  to round 2; HARN2 writes the held-SDA, BMP3xx general-call and FRAM-erase test fixes and round1.sh's flash() (kick
+  plus a 9.5-minute /system wait); the board fixture's 16:44:30 skip is diagnosed before any fix (no blind retry);
+  PER_FILE_TIMEOUT_S=900 accepted (hang backstop, no product bound).
+- 12.18 (lead, 18:1x; MEMDX, S/u35r/bench/HANDBACK_MEMDX.md) correction to 12.17: 84,112 B is SPEC F.5.3's
+  largest_block after the build, not an allocation; the bound's readings are 87,760-87,968 B (2026-09-18, image
+  23e54438, script c486553a, no setups). Of today's +40.6 KB: +8.1 KB the script's own growth (U26 includes, rendered
+  facts, the map dump), +20.2 KB the setups the script now runs (since U20; production pays them), about +6.8 KB
+  imports and +5.6 KB build growth (inferred, flat since U17). Largest single contributor: 33974760 (U35, 2026-11-05
+  07:24) raised dev's responder rx_ring 512 -> 8192 B for test_uart_crossover's precheck, which demands a continuous
+  sender over a 400 ms erase; the driver allocates 2 x the ring for alignment (asy_uart_driver.py:744), so 16,384 B,
+  +15,360 B, in both bench images. Part N's con.uart_rx_ring asks only for what the stop-and-wait peer sends during one
+  flush (one frame), which 512 B holds. Production's idle free heap about 59.5-60.1 KB (inferred), below Part N's
+  68,790 B demand. The "finished response stays live" of 12.13 is a stale child_last word in MicroPython's pairing heap
+  pinning the last finished connection's task (~1 KB, not the body, with the drain): upstream behaviour, class (c).
+  Proposed last-round /status design: one built piece list shared by every reader in flight, rebuilt only at zero
+  readers. Put to the owner 18:1x: revert the ring to 512 B in a new image before run 5 (A, recommended) or in the last
+  round (B).
+- 12.19 (lead, 18:1x) proof formal ends: ISL tree e869c46 green in every step (twin suite and harness at -1 and 32768,
+  collect 195/223), dev imageFreeBytes 72,660; BMP tree 139eec9 green except tests_scripts 1 of 6732
+  (test_every_rule_in_buildgen_has_exactly_one_row: names.logger-collision has no row), red in the run's baseline g0
+  before its first change: a strip artefact, class (S); dev imageFreeBytes 62,580 (baseline 71,048).
+- 12.20 (lead, 18:1x; HARN2, S/u35r/bench/HANDBACK_HARN2.md) merged into int as e918200a (+f402c0f2, a line-length
+  fix): held SDA probes with one pointer-write byte on the controller path (rp2 bit-bangs a zero-length write and
+  reads a held SDA as an ACK; a read could clear BMP3xx ERR_REG); the BMP3xx general-call script reads "before" after
+  one forced conversion (sec 3.3.2); the FRAM erase script counts its 16 s from the reset's arm. round1.sh (copy):
+  flash() kicks after a successful load, the /system reads after a flash wait 720 s. The board fixture's 16:44:30 skip
+  is not explained by the code: is_reachable()'s own Ctrl-C ends main.py (code 21) and the armed watchdog resets the
+  board 6-8 s later at every real session start, but the probe takes 0.4 s; the bench's reset reason decides it. For
+  the last round, class (A) harness: session_start_evidence() saves /status after that probe has already ended main.py,
+  so the pre-session state it is meant to keep is gone, and every session start costs one watchdog reset.
+- 12.21 (lead, 19:1x) owner 19:11 "Option A": int 4e05f80e reverts 33974760 (dev's uart1 rx_ring 8192 -> 512 B) and
+  removes test_uart_crossover's ring precheck (a continuous sender over a 400 ms erase, beyond J.6's stop-and-wait
+  floor, which the build checks); J.6, the memory section and the BACKLOG bench item updated. At 512 B the ring's bound
+  is 44,444 us, so the device script's 45 ms window lies 0.6 ms past it (about 6 bytes): it should report an overrun;
+  if it does not on silicon, look there first. Gate running (ring_gate); then a new image for the bench: day 2 starts
+  with step 3, 4b and the /status load check, then run 5.
+- 12.22 (lead, 20:11) ring gate on int 4e05f80e green in every step (rebuild, lint, mypy x3, unit tier and
+  tests_scripts at -1 and 32768 with no allocation-failure line, dev twin suite and harness at both stages, npm, dev
+  firmware), dev imageFreeBytes 60,172. Bench push 3: bd67db94 (fast-forward of a4ed871a): the image for day 2.
+- 12.23 (lead, 20:20; PK, S/u35r/r4/HANDBACK_PK.md) merged into int 84a76ae8 (aff1af5c + e32e11c9, a wrap): Part K
+  K.2, K.3 item 1, K.4, K.5, K.6 (head and twin paragraph), K.9, K.10, K.11 and the skill's step 1 carry the proof
+  runs' sentences (net +19 lines in Part K and the skill); F.1 states the frozen math.inf/math.nan build failure with
+  its v1.29.0 citations. Not written: CLAUDE.md's 120-character clause is already there (CLAUDE.md:534-536, since
+  656fc82f), so that comparison finding was mistaken; C.9's one-Timer-per-starter rule has no basis in Part F and no
+  product dependant, only a test count (tests/_sensortask_scenarios.py:1524-1530): open for the last round as (c), the
+  rule or the count. tests_scripts whole 6,887 passed at aff1af5c.

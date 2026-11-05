@@ -6281,8 +6281,12 @@ every schema's float bounds are checked against 2**24 by `tests_scripts/test_con
 Float constants are folded in double on the host by `mpy-cross` and rounded to single precision
 once, when the frozen C is compiled (`mpy-cross/mpconfigport.h:59, 77`,
 `py/persistentcode.c:626-646`, `tools/mpy-tool.py:790-797`); a threshold that must compare exactly
-on the board is written as a value float32 represents, or as an int. rp2 uses the default object
-representation (`py/mpconfig.h:162-164`), so every float result is heap-allocated:
+on the board is written as a value float32 represents, or as an int. `math.inf` and `math.nan`
+fold to such a constant too (`mpy-cross/mpconfigport.h:57, 98-99`, `py/parse.c:662, 876-899`),
+which the freezer writes as a bare `inf` or `nan` token the C compiler rejects
+(`tools/mpy-tool.py:796`): a frozen use fails the firmware build while every tier that runs from
+source passes; `float("inf")` is a call, never folded (`py/parse.c:880-883`). rp2 uses the
+default object representation (`py/mpconfig.h:162-164`), so every float result is heap-allocated:
 `asyncio.sleep(t)` multiplies `t` by 1000 (`extmod/asyncio/core.py:61-63`) and
 `asyncio.wait_for(aw, t)` sleeps through it (`extmod/asyncio/funcs.py:24-34`), so a float `t`
 allocates on every call, while `sleep_ms()` and `wait_for_ms()` take an int as given (`core.py:53-58`,
@@ -8931,8 +8935,8 @@ DMA ring (`setup_rx_ring()`): construction phase (the link's `setup()` in the on
 long-lived, fixed by the device TOML's ring size — one allocation of twice the ring's size, so a
 naturally aligned window always fits, never reallocated by a task restart; `dev`'s two links, at the
 driver-default 512-byte ring, hold 2 × 1,024 B, and the boot contiguity
-test asserts where they land (I.4(f.1)). A larger ring costs twice its size, which is why a ring for
-the bench's continuous-sender window is sized on the bench with its heap cost measured (J.6).
+test asserts where they land (I.4(f.1)). A larger ring costs twice its size, which is why `dev` keeps
+the default ring rather than one for the bench's continuous-sender window (J.6).
 `readline_until_complete()` is capped by `max_transfer_bytes` and assembles a `PieceBuffer`, never
 growing by concatenation, a heap too short for its pieces answering `None` with the caught text
 through its user's logger (owner, 2026-10-27); `read_until_complete()` is bounded by its `n`.
@@ -9766,9 +9770,10 @@ number (owner, 2026-10-05). At the defaults the floor is 128 bytes against the d
 default ring (Part N `uart.rx_ring_default`); at `payload_size = 255` it is 512, which the default
 still holds, and a 100 ms `timeout` there raises it to 2,048. A device may declare a larger ring
 than its floor for a reason of its own; `dev` states the driver default, 512 bytes, four times its
-links' floor, and a ring for the bench's continuous-sender window (400
-ms of interrupts off at 115200 baud is 4,608 B) is sized on the bench, its heap cost measured there
-(agent, 2026-10-08). `rxbuf` is still checked against the
+links' floor. A ring for the bench's continuous-sender window (400 ms of interrupts off at 115200
+baud is 4,608 B) would be 8,192 B at 16,384 B of heap, more than `dev`'s serving can spare, so the
+bench's sender runs past the 512-byte ring's bound and checks the overrun's report and resync
+(owner, 2026-11-05). `rxbuf` is still checked against the
 first two floors (at `payload_size = 255` the 260-byte frame alone
 overruns the driver's 256-byte default, `uart.rxbuf_default`), since it stays the largest single
 read. The bytes land in the ring through a DMA channel (F.5.8), while `machine.UART`'s own receive
@@ -10146,8 +10151,9 @@ discussion leaves open goes to BACKLOG.md's owner-question list, never into a gu
 
 *Every module; the shape a sensor driver.* Layered shape (Part C.1–C.10), config schema (C.5),
 error/logging contract (C.7), concurrency model (C.8), the quality bar (Part D in full), and every
-row of 0.4's conventions catalog checked for the new code. Two points easy to miss reading Part C/D
-alone:
+row of 0.4's conventions catalog checked for the new code. Every tuned value takes an `@tunable`
+tag and a Part N row (N.1); a new `src/` file then gets CLAUDE.md's bird's-eye scan over `src/`,
+its discrepancies reported, not fixed. Two points easy to miss reading Part C/D alone:
 
 - **Keyword-only past the required positional leaders.** Ruff's `FBT001`/`FBT002` (boolean-trap,
   live under this project's `select = ["ALL"]`) reject a `bool`-typed parameter that isn't
@@ -10184,7 +10190,9 @@ fixture TOML (or a real `devices/*.toml` with a draft instance added), not by in
    `FIXED_ADDRESS_DRIVERS` like SCD30/SGP40, not `ADDRESS_CAPABLE_DRIVERS` like BMP3xx; guessing
    this wrong lets a device TOML declare a meaningless `address` field that silently does nothing.
    A hard-wired chip gets no TOML `address`, and its protocol class takes no `address` parameter at
-   all, not even for tests; a second part needs another bus (owner, 2026-09-26).
+   all, not even for tests; a second part needs another bus (owner, 2026-09-26). It declares the
+   address as a module-level `_<DRIVER>_ADDR = const(0x..)`, which `buildgen/twin_wiring.py`'s
+   `fixed_address()` reads to place the twin's chip.
 2. **`buildgen/driver_registry.py`** — usually **no change**: `resolve_driver()` AST-scans
    `asy_<name>_driver.py` for a `SensorReader`/`SensorReaderConfig` subclass automatically. Only
    add a `_OVERRIDES` entry if the driver genuinely can't follow that convention (today: `fram`,
@@ -10220,7 +10228,10 @@ H.5.1); it is never hand-maintained. Add `# @web-group`/`# @web <Field> ...` tag
 every field the website should show, in both the `measurements` and `sensors` sections as
 applicable — `src/asy_bmp3xx_driver.py` (simple) and `src/asy_isl29125_driver.py` (uses `special:`
 sentinel labels, `decimals` rounding hints, and `path="A.B"` for a value nested inside the
-measurement body, Part H.5.1 and L.6.4) are the two worked examples to copy from. If a bus prerequisite exists (a minimum I2C
+measurement body, Part H.5.1 and L.6.4) are the two worked examples to copy from. A state code
+takes `codes=<table>`, its table in `buildgen/error_catalog.json`'s `status` section (H.5.1); a
+dimensionless value omits `unit` and a bool or code field `decimals`, as ISL29125's `R` and
+`CalLight` tags do (agent, 2026-11-05). If a bus prerequisite exists (a minimum I2C
 bus timeout, say), add a `# @requires bus.<field><op><value>` tag too (C.2/SPECIFICATION.md Part L); if
 a cross-instance reference exists beyond the generic `fram_target` shape, check whether `@wiring`/
 `@value-wiring` already cover it before inventing a new tag family. Every tag family gets full
@@ -10244,11 +10255,17 @@ the fake too, not just the driver — ISL29125's chip fake idles its INT line HI
 conversion timer running through a range switch, each pinned by a digital-twin test. Add
 `Pin.PULL_UP`/whatever other `machine`-fake constant the real driver now references to **both**
 `tests/machine.py` and `digital_twin/machine.py` if it's the first driver needing it (ISL29125 was,
-for `PULL_UP`).
+for `PULL_UP`). The fake's own steps are `digital_twin/README.md`'s "Adding a new chip fake" list.
 
 ## K.6 Tests, every tier — "biting," not just executing
 
-*Every module; the bus-hazard coverage a sensor driver.*
+*Every module; the bus-hazard coverage a sensor driver.* Once a draft wires the module into a
+device, run lint, `tests_scripts/` and the unit tier in full: each red pin or lint finding names a
+hand-kept per-driver row to extend — the twin CI suite's tables
+(`scripts/_digital_twin_ci_suite.py`), the twin tests' driver maps, `digital_twin/launch.py`'s
+vocabularies, the scenario lists, the tag inventories, `_KNOWN_TICKS_USERS`, the persisting
+helpers, the request-body pins, `pyproject.toml`'s per-file-ignores, and this specification's I.2
+section, L.3 key rows, E.6.6 row and Part N sites (agent, 2026-11-05).
 
 **A dedicated unit-test file for the driver itself**
 (`tests/test_asy_<name>_driver.py`, Part D.12's own bar): every parameter individually and in
@@ -10268,7 +10285,10 @@ is a real, checkable number from outside this codebase, not a self-referential a
 the driver has a real state machine worth its own file — ISL29125's autorange logic is the
 precedent, `tests/test_digital_twin_<name>_autorange.py`-shaped). Follow "Driver/DUT process
 separation" (Part E.9) for anything that drives requests against a running twin instance — host-side
-against the real HTTP server, never sharing the twin process's own heap.
+against the real HTTP server, never sharing the twin process's own heap. A bus-facing chip also
+gets C.11.1's conformance probe (a device script that
+`tests_hardware/flash/test_chip_conformance.py` gates), or a BACKLOG.md row while no hardware is at
+hand (agent, 2026-11-05).
 
 **`buildgen`-level tests** (`tests_scripts/`) — this is its own tier, easy to forget since it's
 host-side pytest, not MicroPython:
@@ -10338,7 +10358,8 @@ missing, and an `errcount` module's missing sample too, naming its group and mod
   settled project-owner rulings specific to this chip (M.1, the ISL29125's, is the shape to follow:
   measured behaviour, reference-layer traps, settled requirements — real evidence, not narrative);
   Part C gains a subsection only for a rule every driver shares. A `C.7.1` errno/wrnno table row if
-  the driver claims a new range. Update C.8's per-device bus-sharing note if this driver changes which devices share a bus.
+  the driver claims a new range. Update C.9.1's stagger example and any list naming a bus's readers
+  for every device the driver joins.
 - **`DEVICE_REFERENCE.md`** — end-user-facing notes only (its own docstring: "not an AI-session or
   architecture doc"), so add an entry only if the new driver introduces a real user-configurable
   behavior worth explaining to someone operating a deployed unit — not a routine promotion step for
@@ -10372,6 +10393,8 @@ files' — nothing is reported as passing unrun.
   memory-safety discipline (Part I.4) — zero `MemoryError`s under either pass is the bar, not just
   "the soak trend stayed in tolerance."
 - If website files changed: the JS suite (`npm test`) clean too.
+- `scripts/build_firmware.py <device>` for every device carrying the module: the only tier that
+  freezes it, so the only one a freezer-side failure (F.1) reaches (agent, 2026-11-05).
 - One targeted fault-planting pass over the new module in a throwaway worktree: each planted fault
   (a flipped comparison, a dropped call or await, a swallowed exception, a removed guard or clamp,
   an off-by-one bound) turns a named test red, and nothing from the worktree is kept (owner,
@@ -10403,7 +10426,8 @@ note explicitly (not silently) anywhere a step did not apply:
 - [ ] `@web`/`@web-group` (+ `@requires`/`@wiring` as needed) tags, with grammar tests if a tag
       capability was extended
 - [ ] `digital_twin/_<name>_chip.py`, wired into `machine.py`'s dispatch;
-      `tests_scripts/test_twin_fake_catalog.py` green
+      `tests_scripts/test_twin_fake_catalog.py` green; C.11.1's conformance probe, or its
+      BACKLOG.md row
 - [ ] Unit tests: functionality + resilience/error-path + biting boundary/NaN/inf coverage
 - [ ] Any shared/`math_helpers`-style function this driver added has its **own** direct test suite,
       not just incidental coverage through the driver's fixtures
@@ -10418,7 +10442,7 @@ note explicitly (not silently) anywhere a step did not apply:
       driver
 - [ ] generated definitions read for every device carrying the driver; `mockdata/samples.json` has
       its sample
-- [ ] SPECIFICATION.md Part C (+ C.7.1/C.8 if applicable), `DEVICE_REFERENCE.md`,
+- [ ] SPECIFICATION.md Part C (+ C.7.1/C.9.1 if applicable), `DEVICE_REFERENCE.md`,
       `digital_twin/README.md`, `THIRD_PARTY_LICENSES.md` if applicable, BACKLOG.md only for
       genuinely open questions
 - [ ] `scripts/lint.sh`/`scripts/typecheck.sh`/`scripts/test.sh` clean; all six device TOMLs

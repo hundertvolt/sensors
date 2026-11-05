@@ -703,3 +703,89 @@ The soft-reset channel comparison, the build() feed and _serving_status.
 The first two matter most: without them, 4b and run 5 can lose their results again.
 Latest start: run 3 4b has to start by about 18:00 UTC to finish by 20:52, allowing for the image build."
 Topic: the bench's asks for the final image's push: a MemoryError fix (decision), six harness fixes, latest start 18:00.
+
+## 2026-11-05 17:27 UTC (relayed from the bench session; final image b7533307)
+"From the bench session (2026-11-05), final image b7533307. Details are in ROOT_CAUSES_20261105.md items 12 and 13, pushed as dad8d551.
+
+1. Does the /status result lead to a new image?
+   With 3 readers for 60 s, run three times, 3 of 156 reads answered 500 ("memory allocation failed, allocating 250 bytes"). There was no reset. You expected 0 from the twin. A new image means repeating step 3 and 4b. With no answer before day 2, I run `run 5` on this image.
+
+2. Do the three firmware-side measurements change the image, or the bounds?
+   - Heap: 128,576 B used against a 100,000 B bound, with 59,568 B free. That free figure is below Part N's 68,790 B demand.
+   - No-yield stretch: VOC 41,345 us against a 21,000 us bound.
+   - C stack: 4,020 B against 3,968 B (half the limit), chain fram.get_values_sync.
+   If any of these needs a firmware change, it's best bundled with question 1, so there's only one more image.
+
+3. Do you want the test-side fixes before `run 5`?
+   None of them needs a new image. I'd pull them at once and rerun only the affected tests with PYTEST_K.
+   - Held SDA: probe with a 1-byte transfer instead of writeto(addr, b"").
+   - BMP3xx general call: take `before` after one read.
+   - FRAM erase script: start the 16 s wait at the `reset` fact.
+   - Twin conformance: align the SCD30, SGP40, BMP3xx and FRAM fakes with the chips, if the datasheets agree. I haven't checked them.
+   - board fixture: retry is_reachable() once.
+
+4. Will you fix round1.sh's flash()?
+   It has no kick, and its 180 s /system read is shorter than the roughly 9.5-minute worst case after a stale AP entry. That's why step 3 shows rc=1 on a good image. Step 15's fallback uses the same path. The runner is yours, so I haven't changed it.
+
+5. What should happen with the UART failures under /status load?
+   UART_init's Failures went from 0 when idle to 4, 8 and 11 across the three load runs, with "no ACK" and "train stalled" lines. The control image shows the same resync lines. Should I look into the cause on the bench, or is one of your units taking it?
+
+6. Is PER_FILE_TIMEOUT_S=900 acceptable for the final 4a on this Pi?
+   I set it because 4 files exceeded 240 s on all 3 attempts at GC_THRESHOLD=32768. It's already running that way and also applies to the -1 stage. If you want a different value, that stage has to be rerun.
+
+7. Can 4a's remaining twin devices finish on day 2?
+   The full stage list takes about 4 hours at today's times, so a STOP at 20:45 UTC will probably cut it short. If you want them all on one day, tell me which comes first on day 2, those twins or `run 5`."
+Topic: round 1's final-image results; seven decisions asked of the lead (new image for /status 500s, three firmware
+bounds, test-side fixes before run 5, round1.sh flash(), UART failures under load, PER_FILE_TIMEOUT_S=900, day-2 order).
+
+## 2026-11-05 17:38 UTC
+"Give me a console type copy paste button question set again"
+Topic: the lead's 17:34 answers to the bench's seven questions, wanted again as one copy-paste block for relaying.
+
+## 2026-11-05 17:39 UTC
+"It's 64% but that's not critical from your point of view - I ran completely unrelated other sessions which increased usage. Not your fault and  all within good bounds."
+Topic: weekly usage figure (64 %, including unrelated sessions); the 80 % unit stop is not near.
+
+## 2026-11-05 19:08 UTC
+"Ask again, I didn't see a question yet"
+Topic: the lead's 18:1x question (dev's responder rx_ring back to 512 B in a new image before run 5, A, or in the last
+round, B) did not reach the owner; asked again.
+
+## 2026-11-05 19:11 UTC
+"Option A"
+Topic: dev's responder rx_ring back to 512 B (33974760 reverted) and the test's precheck to Part N's con.uart_rx_ring
+requirement, in a new image pushed tonight; the bench starts day 2 with step 3, 4b and the /status load check, then run 5.
+
+## 2026-11-05 19:24 UTC
+"For my understanding, does that mean that even a normal timed, not super long erase could directly stall a UART transmission or is that unrelated?"
+Topic: question (no ruling): whether an ordinary flash erase stalls a UART transmission, after the ring revert.
+
+## 2026-11-05 20:08 UTC
+"Good explanation. Then everything goes / stays as decided."
+Topic: after the flash-erase/UART explanation: Option A (ring 512 B, new image before run 5) stands; nothing changes.
+
+## 2026-11-05 20:12 UTC (relayed from the bench session; its header says 20:15 UTC)
+"From the bench session (2026-11-05, 20:15 UTC): final 4a, later stages, on tree b7533307 (recorded commit 2fa16c9d; only audit/ differs).
+
+Results so far:
+- npm test: PASS, 900 s.
+- Twins: dev PASS 1,509 s; wozi PASS 1,278 s; grkizi PASS 1,272 s; arzi FAIL 1,288 s.
+- klkizi is running, due about 20:26 UTC. schlafzi probably won't start: it must start by 20:24:30 to finish by 20:52. If so, it moves to day 2 after run 5.
+
+arzi: 571 checks passed, 3 failed, no retries:
+1. [gc.threshold=-1] Run 4: largest feed gap 6,795 ms, above 75% of the 8,000 ms watchdog timeout.
+2. [gc.threshold=32768] Run 11: largest feed gap 6,290 ms, same check.
+3. [gc.threshold=32768] Run 11: 1 HTTP failure in 1,260 soak requests: "warmup: GET /sensors -> TimeoutError('timed out')".
+
+What I checked:
+- The same two runs on dev, wozi, grkizi and arzi's other GC stage show 2,002-2,077 ms. Only Run 10's deliberate hangs go above that (12-13 s), and they are exempt from this check.
+- would_have_triggered_count=0 in both runs, and the log has no MemoryError or "memory allocation failed" lines in either.
+- Run 4 and Run 11 ended at 19:22:19 and 19:39:34 UTC. The kernel log shows nothing from 19:20 to 19:45, and the system journal shows only my runner's sudo lines around the first time. Load now is about 0.5; I have no load reading from those moments.
+
+Not known: the cause, whether the stall is in the host or in arzi's firmware, and where in either run it fell. The stall hit only arzi, and nothing here separates a host stall from an arzi-specific one. The same twin passed on b6a7bc1e.
+
+Next: I plan to rerun arzi on day 2 with schlafzi, after run 5. It needs no board. If you want it read differently, or looked at sooner, say so.
+
+Logs (git-ignored, on the Pi): digital_twin_ci_logs/arzi/gc_threshold_neg1/run4_bus_fault_persistence_sweep.log and digital_twin_ci_logs/arzi/gc_threshold_32768/run11_soak.log."
+Topic: 4a's twin stage on the Pi: arzi red (two feed gaps over 6 s, one soak timeout), cause unknown; the bench asks
+whether to rerun arzi on day 2 after run 5 or look sooner.
