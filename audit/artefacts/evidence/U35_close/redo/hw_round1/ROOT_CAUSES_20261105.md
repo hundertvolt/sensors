@@ -237,3 +237,32 @@ Lead only: 5 of 308 against 0 of 156 is weak given so few failures, and the dire
 - **Repeat, one try:** 3 load runs, 57 s idle, the same `exec`: 0.38 s, rc 0. The board reset 8 s later (the watchdog, as the product was stopped) and reads `ResetReason` 21. That session had no 500s, so it wasn't quite the same state.
 
 **FRAM holds test data now.** `SYSTEM` reads counter 18 with `E125`/`E126`, the test band that 4b's erase scripts write. I did not trace which run left them. Treat those as test data in step 5's record. Nothing cleared.
+
+## 15. Final 4a on `b7533307`'s tree (17:17-20:24 UTC, no board contact)
+
+Settings: `PER_FILE_TIMEOUT_S=900`, accepted by the lead at 17:34 UTC as the hang backstop, with no test's own bound changed; Node 24.22.2; no device mask. Recorded commits `dad8d551` and `2fa16c9d`, which differ from `b7533307` only under `audit/`. `bd67db94` came later, so nothing here ran with its 512 B ring. The runner stops at the first failing stage, so I ran `npm test` and the twins by hand after the GC stage failed.
+
+| Stage | Result | Seconds |
+|---|---|---|
+| `scripts/test.sh` (-1) | pass: 137 of 137 files, 5,844 tests, `tests_scripts` 6,890 | 3,502 with the GC stage |
+| `GC_THRESHOLD=32768 scripts/test.sh` | **fail**: 136 of 137 files, 5,843 tests | same |
+| `npm test` | pass | 900 |
+| twin `dev` | pass | 1,509 |
+| twin `wozi` | pass | 1,278 |
+| twin `arzi` | **fail**: 571 checks passed, 3 failed | 1,288 |
+| twin `grkizi` | pass: 574 checks | 1,272 |
+| twin `klkizi` | pass: 574 checks | 1,235 |
+| twin `schlafzi` | not started: could not end by 20:52 | - |
+
+**GC stage's one failure.** `scenarios[dev]`, `failed_config_snapshot_is_sent_as_unavailable`: "SCD30: 1 GET(s) sent the marker and the verify took 0 of 2 faults (38.6s)". Alone at load 0.7 it passes 3 of 3 in 19.7 s. The failed run shared the Pi with parallel scenarios and my board probes, load about 8. That points to load, but where the second fault went was not traced, so it stays a failure.
+
+**`arzi`'s three failures:**
+- `[gc.threshold=-1]` Run 4: largest feed gap 6,795 ms, above 75 % of the 8,000 ms watchdog timeout.
+- `[gc.threshold=32768]` Run 11: largest feed gap 6,290 ms, same check.
+- `[gc.threshold=32768]` Run 11: 1 HTTP failure in 1,260 soak requests, "warmup: GET /sensors -> TimeoutError('timed out')".
+
+In these two runs the other stage and the other devices read 2,002-2,077 ms, except `klkizi`'s Run 11 at -1 with 3,013 ms, which passes. `would_have_triggered_count` was 0, and neither log has a memory marker. The kernel log is empty for 19:20-19:45. Cause not known: nothing here separates a host stall from one specific to `arzi`. The same twin passed on `b6a7bc1e`.
+
+**Kept in** `logs/final_4a_20261105/` (git-ignored): the stage output, the first 4a log and the two `arzi` run logs, since a rerun overwrites `digital_twin_ci_logs/`.
+
+**Where the bench stopped (owner, 2026-11-05: "When that current run has finished, pause for today.").** The board still runs `b7533307`, idle; `/status` answered 200 at 20:26 UTC. `bd67db94`, `a4ed871a` and `db6442b5` are pulled, and no image with them is built or flashed. Nothing was cleared. Day 2, per `bd67db94`: the new image, step 3, 4b, the `/status` load check, then `run 5`. Then `schlafzi` and the `arzi` rerun.
