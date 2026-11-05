@@ -2,10 +2,8 @@
 
 Active working memory: open questions, deferred/not-yet-done work, and in-flux design decisions —
 not a historical log. Once an item is resolved (bug fixed, decision settled, question answered) it
-comes out of this file; anything from it worth keeping permanently lives in CLAUDE.md (AI-session
-operating constraints/architecture reference) or README.md (human-facing orientation) instead,
-migrated there rather than duplicated here. See README.md for orientation, CLAUDE.md for operating
-constraints.
+comes out of this file; anything from it worth keeping permanently is migrated, not duplicated: its
+facts to SPECIFICATION.md, its rules to CLAUDE.md, orientation to README.md.
 
 **Everything that needs the dev bench is gathered in "Real-hardware work still owed" below**, so a
 go-ahead session can work it in one pass; `tests_hardware/README.md` stays the reference for how.
@@ -23,9 +21,9 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   (`pyproject.toml`'s `[tool.mypy]`, `digital_twin/typecheck.ini`, `host_typecheck.ini`). What
   remains is each pass's baseline of modules still exempted through a per-module
   `disallow_any_explicit = false` override; a module leaves it once its explicit `Any` is gone, and
-  the list only shrinks, pinned by `tests_scripts/test_mypy_any_baseline.py`. **Deferred to a
-  dedicated future session (project owner, 2026-09-11) - not to be picked up as part of unrelated
-  work.** Most of what is left
+  the list only shrinks, pinned by `tests_scripts/test_mypy_any_baseline.py`. The owner's later word
+  supersedes the 2026-09-11 deferral to a dedicated session (owner, 2026-09-28: "do it in this
+  audit"). Most of what is left
   is test code: monkeypatch and wrapper classes duck-typing a real MicroPython object, which need a
   typing strategy (e.g. `Protocol` classes and `__getattr__` delegation) rather than a flag flip.
 - **The full test-suite scan for tier/layering-completeness and wrongly-trusted-hazard tests
@@ -202,8 +200,8 @@ gates, traps).
 - **How a sitting runs.** D1 and D2 are the owner's standing answers (owner, 2026-09-22, `00f3eac`,
   paraphrase — the commit records no owner words): D1, spend flash/NVM writes, but only after a
   clean default run, so a gated failure is the gated test's own; D2, the NeoPixel-aimed-at-ISL29125
-  light rig is in place. D3 — always a `dev` build of the tree under test, never `wozi` — is
-  CLAUDE.md's WoZi hard rule; confirming it at each sitting, and the order below, are the run sheet
+  light rig is in place. D3 — always a `dev` build of the tree under test, never another device's
+  image — is CLAUDE.md's own-build rule; confirming it at each sitting, and the order below, are the run sheet
   (agent, 2026-09-22): read and save `errcount` before anything writes (CLAUDE.md), build and flash,
   confirm `/system`'s `build.BuildDate`, flash tier, bench tier, then the gated run
   (`scripts/run_bench_hardware_suite.sh --allow-persistence-write -s`), reading each verdict's
@@ -565,12 +563,12 @@ gates, traps).
   out of scope, anything there is post-audit only'). That covers the UART protocol's C
   implementation (its reconciliation against `UART_C_PORT_CHANGELOG.md` included) and the
   BME688/BSEC material with its licensing. Nothing here tracks work on it.
-- **CLAUDE.md's two-target clean-chroot verification is an owner-run periodic check, not a blocking
-  per-push gate - settled (owner decision, 2026-09-18).** The recipe, both targets and the separate
-  installer verification all stand exactly as CLAUDE.md documents them; what changed is who runs
-  them and when. The owner runs them manually every now and then, on the bench Pi4 (trixie/GCC 14.2)
-  or their own box, rather than a session blocking a push on a chroot it usually cannot build.
-  The legs were last satisfied 2026-09-12. Changed since:
+- **Build-environment changes since the clean-chroot legs were last satisfied** (2026-09-12: trixie
+  on the bench Pi4, GCC 14.2.0 — lint and typecheck clean, then `env --tier generic` end to end,
+  installing the `.nvmrc`-pinned Node from nothing (v22.23.2), 203 npm packages and the Playwright
+  Chromium build; noble the same day in the `--arch=arm64` ports-mirror form). The owner's next run
+  (README.md, "Build-environment verification"; the periodic-check rule: CLAUDE.md) covers, changed
+  since:
   `scripts/test.sh` (+520 lines - parallelism autodetection, the backgrounded `tests_scripts/` job
   and its timeout, the heap-size and port-base moves), `scripts/typecheck.sh`, `scripts/lint.sh`,
   `scripts/build_firmware.py`, `scripts/_require_clean_hardware_run.sh`,
@@ -668,7 +666,7 @@ gates, traps).
   (`mypy_path` gained `build/generated_src` and `tests`). Lint, typecheck and `scripts/test.sh` legs
   — `scripts/_generate_sensortask_modules.py` (new: every `devices/*.toml`, plus a wiring plan per
   device; run by `typecheck.sh` and `test.sh`). `scripts/test.sh` leg, host code with no build step
-  — `scripts/build_website.sh` (generates a device's `definitions.json` when none is committed),
+  — `scripts/build_website.sh` (generates each device's `definitions.json`),
   `scripts/_render_coverage.py` (comments only). No leg runs them —
   `scripts/cross_browser_smoke.mjs` (the generic twin entry, `build/generated_src` on its path); the
   four hardware runners `scripts/run_flash_hardware_suite.sh`,
@@ -1016,7 +1014,7 @@ gates, traps).
   - CI only: the workflow and its two composite actions — one retried sync through
     `.github/actions/uv-sync`, the toolchain action keyed on runner image, GCC and glibc and
     building through `scripts/_unix_port.sh ensure standard`, both device matrices derived from
-    `devices/*.toml`, the cached picotool installed in `firmware-build-verify`, Codecov gone.
+    `devices/*.toml`, the cached picotool installed in `firmware-build-verify`.
   **2026-10-20, a timed-out test retried in every runner tier, by the leg that covers each change**:
   - `scripts/test.sh` leg: the backgrounded `tests_scripts/` pytest tier retries a run that times out, up to
     `runner.per_file_attempts` (three attempts) in all, a pass after a retry reported apart;
@@ -1152,12 +1150,6 @@ gates, traps).
   bootable. Four tests: the injection works, an out-of-bounds injection falls back, the generated
   call carries the values, the over-long hostname fails the build.
 
-- **A digital-twin soak's wall clock is set by GC timing, so it must never be bisected to a code
-  change** (established 2026-09-11 after one was — see SPECIFICATION.md Part E.7 for the measurement
-  and the inverted control). Not open work: the finding itself is the resolution, and
-  `tests/test_digital_twin_run_generic_integration.py`'s budget now sits above the whole observed
-  range rather than inside it. Left here because the trap is easy to fall into a second time: the
-  numbers are stable to within 0.3s per build, which reads exactly like a real signal.
 - **The UART fakes still do not *wait* the way a real read does, deliberately.** They serve what
   they hold and return, where the peripheral would wait out `timeout_char` for every byte the caller
   asked for that has not arrived (SPECIFICATION.md Part F.5.8). Making them actually wait would turn
