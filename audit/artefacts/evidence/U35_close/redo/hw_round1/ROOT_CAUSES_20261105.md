@@ -155,4 +155,25 @@ Run by hand after `scripts/test.sh`, each stage even if an earlier one fails, wi
   - `scenarios[dev]`: `loop_lag_under_combined_load`: "the SGP40 fault storm never reached its 5-read streak under the load (40.1s)".
   - **Inferred, not measured per file:** collecting every 32 KB on the Unix port's 16 MB heap is much slower on this Pi, so these look like the slow-host class rather than firmware. Stopped by a time limit, they say nothing about the tests they never reached.
 - **`npm test`: exit 1, 942 s.** `npm_live_backend_failure_20261105.txt`. 1,622 passed, 1 failed, 1 passed on retry: `tests_js/live-backend.test.js > live digital-twin backend: arzi > the real website ... round-trips a real PUT`, "still applying DebugLevel when its test's 45000ms were up". The twin's output also says "UDP port 123 is held by another NTP responder". Cause not looked into.
-- **Twin CI:** `arzi` exit 0 in 1,275 s. `dev` and the rest still running at 14:45 UTC, stopped when the push lands if not finished.
+- **Twin CI (`scripts/run_digital_twin_ci.sh`, finished 16:24 UTC, before the final code landed):** exit 0 on all six: `arzi` 1,275 s, `dev` 1,570 s, `grkizi` 1,274 s, `klkizi` 1,241 s, `schlafzi` 1,279 s, `wozi` 1,295 s. These still count as `b6a7bc1e`'s, not the final head's.
+
+## 12. Final image `b7533307`, first results (16:25-16:43 UTC)
+
+**The `/status` silicon check is improved but not clean.** `repro_status_load.py base 3 60 /status` on the plain final image, run 3 times at about 70 s each, no flash write:
+
+| Run | 200 | 500 | Failed allocation | Lowest `MemFree` sampled | Failure after start |
+|---|---|---|---|---|---|
+| 1 | 51 | 1 | 250 B | 9,296 B | about 36 s |
+| 2 | 51 | 1 | 250 B | 7,200 B | about 13 s |
+| 3 | 51 | 1 | 250 B | 4,544 B | about 25 s |
+
+- 3 of 156 reads failed. Before the fix, on the control image under `mpremote run`, it was 10 of 32 at threshold -1 and 8 of 45 at 32768. The two setups aren't identical, so the comparison is indicative.
+- The console shows `WEBSERVER Microdot caught: memory allocation failed, allocating 250 bytes` and `Unhandled exception in route handler: ...`, so the project's memory gates would count these. Full console, masked: `status_silicon_check_console_20261105.txt`.
+- 250 B is below `web.chunk_bytes` (256 B), which points at `_PieceWriter.flush`'s join, as before. Inferred from the size; I took no traceback on this image.
+- No reset: uptime continued, `LastTaskEnd` stayed null. `WEBSERVER`'s FRAM counter went 230 to 233. Nothing was cleared.
+
+**UART link failures under the same load (not new).** `UART_init`'s `Failures` was 0 after about 580 s idle, then 4, 8 and 11 at the end of each run. The console has `no ACK for frame N` (16) and `train stalled at chunk N` (4), each followed by a resync. The control-image probes show the same resync lines (3 and 9), so the `/status` fix didn't cause them. Cause not looked into; loop lag under HTTP load is the first thing to check.
+
+**Step 3 reads rc=1 in the hand-back, but the image is good.** It flashed and verified at 16:29:41, then `/system` and `/status` got no answer within 180 s each. AP log: the stale entry dropped at 16:31:03 and the board rejoined at 16:38:58, its hotspot time being 8 minutes. `/system` read by hand afterwards: `board_BuildDate=2026-11-05T16:25:34Z`, matching the record. I did not reflash.
+
+`round1.sh`'s `flash()` has no kick, unlike the harness's new `kick_after_reset()`. 3g got through at 09:24 with the same `flash()`, so this depends on the AP's entry at that moment. `get system 180` is shorter than the worst case of about 9.5 minutes. **For the main session:** `flash()` is used again by 15's fallback, and 180 s will fail again in that case. The runner is yours, so I have not changed it.

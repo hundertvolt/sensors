@@ -1,0 +1,2517 @@
+===== run 1
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+SYSTEM System uptime: 577
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 read
+SCD30 data stored
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp is valid
+FRAM Writing both blocks, one not IDLE first
+SYSTEM All tasks running.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 20
+SYSTEM System uptime: 577
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM System uptime: 578
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 read
+SCD30 data stored
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM All tasks running.
+SYSTEM System uptime: 580
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 Backup written with timestamp again.
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 1 Trigger: 60
+SGP40 read
+SGP40 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 2 Trigger: 60
+SYSTEM System uptime: 582
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SYSTEM All tasks running.
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+ISL29125 sensor trigger
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 583
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 3 Trigger: 60
+SGP40 read
+SGP40 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM System uptime: 586
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 4 Trigger: 60
+SYSTEM All tasks running.
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+ISL29125 sensor trigger
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 586
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 5 Trigger: 60
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+SYSTEM System uptime: 589
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 30
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 6 Trigger: 60
+SYSTEM All tasks running.
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+BMP3XX read
+BMP3XX data stored
+SYSTEM System uptime: 589
+SCD30 read
+SCD30 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 7 Trigger: 60
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 590
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 8 Trigger: 60
+SGP40 read
+SGP40 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+FRAM Writing both blocks, one not IDLE first
+SYSTEM All tasks running.
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SYSTEM System uptime: 593
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 9 Trigger: 60
+ISL29125 sensor trigger
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+UART_init UART error: train stalled at chunk 2
+SCD30 read
+SCD30 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SYSTEM System uptime: 593
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 10 Trigger: 60
+SGP40 read
+SGP40 data stored
+SCD30 read
+SCD30 data stored
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+FRAM Writing both blocks, one not IDLE first
+UART_resp UART error: no ACK for frame 2
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+UART_init Resyncing the link
+UART_resp Resyncing the link
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+SYSTEM All tasks running.
+SYSTEM System uptime: 596
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 11 Trigger: 60
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+ISL29125 sensor trigger
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+SYSTEM System uptime: 596
+BMP3XX read
+BMP3XX data stored
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+ISL29125 sensor trigger
+ISL29125 status 16 RGBCF 1 CONVENF False
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 12 Trigger: 60
+SCD30 read
+SCD30 data stored
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 40
+SYSTEM System uptime: 597
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 13 Trigger: 60
+SGP40 read
+SGP40 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SYSTEM All tasks running.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM System uptime: 600
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 14 Trigger: 60
+SYSTEM All tasks running.
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SCD30 read
+SCD30 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SYSTEM System uptime: 600
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 15 Trigger: 60
+SGP40 read
+SGP40 data stored
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+SCD30 read
+SCD30 data stored
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM System uptime: 603
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 16 Trigger: 60
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SYSTEM All tasks running.
+ISL29125 sensor trigger
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 read
+SCD30 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 604
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 17 Trigger: 60
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM All tasks running.
+SYSTEM System uptime: 606
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 18 Trigger: 60
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+SYSTEM System uptime: 607
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_NOTIFY config_NOTIFY.cfg - Reading config data into list.
+CFGMGR_NOTIFY config_NOTIFY.cfg - Reading config data into list.
+CFGMGR_NOTIFY config_NOTIFY.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NOTIFY config_NOTIFY.cfg - Reading config data into list.
+CFGMGR_NOTIFY config_NOTIFY.cfg - Reading config data into list.
+CFGMGR_NOTIFY config_NOTIFY.cfg - Reading config data into list.
+ISL29125 sensor trigger
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 50
+SYSTEM System uptime: 607
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 19 Trigger: 60
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SYSTEM All tasks running.
+SCD30 read
+SCD30 data stored
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SYSTEM System uptime: 608
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 20 Trigger: 60
+SCD30 read
+SCD30 data stored
+SGP40 read
+SGP40 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+FRAM Writing both blocks, one not IDLE first
+SYSTEM All tasks running.
+SYSTEM System uptime: 611
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 21 Trigger: 60
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+UART_resp UART error: no ACK for frame 2
+SGP40 read
+SGP40 data stored
+SYSTEM System uptime: 611
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 22 Trigger: 60
+SCD30 read
+SCD30 data stored
+SGP40 read
+SGP40 data stored
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+FRAM Writing both blocks, one not IDLE first
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+UART_resp Resyncing the link
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+SYSTEM All tasks running.
+SYSTEM System uptime: 614
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 23 Trigger: 60
+ISL29125 sensor trigger
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+UART_init UART error: no ACK for frame 1
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 read
+SCD30 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 615
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 24 Trigger: 60
+SGP40 read
+SGP40 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+WEBSERVER Microdot caught: memory allocation failed, allocating 250 bytes
+FRAM Writing both blocks, one not IDLE first
+UART_init Resyncing the link
+SYSTEM All tasks running.
+SYSTEM System uptime: 618
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 25 Trigger: 60
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 60
+ISL29125 sensor trigger
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SYSTEM System uptime: 618
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 26 Trigger: 60
+WEBSERVER Unhandled exception in route handler: memory allocation failed, allocating 250 bytes
+SCD30 read
+SCD30 data stored
+SGP40 read
+SGP40 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SYSTEM System uptime: 619
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 27 Trigger: 60
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SGP40 read
+SGP40 data stored
+SCD30 read
+SCD30 data stored
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SYSTEM All tasks running.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM System uptime: 622
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 28 Trigger: 60
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM All tasks running.
+SYSTEM System uptime: 623
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 29 Trigger: 60
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 read
+SCD30 data stored
+SGP40 read
+SGP40 data stored
+SYSTEM System uptime: 623
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 30 Trigger: 60
+SGP40 read
+SGP40 data stored
+SCD30 read
+SCD30 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM System uptime: 625
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 31 Trigger: 60
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+SYSTEM All tasks running.
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM System uptime: 626
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+ISL29125 sensor trigger
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 32 Trigger: 60
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SYSTEM System uptime: 626
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 33 Trigger: 60
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+SCD30 read
+SCD30 data stored
+BMP3XX read
+BMP3XX data stored
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SYSTEM All tasks running.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+FRAM Writing both blocks, one not IDLE first
+SYSTEM System uptime: 629
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 70
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 34 Trigger: 60
+SYSTEM All tasks running.
+ISL29125 sensor trigger
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+UART_init UART error: no ACK for frame 1
+SCD30 read
+SCD30 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+SYSTEM System uptime: 630
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 35 Trigger: 60
+SCD30 read
+SCD30 data stored
+SGP40 read
+SGP40 data stored
+FRAM Writing both blocks, one not IDLE first
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+UART_resp UART error: no ACK for frame 1
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+UART_init Resyncing the link
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+UART_resp Resyncing the link
+SYSTEM All tasks running.
+SYSTEM System uptime: 633
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 36 Trigger: 60
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+ISL29125 sensor trigger
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SCD30 read
+SCD30 data stored
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 634
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 37 Trigger: 60
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+SYSTEM All tasks running.
+SYSTEM System uptime: 637
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+ISL29125 sensor trigger
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 38 Trigger: 60
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SCD30 read
+SCD30 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 80
+SYSTEM System uptime: 637
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 39 Trigger: 60
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+FRAM Writing both blocks, one not IDLE first===== run 2
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM All tasks running.
+SYSTEM System uptime: 666
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 7 Trigger: 60
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 read
+SCD30 data stored
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 110
+SYSTEM System uptime: 668
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 8 Trigger: 60
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SGP40 read
+SGP40 data stored
+SYSTEM System uptime: 668
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 9 Trigger: 60
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM All tasks running.
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 10 Trigger: 60
+SYSTEM System uptime: 669
+SCD30 read
+SCD30 data stored
+SGP40 read
+SGP40 data stored
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM System uptime: 672
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 11 Trigger: 60
+SYSTEM All tasks running.
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+ISL29125 sensor trigger
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 12 Trigger: 60
+SYSTEM System uptime: 672
+SCD30 read
+SCD30 data stored
+SGP40 read
+SGP40 data stored
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 673
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 13 Trigger: 60
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM All tasks running.
+SYSTEM System uptime: 676
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 14 Trigger: 60
+SCD30 read
+SCD30 data stored
+SGP40 read
+SGP40 data stored
+SYSTEM System uptime: 676
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 15 Trigger: 60
+SGP40 read
+SGP40 data stored
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+FRAM Writing both blocks, one not IDLE first
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 120
+SYSTEM System uptime: 679
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 16 Trigger: 60
+SYSTEM All tasks running.
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 17 Trigger: 60
+SYSTEM System uptime: 679
+UART_init UART error: train stalled at chunk 2
+SGP40 read
+SGP40 data stored
+SCD30 read
+SCD30 data stored
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+FRAM Writing both blocks, one not IDLE first
+UART_resp UART error: no ACK for frame 2
+SYSTEM System uptime: 680
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 18 Trigger: 60
+SGP40 read
+SGP40 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+UART_init Resyncing the link
+SYSTEM All tasks running.
+SYSTEM System uptime: 681
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 19 Trigger: 60
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+ISL29125 sensor trigger
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+WEBSERVER Microdot caught: memory allocation failed, allocating 250 bytes
+FRAM Writing both blocks, one not IDLE first
+UART_resp Resyncing the link
+SYSTEM System uptime: 683
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 20 Trigger: 60
+WEBSERVER Unhandled exception in route handler: memory allocation failed, allocating 250 bytes
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 683
+SYSTEM All tasks running.
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 21 Trigger: 60
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+SYSTEM System uptime: 684
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 22 Trigger: 60
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SCD30 read
+SCD30 data stored
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM All tasks running.
+SYSTEM System uptime: 687
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 23 Trigger: 60
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 130
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 read
+SCD30 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 688
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 24 Trigger: 60
+SGP40 read
+SGP40 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+SYSTEM System uptime: 689
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 25 Trigger: 60
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+FRAM Writing both blocks, one not IDLE first
+SYSTEM All tasks running.
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SYSTEM System uptime: 691
+ISL29125 sensor trigger
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 26 Trigger: 60
+SYSTEM System uptime: 691
+UART_init UART error: no ACK for frame 1
+SCD30 read
+SCD30 data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 27 Trigger: 60
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+FRAM Writing both blocks, one not IDLE first
+UART_resp UART error: no ACK for frame 1
+SYSTEM System uptime: 692
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 28 Trigger: 60
+SCD30 read
+SCD30 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+UART_init Resyncing the link
+SYSTEM All tasks running.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+UART_resp Resyncing the link
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+SYSTEM System uptime: 694
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+SYSTEM System uptime: 695
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 29 Trigger: 60
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SYSTEM All tasks running.
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 695
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 30 Trigger: 60
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM System uptime: 698
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 31 Trigger: 60
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SYSTEM All tasks running.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 140
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+ISL29125 sensor trigger
+BMP3XX read
+BMP3XX data stored
+SYSTEM System uptime: 698
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 32 Trigger: 60
+SCD30 read
+SCD30 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 699
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 33 Trigger: 60
+SGP40 read
+SGP40 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+FRAM Writing both blocks, one not IDLE first
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+SYSTEM All tasks running.
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 34 Trigger: 60
+SYSTEM System uptime: 702
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+ISL29125 sensor trigger
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+UART_init UART error: train stalled at chunk 2
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 702
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 35 Trigger: 60
+SGP40 read
+SGP40 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+ISL29125 sensor trigger
+FRAM Writing both blocks, one not IDLE first
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 read
+SCD30 data stored
+UART_resp UART error: no ACK for frame 2
+SYSTEM System uptime: 703
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 36 Trigger: 60
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+UART_init Resyncing the link
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM All tasks running.
+UART_resp Resyncing the link
+SYSTEM System uptime: 706
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+ISL29125 sensor trigger
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 37 Trigger: 60
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 706
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 38 Trigger: 60
+SGP40 read
+SGP40 data stored
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM All tasks running.
+SYSTEM System uptime: 709
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 150
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 39 Trigger: 60
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+ISL29125 sensor trigger
+BMP3XX read
+BMP3XX data stored
+SYSTEM System uptime: 709
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 40 Trigger: 60
+SCD30 read
+SCD30 data stored
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM System uptime: 712
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 41 Trigger: 60
+SYSTEM All tasks running.
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+ISL29125 sensor trigger
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 713
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 42 Trigger: 60
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SGP40 read
+SGP40 data stored
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM System uptime: 715
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 43 Trigger: 60
+SYSTEM All tasks running.
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM System uptime: 716
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 44 Trigger: 60
+SYSTEM System uptime: 716
+SCD30 read
+SCD30 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 45 Trigger: 60
+SCD30 read
+SCD30 data stored
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SYSTEM All tasks running.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+SYSTEM System uptime: 719
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 160
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 46 Trigger: 60
+ISL29125 sensor trigger
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SYSTEM All tasks running.
+SYSTEM System uptime: 719
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 47 Trigger: 60
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 read
+SCD30 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SGP40 read
+SGP40 data stored
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 720
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 48 Trigger: 60
+SGP40 read
+SGP40 data stored
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+FRAM Writing both blocks, one not IDLE first
+SYSTEM System uptime: 723
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 49 Trigger: 60
+SYSTEM All tasks running.
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SYSTEM System uptime: 723
+UART_init UART error: no ACK for frame 1
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 50 Trigger: 60
+SCD30 read
+SCD30 data stored
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SGP40 read
+SGP40 data stored
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+FRAM Writing both blocks, one not IDLE first
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SYSTEM System uptime: 724
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 51 Trigger: 60
+UART_resp UART error: no ACK for frame 1
+SCD30 read
+SCD30 data stored
+SGP40 read
+SGP40 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+UART_init Resyncing the link
+SYSTEM All tasks running.
+SYSTEM System uptime: 727
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 52 Trigger: 60
+UART_resp Resyncing the link
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+ISL29125 sensor trigger
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 727
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 170
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 53 Trigger: 60
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.===== run 3
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM All tasks running.
+SYSTEM System uptime: 735
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 59 Trigger: 60
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 735
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp is valid
+FRAM Writing both blocks, one not IDLE first
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SYSTEM System uptime: 736
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM All tasks running.
+SYSTEM System uptime: 737
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 180
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 read
+SCD30 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM System uptime: 739
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SYSTEM All tasks running.
+SYSTEM System uptime: 740
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+SYSTEM System uptime: 740
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 read
+SCD30 data stored
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SYSTEM System uptime: 741
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SGP40 Backup written with timestamp.
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 1 Trigger: 60
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SCD30 read
+SCD30 data stored
+SGP40 read
+SGP40 data stored
+SYSTEM All tasks running.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 2 Trigger: 60
+SYSTEM System uptime: 744
+FRAM Writing both blocks, one not IDLE first
+SYSTEM All tasks running.
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+UART_init UART error: no ACK for frame 1
+SYSTEM System uptime: 744
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 3 Trigger: 60
+SCD30 read
+SCD30 data stored
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+FRAM Writing both blocks, one not IDLE first
+UART_resp UART error: no ACK for frame 1
+SYSTEM System uptime: 745
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 4 Trigger: 60
+SGP40 read
+SGP40 data stored
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+UART_resp Resyncing the link
+UART_init Resyncing the link
+SYSTEM All tasks running.
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SYSTEM System uptime: 748
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 5 Trigger: 60
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 190
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 748
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 6 Trigger: 60
+SGP40 read
+SGP40 data stored
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM System uptime: 751
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 7 Trigger: 60
+SYSTEM All tasks running.
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+SYSTEM System uptime: 751
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 8 Trigger: 60
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SCD30 read
+SCD30 data stored
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SCD30 read
+SCD30 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SYSTEM System uptime: 754
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 9 Trigger: 60
+SYSTEM All tasks running.
+ISL29125 sensor trigger
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+ISL29125 status 18 RGBCF 1 CONVENF True
+BMP3XX read
+BMP3XX data stored
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 755
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 10 Trigger: 60
+SGP40 read
+SGP40 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+SYSTEM System uptime: 758
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 11 Trigger: 60
+SYSTEM All tasks running.
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 200
+ISL29125 sensor trigger
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 758
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 12 Trigger: 60
+SGP40 read
+SGP40 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SCD30 read
+SCD30 data stored
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM System uptime: 760
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 13 Trigger: 60
+SYSTEM All tasks running.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 sensor trigger
+SYSTEM System uptime: 761
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 14 Trigger: 60
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SCD30 read
+SCD30 data stored
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SYSTEM System uptime: 762
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 15 Trigger: 60
+SYSTEM All tasks running.
+SGP40 read
+SGP40 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+WEBSERVER Microdot caught: memory allocation failed, allocating 250 bytes
+FRAM Writing both blocks, one not IDLE first
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SYSTEM System uptime: 765
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 16 Trigger: 60
+SYSTEM All tasks running.
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+WEBSERVER Unhandled exception in route handler: memory allocation failed, allocating 250 bytes
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 765
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 17 Trigger: 60
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 18 Trigger: 60
+SYSTEM System uptime: 766
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM All tasks running.
+SYSTEM System uptime: 768
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 210
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 19 Trigger: 60
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SYSTEM System uptime: 768
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 20 Trigger: 60
+SCD30 read
+SCD30 data stored
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM All tasks running.
+SYSTEM System uptime: 770
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 21 Trigger: 60
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 sensor trigger
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 770
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 22 Trigger: 60
+SGP40 read
+SGP40 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 23 Trigger: 60
+SYSTEM System uptime: 771
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+FRAM Writing both blocks, one not IDLE first
+SYSTEM All tasks running.
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SYSTEM System uptime: 773
+ISL29125 sensor trigger
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 24 Trigger: 60
+SYSTEM System uptime: 773
+UART_init UART error: no ACK for frame 1
+SCD30 read
+SCD30 data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 25 Trigger: 60
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 read
+SCD30 data stored
+FRAM Writing both blocks, one not IDLE first
+UART_resp UART error: no ACK for frame 1
+SYSTEM System uptime: 774
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 26 Trigger: 60
+SGP40 read
+SGP40 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+UART_init Resyncing the link
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+UART_resp Resyncing the link
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+SYSTEM All tasks running.
+SYSTEM System uptime: 777
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 27 Trigger: 60
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SCD30 read
+SCD30 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 220
+SYSTEM System uptime: 777
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 28 Trigger: 60
+SGP40 read
+SGP40 data stored
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SCD30 read
+SCD30 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM All tasks running.
+SYSTEM System uptime: 780
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 29 Trigger: 60
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SGP40 read
+SGP40 data stored
+SCD30 read
+SCD30 data stored
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SYSTEM System uptime: 781
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 30 Trigger: 60
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+SYSTEM All tasks running.
+SYSTEM System uptime: 784
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+ISL29125 sensor trigger
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 31 Trigger: 60
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SCD30 read
+SCD30 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SYSTEM System uptime: 784
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 32 Trigger: 60
+SGP40 read
+SGP40 data stored
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SCD30 read
+SCD30 data stored
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+FRAM Writing both blocks, one not IDLE first
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM All tasks running.
+SYSTEM System uptime: 787
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 33 Trigger: 60
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 230
+SYSTEM System uptime: 787
+ISL29125 sensor trigger
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 34 Trigger: 60
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+UART_init UART error: train stalled at chunk 2
+SGP40 read
+SGP40 data stored
+SCD30 read
+SCD30 data stored
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SYSTEM System uptime: 788
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 35 Trigger: 60
+FRAM Writing both blocks, one not IDLE first
+SGP40 read
+SGP40 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+UART_resp UART error: no ACK for frame 2
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+SCD30 read
+SCD30 data stored
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+UART_init Resyncing the link
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+UART_resp Resyncing the link
+SYSTEM All tasks running.
+SYSTEM System uptime: 791
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 36 Trigger: 60
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+ISL29125 sensor trigger
+BMP3XX read
+BMP3XX data stored
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SYSTEM System uptime: 791
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 37 Trigger: 60
+SCD30 read
+SCD30 data stored
+SGP40 read
+SGP40 data stored
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SYSTEM System uptime: 792
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 38 Trigger: 60
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+SYSTEM All tasks running.
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+WIFI WLAN connection established
+WIFI WLAN status: 3
+WIFI IPv4 address: x.x.x.x / x.x.x.x
+WIFI Default gateway: x.x.x.x
+WIFI DNS server: x.x.x.x
+SYSTEM System uptime: 795
+ISL29125 sensor trigger
+BMP3XX sensor trigger
+CFGMGR_BMP3XX config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SGP40 read
+SGP40 data stored
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 39 Trigger: 60
+ISL29125 status 18 RGBCF 1 CONVENF True
+ISL29125 read
+ISL29125 data stored
+ISL29125 sensor trigger
+ISL29125 status 34 RGBCF 2 CONVENF True
+ISL29125 read
+ISL29125 data stored
+SGP40 read
+SGP40 data stored
+SCD30 read
+SCD30 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 config_SCD30.cfg - Reading config data into list.
+SYSTEM System uptime: 795
+SGP40 sensor trigger
+CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 40 Trigger: 60
+SGP40 read
+SGP40 data stored
+SCD30 read
+SCD30 data stored
+ISL29125 sensor trigger
+ISL29125 status 50 RGBCF 3 CONVENF True
+ISL29125 read
+ISL29125 data stored
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
+CFGMGR_NTP config_NTP.cfg - Reading config data into list.
