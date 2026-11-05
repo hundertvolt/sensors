@@ -426,6 +426,7 @@ class SensorReader:
         self._get_callbacks: dict[str, Callable[[], Awaitable[CfgValue]]] = {}
         self._rungs = 0  # the _RUNG_* bits this failure episode already ran
         self._bus_mark = 0  # _recovery_bus.recoveries when this episode began
+        self._rebuild_mark = 0  # _recovery_bus.rebuilds when this episode began
         self._recovery_bus: I2C | None = None  # set by a driver whose chip sits on I2C
 
     async def _get_dict_cfg(
@@ -571,6 +572,7 @@ class SensorReader:
         if any(res is None for res in results) and condition:
             if self._err_cnt_internal == 0 and self._recovery_bus is not None:
                 self._bus_mark = self._recovery_bus.recoveries  # a new episode: no reader has recovered the bus yet
+                self._rebuild_mark = self._recovery_bus.rebuilds
             self._err_cnt_internal += 1
             await self.pr.err_s("Error counter increased to", self._err_cnt_internal, errno=_ERR_STREAK)
             if self._err_cnt_internal > self._max_module_error:
@@ -597,21 +599,22 @@ class SensorReader:
             await self.pr.wrn_s("I2C bus was held at boot and cleared, status", status, wrnno=_WRN_BUS_RECOVERY)
 
     async def _recover_bus(self, rung: int) -> None:
-        # One bus rung per bus per episode: a reader that sees the bus already recovered since its episode
-        # began (another reader on it ran the rung) only marks its own rung as spent.
+        # One bus rung per bus per episode: since its episode began, a reader skips the clear if any rung ran on its
+        # bus and the controller rung only if a rebuild ran (a rebuild clears too); either way its own rung is spent.
         bus = self._recovery_bus
         if bus is None or self._rungs & rung:
             return
         self._rungs |= rung
-        if bus.recoveries != self._bus_mark:
-            return
         if rung == _RUNG_BUS:
+            if bus.recoveries != self._bus_mark:
+                return
             status = await bus.clear()
             await self.pr.wrn_s("I2C bus cleared, status", status, wrnno=_WRN_BUS_RECOVERY)
         else:
+            if bus.rebuilds != self._rebuild_mark:
+                return
             status = await bus.recover()
             await self.pr.wrn_s("I2C controller re-initialised, status", status, wrnno=_WRN_BUS_RECOVERY)
-        self._bus_mark = bus.recoveries  # this reader's own rung is not another reader's at the next one
 
     async def _recover_device(self) -> bool | None:
         # The participant rung a driver overrides: True done, False failed (it has persisted its own error),
