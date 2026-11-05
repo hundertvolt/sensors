@@ -654,7 +654,8 @@ The rest, one fact each (occurrences: `HEAP_FRAGMENTATION_MEASUREMENTS.md` archi
 - Every flash run ends with one hard reset to a serving board (`flash/conftest.py`'s
   `leave_board_serving`).
 - Every hard-reset fallback goes through `harness.recover_by_reset()`, reported as a recovery pass
-  naming what the reset path skipped.
+  naming what the reset path skipped; its reset waits for an `observe_during()` log tail to free
+  the serial port, which `mpremote` needs for its raw REPL entry.
 - After a reset or a flash the board can fall back to hotspot mode, since a reset without a kick
   right before it leaves a stale station entry on the bench AP ("Workarounds");
   `kick_all_stations()` + `hard_reset()` recovers it, occasionally only on a second try, and for a

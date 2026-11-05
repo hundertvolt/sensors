@@ -572,6 +572,50 @@ def test_recover_by_reset_raises_after_exactly_one_reset_when_never_ready(clock:
     assert clock.now == pytest.approx(90.0)
 
 
+def test_a_failed_recovery_reset_raises_naming_the_wait_it_recovered_as_its_cause(clock: _Clock) -> None:
+    class Refused(_Recorder):
+        def hard_reset(self) -> None:
+            raise harness.HardwareTestFailureError("mpremote reset failed (exit 1)")
+
+    fake = Refused()
+    with pytest.raises(harness.HardwareTestFailureError, match="mpremote reset failed") as raised:
+        harness.recover_by_reset(fake, fake, lambda: False, first_wait_s=30.0, retry_wait_s=60.0, skipped="x", note=lambda *_a, **_k: None, description="the DUT rejoining")  # type: ignore[arg-type]
+    assert isinstance(raised.value.__cause__, TimeoutError) and "waiting for: the DUT rejoining" in str(raised.value), raised.value
+    assert clock.now == pytest.approx(30.0)
+
+
+def test_a_recovery_reset_inside_observe_during_waits_for_the_tail_to_free_the_port(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The tail holds the port for each whole step; mpremote's reset meeting it there loses the raw REPL prompt it reads.
+    monkeypatch.setattr(harness, "_OBSERVE_TAIL_STEP_S", 0.3)
+    monkeypatch.setattr(harness, "_OBSERVE_TAIL_AFTER_S", 0.0)
+
+    class Tailed(_Recorder):
+        held = threading.Event()
+
+        def tail_log(self, duration_s: float, baudrate: int = 115200) -> "list[str]":
+            del baudrate
+            self.held.set()
+            try:
+                threading.Event().wait(duration_s)
+            finally:
+                self.held.clear()
+            return []
+
+        def hard_reset(self) -> None:
+            self.calls.append("hard_reset with the port held" if self.held.is_set() else "hard_reset")
+
+    board = Tailed()
+
+    def ready() -> bool:  # not ready until the recovery's reset, first seen with the tail on the port
+        if board.calls:
+            return True
+        assert board.held.wait(_STOP_WAIT_S), "the tail never took the port"
+        return False
+
+    harness.observe_during(board, lambda: harness.recover_by_reset(board, board, ready, first_wait_s=0.01, retry_wait_s=_STOP_WAIT_S, skipped="x", note=lambda *_a, **_k: None, description="d"))  # type: ignore[arg-type]
+    assert board.calls == ["kick_all_stations", "hard_reset"]
+
+
 def test_the_bare_reset_rule_sees_a_direct_hard_reset() -> None:
     assert _bare_resets(ast.parse("def t(board):\n    board.hard_reset()\n")) == ["line 2"]
     assert _bare_resets(ast.parse("def t(board, bench):\n    harness.kick_then_reset(board, bench)\n")) == []

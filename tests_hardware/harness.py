@@ -130,6 +130,10 @@ _PICOTOOL_LOAD_TIMEOUT_S = 120
 _PICOTOOL_RETRY_BACKOFF_S = 2.0
 _REFLASH_PRESENT_TIMEOUT_S = 30.0
 _REFLASH_BOOT_TIMEOUT_S = 60.0
+# The serial console, one user at a time: observe_during()'s tail holds it per step and recover_by_reset()'s reset takes
+# it, never starved, as the tail starts no step while a reset wants it (mpremote's raw REPL entry reads that port).
+_CONSOLE = threading.Lock()
+_CONSOLE_WANTED = threading.Event()
 
 
 class FramDump(NamedTuple):
@@ -534,8 +538,12 @@ def observe_during(board: "Board", action: "Callable[[], T]") -> "tuple[T, list[
 
     def tail() -> None:
         while not stop.is_set():
+            if _CONSOLE_WANTED.is_set():  # a recovery reset waits for the port: no step until it has run
+                stop.wait(_LOG_TAIL_READ_TIMEOUT_S)
+                continue
             try:
-                lines.extend(board.tail_log(_OBSERVE_TAIL_STEP_S))
+                with _CONSOLE:
+                    lines.extend(board.tail_log(_OBSERVE_TAIL_STEP_S))
             except Exception as exc:  # re-raised below: an unobserved window is no clean one
                 failures.append(exc)
                 return
@@ -589,12 +597,20 @@ def recover_by_reset(
     description: str,
 ) -> None:
     # A known bench effect's one bounded recovery, always reported: wait for `ready`; on a timeout record the recovery
-    # pass naming what the reset path does not check, kick and reset once, and wait again - a second timeout raises.
+    # pass naming what the reset path does not check, kick and reset once (with the console), and wait again - a second
+    # timeout raises, and so does a failed reset, naming the wait it recovered as its cause.
     try:
         wait_until(ready, first_wait_s, description=description)
-    except TimeoutError:
+    except TimeoutError as timeout:
         note(f"recovery pass: kick + hard_reset() after {description}; skipped: {skipped}", recovery=True)
-        kick_then_reset(board, bench)
+        _CONSOLE_WANTED.set()
+        try:
+            with _CONSOLE:
+                kick_then_reset(board, bench)
+        except HardwareTestFailureError as exc:
+            raise HardwareTestFailureError(f"the recovery reset failed ({exc}) after: {timeout}") from timeout
+        finally:
+            _CONSOLE_WANTED.clear()
         wait_until(ready, retry_wait_s, description=f"{description} (after one recovery kick + hard_reset())")
 
 
