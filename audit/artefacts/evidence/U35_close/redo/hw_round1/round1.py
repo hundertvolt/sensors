@@ -14,8 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "hw_handover"))
 from aggregate import fold  # noqa: E402
 from handback import clean  # noqa: E402
 
-BUDGET = (8, 126, 14, 210)  # the sheet's round: FC 6 (8 with the rollover), FS owned, NVM, about 210 prerequisite
-KNOWN = "test_no_frame_is_lost_while_interrupts_are_off["  # step 4b's standing FAILs: dev's rx_ring 512 B < 4,608 B
+BUDGET = (9, 126, 14, 422)  # the sheet's round plus the GC proof (3g-5g): FC, FS owned, NVM, prerequisite writes
+KNOWN = "test_no_frame_is_lost_while_interrupts_are_off["  # 4b's and 4g's standing FAILs: rx_ring 512 B < 4,608 B
 TAIL = {"4a": 200}  # the lower levels' last lines, their summary blocks among them
 SECRET = re.compile(r"[\"']PW[\"']\s*:|(?<!_)password[\"']?\s*[:=]", re.I)  # a PW key or a password value; not a test name
 SECTION = re.compile(r"<!-- step (\S+) -->\n(.*?)<!-- end step -->\n", re.S)
@@ -75,12 +75,12 @@ def failed(run: list[str]) -> list[str]:
 
 
 def verdict(lines: list[str]) -> list[str]:
-    # [verdict, ResetReason after, started, took] of the newest run in one step log.
+    # [verdict, ResetReason after, started, took, the host's 1-minute load at the end] of the newest run in one step log.
     starts = [i for i, ln in enumerate(lines) if ln.startswith("== step ") and " start " in ln]
     if not starts:
-        return ["not run", "", "", ""]
+        return ["not run", "", "", "", ""]
     run = lines[starts[-1] :]
-    end = next((re.search(r" end rc=(\d+) .* (\d+)s$", ln) for ln in run if ln.startswith("== step ") and " end rc=" in ln), None)
+    end = next((re.search(r" end rc=(\d+) .* (\d+)s load (\S+)", ln) for ln in run if ln.startswith("== step ") and " end rc=" in ln), None)
     parts = [f"rc={end[1]}" if end else "running or cut off (partial log)"]
     parts += [ln[8:].strip() for ln in run if ln.startswith("Result: ")]
     names = [f"{n} (known)" if KNOWN in n else n for n in failed(run)]
@@ -89,7 +89,8 @@ def verdict(lines: list[str]) -> list[str]:
     parts += [ln.strip() for ln in run if re.match(r"NOTE |SUM .*refused", ln)][:2]
     resets = [m[1] for ln in run if ln.startswith("SUM status system=") for m in [re.search(r'"ResetReason": (-?\d+)', ln)] if m]
     took = f"{int(end[2]) // 3600}h{int(end[2]) % 3600 // 60:02d}" if end else ""
-    return ["; ".join(parts), resets[-1] if resets else "", run[0].split(" start ", 1)[1].rsplit(" ", 1)[0], took]
+    started = " ".join(run[0].split(" start ", 1)[1].split()[:2])
+    return ["; ".join(parts), resets[-1] if resets else "", started, took, end[3] if end else ""]
 
 
 def handback(logdir: Path, target: Path) -> int:
@@ -108,7 +109,7 @@ def handback(logdir: Path, target: Path) -> int:
             v = verdict(lines)
             row = " | ".join([f[1], *(safe([v[0]]) or ["(verdict filtered: see the log)"]), *v[1:], wear]) + " |"
         else:
-            row = old_rows.get(sid, f"{f[1]} | not run |  |  |  | {wear} |")
+            row = old_rows.get(sid, f"{f[1]} | not run |  |  |  |  | {wear} |")
             if sid in old_logs:
                 logs[sid] = old_logs[sid]
         rows.append(f"| {sid} | {row}")
@@ -119,8 +120,8 @@ def handback(logdir: Path, target: Path) -> int:
         "# Round 1 bench hand-back\n",
         f"Rebuilt by `round1.py` after every step, last {time.strftime('%Y-%m-%d %H:%M', time.gmtime())} UTC. Each verdict "
         "is its step's newest run; after step 4a a passing pytest step reads NOT CLEAN (lower levels skipped).\n",
-        "| step | name | verdict | ResetReason after | started (UTC) | took | FC/FS/NVM/pre |",
-        "|---|---|---|---|---|---|---|",
+        "| step | name | verdict | ResetReason after | started (UTC) | took | host load at end | FC/FS/NVM/pre |",
+        "|---|---|---|---|---|---|---|---|",
         *rows,
         "",
         "Wear started (the sheet's maxima per started step): "

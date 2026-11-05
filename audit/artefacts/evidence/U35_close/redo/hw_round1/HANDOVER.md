@@ -15,15 +15,40 @@ and dump all details into a single hand back file" (2026-10-28).
   - `DUT_IP`: the board's address on the bench network, the one the harness's `--dut-ip` takes. Every pytest step
     gets it, so each session saves `/status` before it resets the board. Step 1's `/status`, the `/status` read after
     every step (row 16), the BuildDate checks (3, 15), 12d and 12f need it. Unset, those reads say "DUT_IP unset".
-  - `LWIP_CONTROL_IMAGE`: step 8's control image (below). `CH13=1`: step 13. `FRAM_HOURS`: step 11, whole hours,
-    default 2. `MPREMOTE_DEVICE`: optional, as in `tests_hardware/README.md`.
-- **The control image, before day 2** (BACKLOG's send-stall protocol, owner 2026-09-30). The bench session builds it;
-  the owner need not be there. In a throwaway worktree, never committed, delete the `apply_modlwip_eagain_override()`
-  call (`toolchain/setup_toolchain.py:671`), then run `uv run scripts/build_firmware.py dev --output <abs>/control.uf2`.
-  Its record must read `"overrides": []`. Pass `LWIP_CONTROL_IMAGE=<abs>/control.uf2`. Without it, step 8 deselects
-  `test_send_stall_on_the_unpatched_image` and spends 3 flash cycles instead of 5.
-- **Opt-in wear.** Steps 7, 8 and 15 spend the round's opt-in wear (FS 122, NVM 13, FC 7). Run them only once the
-  owner's choice is recorded on this line. Owner's choice: not yet given (lead, 2026-11-05).
+  - `GC_CONTROL_IMAGE`: steps 3g-5g's image; `LWIP_CONTROL_IMAGE`: step 8's (both below). `CH13=1`: step 13.
+    `FRAM_HOURS`: step 11, whole hours, default 2. `FORCE_WEAR=<id>`: below. `MPREMOTE_DEVICE`: optional.
+- **The two control images.** The bench session builds each in a throwaway worktree, never committed, with
+  `uv run scripts/build_firmware.py dev --output <abs>/<name>.uf2`; the owner need not be there.
+  - **GC (OR40.a (3), the owner's release proof):** the boot entry's `gc.threshold(32768)` line removed
+    (`buildgen/codegen.py:835`), as `gc_control.uf2`. Build it after step 2 and as the last rp2 build before 3g: `env`
+    removes the toolchain's rp2 build directory, and `flash/test_modlwip_listener_close.py` compares that build with
+    the record it is given. 3g-5g pass `--image-record <abs>/gc_control.json` (the harness's "Verify the image").
+    Unset, 3g, 4g and 5g each print a NOTE and are owed.
+  - **lwIP (BACKLOG's send-stall protocol, owner 2026-09-30):** the `apply_modlwip_eagain_override()` call removed
+    (`toolchain/setup_toolchain.py:671`), as `control.uf2`; its record must read `"overrides": []`. Step 8b refuses
+    without it, since a pass is never run again.
+- **Opt-in wear** (steps 7f, 7b, 8f, 8b, 10b, 15; `WEAR.txt`; 7 and 8 split per tier). The owner, 2026-11-05: "As this is the final verification,
+  option a with full test coverage is fine. The only restriction I want to have: the tests causing wear shall be
+  conducted when the associated code behind is as final as possible, and if the wear related tests pass does not have
+  to be touched again. I want to run these tests now, but still avoid having to re-run wear causing tests for
+  unrelated reasons."
+  - A wear step refuses until `WEAR.txt` has a line starting `cleared:`. The audit session writes it, with no run
+    active, once it has read every non-wear result and judged the code behind the wear tests as final as it can be.
+  - A pass (rc 0, every `Result:` PASS, or NOT CLEAN for the lower levels run in 4a) appends `passed: <id> <UTC>`;
+    the hand-back commit carries `WEAR.txt`. A passed step is skipped with a NOTE unless `FORCE_WEAR=<id>`.
+  - A failed wear step, once fixed, reruns only its failed tests: `PYTEST_K='<their names>' run <id>` (lead,
+    2026-11-05), so its passed tests are not spent again.
+  - The code each one exercises:
+    - 7f, 7b: `src/asy_config_manager.py`, `src/asy_webserver_service.py`, `src/asy_scd30_driver.py`,
+      `src/asy_neopixel_driver.py`;
+    - 8f, 8b: `scripts/build_firmware.py`, `toolchain/setup_toolchain.py`, `toolchain/micropython_overrides.py`,
+      `buildgen/`, `devices/dev.toml`, `src/asy_uart_comm.py`, `src/asy_uart_link_driver.py`, `src/asy_crc_checks.py`;
+    - 10b: `src/asy_wifi_service.py`, `src/asy_captive_dns.py`, `src/asy_udp_socket.py`,
+      `src/asy_webserver_service.py`, `src/asy_config_manager.py`;
+    - 15: `toolchain/micropython_overrides.py`, `scripts/build_firmware.py`, `src/asy_system_service.py`, and every
+      `src/` module using `ticks_diff()`/`ticks_add()`.
+  - A later change that alters the bytecode or built image of those is the only reason to re-run a passed wear step,
+    and the owner decides it.
 - **Never:** `nmcli`, `iw` or `iptables` by hand; `mpremote cp`, `rm` or `mkdir`; a `ResetErrors` PUT outside 12d;
   printing a config file; another device's image.
 
@@ -32,7 +57,7 @@ and dump all details into a single hand back file" (2026-10-28).
 ```bash
 H=audit/artefacts/evidence/U35_close/redo/hw_round1
 bash $H/round1.sh list                      # steps: time, wear, how a STOP ends each, what each needs
-DUT_IP=<addr> nohup bash $H/round1.sh run 1 5 > /dev/null 2>&1 &    # one day's range; TO defaults to FROM
+DUT_IP=<addr> nohup bash $H/round1.sh run 4a 5g > /dev/null 2>&1 &  # one day's range; TO defaults to FROM
 bash $H/round1.sh summary                   # the hand-back's verdict table, wear line and aggregate
 touch $H/STOP                               # end after the running step
 ```
@@ -45,10 +70,10 @@ commits it `[skip ci]` and pushes it. The logs stay in `$H/logs/` (git-ignored, 
 - **`touch $H/STOP`, Ctrl-C, `kill`:** the run ends after the running step. A signal also pushes the partial log at
   once. `kill -9` pushes nothing, but the logs stay, so the next launch's push carries them.
 - **How the running step ends:**
-  - pytest steps (4b, 5, 7, 9, 10a-10h, 10m): SIGINT to their pytest within about 10 s, so pytest prints what finished.
+  - pytest steps (4g, 5g, 4b, 5, 7f, 7b, 9, 10a-10h, 10m): SIGINT to their pytest within about 10 s; pytest prints its end.
   - 4a (host only): SIGINT to the whole step.
   - 11: after its 9-minute slice.
-  - 3, 8 and 15 hold a flash cycle and always run to their end (up to about 1.5 h and 3 h). The rest take minutes.
+  - 3g, 3, 8f, 8b and 15 hold a flash cycle and always run to their end (8b and 15: up to about 1.2 h and 3 h).
 - **A rerun.** A stopped step reruns from its start (`run <id>`). Its log keeps every run; the verdict is the newest.
 - **A standard-state stop.** If a session stops on a standard-state deviation after an interrupt, repair it by hand
   as `tests_hardware/README.md` says, then rerun.
@@ -57,23 +82,35 @@ commits it `[skip ci]` and pushes it. The logs stay in `$H/logs/` (git-ignored, 
 
 | day | launch | about | needs |
 |---|---|---|---|
-| 1 | `run 1 5` | 9 h 10 | `DUT_IP` |
-| 2 | `run 7 10m` | 6 h 25 | day 1's verdicts read first (D1: writes after a clean default run); the control image |
-| 3-8 | `run 10c`, then 10d, 10e, 10f, 10g, 10h: one a day, each optional (10m ran all six at mid) | 6 h 20 each | - |
-| 9 | `CH13=1 run 11 15` | 5 h 40 | the owner: the channel-13 AP (13), the optional scope (12f); afterwards 16b and 14 |
+| 1 | `run 1 2`, build the GC control image, `run 4a 5g` (= 1-5g) | 9 h | `DUT_IP`, `GC_CONTROL_IMAGE` |
+| 2 | `run 3 10m` | 7 h 30 | - |
+| 3 | `run 11 16b`; `CH13=1 run 13` once the owner has the channel-13 AP | 2 h 50 | the optional scope (12f) |
+| opt. | `run 10c`, then 10d, 10e, 10f, 10g, 10h: one a day (10m ran all six at mid) | 6 h 20 each | - |
+| - | the audit session reads and fixes; affected non-wear steps rerun on the fixed image; then `cleared:` | | |
+| wear 1 | `run 7f 10b` | 4 h 30 | `LWIP_CONTROL_IMAGE`, the NeoPixel rig |
+| wear 2 | `run 15`, then item 14 and 16b's power cycle | 4 h | the owner at the bench |
+
+Wear in the round: FC 9 (3g 1, 3 1, 8f 1, 8b 4, 15 2), FS owned 126 (7f 72, 7b 50, 10b 4), NVM 14 (7f 6, 7b 7, and the SCD30 start in 4g),
+prerequisite file writes up to 422 (the tiers twice, 136 + 66 each, then 10a, 10m and 10b).
 
 ## What each step expects, where it differs from the sheet
 
+- **3g-5g, the GC control image** (no threshold). 4g's verdict is FAIL from the same two known nodes as 4b; 5g's
+  has none known. No hardware test checks the board's own threshold: every device script sets its GC stage itself
+  ("never inherited"), and the image check compares device, BuildDate, lwIP, `maxConnections` and the tick offset.
+  The production-mode scripts (`loop_lag_under_combined_load.py`, `boot_stretch_final.py`) do inherit it: on this
+  image they run at -1, which is the proof's point, not a known failure. `test_heap_layout.py`'s note names
+  `build/firmware-dev.json`, not the record given, so on 4g it names the wrong image.
 - **4b, the flash tier.** Its verdict is FAIL from exactly two nodes, marked "(known)":
   `test_no_frame_is_lost_while_interrupts_are_off[none]` and `[crc16]`. They fail up front: `rx_ring` 512 B is less
   than the 4,608 B of the 400 ms window (`devices/dev.toml:55, :65`). The loop-lag skip no longer reads "unexpected
   skip": `scripts/_hardware_verdict.py`'s `PERMANENT_SKIPS` lists it since `d6bd2d45`.
-- **5, the bench tier.** `run_bench_hardware_suite.sh` re-runs L3 under `set -e`, so 4b's two FAILs would stop it
-  before `tests_hardware/bench`, after 17 more scratch builds. The step runs the runner's own bench line instead
-  (`_require_clean_hardware_run.sh --runner run_bench_hardware_suite`); a pass reads NOT CLEAN, naming 4a and 4b.
+- **5 and 5g, the bench tier.** `run_bench_hardware_suite.sh` re-runs L3 under `set -e`, so the two known FAILs would
+  stop it before `tests_hardware/bench`, after 17 more scratch builds. The steps run the runner's own bench line
+  instead (`_require_clean_hardware_run.sh --runner run_bench_hardware_suite`); a pass reads NOT CLEAN, naming 4a.
 - **Rows 6 and 16 are no steps.** They are the `/status` read after every step: `ResetReason` in the verdict table,
   and every logger's `errcount` (SGP40's after 4b and 5 is row 6) in that step's log.
-- **7, gated.** Both tiers run `-m "persistence_write or scd30_extra_write or neopixel_sweep"`. The hotspot module is
+- **7f, 7b, gated.** Both tiers run `-m "persistence_write or scd30_extra_write or neopixel_sweep"`. The hotspot module is
   deselected here: case (b) needs the module whole, so it runs once, whole, in 10b, with its 4 owned writes.
 - **9.** The crc16 mode is the parametrize id `[crc16]`, rendered into `uart_comm_hazards.py` as `CRC_MODE`:
   `-k "test_comm_hazards_are_serialised_refused_or_recovered and crc16"`.
@@ -95,7 +132,7 @@ commits it `[skip ci]` and pushes it. The logs stay in `$H/logs/` (git-ignored, 
 
 ## Manual items (the owner, not in the runner)
 
-- **Item 14**, after day 9's launch:
+- **Item 14**, on wear day 2 after `run 15`:
   - `scripts/run_manual_hardware_tests.sh --dut-ip <addr> --only <name>` with
     `isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry` (M1, about 30 min);
   - `real_fram_persistence_across_power_cycle`: the power cut that reads SCD30 `AmbPres`; FRAM writes only;
@@ -109,7 +146,8 @@ commits it `[skip ci]` and pushes it. The logs stay in `$H/logs/` (git-ignored, 
 ## What comes back
 
 `HANDBACK.md` in this folder, on `claude/u35-bench-campaign`, pushed after every step. It holds:
-- the verdict table: per step its verdict, `ResetReason` after it, start time, duration and wear;
+- the verdict table: per step its verdict, `ResetReason` after it, start time, duration, the host's 1-minute load at
+  its end (the owner may use the Pi meanwhile; both step lines carry `/proc/loadavg`) and wear;
 - the wear started against the round's budget;
 - October's aggregate (the FRAM slices summed);
 - every step's log, LAN addresses and credentials filtered; step 1's FRAM dump comes last.

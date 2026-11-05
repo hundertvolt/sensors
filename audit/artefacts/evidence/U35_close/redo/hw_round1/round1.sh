@@ -13,32 +13,28 @@ HB=$H/HANDBACK.md
 BRANCH=${BENCH_BRANCH:-claude/u35-bench-campaign}
 MPC=scripts/mpremote_connect.sh
 UF2=build/firmware-dev.uf2
+WEAR=$H/WEAR.txt
+WEAR_IDS=" 7f 7b 8f 8b 10b 15 "  # the opt-in wear steps, one per tier: once cleared, each runs until it passes once
 SLICE_S=${SLICE_S:-540}  # one FRAM slice: with its start-up, under 10 minutes (October's)
 FLOOR="not soak_duration and not multi_day_rollover"
 HOTSPOT=tests_hardware/bench/test_hotspot_role_reversal.py
 DUTARG=()
 [ -z "${DUT_IP:-}" ] || DUTARG=(--dut-ip "$DUT_IP")
 
-STEPS=(  # id|name|minutes|FC|FS owned|NVM|FS prerequisite|stop|needs|command; the sheet's rows, the rollover last
-  # (rows 6 and 16 are the /status read after every step; row 14 is the owner's, HANDOVER.md)
+STEPS=(  # id|name|minutes|FC|FS owned|NVM|FS prerequisite|stop|needs|command; the sheet's rows, the opt-in wear
+  # last (WEAR.txt); rows 6 and 16 are the /status read after every step; row 14 is the owner's, HANDOVER.md
   "1|evidence|5|0|0|0|0|end|DUT_IP for /status|evidence"
   "2|host_env|30|0|0|0|0|end|-|host"
-  "3|final_image|35|1|0|0|0|fc|-|final_image"
   "4a|lower_levels|180|0|0|0|0|host|-|scripts/_run_lower_levels.sh L3"
-  "4b|flash_tier|120|0|0|1|136|pytest|-|flash_tier"
+  "3g|gc_control_image|5|1|0|0|0|fc|GC_CONTROL_IMAGE|gc_image"
+  "4g|flash_tier_gc_control|120|0|0|1|136|pytest|GC_CONTROL_IMAGE|gc flash_tier"
+  "5g|bench_tier_gc_control|180|0|0|0|66|pytest|GC_CONTROL_IMAGE|gc bench"
+  "3|final_image|35|1|0|0|0|fc|-|final_image"
+  "4b|flash_tier|120|0|0|0|136|pytest|-|flash_tier"
   "5|bench_tier|180|0|0|0|66|pytest|-|bench"
-  "7|gated|120|0|122|13|0|pytest|NeoPixel rig|gated"
-  "8|flash_cycles|90|5|0|0|0|fc|LWIP_CONTROL_IMAGE|flash_cycles"
   "9|crc16_hazards|10|0|0|0|0|pytest|-|hazards"
   "10a|soak_short|30|0|0|0|8|pytest|-|soak short --deselect=$HOTSPOT"
-  "10b|hotspot_case_b|60|0|4|0|2|pytest|-|hotspot_b"
   "10m|soak_mid|75|0|0|0|8|pytest|-|soak mid --deselect=$HOTSPOT"
-  "10c|soak_long_clock_stretch|380|0|0|0|0|pytest|-|soak long -k test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout"
-  "10d|soak_long_core_headroom|380|0|0|0|0|pytest|-|soak long -k test_single_core_timing_headroom_holds_under_normal_full_task_load"
-  "10e|soak_long_bus_triggers|380|0|0|0|0|pytest|-|soak long -k test_bus_triggers_keep_their_minimum_spacing"
-  "10f|soak_long_hammer|380|0|0|0|0|pytest|-|soak long -k test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved"
-  "10g|soak_long_http_S4|380|0|0|0|0|pytest|-|soak long -k test_http_soak_stays_live"
-  "10h|soak_long_frc_baseline|380|0|0|0|0|pytest|-|soak long -k test_scd30_frc_readiness_baseline"
   "11|fram_8mhz|125|0|0|0|0|slice|FRAM_HOURS (2)|fram"
   "12a|boot_stretch|3|0|0|0|0|end|step 1 evidence|mpc boot_stretch_final.py 120"
   "12b|ring_peak|13|0|0|0|0|end|step 1 evidence|mpc ring_peak_final.py 720"
@@ -46,18 +42,40 @@ STEPS=(  # id|name|minutes|FC|FS owned|NVM|FS prerequisite|stop|needs|command; t
   "12d|reset_errors_budget|6|0|0|0|0|end|DUT_IP, step 1 evidence|reset_errors"
   "12e|general_call_per_chip|2|0|0|0|0|end|-|mp $HM/general_call_per_chip.py 60"
   "12f|held_sda_resets|8|0|0|0|0|end|DUT_IP; owner: scope optional|held_sda"
-  "13|country_scan|3|0|0|0|0|end|owner: AP on channel 13, CH13=1|country"
   "16b|bmp3xx_probe|3|0|0|0|0|end|owner: power cycle, then rerun|probe bmp3xx_conformance_probe.py"
+  "13|country_scan|3|0|0|0|0|end|owner: AP on channel 13, CH13=1|country"
+  "10c|soak_long_clock_stretch|380|0|0|0|0|pytest|-|soak long -k test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout"
+  "10d|soak_long_core_headroom|380|0|0|0|0|pytest|-|soak long -k test_single_core_timing_headroom_holds_under_normal_full_task_load"
+  "10e|soak_long_bus_triggers|380|0|0|0|0|pytest|-|soak long -k test_bus_triggers_keep_their_minimum_spacing"
+  "10f|soak_long_hammer|380|0|0|0|0|pytest|-|soak long -k test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved"
+  "10g|soak_long_http_S4|380|0|0|0|0|pytest|-|soak long -k test_http_soak_stays_live"
+  "10h|soak_long_frc_baseline|380|0|0|0|0|pytest|-|soak long -k test_scd30_frc_readiness_baseline"
+  "7f|gated_flash|60|0|72|6|0|pytest|NeoPixel rig|gated flash_tier"
+  "7b|gated_bench|60|0|50|7|0|pytest|-|gated bench --deselect=$HOTSPOT"
+  "8f|flash_cycles_flash|20|1|0|0|0|fc|-|cycles flash_tier"
+  "8b|flash_cycles_bench|70|4|0|0|0|fc|LWIP_CONTROL_IMAGE|cycles_bench"
+  "10b|hotspot_case_b|60|0|4|0|2|pytest|-|hotspot_b"
   "15|rollover|170|2|0|0|0|fc|-|rollover"
 )
 
 stopping() { [ -f "$H/STOP" ]; }
 saved() { grep -q '^DONE' "$L/1.log" 2>/dev/null; }  # step 1's raw FRAM dump finished
 py() { python3 "$H/round1.py" "$@"; }
-flash_tier() { scripts/run_flash_hardware_suite.sh --skip-lower-levels "${DUTARG[@]}" "$@"; }
+flash_tier() { scripts/run_flash_hardware_suite.sh --skip-lower-levels "${DUTARG[@]}" ${PYTEST_K:+-k "$PYTEST_K"} "$@"; }  # PYTEST_K: a rerun of failed tests only
 soak() { scripts/run_bench_soak_tests.sh --duration "$@" "${DUTARG[@]}"; }
 hazards() { flash_tier -k "test_comm_hazards_are_serialised_refused_or_recovered and crc16"; }
 probe() { mp "$(render "$1")" 120; }
+ok() { "$@"; local r=$?; [ "$r" = 4 ] && r=0; return "$r"; }  # a wrapper's NOT CLEAN (4): lower levels ran in 4a
+gc() {  # 4g, 5g: a tier on the GC control image (OR40.a (3)), its own record for the harness's image check
+  if [ -z "${GC_CONTROL_IMAGE:-}" ]; then echo "NOTE GC_CONTROL_IMAGE unset: owed"; return 0; fi
+  "$@" --image-record "${GC_CONTROL_IMAGE%.uf2}.json"
+}
+
+wear() {  # the opt-in wear guard: refused until WEAR.txt is cleared, skipped once passed unless FORCE_WEAR names it
+  case "$WEAR_IDS" in *" $1 "*) ;; *) return 0 ;; esac
+  grep -q '^cleared:' "$WEAR" || { echo "SUM wear refused: step $1 waits for a cleared: line in WEAR.txt"; exit 1; }
+  if grep -q "^passed: $1 " "$WEAR" && [ "${FORCE_WEAR:-}" != "$1" ]; then echo "NOTE wear step $1 passed before: skipped"; exit 0; fi
+}
 
 up() {  # waits up to $1 s for the board to answer a RAM-only exec (October's)
   for _ in $(seq 1 "$1"); do timeout 15 "$MPC" exec "print('up')" >/dev/null 2>&1 && return 0; sleep 1; done
@@ -83,9 +101,9 @@ render() {  # the harness's rendering of one device script (bench facts and incl
 from harness import render_device_script; print(render_device_script(Path('tests_hardware/device_scripts/$1')))"
 }
 
-flash() {  # one flash cycle of the final image (October's): the bootloader, then picotool until BOOTSEL is there
+flash() {  # one flash cycle of $1, else the final image (October's): the bootloader, then picotool until BOOTSEL
   timeout 15 "$MPC" bootloader
-  for i in 1 2 3 4 5; do sleep 3; sudo picotool load -x -v "$UF2" && return 0; echo "picotool attempt $i failed"; done
+  for i in 1 2 3 4 5; do sleep 3; sudo picotool load -x -v "${1:-$UF2}" && return 0; echo "picotool attempt $i failed"; done
   return 1
 }
 
@@ -109,23 +127,27 @@ final_image() {  # row 3: the final dev image built and flashed (FC 1), then /sy
   [ "${PIPESTATUS[0]}" = 0 ] && flash && py get system 180 "${UF2%.uf2}.json"
 }
 
-bench() {  # the bench runner's own L4 line: the runner re-runs L3 under set -e and stops at step 4b's known FAILs
+gc_image() {  # 3g: the GC control image flashed (FC 1, the owner's planned prerequisite), then its BuildDate checked
+  if [ -z "${GC_CONTROL_IMAGE:-}" ]; then echo "NOTE GC_CONTROL_IMAGE unset: owed"; return 0; fi
+  flash "$GC_CONTROL_IMAGE" && py get system 180 "${GC_CONTROL_IMAGE%.uf2}.json"
+}
+
+bench() {  # the bench runner's own L4 line: the runner re-runs L3 under set -e and stops at its known FAILs
   scripts/_require_clean_hardware_run.sh --runner run_bench_hardware_suite --levels L4 --marker-floor "$FLOOR" \
-    --not-clean-reason "L0-L2 ran in step 4a, L3 in step 4b" tests_hardware/bench "${DUTARG[@]}" "$@"
+    --not-clean-reason "L0-L2 ran in step 4a, L3 in its own step" tests_hardware/bench "${DUTARG[@]}" ${PYTEST_K:+-k "$PYTEST_K"} "$@"
 }
 
-gated() {  # row 7: the gated tests alone; the hotspot module's owned writes run once, whole, in step 10b
-  local g=(--allow-persistence-write --allow-scd30-extra-write --allow-neopixel-sweep -m "persistence_write or scd30_extra_write or neopixel_sweep")
-  flash_tier "${g[@]}"
-  stopping || bench "${g[@]}" --deselect="$HOTSPOT"
+gated() {  # row 7, one tier (7f, 7b): the gated tests alone; the hotspot module's owned writes run once, whole, in 10b
+  local tier=$1
+  shift
+  ok "$tier" --allow-persistence-write --allow-scd30-extra-write --allow-neopixel-sweep -m "persistence_write or scd30_extra_write or neopixel_sweep" "$@"
 }
 
-flash_cycles() {  # row 8, FC 1 + 2 + 2: without LWIP_CONTROL_IMAGE the unpatched send-stall test is deselected
-  local c=(--allow-flash-cycle -m flash_cycle) x=(--deselect=tests_hardware/bench/test_modlwip_send_stall.py::test_send_stall_on_the_unpatched_image)
-  [ -z "${LWIP_CONTROL_IMAGE:-}" ] || x=(--lwip-control-image "$LWIP_CONTROL_IMAGE")
-  [ -n "${LWIP_CONTROL_IMAGE:-}" ] || echo "NOTE LWIP_CONTROL_IMAGE unset: test_send_stall_on_the_unpatched_image deselected, owed"
-  flash_tier "${c[@]}"
-  stopping || bench "${c[@]}" "${x[@]}"
+cycles() { local tier=$1; shift; ok "$tier" --allow-flash-cycle -m flash_cycle "$@"; }  # row 8, one tier (8f FC 1, 8b FC 4)
+
+cycles_bench() {  # 8b, refused without LWIP_CONTROL_IMAGE: a pass is never run again
+  [ -n "${LWIP_CONTROL_IMAGE:-}" ] || { echo "SUM flash cycles refused: LWIP_CONTROL_IMAGE unset"; return 1; }
+  cycles bench --lwip-control-image "$LWIP_CONTROL_IMAGE"
 }
 
 hotspot_b() {  # row 10's case (b) as BACKLOG states it, the module whole: the soak runner's floor would run (b) alone
@@ -172,13 +194,16 @@ country() {  # row 13: only with CH13=1, the owner's access point on channel 13 
 }
 
 rollover() {  # row 15: the tick-offset image's two hours (FC 1), then the final image back unless it already runs
+  local r
   scripts/run_bench_rollover_test.sh "${DUTARG[@]}"
-  py get system 180 "${UF2%.uf2}.json" || { flash && py get system 180 "${UF2%.uf2}.json"; }
+  r=$?
+  py get system 180 "${UF2%.uf2}.json" || { flash && py get system 180 "${UF2%.uf2}.json"; } || r=1
+  return "$r"
 }
 
 handback() {  # rebuilds HANDBACK.md and pushes it to the bench branch, with October's retries
   printf '%s\n' "${STEPS[@]}" | py handback "$L" "$HB" || return 1
-  git add -f "$HB" && git commit -q -m "Round 1 bench hand-back, $(date -u '+%F %H:%M') UTC [skip ci]" -- "$HB" || return 0
+  git add -f "$HB" "$WEAR" && git commit -q -m "Round 1 bench hand-back, $(date -u '+%F %H:%M') UTC [skip ci]" -- "$HB" "$WEAR" || return 0
   local w=2
   for _ in 1 2 3 4 5; do git push -q origin "HEAD:refs/heads/$BRANCH" && return 0; sleep "$w"; w=$((w * 2)); done
   echo "push failed; HANDBACK.md is committed locally" >&2
@@ -194,7 +219,7 @@ step() {  # one step in its own session, so a terminal's Ctrl-C reaches only thi
   local id=$1 kind=$2 log=$L/$1.log t0 pid rc
   SENT=" "
   t0=$(date +%s)
-  echo "== step $id start $(date -u '+%F %T') $t0" >> "$log"
+  echo "== step $id start $(date -u '+%F %T') $t0 load $(cut -d' ' -f1-3 /proc/loadavg)" >> "$log"  # the host may be busy
   setsid bash "$ME" _body "$id" >> "$log" 2>&1 < /dev/null &
   pid=$!
   while kill -0 "$pid" 2>/dev/null; do
@@ -203,7 +228,10 @@ step() {  # one step in its own session, so a terminal's Ctrl-C reaches only thi
   done
   wait "$pid"
   rc=$?
-  echo "== step $id end rc=$rc $(date -u '+%F %T') $(($(date +%s) - t0))s" >> "$log"
+  echo "== step $id end rc=$rc $(date -u '+%F %T') $(($(date +%s) - t0))s load $(cut -d' ' -f1-3 /proc/loadavg)" >> "$log"
+  if [ "$rc" = 0 ] && [[ "$WEAR_IDS" == *" $id "* ]] && ! sed -n "/^== step $id start .* $t0 load /,\$p" "$log" | grep -qE '^(NOTE wear step|Result: [^PN])'; then
+    echo "passed: $id $(date -u '+%F %T')" >> "$WEAR"  # rc 0 and every Result PASS or NOT CLEAN; never on a skip
+  fi
   [ -z "${DUT_IP:-}" ] || { echo "== read-across: GET /status after step $id"; py get status 180; } >> "$log" 2>&1
   handback
 }
@@ -252,7 +280,7 @@ main() {
     list) list ;;
     summary) if [ -f "$HB" ]; then sed -n '1,/^## Logs/p' "$HB"; else echo "no hand-back yet"; fi ;;
     run) shift; run_range "$@" ;;
-    _body) local r cmd; r=${STEPS[$(index "$2")]}; read -ra cmd <<< "${r##*|}"; "${cmd[@]}" ;;
+    _body) local r cmd; r=${STEPS[$(index "$2")]}; read -ra cmd <<< "${r##*|}"; wear "$2"; "${cmd[@]}" ;;
     *) usage ;;
   esac
 }
