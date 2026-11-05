@@ -949,18 +949,25 @@ def test_cancel_between_two_reads_is_not_lost() -> None:
 
 
 def test_two_concurrent_cancellers_both_return() -> None:
-    # The acknowledgement is broadcast - one canceller consuming it must not strand another.
+    # The acknowledgement is broadcast - one canceller consuming it must not strand another. The holder waits inside the
+    # lock until both requests have latched: a host stall between the two calls never lets it acknowledge the first alone.
     uart = _make_uart()
+    latched = asyncio.Event()
 
     async def waiter() -> bytes | None:
         async with uart:
+            await latched.wait()
             return await uart.read(timeout_ms=-1)
 
     async def scenario() -> "tuple[bool, bool]":
         task = asyncio.create_task(waiter())
         await asyncio.sleep_ms(_TASK_INSIDE_MS)
+        before = uart._cancel_req
         first = asyncio.create_task(uart.cancel_read_timeout())
         second = asyncio.create_task(uart.cancel_read_timeout())
+        while uart._cancel_req != before + 2:  # bounded by run()'s limit
+            await asyncio.sleep_ms(0)
+        latched.set()
         results = (await asyncio.wait_for(first, _STEP_BOUND_S), await asyncio.wait_for(second, _STEP_BOUND_S))
         await asyncio.wait_for(task, _STEP_BOUND_S)
         return results

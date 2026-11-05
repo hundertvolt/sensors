@@ -1263,6 +1263,7 @@ def test_error_check_condition_false_ignores_none_results() -> None:
 class _StubBus:
     def __init__(self, boot_status: int = 0) -> None:
         self.recoveries = 0
+        self.rebuilds = 0
         self.clears = 0
         self.recovers = 0
         self._boot_status = boot_status
@@ -1275,6 +1276,7 @@ class _StubBus:
     async def recover(self) -> int:
         self.recovers += 1
         self.recoveries += 1
+        self.rebuilds += 1
         return 0
 
     def take_boot_clear_status(self) -> int:
@@ -1395,6 +1397,36 @@ def test_two_readers_failing_on_one_bus_clear_it_once_and_rebuild_it_once() -> N
     assert (bus.clears, bus.recovers) == (1, 1)
     assert _entries(a, "W", "BUS_RECOVERY") + _entries(b, "W", "BUS_RECOVERY") == 2
     assert a.pr._err_count + b.pr._err_count == 8 + 2 * 1 + 2  # 8 streak steps, 2 participant warnings, 2 bus warnings
+
+
+def test_a_reader_still_failing_after_another_cleared_the_bus_and_read_again_rebuilds_the_controller() -> None:
+    # A runs the clear and then reads again; B, still failing, meets the controller rung no reader on the bus has run.
+    bus = _StubBus()
+    a = _LadderReader(bus=bus)
+    b = _LadderReader(bus=bus)
+    for _ in range(3):
+        _fail(a)
+        _fail(b)
+    _pass(a)
+    _fail(b)
+    assert (bus.clears, bus.recovers) == (1, 1), f"{bus.clears} clear(s), {bus.recovers} controller rebuild(s), expected one each"
+    assert (_entries(a, "W", "BUS_RECOVERY"), _entries(b, "W", "BUS_RECOVERY")) == (1, 1)
+
+
+def test_once_a_reader_rebuilt_the_controller_another_readers_fourth_failure_in_the_episode_rebuilds_nothing() -> None:
+    # A clears and reads again, B rebuilds at its 4th failure, and C, failing since before both, then skips both rungs.
+    bus = _StubBus()
+    a, b, c = (_LadderReader(bus=bus) for _ in range(3))
+    _fail(c)
+    for _ in range(3):
+        _fail(a)
+        _fail(b)
+    _pass(a)
+    _fail(b)
+    for _ in range(3):
+        _fail(c)
+    assert (bus.clears, bus.recovers) == (1, 1), f"{bus.clears} clear(s), {bus.recovers} controller rebuild(s), expected one each"
+    assert _entries(c, "W", "BUS_RECOVERY") == 0
 
 
 class _EntryRecordingBus(I2C):

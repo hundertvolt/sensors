@@ -284,7 +284,7 @@ def test_a_slave_holding_scl_at_runtime_gets_a_clear_that_pulses_nothing_then_on
     bus_name = max(_buses(), key=lambda b: (len(plan["buses"][b]), b))
     scl = _line(bus_name, "scl")
 
-    async def scenario(clock: "DrivenTime") -> "tuple[list[int], list[int], int, int, int, list[int], int]":
+    async def scenario(clock: "DrivenTime", shift_ms: int) -> "tuple[list[int], list[int], int, int, int, list[int], int]":
         _new_board()
         watchdog = await _driven(clock, "the construction never finished", _construct())
         readers = _readers(bus_name)  # this construction's readers
@@ -307,6 +307,7 @@ def test_a_slave_holding_scl_at_runtime_gets_a_clear_that_pulses_nothing_then_on
         supervisor = await _driven(clock, "the setups and the graph never started", _start())
         try:
             await _until(clock, "a reader on the bus never read before the hold", _read_since(readers, {}))
+            await clock.elapse(shift_ms)  # the hold's phase against the readers' cycles picks which reader fails first
             mark, reported = bus.recoveries, await _reports(bus_name)
             log = machine.Pin.value_log(scl)
             drives = len(log) + log.dropped  # the value log is a ring: its len() stops at its capacity
@@ -323,13 +324,16 @@ def test_a_slave_holding_scl_at_runtime_gets_a_clear_that_pulses_nothing_then_on
         finally:
             await _driven(clock, "the graph never stopped", _stop_graph(supervisor))
 
-    clears, rebuilds, rungs, reports, inits, lows, missed = _on_clock(scenario)
-    where = f"{device} {bus_name}"
-    assert clears == [_REC_SCL_HELD], f"{where}: bus clears returned {clears}, expected one reporting SCL held ({_REC_SCL_HELD})"
-    assert (rebuilds, inits) == ([_REC_SCL_HELD], 1), f"{where}: controller rungs returned {rebuilds} with {inits} re-construction(s), expected one, SCL held, rebuilt once"
-    assert (rungs, reports) == (2, 2), f"{where}: {rungs} bus rung(s) and {reports} W BUS_RECOVERY report(s), expected two of each"
-    assert 0 not in lows, f"{where}: a clear drove the held SCL low ({lows})"
-    assert missed == 0, f"{where}: the watchdog would have fired {missed} time(s)"
+    for shift_ms in (0, 500):  # on dev the ISL29125 fails first at 0 and the SGP40, which then stops reading, at 500
+        machine.reset_test_state()  # each pass on a new board, as between two tests
+        network.reset_test_state()
+        clears, rebuilds, rungs, reports, inits, lows, missed = _on_clock(lambda clock: scenario(clock, shift_ms))  # noqa: B023 - run before the next pass rebinds it
+        where = f"{device} {bus_name} shift {shift_ms} ms"
+        assert clears == [_REC_SCL_HELD], f"{where}: bus clears returned {clears}, expected one reporting SCL held ({_REC_SCL_HELD})"
+        assert (rebuilds, inits) == ([_REC_SCL_HELD], 1), f"{where}: controller rungs returned {rebuilds} with {inits} re-construction(s), expected one, SCL held, rebuilt once"
+        assert (rungs, reports) == (2, 2), f"{where}: {rungs} bus rung(s) and {reports} W BUS_RECOVERY report(s), expected two of each"
+        assert 0 not in lows, f"{where}: a clear drove the held SCL low ({lows})"
+        assert missed == 0, f"{where}: the watchdog would have fired {missed} time(s)"
 
 
 if __name__ == "__main__":

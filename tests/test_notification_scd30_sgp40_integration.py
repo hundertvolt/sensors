@@ -99,7 +99,7 @@ async def _local_time() -> FakeTime:
 
 
 def _make_dual_stack(scd_reader: SCD30_Reader, sgp_reader: SGP40_Reader) -> "tuple[NeopixelDriver, NotificationService]":
-    # ValueRef(source, field) references (SPECIFICATION.md Part C.14.2), the registration shape the generated
+    # ValueRef(source, field) references (SPECIFICATION.md Part C.14.3), the registration shape the generated
     # build_system() emits.
     pixel = NeopixelDriver(0, neopixel_freq=100)
 

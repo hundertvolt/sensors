@@ -322,6 +322,45 @@ def test_the_shutdown_line_carries_the_counts_the_largest_feed_gap_and_the_kept_
     ), line
 
 
+class _MemInfo:
+    # micropython as _print_shutdown_line() reads it: each GC summary recorded instead of printed.
+    def __init__(self, calls: "list[str]") -> None:
+        self._calls = calls
+
+    def mem_info(self) -> None:
+        self._calls.append("gc summary")
+
+
+def test_an_interrupt_before_the_shutdown_line_leaves_the_handlers_call_to_print_it_once() -> None:
+    # The host's SIGINT can land in main()'s finally between the GC summary and the line: the __main__ handler's call
+    # then prints the line whole, after a summary of its own, and a later call prints nothing.
+    calls: list[str] = []
+
+    def shutdown_line(device: str, watchdog: object, gaps: object, links: object = ()) -> str:
+        if "interrupted" not in calls:
+            calls.append("interrupted")
+            raise KeyboardInterrupt
+        return f"{device} shutdown:"
+
+    saved = (runner._shutdown_line, runner.__dict__["micropython"], runner._watchdog, runner._shutdown_printed, runner._module)
+    config = runner.parse_args(["--module", "sensortask_x", "--wiring-plan", "plan.json"])
+    runner._shutdown_line = shutdown_line
+    runner.__dict__["micropython"] = _MemInfo(calls)  # the module's own import, not micropython itself
+    runner.print = calls.append  # type: ignore[attr-defined]  # a module-global shadow of the builtin
+    runner._watchdog, runner._shutdown_printed, runner._module = _FakeWatchdog(), False, None  # type: ignore[assignment]
+    try:
+        try:
+            runner._print_shutdown_line(config)
+        except KeyboardInterrupt:
+            pass
+        runner._print_shutdown_line(config)
+        runner._print_shutdown_line(config)
+    finally:
+        del runner.print  # type: ignore[attr-defined]
+        runner._shutdown_line, runner.__dict__["micropython"], runner._watchdog, runner._shutdown_printed, runner._module = saved
+    assert calls[:3] == ["gc summary", "interrupted", "gc summary"] and len(calls) == 4 and calls[3].startswith("sensortask_x shutdown: fram_writes="), calls
+
+
 
 def test_a_feed_span_the_watchdog_dropped_is_no_gap() -> None:
     watchdog, gaps = _FakeWatchdog(), runner._FeedGaps()

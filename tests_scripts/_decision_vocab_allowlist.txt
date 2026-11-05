@@ -1,18 +1,10 @@
 # path<TAB>sentence prefix: actorless decision vocabulary present when the check landed. Only shrinks:
 # the sentence, then rerun `uv run python tests_scripts/test_decision_vocabulary.py --regenerate`.
-BACKLOG.md	**Note**: `get_long_block_lock()` itself was already removed entirely before thi
-BACKLOG.md	- **A digital-twin soak's wall clock is set by GC timing, so it must never be bi
-BACKLOG.md	- **The UART fakes still do not *wait* the way a real read does, deliberately.**
 BACKLOG.md	- **The sibling `W12` ("saturated on the high range") finding from the same isol
 BACKLOG.md	Once an item is resolved (bug fixed, decision settled, question answered) it com
 BACKLOG.md	Settled: the mock tier's ~20-scenario UART fault-injection catalog is a structur
-BACKLOG.md	What stays deliberately absent is any *sensor* behind that link: no BME688/BSEC
-BACKLOG.md	decided, with full upstream research citations, real bench-hardware recovery-tim
-CLAUDE.md	**That was HEAP_FRAGMENTATION_MEASUREMENTS.md archive §11 item 0, now decided an
 CLAUDE.md	- **Don't touch `sensors/config.json`-equivalent files or commit any real creden
 CLAUDE.md	- **Two suites that both bind real ports must never run at the same time.** `scr
-CLAUDE.md	- **mypy runs full `--strict`, minus exactly one flag.** All three configs set `
-CLAUDE.md	Does **not** disable the `assignment` error code — the old `improved-quality/myp
 CLAUDE.md	Installed into `typings/` (gitignored) — **deliberately not** a `pyproject.toml`
 CLAUDE.md	On the *target* this is already institutionalized and stays that way: every oper
 CLAUDE.md	The hardware pair reads one shared `tests_hardware/harness.py` `MEMORY_ERROR_MAR
@@ -20,17 +12,14 @@ CLAUDE.md	`scripts/test.sh`'s own backgrounded `tests_scripts/` tier is a delibe
 CLAUDE.md	`tests/` and `digital_twin/` reassign methods to mock them — that IS the project
 CLAUDE.md	a *dispatch-only* PUT persists nothing and is deliberately outside the gate, and
 CLAUDE.md	catching `(OSError, MemoryError)` and degrading locally is a backstop for genuin
-CLAUDE.md	it never gates anything** — no threshold is enforced anywhere, by design (confir
 DEVICE_REFERENCE.md	**`0` disables this staleness check** — a restored backup is accepted no matter
 DEVICE_REFERENCE.md	Change them deliberately, one at a time, and expect the lux scale to shift with
 HEAP_FRAGMENTATION_MEASUREMENTS.md	Name the position on every line: `after_build_system`, `after_starter_loop_end`
 HEAP_FRAGMENTATION_MEASUREMENTS.md	`tests_hardware/flash/test_memory_stress.py` carries the current set (≤ 100,000
 README.md	Node comes from nodejs.org (checksum-verified against the release SHASUMS), deli
 README.md	Set the log level to `all` (5) via the real API, then reboot to see a full start
-README.md	`DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, `WI
 README.md	| soak | Same as bench, plus a deliberate long run | `scripts/run_bench_soak_tes
 SPECIFICATION.md	(1) RIOT is the only prior art for the normalisation chain, and this driver copi
-SPECIFICATION.md	*(`dev` only)* two buildgen-generated `[[instance]]` entries construct `asy_uart
 SPECIFICATION.md	**A dedicated unit-test file for the driver itself** (`tests/test_asy_<name>_dri
 SPECIFICATION.md	**A lost final ACK folds into failure**, deliberately, rather than becoming a th
 SPECIFICATION.md	**CI mechanism**: `.github/workflows/ci.yml` carries a `dorny/paths-filter` gate
@@ -39,7 +28,6 @@ SPECIFICATION.md	**FRAM chunk determinism rule** (no deallocation exists by desi
 SPECIFICATION.md	**Not here, by design:** `CLAUDE.md` (AI-session operating constraints — hard ru
 SPECIFICATION.md	**Single source of truth: `buildgen/version.py`** (`FIRMWARE_VERSION`, `WEBSITE_
 SPECIFICATION.md	**The persistence counter** was settled with both thresholds parked at `0x0000`,
-SPECIFICATION.md	**This backstop is safe in practice, with one narrow, accepted residual window (
 SPECIFICATION.md	**Vitest in real-browser mode** (`@vitest/browser-playwright`, real Chromium, de
 SPECIFICATION.md	- **Frame codecs for a byte-stream link** — `asy_framing_codecs.py`'s `FramingBa
 SPECIFICATION.md	- **Part M** — Chip Reference (per-chip measured behaviour and settled requireme
@@ -53,14 +41,11 @@ SPECIFICATION.md	A mismatch desyncs the link outright, so an out-of-range value 
 SPECIFICATION.md	Because the final chunk's acknowledgement is deferred until after the responder'
 SPECIFICATION.md	Constructed before `sgp40` (ordering-hazard #1, Part C.14): `sgp40` holds a dire
 SPECIFICATION.md	Deliberately narrow scope (not a second exhaustive PUT matrix — each real WebDri
-SPECIFICATION.md	Grammar is deliberately minimal, matching BACKLOG.md's own original sketch: a qu
 SPECIFICATION.md	It also pins each device's maximum, so a new driver or a widened string bound fa
 SPECIFICATION.md	No static `src/sensortask_*.py` file exists: `scripts/_generate_sensortask_modul
-SPECIFICATION.md	Nothing legitimate could provoke it — every accepted body is far smaller — but a
 SPECIFICATION.md	One section per chip whose behaviour needed more than its datasheet and its driv
 SPECIFICATION.md	Real declarations today: `asy_scd30_driver.py`/`asy_sgp40_driver.py`'s `# @requi
 SPECIFICATION.md	Real hardware has no literal equivalent of the mock tier's `asyncio.sleep(0)`-co
-SPECIFICATION.md	Removing it (2026-09-14, auditing the now-retired in-process `_soak()`'s own ide
 SPECIFICATION.md	Self-healing follows from the same two sites: the next accepted change writes th
 SPECIFICATION.md	That is **accepted** — no recovery scheme is wanted for a reboot that catches th
 SPECIFICATION.md	That makes it a host-dependency wherever a test asserts that every one of a long
@@ -68,7 +53,6 @@ SPECIFICATION.md	The corrected value writes back through `_set_mgr_cfg`, deliber
 SPECIFICATION.md	The final chunk's acknowledgement is deliberately deferred until after the total
 SPECIFICATION.md	The two are deliberately allowed to overlap in what they prove (layered coverage
 SPECIFICATION.md	The widened gate still costs nothing: measured over a full 85-file run at `gc.th
-SPECIFICATION.md	W1-W4 pass on the real `dev` board over real WiFi: the boundary is exact (2047 -
 SPECIFICATION.md	`SensorReaderConfig.__init__` captures `default_vals` as the private `self._cfg_
 SPECIFICATION.md	`TCP_SND_QUEUELEN` is per connection.** One connection can drain the pool, leavi
 SPECIFICATION.md	`_store_err()` does not.** The asymmetry is deliberate.
@@ -77,14 +61,12 @@ SPECIFICATION.md	`disable_error_code = assignment` is deliberately not set.
 SPECIFICATION.md	`js/mock-server.js` is deliberately never staged at all — its `fetch` patching h
 SPECIFICATION.md	`run_project_dependency_install()` (`uv sync`/`npm ci`) runs with `env=None` (in
 SPECIFICATION.md	`src/asy_neopixel_driver.py`'s `NeopixelDriver` is the one deliberate exception
-SPECIFICATION.md	`wozi` deliberately does not, since it is never physically flashed and would oth
 SPECIFICATION.md	a periodic timer self-heals next tick, a dropped one-shot never fires again.
 SPECIFICATION.md	a real device may never be named that way.
 SPECIFICATION.md	a single part's measured behaviour, reference-layer traps and settled requiremen
 SPECIFICATION.md	a split-out module (`field-format.js`) must never be *re-exported*.
 SPECIFICATION.md	a write under SCD30's one-shot budget fires at one deliberately chosen represent
 SPECIFICATION.md	an empty result means a genuinely empty payload.** The two must never collapse,
-SPECIFICATION.md	both `setup`/`test` were run against a deliberately hostile environment (poisone
 SPECIFICATION.md	digital_twin/ Hardware simulator for I2C/SPI/WiFi under the MicroPython Unix-por
 SPECIFICATION.md	it spends a real flash cycle, which is why `tests_hardware/`'s `@pytest.mark.per
 SPECIFICATION.md	no retained state unless deliberately stateful (prefer pure functions);
@@ -311,20 +293,10 @@ tests/test_uart_comm_hazard.py	The protocol's at-least-once seam: the final ACK 
 tests/test_uart_comm_hazard.py	Which byte does not matter here and is deliberately not pinned: the claim is tha
 tests/test_uart_comm_hazard.py	what must never happen is two transactions interleaving frames on the wire.
 tests_hardware/README.md	**Deliberately not `fram._allocated_size <= fram.size`** - `FRAMManager.get_chun
-tests_hardware/README.md	**Standing policy from this pass on, applied everywhere it's practical**: reset
-tests_hardware/README.md	- **Real socket-limit degradation** (`test_connections_at_and_above_the_real_soc
 tests_hardware/README.md	- **`tests_hardware/manual/`'s files are deliberately named away from the `test_
 tests_hardware/README.md	Deliberately a stability/sanity check, not a numerical-accuracy claim against a
 tests_hardware/README.md	Deliberately stops at ~3.6s real time (task_errors capped at 200): a task that d
-tests_hardware/README.md	Found (2026-09-11) by running the exchange script with UART1 deliberately moved
-tests_hardware/README.md	One case (`test_abrupt_disconnect_ mid_response_does_not_hang_the_server`) has a
-tests_hardware/README.md	Residue is the accepted outcome;
-tests_hardware/README.md	SCD30's own `set_temperature_offset()` is a real NVM write, so this is deliberat
-tests_hardware/README.md	The practical consequence for a bench session: a responder notices the first byt
-tests_hardware/README.md	`bus_concurrency_isl29125_write_vs_siblings.py` now cycles through a deliberatel
-tests_hardware/README.md	`fram_error_log_reset_race_verify.py` is the one deliberate exception — it exist
 tests_hardware/README.md	`is_reachable()` stays `mpremote`-based deliberately, for the few callers specif
-tests_hardware/README.md	deliberately not duplicated here.
 tests_hardware/bench/test_heap_under_connection_ceiling.py	Row 5 of the decision table, and the reason §5 needs only two images: this walks
 tests_hardware/bench/test_sensor_config_push_over_real_hardware.py	Invariant 1: a calibration run measures a CANDIDATE ratio and must never become
 tests_hardware/bench/test_uart_link_under_api_load.py	a rejected connection under a deliberate overload is an accepted outcome

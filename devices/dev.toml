@@ -1,5 +1,5 @@
-# dev.toml - the bench rig, the only unit ever flashed; always built from this file, never from
-# wozi's pins (CLAUDE.md's WoZi rule). The source of truth buildgen reads (SPECIFICATION.md Part L).
+# dev.toml - the bench rig, the only unit a session flashes; a device's result counts only from its own
+# build on its own hardware (CLAUDE.md). The source of truth buildgen reads (SPECIFICATION.md Part L).
 
 [device]
 name = "Dev"

@@ -404,8 +404,7 @@ Path("/tmp/twin_boot/wiring_plan.json").write_text(json.dumps(compute_twin_wirin
 one TOML.) Then the MicroPython process, with the generated module's own directory placed **first** on
 `MICROPYPATH` (so `import sensortask_novel_combo` resolves to the freshly-generated file, not any
 same-named file that might otherwise be found elsewhere on this path — every real device is
-generated exactly the same way; no device has a hand-written
-`sensortask_<device>.py` any more, SPECIFICATION.md Part L.2. `scripts/test.sh`/
+generated exactly the same way, SPECIFICATION.md Part L.2. `scripts/test.sh`/
 `scripts/run_unix_port_integration.sh`/`scripts/run_digital_twin_ci.sh` all generate into the fixed
 `build/generated_src/` directory via `scripts/_generate_sensortask_modules.py` rather than a fresh
 temp directory per run, so every device's module exists at a
@@ -431,8 +430,8 @@ stall under `asy_config_manager`. Its shutdown line reads `would_have_triggered_
 `tests_scripts/test_digital_twin_generated_boot.py` does exactly this (via `subprocess.Popen`, the
 same pattern `scripts/_digital_twin_ci_suite.py` uses) for every real device plus both mandatory
 synthetic fixtures (`novel_combo.toml`, `multi_instance.toml`), asserting a real `GET` against five
-real REST endpoints all return 200 — the first point a generated module is actually *run*, not just
-`ast.parse()`d. `run_generic_integration.py`'s own fault/hang chip lookup (`_collect_chips()`) walks
+real REST endpoints all return 200 — so a generated module is *run*, not only `ast.parse()`d.
+`run_generic_integration.py`'s own fault/hang chip lookup (`_collect_chips()`) walks
 the same wiring plan `configure_wiring()` was given and reaches each chip through
 `machine.peripheral()`, never through a product wrapper's private attribute.
 
@@ -1144,9 +1143,8 @@ and its trigger: SPECIFICATION.md Part F.7):
    `TypeError: object with buffer protocol required` — the Unix port's `socket` module
    (`ports/unix/modsocket.c`) requires a pre-resolved buffer-protocol sockaddr instead. The real
    rp2/lwIP module (`extmod/modlwip.c`) accepts the plain tuple directly (confirmed by reading both
-   C sources side by side, not just the type stub — see `BACKLOG.md`'s "Real-hardware verification
-   gap" entry for the full account), so this is genuinely two different implementations, not one
-   port being stricter about the same contract. `src/` passes and accepts only `(host, port)`
+   C sources side by side, not just the type stub), so this is genuinely two different
+   implementations, not one port being stricter about the same contract. `src/` passes and accepts only `(host, port)`
    tuples; the shim keeps the packed form outside `src/`.
 2. `sendto()` has this exact same requirement (`micropython/micropython#6924` is specifically about
    this method) — but its destination address is a per-call argument (a DNS/NTP client's ephemeral
