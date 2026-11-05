@@ -125,11 +125,15 @@ _LOG_TAIL_READ_TIMEOUT_S = 0.5
 _ELF_SYMBOLS_TIMEOUT_S = 120
 _OBSERVE_TAIL_AFTER_S = 5.0
 _OBSERVE_TAIL_STEP_S = 1.0
-_PICOTOOL_LOAD_ATTEMPTS = 5
+_PICOTOOL_ATTEMPTS = 5
 _PICOTOOL_LOAD_TIMEOUT_S = 120
 _PICOTOOL_RETRY_BACKOFF_S = 2.0
 _REFLASH_PRESENT_TIMEOUT_S = 30.0
 _REFLASH_BOOT_TIMEOUT_S = 60.0
+# The serial console, one user at a time: observe_during()'s tail holds it per step and recover_by_reset()'s reset takes
+# it, never starved, as the tail starts no step while a reset wants it (mpremote's raw REPL entry reads that port).
+_CONSOLE = threading.Lock()
+_CONSOLE_WANTED = threading.Event()
 
 
 class FramDump(NamedTuple):
@@ -517,6 +521,17 @@ def kick_then_reset(board: "Board", bench: "BenchBridge") -> None:
     board.hard_reset()
 
 
+def kick_after_reset(board: "Board", bench: "BenchBridge", timeout_s: float) -> float:
+    # kick_all_stations()'s workaround for a reset the board's own command arms, sent once the board has left USB (when
+    # it was seen gone is returned), as a DUT still shutting down rejoins after an earlier kick. Its node is watched,
+    # never opened, so a held log tail reads on.
+    if not _poll(lambda: not Path(board.device).exists(), timeout_s):
+        raise HardwareTestFailureError(f"the board did not leave USB within {timeout_s}s of the command - no reset of its own to kick after")
+    gone = time.monotonic()
+    bench.kick_all_stations()
+    return gone
+
+
 def observe_during(board: "Board", action: "Callable[[], T]") -> "tuple[T, list[str]]":
     # The board's log over a whole fault window: tailed from before `action` until it returns plus
     # _OBSERVE_TAIL_AFTER_S, so a crash during the recovery is seen too. A tail that broke raises after the action.
@@ -526,8 +541,12 @@ def observe_during(board: "Board", action: "Callable[[], T]") -> "tuple[T, list[
 
     def tail() -> None:
         while not stop.is_set():
+            if _CONSOLE_WANTED.is_set():  # a recovery reset waits for the port: no step until it has run
+                stop.wait(_LOG_TAIL_READ_TIMEOUT_S)
+                continue
             try:
-                lines.extend(board.tail_log(_OBSERVE_TAIL_STEP_S))
+                with _CONSOLE:
+                    lines.extend(board.tail_log(_OBSERVE_TAIL_STEP_S))
             except Exception as exc:  # re-raised below: an unobserved window is no clean one
                 failures.append(exc)
                 return
@@ -581,32 +600,46 @@ def recover_by_reset(
     description: str,
 ) -> None:
     # A known bench effect's one bounded recovery, always reported: wait for `ready`; on a timeout record the recovery
-    # pass naming what the reset path does not check, kick and reset once, and wait again - a second timeout raises.
+    # pass naming what the reset path does not check, kick and reset once (with the console), and wait again - a second
+    # timeout raises, and so does a failed reset, naming the wait it recovered as its cause.
     try:
         wait_until(ready, first_wait_s, description=description)
-    except TimeoutError:
+    except TimeoutError as timeout:
         note(f"recovery pass: kick + hard_reset() after {description}; skipped: {skipped}", recovery=True)
-        kick_then_reset(board, bench)
+        _CONSOLE_WANTED.set()
+        try:
+            with _CONSOLE:
+                kick_then_reset(board, bench)
+        except HardwareTestFailureError as exc:
+            raise HardwareTestFailureError(f"the recovery reset failed ({exc}) after: {timeout}") from timeout
+        finally:
+            _CONSOLE_WANTED.clear()
         wait_until(ready, retry_wait_s, description=f"{description} (after one recovery kick + hard_reset())")
 
 
-def reflash(board: "Board", uf2_path: Path) -> None:
-    # The board onto `uf2_path`, an image its caller built: bootloader, then `picotool load` retried only while no BOOTSEL
-    # device is enumerated yet (each retry recorded), then a passive wait for presence and a boot line. Builds nothing.
-    board.enter_bootloader()
-    for attempt in range(1, _PICOTOOL_LOAD_ATTEMPTS + 1):
+def picotool(board: "Board", *args: str, timeout_s: float) -> None:
+    # `sudo picotool <args>` against the board in BOOTSEL, retried only while no BOOTSEL device is enumerated yet (each
+    # retry recorded on the board); any other failed exit, or the last, raises with picotool's own output.
+    for attempt in range(1, _PICOTOOL_ATTEMPTS + 1):
         try:
-            load = subprocess.run(["sudo", "picotool", "load", "-x", "-v", str(uf2_path)], cwd=REPO_ROOT, capture_output=True, text=True, timeout=_PICOTOOL_LOAD_TIMEOUT_S, check=False)
+            done = subprocess.run(["sudo", "picotool", *args], cwd=REPO_ROOT, capture_output=True, text=True, timeout=timeout_s, check=False)
         except FileNotFoundError as exc:
             raise HardwareNotAvailableError(f"picotool not on sudo's PATH: {exc}") from exc
         except subprocess.TimeoutExpired as exc:
-            raise HardwareTestFailureError(f"picotool load {uf2_path} timed out after {_PICOTOOL_LOAD_TIMEOUT_S}s") from exc
-        if load.returncode == 0:
-            break
-        if not _retryable_picotool_exit(load.returncode) or attempt == _PICOTOOL_LOAD_ATTEMPTS:
-            raise HardwareTestFailureError(f"picotool load -x -v {uf2_path} failed on attempt {attempt} (exit {load.returncode}):\n{load.stdout}\n{load.stderr}")
-        board.recovery_events.append(f"picotool load attempt {attempt}: exit {load.returncode} (no BOOTSEL device yet), retried after {_PICOTOOL_RETRY_BACKOFF_S}s")
+            raise HardwareTestFailureError(f"picotool {' '.join(args)} timed out after {timeout_s}s") from exc
+        if done.returncode == 0:
+            return
+        if not _retryable_picotool_exit(done.returncode) or attempt == _PICOTOOL_ATTEMPTS:
+            raise HardwareTestFailureError(f"picotool {' '.join(args)} failed on attempt {attempt} (exit {done.returncode}):\n{done.stdout}\n{done.stderr}")
+        board.recovery_events.append(f"picotool {args[0]} attempt {attempt}: exit {done.returncode} (no BOOTSEL device yet), retried after {_PICOTOOL_RETRY_BACKOFF_S}s")
         time.sleep(_PICOTOOL_RETRY_BACKOFF_S)
+
+
+def reflash(board: "Board", uf2_path: Path) -> None:
+    # The board onto `uf2_path`, an image its caller built: bootloader, then `picotool load` (picotool()'s retry), then a
+    # passive wait for presence and a boot line. Builds nothing.
+    board.enter_bootloader()
+    picotool(board, "load", "-x", "-v", str(uf2_path), timeout_s=_PICOTOOL_LOAD_TIMEOUT_S)
     wait_until(board.is_device_present, timeout_s=_REFLASH_PRESENT_TIMEOUT_S, description=f"board back on USB after flashing {uf2_path.name}")
     wait_for_boot(board, _REFLASH_BOOT_TIMEOUT_S)
 

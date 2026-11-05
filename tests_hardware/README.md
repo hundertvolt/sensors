@@ -654,15 +654,18 @@ The rest, one fact each (occurrences: `HEAP_FRAGMENTATION_MEASUREMENTS.md` archi
 - Every flash run ends with one hard reset to a serving board (`flash/conftest.py`'s
   `leave_board_serving`).
 - Every hard-reset fallback goes through `harness.recover_by_reset()`, reported as a recovery pass
-  naming what the reset path skipped.
+  naming what the reset path skipped; its reset waits for an `observe_during()` log tail to free
+  the serial port, which `mpremote` needs for its raw REPL entry.
 - After a reset or a flash the board can fall back to hotspot mode, since a reset without a kick
   right before it leaves a stale station entry on the bench AP ("Workarounds");
   `kick_all_stations()` + `hard_reset()` recovers it, occasionally only on a second try, and for a
   hand recovery `.venv/bin/python tests_hardware/kick_then_reset.py [--device D]` does both steps
-  (~40 s to recover, recorded 2026-09-19, `1fb370b`). A reboot issued by hand over REST
-  (`PUT /system {"SystemCmd": "reboot"}`) is the same trap: kick the AP's stations as soon as the
-  command answers, before the reset it arms fires, as `bench/test_end_to_end_timing.py` does, or
-  the board comes back healthy but never re-associates (serial: `WIFI Hotspot mode is active`).
+  (~40 s to recover, recorded 2026-09-19, `1fb370b`). A system command issued over REST
+  (`PUT /system {"SystemCmd": "reboot"}`, `erasefram`) is the same trap: kick the AP's stations once
+  the reset it arms has taken the board off USB (`harness.kick_after_reset()`), or the board comes
+  back healthy but never re-associates (serial: `WIFI Hotspot mode is active`). A kick at the
+  answer is not enough: a shutdown still running rejoins after it (erasefram's took ~22 s, bench,
+  2026-11-05).
 - An ad-hoc bench script caps every retry and runs under `timeout`: one that retried a refused
   `PUT` without bound ran for 1 h 40 min (2026-09-25).
 - Leave > 45 s between a reset and the next `mpremote` attach; a watchdog reset ~9 s after an early
@@ -692,7 +695,7 @@ check.
 | the bench's USB CDC stops entering the raw REPL until the port is rebound (recorded 2026-09-02) | `harness._usb_reset_device()`, from `Board._mpremote()` | one unbind and bind per `mpremote` call (a 10 s command timeout, at most 2 s to unbind and 3 s to bind); a refused sudo fails the run | a full round records no rebind in `Board.recovery_events` | 2026-10-14, `v1.29.0` (code read) |
 | a transient USB-settle failure of `mpremote` right after a reset | `Board._mpremote()` | retried within 10 s, polled every 0.5 s, never once the script printed | a round records no transient retry | 2026-10-14, `v1.29.0` (code read) |
 | a reset re-enumerates the CDC device under another node | `Board._mpremote()`, `_rebind_device_if_moved()` | 2 re-resolves per call | a round records no node rebind | 2026-10-14, `v1.29.0` (code read) |
-| a stale AP-side station entry survives the DUT's reset and blocks its reassociation (recorded 2026-09-02) | `BenchBridge.kick_client()`, through `kick_all_stations()` before every expected reconnect | one `iw station del` per station before each reset | a round records no stale-entry reconnect failure | 2026-10-14, `v1.29.0` (code read) |
+| a stale AP-side station entry survives the DUT's reset and blocks its reassociation (recorded 2026-09-02) | `BenchBridge.kick_client()`, through `kick_all_stations()` before every expected reconnect, or through `harness.kick_after_reset()` once a command's own reset took the board off USB | one `iw station del` per station per reset | a round records no stale-entry reconnect failure | 2026-10-14, `v1.29.0` (code read) |
 | `nmcli -g` escapes `:` as `\:` in an SSID or PSK | `BenchBridge.ap_ssid()`, `ap_password()` | `--escape no` on every SSID/PSK read | `nmcli -g` stops escaping | 2026-10-14, `v1.29.0` (code read) |
 | `nmcli connection down` errors on an inactive connection | `BenchBridge.ap_down()` | that one error taken as already down, once per call | `nmcli` makes `down` idempotent | 2026-10-14, `v1.29.0` (code read) |
 | nmcli's own rescan can miss a hotspot `is_ssid_visible()` just saw (recorded 2026-09-08) | `bench/test_hotspot_role_reversal.py`'s `_join_dut_hotspot_with_reverify_retry()` | 5 joins, each retry a recovery note | a round records no re-verify retry | 2026-10-14, `v1.29.0` (code read) |

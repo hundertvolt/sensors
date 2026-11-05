@@ -237,10 +237,11 @@ def test_no_frame_is_lost_while_interrupts_are_off(board: Board, crc_mode: str, 
 def test_a_soft_reset_during_traffic_leaves_no_running_ring(board: Board, crc_mode: str) -> None:
     # The harness's trailing soft reset lands while frames stream into the ring; afterwards the same DMA channels are
     # free and a fresh buffer stays untouched (the rp2.DMA finaliser and soft reset, ports/rp2/rp2_dma.c at v1.29.0).
+    # Compared as sets: the two runs claim the same three channels in different orders.
     before = _run_or_fail(board, "uart_dma_ring_interrupts_off.py", _SCRIPT_TIMEOUT_S, crc_mode=crc_mode, state="soft_reset")
     _setup_ok(before)
     after = _run_or_fail(board, "uart_dma_ring_interrupts_off.py", _SCRIPT_TIMEOUT_S, crc_mode=crc_mode, state="after_soft_reset")
-    assert after["channels_free"] == before["channels"], f"the DMA channels the ring held were not free after the soft reset: {before['channels']} -> {after['channels_free']}"
+    assert set(_list(after["channels_free"])) == set(_list(before["channels"])), f"the DMA channels the ring held were not free after the soft reset: {before['channels']} -> {after['channels_free']}"
     assert after["streamed"] is True and after["ring_untouched"] is True, f"memory was written after the soft reset: {after}"
     board.hard_reset()
 

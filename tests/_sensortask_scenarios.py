@@ -1392,13 +1392,20 @@ def _scd30_commands(reader: "SCD30_Reader", word: int) -> int:
     return sum(1 for entry in _scd30_bus(reader).log if entry[0] == "writeto" and entry[1] == address and len(entry[2]) >= 2 and (entry[2][0] << 8 | entry[2][1]) == word)
 
 
+# The bound on each SCD30 read task's setup before the first tick: its I2C probe settles are real waits (asy_i2c_driver.py).
+_SCD30_SETUP_POLLS = 500
+_SCD30_SETUP_POLL_MS = 10
+
+
 async def _scd30_cycles(module: "ModuleType") -> "list[tuple[int, int, int]]":
     # Every SCD30's own cycle, driven to its end: the init, its 500 ms ticks past the FRC idle limit, ready and
     # not-ready reads, then reads on an empty bus failing up the recovery ladder until the read task gives up.
     # Returns per reader the idle ticks counted, the measurement reads and the soft resets the bus carried.
     sysfunct = module.sysfunct
     covered: list[tuple[int, int, int]] = []
+    initialized: list[str] = []
     for reader in _scd30_readers(module):
+        _scd30_record_init(reader, initialized)
         queue = _scd30_bus(reader).read_queue_by_address.setdefault(reader._scd._i2c_scd30.i2c_device.device_address, [])
         queue.extend(scd_register_frame(word) for word in (0x0342, 0, 2))  # the firmware version, offset 0, interval 2 s
         for _ in range(3):
@@ -1413,6 +1420,11 @@ async def _scd30_cycles(module: "ModuleType") -> "list[tuple[int, int, int]]":
         return timers.done()
 
     await _until(stagger_done, "start_timers() never finished")
+    for _ in range(_SCD30_SETUP_POLLS):  # the setup resets the idle count: a tick before it would be lost
+        if len(initialized) == len(_scd30_readers(module)):
+            break
+        await asyncio.sleep_ms(_SCD30_SETUP_POLL_MS)
+    assert len(initialized) == len(_scd30_readers(module)), f"an SCD30's read task never finished its setup: {initialized}"
     for reader in _scd30_readers(module):
         for _ in range(4 * reader._frc_interval_s + 2):  # the ticks to the FRC idle limit and past it
             reader._start_trigger_timer.trigger()
@@ -1446,6 +1458,17 @@ def _scd30_put_bodies(reader: "SCD30_Reader") -> "list[dict[str, dict[str, int |
         bodies.append({reader.name: {name: value}})
     bodies.append({reader.name: {"ContMeas": False}})
     return bodies
+
+
+def _scd30_record_init(reader: "SCD30_Reader", initialized: "list[str]") -> None:
+    # _init_scd() calls _init_done() right after its idle-count reset: the call records the reader's setup as run.
+    init_done = reader._init_done
+
+    async def recorded() -> None:
+        initialized.append(reader.name)
+        await init_done()
+
+    reader._init_done = recorded  # type: ignore[method-assign]
 
 
 def _scd30_readers(module: "ModuleType") -> "list[SCD30_Reader]":
