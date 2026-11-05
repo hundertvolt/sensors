@@ -164,8 +164,7 @@ harness's own `build/archive/` evidence.
    does not end the range: the later steps' data is still wanted.
 3. **The pass record** reads its log to the end (`grep` without `-q`), so a `Result: FAIL` line always blocks it.
 4. **The ring.** `devices/dev.toml`'s uart1 (the responder) ring is 8192 B in snapshot 37, which this branch carries.
-   **Tree ready: no.** Build no image (3g's control image, step 3, the lwIP control image) until this line reads
-   "Tree ready: yes", once snapshot 37's CI is green. Steps 1, 2 and 4a may run before that.
+   **Tree ready: yes** (snapshot 37's CI green, run 41987205017, 2026-11-05 07:56 UTC).
 5. **`stall.flash_program`.** October's figure stays out of SPECIFICATION.md (the owner, 2026-11-05: "Nothing from
    the old campaign remains. It's all new now"). Step 7f records the final firmware's figure. It does not bear on
    `cleared:`, which judges code, not a measurement.
@@ -178,3 +177,10 @@ The unchecked items:
   for a 700 B file fit inside it.
 - **Part N's owed rows** are mapped after round 1, from its results (R5), not before.
 - **October's files** stay as evidence. They go with `audit/` at the audit's end.
+
+## Step 1 on October's bare image (lead, 2026-11-05)
+
+The first `run 1` ended rc=1: `fram_raw_dump.py` imports the project's drivers, which a bare image does not hold.
+Step 1 now runs it with `src/` mounted (`mpremote_connect.sh mount src run`, tests_hardware/README.md "Mount, never
+copy"): no flash write, the board's image untouched. Every flash (3g, 3, the rollover's restore) now refuses until
+step 1's dump finished, since a boot of the product writes FRAM. Rerun `run 1` before anything that flashes.

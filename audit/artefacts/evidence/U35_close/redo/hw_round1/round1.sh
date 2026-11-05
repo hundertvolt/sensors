@@ -102,6 +102,7 @@ from harness import render_device_script; print(render_device_script(Path('tests
 }
 
 flash() {  # one flash cycle of $1, else the final image (October's): the bootloader, then picotool until BOOTSEL
+  saved || { echo "SUM flash refused: step 1's raw FRAM dump is not in logs/1.log"; return 1; }  # a boot writes FRAM
   timeout 15 "$MPC" bootloader
   for i in 1 2 3 4 5; do sleep 3; sudo picotool load -x -v "${1:-$UF2}" && return 0; echo "picotool attempt $i failed"; done
   return 1
@@ -109,7 +110,7 @@ flash() {  # one flash cycle of $1, else the final image (October's): the bootlo
 
 evidence() {  # row 1: /status if the product answers (it touches nothing), then the raw FRAM on the image as found
   py get status 5 "$L/status_before.json"
-  timeout 600 "$MPC" run "$(render fram_raw_dump.py)"; echo "rc=$?"
+  timeout 600 "$MPC" mount src run "$(render fram_raw_dump.py)"; echo "rc=$?"  # src mounted: a bare image has no project code
   saved
 }
 
