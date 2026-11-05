@@ -184,3 +184,16 @@ The first `run 1` ended rc=1: `fram_raw_dump.py` imports the project's drivers, 
 Step 1 now runs it with `src/` mounted (`mpremote_connect.sh mount src run`, tests_hardware/README.md "Mount, never
 copy"): no flash write, the board's image untouched. Every flash (3g, 3, the rollover's restore) now refuses until
 step 1's dump finished, since a boot of the product writes FRAM. Rerun `run 1` before anything that flashes.
+
+## The bench's three blockers of 2026-11-05 (lead, 2026-11-05)
+
+- **4g/5g stop at session setup:** `_scd30_snapshot()` looked `GET /sensors` up by the TOML label (`scd30`); the body
+  is keyed by the firmware name (`SCD30`). The bench facts now carry each instance's `name` (buildgen's resolved name)
+  and the snapshot reads by it (`tests_hardware/conftest.py`, `tests_hardware/bench_facts.py`).
+- **The twin's SIGSEGV on arm64:** `digital_twin/machine.py`'s `UART.__new__` now calls `object.__new__(cls)`; the
+  bench session traced `super().__new__` through the native `io.IOBase` base to `py/objtype.c:203`. On x86 (lead's
+  check, `tc-int` v1.29.0): the five UART twin files pass at both GC stages, no allocation-failure marker.
+- **tests_scripts/ on the Pi:** step 4a runs with `TESTS_SCRIPTS_TIMEOUT_S=2400` (the hang backstop stays; the Pi
+  reached 94 % at 1,200 s with 18 crashing twins in it).
+- Then: rebuild the GC control image from this head, `run 3g 5g`; afterwards `run 4a` once, to show the twin tier
+  green on the Pi.

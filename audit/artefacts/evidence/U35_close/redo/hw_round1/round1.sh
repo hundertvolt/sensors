@@ -25,7 +25,7 @@ STEPS=(  # id|name|minutes|FC|FS owned|NVM|FS prerequisite|stop|needs|command; t
   # last (WEAR.txt); rows 6 and 16 are the /status read after every step; row 14 is the owner's, HANDOVER.md
   "1|evidence|5|0|0|0|0|end|DUT_IP for /status|evidence"
   "2|host_env|30|0|0|0|0|end|-|host"
-  "4a|lower_levels|180|0|0|0|0|host|-|scripts/_run_lower_levels.sh L3"
+  "4a|lower_levels|180|0|0|0|0|host|-|env TESTS_SCRIPTS_TIMEOUT_S=2400 scripts/_run_lower_levels.sh L3"
   "3g|gc_control_image|5|1|0|0|0|fc|GC_CONTROL_IMAGE|gc_image"
   "4g|flash_tier_gc_control|120|0|0|1|136|pytest|GC_CONTROL_IMAGE|gc flash_tier"
   "5g|bench_tier_gc_control|180|0|0|0|66|pytest|GC_CONTROL_IMAGE|gc bench"
