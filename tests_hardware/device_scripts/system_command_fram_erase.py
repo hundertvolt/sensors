@@ -113,7 +113,7 @@ async def _main() -> None:
         await sysfunct.run_setups(device._collect_setups())
         fact("layout", {"allocated": fram._allocated_size, "size": fram.size})
         if state != "refusals":  # a refused erase blanks nothing, so nothing is seeded that would stay behind
-            await _seed(sysfunct)
+            await _seed(sysfunct, wdt)
         proxy = _RecordingWatchdog(wdt)
         sysfunct._watchdog = proxy  # type: ignore[assignment]  # a recording stand-in: every feed still reaches the WDT
         _wrap(sysfunct, fram, proxy, reset_after, loads, stop)
@@ -168,10 +168,12 @@ async def _refusals(webserver: "WebserverService", fram: "FRAMManager") -> None:
         fact("unprotect", await fram.fram.set_write_protected(value=False))
 
 
-async def _seed(sysfunct: "SystemService") -> None:
-    # The test-band ring into every FRAM-backed logger, so the host can tell an erased chunk from a kept one.
+async def _seed(sysfunct: "SystemService", wdt: machine.WDT) -> None:
+    # The test-band ring into every FRAM-backed logger, so the host can tell an erased chunk from a kept one. Fed per
+    # logger: nothing else feeds before the supervisor starts, and 60 chunk writes on dev outlast the watchdog.
     loggers = [logger for label in BENCH["fram_wired"] for logger in getattr(device, label).get_loggers() if getattr(logger, "fram", None) is not None]
     for logger in loggers:
+        wdt.feed()
         await logger.err_s("seed", errno=E_TEST_SEED_A)
         await logger.err_s("seed", errno=E_TEST_SEED_B)
         await logger.err_s("seed", errno=E_TEST_SEED_C)
