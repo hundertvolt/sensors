@@ -1,13 +1,13 @@
 # Round 1 bench hand-back
 
-Rebuilt by `round1.py` after every step, last 2026-11-05 09:18 UTC. Each verdict is its step's newest run; after step 4a a passing pytest step reads NOT CLEAN (lower levels skipped).
+Rebuilt by `round1.py` after every step, last 2026-11-05 09:24 UTC. Each verdict is its step's newest run; after step 4a a passing pytest step reads NOT CLEAN (lower levels skipped).
 
 | step | name | verdict | ResetReason after | started (UTC) | took | host load at end | FC/FS/NVM/pre |
 |---|---|---|---|---|---|---|---|
 | 1 | evidence | rc=0; NOTE step 1 rerun by hand with src/ mounted: the bare image has no frozen drivers, read-only, no flash write |  | 2026-11-05 08:14:31 | 0h00 | 0.45 | 0/0/0/0 |
 | 2 | host_env | rc=0 |  | 2026-11-05 07:56:11 | 0h14 | 4.17 | 0/0/0/0 |
 | 4a | lower_levels | rc=1; FAIL; failed: scenarios[dev], tests/test_digital_twin_bus_hazard_concurrency.py, tests/test_digital_twin_wifi_modes.py, tests/test_digital_twin_uart_link.py, tests/test_digital_twin_sensortask_integration.py[dev] and 16 more |  | 2026-11-05 08:15:05 | 1h00 | 0.92 | 0/0/0/0 |
-| 3g | gc_control_image | not run |  |  |  |  | 1/0/0/0 |
+| 3g | gc_control_image | rc=0 | 2 | 2026-11-05 09:23:57 | 0h00 | 0.97 | 1/0/0/0 |
 | 4g | flash_tier_gc_control | not run |  |  |  |  | 0/0/1/136 |
 | 5g | bench_tier_gc_control | not run |  |  |  |  | 0/0/0/66 |
 | 3 | final_image | not run |  |  |  |  | 1/0/0/0 |
@@ -38,7 +38,7 @@ Rebuilt by `round1.py` after every step, last 2026-11-05 09:18 UTC. Each verdict
 | 10b | hotspot_case_b | not run |  |  |  |  | 0/4/0/2 |
 | 15 | rollover | not run |  |  |  |  | 2/0/0/0 |
 
-Wear started (the sheet's maxima per started step): FC 0 of 9, FS owned 0 of 126, NVM 0 of 14, prerequisite writes 0 of 422.
+Wear started (the sheet's maxima per started step): FC 1 of 9, FS owned 0 of 126, NVM 0 of 14, prerequisite writes 0 of 422.
 
 ## Long runs summed (October's aggregate)
 
@@ -3299,6 +3299,257 @@ Exit code: 1
 == step 4a end rc=1 2026-11-05 09:15:47 3642s load 0.92 1.03 1.17
 == read-across: GET /status after step 4a
 SUM status not read: no JSON answer
+```
+<!-- end step -->
+
+### 3g gc_control_image
+
+<!-- step 3g -->
+```
+== step 3g start 2026-11-05 09:23:57 1793870637 load 1.52 1.42 1.25
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.76ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+Loading into Flash:   [                              ]  0%
+Loading into Flash:   [                              ]  1%
+Loading into Flash:   [                              ]  2%
+Loading into Flash:   [                              ]  3%
+Loading into Flash:   [=                             ]  4%
+Loading into Flash:   [=                             ]  5%
+Loading into Flash:   [=                             ]  6%
+Loading into Flash:   [==                            ]  7%
+Loading into Flash:   [==                            ]  8%
+Loading into Flash:   [==                            ]  9%
+Loading into Flash:   [===                           ]  10%
+Loading into Flash:   [===                           ]  11%
+Loading into Flash:   [===                           ]  12%
+Loading into Flash:   [===                           ]  13%
+Loading into Flash:   [====                          ]  14%
+Loading into Flash:   [====                          ]  15%
+Loading into Flash:   [====                          ]  16%
+Loading into Flash:   [=====                         ]  17%
+Loading into Flash:   [=====                         ]  18%
+Loading into Flash:   [=====                         ]  19%
+Loading into Flash:   [======                        ]  21%
+Loading into Flash:   [======                        ]  22%
+Loading into Flash:   [======                        ]  23%
+Loading into Flash:   [=======                       ]  24%
+Loading into Flash:   [=======                       ]  25%
+Loading into Flash:   [=======                       ]  26%
+Loading into Flash:   [========                      ]  27%
+Loading into Flash:   [========                      ]  28%
+Loading into Flash:   [========                      ]  29%
+Loading into Flash:   [=========                     ]  30%
+Loading into Flash:   [=========                     ]  31%
+Loading into Flash:   [=========                     ]  32%
+Loading into Flash:   [=========                     ]  33%
+Loading into Flash:   [==========                    ]  34%
+Loading into Flash:   [==========                    ]  35%
+Loading into Flash:   [==========                    ]  36%
+Loading into Flash:   [===========                   ]  37%
+Loading into Flash:   [===========                   ]  38%
+Loading into Flash:   [===========                   ]  39%
+Loading into Flash:   [============                  ]  40%
+Loading into Flash:   [============                  ]  42%
+Loading into Flash:   [============                  ]  43%
+Loading into Flash:   [=============                 ]  44%
+Loading into Flash:   [=============                 ]  45%
+Loading into Flash:   [=============                 ]  46%
+Loading into Flash:   [==============                ]  47%
+Loading into Flash:   [==============                ]  48%
+Loading into Flash:   [==============                ]  49%
+Loading into Flash:   [===============               ]  50%
+Loading into Flash:   [===============               ]  51%
+Loading into Flash:   [===============               ]  52%
+Loading into Flash:   [===============               ]  53%
+Loading into Flash:   [================              ]  54%
+Loading into Flash:   [================              ]  55%
+Loading into Flash:   [================              ]  56%
+Loading into Flash:   [=================             ]  57%
+Loading into Flash:   [=================             ]  58%
+Loading into Flash:   [=================             ]  59%
+Loading into Flash:   [==================            ]  60%
+Loading into Flash:   [==================            ]  61%
+Loading into Flash:   [==================            ]  63%
+Loading into Flash:   [===================           ]  64%
+Loading into Flash:   [===================           ]  65%
+Loading into Flash:   [===================           ]  66%
+Loading into Flash:   [====================          ]  67%
+Loading into Flash:   [====================          ]  68%
+Loading into Flash:   [====================          ]  69%
+Loading into Flash:   [=====================         ]  70%
+Loading into Flash:   [=====================         ]  71%
+Loading into Flash:   [=====================         ]  72%
+Loading into Flash:   [=====================         ]  73%
+Loading into Flash:   [======================        ]  74%
+Loading into Flash:   [======================        ]  75%
+Loading into Flash:   [======================        ]  76%
+Loading into Flash:   [=======================       ]  77%
+Loading into Flash:   [=======================       ]  78%
+Loading into Flash:   [=======================       ]  79%
+Loading into Flash:   [========================      ]  80%
+Loading into Flash:   [========================      ]  81%
+Loading into Flash:   [========================      ]  82%
+Loading into Flash:   [=========================     ]  84%
+Loading into Flash:   [=========================     ]  85%
+Loading into Flash:   [=========================     ]  86%
+Loading into Flash:   [==========================    ]  87%
+Loading into Flash:   [==========================    ]  88%
+Loading into Flash:   [==========================    ]  89%
+Loading into Flash:   [===========================   ]  90%
+Loading into Flash:   [===========================   ]  91%
+Loading into Flash:   [===========================   ]  92%
+Loading into Flash:   [===========================   ]  93%
+Loading into Flash:   [============================  ]  94%
+Loading into Flash:   [============================  ]  95%
+Loading into Flash:   [============================  ]  96%
+Loading into Flash:   [============================= ]  97%
+Loading into Flash:   [============================= ]  98%
+Loading into Flash:   [============================= ]  99%
+Loading into Flash:   [==============================]  100%
+Verifying Flash:      [                              ]  0%
+Verifying Flash:      [                              ]  1%
+Verifying Flash:      [                              ]  2%
+Verifying Flash:      [                              ]  3%
+Verifying Flash:      [=                             ]  4%
+Verifying Flash:      [=                             ]  5%
+Verifying Flash:      [=                             ]  6%
+Verifying Flash:      [==                            ]  7%
+Verifying Flash:      [==                            ]  8%
+Verifying Flash:      [==                            ]  9%
+Verifying Flash:      [===                           ]  10%
+Verifying Flash:      [===                           ]  11%
+Verifying Flash:      [===                           ]  12%
+Verifying Flash:      [===                           ]  13%
+Verifying Flash:      [====                          ]  14%
+Verifying Flash:      [====                          ]  15%
+Verifying Flash:      [====                          ]  16%
+Verifying Flash:      [=====                         ]  17%
+Verifying Flash:      [=====                         ]  18%
+Verifying Flash:      [=====                         ]  19%
+Verifying Flash:      [======                        ]  21%
+Verifying Flash:      [======                        ]  22%
+Verifying Flash:      [======                        ]  23%
+Verifying Flash:      [=======                       ]  24%
+Verifying Flash:      [=======                       ]  25%
+Verifying Flash:      [=======                       ]  26%
+Verifying Flash:      [========                      ]  27%
+Verifying Flash:      [========                      ]  28%
+Verifying Flash:      [========                      ]  29%
+Verifying Flash:      [=========                     ]  30%
+Verifying Flash:      [=========                     ]  31%
+Verifying Flash:      [=========                     ]  32%
+Verifying Flash:      [=========                     ]  33%
+Verifying Flash:      [==========                    ]  34%
+Verifying Flash:      [==========                    ]  35%
+Verifying Flash:      [==========                    ]  36%
+Verifying Flash:      [===========                   ]  37%
+Verifying Flash:      [===========                   ]  38%
+Verifying Flash:      [===========                   ]  39%
+Verifying Flash:      [============                  ]  40%
+Verifying Flash:      [============                  ]  42%
+Verifying Flash:      [============                  ]  43%
+Verifying Flash:      [=============                 ]  44%
+Verifying Flash:      [=============                 ]  45%
+Verifying Flash:      [=============                 ]  46%
+Verifying Flash:      [==============                ]  47%
+Verifying Flash:      [==============                ]  48%
+Verifying Flash:      [==============                ]  49%
+Verifying Flash:      [===============               ]  50%
+Verifying Flash:      [===============               ]  51%
+Verifying Flash:      [===============               ]  52%
+Verifying Flash:      [===============               ]  53%
+Verifying Flash:      [================              ]  54%
+Verifying Flash:      [================              ]  55%
+Verifying Flash:      [================              ]  56%
+Verifying Flash:      [=================             ]  57%
+Verifying Flash:      [=================             ]  58%
+Verifying Flash:      [=================             ]  59%
+Verifying Flash:      [==================            ]  60%
+Verifying Flash:      [==================            ]  61%
+Verifying Flash:      [==================            ]  63%
+Verifying Flash:      [===================           ]  64%
+Verifying Flash:      [===================           ]  65%
+Verifying Flash:      [===================           ]  66%
+Verifying Flash:      [====================          ]  67%
+Verifying Flash:      [====================          ]  68%
+Verifying Flash:      [====================          ]  69%
+Verifying Flash:      [=====================         ]  70%
+Verifying Flash:      [=====================         ]  71%
+Verifying Flash:      [=====================         ]  72%
+Verifying Flash:      [=====================         ]  73%
+Verifying Flash:      [======================        ]  74%
+Verifying Flash:      [======================        ]  75%
+Verifying Flash:      [======================        ]  76%
+Verifying Flash:      [=======================       ]  77%
+Verifying Flash:      [=======================       ]  78%
+Verifying Flash:      [=======================       ]  79%
+Verifying Flash:      [========================      ]  80%
+Verifying Flash:      [========================      ]  81%
+Verifying Flash:      [========================      ]  82%
+Verifying Flash:      [=========================     ]  84%
+Verifying Flash:      [=========================     ]  85%
+Verifying Flash:      [=========================     ]  86%
+Verifying Flash:      [==========================    ]  87%
+Verifying Flash:      [==========================    ]  88%
+Verifying Flash:      [==========================    ]  89%
+Verifying Flash:      [===========================   ]  90%
+Verifying Flash:      [===========================   ]  91%
+Verifying Flash:      [===========================   ]  92%
+Verifying Flash:      [===========================   ]  93%
+Verifying Flash:      [============================  ]  94%
+Verifying Flash:      [============================  ]  95%
+Verifying Flash:      [============================  ]  96%
+Verifying Flash:      [============================= ]  97%
+Verifying Flash:      [============================= ]  98%
+Verifying Flash:      [============================= ]  99%
+Verifying Flash:      [==============================]  100%
+  OK
+
+The device was rebooted to start the application.
+SUM image board_BuildDate=2026-11-05T09:19:30Z record_BuildDate=2026-11-05T09:19:30Z match=1
+== step 3g end rc=0 2026-11-05 09:24:37 40s load 0.97 1.30 1.21
+== read-across: GET /status after step 3g
+SUM status system={"BootSignature": 1793870669, "ConfigFaults": [], "LastTaskEnd": null, "LocalTime": {"Hour": 10, "MDay": 5, "Minute": 24, "Month": 11, "Second": 37, "Weekday": 3, "Year": 2026, "Yearday": 309}, "MemFree": 21856, "MemPaused": false, "ResetReason": 2, "SysUptime": 18, "TimeStale": false, "UTCTime": {"Hour": 9, "MDay": 5, "Minute": 24, "Month": 11, "Second": 37, "Weekday": 3, "Year": 2026, "Yearday": 309}, "UnixTime": 1793870677}
+SUM status sensors={"SGP40": {"BackupTS": null, "RestoreTS": 0}, "UARTLINK": {"Failures": 0, "Transfers": 10}, "UART_init": {"Last": null, "Pending": false, "Runs": 0}}
+SUM errcount BMP3XX {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_BMP3XX {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_ISL29125 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_NOTIFY {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_NTP {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_SCD30 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_SGP40 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_SYSTEM {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_WIFI {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"E","num":21}],"counter":1}
+SUM errcount DNSSRV {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount FRAM {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"E","num":49},{"type":"W","num":63},{"type":"E","num":49},{"type":"W","num":63}],"counter":4}
+SUM errcount ISL29125 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount NEOPIXEL {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount NOTIFY {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount NTP {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount SCD30 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount SGP40 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":34},{"type":"W","num":33},{"type":"W","num":35},{"type":"W","num":33}],"counter":6}
+SUM errcount SYSTEM {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount UART_init {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount UART_resp {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount WEBSERVER {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount WIFI {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":81},{"type":"W","num":38},{"type":"W","num":79}],"counter":8}
+```
+<!-- end step -->
+
+### 4g flash_tier_gc_control
+
+<!-- step 4g -->
+```
+
+```
+<!-- end step -->
+
+### 5g bench_tier_gc_control
+
+<!-- step 5g -->
+```
+
 ```
 <!-- end step -->
 
