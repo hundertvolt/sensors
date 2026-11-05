@@ -93,9 +93,11 @@ def _pick(i2c: asy_i2c_driver.I2C, scan: "list[int]") -> "int | None":
 
 
 def _stuck_errno(i2c: asy_i2c_driver.I2C, address: int) -> "int | None":
-    # A transfer on the held bus: ETIMEDOUT or EIO expected; None when it went through.
+    # One byte on the controller's path: rp2 bit-bangs a zero-length write (ports/rp2/machine_i2c.c:127-145), whose ACK
+    # read takes a held SDA as an ACK (extmod/machine_i2c.c:141). _pick's own pointer write, as a read could clear a
+    # clear-on-read flag (ERR_REG, BMP388 sec 4.3.2). ETIMEDOUT or EIO expected; None when it went through.
     try:
-        i2c.writeto(address, b"")
+        i2c.writeto(address, bytes((_START_POINTER,)))
     except OSError as e:
         return e.errno
     return None
