@@ -599,8 +599,8 @@ class SensorReader:
             await self.pr.wrn_s("I2C bus was held at boot and cleared, status", status, wrnno=_WRN_BUS_RECOVERY)
 
     async def _recover_bus(self, rung: int) -> None:
-        # One bus rung per bus per episode: since its episode began, a reader skips the clear if any rung ran on its
-        # bus and the controller rung only if a rebuild ran (a rebuild clears too); either way its own rung is spent.
+        # One bus rung per bus per episode: since its episode began, a reader skips the clear if any rung was entered on
+        # its bus and the controller rung only if a rebuild was (a rebuild clears too); either way its own rung is spent.
         bus = self._recovery_bus
         if bus is None or self._rungs & rung:
             return
