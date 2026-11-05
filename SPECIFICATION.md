@@ -1739,9 +1739,8 @@ going red under a shared "lint" label. Python side: `lint-and-typecheck`, `shell
 `unit-tests-gc-threshold` (the (f) stage, `GC_THRESHOLD=32768`), `unit-tests-coverage`,
 `digital-twin-e2e` and **`firmware-build-verify`, which builds a real `firmware.uf2` for every
 device and verifies it**. Web side: `web-lint-and-typecheck`, `web-unit-tests`, `web-put-matrix` (3 shards),
-`web-coverage`, `web-cross-browser-smoke`. The live PUT matrix is its own sharded job because it
-is the web tier's whole wall clock - 567s of the suite's 578s, measured 2026-09-19 - and kept
-rolling a 20-minute budget while taking three other jobs' signals with it. `devices` globs
+`web-coverage`, `web-cross-browser-smoke` (the live PUT matrix sharded on its own, B.10.1).
+`devices` globs
 `devices/*.toml` without the `zz_test_` fixtures (the `tests_scripts/_devices.py` rule) and fails
 on an empty set, so no job names a device.
 
@@ -1776,10 +1775,8 @@ attempts and pauses (`tests_scripts/test_uv_sync_retried_sh.py`).
 
 **The coverage rerun is its own job**, `unit-tests-coverage`, for the same reason `web-coverage` is
 separate from `web-unit-tests`: `timeout-minutes` gates a whole job, not its real step, so a slow
-instrumented rerun can kill a test step that already passed (run `34755468619`: the plain suite
-passed, 60 of 60 files, and the 30-minute cap cancelled the job 13m24s into the rerun, skipping
-`digital-twin-e2e`). Its coverage report gates nothing and its test result does
-(E.5.3), so it gets its own budget either way.
+instrumented rerun can kill a test step that already passed. Its coverage report gates nothing
+and its test result does (E.5.3), so it gets its own budget either way.
 
 ### B.10.1 Why each job is shaped the way it is
 
@@ -1790,10 +1787,9 @@ passed, 60 of 60 files, and the 30-minute cap cancelled the job 13m24s into the 
   workflow's run list for its filter base. zizmor enforces it.
 - **Every job runs on `ubuntu-24.04`, never the floating `ubuntu-latest`** (agent, 2026-10-20): the
   OS the docs target (noble, README.md's build-environment check) and the image every Part N CI
-  budget was measured on. `ubuntu-latest` moved to Ubuntu 26.04 on 2026-10-20 and broke two jobs
-  from outside the tree: WebKitGTK's driver package was renamed (the installer takes either name,
-  H.7), and uutils coreutils replaces GNU's, whose `timeout` the test runner's interrupt-then-kill
-  relies on (BACKLOG.md's Ubuntu 26.04 entry). A newer image is its own step, like a pin's move.
+  budget was measured on. A floating image changes tools from outside the tree: Ubuntu 26.04 renames
+  WebKitGTK's driver package (H.7) and replaces GNU coreutils, whose `timeout` the test runner's
+  interrupt-then-kill relies on (BACKLOG.md). A newer image is its own step, like a pin's move.
 - **`web-changes`** feeds the web jobs' `if:`s from one workflow file rather than a second file
   with a trigger-level `paths:` filter, which can leave a PR on a required check that never fires
   (H.8). Without a base, `dorny/paths-filter` compares a push against the default branch, so every
@@ -1812,8 +1808,8 @@ passed, 60 of 60 files, and the 30-minute cap cancelled the job 13m24s into the 
   the web tooling's config (`package.json`, `package-lock.json`, `eslint.config.js`,
   `tsconfig*.json`, `vitest.config.js`, `.htmlvalidate.json`, `.stylelintrc.json`, `.nvmrc`) and
   the CI definition itself (`.github/workflows/ci.yml`, `.github/actions/**`).
-  `dorny/paths-filter` is pinned to the commit of `v4.0.3`, the newest v4 tag on 2026-10-19 (a
-  commit, not a tag object), with that version in its comment. Python jobs never consult it.
+  `dorny/paths-filter` is pinned to the commit of `v4.0.3` (a commit, not a tag object), with that
+  version in its comment. Python jobs never consult it.
 - **`devices`** lists the device set for both per-device matrices (B.10), so a device exists for
   CI by its TOML alone.
 - **`web-lint-and-typecheck`** runs ESLint, both `tsc` passes, html-validate over `html/` and
@@ -1840,14 +1836,14 @@ passed, 60 of 60 files, and the 30-minute cap cancelled the job 13m24s into the 
   the packages alone on a hit, held to `ci.playwright_install_timeout_min` by `timeout`, since a
   composite step takes no `timeout-minutes`. `npm run test:unit`'s `pretest:unit` hook builds every
   device's website first.
-- **`web-put-matrix`** is split out and sharded because the live PUT matrix IS the web tier's wall
-  clock — 567 s of the suite's 578 s, 243 of 778 tests (2026-09-19) — and kept rolling a 20-minute
-  budget, taking the other tests, coverage and the smoke with it. Each shard is its own runner, so
+- **`web-put-matrix`** is split out and sharded because the live PUT matrix is the web tier's wall
+  clock (567 s of the suite's 578 s, 2026-09-19): in a shared job it would take the other tests,
+  coverage and the smoke past their budget with it. Each shard is its own runner, so
   the harness's fixed twin port never collides; `tests_js/mock-server-put-matrix.test.js` proves
   the partition. It `needs: web-unit-tests`, success-gated on purpose: no three runners on the
   slow matrix if the fast suite already failed.
 - **`web-coverage`** is its own job because `timeout-minutes` gates a whole job: inside one job an
-  instrumented rerun can be cut after the real test step has passed (run `33856690559`). It
+  instrumented rerun can be cut after the real test step has passed. It
   excludes the live matrix at almost no cost to the number, since the mock-server matrix drives
   the same `js/` paths. Its test step gates (`set -o pipefail` through the `tee`, no
   `continue-on-error`) and its report steps (`always() && hashFiles(...)`, `continue-on-error`) do
@@ -1856,14 +1852,14 @@ passed, 60 of 60 files, and the 30-minute cap cancelled the job 13m24s into the 
 - **`web-cross-browser-smoke`** runs the production site through WebKitGTK, Firefox and Edge —
   engines Vitest's Playwright mode cannot reach — plus Chromium as a baseline, one field edit per
   engine and viewport (H.7 "Cross-browser coverage"), with `--require-all-engines`: a missing
-  engine fails in CI instead of being skipped. It installs Playwright's Chromium itself: each job
-  is a fresh VM, and a version without that step failed with "Executable doesn't exist". It builds
+  engine fails in CI instead of being skipped. It installs Playwright's Chromium itself, each job
+  being a fresh VM. It builds
   every device's site in a step of its own (`npm run build:site`). Firefox/geckodriver come from
   conda-forge via micromamba (~106 MB, no version file to key on), cached under a key that rolls
   monthly and with the installer (`cross-browser-firefox-<os>-<installer hash>-<YYYY-MM>`), so the
   floating engine stays current; WebKit and Edge reinstall every run. Its Playwright action passes
   `always-check: 'true'`: the installer's WebKit packages come from the same runner mirror list later
-  in the job (43.4 MB on run 40570757608), so the mirror is checked even when the package cache holds
+  in the job (about 43 MB), so the mirror is checked even when the package cache holds
   all of Playwright's (Edge comes from Microsoft's own repository, which the list does not cover). Each Xvfb reports its own
   display (H.7). `needs: web-unit-tests`, success-gated on purpose: no browser installs if the fast
   suite already failed.
@@ -1882,7 +1878,7 @@ passed, 60 of 60 files, and the 30-minute cap cancelled the job 13m24s into the 
   plus its largest single retry budget, one `scenarios[<device>]` job's 128 minutes (2,555 s x 3,
   `runner.scenarios_timeout_s`; one file's is 12, 240 s x 3, `PER_FILE_TIMEOUT_S`), so a hung job
   still ends `FAIL` with the summary block printed; the six scenario jobs run at once, so six hung
-  ones take no longer. A tighter cap once cancelled a healthy run (`34755468619`). The minutes are
+  ones take no longer. The minutes are
   `ci.unit_tests_timeout_min` (Part N, with the measured runs behind them). The retried sync is the
   toolchain action's first step, ahead of `scripts/test.sh`.
 - **`unit-tests-gc-threshold`** is CLAUDE.md's (f) stage — the same suite at the boot entry's
@@ -1910,9 +1906,9 @@ passed, 60 of 60 files, and the 30-minute cap cancelled the job 13m24s into the 
   dependency must not gate an independent finding; the device list is a real input, so the job
   also requires `needs.devices.result == 'success'`. It installs the ARM compiler through
   `setup_toolchain.py`'s `ensure_apt_packages()` against `versions.toml`, since apt packages never
-  survive between jobs; a version without that failed with "Compiler 'arm-none-eabi-gcc' not
-  found". A step before it reads that same package list for the apt mirror check and package cache
-  below, and `apt-cache-save` runs right after it with `if: !cancelled()`. It then installs the cached picotool: picotool lives in `/usr/local`, outside the cache,
+  survive between jobs. A step before it reads that same package list for the apt mirror check and
+  package cache below, and `apt-cache-save` runs right after it with `if: !cancelled()`. It then
+  installs the cached picotool: picotool lives in `/usr/local`, outside the cache,
   while its build tree is inside it, so `sudo make install` from that tree installs the very binary
   `setup` built, and `picotool version` proves it. Without an installed picotool the pinned
   pico-sdk (2.3.0, `tools/Findpicotool.cmake`) warns "No installed picotool with version … found -
@@ -1921,12 +1917,11 @@ passed, 60 of 60 files, and the 30-minute cap cancelled the job 13m24s into the 
 - **The apt mirror check and package cache** (owner, 2026-10-27: "Yes do it like you proposed", on a
   per-job mirror check plus GitHub's cache for the downloaded packages). Some `azure.archive.ubuntu.com`
   nodes serve `.deb` files at 45-130 kB/s while serving the package index at about 9 MB/s, against
-  30 MB/s or more on a healthy node, and which node a job gets is luck (actions/runner-images#14823,
-  open since 2026-09-30). apt's `Acquire::http::Timeout` fires only when no data arrives at all, so
-  apt never moves on to the list's next mirror: on run 40570757608 a `firmware-build-verify` job could
-  not fetch its 588 MB inside three 150 s attempts (job 122430825421), and `web-coverage`'s 25.9 MB
-  `install-deps` outlasted its 5 minutes (job 122426649230). `.github/actions/apt-cache-restore`
-  runs before the install, every step of it warning and carrying on (`continue-on-error`), so only the
+  30 MB/s or more on a healthy node, and which node a job gets is luck (actions/runner-images#14823).
+  apt's `Acquire::http::Timeout` fires only when no data arrives at all, so apt never moves on to the
+  list's next mirror, and a slow node outlasts the install's bound.
+  `.github/actions/apt-cache-restore` runs before the install, every step of it warning and
+  carrying on (`continue-on-error`), so only the
   install's own failure fails a job, as before:
   1. a bounded `apt-get update` (`tool.apt_step_timeout_s`, with `apt_options()`'s values as `-o`);
   2. the plan: `apt-get install --print-uris -o Acquire::ForceHash=SHA256` on the job's package list
@@ -1945,9 +1940,8 @@ passed, 60 of 60 files, and the 30-minute cap cancelled the job 13m24s into the 
      `firmware-build-verify` one download attempt's `tool.apt_step_timeout_s` (150 s, read from
      `setup_toolchain.py`), so its 588 MB needs 7.84 MB/s; the Playwright action its install's
      `ci.playwright_install_timeout_min` (300 s), so Playwright's 25.9 MB stays on the 1 MB/s floor.
-     A fixed rate could not tell whether a set fits its bound: on run 40603784233 (2026-10-27) a
-     1.3 MB/s azure node passed the 1 MB/s that was then the whole rule, and the 588 MB ran out of all
-     three 150 s attempts at that same rate (job 122543124264). `check` takes the smallest archive
+     A fixed rate cannot tell whether a set fits its bound: a 1.3 MB/s node passes a 1 MB/s rule and
+     runs the 588 MB out of all three 150 s attempts. `check` takes the smallest archive
      still to fetch holding the probe's budget, `ci.apt_mirror_probe_cap_s` × the required rate (the
      most a mirror at exactly that rate moves inside the cap, 78 MB for the firmware set), else the
      largest, and reads at most that much from each mirror of `/etc/apt/apt-mirrors.txt` in apt's
@@ -1968,8 +1962,9 @@ passed, 60 of 60 files, and the 30-minute cap cancelled the job 13m24s into the 
   `/var/cache/apt/archives` by its size alone (`apt-pkg/acquire-item.cc`, `pkgAcqArchive`, the same in
   apt 2.7.14 and 2.8.3), so a same-size altered file would reach dpkg unverified; `copy-in` checks each
   against the SHA-256 of the index `apt-get update` has just fetched and verified, and a stale version
-  carries another file name, so apt fetches it afresh. **The budget**, measured from run 40570757608's
-  logs (2026-10-27), the caches hold the Unix-port toolchain at 444 MB a key (at most three toolchain hashes in the last seven
+  carries another file name, so apt fetches it afresh. **The budget** (measured 2026-10-27): the
+  caches hold the Unix-port toolchain at 444 MB a key (at most three toolchain hashes in the last
+  seven
   days, 1.33 GB), Playwright's Chromium at 271 MB, npm's cache at 35 MB and the cross-browser Firefox
   at 253 MB a key (at most two), about 2.4 GB at most; the new entries add the firmware set's 588 MB
   (the ARM compiler packages are 574 MB of it) and Playwright's 26 MB a key. That stays well under
@@ -2441,10 +2436,9 @@ source is edited and nothing but `make` command-line variables is passed:
 
 #### B.14.2.1 The options are an ensemble, not independent knobs
 
-**This is the part that decides what a raised ceiling really costs.** `lib/lwip/src/core/init.c`
-turns sixteen relationships over these options and the values derived from them into
-compile-time `#error`s, and `opt.h` *derives*
-four further values — `TCP_SND_QUEUELEN`, `TCP_SNDLOWAT`, `TCP_SNDQUEUELOWAT`, `PBUF_POOL_BUFSIZE` —
+`lib/lwip/src/core/init.c` turns sixteen relationships over these options and the values derived
+from them into compile-time `#error`s, and `opt.h` *derives* four further values —
+`TCP_SND_QUEUELEN`, `TCP_SNDLOWAT`, `TCP_SNDQUEUELOWAT`, `PBUF_POOL_BUFSIZE` —
 from the ones set here. So a value moved alone either fails the build or silently changes something
 else. **MicroPython's own pinned block is itself a tuned set**, sitting exactly on one of those
 boundaries: `MEMP_NUM_TCP_SEG` is 32 and the derived `TCP_SND_QUEUELEN` is
@@ -2493,8 +2487,8 @@ device whose `max_connections` the firmware's own pools cannot serve.
 **`PBUF_POOL_SIZE` stays at the port default (agent, 2026-09-22, `31da2b3`).** It backs the
 *inbound* path, where this firmware's demand is one small request per connection (bodies capped at
 2,048 B, Part I.6), against ~892 B of GC heap per pbuf — the most expensive pool to grow.
-**Confirmed on silicon**: at an 8x advertised inbound over-commit (16 connections x `TCP_WND`
-against the pool) it never surfaced (`HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7R.2; H.7). The
+On silicon an 8x advertised inbound over-commit (16 connections x `TCP_WND`
+against the pool) never surfaces it (`HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7R.2; H.7). The
 checker derives `PBUF_POOL_BUFSIZE` with the IPv6-enabled port's 74 B of protocol headers
 (`LWIP_IPV6 = 1`, so `PBUF_IP_HLEN` is 40): 876 B.
 
@@ -2505,9 +2499,8 @@ Any row reproduces with `setup_toolchain.build_firmware(..., lwip_macros=...)`, 
 `arm-none-eabi-nm --print-size -t d firmware.elf` for those two symbols and each `memp_memory_*`
 pool and `ram_heap`; `verify_lwip_macros_in_build()` confirms the build took the set.
 
-Per *individual* option, which is what a first pass measures and why it misleads. The PCB row is
-against that baseline; every other row moves one option from a `MEMP_NUM_TCP_PCB = 12` build
-(GC heap 196,156 B), so it carries none of the PCB cost:
+Per individual option (the PCB row against that baseline; every other row moves one option from a
+`MEMP_NUM_TCP_PCB = 12` build, GC heap 196,156 B, so it carries none of the PCB cost):
 
 | change | GC heap delta | per unit |
 | --- | --- | --- |
@@ -2518,9 +2511,9 @@ against that baseline; every other row moves one option from a `MEMP_NUM_TCP_PCB
 | `MEM_SIZE` 8000 -> 12000 / 16000 | -4,000 / -8,000 B | 1:1 |
 | `PBUF_POOL_SIZE` 16 -> 32 | -14,272 B | -892 B per pbuf |
 
-Every one of those built, up to and including `MEMP_NUM_TCP_PCB = 32`: **there is no compile-time
-wall in this range.** But moving the PCB count alone is not a supported configuration, so the figure
-that matters is the **coherent ensemble** at each ceiling — `MEMP_NUM_TCP_PCB` = N + 3,
+Each builds, up to `MEMP_NUM_TCP_PCB = 32`: there is no compile-time wall in this range. Moving the
+PCB count alone is not a supported configuration; the figure that matters is the coherent ensemble at
+each ceiling — `MEMP_NUM_TCP_PCB` = N + 3,
 `MEMP_NUM_TCP_SEG` = N x 8, `MEM_SIZE` = N x 2000, the rest pinned:
 
 | `max_connections` | PCB | SEG | `MEM_SIZE` | `.bss` | GC heap | vs pinned | % of heap |
@@ -2536,9 +2529,8 @@ that matters is the **coherent ensemble** at each ceiling — `MEMP_NUM_TCP_PCB`
 Absolute heaps are from the builds of that day; the deltas are what transfer. The shipped image's own
 linker heap is 192,360 B (`HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7R.1).
 
-**A connection costs 2,324 B of GC heap, not 196 B** — linear, and about twelve times what moving
-the PCB count alone suggests. "PCB slots are cheap" is true and irrelevant: the slot is the small
-part of what a servable connection needs.
+**A connection costs 2,324 B of GC heap**, linearly: its 196 B PCB slot is the small part of what a
+servable connection needs.
 
 **Version-bump checklist**: re-read `lwipopts_common.h` and lwIP's `opt.h` at the new tag. If the
 anchors hold, `verify_lwip_connection_counts_anchor()` passing is the confirmation. If the atomic
@@ -2548,8 +2540,8 @@ what records *why* each macro needs the generated header rather than a `-D`.
 
 **Diagnosing which pool ran out**: `LWIP_STATS = 1` keeps per-pool exhaustion counters for 544 B
 of heap, but this firmware never calls lwIP's C `stats_display()`, so reading them needs a probe of
-its own. It was never needed: the serial console's `MemoryError` tracebacks named the GC heap
-directly every time.
+its own; none exists, since the serial console's `MemoryError` tracebacks name the GC heap
+directly.
 
 ### B.14.3 `littlefs_flash_storage_size` (documented, not yet implemented)
 
@@ -2716,18 +2708,16 @@ printing `True` and then that sentinel, exiting 0, within `tool.preprocess_timeo
 timers have then run through two IPv6 reassembly ticks. Where the host build differs from rp2 is
 F.7.
 
-**What the host build measured** (`tests/lwip_host/test_modlwip_eagain.py`, 2026-10-08, both GC
-stages): every non-blocking write returned within 0.16 ms at the arena, queue-limit (32 segments)
-and segment-pool (48) edges, each edge the patched branch (`POLLOUT` still set); a reading peer got
-every byte in order; capacity (10,400 B to a peer that never reads) came back after the peers
-closed, the same in 20 rounds. A control build with the insertion step disabled, built once and
-deleted, failed all seven tests: single writes of 10,000-10,065 ms, or a different edge.
-`tests/lwip_host/test_modlwip_listener_close.py` (2026-10-26, both GC stages): a listener with an
-accept-queue array, one with a single slot, a second listener on a closed one's port, and a socket
-whose heap-locked `listen(4)` raised each close and leave the port free. Without the second patch
-the first close aborts at `tcp.c:2070`; with the second patch alone the last close segfaults in
-`pbuf_free()`; with the third patch alone, or beside a guard on the socket's state, it aborts at
-`tcp.c:2070`.
+**What the host build shows** (both GC stages). `tests/lwip_host/test_modlwip_eagain.py`: every
+non-blocking write returns within 0.16 ms at the arena, queue-limit (32 segments) and segment-pool
+(48) edges, each the patched branch (`POLLOUT` still set); a reading peer gets every byte in order;
+capacity (10,400 B to a peer that never reads) comes back after the peers close, the same in 20
+rounds. Without the insertion all seven tests fail (single writes of 10,000-10,065 ms, or another
+edge). `tests/lwip_host/test_modlwip_listener_close.py`: a listener with an accept-queue array, one
+with a single slot, a second listener on a closed one's port, and a socket whose heap-locked
+`listen(4)` raised each close and leave the port free. Each patch is needed: without the second the
+first close aborts at `tcp.c:2070`; with the second alone the last close segfaults in `pbuf_free()`;
+with the third alone, or beside a guard on the socket's state, it aborts at `tcp.c:2070`.
 
 **Cost.** `POLLOUT` reports writable while `tcp_sndbuf() > 0` (`extmod/modlwip.c:1639`), so with
 the arena full the retry is a cooperative busy wait until the peer acknowledges or the per-call
@@ -2782,10 +2772,9 @@ only (L.7), and the image record's `overrides` lists it (B.11).
 **Release refusal.** After every rp2 build, `verify_tick_offset_in_build()` preprocesses
 `py/mphal.h` with the build's own recorded flags and reads the sentinel back: a release build that
 carries it fails ("a release build carries the tick-offset test override"), and a test build that
-lacks it fails too. CI's `firmware-build-verify` proves the absence for every device. Proven once on
-`dev` (2026-10-08): the test image built, the readback found the override, the offset
-(`0xfff24460`) appeared in 16 of the image's literal pools, and the release readback over that image
-was refused.
+lacks it fails too. CI's `firmware-build-verify` proves the absence for every device. On `dev`
+(2026-10-08) the offset (`0xfff24460`) sits in 16 of the test image's literal pools and the release
+readback refuses that image.
 
 **Cost.** Flashing the test image spends one flash cycle on the board, inside the round's flash
 budget (CLAUDE.md's wear rule). **Removal trigger.** None while the rollover round exists; its
@@ -3626,29 +3615,14 @@ stored the value.** `reset()` clears the in-RAM ring once that write returns, so
 failure) answers `"Failed"` for `ResetErrors` (owner, 2026-09-26), while every other source still
 resets: `reset()` returns whether its write succeeded, and the sources reset concurrently (A.8).
 
-**Confirmed on real hardware (dev bench board, 2026-09-17, measured while `ResetErrors` still reset
-the sources one after another).** Three properties of this layer that had only ever been shown
-against the twin's fake chip were re-run against the real FM25xx, with the board's own `dev`
-firmware:
-
-- **The all-or-nothing abrupt-restart guarantee holds, with the "all" branch actually exercised.**
-  WIFI's FRAM-backed log read `counter=3`, history `W37, W36, W36` before an abrupt `hard_reset()`
-  and byte-identical values after it — not a partial remnant, and not the vacuous `0 → 0` a test
-  built on a deauth would produce (`bench.kick_all_stations()` logs nothing at all; only a real
-  `bench.ap_down()` outage generates entries).
-- **`PUT /status {"ResetErrors": true}` clears every chunk and yields while doing it.** All 21 of
-  `dev`'s chunks (`UART_init`/`UART_resp` included) read back 0 with their rings cleared, and a
-  concurrent `GET /status` stayed at 0.56-0.76s throughout a `PUT` lasting 8.1s — so the sweep never
-  holds the event loop and cannot threaten the 8388ms watchdog cap. Its cost is fixed **per chunk**
-  (~305ms), not per history entry, and the twin is no floor for it: real idle (6.32s) ran faster
-  than the twin's own `dev` figure (8.15s), the Unix-port interpreter and the fake chip costing more
-  than real SPI wire time saves. The bench budget is still to be sized from a 0-4 reader sweep of
-  the concurrent reset: BACKLOG.md's "Real-hardware work still owed", bench `ResetErrors` budget row.
-- **The UART link keeps its never-block invariant under sustained FRAM writing.** Across a 20.8s
-  window carrying three back-to-back `ResetErrors` calls (~6.9s each, i.e. near-continuous chunk
-  writing), `dev`'s crossover pair completed 23 further transfers with zero failures and held its 1s
-  exerciser cadence — the guarantee in CLAUDE.md's `asy_uart_comm.py` rule, shown against the real
-  peripheral rather than only the bench jumper at idle.
+**On the real FM25xx** (dev bench, `dev` firmware, 2026-09-17, sources reset one after another):
+an abrupt `hard_reset()` leaves a FRAM-backed log byte-identical (WIFI's `counter=3`, `W37, W36,
+W36`; only a real `bench.ap_down()` outage logs entries, a deauth logs none); `ResetErrors` clears
+all 21 of `dev`'s chunks while a concurrent `GET /status` answers in 0.56-0.76 s, so the sweep
+never holds the loop, at a fixed cost per chunk (about 305 ms), not per entry, for which the twin is
+no floor (6.32 s real against the twin's 8.15 s); and the UART pair keeps its 1 s cadence with zero failures through near-continuous chunk
+writing (CLAUDE.md's `asy_uart_comm.py` rule). The bench `ResetErrors` budget, from a 0-4 reader
+sweep of the concurrent reset, is owed (BACKLOG.md's "Real-hardware work still owed").
 
 Log-level methods, two tiers: `pr.one`/`pr.evt`/`pr.all` (sync, print-only, no history) for
 info/trace; `pr.err_s`/`pr.wrn_s` (async, persist to history/FRAM) for anything counting against
@@ -3848,9 +3822,9 @@ four minutes (owner, 2026-09-24). The legacy client never gave up.
   a forced resync (`ntp_force_sync()`, e.g. a PUT of `NTPHost`) tries at once, a forced one during an
   attempt as soon as that attempt ends. A synced device's failed
   resync keeps its own short retry loop (`_NTP_SYNC_RETRIES` × 15 s: `ntp.sync_retries`,
-  `ntp.retry_interval_s`) and does not touch the unsynced wait. **Confirmed on silicon (2026-09-25)**: with UDP 123 blocked, one `E71`
-  (`NTP_NO_REPLY`) slot (count 3), no task ended, SYSTEM clean; two full bench tiers then held
-  `assert_no_task_ended` throughout. The resolver tries only the servers its caller passes, in
+  `ntp.retry_interval_s`) and does not touch the unsynced wait. On silicon (2026-09-25), UDP 123
+  blocked gives one `E71` (`NTP_NO_REPLY`) slot and no task end, and two full bench tiers hold
+  `assert_no_task_ended`. The resolver tries only the servers its caller passes, in
   order: NTP passes the DHCP-provided DNS server first, then the `DNSFallback` servers (an NTP
   config value, at most three, emptiable at the API). `Synced` is true
   only while the last success is less than three intervals old; a failed resync does not extend it,
@@ -3982,8 +3956,7 @@ and a value already stored that way runs on its default (`STORED_DEFAULT`, `wrnn
 reaching the radio. `GET /networking` shows the value the radio uses: passwords masked, and a stored
 value the radio would refuse as the default it runs on. Only the max needs bytes — a value is never
 fewer bytes than characters — and a character-bound violation stays the schema's own refusal.
-**Confirmed on silicon (2026-09-25)**: an 18 × `ä` hostname (36 bytes) was refused `"Invalid"`
-with `BAD_ARG` and the hostname left unchanged.
+On silicon (2026-09-25) an 18 × `ä` hostname (36 bytes) is refused `"Invalid"` with `BAD_ARG`.
 
 ### C.7.5 Captive DNS
 
@@ -4497,8 +4470,8 @@ decide which is wrong from the datasheet **and** a fresh measurement, never from
 Every bus chip has one: `tests_hardware/device_scripts/<chip>_conformance_probe.py` for the SCD30,
 SGP40, BMP3xx and FRAM and `isl29125_mock_conformance_probe.py`, each diffed by
 `tests_hardware/conformance.py`, which runs the twin half through `TwinBoard` at both GC stages, and
-gated by `tests_hardware/flash/test_chip_conformance.py`; what the ISL29125's first real run found
-is Part M.1.2. Build one for every new bus-facing chip.
+gated by `tests_hardware/flash/test_chip_conformance.py`; the ISL29125's measured departures from
+its datasheet are Part M.1.2. Build one for every new bus-facing chip.
 
 **Chip-specific facts go to Part M, not here.** Part C states what every driver shares; a single
 part's measured behaviour, reference-layer traps and settled requirements get their own Part M
@@ -7158,17 +7131,17 @@ state).
    the module goes through it: the four counted paths (`read()`, `readinto()`,
    `read_until_complete()`, `readinto_until_complete()`), the two uncounted ones (`read(None)` and
    `readinto(buf)` asked the peripheral for the whole buffer, which blocks for every byte of it that
-   has not arrived), and `_read_delimited()`'s one-byte read, which was still issued against an
-   empty ring where the C read spins out its `EAGAIN` probe. The two readline paths take the same
+   has not arrived), and `_read_delimited()`'s one-byte read, which against an empty ring spins out
+   the C read's `EAGAIN` probe. The two readline paths take the same
    clamp: each reads up to the first LF among the bytes already buffered. The docs' lower-bound
    wording ("may return 1 even if there is more than one character available") costs nothing here:
    under-reporting only ever means another round.
-2. *Yield on the way out of `ready()`.* With the clamp alone the stall did not improve — it got
-   **worse**, measured at 14.6ms. `ready()` returned `True` with **no `await` at all** whenever
-   `ipoll()` already reported the mask, so a frame still mid-flight was simply read in a Python loop
-   with no yield point: the same block, reimplemented one level up and slower than the C busy-wait
-   it replaced. Every read loop in the module reaches the peripheral through `ready()`, so the yield
-   belongs there and nowhere else — `await asyncio.sleep_ms(0)` immediately before it returns
+2. *Yield on the way out of `ready()`.* The clamp alone makes the stall **worse** (14.6 ms
+   measured): a `ready()` that returns `True` with no `await` whenever `ipoll()` already reports the
+   mask reads a frame still mid-flight in a Python loop with no yield point, the same block one
+   level up and slower than the C busy-wait. Every read loop in the module reaches the peripheral
+   through `ready()`, so the yield belongs there and nowhere else — `await asyncio.sleep_ms(0)`
+   immediately before it returns
    `True`. That makes it one guarantee in one place instead of an obligation each call site has to
    remember: **no path through this driver reaches a read without having just yielded.**
    `_read_delimited()` is the one loop that consumes buffered bytes without going back through
@@ -7191,10 +7164,9 @@ distinguish them:
 | `uart.any()` | 72 us |
 | `uart.write(53B)` | 171 us |
 
-Re-measured on the dev bench (2026-09-12) after the yield moved from the four read loops into
-`ready()` itself: unclamped 4422 us, clamped **137 us**, write 169 us — the same result from an
-independent run against the reshaped driver, which is what makes the table a property of the
-peripheral rather than of one arrangement of the code. **Through the shipped driver itself**
+An independent dev-bench run with the yield in `ready()` (2026-09-12) gives unclamped 4422 us,
+clamped **137 us**, write 169 us: the table is a property of the peripheral, not of one arrangement
+of the code. **Through the shipped driver itself**
 (2026-09-25, `device_scripts/uart_driver_read_never_blocks_the_loop.py`, which times the calls
 `readinto_until_complete()`'s own clamp makes): longest call **126-132 us** against 3,251 us for an
 unclamped read of the same frame on the same peripheral - asserted in the flash tier, its bound a third of the
@@ -7280,9 +7252,10 @@ obtainable — and it is what a second device *would* wait. **Per command (T.4, 
 2026-09-25)**: the 1-byte write took 2,833-3,395 us (~0.6-0.7 ms per CS envelope), one 8-byte
 read envelope 783-881 us, and the whole block operation held the bus 18,089-23,148 us. A single
 command is therefore under ~1 ms; the per-block hold stays (owner, 2026-09-26: 'Probably better to
-keep'): yielding per command would bring back the coroutine churn the 2026-09-18 remediation
-removed. Pinned on the bench by `tests_hardware/device_scripts/fram_command_hold_timing.py` (run by
-`flash/test_fram_storage.py`): it fails when the longest non-yielding stretch passes one UART poll
+keep'): yielding per command would bring back the coroutine churn the synchronous restructure
+removed (A.4). Pinned on the bench by `tests_hardware/device_scripts/fram_command_hold_timing.py`
+(run by `flash/test_fram_storage.py`): it fails when the longest non-yielding stretch passes one
+UART poll
 floor (80 B of 8N1 at 115200 baud, 6,944 us, J.6) and reports the block hold beside it.
 
 **The write side blocks too once a write outgrows the free TX ring.** `mp_machine_uart_write()`
@@ -7311,19 +7284,12 @@ Counted in the digital twin's dev soak, which runs the real `sensortask_dev` gra
 the idle rate below. (Count the rounds, not the soak's wall clock — see Part E.7 for why that number
 is not usable here.)
 
-**Confirmed on real hardware (2026-09-12, dev bench.)** Counting `ipoll()` calls through a proxy
-around the driver's own poller, so the shipped path is what is measured, an idle listener performs
-**1244 / 1233 poll rounds over 3 s at 2 ms against 60 / 60 at 50 ms** — a 20.6x cut, and exactly
-the ratio the two rates predict (one round per 2.4 ms vs one per 50.0 ms). Repeated interleaved; the
-50 ms figure was identical to the round on both runs.
-
-**What that costs the event loop is a smaller number than this section first inferred, and the
-inference is withdrawn.** Reasoning from the 400-900 us round trip in F.5.8 to "a quarter to a half"
-overstates it. Measured directly — a counter task running flat out beside the listener, interleaved
-and order-reversed — an idle listener at 2 ms takes **~18-23 %** of that task's throughput, and at
-50 ms the cost falls into the noise. The spread is real: absolute throughput on this board moves
-with heap state between runs, exactly as Part E.7 describes, which is why the poll-round count above
-is the load-bearing measurement and this one is only corroboration of its direction.
+On the dev bench (2026-09-12), counting `ipoll()` calls through a proxy around the driver's own
+poller, an idle listener makes **1244 / 1233 poll rounds over 3 s at 2 ms against 60 / 60 at 50 ms**,
+a 20.6x cut, the ratio the two rates predict. Its event-loop cost, a flat-out counter task's
+throughput beside it (interleaved, order-reversed), is **about 18-23 %** at 2 ms and in the noise at
+50 ms, less than F.5.8's 400-900 us round trip suggests; throughput moves with heap state between
+runs (E.7), so the round count is the load-bearing measurement and this one corroborates it.
 
 **The fix is a second poll rate, selected by whether the wait carries a deadline.** `ready(mask,
 timeout_ms)` polls at `poll_wait_ms` when `timeout_ms > 0` and at `poll_idle_ms` otherwise, because
@@ -8307,7 +8273,7 @@ per Part B.14.2 — rather than lwIP's own default of 5. A page load stays well 
 derived order, the stager refusing whatever would break their one shared scope, H.2) and
 **inlining** (the stylesheet, the device's `definitions.json` with every `<` written `\u003c` so no
 literal `</script` closes its block early, and the icon as a `data:image/x-icon;base64,` link, all
-embedded in the staged `index.html`) — 2 connections per page load (down from ~9), and a
+embedded in the staged `index.html`) — 2 connections per page load (about 9 unbundled), and a
 Chromium-family engine sometimes opens one or two more (Chromium one, Edge two), spare sockets that carry no request.
 
 **`max_connections` is `6`** (owner, 2026-09-24, `db3bf52`; evidence below), stated per device in
@@ -8670,9 +8636,9 @@ allocation site is classified in (I.2), and the GET routes' bounded assembly (I.
 the heap, so "insufficient contiguous space despite substantial free RAM" is a real, expected
 failure mode; every finding below is about *contiguous* free memory, not total free memory. The
 heap's allocation unit is a 16-byte block on a 32-bit target — a large allocation needs that many
-contiguous blocks in a row. **Official guidance for reducing fragmentation**, matching what the
-`/status` investigation already found: instantiate large, permanent buffers early (this project's
-`RegionBuffer`/`FRAMChunk` already do); minimize repeated creation/destruction of same-shaped
+contiguous blocks in a row. **Official guidance for reducing fragmentation**: instantiate large,
+permanent buffers early (this project's `RegionBuffer`/`FRAMChunk` already do); minimize repeated
+creation/destruction of same-shaped
 objects (`_stream_dict_response()`, I.3, exists to avoid exactly this); prefer `bytes`/`bytearray`
 and pre-allocated I/O buffers over per-transaction ones (already this project's pattern); avoid
 needless string concatenation (`+=` on immutable `str`/`bytes` is O(n²) — every accumulation loop
