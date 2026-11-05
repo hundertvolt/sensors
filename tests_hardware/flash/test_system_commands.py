@@ -3,13 +3,12 @@ the generated callback over a scratch config dir - the deletes, the erase and it
 hung step, a reset mid-erase and the bootloader; each saves the FRAM evidence first, then reads the attribution."""
 
 import json
-import subprocess
 import time
 from typing import TYPE_CHECKING
 
 import pytest
 from error_log_helpers import code
-from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, SRC_DIR, HardwareTestFailureError, fram_backed_logger_names, parse_facts, save_fram_raw, wait_for_boot, wait_until
+from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, SRC_DIR, fram_backed_logger_names, parse_facts, picotool, save_fram_raw, wait_for_boot, wait_until
 
 from buildgen.validate import _WDT_TIMEOUT_MS, module_int_const
 
@@ -272,9 +271,7 @@ def test_bootloader_command_shuts_down_then_enters_bootsel(board: "Board", reque
         if request.config.getoption("--twin"):
             return
         # picotool answers only a BOOTSEL device: its reboot proves the bootloader was entered; no load, no flash write.
-        reboot = subprocess.run(["sudo", "picotool", "reboot"], capture_output=True, text=True, timeout=_PICOTOOL_TIMEOUT_S, check=False)  # sudo and picotool from the bench host's PATH
-        if reboot.returncode != 0:
-            raise HardwareTestFailureError(f"picotool reboot found no BOOTSEL device (exit {reboot.returncode}):\n{reboot.stdout}\n{reboot.stderr}")
+        picotool(board, "reboot", timeout_s=_PICOTOOL_TIMEOUT_S)
         after = _after_boot(board, request, result_note)
         assert after is not None and after.get("reason") == _RR_WATCHDOG, f"the boot after BOOTSEL read {after}, not {_RR_WATCHDOG}"
     finally:

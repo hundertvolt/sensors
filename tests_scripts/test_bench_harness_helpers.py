@@ -1,6 +1,6 @@
 """Covers tests_hardware/'s shared host helpers offline against fakes: serving restore and recovery, boot/crash line
-observers, errcount oracles, script rendering and facts, mpremote/picotool wrappers, the bench's route set and the
-thread-worker, join, reset and no-sync rules over every host module of the hardware tier."""
+observers, errcount oracles, script rendering and facts, mpremote/picotool wrappers, the bench's route set, hardware
+tests' own checks, and the thread-worker, join, reset and no-sync rules over every host module of the hardware tier."""
 
 import ast
 import functools
@@ -17,11 +17,13 @@ from pathlib import Path
 import pytest
 import tomllib
 from _devices import DEVICE_NAMES, device_toml
+from _script_loader import load_script_module
 
 from buildgen.schema_ast import extract_field_schemas
 from buildgen.source_ast import parse_source
 from buildgen.validate import device_max_connections
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests_hardware" / "bench"))  # a bench module's own `import _load`
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests_hardware"))
 
 import bench_facts
@@ -39,6 +41,9 @@ PUSH_MODULE = TESTS_HARDWARE / "bench" / "test_sensor_config_push_over_real_hard
 REPAIR_MODULES = [TESTS_HARDWARE / "bench" / "test_network_resilience.py", PUSH_MODULE]
 
 _STOP_WAIT_S = 2.0  # how soon a set stop must end the script-server wait
+# The modules that run picotool themselves: the retry's own, and the manual tier's load, which a person at the board
+# watches, kept a single try (agent, 2026-11-05).
+_OWN_PICOTOOL_RUNS = frozenset({"harness.py", "manual_toolchain.py"})
 # The handlers a fetch's failures need: a cut-off answer is an HTTPException, beside OSError's transport errors.
 _CATCH_ALL = frozenset({"Exception", "BaseException"})
 _HTTP_ERROR = frozenset({"http_client.HTTP_ERROR", "HTTP_ERROR"})
@@ -470,6 +475,34 @@ def test_kick_then_reset_kicks_the_stations_before_the_one_reset() -> None:
     assert fake.calls == ["kick_all_stations", "hard_reset"]
 
 
+@pytest.mark.parametrize(("gone_at", "calls"), [(3.0, ["kick_all_stations, node gone"]), (None, [])])
+def test_kick_after_reset_kicks_once_the_board_has_left_usb_and_never_before(monkeypatch: pytest.MonkeyPatch, clock: _Clock, tmp_path: Path, gone_at: "float | None", calls: "list[str]") -> None:
+    # A command's own reset takes the node `gone_at` seconds after the reply (never: no reset); the node is watched,
+    # never opened, and the kick lands only after it went. No reset within the bound raises, nothing kicked.
+    node = tmp_path / "ttyACM0"
+    node.touch()
+
+    class Node(_Recorder):
+        device = str(node)
+
+        def kick_all_stations(self) -> None:
+            self.calls.append(f"kick_all_stations, node {'present' if node.exists() else 'gone'}")
+
+    def sleep(seconds: float) -> None:
+        clock.sleep(seconds)
+        if gone_at is not None and clock.now >= gone_at:
+            node.unlink(missing_ok=True)
+
+    monkeypatch.setattr(time, "sleep", sleep)
+    fake = Node()
+    if gone_at is None:
+        with pytest.raises(harness.HardwareTestFailureError, match="did not leave USB"):
+            harness.kick_after_reset(fake, fake, 30.0)  # type: ignore[arg-type]
+    else:
+        assert harness.kick_after_reset(fake, fake, 30.0) == pytest.approx(gone_at), "not the moment the node was seen gone"  # type: ignore[arg-type]
+    assert fake.calls == calls and clock.now == pytest.approx(gone_at or 30.0)
+
+
 def test_the_soak_reads_systems_log_first_only_after_a_hard_reset_and_a_fresh_boot() -> None:
     # Its calls in source order, no twin: without a bench the session's own reset leaves the board mid-boot, so the
     # first live read must follow a reset of the soak's own, the board back on USB and the boot line.
@@ -542,6 +575,50 @@ def test_recover_by_reset_raises_after_exactly_one_reset_when_never_ready(clock:
         harness.recover_by_reset(fake, fake, lambda: False, first_wait_s=30.0, retry_wait_s=60.0, skipped="x", note=lambda *_a, **_k: None, description="never")  # type: ignore[arg-type]
     assert fake.calls == ["kick_all_stations", "hard_reset"]
     assert clock.now == pytest.approx(90.0)
+
+
+def test_a_failed_recovery_reset_raises_naming_the_wait_it_recovered_as_its_cause(clock: _Clock) -> None:
+    class Refused(_Recorder):
+        def hard_reset(self) -> None:
+            raise harness.HardwareTestFailureError("mpremote reset failed (exit 1)")
+
+    fake = Refused()
+    with pytest.raises(harness.HardwareTestFailureError, match="mpremote reset failed") as raised:
+        harness.recover_by_reset(fake, fake, lambda: False, first_wait_s=30.0, retry_wait_s=60.0, skipped="x", note=lambda *_a, **_k: None, description="the DUT rejoining")  # type: ignore[arg-type]
+    assert isinstance(raised.value.__cause__, TimeoutError) and "waiting for: the DUT rejoining" in str(raised.value), raised.value
+    assert clock.now == pytest.approx(30.0)
+
+
+def test_a_recovery_reset_inside_observe_during_waits_for_the_tail_to_free_the_port(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The tail holds the port for each whole step; mpremote's reset meeting it there loses the raw REPL prompt it reads.
+    monkeypatch.setattr(harness, "_OBSERVE_TAIL_STEP_S", 0.3)
+    monkeypatch.setattr(harness, "_OBSERVE_TAIL_AFTER_S", 0.0)
+
+    class Tailed(_Recorder):
+        held = threading.Event()
+
+        def tail_log(self, duration_s: float, baudrate: int = 115200) -> "list[str]":
+            del baudrate
+            self.held.set()
+            try:
+                threading.Event().wait(duration_s)
+            finally:
+                self.held.clear()
+            return []
+
+        def hard_reset(self) -> None:
+            self.calls.append("hard_reset with the port held" if self.held.is_set() else "hard_reset")
+
+    board = Tailed()
+
+    def ready() -> bool:  # not ready until the recovery's reset, first seen with the tail on the port
+        if board.calls:
+            return True
+        assert board.held.wait(_STOP_WAIT_S), "the tail never took the port"
+        return False
+
+    harness.observe_during(board, lambda: harness.recover_by_reset(board, board, ready, first_wait_s=0.01, retry_wait_s=_STOP_WAIT_S, skipped="x", note=lambda *_a, **_k: None, description="d"))  # type: ignore[arg-type]
+    assert board.calls == ["kick_all_stations", "hard_reset"]
 
 
 def test_the_bare_reset_rule_sees_a_direct_hard_reset() -> None:
@@ -691,6 +768,26 @@ def test_reflash_retries_only_while_no_bootsel_device_is_enumerated(monkeypatch:
     assert len(board.recovery_events) == loads - 1, board.recovery_events
 
 
+@pytest.mark.parametrize(("exits", "runs", "outcome"), [([249, 249, 0], 3, "rebooted"), ([1], 1, "raises"), ([249] * 5, 5, "raises")])
+def test_a_picotool_reboot_retries_as_the_reflash_does_while_no_bootsel_device_is_enumerated(monkeypatch: pytest.MonkeyPatch, exits: "list[int]", runs: int, outcome: str) -> None:
+    # The bootloader tests' way out of BOOTSEL: a device not enumerated yet (249) is retried, each retry recorded.
+    calls: list[str] = []
+    board = _Recorder()
+
+    def run(argv: "list[str]", **_kwargs: object) -> "subprocess.CompletedProcess[str]":
+        calls.append(" ".join(argv))
+        return subprocess.CompletedProcess(argv, exits.pop(0), stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    if outcome == "raises":
+        with pytest.raises(harness.HardwareTestFailureError, match=r"picotool reboot failed"):
+            harness.picotool(board, "reboot", timeout_s=30.0)  # type: ignore[arg-type]
+    else:
+        harness.picotool(board, "reboot", timeout_s=30.0)  # type: ignore[arg-type]
+    assert calls == ["sudo picotool reboot"] * runs and len(board.recovery_events) == runs - 1, board.recovery_events
+
+
 def test_the_no_sync_rule_sees_a_list_without_it() -> None:
     assert _no_sync_offenders(ast.parse('cmd = ["uv", "run", "mpremote"]\nok = ["uv", "run", "--no-sync", "x"]\n')) == ["line 1: ['uv', 'run', 'mpremote']"]
 
@@ -699,6 +796,13 @@ def test_the_no_sync_rule_sees_a_list_without_it() -> None:
 def test_no_hardware_module_runs_uv_without_no_sync(module: Path) -> None:
     # Nothing inside a hardware run syncs, so a lock change or a third party's outage cannot read as a board fault.
     assert _no_sync_offenders(_module_tree(module)) == [], module.name
+
+
+@pytest.mark.parametrize("module", [m for m in HOST_MODULES if m.name not in _OWN_PICOTOOL_RUNS], ids=lambda p: str(p.relative_to(TESTS_HARDWARE)))
+def test_every_automated_picotool_run_goes_through_the_retried_helper(module: Path) -> None:
+    # A single try leaves a board that enumerates late in BOOTSEL for the rest of the run.
+    own = [node.lineno for node in ast.walk(_module_tree(module)) if isinstance(node, ast.List) and [e.value for e in node.elts[:2] if isinstance(e, ast.Constant)] == ["sudo", "picotool"]]
+    assert own == [], f"{module.name} runs picotool itself at lines {own}: call harness.picotool()"
 
 
 def test_parse_facts_reads_every_fact_and_needs_done() -> None:
@@ -890,3 +994,37 @@ def test_a_probe_with_any_connection_closed_answered_or_reset_is_voided_by_index
     with pytest.raises(AssertionError, match=r"connection 1 was no longer held") as info:
         harness._assert_probe_held([_HeldSocket(TimeoutError), _HeldSocket(outcome)], time.monotonic())  # type: ignore[list-item]
     assert shown in str(info.value), info.value
+
+
+@pytest.mark.parametrize(("after", "outcome"), [([0, 1, 2], "freed"), ([0, 1, 3], "one kept")])
+def test_the_soft_reset_check_compares_the_channel_sets_not_their_claim_order(after: "list[int]", outcome: str) -> None:
+    # Before the reset the sender claims first, so the fact lists [rx, reload, sender]; after it the script's two come
+    # first: the same three channels in another order are free, a channel never freed is not.
+    crossover = load_script_module(TESTS_HARDWARE / "flash" / "test_uart_crossover.py", "uart_crossover_under_test")
+    outputs = {"soft_reset": "FACT setup=true\nFACT channels=[1, 2, 0]\nDONE\n", "after_soft_reset": f"FACT channels_free={after}\nFACT streamed=true\nFACT ring_untouched=true\nDONE\n"}
+
+    class Scripted(_Recorder):
+        def run_isolated(self, _path: Path, **extras: object) -> str:
+            return outputs[str(extras["STATE"])]
+
+    board = Scripted()
+    if outcome == "freed":
+        crossover.test_a_soft_reset_during_traffic_leaves_no_running_ring(board, "none")
+    else:
+        with pytest.raises(AssertionError, match="not free after the soft reset"):
+            crossover.test_a_soft_reset_during_traffic_leaves_no_running_ring(board, "none")
+    assert board.calls == (["hard_reset"] if outcome == "freed" else [])
+
+
+def test_a_serving_read_after_a_system_command_counts_only_from_a_boot_after_it(monkeypatch: pytest.MonkeyPatch, clock: _Clock) -> None:
+    # The boot the command has not reset yet keeps answering 200 with its old ResetReason: never the reading.
+    over_rest = load_script_module(TESTS_HARDWARE / "bench" / "test_system_commands_over_rest.py", "system_commands_over_rest_under_test")
+    boots = [{"BootSignature": 7, "ResetReason": 21}] * 3 + [{"BootSignature": 9, "ResetReason": 3}]
+
+    def fetch(*_args: object, **_kwargs: object) -> http_client.HttpResponse:
+        system = boots.pop(0) if len(boots) > 1 else boots[0]
+        return http_client.HttpResponse(200, {}, json.dumps({"system": system}).encode())
+
+    monkeypatch.setattr(http_client, "fetch", fetch)
+    system = over_rest._serving_status("dut", clock.now, lambda _text: None, "the raced reboot", 7)
+    assert system == {"BootSignature": 9, "ResetReason": 3}, system

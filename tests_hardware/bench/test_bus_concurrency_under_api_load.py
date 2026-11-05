@@ -9,7 +9,7 @@ import _load
 import http_client
 import pytest
 from error_log_helpers import ErrcountEntry, assert_module_error_log_empty, assert_no_task_ended, code, errcount_entry, get_errcount, reset_all_error_logs, save_errcount
-from harness import Board, configured_max_connections, crash_lines, fram_backed_logger_names, observe_during, recover_by_reset, save_fram_raw, wait_until
+from harness import Board, configured_max_connections, crash_lines, fram_backed_logger_names, kick_after_reset, observe_during, recover_by_reset, save_fram_raw, wait_until
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -445,7 +445,7 @@ def _command_under_load(board: Board, bench: "BenchBridge", dut_ip: str, command
         res = http_client.fetch(dut_ip, 80, "PUT", "/system", {"SystemCmd": command}, timeout_s=_PROBE_TIMEOUT_S)
         word = _load.as_object(res.json().get("result"), "result").get("SystemCmd")
         assert res.status_code == 200 and word == "Valid", f"{command} under the API load answered {res.status_code} {res.body!r}"
-        bench.kick_all_stations()  # the reset is a real machine.reset(): no stale AP-side station entry may outlive it
+        kick_after_reset(board, bench, _REBOOT_READY_TIMEOUT_S)  # the reset is a real machine.reset(): no stale AP-side entry outlives it
         recover_by_reset(board, bench, ready=lambda: _load.serving(dut_ip), first_wait_s=_REBOOT_READY_TIMEOUT_S, retry_wait_s=_REBOOT_READY_TIMEOUT_S, skipped=f"the passive wait after {command} and its ResetReason check", note=noted, description=f"{command} under the API load")
 
     with _load.readers(_GET_WORKERS, dut_ip, load, iterations=_GET_ITERATIONS_PER_WORKER, timeout_s=_DEGRADED_FETCH_TIMEOUT_S, join_s=_DEGRADED_JOIN_TIMEOUT_S, fetch=fetch) as alive:

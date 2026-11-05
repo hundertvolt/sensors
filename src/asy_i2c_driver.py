@@ -92,6 +92,7 @@ class I2C:
         # no await between, and no Timer/Pin.irq callback here touches I2C - both checked (Part G.2).
         self._scratch = bytearray(_SCRATCH_SIZE)
         self.recoveries = 0  # a wrap-by-design sequence: compared for equality only
+        self.rebuilds = 0  # recover()'s alone, the same kind of sequence
         try:  # the boot clear never suspends, so one send() runs it to its return value
             _clear_bus(scl_pin, sda_pin, _DEFAULT_TIMEOUT_US if timeout is None else timeout, awaited=False).send(None)
         except StopIteration as e:
@@ -305,6 +306,7 @@ class I2C:
         # The controller rung: the bus clear, then a re-construction with the stored arguments - rp2's only
         # controller re-init (Part F.5.1), which cannot fail with arguments it once took - under one bus-lock hold.
         self.recoveries = self.recoveries + 1 if self.recoveries < COUNTER_CAP else 0  # stepped before the lock wait, as clear()
+        self.rebuilds = self.rebuilds + 1 if self.rebuilds < COUNTER_CAP else 0
         async with self.bus_lock:
             status = await self._clear_locked()
             self.init(*self._args)

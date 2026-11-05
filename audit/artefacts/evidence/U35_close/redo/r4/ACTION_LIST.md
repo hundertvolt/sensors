@@ -87,3 +87,8 @@
     "post-audit" (old: "testable now"; OR5.a); WoZi rule dropped "dev's firmware covers the shared SCD30/SGP40 bus"
     (OR140.a (18)). Stated limit, not fixed: a shell tool's parser accepting an option its --help omits is outside the
     README-vs-help check. Not a defect: claim 8's wording (test_tool_help.py's new test is code by design).
+22. Gate r4L_gate2 on 932510fc (53 min): rebuild, lint, mypy x3 clean; MicroPython tier 5,832 passed, 0 failed at both
+    stages, no marker; twin suite and harness green at both stages; npm green; tests_scripts 1 red at both stages (the
+    variant-literal pending list's citation allow-list entry, left stale by the lead's pruning 837697e9, which never ran
+    that test). Fixed 193f851a (40 passed, lint clean). Snapshot 38 af531127 pushed (next PARENT), tree = 193f851a.
+23. CI on snapshot 38 af531127: run 42021301290 success (the push run cancelled by the PR run, as usual), 12:12 UTC.

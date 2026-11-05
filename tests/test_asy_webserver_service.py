@@ -3865,6 +3865,76 @@ def test_h3_hammer_concurrent_status_requests_stay_valid() -> None:
     run(_hammer_status(app, 200))
 
 
+class _BuildingWriter(_PieceWriter):
+    # Every /status writer whose build has not returned: the bytes the builds in progress hold at once.
+    building: "list[_BuildingWriter]" = []
+
+    def __init__(self, pieces: list[bytes], max_bytes: int) -> None:
+        super().__init__(pieces, max_bytes)
+        _BuildingWriter.building.append(self)
+
+    @staticmethod
+    def held() -> int:
+        return sum(sum(len(p) for p in w._pieces) + w._size for w in _BuildingWriter.building)
+
+
+class _SamplingLogger(_FakeLogger):
+    # An error source that yields, as a FRAM-backed one does, and samples what the builds in progress hold.
+    peak = 0
+
+    async def get_log(self) -> "ErrorLog":
+        await asyncio.sleep_ms(0)
+        _SamplingLogger.peak = max(_SamplingLogger.peak, _BuildingWriter.held())
+        return await super().get_log()
+
+
+def test_concurrent_status_builds_hold_one_response_at_a_time() -> None:
+    # Four readers at once hold at most one response: built together, each held nearly a whole one, and three readers
+    # of 7 KB each left no free run for a 256 B piece on silicon (SPECIFICATION.md Part I.3).
+    service, app = _make_hammer_service()
+    for module in service._error_sources.values():
+        module.pr = _SamplingLogger(module.name)  # type: ignore[attr-defined]  # the fake modules' own logger slot
+    build = service._build_status_pieces
+
+    async def tracked() -> list[bytes]:
+        pieces = await build()
+        _BuildingWriter.building = [w for w in _BuildingWriter.building if w._pieces is not pieces]
+        return pieces
+
+    async def one() -> int:
+        res = await app.dispatch_request(_make_request(app, "GET", "/status", None))
+        return len(_assert_body_is_bounded_stream(res, "/status"))
+
+    async def four() -> "list[int]":
+        return list(await asyncio.gather(one(), one(), one(), one()))
+
+    service._build_status_pieces = tracked  # type: ignore[method-assign]
+    asy_webserver_service._PieceWriter = _BuildingWriter  # type: ignore[misc]
+    try:
+        size = run(one())
+        _SamplingLogger.peak = 0
+        sizes = run(four())
+    finally:
+        asy_webserver_service._PieceWriter = _PieceWriter  # type: ignore[misc]
+    assert sizes == [size] * 4, (sizes, size)
+    assert 0 < _SamplingLogger.peak <= size, (_SamplingLogger.peak, size)
+
+
+def test_a_streamed_response_holds_each_piece_only_until_it_is_written() -> None:
+    # A written piece left in the body would keep a whole /status alive until its connection's objects are freed, and
+    # those can outlive the connection (SPECIFICATION.md Part I.3).
+    pieces = [b"a" * 10, b"b" * 20, b"c" * 30]
+    res = asy_webserver_service._pieces_response(pieces)
+    assert res.headers["Content-Length"] == "60"
+    body: Iterable[bytes] = res.body  # type: ignore[assignment]  # a streamed body yields pieces; the stub types it bytes
+    sent, held = [], []
+    for piece in body:
+        sent.append(piece)
+        held.append(sum(len(p) for p in pieces))
+    assert sent == [b"a" * 10, b"b" * 20, b"c" * 30], sent
+    assert held == [50, 30, 0], held
+
+
 # -- _stream_dict_response() - the shared streaming primitive generalizing the /status streaming
 # mitigation to every other dict-shaped GET route (CLAUDE.md's memory-safety hard rule,
 # SPECIFICATION.md Part I). Those routes used to let Microdot json.dumps() the whole dict.

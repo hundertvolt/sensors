@@ -92,7 +92,7 @@ Three standing practices:
   the import statement) without testing on real hardware first. It works reliably today, yet the
   import machinery says it should not: traced through the pinned source at 1.28 and re-verified at
   1.29.0, a plain `import sensortask` is unambiguously the correct form and the dotted one should
-  raise, because it requires "sensortask" to resolve as a package (BACKLOG.md #1 has the trace).
+  raise, because it requires "sensortask" to resolve as a package (SPECIFICATION.md F.1 has the trace).
   **That does not make the file safe to change** — the trace is against 1.28/1.29, while the legacy
   units run 1.24.1, whose import machinery was never separately verified. So the *mechanism* is
   answered and the *rule* stands unchanged: changing it blind risks breaking every deployed unit's
@@ -216,8 +216,7 @@ Three standing practices:
   confirmed 2026-09-26).** It is safe: every flash write follows an API action — an accepted PUT that
   changed a value, or the `SystemCmd` `"resetconfig"` — or is a config file's one setup write at boot
   (next rule), so a device whose API is unreachable has no write of its own
-  in flight. Full reasoning and real bench-hardware timing data are in SPECIFICATION.md Part F.2
-  (BACKLOG.md keeps only a closed pointer, open question 6).
+  in flight. Full reasoning and real bench-hardware timing data are in SPECIFICATION.md Part F.2.
 - **The firmware writes a limited-endurance store only on a user or API action** (owner, 2026-09-26:
   'never write without user / api interaction as a standing rule'). The flash filesystem is written
   only through `ConfigManager`: on an accepted PUT that changed a value, flushed off the request path;
@@ -959,12 +958,12 @@ Three standing practices:
   you touch the stub setup — it's load-bearing, not incidental.
 - **`scripts/typecheck.sh`'s combined `mypy src tests` run resolves every `from machine import X`
   project-wide to `tests/machine.py`'s fake module, not the real `typings/machine.pyi` board stub.**
-  The board stub's `Timer` class has no zero-argument constructor overload, so a `src`-only run raises
-  `call-overload` errors at every bare `Timer()`, which is valid on rp2 and modelled correctly by
-  `tests/machine.py`: a gap in the third-party `micropython-rp2-rpi_pico_w-stubs` package, not a
-  driver bug, listed with its removal trigger in SPECIFICATION.md Part B.15 — worth knowing if a
-  `src`-only type-check run is ever added. The 1.29 stub's `I2C.deinit()`/`SPI.deinit()` are silent
-  no-ops on rp2 (SPECIFICATION.md Part F.5.1).
+  The board stub's `Timer` class has no zero-argument constructor overload, so a `src`-only (or a
+  standalone `tests_hardware/device_scripts`) run raises `call-overload` errors at every bare
+  `Timer()`, which is valid on rp2 and modelled correctly by `tests/machine.py`: a gap in the
+  third-party `micropython-rp2-rpi_pico_w-stubs` package, not a driver bug, listed with its removal
+  trigger in SPECIFICATION.md Part B.15 — worth knowing if a `src`-only type-check run is ever added.
+  The 1.29 stub's `I2C.deinit()`/`SPI.deinit()` are silent no-ops on rp2 (SPECIFICATION.md Part F.5.1).
 - **`scripts/typecheck.sh` repairs the stub package's two verified defects after installing it** —
   `asyncio.Future`, privatised to `_Future` with the `asyncio/futures.pyi` that re-exported it
   dropped, and `builtins.pyi`'s commented-out `NotImplemented` (SPECIFICATION.md Part F.5.5). Both are

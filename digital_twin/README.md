@@ -1143,9 +1143,8 @@ and its trigger: SPECIFICATION.md Part F.7):
    `TypeError: object with buffer protocol required` — the Unix port's `socket` module
    (`ports/unix/modsocket.c`) requires a pre-resolved buffer-protocol sockaddr instead. The real
    rp2/lwIP module (`extmod/modlwip.c`) accepts the plain tuple directly (confirmed by reading both
-   C sources side by side, not just the type stub — see `BACKLOG.md`'s "Real-hardware verification
-   gap" entry for the full account), so this is genuinely two different implementations, not one
-   port being stricter about the same contract. `src/` passes and accepts only `(host, port)`
+   C sources side by side, not just the type stub), so this is genuinely two different
+   implementations, not one port being stricter about the same contract. `src/` passes and accepts only `(host, port)`
    tuples; the shim keeps the packed form outside `src/`.
 2. `sendto()` has this exact same requirement (`micropython/micropython#6924` is specifically about
    this method) — but its destination address is a per-call argument (a DNS/NTP client's ephemeral

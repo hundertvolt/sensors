@@ -10,7 +10,7 @@ go-ahead session can work it in one pass; `tests_hardware/README.md` stays the r
 
 **The numbered list below has gaps, and its numbers are never reused or renumbered.** Code comments
 and `SPECIFICATION.md` cite items by number, so a resolved item whose number is cited stays as a
-short closed stub saying what the answer was (items 1, 5, 6, 9, 12 today); one whose number nothing
+short closed stub saying what the answer was (none today); one whose number nothing
 cites is deleted outright, its permanent content migrated per the policy above. A gap therefore means
 "resolved and removed", never "lost".
 
@@ -90,104 +90,12 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   real-hardware re-run). The field reaches the website from its `@web` tag, and
   `mockdata/samples.json`'s ISL29125 sample carries it.
 
-1. `legacy/firmware/modules/_boot.py`'s `import sensortask.py` (literal `.py`) - **mechanism
-   answered; the file is never changed regardless.** Kept only because CLAUDE.md's own hard rule and
-   `tests_hardware/flash/test_reboot_persistence.py` cite this number. Traced through the pinned
-   source at 1.28 and re-verified at 1.29.0 (`tools/mpy-tool.py`'s frozen-name generation,
-   `py/frozenmod.c`'s exact-match lookup, `py/builtinimport.c`'s `stat_module()`/
-   `process_import_at_level()`): a plain `import sensortask` is unambiguously the correct form, and
-   the dotted one *should* raise, because it needs "sensortask" to resolve as a package. Why it
-   nonetheless works on the legacy units' 1.24.1 firmware was never verified against that version's
-   own import machinery; a test would run on one of the owner's legacy units as the owner's
-   operation, never on the dev bench (owner, 2026-09-26). Nothing to do on the refactor side either:
-   `buildgen.codegen.generate_boot_entry_source()` already emits the correct
-   `from sensortask_wozi import main`.
 2. Config-schema migration is a real data-loss risk on the *current deployed* codebase —
    `ConfigManager` overwrites the entire config file with hardcoded defaults the moment one key is
    missing, so a firmware update adding a config key could silently wipe WiFi credentials/tuned
    values. No legacy config migration: legacy units get fresh setup at reflash (owner, 2026-09-26);
    from the release on, a renamed key or file needs a migration, pinned by a golden stored-config
    fixture (owner, 2026-09-26).
-3. MicroPython version target vs. upstream drift — the owner's legacy units run 1.24.1 (owner,
-   2026-09-26); the refactor pins 1.29.0. A legacy unit moves to the refactor only by the owner's
-   reflash with fresh setup, following the reflash runbook; no config migration code is written
-   (owner, 2026-09-26). The refactor is where the version target moves forward. The full 1.28→1.29
-   audit is in SPECIFICATION.md Part F.5 (two real findings, several free wins, the rest ruled out);
-   the toolchain builds `RPI_PICO_W` firmware at 1.29.0 from scratch without editing the MicroPython
-   tree (its out-of-tree overrides are `toolchain/micropython_overrides.py` and the GCC 14
-   `-Wno-array-bounds` workaround, SPECIFICATION.md B.7.1, B.14). The 1.27→1.28 rp2-port changes
-   were partly port-wide — the RNG source moved to `pico_rand` (`158cbd606`), the lwIP timer keeps
-   running while `poll_sockets()` is called (`bfc69dbe8`), and the linker scripts followed pico-sdk
-   2.2.0 (`2b4b05a42`) — with none known to break RP2040: 1.28 ran on the dev bench. Re-run F.1's
-   standing re-check whenever the pin moves again.
-4. Does `asy_config_manager.py`'s `write_config()` need long-block-lock-style coordination? **No**
-   (owner, 2026-08-11, `acc4993`): the deferred flush (owner, 2026-09-16, `9ac59cf`) stages a write
-   and flushes it later, so a write no longer holds a live request (SPECIFICATION.md F.2); and a
-   write never happens on its own (only ever triggered by a real user interaction via the REST
-   layer), which also matters separately for not wearing out the flash with unnecessary writes. No
-   coordination mechanism needed. **Note**: `get_long_block_lock()` itself was already removed
-   entirely before this was decided (see CLAUDE.md's "Long-blocking operations" hard rule) — this
-   decision doesn't resurrect it.
-5. ~~Real-hardware verification gap for `asy_udp_socket.py`/`asy_captive_dns.py`~~ - **closed
-   (2026-09-08, real bench hardware).** Kept as a stub because `tests_hardware/README.md`,
-   `bench_control.py` and two bench test files cite this number. All three UDP-layer claims are
-   confirmed on real rp2/lwIP: garbage-response robustness and truncation; connected-socket
-   source-address filtering (**holds** - real OS/lwIP enforcement, a forged reply never corrupts the
-   DUT's RTC); and POLLERR/POLLHUP delivery (**never observed** - `UDPSocket.ready()`'s handling
-   is correct but effectively dead code on this platform). Technique, results, and the bench-harness
-   gap the pass also closed (`start_udp_source_capture()`, a real `tcpdump` capture, replacing a
-   DNAT redirect that does not deliver locally at `route_localnet=0`): `tests_hardware/README.md`'s
-   "What the network-fault injections reach" and "Known assumptions and open findings".
-6. ~~Should `asy_wifi_service.py` gain an independent WiFi reachability check?~~ — **closed
-   (2026-09-08): investigated, no `src/` change.** The CYW43 firmware/lwIP stack can silently mask a
-   real link disruption from `wlan.isconnected()` entirely; decided, with full upstream research
-   citations, real bench-hardware recovery-timing data, and regression coverage, in
-   `SPECIFICATION.md` Part F.2 - that Part is now this item's complete, permanent, self-contained
-   home. Kept here as a closed stub, at its original number, only because several `tests/`/
-   `tests_hardware/` code comments still cite it as "BACKLOG.md open question 6" - don't renumber
-   this item while those references exist.
-8. **Two bench-rig capabilities would each move one test candidate from `[MANUAL]` to `[AUTO]`
-   (owner, 2026-09-22, `d0bfbca`: no hardware will be bought for this): both candidates stay
-   `[MANUAL]`.** Not "planned for later" any more, which is how
-   this read from 2026-09-11 until the question was put again. One qualifier, from the same
-   sitting's answer about the UART fault catalog (SPECIFICATION.md E.6.6 row `uart-fault-catalog`):
-   fault-injection hardware may arrive one day for that work, and if it does, the GPIO half below
-   is worth re-opening then — as a new entry, not by treating this one as still pending. A programmable GPIO fault-injection
-   harness (upgrades the twin's watchdog hang test and the held-SDA recovery row) and a dedicated
-   second WiFi test client (upgrades the real end-to-end hotspot session; today's host has one
-   adapter, already hosting the AP). Both stay `[MANUAL]` until the rig exists — and no
-   software-only stand-in claims the same coverage (agent, 2026-09-22). Migrated
-   from the deleted `HARDWARE_TEST_PLAN.md`; surrounding architecture in SPECIFICATION.md Part E.6.
-9. **WiFi-reconnect flakiness across the bench suite - root-caused and fixed at the root.** Kept
-   as a stub because three `tests_hardware/` files cite this number. What looked like several
-   unrelated symptoms was: a missing `BENCH_AP_PASSWORD` cascading into ~25 unrelated-looking
-   failures (now defaulted from `bench.ap_password()`, which reads the real PSK live - no env var
-   needed); a real association race in `join_dut_hotspot()` (now re-verifies live visibility before
-   every retry instead of a blind sleep); a factually wrong `_configure_hotspot_ap()` comment plus a
-   missing re-entry guard (both fixed, with mock-tier regression coverage); and one sibling test
-   lacking the recovery fallback every other one had. The hard-reset recovery mechanism itself
-   (`kick_all_stations()` + `hard_reset()`) was independently verified rock-solid (28/28 trials,
-   ~9.1s each, zero variance) and was never a source of flakiness.
-12. **Does `machine.soft_reset()` reset the RP2040 hardware counter `time.ticks_ms()` derives
-    from? - ANSWERED on real hardware (2026-09-11): no, and the question was aimed at the wrong
-    mechanism.** The counter is free-running hardware time and survives the soft reset `mpremote`
-    performs on raw-REPL entry (two reads 3s apart: 25769 then 29136 ms). **The real hazard is the
-    watchdog.** An `mpremote exec` stops `main.py`, so nothing feeds the WDT and the board takes a
-    genuine *hard* reset ~8s later, which does zero the counter (measured: 1368364 then 5323 ms,
-    12s apart). So a rollover check that attaches over the serial console sees a reboot, not a
-    wrap: the rollover is observed over REST only, on the tick-offset test image, where a reboot
-    fails the run (`tests_hardware/bench/test_ticks_ms_rollover.py`, G6 under "Real-hardware work
-    still owed"). Kept as a stub because this file cites this number. **Do not re-investigate the
-    soft-reset semantics.**
-29. **The spurious `WLAN_AUTH_FAILED` (`W36`, "WLAN wrong password") on a correct password -
-    answered from source (2026-09-24).** Kept as a stub because `SPECIFICATION.md` C.7.1 and
-    `tests/test_asy_wifi_service.py` cite this number. cyw43-driver reports BADAUTH, which
-    MicroPython surfaces as `STAT_WRONG_PASSWORD`, for any failed AUTH event and any failed 4-way
-    handshake other than three timeout codes (`lib/cyw43-driver/src/cyw43_ctrl.c`), so an AP
-    vanishing mid-association reads as a wrong password; `_poll_sta_connect_status()` records it
-    faithfully. Both sightings sat inside `WLAN_NO_AP`/`WLAN_CONNECT_FAILED` (`W37`/`W38`) runs. The
-    log text now says what the status means, and the bench outage check accepts `WLAN_AUTH_FAILED`
-    as benign beside `WLAN_NO_AP`.
 
 ## Real-hardware work still owed
 
@@ -197,15 +105,6 @@ plan (on its own branch) cite them. **Nothing here authorizes anything**: CLAUDE
 applies, and `tests_hardware/README.md` is the reference for how any of it runs (flags, wear
 gates, traps).
 
-- **How a sitting runs.** D1 and D2 are the owner's standing answers (owner, 2026-09-22, `00f3eac`,
-  paraphrase — the commit records no owner words): D1, spend flash/NVM writes, but only after a
-  clean default run, so a gated failure is the gated test's own; D2, the NeoPixel-aimed-at-ISL29125
-  light rig is in place. D3 — always a `dev` build of the tree under test, never another device's
-  image — is CLAUDE.md's own-build rule; confirming it at each sitting, and the order below, are the run sheet
-  (agent, 2026-09-22): read and save `errcount` before anything writes (CLAUDE.md), build and flash,
-  confirm `/system`'s `build.BuildDate`, flash tier, bench tier, then the gated run
-  (`scripts/run_bench_hardware_suite.sh --allow-persistence-write -s`), reading each verdict's
-  deselected count, not only "clean".
 - **Not yet confirmed on silicon: the flash tier's watchdog-starvation test ending with
   `hard_reset()`** (`79eb41b`, test-only, no reflash needed) — no full flash-tier run since. Before
   it, the flash tier always left the board parked at the REPL with no watchdog, because the test
@@ -522,7 +421,7 @@ gates, traps).
 - **G6, the tick rollover on silicon** — on `dev`, `scripts/run_bench_rollover_test.sh` builds the
   tick-offset test image (its millisecond count starts 15 minutes short of `2**32`), flashes it and
   runs `bench/test_ticks_ms_rollover.py` for about two hours, polling over REST only (owner,
-  2026-10-01; item 12: a serial attach ends in a watchdog reset); the runner passes
+  2026-10-01; a serial attach ends in a watchdog reset, `tests_hardware/README.md`); the runner passes
   `--allow-multi-day-rollover` and `--allow-flash-cycle` itself, on top of a clean bench run.
   Expected: across the `ticks_ms()`, soft-timer and lwIP wraps nothing reboots or stalls: the uptime
   keeps rising under one boot signature, NTP keeps syncing within its interval, and every sensor's
@@ -550,14 +449,10 @@ gates, traps).
   state only).
 - **Still owed elsewhere in this file**: H1, the owner's two-chroot run (the chroot entry below).
   Excluded on purpose: G10, the UART protocol against its C implementation (post-audit only), and
-  the two unbought bench-rig capabilities (item 8).
+  the two unbought bench-rig capabilities (SPECIFICATION.md E.6.6).
 
 ## Deferred / explicitly out-of-scope work
 
-- **A transient SPI RX overrun is not retried (owner, 2026-09-24).** MicroPython 1.29's
-  `OSError(EIO)` on 32+ byte rp2 SPI reads (SPECIFICATION.md Part F.5.2) is absorbed by the FRAM
-  layer's dual copy: `_read_chunk()` logs errno 23 (`UNEXPECTED`) and `_read()` falls back to block 1
-  and repairs block 0, so a retry inside the chunk loop would buy little.
 - **`arduino/` and the C reconciliation are post-audit only** (owner, 2026-09-25: 'the C port stays
   out of scope, anything there is post-audit only'). That covers the UART protocol's C
   implementation (its reconciliation against `UART_C_PORT_CHANGELOG.md` included) and the
@@ -1118,91 +1013,11 @@ gates, traps).
   exclusive-port-53 scenarios in one job per device and GC stage (`scripts/run_digital_twin_ci.sh`, `ci.yml`), the
   launcher stop file is gone, and `@tunable` lines outside Part N's scope left `scripts/`. Nothing new to install.
   Kept here as the running list of what the owner's next manual run has to cover.
-- **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
-  `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot
-  verification** — the narrower, earlier instance of the entry above. The trixie leg — required by the same rule whenever `pyproject.toml`
-  changes, specifically to catch a GCC>=14-only issue the noble/GCC-13 leg can't see (the precedent:
-  the mbedtls `-Warray-bounds` false positive, SPECIFICATION.md Part B.7.1) — couldn't be run from
-  that session's own sandbox: `debootstrap --variant=minbase trixie` needs `deb.debian.org`, which
-  the sandbox's egress policy rejected outright (confirmed directly, not a transient failure), with
-  no alternate Debian mirror to fall back to. The change itself is a pure ruff/pylint lint-rule
-  threshold with no compiler-version sensitivity, so the residual risk was judged low, not zero
-  (agent, 2026-09-12) — a from-scratch trixie leg (or a run on the bench Pi4, which already runs
-  trixie/GCC 14.2) should still confirm it whenever one is next convenient. The change itself is the
-  `build_info=` parameter SPECIFICATION.md Part L.7 describes.
-- **`[device].name`/`hostname`/`hotspot_password` are wired into the boot path now - done (owner
-  decision, 2026-09-18).** Every device really did boot as `SensorNode` whatever its TOML said; the
-  three fields were validated and then reached nothing. `WifiService.__init__` takes `hostname=`/
-  `hotspot_password=` and substitutes them as the **defaults** of the two ConfigManager-persisted
-  fields (`_with_default()`), so a user rename through the web UI still wins on a later boot, and
-  every existing test that asserts the literal `"SensorNode"`/`"12345678"` keeps passing untouched -
-  `None` means "keep the shared default", which is what a bare construction asks for.
-  `buildgen/codegen.py` passes `devices/*.toml`'s own values into the generated `WifiService(...)`
-  call; the `test_hostname_and_hotspot_password_are_not_yet_wired_into_generated_code` tripwire is
-  replaced by its inverse, and `validate.py`'s long gap comment by two lines of current fact.
-  **One new failure mode, closed at both ends**: ConfigManager treats a default it cannot satisfy as
-  an invalid config and then answers `None` to *every* read, so an out-of-bounds injected value
-  would have cost a device its whole networking config. `validate.py` now refuses a hostname longer
-  than `network.hostname()`'s 32-character cap at build time (in practice a cap on `[device].name`),
-  and `_with_default()` drops an out-of-bounds value back to the built-in default rather than
-  installing it - the build-time rung is the one that fails, the runtime one keeps the device
-  bootable. Four tests: the injection works, an out-of-bounds injection falls back, the generated
-  call carries the values, the over-long hostname fails the build.
-
-- **The UART fakes still do not *wait* the way a real read does, deliberately.** They serve what
-  they hold and return, where the peripheral would wait out `timeout_char` for every byte the caller
-  asked for that has not arrived (SPECIFICATION.md Part F.5.8). Making them actually wait would turn
-  a real-time defect into a slow test; both instead count the stall they would have taken, as
-  `UART.would_have_blocked_bytes`, held to identical semantics by `tests/_uart_link_contract.py`.
-  **The regression gap this entry was opened for is now closed, but it was not closed by counting
-  alone** — a sweep that removed each of the driver's seven read-path clamps in turn (2026-09-12)
-  found three that no test caught: the two `readline` paths, which the fakes never counted at all,
-  and `_read_delimited`'s one-byte gate, which was counted but asserted nowhere. `readline()` now
-  counts the one byte its gate guards, and each of the seven paths has a test that fails when its
-  clamp is removed, re-verified by the same sweep. What remains genuinely unmodelled is the
-  *duration* — a fake cannot tell a caller how many milliseconds of event loop an over-ask would
-  have cost, only how many bytes it was over by. Only the bench tier measures the milliseconds, and
-  F.5.8's table is that measurement.
-- **Three UART-audit findings reviewed and left as they are** (agent, 2026-09-11):
-  - **`asy_uart_driver.UART.deinit()`/`init()` do not respect the session lock.** Calling either
-    while a read is in flight would leave the in-flight code holding a reference to a deinit'd
-    peripheral. No caller does: `UARTComm` never deinits, and the one place that does
-    (`tests_hardware/device_scripts/uart_crossover_recovery.py`'s injector) does it between
-    exchanges. A guard was not added because `init()` calls `deinit()` itself, so refusing while
-    locked would change construction semantics for a hazard nothing currently reaches.
-  - **`UARTComm.setup()` called a second time while its own listen loop is running would
-    deadlock** on the bus lock the loop holds during its unbounded read. Nothing calls it twice -
-    `asy_system_service.py` runs the setup batch before any task starts - so no guard was invented for
-    a caller that does not exist. Re-checked against the supervisor itself (2026-09-12): its restart
-    ladder re-calls a dead task's *starter*, never a module's `setup()`, so the unreachability is a
-    property of the code rather than of today's call sites.
-  - **One `FramingCOBS` instance shared between two drivers would corrupt both**, since its
-    long-lived scratch is per-instance, not per-call. Every construction site makes its own; noted
-    because the failure would be silent if one ever did not.
-- **`mypy tests_hardware/device_scripts` run STANDALONE reports two `Timer()` findings that no
-  gate ever sees.** Both `timer_alarm_pool_exhaustion.py` and `scheduler_saturation_drop.py`
-  construct a bare `machine.Timer()`, which is valid runtime usage the third-party board stub does
-  not model (it requires a positional `id`). This is the same stub gap CLAUDE.md's "Code quality
-  tooling" section already records for `src/`'s four drivers plus `I2C.deinit()`, and it has the
-  same resolution: every invocation the project actually runs - CI's `scripts/typecheck.sh src
-  tests tests_hardware/device_scripts` and a bare local `scripts/typecheck.sh` - includes
-  `tests/`, whose `tests/machine.py` fake models `Timer()` correctly and wins module resolution.
-  Worth knowing before anyone runs mypy over that directory on its own and reads the result as a
-  regression.
 - **Manual cross-browser/cross-device spot check not yet done — needs the project owner directly.**
   Automated coverage (Part H.7's cross-browser smoke script, Vitest's browser-mode suite) only ever
   exercises Chromium/WebKitGTK/Firefox/Edge on Linux CI runners — Part H.1's "stable and
   good-looking on major mobile/desktop browsers" goal still wants at least one real human pass on
   real Safari and a real mobile device, which no automation here can substitute for.
-- **UART sensor integration — still unwired as a *sensor*, though the link itself now exists.**
-  `asy_uart_comm.py` is promoted (SPECIFICATION.md Part J) and the buildgen-generated
-  `sensortask_dev.py` constructs two instances across the dev bench's crossover jumper, which is
-  what makes the protocol's self-compatibility property physically testable. What stays
-  deliberately absent is any *sensor* behind that link: no BME688/BSEC coprocessor, and no such
-  wiring in any other variant. Not a legacy deployed feature, so adding one would be a scope
-  addition beyond feature-parity rather than a postponed fix — this stays as-is (owner, 2026-08-20,
-  `b6cb852`). The protocol module is standalone by design (owner, 2026-09-11, `32b136f`): its
-  BME688/BSEC first use case is explicitly out of scope and was **not** part of the promotion.
 - **Owner requirement for the final wiring stage (owner, 2026-08-08, `7f498c1`, paraphrase) —
   fulfilled; held here only until the owner's audit of the whole refactor closes.** Every
   `sensortask-*.py` built as part of the real rewrite needs a full Unix-port equivalent, runnable on
@@ -1216,11 +1031,6 @@ gates, traps).
   wired-together (buildgen-generated) module against it end to end (see
   `digital_twin/README.md`'s "Swapping the twin in for a Unix-port run" section). Comes out when
   that audit closes.
-- **Config-duplication centralization** — same keys hand-kept in sync across `_DEFAULT_CONFIG`, the
-  REST handler, and the HTML form. Owned by the refactor: each promoted `*_Reader`'s own `_VAL_*`
-  schema tuple + `get_dict_cfg()`/`get_dict_data()` is the intended single source, not fully wired
-  end-to-end yet (`sensortask-wozi.py` itself predates the per-sensor-config model — see "Refactor
-  targets not yet done" above).
 - **SystemService's settings store grows with device-wide settings** — the timezone offsets
   (`GMTOffset`/`DSTOffset`) now held by `NTPClient`'s config, future rsyslog settings;
   `config_SYSTEM.cfg` holds only `DebugLevel` today (`src/asy_system_service.py`'s `_VAL_DEBUG_LEVEL`).
@@ -1255,21 +1065,6 @@ gates, traps).
   and a non-blocking `sendall()` (`:1417`) read `tcp_sndbuf()` past a listener, and
   `setsockopt(TCP_NODELAY)` writes its flags (`:1528-1535`). asyncio polls a listener for reading
   only (`extmod/asyncio/stream.py:149`), nothing sends on it, and no `TCP_NODELAY` call is made.
-- **Moving CI (and a dev box) to Ubuntu 26.04 is its own step** (agent, 2026-10-20): CI is pinned to
-  `ubuntu-24.04` (SPECIFICATION.md B.10.1) since `ubuntu-latest` became 26.04 and broke runs from
-  outside the tree. Found on run `39512651550` and reproduced here with 26.04's own
-  `rust-coreutils` 0.10.0 (`timeout`, checked from the signed archive index): (1) a background job
-  (`cmd &`, no job control) starts with SIGINT and SIGQUIT ignored; GNU `timeout`'s handler undoes
-  that at exec, uutils' does not, so `scripts/test.sh`'s pytest tier and per-file jobs pass an
-  ignored SIGINT to everything they start (8 `tests_scripts` reds: the SIGINT diagnostic, the port
-  lock, the installer's signal test, three of `test_test_sh.py`'s timeout tests); `(trap - INT QUIT
-  && exec timeout ...) &` restores it (verified: 5 of the 8 pass with it); (2) uutils `timeout
-  --kill-after=N` sends SIGKILL to its child about 1 ms after the first signal instead of N s
-  later (strace: `kill(child, SIGINT)`, `kill(0, SIGINT)`, then `kill(child, SIGKILL)`, exit 137),
-  and only to the child, so a command that ignores the interrupt outlives its wrapper, holds the
-  job's pipe and hangs the run: the per-file interrupt-then-hard-stop needs its own escalation, or
-  GNU's `timeout` named explicitly. Also new there: Python 3.14 as the system Python, GCC and glibc
-  2.43 (the Unix-port and firmware caches rebuild), and the CI budgets' measured basis.
 
 ## Owner questions
 

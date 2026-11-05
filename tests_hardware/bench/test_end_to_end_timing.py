@@ -10,7 +10,7 @@ import _load
 import http_client
 import pytest
 from error_log_helpers import assert_module_error_log_clean, assert_module_error_log_empty, assert_no_task_ended, code, reset_all_error_logs
-from harness import Board, configured_max_connections, kick_then_reset, recover_by_reset, wait_until
+from harness import Board, configured_max_connections, kick_after_reset, kick_then_reset, recover_by_reset, wait_until
 
 if TYPE_CHECKING:
     from bench_control import BenchBridge
@@ -24,7 +24,6 @@ COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency", "sensortask_i
 
 
 _REBOOT_PHASE_TIMEOUT_S = 30.0
-_DOWN_POLL_S = 0.5
 _REBOOT_LOSS_MARGIN_S = 1.5
 _POLL_S = 1.0
 _PROBE_TIMEOUT_S = 10.0
@@ -50,9 +49,7 @@ def test_real_reboot_sequencing_via_rest_completes_cleanly(board: Board, bench: 
     res = http_client.fetch(dut_ip, 80, "PUT", "/system", {"SystemCmd": "reboot"}, timeout_s=_PROBE_TIMEOUT_S)
     replied = time.monotonic()
     assert _load.as_object(res.json().get("result"), "result").get("SystemCmd") == "Valid", f"reboot command was rejected: {res.status_code} {res.body!r}"
-    bench.kick_all_stations()  # a genuine machine.reset() follows: no stale AP-side station entry may outlive it
-    wait_until(lambda: not board.is_device_present(), timeout_s=_REBOOT_PHASE_TIMEOUT_S, poll_interval_s=_DOWN_POLL_S, description="board to go unreachable (real reboot firing)")
-    lost_s = time.monotonic() - replied
+    lost_s = kick_after_reset(board, bench, _REBOOT_PHASE_TIMEOUT_S) - replied  # a genuine machine.reset(): no stale AP-side entry outlives it
     result_note(f"reply to USB loss {lost_s:.2f}s: the armed reset {reset_delay_s:g}s after a shutdown bounded by one {task_check_s:g}s task check")
     assert reset_delay_s <= lost_s <= task_check_s + reset_delay_s + _REBOOT_LOSS_MARGIN_S, f"the reboot reset {lost_s:.2f}s after its reply, outside {reset_delay_s:g}..{task_check_s + reset_delay_s + _REBOOT_LOSS_MARGIN_S:g}s"
     noted = _load.Noted(result_note)

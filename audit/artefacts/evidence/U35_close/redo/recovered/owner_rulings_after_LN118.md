@@ -687,3 +687,19 @@ Topic: the lead's HANDOVER line contradicts its relay (correct the file); the da
 ## 2026-11-05 10:41 UTC
 "Still on track and optimal parallel work on the non-bench topics?"
 Topic: status check; whether the non-bench work uses the parallel slots well.
+
+## 2026-11-05 12:04 UTC
+"Option A"
+Topic: the I2C rung bookkeeping deviation (FINDINGS 12.6): fix it now, before round 1's final image; the bench holds
+`run 3` until the fix is on the bench branch (the lead's recommendation A, 11:56).
+
+## 2026-11-05 12:50 UTC (relayed from the bench session)
+"What I need from you
+The MemoryError: does a fix go into the final image with the I2C fix? It doesn't have to be root-caused first, but the hazard load is the reproducer if you want it.
+Harness fixes in the same push:
+The picotool retry and the kick timing.
+The serial conflict in recover_by_reset, and the two tests that reach a real board.
+The soft-reset channel comparison, the build() feed and _serving_status.
+The first two matter most: without them, 4b and run 5 can lose their results again.
+Latest start: run 3 4b has to start by about 18:00 UTC to finish by 20:52, allowing for the image build."
+Topic: the bench's asks for the final image's push: a MemoryError fix (decision), six harness fixes, latest start 18:00.

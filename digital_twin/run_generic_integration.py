@@ -521,12 +521,13 @@ def _print_boot_phases(device: str) -> None:
 def _print_shutdown_line(config: RunConfig) -> None:
     # From main()'s finally and the __main__ handlers (an interrupt while main() is suspended skips that finally, F.6),
     # once per process, after the GC summary whose max free sz it is read with; collected first, as an allocation would.
+    # Marked only once printed: an interrupt landing before the line leaves the handler's call to print it whole.
     global _shutdown_printed
     if _watchdog is not None and not _shutdown_printed:
-        _shutdown_printed = True
         gc.collect()
         micropython.mem_info()  # the largest free block's only reader (py/gc.c gc_info(), v1.29.0)
         print(_shutdown_line(config.device, _watchdog, _feed_gaps, _uart_counts) + _fram_write_fields(_module, machine._current_fram_chip))
+        _shutdown_printed = True
 
 
 def _print_watchdog_would_trigger(watchdog: "machine.WDT") -> None:

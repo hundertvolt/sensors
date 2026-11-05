@@ -1608,6 +1608,16 @@ def test_each_clear_and_recover_steps_recoveries_once_and_the_sequence_wraps() -
     assert i2c.recoveries == 0  # compared for equality only, so it wraps rather than saturating
 
 
+def test_only_recover_steps_rebuilds_and_that_sequence_wraps_too() -> None:
+    i2c = _build()
+    run(i2c.clear())
+    run(i2c.recover())
+    assert i2c.rebuilds == 1
+    i2c.rebuilds = COUNTER_CAP
+    run(i2c.recover())
+    assert i2c.rebuilds == 0
+
+
 def test_a_session_holding_the_bus_delays_clear_and_a_session_started_during_it_waits() -> None:
     i2c = _build()
     Pin.set_external_level(_SDA, 0)

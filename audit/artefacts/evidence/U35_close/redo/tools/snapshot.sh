@@ -17,13 +17,12 @@ cp $S/u35/lead/snap2/README.md "$X/README.md"
 [ -d $S/u35r/paused_pub ] && cp -r $S/u35r/paused_pub "$R/paused"
 [ -d $S/u35r/plan ] && cp -r $S/u35r/plan "$R/plan"
 [ -d $S/u35r/plancheck ] && (cd $S/u35r && tar --exclude=plancheck/falsify/f1work -cf - plancheck) | tar -xf - -C "$R"
-[ -d $S/u35r/bench ] && (cd $S/u35r && tar -cf - bench) | tar -xf - -C "$R"
 # fz/, ftmp/, xtmp/, probe/ and *_25c.py hold source and datasheet copies, trial_*.md merge trials, AGENT_IDS.txt the
 # session's agent handles (never published); SNAP_EXCLUDE names a unit's unfinished files, space-separated.
 EX=(--exclude='*.log' --exclude='*.out' --exclude='*.diff' --exclude=fz --exclude=ftmp --exclude=xtmp --exclude=probe
   --exclude='*_25c.py' --exclude='trial_*' --exclude=AGENT_IDS.txt --exclude='.*')
 for e in ${SNAP_EXCLUDE:-}; do EX+=("--exclude=$e"); done
-for d in r0 r1 r2 r3 r4 r5 knowledge findings; do [ -d $S/u35r/$d ] && (cd $S/u35r && tar "${EX[@]}" -cf - $d) | tar -xf - -C "$R"; done
+for d in r0 r1 r2 r3 r4 r5 bench knowledge findings; do [ -d $S/u35r/$d ] && (cd $S/u35r && tar "${EX[@]}" -cf - $d) | tar -xf - -C "$R"; done
 [ -f $S/u35r/tools/review_hunks.py ] && cp $S/u35r/tools/review_hunks.py "$R/tools/"
 [ -d $S/u35r/hw_handover ] && (cd $S/u35r && tar --exclude=hw_handover/logs --exclude=__pycache__ -cf - hw_handover) | tar -xf - -C "$R"
 [ -f $S/u35r/int_history.txt ] && gzip -c $S/u35r/int_history.txt > "$R/int_history.txt.gz"
