@@ -23,6 +23,7 @@ from buildgen.schema_ast import extract_field_schemas
 from buildgen.source_ast import parse_source
 from buildgen.validate import device_max_connections
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests_hardware" / "bench"))  # a bench module's own `import _load`
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests_hardware"))
 
 import bench_facts
@@ -1003,3 +1004,17 @@ def test_the_soft_reset_check_compares_the_channel_sets_not_their_claim_order(af
         with pytest.raises(AssertionError, match="not free after the soft reset"):
             crossover.test_a_soft_reset_during_traffic_leaves_no_running_ring(board, "none")
     assert board.calls == (["hard_reset"] if outcome == "freed" else [])
+
+
+def test_a_serving_read_after_a_system_command_counts_only_from_a_boot_after_it(monkeypatch: pytest.MonkeyPatch, clock: _Clock) -> None:
+    # The boot the command has not reset yet keeps answering 200 with its old ResetReason: never the reading.
+    over_rest = load_script_module(TESTS_HARDWARE / "bench" / "test_system_commands_over_rest.py", "system_commands_over_rest_under_test")
+    boots = [{"BootSignature": 7, "ResetReason": 21}] * 3 + [{"BootSignature": 9, "ResetReason": 3}]
+
+    def fetch(*_args: object, **_kwargs: object) -> http_client.HttpResponse:
+        system = boots.pop(0) if len(boots) > 1 else boots[0]
+        return http_client.HttpResponse(200, {}, json.dumps({"system": system}).encode())
+
+    monkeypatch.setattr(http_client, "fetch", fetch)
+    system = over_rest._serving_status("dut", clock.now, lambda _text: None, "the raced reboot", 7)
+    assert system == {"BootSignature": 9, "ResetReason": 3}, system
