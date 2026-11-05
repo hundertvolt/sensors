@@ -107,3 +107,30 @@ be done anyway and which is independent and does not cause interference can alre
     date (`r3_ci_date_plant3`) checks every tests_scripts file for the same race.
     Fixed in `c78bbcf1`: red on the old test with the moving date, green on the new (`r3_ci_date_red`); merged-head
     checks `r3_int2` clean (1,401 tests); snapshot 36 on parent `d6bd2d45`.
+19. **R3 closed**: CI green on snapshot 36 `009f193e` (run 41930986555, 23:06-23:35 UTC, 29:09). Next PARENT `009f193e`.
+    Report to the owner after this line; round 1's question in it (a bench session, as the October campaign).
+20. Owner 05:37: round 1 as option (a), no overnight run, lives in claude/u35-bench-campaign. The bench branch
+    merged with 009f193e locally (S/wt-bench, audit/bench-r1 0c10c57c; both conflicts take the audit side; outside
+    audit/ equal to 009f193e). Runner agent r1b_ briefed (R1B_BRIEF.md): hw_round1/ round1.sh + HANDOVER + hand-back.
+21. Runner reviewed (round1.sh 259, round1.py 144, HANDOVER 118); lead added 10m (all six soaks at mid, ~1 h 15) and
+    the opt-in wear line (steps 7, 8, 15 wait on the owner's choice). Pushed to claude/u35-bench-campaign 3f4b4b75
+    (ff from ec97953d, [skip ci]); draft PR hundertvolt/sensors#111 (base: the audit branch; data branch, not for
+    merge), subscribed. Never push the bench branch while a bench run is live (its hand-back push would be refused).
+    Findings for R4 lane C / R5: the README's hotspot soak invocation fails (the soak floor ANDs -m role_reversal, so
+    case (b) runs alone); the manual runner's prompt cites a README passage that does not exist; 16b's power-on half
+    is unreadable on the product image (a limit); REPORT 7 item 12's hotspot heap has no manual test (owner-optional).
+22. Owner 06:27: option (a), full coverage; wear steps once, on code as final as possible, never re-run for an
+    unrelated reason. Lead's reading: the wear block (7, 8, 10b, 15, manual 14) runs last, after every non-wear step
+    and its fixes; a committed WEAR.txt guard (cleared: by the audit session; passed: by the runner; FORCE_WEAR=<id>);
+    OR40.a (3)'s two-image GC proof folded into round 1 (3g/4g/5g on a no-threshold control image), since the owner
+    calls round 1 the final verification and a later proof would re-run default tiers on unchanged code. Runner
+    agent resumed for this (r1c_). Deviation: three writing units for its duration (PLAN 4.3 says two); it writes only
+    the bench branch's hw_round1/, never merged into int, with at most eight light runs; recorded for the report.
+    Lead's rule from here: after the wear block passes, any change to src/, buildgen/, toolchain/ or the build scripts
+    is checked for altered bytecode or image bytes of the wear-exercised code before merging; an alteration goes to
+    the owner (it would need a re-run).
+23. Runner revised (agent r1c_ + lead): wear block last; WEAR.txt guard; 3g/4g/5g GC control image; load average per
+    step; lead split 7 and 8 per tier (7f 7b 8f 8b) and added PYTEST_K so a fixed failure reruns only its failed tests
+    (the passed ones are never spent again). Day 1 is `run 1 2`, build the GC control image, `run 4a 5g` (step 2's env
+    deletes the rp2 build directory). Pushed 5d089968 ([skip ci]). The `cleared:` push only with no bench run active.
+    Owner's second Claude session (database work): MongoDB's default 27017 lies in the twin test band 27000-27999.

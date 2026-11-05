@@ -294,3 +294,13 @@ two generated modules whole, and each carries its build date to the second, so t
 boundary differ (5 of 40 back-to-back runs). The file's helper now pins the date through the generator's own
 parameter. With a date that moves on every in-process call, no other tests_scripts test races the clock (the six that
 check the default is the real current date aside). `redo/r3/ACTION_LIST.md` item 18 has the account.
+
+## Thirty-seventh snapshot (2026-11-05): dev's responder ring sized before round 1
+
+The bench session's precheck of round 1 (`claude/u35-bench-campaign`, `hw_round1/PRECHECK_20261105.md`, finding 4)
+found the crossover's interrupts-off ring test failing up front on dev: the responder's 512 B ring cannot hold the
+4,608 B a continuous sender puts into the 400 ms flash window at 115200 baud, so no window ran on silicon.
+`devices/dev.toml`'s uart1 ring is now 8192 B, the next power of two the DMA wraps; the initiator stays at 512 B. It
+lands before round 1 builds any image, so the round's final firmware carries it (owner, 2026-11-05: wear tests on code
+"as final as possible"). R4's lanes are not in this snapshot; `redo/r3/ACTION_LIST.md` items 20-23 hold round 1's
+preparation.

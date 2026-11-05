@@ -1,0 +1,8 @@
+Bench campaign: round 1's runner and handover (hw_round1/) [skip ci]
+
+One timed runner over round 1's run sheet. The step boundaries are breakpoints (run FROM [TO]); STOP, Ctrl-C or kill
+push the hand-back; no step spans a night (the FRAM run is 9-minute slices, the 36 h long soak one test a day).
+Nothing has run against the board; the bench session needs the owner's go-ahead in its own conversation.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

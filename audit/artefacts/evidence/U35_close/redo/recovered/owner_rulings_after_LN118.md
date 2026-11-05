@@ -635,3 +635,29 @@ their context). From now on every owner word is appended here as it is given.
 - 2026-11-04 20:16 UTC (time taken at reading), open questions: "do you have open questions for me?" Recorded as: a
   check, no ruling. Answered: nothing blocks R3; D1 and M report no owner item (no U35-37 class (a) hit, no dead
   line). The next question is round 1's hardware go-ahead, asked once R3 has closed.
+- 2026-11-05 05:37 UTC (time taken at reading), round 1's form: "We are at 46% now, everything is fine. The bench test
+  may go into detail, running a timed script is fine, especially the option to roughly define breakpoints was great.
+  It cannot run truly over night. It should live in the branch it was running past time." Decided: option (a), a bench
+  session running one timed runner, the full sheet in detail; steps stay short with a STOP file, as in October; no
+  run spans a night, so the 10 h overnight run goes; the handover and runner live in claude/u35-bench-campaign, the
+  branch October's runner ran on. Budget confirmed at 46 %.
+- 2026-11-05 06:11 UTC (time taken at reading), round 1's go-aheads: "Is there anything for the tests that needs my
+  explicit go ahead?" Recorded as: a question, no ruling. Answered: the hardware go-ahead in the bench session itself;
+  the one open choice is the opt-in wear of steps 7, 8 and 15 (asked, with the datasheet endurance).
+- 2026-11-05 06:27 UTC (time taken at reading), round 1's opt-in wear: "As this is the final verification, option a
+  with full test coverage is fine. The only restriction I want to have: the tests causing wear shall be conducted when
+  the associated code behind is as final as possible, and if the wear related tests pass does not have to be touched
+  again. I want to run these tests now, but still avoid having to re-run wear causing tests for unrelated reasons."
+  Decided: option (a), all flags. The wear steps run once, after every non-wear step and its fixes, on the code as
+  final as possible; a passed wear test is not re-run unless a later change alters the code it exercises (checked by
+  comparing that code's bytecode or the built image, never by a re-run).
+- 2026-11-05 06:51 UTC (time taken at reading), OR10.b's runs and R4's budget: "Option b for now, ask for another
+  run when done" Decided: two fresh-build runs (ISL29125, then BMP3xx), their gaps fixed in Part K and the skill and
+  reviewed; after them, the lead asks the owner whether to spend a third, confirming run. The counter reading was not
+  given (R4 forecast stays the lead's estimate, 9-11 % less about 1.5 %).
+- 2026-11-05 07:08 UTC (time taken at reading), round 1's precheck: "The bench session on the branch named after U35
+  pulled the most recent updates and came with many questions, stored them in
+  audit/artefacts/evidence/U35_close/redo/hw_round1/PRECHECK_20261105.md." Relayed in that file (said to the bench
+  session, time not taken): "Push your current findings into a handover so the main session can check"; "Nothing
+  from the old campaign remains. It's all new now". Recorded as: a task for this session (check and answer the
+  precheck); the relayed words read as no reliance on October's results for round 1. No ruling on the ring.
