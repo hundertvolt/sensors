@@ -2149,7 +2149,7 @@ file.
 *detection* logic exercised for real where safe. Not exercised there: actually flashing a physical
 board, or creating the bridge/AP (would disrupt the sandbox's own networking). **Full `flash`/
 `bench` real-hardware verification is DONE** — both tiers run clean end to end on the real bench
-Rpi4 (2026-09-04); see B.13 for the incident that interrupted the first attempt.
+Rpi4 (2026-09-04); B.13 holds the network-safety rule that work runs under.
 
 ## B.13 Bench network safety: standing dead-man's-switch rule
 
@@ -6255,6 +6255,11 @@ holding the firmware image with the littlefs partition behind it. Pico W's littl
 (~848KB) is smaller than plain Pico's (~1.37MB) purely because the CYW43 firmware blobs make the
 image larger.
 
+**Which stores wear.** The flash filesystem (W25Q16JV: at least 100K program-erase cycles per
+sector, datasheet section 2) and the SCD30's NVM (no published endurance figure, M.2) are the
+limited-endurance stores; FRAM is not (MB85RS64V 10^12 and MB85RS2MTA 10^13 read/write cycles per
+byte, each datasheet's feature list; owner, 2026-09-26: "FRAM writes do not count as wear.").
+
 **Every import is a static `import`/`from … import` statement at module top** (agent, 2026-09-09,
 `3847c71`), AST-scannable without executing code — what lets a build derive a device's module set
 from the closure of real imports. **No code this project writes, generates or vendors into an image
@@ -6753,8 +6758,9 @@ supervisor's own reboot decision, a write answered inside the 4 s window is flus
 hung shutdown step ends in a watchdog reset (A.8). Between a PUT's response and its deferred flush
 lies about one scheduler tick, while the Wi-Fi backstop power-cycles only after a sustained outage
 (essentially never inside 150 s, above), so a backstop reset lands long after the flush. A power
-loss inside that window may lose the just-accepted change silently; the write never corrupts, since
-the next boot's `setup()` repairs what an interrupted write left (owner, 2026-09-26; C.7.3).
+loss inside that window may silently lose the change just answered "Valid", and the write never
+corrupts, since the next boot's `setup()` repairs what an interrupted write left (owner, 2026-09-26;
+C.7.3).
 
 ## F.3 Long-blocking operations must not stall timing-sensitive work
 
@@ -10250,7 +10256,7 @@ alone:
 
 ## K.3 Wire into `buildgen`
 
-*Every module buildgen constructs; items 5 and 6 a sensor driver.* Every file below; a driver following the `asy_<name>_driver.py` → `*_Reader(SensorReader |
+*Every module buildgen constructs.* Every file below; a driver following the `asy_<name>_driver.py` → `*_Reader(SensorReader |
 SensorReaderConfig)` naming convention (C.2) needs items 1, 3 and 4 (item 2 only when a driver
 cannot follow that convention) — confirm by actually running `buildgen/generate.py` against a
 fixture TOML (or a real `devices/*.toml` with a draft instance added), not by inspection alone.
@@ -10332,7 +10338,9 @@ for `PULL_UP`).
 
 ## K.6 Tests, every tier — "biting," not just executing
 
-*Every module; the bus-hazard coverage a sensor driver.* **A dedicated unit-test file for the driver itself**
+*Every module; the bus-hazard coverage a sensor driver.*
+
+**A dedicated unit-test file for the driver itself**
 (`tests/test_asy_<name>_driver.py`, Part D.12's own bar): every parameter individually and in
 combination, sanity-bounded typical values (not exact reference numbers unless independently
 verifiable — see below), out-of-range on both sides of every bound, exact boundary values accepted,
@@ -11117,10 +11125,10 @@ could be wrong and refusing to proceed, rather than degrading (owner, 2026-09-09
   (section, submitGroup) rejected, and the same dropped-piece failures); near-miss (`@` dropped,
   field name dropped, tag name typo'd, no cross-family contamination, and the edit-distance boundary
   just outside each family's tolerance, which must stay silent); real drivers (every tagged `src/`
-  file parsing to exactly the expected tags). It was motivated by a real incident: a driver
-  signature change once silently broke two `tests_hardware/device_scripts/` call sites for a full
-  day, undetected because nothing in that scope was checked at all. A malformed comment tag silently
-  parsing to "no tag declared" is the same class of risk one layer down.
+  file parsing to exactly the expected tags). The reason: a change breaks an unchecked scope
+  silently (a driver signature change once broke two `tests_hardware/device_scripts/` call sites
+  for a day), and a malformed comment tag silently parsing to "no tag declared" is the same class of
+  risk one layer down.
 - **Never produce a corrupted or partial build.** On any detected error, abort the entire build
   immediately — no partial `build/<device>/` output left behind that could be mistaken for a real
   artifact.
