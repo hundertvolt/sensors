@@ -1395,7 +1395,7 @@ root-cause item. A crash that does not recur is closed on that basis (owner, 202
 made sure it won't be overseen, should it ever reoccur, this is fine."; the case was a SIGSEGV at
 grkizi's Run 5c reboot relaunch, 2026-09-25, with no recurrence in 100 runs of Run 5c alone, and
 the fail-by-name path was checked against the suite and the workflow, agent, 2026-10-21). Three
-Unix-port-only `socket` quirks (real, required behavior on rp2, not a `src/` bug — BACKLOG.md has
+Unix-port-only `socket` quirks (real, required behavior on rp2, not a `src/` bug — `digital_twin/README.md` has
 the source-level account) are worked around entirely from twin-side code
 (`digital_twin/unixport/_unix_port_udp_addr_shim.py`).
 
@@ -1422,7 +1422,7 @@ again; **Off** no readable Wi-Fi configuration: the radio stays unused until a r
 | 5 | ICMP echo; an IPv6 link-local address with stateless autoconfiguration, and ICMPv6 | ICMP: STA, AP; IPv6: STA | accepted (agent, 2026-10-20): lwIP's ICMP default and the rp2 port's IPv6 setting | `lib/lwip/src/include/lwip/opt.h:875` (`LWIP_ICMP` 1), `ports/rp2/lwip_inc/lwipopts.h:8` (`LWIP_IPV6` 1), `lib/cyw43-driver/src/cyw43_lwip.c:229-234` (STA interface only; cyw43-driver `055d642`) |
 | 6 | Captive DNS on UDP 53 | AP | accepted (owner, 2026-09-26): answers every on-subnet A or ANY query with the unit's own address and any other type with an empty NOERROR reply; the subnet filter trusts the datagram's source address (a LAN peer's spoofing is out of model); a malformed query is dropped; the task ends when the hotspot does | `src/asy_captive_dns.py` (`run()`'s subnet filter, `DNSQuery`); `src/asy_wifi_service.py` (`_leave_hotspot_mode()`); C.7.5 |
 | 7 | DHCP server on UDP 67 | AP | accepted (agent, 2026-10-20): MicroPython's DHCP server, started by the CYW43 driver on the hotspot interface (eight leases, A.4) | `lib/cyw43-driver/src/cyw43_lwip.c:237-239` under `CYW43_NETUTILS` (`extmod/cyw43_config_common.h:44`); `shared/netutils/dhcpserver.c:65` (`PORT_DHCP_SERVER` 67) |
-| 8 | Hotspot radio | AP | accepted permanently as a known limitation (owner, 2026-09-26; first accepted 'for now', owner 2026-07-13, `b64857d`): WPA2-AES-PSK with the shared default password `12345678` unless the device's TOML `hotspot_password` or the `HotspotPW` setting sets another; exploitable only in radio range of a unit on its hotspot (not yet set up, reset to defaults, or after losing its Wi-Fi), and radio-range attackers are out of model. Every place the default is written, the whole-project audit's temporary records aside: `src/asy_wifi_service.py` (`HotspotPW`'s schema default `_VAL_HOTSPOT_PW` and its comment); each `devices/*.toml` `hotspot_password`; this row, L.2's naming bullet and L.3's example TOML; `mockdata/samples.json` (`HotspotPW`); BACKLOG.md's note on the tests that assert it; the reference-only legacy tree (`legacy/firmware/python/CommonDrivers/async_connect.py`, `legacy/dev_drivers/async_connect.py`); and the tests pinned to that default — `tests/test_asy_wifi_service.py`, `tests/test_neopixel_wifi_integration.py`, `tests/test_ntp_fram_system_integration.py`, `tests/test_ntp_wifi_dns_integration.py`, `tests/test_readiness_gates.py`, `tests/test_setter_microdot_integration.py`, `tests_scripts/_toml_fixtures.py`, `tests_scripts/test_buildgen_validate.py`, `tests_scripts/test_buildgen_error_contract.py`, `tests_scripts/buildgen_fixtures/multi_instance.toml` and `novel_combo.toml`; `tests_hardware/` holds no copy and reads the bench device's TOML through `tests_hardware/harness.py`'s `hotspot_password()`. The one copy in a form ruff's S105/S106 flag carries a per-file exemption in `pyproject.toml` naming its file | auth: `ports/rp2/main.c:196` (v1.29.0) sets `CYW43_AUTH_WPA2_AES_PSK`; `src/asy_wifi_service.py` passes only `essid` and `password` (`wlan.config(essid=…, password=…)`, `_configure_hotspot_ap()`), which leaves it (`extmod/network_cyw43.c:514-526`: only the `security` key sets the auth) |
+| 8 | Hotspot radio | AP | accepted permanently as a known limitation (owner, 2026-09-26; first accepted 'for now', owner 2026-07-13, `b64857d`): WPA2-AES-PSK with the shared default password `12345678` unless the device's TOML `hotspot_password` or the `HotspotPW` setting sets another; exploitable only in radio range of a unit on its hotspot (not yet set up, reset to defaults, or after losing its Wi-Fi), and radio-range attackers are out of model. Every place the default is written, the whole-project audit's temporary records aside: `src/asy_wifi_service.py` (`HotspotPW`'s schema default `_VAL_HOTSPOT_PW` and its comment); each `devices/*.toml` `hotspot_password`; this row, L.2's naming bullet and L.3's example TOML; `mockdata/samples.json` (`HotspotPW`); the reference-only legacy tree (`legacy/firmware/python/CommonDrivers/async_connect.py`, `legacy/dev_drivers/async_connect.py`); and the tests pinned to that default — `tests/test_asy_wifi_service.py`, `tests/test_neopixel_wifi_integration.py`, `tests/test_ntp_fram_system_integration.py`, `tests/test_ntp_wifi_dns_integration.py`, `tests/test_readiness_gates.py`, `tests/test_setter_microdot_integration.py`, `tests_scripts/_toml_fixtures.py`, `tests_scripts/test_buildgen_validate.py`, `tests_scripts/test_buildgen_error_contract.py`, `tests_scripts/buildgen_fixtures/multi_instance.toml` and `novel_combo.toml`; `tests_hardware/` holds no copy and reads the bench device's TOML through `tests_hardware/harness.py`'s `hotspot_password()`. The one copy in a form ruff's S105/S106 flag carries a per-file exemption in `pyproject.toml` naming its file | auth: `ports/rp2/main.c:196` (v1.29.0) sets `CYW43_AUTH_WPA2_AES_PSK`; `src/asy_wifi_service.py` passes only `essid` and `password` (`wlan.config(essid=…, password=…)`, `_configure_hotspot_ap()`), which leaves it (`extmod/network_cyw43.c:514-526`: only the `security` key sets the auth) |
 | 9 | Outbound traffic | STA | listed (owner, 2026-09-26): DNS queries (UDP 53) to the DHCP-provided server, then the `DNSFallback` servers in order (default `8.8.8.8,1.1.1.1`, owner, 2026-09-26; at most three, agent, 2026-09-30, owner-reviewed, 2026-10-02; the list may be emptied); NTP (UDP 123) to `NTPHost` (default `pool.ntp.org`). No other destination is contacted: beside the local-link traffic of rows 4, 5 and 10 (mDNS, ICMP and IPv6 neighbour discovery, the DHCP client), nothing leaves the unit. A reply is accepted only from the queried server's address and port (a connected socket: `extmod/modlwip.c:1257`; lwIP `lib/lwip/src/core/udp.c:261-311`), a DNS reply only with the query's 16-bit random id; a malformed reply is dropped. Spoofing by a LAN peer is out of model (C.7.2) | `src/asy_dns_client.py` (`os.urandom(2)`, `_parse_response()`), `src/asy_ntp_client.py` (`_resolve_ntp_server()`), `src/asy_udp_socket.py` (`mode="client"` connects) |
 | 10 | DHCP client | STA | known limitation (owner, 2026-09-26): DHCP is not fault-injected; the client is lwIP's, with no project code | `lib/cyw43-driver/src/cyw43_lwip.c:224-227`; `tests_hardware/README.md` |
 | 11 | Browser-borne attacks (CSRF, DNS rebinding, clickjacking) | STA, AP | out of model (owner, 2026-09-26); the website's own XSS safety stays: every server- or user-supplied string is inserted as text | H.4 (rendering safety) |
@@ -1789,7 +1789,14 @@ and its test result does (E.5.3), so it gets its own budget either way.
   OS the docs target (noble, README.md's build-environment check) and the image every Part N CI
   budget was measured on. A floating image changes tools from outside the tree: Ubuntu 26.04 renames
   WebKitGTK's driver package (H.7) and replaces GNU coreutils, whose `timeout` the test runner's
-  interrupt-then-kill relies on (BACKLOG.md). A newer image is its own step, like a pin's move.
+  interrupt-then-kill relies on, with `rust-coreutils` 0.10.0 (run `39512651550`): a background job
+  starts with SIGINT and SIGQUIT ignored and its `timeout`, unlike GNU's, does not undo that at exec
+  (8 `tests_scripts` reds; `(trap - INT QUIT && exec timeout ...) &` cures 5), and its `--kill-after=N`
+  SIGKILLs only its child, about 1 ms after the first signal, so a process below it that ignores the
+  interrupt outlives the wrapper, holds the job's pipe and hangs the run (the per-file hard stop then
+  needs its own escalation, or GNU's `timeout` by name). It also brings Python 3.14, GCC and glibc
+  2.43, rebuilding the Unix-port and firmware caches, and a new basis for the Part N CI budgets. A
+  newer image is its own step, like a pin's move.
 - **`web-changes`** feeds the web jobs' `if:`s from one workflow file rather than a second file
   with a trigger-level `paths:` filter, which can leave a PR on a required check that never fires
   (H.8). Without a base, `dorny/paths-filter` compares a push against the default branch, so every
@@ -6194,6 +6201,11 @@ is never imported in its place. An extensible built-in (`MP_REGISTER_EXTENSIBLE_
 name shadows it on any path entry; the `.frozen`-first line protects the frozen product modules
 only (proved on the Unix port by `tests_scripts/test_frozen_first_shadowing.py`), and the reflash
 runbook's filesystem erase covers the built-ins.
+**The legacy `_boot.py`'s `import sensortask.py` should raise at the pin** (CLAUDE.md's `_boot.py` rule):
+`tools/mpy-tool.py` names a frozen module by its file name, `py/frozenmod.c` matches a name exactly
+(`:85-87`), and `py/builtinimport.c`'s `process_import_at_level()` (`:368`) needs `sensortask` to
+resolve as a package (traced at 1.28 and v1.29.0). The generated boot entry imports
+`from sensortask_<device> import main` (`buildgen/codegen.py`'s `generate_boot_entry_source()`).
 
 **A soft `machine.Timer` callback (the default — no `hard=True` anywhere) can be silently dropped,
 not just delayed** — `mp_sched_schedule()` drops it when the scheduler queue (depth 8 on rp2, shared
@@ -6661,7 +6673,8 @@ work like the Neopixel animation needs to run — a standing design principle, n
 case. **The `get_long_block_lock()` shared-lock mechanism has been retired** (its one user,
 `socket.getaddrinfo()`, was replaced by the non-blocking DNS resolver) — a new genuinely long
 blocking call would need a fresh coordination mechanism designed, not a resurrection of the old
-lock (agent, 2026-07-28).
+lock (agent, 2026-07-28). `ConfigManager.write_config()` needs none (owner, 2026-08-11): only a user's
+REST PUT reaches it, and its flush is deferred (F.2).
 
 Every stretch the system relies on is a row: its value from the code, the measurement behind it, the
 consumer that has to tolerate it, the test that fails before it is crossed and its Part N row. A row
@@ -7208,9 +7221,9 @@ makes.
 UART fakes return `min(nbytes, len(rx_queue))` and never wait — a non-blocking read the real
 peripheral does not provide, so only the flash tier sees the real wait: real electrical and timing
 behaviour that no fake reproduces.
-Making the fakes actually *wait* would only turn a real-time defect into a slow test; both instead
-**count the stall they would have taken**. `UART.would_have_blocked_bytes` accumulates every byte a
-read asked for that had not arrived, the two models are held to identical counting by
+Making the fakes actually *wait* would only turn a real-time defect into a slow test (agent,
+2026-09-11); both instead **count the stall they would have taken**. `UART.would_have_blocked_bytes`
+accumulates every byte a read asked for that had not arrived, the two models are held to identical counting by
 `tests/_uart_link_contract.py`, and a whole-frame read through the driver asserts it stays at zero.
 A regression of the clamp now fails in the mock tier as a number, in the same shape as the twin's
 own `WDT.would_have_triggered_count`. Since the driver reads its DMA ring, it makes no receive call
@@ -10065,6 +10078,12 @@ whole train while the initiator reports failure. This is the protocol's at-least
 that retries on a failed `uart_set()` must tolerate the peer seeing the message twice. A third state
 would buy nothing — no retransmission exists to hang it on, and the application-level answer is the
 same either way.
+
+**Three hazards no caller reaches stay unguarded** (agent, 2026-09-11): the driver's `deinit()`/`init()`
+ignore its session lock, but nothing deinits during a read, and `init()` calls `deinit()` itself; a second
+`UARTComm.setup()` while its listen loop runs would deadlock on the bus lock that loop holds, but the
+supervisor re-calls a dead task's starter, never a `setup()`; and one `FramingCOBS` shared by two drivers
+would corrupt both, its scratch being per instance, but every construction site makes its own.
 
 ---
 

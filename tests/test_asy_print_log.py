@@ -513,8 +513,7 @@ def test_reset_before_setup_still_clears_even_with_logging_off() -> None:
 
 # ---------------------------------------------------------------------------
 # PrintLogHistoryStore - FRAM-backed persistence, against the real, now-promoted FRAMManager
-# driven by tests/_fram_chip_fake.py's simulated MB85RS64V chip (see BACKLOG.md - tests/_fram_mock.py
-# and its flat, non-redundant abstraction are retired now that asy_fram_manager.py itself is in src/).
+# driven by tests/_fram_chip_fake.py's simulated MB85RS64V chip.
 # ---------------------------------------------------------------------------
 
 

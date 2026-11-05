@@ -219,7 +219,7 @@ def test_initialize_self_test_success_ignores_nonzero_low_byte() -> None:
 
 
 def test_initialize_no_feature_set_check_is_issued() -> None:
-    # Regression test for the dropped, undocumented 0x20 0x2F check (see BACKLOG.md).
+    # Regression test for the dropped, undocumented 0x20 0x2F check.
     sgp = _make_sgp()
     fake_bus = bus(sgp._i2c_sgp40.i2c_device.i2c)
     queue_successful_init(fake_bus)
@@ -584,7 +584,7 @@ def _make_reader() -> SGP40_Reader:
 
 def test_init_sgp_resets_the_real_base_class_error_counter() -> None:
     # Regression test: _init_sgp() used to write self.err_cnt_internal (no underscore), a dead
-    # attribute distinct from asy_base_classes.py's real self._err_cnt_internal (see BACKLOG.md).
+    # attribute distinct from asy_base_classes.py's real self._err_cnt_internal.
     reader = _make_reader()
     reader._err_cnt_internal = 7  # simulate a streak accumulated before a supervisor restart
     fake_bus = bus(reader._sgp._i2c_sgp40.i2c_device.i2c)

@@ -523,7 +523,7 @@ def test_full_chain_reaches_synced_state_via_a_real_wifi_service_and_a_literal_i
 
 
 def test_full_chain_degrades_cleanly_when_wifi_reports_connected_but_the_ntp_server_never_answers() -> None:
-    # The real-hardware finding this proves at the mock tier (BACKLOG.md open question 6, closed
+    # The real-hardware finding this proves at the mock tier (SPECIFICATION.md Part F.2, closed
     # 2026-09-04): the CYW43 firmware and lwIP stack can report a link as fully connected while it is dead -
     # a real arping probe got zero responses from a DUT `iw station dump` called associated.
     #

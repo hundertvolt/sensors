@@ -238,7 +238,7 @@ def test_response_returns_none_for_empty_domain() -> None:
 
 
 def test_response_answers_the_root_domain_query_not_indistinguishable_from_a_parse_failure() -> None:
-    # Regression test for BACKLOG.md's "root-domain query can't be told apart from a failed parse" entry: a
+    # A root query must not read as a failed parse: a
     # root query (a single zero-length label) parses to the same empty self.domain a malformed datagram
     # falls back to, and response() used `if self.domain:` to decide whether to answer.
     #
