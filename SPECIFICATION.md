@@ -733,12 +733,9 @@ shifter, so the data-line voltage levels are settled (owner, 2026-09-25); WS2812
 
 ## A.7 wozi's construction order and dependency graph
 
-Historically documented against a hand-written `src/sensortask_wozi.py`; that file no longer exists
-(SPECIFICATION.md Part L.2) - `buildgen.generate.generate_device()` now
-generates the equivalent `sensortask_wozi.py`/boot entry at build time from `devices/wozi.toml`
-(Part C.14), reproducing the exact same construction order/FRAM chunk layout described below. This
-section stays the architectural reference for *why* that order is what it is; the generator is what
-actually emits it now.
+`buildgen.generate.generate_device()` generates `sensortask_wozi.py` and its boot entry at build
+time from `devices/wozi.toml` (Part C.14, L.2). This section is the reference for *why* the
+construction order and FRAM chunk layout below are what they are; the generator emits them.
 
 The boot entry `sensortask_<device>_main.py` (frozen as `main.py`) arms the watchdog as its first
 statement, before any product import (owner, 2026-09-25) — `watchdog = WDT(timeout=8000)`,
@@ -816,7 +813,7 @@ under CLAUDE.md's implicit-FRAM-wiring rule):
 6. `conn = WifiService(WifiConfig(hostname, hotspot_password, conn_fail_to_hotspot,
    hotspot_time_min), ext_led=neopixel, ..., log=log_fram)` — **chunk 2**;
    `SensorReaderConfig.__init__` (which `WifiService` goes through) builds its own `self.pr` chunk
-   first, then its owned `ConfigManager` — **chunk 3** (WP2/CLAUDE.md's implicit-FRAM-wiring rule:
+   first, then its owned `ConfigManager` — **chunk 3** (the implicit-FRAM-wiring rule, step 4:
    every `SensorReaderConfig`'s own `cfgmgr` inherits the same `log=` its owner was given, its own
    separate `"CFGMGR_<name>"`-named logger, never folded into the owner's own history; the one exception is SCD30's,
    built RAM-only, step 9). `conn` then
@@ -868,8 +865,8 @@ under CLAUDE.md's implicit-FRAM-wiring rule):
     its `'responder'`/`name_ext='resp'` twin on `uart1`, each wrapping one `UARTComm(...)` across
     the permanent crossover jumper (the two `asy_uart_driver.UART(...)` buses, `[bus.uart0]`/
     `[bus.uart1]`, are built with the other buses, right after `spi0`) — `dev.toml` wires
-    `fram_target = "fram"` on both instances (WP3 - was wrongly, deliberately excluded; `UARTComm`
-    takes the same `log=`/`logger=` as every other module, only the buildgen wiring was missing),
+    `fram_target = "fram"` on both instances (`UARTComm` takes the same `log=`/`logger=` as every
+    other module),
     so `uart_link_init` and `uart_link_resp` each draw their own chunk here, right after
     `notification`'s own `cfgmgr` chunk (step 12) and before the webserver's (step 14) — never
     shared between the two instances, so a fault on one end stays attributable to it. Neither is a
@@ -890,7 +887,7 @@ under CLAUDE.md's implicit-FRAM-wiring rule):
     ..., error_sources=_collect_error_sources()), serving=ServingLimits(..., host=web_host,
     port=web_port), uptime_s=sysfunct.get_uptime, static=StaticSite(mount="/html",
     index_file="index.html", is_hotspot_active=conn.is_hotspot_active), log=log_fram)`
-    — **chunk 16** (as of WP1, under the same implicit-if-FRAM-present rule as every other
+    — **chunk 16** (under the same implicit-if-FRAM-present rule as every other
     mandatory-infra module); no on-flash config, no `cfgmgr`. `static=` registers the static route
     pair last, so an exact-match API route always wins.
 15. **The one-time setup batch**: `run_setups(_collect_setups())` awaits, in order, `fram` (first:
@@ -933,13 +930,12 @@ its own `CFGMGR_WIFI` → CaptiveDNS → NTPClient → its own `CFGMGR_NTP` → 
 `CFGMGR_SYSTEM` → SCD30 (its `CFGMGR_SCD30` RAM-only, no chunk) → SGP40 error log → its own `CFGMGR_SGP40` → SGP40 VOC backup
 (timestamped) → BMP3xx → its own `CFGMGR_BMP3XX` → (`dev`-only: ISL29125 → its own
 `CFGMGR_ISL29125`) → NotificationService → its own `CFGMGR_NOTIFY` → (`dev`-only: `UART_init` →
-`UART_resp`, WP3 — neither has a `cfgmgr`) → WebserverService (no `cfgmgr`).
+`UART_resp` — neither has a `cfgmgr`) → WebserverService (no `cfgmgr`).
 Every module with a FRAM-backed error log, and every `SensorReaderConfig`-based module's own
-`cfgmgr` (WP2) but SCD30's, uses it — which modules may have one is the owner's rule at step 4 above; the order
+`cfgmgr` but SCD30's, uses it — which modules may have one is the owner's rule at step 4 above; the order
 is fixed within one build and free to change in the next (owner, 2026-09-26). (A device with no
 `[device.wiring].fram_target` keeps `conn`/`ntp`/`sysfunct`/
-`webserver` RAM-only and none of them draw a chunk at all — WP1 changed nothing about that
-fallback path; a `uart_link` instance with no `fram_target` in its own `[instance.wiring]` stays
+`webserver` RAM-only and none of them draw a chunk at all; a `uart_link` instance with no `fram_target` in its own `[instance.wiring]` stays
 RAM-only the same way, unaffected by whether the device's `fram_target` is set anywhere else.)
 
 **Boot latency (the evidence behind CLAUDE.md's "boot latency is not a metric" rule).** Every logger
@@ -947,17 +943,12 @@ store, the webserver's included, is set up in the batch (step 15), before any ta
 setup contends with a running task. The twin's boot-to-first-`200` figures (~2 s before the FRAM
 wiring of every module, ~6.1 s `wozi` / ~7.7 s `dev` after it) are not a baseline: the twin models no
 Wi-Fi and gives a FRAM transaction no wire time. **Measured on real hardware (`dev` bench,
-2026-09-16)**: real `dev` firmware built from each commit's own tree, flashed, then given 5 timed
-`hard_reset()` cycles per image with the first post-flash boot discarded and `GET /status` polled
-every 200ms for a real `200`: pre-change baseline **7.74s**, every module FRAM-wired **9.80s** (WP1+WP2),
-**9.76s** with WP3–WP8 on top, and **10.66s** with the `CFGMGR_SYSTEM` setup-order fix (medians of 5,
-spread ±0.06s at the two earlier points); 23 consecutive reboots across the four images produced no
-`WDT_RESET` — the standard that applies here (CLAUDE.md's "does not starve the watchdog", not "boots
-fast"). The twin's *delta* prediction held up (~1.4–1.8s predicted against a real ~2.05s). The
-`CFGMGR_SYSTEM` fix's own +0.90s did **not** reproduce: an A/B on one tree (2026-09-25, instrumented
-images differing only in the setup order, 5 hard resets each) put boot-to-first-`/status` at
-**8.94s** fixed against 8.91s unfixed, and `sysfunct.setup()` at 79 ms against 26 ms — the fix costs
-~53 ms, one logger's worth.
+2026-09-16)**, `dev`'s own firmware, medians of 5 timed `hard_reset()` cycles with `GET /status`
+polled every 200 ms for a real `200`: **7.74 s** with the infrastructure logs RAM-only, **9.80 s** with
+every module FRAM-wired and **10.66 s** with the `CFGMGR_SYSTEM` setup order; 23 consecutive reboots
+produced no `WDT_RESET` — the standard that applies (CLAUDE.md's "does not starve the watchdog", not
+"boots fast"). That setup order itself costs about 53 ms, one logger's worth (an A/B on one tree,
+2026-09-25: 8.94 s against 8.91 s to the first `/status`, `sysfunct.setup()` 79 ms against 26 ms).
 
 **Setup costs on silicon (same run)**: `fram.setup()` 6 ms; every other unit 79-91 ms, the batch
 0.93 s in all; construction before it ~0.14 s and module import ~1.1 s before `main()` starts; the
@@ -1045,8 +1036,8 @@ settings.
   of each field of such a module's settings group (C.6); `/networking` → `SSID, PW(masked),
   Country, Hostname, HotspotPW(masked), LEDWifiOn, NTPHost, NTPOffset, NTPInterval, DNSFallback`;
   `/system` → `DebugLevel,
-  GMTOffset, DSTOffset` plus one nested, never-flattened `build` sub-entry (SPECIFICATION.md Part L
-  Session 7 — `{"FirmwareVersion", "WebsiteVersion", "BuildDate"}`, verbatim from
+  GMTOffset, DSTOffset` plus one nested, never-flattened `build` sub-entry (L.7 —
+  `{"FirmwareVersion", "WebsiteVersion", "BuildDate"}`, verbatim from
   `WebserverService`'s own `build_info=` constructor kwarg, which every generated device supplies
   from `buildgen.version.FIRMWARE_VERSION`/`WEBSITE_VERSION` plus a real build timestamp captured
   once per `buildgen.generate.generate_device()` call — generator-owned/fixed, never per-device, and
@@ -1692,10 +1683,10 @@ artefacts, and the toolchain record is written after them (B.3).
 
 ## B.7 Evidence this actually works
 
-Verified end-to-end in a clean `debootstrap` Ubuntu 24.04 chroot for both `v1.26.1` and latest
-stable; an in-place version update leaves no stale state; `test` alone completes in ~30s offline;
-both `setup`/`test` were run against a deliberately hostile environment (poisoned `PATH`, garbage
-`CFLAGS`/`CMAKE_*`, non-English `LANG`) with zero poison surviving into the build.
+The installer is verified from scratch in clean `debootstrap` chroots by CLAUDE.md's
+"Build-environment verification" recipe; an in-place version update leaves no stale state, and a
+hostile environment (poisoned `PATH`, garbage `CFLAGS`/`CMAKE_*`, non-English `LANG`) leaks nothing
+into the build.
 **Every build is warning-free**: a `warning:` or `error:` in any build's output — `mpy-cross`, the
 firmware, every Unix-port build — fails the run, even when the tool exits 0 (one helper checks every
 build, `_fail_on_build_diagnostics()` in `toolchain/setup_toolchain.py`). The per-file flags are named
@@ -1706,9 +1697,8 @@ build's variant makefile only (B.14.4), never in the firmware or the other two U
 value with `-1` and the Unix port compiles with `-Wextra` (`ports/unix/Makefile:55`) where rp2 does
 not (`ports/rp2/CMakeLists.txt:540-541`), and `-DSOMAXCONN=2`, since `ports/unix/mpconfigport.h:176`
 takes the default `listen()` backlog from `<sys/socket.h>`'s `SOMAXCONN`, which `modlwip.c` never
-includes (2 is rp2's own default, `py/mpconfig.h:2148`). Nothing else in lwIP or the Unix port
-warned on the first host lwIP build (GCC 13.3.0, x86-64, 2026-10-08).
-See CLAUDE.md's "Build-environment verification" for the re-check recipe.
+includes (2 is rp2's own default, `py/mpconfig.h:2148`); nothing else in lwIP or the Unix port
+warns (GCC 13.3.0, x86-64, 2026-10-08).
 
 ### B.7.1 GCC ≥14 host: mbedtls array-bounds workaround
 
@@ -1720,11 +1710,9 @@ mbedtls 3.6.6 (`lib/mbedtls` `0bebf8b`) contains. The suppression stays, scoped 
 -Wno-array-bounds` into both generated Unix variant makefiles and
 `set_source_files_properties("${MICROPY_DIR}/lib/mbedtls/library/ctr_drbg.c" PROPERTIES
 COMPILE_OPTIONS "-Wno-array-bounds")` into the generated rp2 board cmake (the real build's
-`flags.make` lists it for that one object only). It is not yet re-checked on a GCC ≥ 14 host with
-the pin's mbedtls 3.6.6 — this host's compilers are gcc 13.3.0 and arm-none-eabi-gcc 13.2.1 — and
-goes when a GCC ≥ 14 build of both targets is clean without it, checked at every ref move (agent,
-2026-10-08). GCC bug [#121044](https://gcc.gnu.org/bugzilla/show_bug.cgi?id=121044) was UNCONFIRMED
-when last read; its status is unread here (gcc.gnu.org unreachable from this sandbox, 2026-10-08).
+`flags.make` lists it for that one object only). It goes when a GCC ≥ 14 build of both targets
+with the pin's mbedtls is clean without it, checked at every ref move (agent, 2026-10-08); GCC bug
+[#121044](https://gcc.gnu.org/bugzilla/show_bug.cgi?id=121044) tracks the false positive.
 
 ## B.8 Why not a full venv
 
@@ -1858,8 +1846,8 @@ on a tree with nothing wrong with it. Its coverage report gates nothing and its 
   the harness's fixed twin port never collides; `tests_js/mock-server-put-matrix.test.js` proves
   the partition. It `needs: web-unit-tests`, success-gated on purpose: no three runners on the
   slow matrix if the fast suite already failed.
-- **`web-coverage`** is its own job because `timeout-minutes` gates a whole job: on PR #50 (run
-  `33856690559`) the instrumented rerun killed a job whose real test step had already passed. It
+- **`web-coverage`** is its own job because `timeout-minutes` gates a whole job: inside one job an
+  instrumented rerun can be cut after the real test step has passed (run `33856690559`). It
   excludes the live matrix at almost no cost to the number, since the mock-server matrix drives
   the same `js/` paths. Its test step gates (`set -o pipefail` through the `tee`, no
   `continue-on-error`) and its report steps (`always() && hashFiles(...)`, `continue-on-error`) do
@@ -2170,18 +2158,16 @@ config (tearing down a bridge, revoking `dialout`, anything that could cut the c
 is using to reach the host) must keep a recovery dead-man's-switch continuously armed for the
 entire risk window — never touch live network state with none armed. One arm covering a whole atomic
 sequence is equivalent protection to per-command re-arming, provided the sequence's real timing is
-measured, not guessed. Confirmed the hard way on 2026-09-04: a one-shot recovery timer, consumed by
-an earlier dry run, gave zero protection to the real run that followed, costing the bench Pi4's own
-SSH access (recovered via SD-card edit of the wired-connection profile NetworkManager had
-auto-suppressed once the bridge claimed the interface — normal NM behavior, not corruption).
+measured, not guessed. The reason: a one-shot timer consumed by an earlier dry run protects
+nothing that follows, and a lost bridge can cut the bench host's own SSH access, recoverable then
+only by editing its SD card (2026-09-04).
 
-**Second-order fix (agent, 2026-09-04, `28c5d8e`), standing practice**: a Linux bridge synthesizes
-its own MAC (can shift over its lifetime), distinct from the underlying interface's real hardware
-MAC — the router's static DHCP reservation gets orphaned if it was keyed to a synthesized MAC that
-later changes. `ensure_bench_bridge()` now pins `bridge.mac-address` to the uplink's real hardware
-MAC before the bridge comes up on every fresh creation, and warns (never auto-repairs — cycling a
-live bridge's MAC risks the same incident) if an existing bridge's MAC doesn't match.
-`tests_hardware/README.md`'s manual recipe carries the identical fix.
+**The bridge presents the uplink's own hardware MAC** (agent, 2026-09-04, `28c5d8e`): a Linux bridge
+synthesizes its own MAC, which can shift over its lifetime and orphan the router's static DHCP
+reservation, so `ensure_bench_bridge()` pins `bridge.mac-address` to the uplink's real hardware MAC
+before the bridge comes up on every creation, and only warns on an existing bridge's mismatch, since
+cycling a live bridge's MAC can cut the connection itself. `tests_hardware/README.md`'s manual recipe
+does the same.
 
 **The installer arms the switch itself** (`_armed_recovery()`), around a bridge creation and around
 the channel re-pin of an existing bridge: `sudo systemd-run --unit=sensors-bench-recovery-<pid>
@@ -2206,8 +2192,9 @@ pattern, not the file, is what's durable — owner, 2026-09-04, `1096b31`):
 set -x
 nmcli connection down br0-wifi-ap; nmcli connection down br0-eth0; nmcli connection down br0
 nmcli connection delete br0-wifi-ap; nmcli connection delete br0-eth0; nmcli connection delete br0
-nmcli connection modify "Wired connection 1" autoconnect yes connection.autoconnect-priority 0
-nmcli connection up "Wired connection 1"
+# PROFILE: the uplink's own profile, read before arming: nmcli -g GENERAL.CONNECTION device show <uplink>
+nmcli connection modify "$PROFILE" autoconnect yes connection.autoconnect-priority 0
+nmcli connection up "$PROFILE"
 ```
 
 1. Confirm current state first (`ip -o addr show br0`, `nmcli -t -f NAME connection show`).
@@ -2216,9 +2203,8 @@ nmcli connection up "Wired connection 1"
 3. Run the real operation.
 4. **Poll for the real outcome immediately — don't go diagnose something else in between.** A
    bridge finishing `nmcli connection up` doesn't mean it's forwarding yet (a real run showed
-   success in ~1s but no DHCP lease/default route until ~30s later, STP delay) — exactly the gap
-   that let the timer fire on a working bridge once, because the operator diagnosed instead of
-   checking. Use a short bounded poll, never a fixed sleep.
+   success in ~1s but no DHCP lease/default route until ~30s later, STP delay), and a timer left
+   running fires on a working bridge. Use a short bounded poll, never a fixed sleep.
 5. Once confirmed, disarm: `sudo systemctl stop bench-recovery.timer bench-recovery.service`.
    Confirm it's gone.
 
@@ -3502,8 +3488,7 @@ answers `"Failed"` before any snapshot read, chip write, push or flash write, a 
 the lock when the store closed included; a PUT already past that check finishes, and the reset's
 flush waits for it through the store's `owner_lock` (C.8). `delete_file()` removes the store's file
 without reading it.
-**Since WP5** (SPECIFICATION.md Part F.2), the actual flash write is deferred to an independent
-task, so `"persisted"` here really means "validated and staged" - a genuine disk write failure
+**The flash write is deferred** to an independent task (F.2), so `"persisted"` here really means "validated and staged" - a genuine disk write failure
 surfaces only later, as a logged errno 33 (`CFG_FILE_WRITE`) on `cfgmgr.pr`, never back through this
 return value or the caller's own response; `_set_dict_cfg()` therefore has no way to observe it and
 none is expected to. **A push
@@ -3876,9 +3861,9 @@ WLAN object, C.7), while its restart itself only disconnects a STA that is up (f
 switches to a new STA interface) and starts a fresh streak. A failure the task can meet again
 unchanged after a restart is routine and **handled in place**: log it (under the repeat rule,
 C.7.1), keep counting it, retry, and recover on the next success. Ending instead buys nothing and
-spends the reboot budget (C.4.1's "a restart is not free"): the NTP task used to end after six
-failed syncs, so an unreachable server restarted it about once a minute and rebooted the device
-about every four minutes (owner, 2026-09-24). The legacy client never gave up.
+spends the reboot budget (C.4.1's "a restart is not free"): an NTP task ending after six failed
+syncs restarts about once a minute against an unreachable server and reboots the device about every
+four minutes (owner, 2026-09-24). The legacy client never gave up.
 
 - **NTP** (`asy_ntp_client.py`) keeps no failure streak (`max_module_error` is gone from its
   constructor). While unsynced it tries at the first 10 s check (`ntp.check_interval_s`) with the
@@ -4012,9 +3997,10 @@ bytes (`modnetwork.c:151-162`), `WLAN.connect()` raises `OSError(EINVAL)` on a k
 and copies an SSID over 32 bytes past its 36-byte buffer unchecked (`cyw43_ll.c:2072-2077,
 2140-2141`), and the hotspot's `config()` truncates its SSID and key at 32/64 bytes without an
 error (`cyw43.h:431-448`), keeping WPA2-AES (`ports/rp2/main.c:196`) (MicroPython v1.29.0,
-cyw43-driver `055d642`). So a schema-valid `"ÄT"` or a 32-character SSID with umlauts used to raise
-on every connect, set `_hw_op_failed` and end the task after `max_module_error` cycles (`GIVE_UP` and `WLAN_GIVE_UP`) —
-a config value treated as a hardware fault (C.7.2). `asy_wifi_service.py` bounds SSID, PW,
+cyw43-driver `055d642`). Unbounded, a schema-valid `"ÄT"` or a 32-character SSID with umlauts
+would raise on every connect, set `_hw_op_failed` and end the task after `max_module_error` cycles
+(`GIVE_UP` and `WLAN_GIVE_UP`) — a config value treated as a hardware fault (C.7.2). So
+`asy_wifi_service.py` bounds SSID, PW,
 Country, Hostname and HotspotPW in bytes at both ends, and checks two shapes: `Hostname` is a host
 label — ASCII letters, digits and `-`, not starting or ending with `-` (RFC 1123), at PUT, use and
 build; `Country` is two uppercase letters (ISO 3166-1 alpha-2) at PUT and use (agent, 2026-09-28).
@@ -4308,9 +4294,8 @@ optional polish (owner, 2026-09-15, `f9df9a2`):**
   (its assertions only make sense for one driver's own quirk) moves into that driver's own test file
   instead — the file's own bar is "genuinely generic," not "not yet generated."
 
-**Per-real-device applicability, re-verified against all 6 device TOMLs (SPECIFICATION.md Part L's
-Session 6.2)**: "cross-device interleaving if sharing a bus" only actually applies to a device that
-does. Checked directly against every real `devices/*.toml`: `wozi` wires `sgp40`+`bmp3xx` together
+**Per-real-device applicability**: "cross-device interleaving if sharing a bus" applies only to a
+device that does. Against every real `devices/*.toml`: `wozi` wires `sgp40`+`bmp3xx` together
 on `i2c1`, and `dev` wires `scd30`+`sgp40`+`isl29125` together on `i2c1` (the `isl29125` instance is
 dev-only — the ISL29125 migration's own scoping) — the only two real devices with any sensor pair
 sharing a bus at all. `arzi`/`klkizi`/`grkizi`/`schlafzi` each wire `scd30` alone on `i2c0` and
@@ -4596,9 +4581,7 @@ by `tests/test_readiness_gates.py`.
 
 ## C.14 Instance naming, cross-instance wiring, and error/logger fan-in
 
-Session 1 of the device-genericization initiative (`SPECIFICATION.md Part L`) — the mechanism
-`buildgen/` (Session 3 on) now drives from each device's TOML, wired into the real build chain as
-of Session 6. Applies to
+The mechanism `buildgen/` drives from each device's TOML (Part L). Applies to
 `SensorReader`/`SensorReaderConfig` subclasses (the layer that can realistically have more than one
 instance per device, e.g. two SCD30s, or several differential-pressure sensors); singleton services
 (WiFi/NTP/SystemService/Neopixel/NotificationService/FRAM/the DNS server/the webserver) are
@@ -4654,11 +4637,8 @@ correct and usable; `buildgen` is what actually enforces it across a device's wh
 ### C.14.2 The `_WIRING` tuple convention
 
 A driver that needs a live cross-instance value at construction time declares a `_WIRING:
-"WiringSchema"` tuple next to its `_VAL_*` schema tuples. **Extended by Session 3 of
-SPECIFICATION.md Part L** (the `buildgen/` generator) from this Part's original 2-element shape to a
-5-element one, resolving that plan's own two open `_WIRING`-coverage questions (full rationale:
-that session's PR description) — purely additive, no existing driver's constructor signature
-changed to make this possible:
+"WiringSchema"` tuple next to its `_VAL_*` schema tuples, one 5-element entry per link, which the
+`buildgen/` generator reads (Part L):
 
 ```
 # @wiring <toml_field> <ProducerClass> <target> <required|optional> <kwarg|attr>
@@ -4677,9 +4657,8 @@ five makes the tag fail the build loud rather than parse as "no tag here" (`tag_
   `asy_wifi_service.py`'s `# @wiring led_target NeopixelDriver ext_led optional kwarg`, the WiFi
   status LED passed at construction. `fram_target` takes the same mode with target `log` on every
   FRAM-wirable module (`# @wiring fram_target FRAMManager log optional kwarg`): the generator
-  passes the `LogConfig` it builds over that FRAM instance, one per FRAM store (L.4). (SGP40's own
-  compensation-source dependency used to be a second wiring entry here, `comp_source` — see the
-  generalized per-value mechanism below, which replaced it.)
+  passes the `LogConfig` it builds over that FRAM instance, one per FRAM store (L.4). The SGP40's
+  compensation inputs are per-value wiring instead (below).
 - `mode="attr"`: the instance's `target` attribute/bound method is passed instead of the instance
   itself — `asy_notification_service.py`'s `signal_sink` resolves to `neopixel.request_signal`, not
   `neopixel`, satisfying `NotificationService.__init__`'s existing `request_signal_cb` parameter
@@ -4702,15 +4681,11 @@ positionally/by keyword with the same name as `_WIRING`'s field (e.g. `led_targe
 kwarg) — **not a getter or callback function.** The consumer reads the producer's
 own already-concurrency-safe `get_data()` (`SensorReader`'s existing `_data_lock`-guarded namedtuple
 — C.4.2 — is itself the "locked state" value holder here; no new per-field `LockedValue` was
-introduced) directly, inline, wherever the value is needed. This eliminates a real category of
-hand-written wrapper functions that used to exist purely to close over a producer reference:
-`sensortask_wozi.py`'s `sgp_comp_callback()` (SGP40's temperature/humidity compensation input) is
-gone, replaced first by a `_WIRING`-declared `comp_source: SCD30_Reader` parameter, and — once
-SPECIFICATION.md Part L.6.3 generalized per-value measurement wiring to every
-module consuming one scalar out of another's `get_data()` result — by the independent
-`temperature`/`humidity` value references (`ValueRef(source, field)`) described in C.14.3 below,
-resolved via `getattr(data, ref.field)` inside `_read_sgp()` rather than a whole-object reference
-fixed to one producer class.
+introduced) directly, inline, wherever the value is needed, so no wrapper function closes over a
+producer reference. A module consuming one scalar of another's `get_data()` result takes a value
+reference instead (`ValueRef(source, field)`, L.6.3): the SGP40's `temperature`/`humidity`, resolved
+via `getattr(data, ref.field)` inside `_read_sgp()`, never a whole-object reference fixed to one
+producer class.
 
 **A `_WIRING` reference is a narrow exception (agent, 2026-09-10, `e2bcf6f`) to "no `src/` driver
 module imports another by name"** (A.7's dependency-graph note): e.g. `asy_notification_service.py`
@@ -4719,16 +4694,13 @@ imports `NeopixelDriver` from `asy_neopixel_driver.py` at module level, for `_WI
 `FRAMManager`. This is a purely one-directional, no-cycle class-level reference — a consumer
 driver may import a producer driver's class, never the reverse — the same direction the topological
 construction order below already requires, so it doesn't reintroduce a real coupling cycle at the
-object-graph level. `asy_sgp40_driver.py` used to be the canonical example of this (importing
-`SCD30_Reader` for its old `comp_source` parameter's type) — L.6.3's generalization removed that
-import entirely, since a per-value producer is now resolved structurally (by attribute name) rather
-than nominally (by class), so `asy_sgp40_driver.py` no longer needs to know its compensation
-source's concrete type at all.
+object-graph level. A per-value producer is resolved structurally (by attribute name), not
+nominally (by class), so a value consumer such as `asy_sgp40_driver.py` imports no producer at all.
 
 **Ordering hazard #1 (object existence)**: since the consumer's constructor call references the
 producer's already-built Python object, the producer must be constructed first. A producer is
 constructed before its consumer (A.7's construction order); any order is valid for the FRAM layout,
-which is fixed within one build only (A.4). `buildgen/graph.py` (Session 3) topologically sorts a
+which is fixed within one build only (A.4). `buildgen/graph.py` topologically sorts a
 device's whole instance list by `_WIRING` dependency plus the mandatory-infra edges (`ntp` after
 `conn`, `sysfunct` after `ntp`, all three after the device's `fram_target` instance if set): every
 `sgp40` and every `notification` instance depends on `ntp`; with `led_target` set, the order is fram
@@ -4999,8 +4971,7 @@ contract once at module level rather than repeating it per function — applies 
 Consistent control-flow order: `None`-check, range-check (plain guard), then `try`-wrapped
 computation. **Keep documentation itself concise — a module docstring is a short header, not an
 essay.** A permanent design fact belongs in CLAUDE.md/this document; an open question belongs in
-BACKLOG.md. **CLAUDE.md's comment-discipline rule is the authority and this line used to contradict
-it**: the **3 lines, prefer fewer** cap holds for the module header block and for every inline
+BACKLOG.md. **CLAUDE.md's comment-discipline rule is the authority**: the **3 lines, prefer fewer** cap holds for the module header block and for every inline
 comment block alike — a few short, load-bearing WHY notes next to the line they explain, never
 narrative. Every scope measures zero over-cap blocks (CLAUDE.md states how to count).
 
@@ -5279,17 +5250,12 @@ generated wiring plans and answers which device has the property a scenario need
 
 **Why the split exists is memory, not organization.** `scripts/test.sh` runs one Unix-port process
 per `tests/test_*.py` file, sharing one heap across every test function in it, so a single file
-holding all 6 devices' scenarios builds that many real `build_system()` object graphs in one heap.
-Confirmed directly (2026-09-17): before the split,
-`tests/test_digital_twin_sensortask_integration.py` made ~29 real socket-backed `build_system()`
-calls in one process (18 device-generic + ~11 wozi-only) and intermittently failed with a real
-`MemoryError` under `scripts/test.sh`'s parallel job pool at a reduced test heap, while passing
-reliably in isolation. The split cuts the worst case to that file's own ~11 — a fix at the root,
-not a per-file heap override or a `gc.collect()` prop (Part I.4(f)).
-
-It is **not** a reversion to the old per-device test-body duplication that Part L's Session 6.2
-collapsed: that collapse removed six hardcoded *copies* of every scenario. Every body still lives
-exactly once and stays device-generic; the per-device run adds no logic.
+holding all 6 devices' scenarios builds that many real `build_system()` object graphs in one heap:
+`tests/test_digital_twin_sensortask_integration.py`, unsplit, made ~29 socket-backed
+`build_system()` calls in one process and failed with a real `MemoryError` at a reduced test heap
+(2026-09-17); split, its worst case is ~11 — a fix at the root, not a per-file heap override or a
+`gc.collect()` prop (Part I.4(f)). Every scenario body still lives exactly once and stays
+device-generic; the per-device run adds no logic.
 
 `tests/test_digital_twin_sensortask_integration.py` runs its driver-specific scenarios only on the
 devices `tests/_twin_devices.py` picks for them, and a scenario of a mechanism every device shares (the
@@ -5392,8 +5358,8 @@ differences are F.7's `build-lwip` rows.
 
 Any test file that imports a `sensortask_<device>.py` module directly (`tests/_sensortask_scenarios.py`
 and every `tests/test_digital_twin_*.py` that does the same) needs one more
-prerequisite first, since no such module is ever committed to `src/` any more (SPECIFICATION.md Part L's
-Session 6): `uv run scripts/_generate_sensortask_modules.py` to populate the gitignored
+prerequisite first, since no such module is committed to `src/` (L.2):
+`uv run scripts/_generate_sensortask_modules.py` to populate the gitignored
 `build/generated_src/` directory — it writes every device's module, its two boot entries
 (`sensortask_<device>_main.py`, `sensortask_<device>_main_noautostart.py`), its expected boot facts
 (`sensortask_<device>_expected.json`, A.7), its twin wiring plan, definitions and REST reference
@@ -5442,8 +5408,8 @@ device's graph once per boot, never several devices' graphs repeatedly in one pr
 moved with the suite's shape and is recorded here because it is never raised as a fix (agent,
 2026-09-17; no per-file override: owner, 2026-09-17):
 
-- WP1+WP2 made the then-monolithic `test_sensortask.py` build all six devices' graphs across ~330
-  test functions **in one process**, pushing 8M → 32M (8M and 16M both hit real `MemoryError`s
+- Building all six devices' graphs across ~330 test functions **in one process** (a single
+  `test_sensortask.py`) pushed 8M → 32M (8M and 16M both hit real `MemoryError`s
   partway through that file: 81/321 and 176/321 passing).
 - Fixed at the root instead — splitting that file per device (55 builds per process, not 330) let
   its heaviest per-device file pass even at 4M in isolation.
@@ -5887,12 +5853,10 @@ deterministic, needing no scan/discovery.
 
 ### E.6.5 L1 vs. L2: overlap scan
 
-Six subsystem pairs scanned in full: BMP3xx, SGP40, FRAM (166 L1 vs. 18 L2 tests), Neopixel/
-WiFi, Webserver, Sensortask each found complementary, with only small pockets of intentional or
-low-value duplication — one real cluster (Sensortask: 4 near-identical "same REST round-trip, once
-direct, once over real HTTP" pairs) is the cluster `_shared_rest_roundtrip.py` targets.
-Consolidation should target that specific shape, not force uniformity onto pairs already correctly
-complementary (agent, 2026-09-04). **This complementary relationship is about which *aspect* of a
+L1 and L2 tests are complementary: each level proves its own aspect of a behaviour (E.6.1's
+table). A duplicated pair is consolidated by its shape — one REST round trip run both direct and
+over real HTTP shares `tests/_shared_rest_roundtrip.py` — and pairs that are complementary stay as
+they are (agent, 2026-09-04). **This complementary relationship is about which *aspect* of a
 behavior each level proves (E.6.1's own table) — it does not exempt real-hardware-facing behavior
 from needing a real-hardware check at all; see E.6.6.** How faithful each twin fake is:
 `digital_twin/README.md`'s fidelity table. A device script takes every board fact from `BENCH`, one
@@ -5963,45 +5927,22 @@ level: the unit only uses DHCP results, a documented known limitation (owner, 20
 
 ## E.7 A digital-twin soak's wall clock measures GC timing, not the code under test
 
-Measured against the soak as it ran in-process at the time (`digital_twin/run_dev_integration.py`,
-since retired and replaced by `digital_twin/run_generic_integration.py` plus the host-side Run 11
-in `scripts/_digital_twin_ci_suite.py` - E.9): a bounded soak driving ~294 real HTTP requests
-through the whole constructed object graph. Its duration is **deterministic per build and
-meaningless across builds**: it is set by where `gc` collections land on the Unix port's 8 MB heap,
-and that moves with heap layout, which moves with almost any source change. The mechanism below is
-unchanged by where the soak's request-driving loop runs (in-process or host-side, E.9) - it is a
-property of the Unix port's allocator, not of which process issues the requests.
+A twin soak's duration is **deterministic per build and meaningless across builds**: it is set by
+where `gc` collections land on the Unix port's heap, which moves with heap layout and so with almost
+any source change — a property of the allocator, not of the process that issues the requests (E.9).
+The evidence (dev, 2026-09-11, a soak of ~294 real HTTP requests through the whole object graph,
+three rounds each): 44.07 s before F.5.8's clamp in `src/asy_uart_driver.py`, about 58.4 s with it
+and 61.5 s with F.5.9's idle rate, while the changed code ran 0 times (the link idle, `ready()` never
+`True`); three counter increments in an unchanged version reproduce the slow figure, and
+`gc.threshold(-1)` for the soak inverts the ordering (44.07 s → 57.7 s, 61.5 s → 44.5 s).
 
-Measured on the dev variant (2026-09-11), same probe, same host, interleaved, three rounds each,
-against three versions of `src/asy_uart_driver.py`:
-
-| `asy_uart_driver.py` | Soak wall clock | `_buffered()` calls during the run |
-|---|---|---|
-| before the F.5.8 clamp | 44.07 / 44.07 / 44.07 s | — |
-| with the clamp | 58.43 / 58.33 / 58.56 s | **0** |
-| with the clamp and F.5.9's idle rate | 61.49 / 61.79 / 61.24 s | **0** |
-
-The changed code is never executed during that run: the link is idle, so `ready()` never returns
-`True` and no read path is entered at all — confirmed by instrumenting the module itself, not
-inferred. Adding three counter increments to an *unchanged* version reproduces the slow figure on
-its own. And calling `gc.threshold(-1)` for the duration of the soak **inverts the ordering**
-(44.07 s → 57.7 s, 61.5 s → 44.5 s), which is what identifies the mechanism.
-
-Two consequences, both load-bearing:
-
-- **Never bisect a twin soak's runtime to a code change.** It will produce a confident, stable,
-  wrong answer — it did once (2026-09-11), attributing a regression to a function with zero call
-  sites reached. Count the operation you actually care about instead: F.5.9's finding was
-  established by counting poll rounds (14 039 → 839), which is a property of the code rather than
-  of the allocator.
-- **A soak's own timing budget is a liveness backstop, not a performance assertion**, so it belongs
-  above the whole observed range rather than near it — the in-process soak this was measured
-  against gave itself 120 s for a 44-62 s run (`tests/test_digital_twin_run_dev_integration.py`,
-  since retired). Run 11's own host-side equivalent (`scripts/_digital_twin_ci_suite.py`) has no
-  single such budget to mistune in the first place: each `_http()` round trip has its own 5 s
-  timeout and `_shutdown()` gives the subprocess 15 s to exit, neither tied to the soak's own
-  GC-dependent wall clock at all — this is what E.9's host-side move buys for free, not just where
-  the request-driving code lives.
+- **Never bisect a twin soak's runtime to a code change**: it gives a confident, stable, wrong
+  answer. Count the operation you care about instead — F.5.9's poll rounds (14 039 → 839) are a
+  property of the code, not of the allocator.
+- **A soak's timing bound is a liveness backstop, not a performance assertion**, so it sits above
+  the whole observed range. The host-side Run 11 (`scripts/_digital_twin_ci_suite.py`) has no single
+  such bound: each `_http()` round trip has its own 5 s timeout and `_shutdown()` gives the
+  subprocess 15 s, neither tied to the soak's GC-dependent wall clock.
 - **A soak's memory verdict is a rate between two windows, never one absolute delta** (E.8's first
   trap). `tests/test_asy_webserver_service.py`'s lifecycle soak reads the collected free heap after
   a 20-cycle warm-up and again at cycles 80 and 200, and bounds the bytes kept per cycle between
@@ -6129,14 +6070,13 @@ own heap. Get it out through the narrowest possible channel (a log line on a fix
 log's byte size before and after the measured cycles) and do nothing else with it in-process;
 compute, threshold, and report the verdict host-side.
 
-Two real findings this rule caught, both worth re-reading in full:
-- **The Run 11 memory-trend soak itself** used to drive its own request loop from inside the twin's
-  process via an in-process client, sharing the twin's own heap with the code under test. Moved
-  entirely host-side (2026-09-14): `scripts/_digital_twin_ci_suite.py`'s `_run_11_soak()` now drives
-  every warmup/cycle request over real HTTP from the CPython suite process itself, and
-  `digital_twin/run_generic_integration.py` (the retired per-device runners' replacement) keeps only
-  `_mem_sampler()` — the one `gc.mem_free()` emitter above — plus the `gc.collect()` that settles it
-  before each sample (I.4(e)'s one twin exception).
+Two cases of this rule:
+- **The Run 11 memory-trend soak** drives every warmup and cycle request over real HTTP from the
+  CPython suite process (`scripts/_digital_twin_ci_suite.py`'s `_run_11_soak()`), since an
+  in-process client shares the twin's heap with the code under test (2026-09-14);
+  `digital_twin/run_generic_integration.py` keeps only `_mem_sampler()` — the one `gc.mem_free()`
+  emitter above — plus the `gc.collect()` that settles it before each sample (I.4(e)'s one twin
+  exception).
 - **`digital_twin/machine.py`'s `UARTLink.wire_log`** — E.8's own bullet — grew with the traffic,
   fine for a unit test with direct object access to clear it, a real bug for any driver that boots
   the twin as an opaque subprocess and has no such access. The fix was to give the in-process side
@@ -6800,33 +6740,21 @@ regardless. `network.STAT_GOT_IP` is not STA-only (an AP interface reports it to
 not reporting it is re-activated only if inactive and counts as having no client
 (`lib/cyw43-driver/src/cyw43_lwip.c:300-323`).
 
-**This backstop is safe in practice, with one narrow, accepted residual window (WP5,
-2026-09-16).** Every real flash write at run time is still *triggered* only through the REST PUT
-path — nothing else ever calls `ConfigManager.write_config()`; at boot `setup()` writes at most
-once per file, the schema defaults when the file is genuinely absent (owner, 2026-10-01) or the one
-repair of an existing, readable file (C.7.3), and a commanded config reset deletes the files before
-its reboot (A.8). A write answered "Valid" before a system command closes the config stores is on
-flash when the reset fires; one arriving after is refused; after the supervisor's own reboot
-decision, a write answered inside the 4 s window is flushed at the reset; a hung shutdown step ends
-in a watchdog reset (A.8). But `write_config()` itself no longer performs that
-write inline: it validates and stages synchronously, then hands the actual `open()`/`json.dump()`
-call to an independent `asyncio.create_task()`, decoupled from the request/response entirely (see
-this Part's own note below and BACKLOG.md, 2026-09-15 — the RP2040 flash write disables interrupts
-port-wide for its duration, and doing it inline was resetting the very HTTP connection whose PUT
-triggered it — see `asy_config_manager.py`'s own `write_config()`/`_flush_staged()` comments for the
-full mechanism). So the older, stronger claim — "a device whose API is unreachable structurally
-cannot have a flash write in flight" — is no longer exactly true: there is now a brief window,
-between the response being sent and the deferred flush actually running, where the API could in
-principle already read as unreachable while a write is still pending. In practice this window is a
-single scheduler tick (microseconds to low milliseconds), while the WiFi backstop only ever power-
-cycles after a *sustained* outage (F.2's own measured data: essentially never inside 150s) — so the
-two are separated by many orders of magnitude, and a power cycle triggered by that backstop lands
-long after any pending flush has already resolved one way or the other. The residual risk,
-accepted by the owner (owner, 2026-09-26), is narrower and different in kind: a power loss landing
-in that same brief window loses the just-accepted config change silently (never corrupts anything:
-the next boot's `setup()` repairs whatever the interrupted write left, C.7.3). Combined with the
-reboot-safe boot chain (A.4), power-cycle recovery stays (above) — this residual window narrows what
-"inherently safe" means, it doesn't remove the design's own safety property.
+**The backstop and the flash writes.** At run time every flash write is triggered through the
+REST PUT path alone — nothing else calls `ConfigManager.write_config()`; at boot `setup()` writes at
+most once per file, the schema defaults when the file is genuinely absent (owner, 2026-10-01) or the
+one repair of an existing, readable file (C.7.3), and a commanded config reset deletes the files
+before its reboot (A.8). `write_config()` validates and stages synchronously and hands the
+`open()`/`json.dump()` to its own task (`_flush_staged()`, `asy_config_manager.py`), because the
+RP2040's flash write disables interrupts port-wide for its duration and done inline it reset the
+connection whose PUT triggered it. A write answered "Valid" before a system command closes the
+config stores is on flash when the reset fires; one arriving after is refused; after the
+supervisor's own reboot decision, a write answered inside the 4 s window is flushed at the reset; a
+hung shutdown step ends in a watchdog reset (A.8). Between a PUT's response and its deferred flush
+lies about one scheduler tick, while the Wi-Fi backstop power-cycles only after a sustained outage
+(essentially never inside 150 s, above), so a backstop reset lands long after the flush. A power
+loss inside that window may lose the just-accepted change silently; the write never corrupts, since
+the next boot's `setup()` repairs what an interrupted write left (owner, 2026-09-26; C.7.3).
 
 ## F.3 Long-blocking operations must not stall timing-sensitive work
 
@@ -6942,8 +6870,7 @@ fram_busy_status_lockout.py`).
 
 ### F.5.1 `machine.I2C.deinit()`/`machine.SPI.deinit()` do not deactivate an rp2 bus
 
-**Both are no-ops on this port**, and both were previously documented in this repo as if they
-tore the hardware down. The generic `machine_i2c_deinit()`/`machine_spi_deinit()` in
+**Both are no-ops on this port**: neither tears the hardware down. The generic `machine_i2c_deinit()`/`machine_spi_deinit()` in
 `extmod/` only call through to a `.deinit` slot on the port's protocol struct; rp2's
 `machine_i2c_p`/`machine_spi_p` (`ports/rp2/machine_i2c.c`, `ports/rp2/machine_spi.c`) never set
 that slot, and `mp_machine_soft_i2c_p` sets it to `NULL` explicitly. The peripheral keeps running
@@ -8781,10 +8708,8 @@ the code it checks. Root `.nvmrc` pins the Node version.
 **The workflow triggers on `push` to every branch as well as on `pull_request`, and that is not
 redundancy.** A `pull_request` run builds `refs/pull/N/merge`; when a PR conflicts with its base
 that ref cannot be created, so GitHub creates **no run at all** — the branch silently stops being
-tested, with nothing red anywhere to notice. Found the hard way (2026-09-18): `main` landed its own
-ISL29125 promotion on 2026-09-14, `claude/automated-build-chain-nuzumw` went conflicted the same
-day, and because `push` was scoped to `main` alone, **128 commits went unverified** before anyone
-looked. The `push` leg is the branch's own guaranteed coverage; the shared concurrency group
+tested, with nothing red anywhere to notice (with `push` scoped to `main` alone, 128 commits of a
+conflicted branch once went unverified, 2026-09-18). The `push` leg is the branch's own guaranteed coverage; the shared concurrency group
 (`github.head_ref || github.ref_name`, identical for both triggers on one branch) plus
 `cancel-in-progress` keeps exactly one of the two alive per push, so the second trigger costs no
 extra matrix time. This is the same failure class as the `paths:`-filtered second workflow file
@@ -9580,69 +9505,25 @@ boundary's exactness; the 2048-4096 band rejecting is what tells this firmware f
 one. The binding itself stays a mock-tier and source-level claim, not hardware-confirmed (agent,
 2026-09-19, `1ce5d84`).
 
-**Run on silicon, 2026-09-19** [HW]. W1-W4 pass on the real `dev` board over real WiFi: the
-boundary is exact (2047 -> 200, 2048 -> 200, 2049 -> 413, so Microdot's `<=` is honoured), the
-2048-4096 band that the previous firmware accepted now answers 413 on both 3072 and 4096 (W2, the
-only row that tells the two firmwares apart), the schema maximum still fits (sent as 1132 B on the
-day, since corrected to the route-wide maximum above), and a mixed
-stream is answered request-by-request. `WEBSERVER`'s error log stayed **empty** throughout, which
-is the assertion that matters: a 413 is raised inside vendored Microdot before any of our own code
-is reached, so anything appearing there would be a finding about this project.
+**On silicon** (`dev`, 2026-09-19) [HW]: the boundary is exact (2047 -> 200, 2048 -> 200, 2049 ->
+413, so Microdot's `<=` is honoured); 3072 and 4096 B answer 413 (W2, the row that tells this
+firmware from one with the old limits); a mixed stream is answered request by request; and
+`WEBSERVER`'s error log stays **empty**, since a 413 is raised inside vendored Microdot before any
+project code runs.
 
-**W5 fails, and not for the reason it was written to catch** [HW]. Its original write-up predicted a
-soft spot where an oversized body draws a clean reset instead of a 413, and prescribed relaxing the
-oversized arm. That prescription is wrong here: **half the resets are on bodies well under the
-cap** — 64, 512, 900 and 2048 B — in 5 of 5 runs. A control with every body under the cap, and a
-second with all bodies at 64 B, reset at the same rate, so **the resets are a property of
-concurrency against `max_connections = 4`, not of the body cap at all**. Measured rate against
-concurrency, tiny bodies only: 2 -> 0%, 4 -> 25%, 6 -> 16%, 8 -> 12%, 12 -> 33%, 16 -> 25%,
-24 -> 25%. Resets begin **at** the connection ceiling, not beyond it, so W5's premise — that 24
-concurrent clients each receive a definitive status — cannot hold on this server at any
-concurrency above 2. The server stayed responsive and did not reboot under the load, and `src/` is
-not implicated.
-
-**Why the rate is non-zero at exactly 4, which that curve leaves looking odd** [SRC]. A slot is
-released in `_serve()`'s `finally`, *after* `_close_writer(writer)` has awaited the close — so it
-outlives the response the client already holds. Four concurrent clients therefore need four
-genuinely free slots, and the `reset_all_error_logs()` PUT each of these tests makes immediately
-beforehand can still be holding one: 3 free slots, 4 clients, **1 refusal = the measured 25 %**.
-`test_connections_at_and_above_the_real_socket_limit_degrade_cleanly` documents the same lag in its
-own comment and takes a `time.sleep(1.0)` settle for it. So "resets begin *at* the ceiling" is the
-slot-release lag, not a ceiling that is really 3.
-
-**What the test should have asserted, and now does** [SRC]. Across the 96 concurrent requests those
-runs recorded, **not one was answered with the wrong status** — every failure is a *refusal*. So the
-body cap held under concurrency and only the assertion was wrong. `_serve()`'s reject-when-full
-branch closes without writing a response and does not choose whether the client sees FIN or RST
-(`test_connections_at_and_above_the_real_socket_limit_degrade_cleanly` accepts either for that
-reason), so a refusal above `max_connections` is the ceiling's business, not the cap's. The rewritten
-row asserts the property the cap owns — **every client that IS answered is answered correctly** —
-tolerating a ceiling close alone: any other exception, a timeout included, still fails, so a real
-hang cannot hide behind it, and a floor on answers plus a required 200-and-413 pair stop it passing
-vacuously. Replayed against all four recorded runs it passes each one.
-
-**Confirmed on silicon, 2026-09-19** [HW]. In the full bench run after the 2026-09-19 base merge (`HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7I) and in three dedicated
-repeats afterwards, **all four of those assertions hold every time**: 20 of 24 requests answered
-against a floor of 4, both verdicts present, no non-ceiling exception, and — the claim the cap
-actually owns — **not one request answered with the wrong status**. So the body cap is now
-established under real concurrency on real hardware, not only by replay. `WEBSERVER`'s error log
-stayed empty throughout.
-
-The row nonetheless went red on the line *after* those four: a single-shot `GET /status` health
-check, made with no settle, raising `ConnectionResetError`. The server was not unresponsive —
-polled rather than asked once, it answers 200 **75 ms** later (two of three repeats; the third
-answered first try). It is this same slot-release lag at the other end of the test: 24 workers'
-slots are still draining through `_serve()`'s `finally`, and the row took its settle *before* its
-workers and none *after* them, while `tests_hardware/`'s own `http_client.fetch()` is single-shot
-by construction. Nothing in `src/` was implicated.
-
-**Fixed in the test, 2026-09-19** (owner, 2026-09-19, `ac8d404`;
-`HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7I-§7K has the account). The health check now uses the
-same bounded `wait_until()` that
-`test_connections_at_and_above_the_real_socket_limit_degrade_cleanly` already uses in the same file
-for the identical lag. This does not weaken it: `wait_until()` retries a check that raises but still
-raises `TimeoutError` when its bound expires, verified against a silent address and a dead port, and
-all four cap assertions are untouched. W5 has run green three times since.
+**Under concurrency the cap owns correct answers, not answers** [HW, SRC]. Against
+`max_connections = 4` some concurrent clients are refused whatever their body size (tiny bodies:
+2 -> 0%, 4 -> 25%, 6 -> 16%, 8 -> 12%, 12 -> 33%, 16 -> 25%, 24 -> 25%). Refusals begin at exactly 4
+because a slot is released in `_serve()`'s `finally`, after `_close_writer(writer)` has awaited the
+close, so it outlives the response its client already holds, and the `reset_all_error_logs()` PUT a
+test makes just before can still hold one; `_serve()`'s reject-when-full branch closes without a
+response and does not choose FIN or RST. So W5 asserts what the cap owns: every client that IS
+answered is answered correctly, a ceiling close tolerated, any other exception (a timeout included)
+failing, with a floor on answers and a required 200-and-413 pair; on silicon 20 of 24 requests are
+answered and none with a wrong status. Its closing health check polls with the bounded
+`wait_until()` instead of asking once, since the workers' slots are still draining (it answers 200
+about 75 ms later) (owner, 2026-09-19, `ac8d404`; `HEAP_FRAGMENTATION_MEASUREMENTS.md` archive
+§7I-§7K).
 
 ---
 
