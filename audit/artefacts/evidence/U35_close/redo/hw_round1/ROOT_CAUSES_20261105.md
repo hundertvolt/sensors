@@ -91,12 +91,16 @@ WEBSERVER Unhandled exception in route handler: memory allocation failed, alloca
 | 3 readers, 60 s | boot, uptime about 10 s | 14 of 46 | 14 | 2,416 / 15,328 / 42,848 |
 | 3 readers, 60 s | boot, uptime about 12 s | 8 of 46 | 8 | 2,096 / 19,232 / 36,384 |
 | 3 readers, 60 s | settled, uptime 72 s | 10 of 48 | 10 | 1,552 / 16,832 / 35,312 |
+| 1 reader, 60 s | settled, uptime 567 s | 0 of 42 | 0 | 80 / 33,664 / 53,696 |
+| 2 readers, 60 s | settled, uptime 634 s | 1 of 46 | 1 | 784 / 23,568 / 52,640 |
+| 3 readers on `/measurements`, 60 s | settled, uptime 703 s | 0 of 313 | 0 | not read |
 | 3 readers + `UartHazards`, 150 s | uptime about 20 s | 38 of 109, plus 3 timeouts and 5 resets | 75, `W48` and `W60` among them | not read |
 
 - **Failed sizes:** 242, 250, 251, 252, 253, 254, 255, 256, 257 bytes.
 - **Reproduce:** `DUT_IP=<addr> .venv/bin/python repro_status_load.py base 3 60 /status`; add the hazard run with `hazard` in place of `base`. Needs `pyserial` from the venv, and the console must be free. Writes no flash, only `WEBSERVER` log entries to FRAM.
 - **Lead (inferred):** those sizes sit just under `_DEFAULT_CHUNK_BYTES = 256` (`src/asy_webserver_service.py:149`), so the failing allocation looks like `_PieceWriter`'s piece join (`:200-219`) during `_build_status_pieces`. The comment at `:150-151` sized that value to the holes a fragmented heap has at -1. A failure at 256 B would mean those holes are now smaller, or the heap is really full.
-- **Not known:** one reader's rate, `/measurements` under the same load (both probes returned nothing, item 2), whether the threshold image shows it, and what holds the heap. `MemFree` is read mid-load, so it does not show the state at the failure.
+- **So it depends on overlapping `/status` requests.** One response is 7,369 B and takes 1.4 s; `/measurements` is 572 B and takes 0.24 s. `_build_status_pieces` (`:641-671`) builds the whole response before any of it is sent, with awaits between sections, and `_pieces_response` (`:971`) holds every piece until the socket has taken it. So each open `/status` holds up to about 7.4 KB in 256 B blocks while others build theirs, and each build also reads config files (212 `Reading config data` lines over 42 requests). This fits the rates above; I did not measure the heap at the moment of failure.
+- **Not known:** whether the threshold image shows it, and what else holds the heap. `MemFree` is read mid-load, so it does not show the state at the failure.
 - **Also seen under this load:** `UARTLINK` `Failures` rose by 2-4 per minute, though `test_the_link_stays_healthy_while_the_api_is_hammered` passes, and it hammers something other than `/status`.
 - **Why the suite did not see it first:** 5g's `test_serving_heap_at_default_gc.py` tests never ran; they were in the cascade.
 
