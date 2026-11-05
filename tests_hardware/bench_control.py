@@ -201,14 +201,15 @@ class BenchBridge:
 
     def kick_all_stations(self) -> None:
         # kick_client()'s workaround for every station associated now, not an assumed single DUT MAC; called right
-        # before a reset that expects a genuine STA reconnect (harness.kick_then_reset()).
+        # before a reset that expects a genuine STA reconnect (harness.kick_then_reset()), or right after one the
+        # board's own command armed (harness.kick_after_reset()).
         iface = self.wifi_iface()
         for mac in bench_associated_station_macs(iface):
             self.kick_client(mac)
 
     def kick_client(self, mac_address: str) -> None:
         # Workaround: a stale AP-side station entry survives the DUT's reset and blocks its reassociation
-        # (tests_hardware/README.md traps); one `iw station del` per station before each reset. Remove when a round
+        # (tests_hardware/README.md traps); one `iw station del` per station per reset. Remove when a round
         # records no stale-entry reconnect failure.
         iface = self.wifi_iface()
         proc = subprocess.run(["sudo", "iw", "dev", iface, "station", "del", mac_address], capture_output=True, text=True, timeout=_CMD_TIMEOUT_S, check=False)

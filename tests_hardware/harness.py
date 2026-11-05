@@ -517,6 +517,14 @@ def kick_then_reset(board: "Board", bench: "BenchBridge") -> None:
     board.hard_reset()
 
 
+def kick_after_reset(board: "Board", bench: "BenchBridge", timeout_s: float) -> None:
+    # kick_all_stations()'s workaround for a reset the board's own command arms: sent once the board has left USB, as a
+    # DUT still shutting down rejoins after an earlier kick. Its node is watched, never opened, so a held log tail reads on.
+    if not _poll(lambda: not Path(board.device).exists(), timeout_s):
+        raise HardwareTestFailureError(f"the board did not leave USB within {timeout_s}s of the command - no reset of its own to kick after")
+    bench.kick_all_stations()
+
+
 def observe_during(board: "Board", action: "Callable[[], T]") -> "tuple[T, list[str]]":
     # The board's log over a whole fault window: tailed from before `action` until it returns plus
     # _OBSERVE_TAIL_AFTER_S, so a crash during the recovery is seen too. A tail that broke raises after the action.

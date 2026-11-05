@@ -470,6 +470,34 @@ def test_kick_then_reset_kicks_the_stations_before_the_one_reset() -> None:
     assert fake.calls == ["kick_all_stations", "hard_reset"]
 
 
+@pytest.mark.parametrize(("gone_at", "calls"), [(3.0, ["kick_all_stations, node gone"]), (None, [])])
+def test_kick_after_reset_kicks_once_the_board_has_left_usb_and_never_before(monkeypatch: pytest.MonkeyPatch, clock: _Clock, tmp_path: Path, gone_at: "float | None", calls: "list[str]") -> None:
+    # A command's own reset takes the node `gone_at` seconds after the reply (never: no reset); the node is watched,
+    # never opened, and the kick lands only after it went. No reset within the bound raises, nothing kicked.
+    node = tmp_path / "ttyACM0"
+    node.touch()
+
+    class Node(_Recorder):
+        device = str(node)
+
+        def kick_all_stations(self) -> None:
+            self.calls.append(f"kick_all_stations, node {'present' if node.exists() else 'gone'}")
+
+    def sleep(seconds: float) -> None:
+        clock.sleep(seconds)
+        if gone_at is not None and clock.now >= gone_at:
+            node.unlink(missing_ok=True)
+
+    monkeypatch.setattr(time, "sleep", sleep)
+    fake = Node()
+    if gone_at is None:
+        with pytest.raises(harness.HardwareTestFailureError, match="did not leave USB"):
+            harness.kick_after_reset(fake, fake, 30.0)  # type: ignore[arg-type]
+    else:
+        harness.kick_after_reset(fake, fake, 30.0)  # type: ignore[arg-type]
+    assert fake.calls == calls and clock.now == pytest.approx(gone_at or 30.0)
+
+
 def test_the_soak_reads_systems_log_first_only_after_a_hard_reset_and_a_fresh_boot() -> None:
     # Its calls in source order, no twin: without a bench the session's own reset leaves the board mid-boot, so the
     # first live read must follow a reset of the soak's own, the board back on USB and the boot line.

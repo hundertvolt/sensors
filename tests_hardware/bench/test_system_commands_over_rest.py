@@ -11,7 +11,7 @@ import evidence
 import http_client
 import pytest
 from error_log_helpers import code, get_errcount, save_errcount
-from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, REPO_ROOT, SRC_DIR, HardwareTestFailureError, crash_lines, dut_hostname_candidates, fram_backed_logger_names, hotspot_password, observe_during, parse_facts, picotool, restore_board_to_serving, save_fram_raw, wait_until
+from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, REPO_ROOT, SRC_DIR, HardwareTestFailureError, crash_lines, dut_hostname_candidates, fram_backed_logger_names, hotspot_password, kick_after_reset, observe_during, parse_facts, picotool, restore_board_to_serving, save_fram_raw, wait_until
 
 from buildgen.validate import module_int_const
 
@@ -30,6 +30,7 @@ _RR_WATCHDOG, _RR_REBOOT, _RR_CONFIG_RESET, _RR_FRAM_ERASED = (module_int_const(
 _SAVED_SET = "config-files-before-reset.txt"  # the dump's verbatim output, under each run's evidence directory
 # Whole-string equality is the dispatch's one check: each of these is one edit away from a command word.
 _NEAR_MISSES = ("Reboot", "reboot ", "REBOOT", "erase", "erasefram!", "eraseFRAM", "resetConfig", "boot", "", "mempause1", 1, None)
+_SHUTDOWN_WORDS = ("erasefram", "reboot", "bootloader")  # the commands that end in a reset of the board's own (or BOOTSEL)
 _PUT_TIMEOUT_S = 10.0
 _SERVING_TIMEOUT_S = 120.0
 _SERVING_POLL_S = 2.0
@@ -59,6 +60,15 @@ def _join_hotspot(bench: "BenchBridge", ssid: str) -> None:
             time.sleep(_SERVING_POLL_S)
         else:
             return
+
+
+def _kicked(board: "Board", bench: "BenchBridge", answers: "dict[str, str]") -> "tuple[dict[str, str], float]":
+    # The answers by word and when they came, returned once an accepted shutdown has taken the board off USB (its reset,
+    # or BOOTSEL) and the stale station entry that leaves is kicked; with none accepted, at once.
+    replied = time.monotonic()
+    if "Valid" in (answers.get(word) for word in _SHUTDOWN_WORDS):
+        kick_after_reset(board, bench, _SERVING_TIMEOUT_S)
+    return answers, replied
 
 
 def _marked(lines: "list[str]", context: str) -> None:
@@ -152,10 +162,9 @@ def test_fram_erase_over_rest_blanks_every_error_log(board: "Board", bench: "Ben
     try:
         save_fram_raw(board, "erase-over-rest")
         restore_board_to_serving(board, bench, dut_ip)
-        answer, lines = observe_during(board, lambda: _command(dut_ip, "erasefram"))
-        replied = time.monotonic()
+        (answers, replied), lines = observe_during(board, lambda: _kicked(board, bench, {"erasefram": _command(dut_ip, "erasefram")}))
         _marked(lines, "the FRAM erase")
-        assert answer == "Valid", f"erasefram was answered {answer}"
+        assert answers["erasefram"] == "Valid", f"erasefram was answered {answers['erasefram']}"
         system = _serving_status(dut_ip, replied, result_note, "the FRAM erase")
         # A 2 here is the watchdog having reset the board mid-sequence, never the erase's own reboot.
         assert system.get("ResetReason") == _RR_FRAM_ERASED, f"the erase's reboot read {system.get('ResetReason')}, not {_RR_FRAM_ERASED}"
@@ -186,8 +195,7 @@ def test_erase_reboot_and_mempause_at_once(board: "Board", bench: "BenchBridge",
     try:
         save_fram_raw(board, "erase-reboot-mempause")
         restore_board_to_serving(board, bench, dut_ip)
-        answers, lines = observe_during(board, lambda: _race(dut_ip, ("erasefram", "reboot", "mempause")))
-        replied = time.monotonic()
+        (answers, replied), lines = observe_during(board, lambda: _kicked(board, bench, _race(dut_ip, ("erasefram", "reboot", "mempause"))))
         _marked(lines, "the raced commands")
         result_note(f"raced answers: {answers}")
         shutdown = sorted(answers[word] for word in ("erasefram", "reboot"))
@@ -203,12 +211,10 @@ def test_reboot_and_bootloader_at_once(board: "Board", bench: "BenchBridge", dut
     # No log tail here: a BOOTSEL win leaves no console to read until picotool's reboot; the errcount after is the read.
     save_errcount(dut_ip, "reboot-bootloader")
     try:
-        answers = _race(dut_ip, ("reboot", "bootloader"))
-        replied = time.monotonic()
+        answers, replied = _kicked(board, bench, _race(dut_ip, ("reboot", "bootloader")))
         result_note(f"raced answers: {answers}")
         assert sorted(answers.values()) == ["Failed", "Valid"], f"exactly one of reboot and bootloader must win: {answers}"
         if answers["bootloader"] == "Valid":
-            wait_until(lambda: not board.is_device_present(), timeout_s=_PUT_TIMEOUT_S, description="the board leaving USB for BOOTSEL")
             picotool(board, "reboot", timeout_s=_PICOTOOL_TIMEOUT_S)  # answers only a BOOTSEL device: no load, no flash write
         expected = _RR_WATCHDOG if answers["bootloader"] == "Valid" else _RR_REBOOT  # BOOTSEL loses the record: 2
         system = _serving_status(dut_ip, replied, result_note, "the raced reboot and bootloader")
