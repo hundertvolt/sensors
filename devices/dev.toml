@@ -49,8 +49,8 @@ rxbuf = 512
 txbuf = 512
 poll_wait_ms = 2
 poll_idle_ms = 50
-# The initiator's receive ring at its driver default, 4 x the 128-byte floor the build derives for
-# this link (Part J.6).
+# The receive ring at its driver default, 4 x the 128-byte floor the build derives for this link
+# (Part J.6).
 rx_ring = 512
 
 [bus.uart1]
@@ -61,9 +61,9 @@ rxbuf = 512
 txbuf = 512
 poll_wait_ms = 2
 poll_idle_ms = 50
-# The responder's ring holds the bench's 400 ms continuous-sender window: 4,608 B at 115200 baud,
-# rounded up to the power of two the DMA wraps (flash/test_uart_crossover.py).
-rx_ring = 8192
+# The same default: a ring sized for the bench's 400 ms continuous sender costs twice its size in
+# heap, 16 KB at 8,192 B, which dev's serving cannot spare (J.6).
+rx_ring = 512
 
 # --- sensor drivers -------------------------------------------------------------------------------
 
