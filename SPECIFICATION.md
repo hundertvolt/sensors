@@ -8994,8 +8994,11 @@ behind them is `HEAP_FRAGMENTATION_MEASUREMENTS.md`) are recorded in their modul
 
 Every GET route whose response grows with device configuration — `/status`, `/sensors`,
 `/measurements`, `/networking`, `/system`, `/notification` — writes its JSON through one
-`_PieceWriter` and hands Microdot `Response(iter(pieces), ...)` (already encoded, one copy) with an
-exact Content-Length. The writer encodes each JSON text fragment once and concatenates adjacent
+`_PieceWriter` and hands Microdot `Response(_drained(pieces), ...)` (already encoded, one copy, each
+piece dropped from the list as it is written) with an exact Content-Length; `/status` builds one
+response at a time (`_status_lock`), since a build holds its pieces until it returns and three
+concurrent builds left `dev`'s heap at `gc.threshold(-1)` no free run for a piece (agent,
+2026-11-05). The writer encodes each JSON text fragment once and concatenates adjacent
 fragments into pieces of at most `chunk_bytes` bytes — counted in bytes, so a non-ASCII SSID cannot
 make a piece longer than the cap — one `ServingLimits` field, default **256**
 (`_DEFAULT_CHUNK_BYTES`), that also sets the static-file read size below, so the two bounds cannot

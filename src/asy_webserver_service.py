@@ -25,7 +25,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from asyncio import StreamReader, StreamWriter
-    from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
+    from collections.abc import Awaitable, Callable, Iterable, Iterator, Mapping, Sequence
     from typing import NamedTuple, NoReturn, Protocol, TypeVar
 
     import asy_config_manager as cm
@@ -533,6 +533,7 @@ class WebserverService:
         self._port = serving.port
         self._open_conns = LockedCounter(init_value=0)  # the shared COUNTER_CAP; a gauge bounded by the backlog
         self._dropped = HourlyWindowCounter()  # HTTPDropped: the last 24 hours in hourly bins, allocated once here
+        self._status_lock = asyncio.Lock()  # one /status build at a time (Part I.3)
         max_content_length = serving.max_content_length
 
         Request.max_content_length = max_content_length  # a Request *class* attribute, not
@@ -602,8 +603,11 @@ class WebserverService:
         return result
 
     async def _get_status(self, _request: "_RequestLike") -> Response:
-        # Streamed like every configuration-sized route (Part I.3), its pieces built below.
-        return _pieces_response(await self._build_status_pieces())
+        # Streamed like every configuration-sized route, its pieces built below one build at a time: a build holds its
+        # pieces to its end, and concurrent builds would exhaust the heap's 256 B runs (Part I.3).
+        async with self._status_lock:
+            pieces = await self._build_status_pieces()
+        return _pieces_response(pieces)
 
     async def _get_system(self, _request: "_RequestLike") -> Response:
         result = await self._get_settings_flat("system")  # see _get_networking()'s own comment
@@ -968,6 +972,13 @@ class WebserverService:
         await self.pr.setup()  # the logger is set up in the boot batch, never by the serve task
 
 
+def _drained(pieces: list[bytes]) -> "Iterator[bytes]":
+    # The body's iterator: each piece leaves the list as it is written, so no written piece stays held (Part I.3).
+    pieces.reverse()
+    while pieces:
+        yield pieces.pop()
+
+
 def _pieces_response(pieces: list[bytes]) -> Response:
     # A plain sync iterator with an exact Content-Length, never Response.complete()'s bytes-only
     # default: without it a client reads to EOF, which real-socket soak testing timed out against.
@@ -975,7 +986,7 @@ def _pieces_response(pieces: list[bytes]) -> Response:
     return Response(
         # The vendored stub types body as str | bytes (microdot.pyi:165), yet Microdot streams a sync
         # iterator (ext/microdot.py:734). Remove the ignore when the stub accepts one (warn_unused_ignores).
-        iter(pieces),  # type: ignore[arg-type]
+        _drained(pieces),  # type: ignore[arg-type]
         headers={"Content-Type": "application/json; charset=UTF-8", "Content-Length": str(sum(len(p) for p in pieces))},
     )
 
