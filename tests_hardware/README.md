@@ -1307,6 +1307,8 @@ assumption, not at a product bug.
   - the seconds from a FRAM pull to its first FRAM log entry, and a pulled crossover jumper's first
     failed transfer, codes and recovery - `manual/manual_bus_electrical.py::test_fram_unplug_replug_recovery`
     and `::test_uart_crossover_pull_recovery`;
+  - why the hotspot join can still exhaust its five attempts with the re-verify in place -
+    `bench/test_hotspot_role_reversal.py`'s `_join_dut_hotspot_with_reverify_retry()`;
   - whether the SCD30's soft reset at every boot restarts its automatic self-calibration's
     first-week search, which no reading of the sensor's interface shows (no ASC progress readout).
 
@@ -1353,7 +1355,8 @@ assumption, not at a product bug.
   part's top 256 B, never a chunk.
 - **FRAM chip-select fault injection** (`fram_cs_hijack_fault_injection_and_recovery.py`): CS
   deasserted at the driver's synchronous seam, inside a write's payload (the write never reaches the
-  chip, owner, 2026-09-04), a read's payload (it never returns the real data, owner, 2026-09-04) and a
+  chip, measured on the bench, 2026-09-04), a read's payload (it never returns the real data, measured
+  on the bench, 2026-09-04) and a
   write's first WREN (the driver's one WREN retry lands the write); each scenario ends with
   `verify_present()` and a clean write reading back.
 - **FRAM reset inside a write** (`fram_reset_race_during_write_seed_and_race.py` +
@@ -1468,10 +1471,9 @@ flash tier, no `src/` logger involved; each asserts its exact outcome in its own
 **The hotspot join retries on nmcli's rescan**: `is_ssid_visible()` being True does not guarantee
 `nmcli device wifi connect`'s own rescan still sees the hotspot a moment later, across several
 consecutive attempts (2026-09-08). `_join_dut_hotspot_with_reverify_retry()` re-verifies visibility
-for up to 30 s between attempts and takes a `TimeoutError` there as the next join's business. A run
-once exhausted its attempts with that in place; its cause is still open, and the next hardware
-round investigates it. The join keeps its five attempts on that nmcli race, each retry a recovery
-note (owner, 2026-10-20: 'The Hotspot remains untouched.'). An AP-reconfiguration theory was ruled
+for up to 30 s between attempts and takes a `TimeoutError` there as the next join's business.
+Exhausting the attempts even so is an open finding ("Open on silicon", above). The join keeps its
+five attempts on that nmcli race, each retry a recovery note (owner, 2026-10-20: 'The Hotspot remains untouched.'). An AP-reconfiguration theory was ruled
 out against the pinned source: an AP that is up reports `STAT_GOT_IP`, so `_run_hotspot_mode()`
 only manages its stations, and `_configure_hotspot_ap()` configures only an inactive AP.
 
@@ -1553,18 +1555,15 @@ SGP40 and ISL29125.
   /sensors` reaches its NVM through the chip store, so one is added behind `persistence_write` or
   its wear reason is listed. The write-vs-siblings tests, the explicit delay sweep, the two-sibling
   general call, the ISL29125 address-sweep entry, the three bench write tests and the SGP40 VOC
-  check were `ruff`/`mypy`-clean but not yet run on silicon when written: a first cut for the next
-  real-hardware session to smoke-test.
+  check have not yet run on silicon.
 
 ## Tier parity beyond the bus hazards
 
-The full test-suite sweep for tier and layering completeness and for wrongly-trusted tests, beyond
-the bus hazards (owner, 2026-09-15; important to apply, no ordering — owner, 2026-09-29: 'It has no
-priority in terms of order now, it's only highly important to be applied.'), traced each domain's real
-call chains - UART, WiFi/network/NTP/DNS, FRAM/memory/reboot/watchdog, and webserver/notification/
-config-push - against the tests that claim them; no second test swaps a real hardware trigger for a
-software-only one, as the SGP40 `ResetVOC` worker would if trusted. What it closed is in the sections
-above (the ISL29125 plausibility and config-push tests, the task supervisor, `PauseTime`).
+Every domain's real call chains - UART, WiFi/network/NTP/DNS, FRAM/memory/reboot/watchdog, and
+webserver/notification/config-push - reach the tier each test claims, beyond the bus hazards (owner,
+2026-09-15; owner, 2026-09-29: 'It has no priority in terms of order now, it's only highly important
+to be applied.'); no test swaps a real hardware trigger for a software-only one, as the SGP40
+`ResetVOC` worker would if trusted.
 
 - **Exceptions**, rows of SPECIFICATION.md E.6.6: `ws2812-no-readback` (`LightCmdLED` and the WS2812
   timing), `scd30-rdy-irq-vs-fallback`, `fram-write-protect-no-rest`, `uart-fault-catalog`.

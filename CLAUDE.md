@@ -62,9 +62,9 @@ Three standing practices:
 
 - **An owner-authorised exception to a hands-off rule** (owner, 2026-07-30, `1e4cdfe`): for a
   severity-justified fix the owner can authorise a scoped exception to a "don't touch" rule in this
-  file — the precedent is the `ConfigManager`/`LockedValue` wrong-module-import fix. It "still
+  file — the precedent is the `ConfigManager`/`LockedValue` wrong-module-import fix. It still
   requires the owner's explicit authorization each time, scoped narrowly to the specific fix, not a
-  general license", and it never reaches the legacy tree, whose later rule admits no work of any kind
+  general license, and it never reaches the legacy tree, whose later rule admits no work of any kind
   (owner, 2026-09-11).
 - **`src/` is where files land once they're fully reviewed and tested** — formula/logic
   correctness checked, input validation and exception-safety audited, unit tests written and

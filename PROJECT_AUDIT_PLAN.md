@@ -2519,7 +2519,7 @@ Topics:
       i2c0? FRAM part number on dev); which version is physically true becomes a real-hardware entry (a
       bus scan), never settled from the docs.
 - [ ] **HW.T08** Hardcoded pins/timeouts/addresses in device scripts vs `devices/dev.toml`.
-- [ ] **HW.T09** Structural-exception claims (E.6.6, C.8, `tests_hardware/README.md` tenth pass)
+- [ ] **HW.T09** Structural-exception claims (E.6.6, C.8, `tests_hardware/README.md` "Tier parity beyond the bus hazards")
       re-derived from source.
 - [ ] **HW.T10** Real-hardware entry hygiene (the queue and handover are folded into BACKLOG,
       `03f8bcf`): owner decisions filed as hardware work (F18, T4, W3, T1 — `DOC.S28`), retired row IDs

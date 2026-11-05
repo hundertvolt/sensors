@@ -943,15 +943,15 @@ before any test runs. Environment: `MPREMOTE_DEVICE`.
 </details>
 <details><summary><code>scripts/mpremote_connect.sh</code></summary>
 
-`scripts/mpremote_connect.sh [mpremote arguments]`: runs `uv run --no-sync mpremote connect <board>`
-with them; `exec`/`run`/`ls`/`cat` stay RAM-only, `cp`/`rm`/`mkdir`/`rmdir` write the board's flash.
+`scripts/mpremote_connect.sh [mpremote arguments]`:
+runs `uv run --no-sync mpremote connect <board>` with them; `exec`/`run`/`ls`/`cat` stay RAM-only, `cp`/`rm`/`mkdir`/`rmdir` write the board's flash.
 Environment: `MPREMOTE_DEVICE` (default: the board `toolchain/setup_toolchain.py board` prints).
 
 </details>
 <details><summary><code>scripts/uv_sync_retried.sh</code></summary>
 
-`scripts/uv_sync_retried.sh [uv sync arguments]`: `uv sync --locked` with them, up to three attempts
-with 10 s and 20 s pauses; the last attempt's exit code is the script's.
+`scripts/uv_sync_retried.sh [uv sync arguments]`:
+`uv sync --locked` with them, up to three attempts with 10 s and 20 s pauses; the last attempt's exit code is the script's.
 
 </details>
 <details><summary><code>scripts/setup_cross_browser_toolchain.sh</code></summary>
@@ -1095,8 +1095,8 @@ The owner's periodic check of the build environment in a genuinely clean chroot 
 "Build-environment verification" holds the rule; BACKLOG.md lists what changed since the legs were
 last satisfied). Two targets, both required: Ubuntu 24.04 "noble" (GCC 13.x, the documented OS) and
 Debian trixie (GCC 14.x, what the bench Pi4 runs). A session sandbox has Python, `uv` and build
-tools preinstalled, which masks real gaps: a `requires-python = ">=3.10"` that let `uv sync` build a
-venv without `tomllib` (stdlib only since 3.11) was found only this way.
+tools preinstalled, which masks real gaps such as a `requires-python` floor below the `tomllib` the
+build reads (stdlib only since 3.11).
 
 **Recipe** (needs root; SPECIFICATION.md Part B.7 holds what has been verified this way). Shown for
 noble; "The trixie target" below gives the two lines that differ:

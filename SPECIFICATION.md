@@ -2142,8 +2142,7 @@ file.
 **Local-test scope**: `generic` verified fully end-to-end in a cloud sandbox; USB/network
 *detection* logic exercised for real where safe. Not exercised there: actually flashing a physical
 board, or creating the bridge/AP (would disrupt the sandbox's own networking). **Full `flash`/
-`bench` real-hardware verification is DONE** — both tiers run clean end to end on the real bench
-Rpi4 (2026-09-04); B.13 holds the network-safety rule that work runs under.
+`bench` real-hardware verification**: both tiers run end to end on the real bench Rpi4; B.13 holds the network-safety rule that work runs under.
 
 ## B.13 Bench network safety: standing dead-man's-switch rule
 
@@ -2186,9 +2185,8 @@ pattern, not the file, is what's durable — owner, 2026-09-04, `1096b31`):
 set -x
 nmcli connection down br0-wifi-ap; nmcli connection down br0-eth0; nmcli connection down br0
 nmcli connection delete br0-wifi-ap; nmcli connection delete br0-eth0; nmcli connection delete br0
-# PROFILE: the uplink's own profile, read before arming: nmcli -g GENERAL.CONNECTION device show <uplink>
-nmcli connection modify "$PROFILE" autoconnect yes connection.autoconnect-priority 0
-nmcli connection up "$PROFILE"
+nmcli connection modify "Wired connection 1" autoconnect yes connection.autoconnect-priority 0
+nmcli connection up "Wired connection 1"
 ```
 
 1. Confirm current state first (`ip -o addr show br0`, `nmcli -t -f NAME connection show`).
@@ -4149,7 +4147,8 @@ concurrent sibling reads.
    turn leave both locks free, the measure command restored and every occupant's next read valid
    (`test_a_sensor_task_cancelled_inside_its_session_leaves_the_bus_usable`, the twin pair of the
    mock case above).
-3. **Flash tier** (`tests_hardware/flash/test_bus_concurrency.py`) — real hardware, dev bench only.
+3. **Flash tier** (`tests_hardware/flash/test_bus_concurrency.py`, whose sweep runs
+   `tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py`) — real hardware, dev bench only.
    **Real-hardware write-safety constraints, project-owner-mandated** (owner, 2026-09-03, `7c8dbbc`,
    paraphrase; (a) generalised by the owner's wear rule of 2026-09-17): (a) respect any real
    NVM/EEPROM write budget — ideally at most one real write per bus-hazard test group, via a
@@ -5619,11 +5618,11 @@ Consequences worth keeping in mind:
 ### E.5.3 `--coverage`'s three exit codes, and why its test result gates while its report does not
 
 Coverage never gates (CLAUDE.md's "Code quality tooling"), but a *test* that fails only under the
-settrace build is a real failure (one did: `tests/test_uart_comm_hazard.py`, 84/85, on a tree whose
-(e) and (f) stages were both 85/85, 2026-09-22), and `unit-tests-coverage` is the only tier that runs
+settrace build is a real failure (a settrace-only failure is possible: the build differs, E.5.2),
+and `unit-tests-coverage` is the only tier that runs
 that binary. So the two signals are separate (owner, 2026-09-22, over running one settrace-built
 file in a gating lane), rather than the whole rerun gating: a slow instrumented run cancelled by the
-job cap would take `digital-twin-e2e` with it (run `34755468619`). `scripts/test.sh` exits:
+job cap would take `digital-twin-e2e` with it. `scripts/test.sh` exits:
 
 | code | meaning | CI |
 |---|---|---|
@@ -6698,7 +6697,7 @@ The budget rows, one per stretch:
 | `feed.supervisor` | the supervisor's sleep and one pass between two of its feeds | 2000 ms of sleep (`_TASK_CHECK_TIME`), then one pass: at most 4 task ends (⌈(`_TASK_FAIL_MAX` + 1) / `_TASK_FAIL_INCREMENT`⌉), each one persisted entry, and 3 task starts, since the fourth end escalates before its restart, then the escalation's own entry write; on a `MemoryError` there the reset follows with no entry, and a write that never ends leaves the watchdog's reset to read the code recorded before it | one chunk write 627-700 ms under load | the whole `wdt.timeout_ms` | `_scenario_supervisor_scan_budget` (`tests/_sensortask_scenarios.py`); `test_the_escalation_decides_and_records_the_reset_before_its_entry_write` and `test_an_escalation_whose_entry_cannot_even_be_built_on_a_full_heap_still_reboots_with_its_code` (`tests/test_asy_system_service.py`) | `system.scan_budget` |
 | `feed.reset_path` | the last feed → the reset: `_reboot()`'s record, flush and pause, then the countdown with nothing fed; the escalation feeds once after its entry before it stops feeding | 4000 ms countdown (`_RESET_DELAY`) after the record, flush and pause | — | the whole `wdt.timeout_ms` | `test_the_reset_delay_ends_before_the_watchdog_would` (`tests_scripts/test_tunables_register.py`); `tests_scripts/test_timing_budget.py` | `system.reset_delay_s` |
 | `feed.shutdown_step` | each step of the controlled shutdown sequence (A.8) between two of its own feeds | the park wait, at most one `_TASK_CHECK_TIME` and one pass; one 256-byte FRAM erase unit; one flash-filesystem operation, up to 400 ms per sector erase | — | the whole `wdt.timeout_ms` | `test_a_healthy_sequence_feeds_once_per_step_and_last_right_before_the_arm` (`tests/test_asy_system_service.py`); `tests_hardware/flash/test_system_commands.py` | — |
-| `stall.flash_program` | one config flush: its one `with open()` write in `_write_file()` (`asy_config_manager.py`) runs littlefs's sector erases and page programs in one non-yielding stretch, interrupts off inside each erase and program (`ports/rp2/rp2_flash.c:168-174`, v1.29.0); on an accepted PUT's deferred flush, the one boot repair and the one boot write of an absent file's defaults (C.7.3) | 2129 ms (`_FLASH_HOLD_MAX_MS`, `asy_uart_comm.py`): 5 sector erases × 400 ms + 43 page programs × 3 ms, the largest generated config file at the W25Q16JV tSE/tPP maxima (typ. 45 ms per erase), traced through littlefs (J.6); interrupts off up to 400 ms at a time inside it | 70-207 ms of blocked loop per write, interrupts off 35-39 ms per sector erase (dev silicon, 2026-10-29; W25Q16JV tSE typical 45 ms); `device_scripts/flash_write_loop_gap.py` re-measures | `con.uart_reply` (crossed: a reply that reaches the ring during the hold is still read, since the reply wait, `_read_frame()` (`asy_uart_comm.py:715-729`), looks at the ring before its deadline: `_read_delimited()` takes buffered bytes ahead of `ready()`, and `ready()` reads the fill level ahead of the deadline (`asy_uart_driver.py:245-250`, `:715-722`); a reply this device's held loop has to send, its responder's or on `dev` either end's, both sharing the loop, misses the peer's deadline: one failed, counted transaction and a resync, J.7), `con.dns_query` (crossed, soft: a query whose reply the hold keeps from being read in time counts as unanswered, and the resolver asks the next server, then NTP retries), `con.led_frame` (crossed: the animation stands still up to the hold, a visible stutter), `con.uart_rx_ring` (not crossed: its floor is sized for this hold, J.6, and the DMA ring the receive path uses (owner, 2026-10-05, answering the review's open question on the UART receive path, in paraphrase: 'UART in the DMA ring buffer') receives with interrupts off, so no frame is lost; proved on silicon without a flash write by `device_scripts/uart_dma_ring_interrupts_off.py`), `con.uart_tx` (owed: measured on the bench, link transactions during config writes), `con.watchdog`; each crossing is an accepted degradation on all three flush occasions, an accepted PUT, the boot repair and the boot defaults write (agent, 2026-10-21), and closed so by the owner with its consequences, no reset and no loss: a late answer, a late read, one LED stutter, a DNS retry and, on `dev`'s bench link, one failed and resynced transaction (owner, 2026-10-22, asked about the proposed next steps, both write sites back to the single write and the stall closed as an accepted degradation: "For your records, your suggested next steps are fine (go back to the single write).") | `tests_scripts/test_timing_budget.py` (the value); record only: `test_flash_write_loop_gap_is_recorded` (`tests_hardware/flash/test_memory_stress.py`, behind `--allow-persistence-write`) records the measured gap, the figure judged against its consumers here | — |
+| `stall.flash_program` | one config flush: its one `with open()` write in `_write_file()` (`asy_config_manager.py`) runs littlefs's sector erases and page programs in one non-yielding stretch, interrupts off inside each erase and program (`ports/rp2/rp2_flash.c:168-174`, v1.29.0); on an accepted PUT's deferred flush, the one boot repair and the one boot write of an absent file's defaults (C.7.3) | 2129 ms (`_FLASH_HOLD_MAX_MS`, `asy_uart_comm.py`): 5 sector erases × 400 ms + 43 page programs × 3 ms, the largest generated config file at the W25Q16JV tSE/tPP maxima (typ. 45 ms per erase), traced through littlefs (J.6); interrupts off up to 400 ms at a time inside it | 70-207 ms of blocked loop per write, interrupts off 35-39 ms per sector erase (dev silicon, 2026-10-29; W25Q16JV tSE typical 45 ms); `device_scripts/flash_write_loop_gap.py` re-measures | `con.uart_reply` (crossed: a reply that reaches the ring during the hold is still read, since the reply wait, `_read_frame()` (`asy_uart_comm.py:692-703`), looks at the ring before its deadline: `_read_delimited()` takes buffered bytes ahead of `ready()`, and `ready()` reads the fill level ahead of the deadline (`asy_uart_driver.py:245-250`, `:702-710`); a reply this device's held loop has to send, its responder's or on `dev` either end's, both sharing the loop, misses the peer's deadline: one failed, counted transaction and a resync, J.7), `con.dns_query` (crossed, soft: a query whose reply the hold keeps from being read in time counts as unanswered, and the resolver asks the next server, then NTP retries), `con.led_frame` (crossed: the animation stands still up to the hold, a visible stutter), `con.uart_rx_ring` (not crossed: its floor is sized for this hold, J.6, and the DMA ring the receive path uses (owner, 2026-10-05, answering the review's open question on the UART receive path, in paraphrase: 'UART in the DMA ring buffer') receives with interrupts off, so no frame is lost; proved on silicon without a flash write by `device_scripts/uart_dma_ring_interrupts_off.py`), `con.uart_tx` (owed: measured on the bench, link transactions during config writes), `con.watchdog`; each crossing is an accepted degradation on all three flush occasions, an accepted PUT, the boot repair and the boot defaults write (agent, 2026-10-21), and closed so by the owner with its consequences, no reset and no loss: a late answer, a late read, one LED stutter, a DNS retry and, on `dev`'s bench link, one failed and resynced transaction (owner, 2026-10-22, asked about the proposed next steps, both write sites back to the single write and the stall closed as an accepted degradation: "For your records, your suggested next steps are fine (go back to the single write).") | `tests_scripts/test_timing_budget.py` (the value); record only: `test_flash_write_loop_gap_is_recorded` (`tests_hardware/flash/test_memory_stress.py`, behind `--allow-persistence-write`) records the measured gap, the figure judged against its consumers here | — |
 | `stall.i2c_transfer` | one `machine.I2C` transfer holds the loop up to the bus `timeout`, a register read (write then read) twice it (`ports/rp2/machine_i2c.c:125`, `:147`, v1.29.0) | 400,000 µs: two transfers at the largest bus `timeout`, 200,000 µs (every SCD30 bus); 50,000 µs (`_DEFAULT_TIMEOUT_US`, the rp2 default) where a bus states none | a failed transfer returns at the bus timeout, 50.9 ms and 200.9 ms at 50 and 200 ms (dev silicon, 2026-10-29) | `con.uart_reply`, `con.watchdog`, `con.dns_query`, `con.led_frame` (crossed: a stutter), `con.softirq_queue`; a wedged transfer is the recovery ladder's case (F.2) | the build rule `bus.i2c-timeout-range` (`buildgen/validate.py`); `tests_scripts/test_timing_budget.py` | `i2c.timeout_max_us` |
 | `stall.lwip_send` | a TCP write that meets `ERR_MEM`: at the pin it retries inside one C call, non-blocking sockets included, for up to 10 s (B.14.4) | none in C with the project's `modlwip_eagain` override (B.14.4): a non-blocking send returns `EAGAIN`, and a stuck connection retries cooperatively until an ACK or its per-call timeout reclaims it | — | `con.watchdog` (fixed by the override), every other task | B.14.4's override checks | — |
 | `stall.fram_command` | the longest non-yielding FRAM stretch, one 1-byte write's CS envelopes, the SPI re-init per CS session inside it | 3,395 µs, the longest of three runs (2,833-3,395 µs, dev 2026-09-25, F.5.8) | as its value | `con.routine_stall`; one UART poll floor, 80 B at 115200 baud = 6,944 µs (J.6) | `device_scripts/fram_command_hold_timing.py`, run by `tests_hardware/flash/test_fram_storage.py` | — |
@@ -8618,8 +8617,7 @@ the code it checks. Root `.nvmrc` pins the Node version.
 **The workflow triggers on `push` to every branch as well as on `pull_request`, and that is not
 redundancy.** A `pull_request` run builds `refs/pull/N/merge`; when a PR conflicts with its base
 that ref cannot be created, so GitHub creates **no run at all** — the branch silently stops being
-tested, with nothing red anywhere to notice (with `push` scoped to `main` alone, 128 commits of a
-conflicted branch once went unverified, 2026-09-18). The `push` leg is the branch's own guaranteed coverage; the shared concurrency group
+tested, with nothing red anywhere to notice. The `push` leg is the branch's own guaranteed coverage; the shared concurrency group
 (`github.head_ref || github.ref_name`, identical for both triggers on one branch) plus
 `cancel-in-progress` keeps exactly one of the two alive per push, so the second trigger costs no
 extra matrix time. This is the same failure class as the `paths:`-filtered second workflow file
@@ -10416,7 +10414,7 @@ note explicitly (not silently) anywhere a step did not apply:
 device-generic: every device-specific fact — hardware present, pin/bus assignments, included
 software modules, how measurement values are shared between modules — lives in exactly one TOML
 file per device variant, `devices/<device>.toml`, and everything else is derived from it at build
-time. This Part is the durable specification of that scheme. Part K is the per-driver checklist for
+time. This Part is the durable specification of that scheme. Part K is the one checklist for
 working inside it; this Part is the mechanism itself.
 
 ## L.1 Device variants and the two standing acceptance criteria
@@ -11373,7 +11371,7 @@ and this Part cite by number** — the numbering is load-bearing and must not be
     chip lost its configuration, so the whole shadow is re-applied and the cycle discarded; startup
     tolerates transient I²C failure on the same leaky-bucket terms as steady state; a sample the
     driver cannot prove is current is not published, the last good sample keeping its original `TS`,
-    never re-stamped (C.4.2's one staleness rule, owner, 2026-09-29, replacing "reported as `None`").
+    never re-stamped (C.4.2's one staleness rule, owner, 2026-09-29).
 17. **Auto-range must not depend on the interrupt alone.** If the INT line never asserts — a missing
     pull-up, a broken jumper, a mis-set `INTSEL` — the periodic read evaluates the same switch
     condition: the interrupt is the *fast* path, the periodic read the *guaranteed* one, on the same
@@ -11708,7 +11706,7 @@ and leaves a pending algorithm reset pending.
 **The VOC algorithm's state is published** as `VOCState` (texts: `buildgen/error_catalog.json`'s
 `status.VOCState`): 0 blackout, the first 46 samples, which publish `VOC` 0 with a fresh `TS` (the
 reference's defined blackout output, not a failed read); 1 learning, a fresh start's first 24 h; 2
-settled, past the 24 h learning time (owner, 2026-10-02: "2 settled"); 3 restored from the FRAM
+settled, past the 24 h learning time (owner-confirmed, 2026-10-02); 3 restored from the FRAM
 backup, its first 24 h.
 
 **Sample cadence.** The raw signal feeds the algorithm at a fixed 1 s period ("a measurement is
