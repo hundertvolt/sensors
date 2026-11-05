@@ -40,8 +40,6 @@ _LONE_QUOTE = re.compile(r"^\s*(?:[rbfu]{1,2})?(\"\"\"|''')\s*$")
 _SLASH_HEADED = (".js", ".mjs", ".ts", ".css")
 _HASH_HEADED = (".yml", ".toml", ".ini")
 _PAGE = "html/index.html"  # its header is an HTML comment directly after the doctype
-# Config files whose header is still to be written; a row goes once its file has one (the pending test fails on it).
-_HEADER_PENDING: frozenset[str] = frozenset()
 _COUNTED = (".py", ".sh")
 # The generator runs in a child interpreter: its caches (every src/ module's tree) never join this heap, where each
 # collection the per-file parses set off would walk them again. It prints {path: source} for every device it is given.
@@ -256,7 +254,7 @@ def test_every_python_and_shell_file_opens_with_a_header() -> None:
 def test_every_js_css_page_and_config_file_opens_with_a_header() -> None:
     headed = _headed_files()
     assert headed, "the listing found no JS, CSS, page or config file"
-    found = [p for p in headed if p not in _HEADER_PENDING and not _has_header(p, (REPO_ROOT / p).read_text(encoding="utf-8"))]
+    found = [p for p in headed if not _has_header(p, (REPO_ROOT / p).read_text(encoding="utf-8"))]
     assert found == [], f"CLAUDE.md: every file opens with one header block (a leading comment): {found}"
 
 
@@ -264,12 +262,6 @@ def test_the_page_header_follows_the_doctype_within_the_cap() -> None:
     text = (REPO_ROOT / _PAGE).read_text(encoding="utf-8")
     assert _has_header(_PAGE, text), f"{_PAGE}: no <!-- ... --> header directly after the doctype"
     assert _page_header_lines(text) <= CAP, f"{_PAGE}: a {_page_header_lines(text)}-line header"
-
-
-def test_each_pending_header_is_still_missing() -> None:
-    # The pending set only shrinks: a file that has gained its header leaves it.
-    gained = sorted(p for p in _HEADER_PENDING if _has_header(p, (REPO_ROOT / p).read_text(encoding="utf-8")))
-    assert gained == [], f"these now open with a header - delete their _HEADER_PENDING rows: {gained}"
 
 
 def test_no_comment_line_is_a_rule_of_any_character_but_dashes(generated: dict[str, str]) -> None:

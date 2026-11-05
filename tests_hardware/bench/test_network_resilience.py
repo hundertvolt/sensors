@@ -1037,7 +1037,7 @@ def _body_cap() -> int:
 
 def _capture_dut_ntp_port(board: Board, bench: "BenchBridge", dut_ip: str, result_note: "_load.Note") -> "tuple[int, float]":
     # The DUT's ephemeral NTP source port and when it was captured, each reset forcing a fresh request; a capture that saw
-    # nothing (the reset landed in hotspot fallback, BACKLOG.md open question 9) is retried, each retry reported.
+    # nothing (the reset landed in hotspot fallback, tests_hardware/README.md's "Workarounds") is retried, each retry reported.
     for attempt in range(1, _CAPTURE_ATTEMPTS + 1):
         capture = bench.start_udp_source_capture(dut_ip, 123)
         kick_then_reset(board, bench)

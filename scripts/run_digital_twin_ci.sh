@@ -99,7 +99,8 @@ echo "== Generating buildgen device modules + wiring plans into build/generated_
 uv run --no-sync scripts/_generate_sensortask_modules.py
 
 # Port 53's UDP holders, printed before and after the twins: a socket there without SO_REUSEADDR fails the twins'
-# captive DNS bind (DNSSRV E INIT), and only the runner itself can name its process.
+# captive DNS bind (DNSSRV E INIT), and only the runner itself can name its process. A host without ss (iproute2,
+# not in the apt list) loses only this listing: `|| true` keeps the run going (agent, 2026-11-05).
 port_53_holders() {
     echo "== UDP port 53 holders ($1):"
     if [ "$(id -u)" -eq 0 ]; then ss -H -uanp 'sport = :53' || true; else sudo -n ss -H -uanp 'sport = :53' || ss -H -uan 'sport = :53' || true; fi

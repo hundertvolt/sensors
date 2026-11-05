@@ -1095,7 +1095,7 @@ assumption, not at a product bug.
 
 - **L3 and L4 have run end to end on this bench under MicroPython 1.29.0** (2026-09-11): a `dev`
   image built from `src/`, the flash, bench and mid soak tiers clean against it; the on-target
-  answers it gave are in BACKLOG.md's "Deferred" list and SPECIFICATION.md Part F.5.3.
+  answers it gave are in SPECIFICATION.md Part F.5.
 - **A hardware run overwrites the production modules' FRAM chunks — never read an error log as
   firmware evidence straight after one.** `FRAMManager` is a deterministic bump allocator (a
   required property, SPECIFICATION.md Part A.4), so a device script's own first chunk *is*
@@ -1286,7 +1286,7 @@ assumption, not at a product bug.
   contiguous from scattered free space). SPECIFICATION.md Part I.1/I.3/I.5 has its results. The same
   technique applied to `UDPSocket.ready()` (a one-line `print()` on a `POLLERR`/`POLLHUP` event)
   found that rp2/lwIP does not propagate ICMP errors onto a connected UDP socket's poll state
-  (BACKLOG.md open question 5): no such event across 6 retry cycles against a target with no
+  (2026-09-08): no such event across 6 retry cycles against a target with no
   listener. The source agrees: lwIP's `icmp_input()` counts an incoming destination-unreachable and
   drops it (`lib/lwip/src/core/ipv4/icmp.c:258-283`, lwIP `77dcd25`), and a UDP socket's state stays
   `STATE_ACTIVE_UDP` (`extmod/modlwip.c:1008`, v1.29.0), which sets no error flag in modlwip's poll

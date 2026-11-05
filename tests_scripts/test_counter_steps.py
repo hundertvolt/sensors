@@ -29,9 +29,6 @@ _EXEMPT: dict[tuple[str, str], str] = {
     ("src/asy_ntp_client.py", "NTPClient._unsynced_wait_s"): "resets to 0 once it reaches the unsynced retry wait (`due`), 60 s at most",
     ("src/asy_sgp40_driver.py", "SGP40_Reader._voc_init"): "restores the same call's decrement, so it never rises above its starting value",
 }
-# Unguarded steps whose bound is not written yet: each leaves when its counter saturates, wraps or is
-# masked, and the stale-entry test then fails until the entry is deleted. The list only shrinks.
-_PENDING: dict[tuple[str, str], str] = {}
 
 
 def _all_steps(modules: list[tuple[str, ast.Module]]) -> dict[tuple[str, str], int]:
@@ -161,14 +158,13 @@ def test_every_large_constant_entry_is_still_above_the_range(modules: list[tuple
 
 
 def test_every_integer_step_is_bounded(modules: list[tuple[str, ast.Module]]) -> None:
-    found = {key: line for key, line in _all_steps(modules).items() if key not in _EXEMPT and key not in _PENDING}
+    found = {key: line for key, line in _all_steps(modules).items() if key not in _EXEMPT}
     assert not found, "an unbounded counter step - guard it with a cap comparison, or reset it at a threshold:\n" + "\n".join(f"  {p}:{line} {name}" for (p, name), line in sorted(found.items()))
 
 
-def test_every_exempt_and_pending_entry_is_still_an_unguarded_step(modules: list[tuple[str, ast.Module]]) -> None:
-    stale = sorted((set(_EXEMPT) | set(_PENDING)) - set(_all_steps(modules)))
+def test_every_exempt_entry_is_still_an_unguarded_step(modules: list[tuple[str, ast.Module]]) -> None:
+    stale = sorted(set(_EXEMPT) - set(_all_steps(modules)))
     assert not stale, f"no longer an unguarded step - delete the entry: {stale}"
-    assert not set(_EXEMPT) & set(_PENDING)
 
 
 def test_the_logger_s_capped_counter_is_not_flagged(modules: list[tuple[str, ast.Module]]) -> None:

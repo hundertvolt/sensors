@@ -447,7 +447,7 @@ def test_client_mode_filters_datagrams_from_unexpected_sources() -> None:
     # datagrams from any address other than the connected peer. Proven with a genuine third,
     # independent endpoint acting as an off-path sender against the exact same port.
 
-    # This is the Unix-port/BSD-socket half of BACKLOG.md's open question 5; real rp2/lwIP is a
+    # This is the Unix-port/BSD-socket half of the UDP source-filter check; real rp2/lwIP is a
     # different socket implementation and is covered instead by tests_hardware/bench/
     # test_network_resilience.py, which confirmed the same property holds on real hardware.
     peer_addr = _make_addr()

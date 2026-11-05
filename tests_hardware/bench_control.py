@@ -263,7 +263,7 @@ class BenchBridge:
     def redirect_udp_port_to_local(self, port: int, local_port: int, comment: str = FAULT_COMMENT) -> None:
         # Redirects UDP traffic for `port` to a local rogue responder on 127.0.0.1:<local_port> -
         # simulates a garbage-response server, unlike block_udp_ports()'s "silently unreachable"
-        # fault (BACKLOG.md open question #5). A standard `nat` PREROUTING DNAT-to-loopback pattern.
+        # fault. A standard `nat` PREROUTING DNAT-to-loopback pattern.
         _run_iptables(["-t", "nat", "-A", "PREROUTING", "-p", "udp", "--dport", str(port), "-j", "DNAT", "--to-destination", f"127.0.0.1:{local_port}", "-m", "comment", "--comment", comment])
 
     def start_udp_source_capture(self, src_host: str, dst_port: int, iface: str | None = None) -> subprocess.Popen[str]:
