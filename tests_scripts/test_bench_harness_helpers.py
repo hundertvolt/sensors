@@ -499,7 +499,7 @@ def test_kick_after_reset_kicks_once_the_board_has_left_usb_and_never_before(mon
         with pytest.raises(harness.HardwareTestFailureError, match="did not leave USB"):
             harness.kick_after_reset(fake, fake, 30.0)  # type: ignore[arg-type]
     else:
-        harness.kick_after_reset(fake, fake, 30.0)  # type: ignore[arg-type]
+        assert harness.kick_after_reset(fake, fake, 30.0) == pytest.approx(gone_at), "not the moment the node was seen gone"  # type: ignore[arg-type]
     assert fake.calls == calls and clock.now == pytest.approx(gone_at or 30.0)
 
 
