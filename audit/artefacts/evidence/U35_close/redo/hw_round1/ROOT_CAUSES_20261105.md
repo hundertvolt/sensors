@@ -228,7 +228,7 @@ Run by hand after `scripts/test.sh`, each stage even if an earlier one fails, wi
 | Through the hotspot, 17:54 (uptime 596 s on) | 3 | 150 | 2 | 256 B, 251 B |
 | Joined directly, 17:40 (uptime 1,620 s on) | 3 | 156 | 0 | none |
 
-Lead only: 5 of 309 against 0 of 156 is weak given so few failures, and the direct session is one boot at a later uptime. Lowest `MemFree` sampled through the hotspot at 17:54: 5,584-10,544 B. UART errors appear on both paths (7, 7, 4 direct; 10, 7, 10 hotspot).
+Lead only: 5 of 308 against 0 of 156 is weak given so few failures, and the direct session is one boot at a later uptime. Lowest `MemFree` sampled through the hotspot at 17:54: 5,584-10,544 B. UART errors appear on both paths (7, 7, 4 direct; 10, 7, 10 hotspot).
 
 **The 16:44:30 reset:**
 - **Reset reason: lost.** The board was off the network until my probes at 16:48:53-16:49:25, and each replaced it. `/status` at 16:50:40 reads 21, from those probes.
@@ -236,4 +236,4 @@ Lead only: 5 of 309 against 0 of 156 is weak given so few failures, and the dire
 - **Likely the harness's own reset.** Inferred from timing: pytest ran 26.15 s from about 16:44:04. `_mpremote`'s 10 s limit, then `_interrupt_after_timeout`'s Ctrl-C and `mpremote reset` (15 s limit), lands at 16:44:30. So the question is why `exec` took over 10 s, when it normally takes 0.4 s.
 - **Repeat, one try:** 3 load runs, 57 s idle, the same `exec`: 0.38 s, rc 0. The board reset 8 s later (the watchdog, as the product was stopped) and reads `ResetReason` 21. That session had no 500s, so it wasn't quite the same state.
 
-**FRAM holds test data now.** `SYSTEM` reads counter 18 with `E125`/`E126`, seeded by 4b's erase scripts, because two erase runs ended without the reset. Treat those as test data in step 5's record. Nothing cleared.
+**FRAM holds test data now.** `SYSTEM` reads counter 18 with `E125`/`E126`, the test band that 4b's erase scripts write. I did not trace which run left them. Treat those as test data in step 5's record. Nothing cleared.
