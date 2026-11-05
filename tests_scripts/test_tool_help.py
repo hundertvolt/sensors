@@ -145,5 +145,7 @@ def test_readme_reference_names_exactly_the_help_options(entry: str, safe_path: 
     assert len(blocks) == 1, f"README.md's command-line reference has {len(blocks)} blocks for {entry}, not one"
     done = _run_help(entry, safe_path, micropython_bin)
     assert done.returncode == 0, f"{entry} --help exited {done.returncode}:\n{done.stdout}\n{done.stderr}"
-    in_help, in_readme = set(_OPTION.findall(done.stdout)), set(_OPTION.findall(blocks[0]))
+    # The synopsis line is left out: it names options too, and would hide a deleted option row.
+    body = re.sub(rf"^`{re.escape(entry)}[^\n]*\n", "", blocks[0].lstrip("\n"), count=1, flags=re.MULTILINE)
+    in_help, in_readme = set(_OPTION.findall(done.stdout)), set(_OPTION.findall(body))
     assert in_help == in_readme, f"{entry}: README.md lacks {sorted(in_help - in_readme)}, --help lacks {sorted(in_readme - in_help)}"
