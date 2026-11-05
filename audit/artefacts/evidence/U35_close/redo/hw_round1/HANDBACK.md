@@ -1,6 +1,6 @@
 # Round 1 bench hand-back
 
-Rebuilt by `round1.py` after every step, last 2026-11-05 09:27 UTC. Each verdict is its step's newest run; after step 4a a passing pytest step reads NOT CLEAN (lower levels skipped).
+Rebuilt by `round1.py` after every step, last 2026-11-05 10:43 UTC. Each verdict is its step's newest run; after step 4a a passing pytest step reads NOT CLEAN (lower levels skipped).
 
 | step | name | verdict | ResetReason after | started (UTC) | took | host load at end | FC/FS/NVM/pre |
 |---|---|---|---|---|---|---|---|
@@ -8,7 +8,7 @@ Rebuilt by `round1.py` after every step, last 2026-11-05 09:27 UTC. Each verdict
 | 2 | host_env | rc=0 |  | 2026-11-05 07:56:11 | 0h14 | 4.17 | 0/0/0/0 |
 | 4a | lower_levels | rc=1; FAIL; failed: scenarios[dev], tests/test_digital_twin_bus_hazard_concurrency.py, tests/test_digital_twin_wifi_modes.py, tests/test_digital_twin_uart_link.py, tests/test_digital_twin_sensortask_integration.py[dev] and 16 more |  | 2026-11-05 08:15:05 | 1h00 | 0.92 | 0/0/0/0 |
 | 3g | gc_control_image | rc=0 | 2 | 2026-11-05 09:23:57 | 0h00 | 0.97 | 1/0/0/0 |
-| 4g | flash_tier_gc_control | rc=1; FAIL (pytest exited 1); failed: flash/test_bus_concurrency.py::test_same_device_concurrent_sessions_never_corrupt_each_other, flash/test_bus_concurrency.py::test_cross_device_concurrent_sessions_genuinely_interleave, flash/test_bus_concurrency.py::test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_transactions, flash/test_bus_concurrency.py::test_bmp3xx_same_device_read_write_concurrency, flash/test_bus_concurrency.py::test_isl29125_same_device_read_write_concurrency and 86 more | 21 | 2026-11-05 09:24:42 | 0h01 | 0.67 | 0/0/1/136 |
+| 4g | flash_tier_gc_control | rc=1; FAIL (pytest exited 1); failed: flash/test_bus_concurrency.py::test_a_held_sda_line_is_cleared_and_every_device_answers, flash/test_bus_concurrency.py::test_bmp3xx_alone_survives_a_general_call, flash/test_bus_concurrency.py::test_fram_erase_racing_a_chunk_write_leaves_no_torn_chunk, flash/test_chip_conformance.py::test_scd30_matches_its_twin_fake, flash/test_chip_conformance.py::test_sgp40_matches_its_twin_fake and 34 more |  | 2026-11-05 10:18:20 | 0h22 | 1.82 | 0/0/1/136 |
 | 5g | bench_tier_gc_control | rc=1; FAIL (pytest exited 1); failed: bench/test_boot_order_and_triggers.py::test_webserver_answers_before_the_first_ntp_sync_completes, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_crashes, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_light_network_degradation, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_real_wifi_flapping and 101 more | 21 | 2026-11-05 09:25:57 | 0h01 | 0.80 | 0/0/0/66 |
 | 3 | final_image | not run |  |  |  |  | 1/0/0/0 |
 | 4b | flash_tier | not run |  |  |  |  | 0/0/0/136 |
@@ -3711,6 +3711,2014 @@ SUM errcount UART_init {"history":[{"type":"N","num":0},{"type":"N","num":0},{"t
 SUM errcount UART_resp {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
 SUM errcount WEBSERVER {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
 SUM errcount WIFI {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":81},{"type":"W","num":38},{"type":"W","num":79}],"counter":8}
+== step 4g start 2026-11-05 10:18:20 1793873900 load 0.13 0.09 0.27
+Resolved 22 packages in 4ms
+Audited 20 packages in 0.95ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+== Marker selection: -m "not soak_duration and not multi_day_rollover"
+============================= test session starts ==============================
+platform linux -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0 -- /home/nico/programming/sensors-bench/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/nico/programming/sensors-bench
+configfile: pyproject.toml
+plugins: platformdirs-4.12.3
+collecting ... collected 107 items / 17 deselected / 90 selected
+
+tests_hardware/flash/test_bus_concurrency.py::test_same_device_concurrent_sessions_never_corrupt_each_other PASSED [  1%]
+tests_hardware/flash/test_bus_concurrency.py::test_cross_device_concurrent_sessions_genuinely_interleave PASSED [  2%]
+tests_hardware/flash/test_bus_concurrency.py::test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_transactions PASSED [  3%]
+tests_hardware/flash/test_bus_concurrency.py::test_bmp3xx_same_device_read_write_concurrency PASSED [  4%]
+tests_hardware/flash/test_bus_concurrency.py::test_isl29125_same_device_read_write_concurrency PASSED [  5%]
+tests_hardware/flash/test_bus_concurrency.py::test_sgp40_concurrent_sessions_each_get_a_tick PASSED [  6%]
+tests_hardware/flash/test_bus_concurrency.py::test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours PASSED [  7%]
+tests_hardware/flash/test_bus_concurrency.py::test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads PASSED [  8%]
+tests_hardware/flash/test_bus_concurrency.py::test_isl29125_real_irq_edge_beats_the_periodic_fallback PASSED [ 10%]
+tests_hardware/flash/test_bus_concurrency.py::test_bus_topology_autodetect_address_and_reserved_range_sweep PASSED [ 11%]
+tests_hardware/flash/test_bus_concurrency.py::test_a_held_sda_line_is_cleared_and_every_device_answers FAILED [ 12%]
+tests_hardware/flash/test_bus_concurrency.py::test_every_chip_setup_resets_it_once_after_a_read_identified_it PASSED [ 13%]
+tests_hardware/flash/test_bus_concurrency.py::test_bmp3xx_alone_survives_a_general_call FAILED [ 14%]
+tests_hardware/flash/test_bus_concurrency.py::test_fram_same_device_read_write_concurrency PASSED [ 15%]
+tests_hardware/flash/test_bus_concurrency.py::test_fram_cs_pin_hijack_fault_injection_and_recovery PASSED [ 16%]
+tests_hardware/flash/test_bus_concurrency.py::test_fram_hard_reset_race_during_write_and_recovery PASSED [ 17%]
+tests_hardware/flash/test_bus_concurrency.py::test_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton PASSED [ 18%]
+tests_hardware/flash/test_bus_concurrency.py::test_fram_erase_racing_a_chunk_write_leaves_no_torn_chunk FAILED [ 20%]
+tests_hardware/flash/test_bus_concurrency.py::test_reboot_command_shuts_down_then_resets PASSED [ 21%]
+tests_hardware/flash/test_bus_electrical_timing.py::test_soft_timer_callback_drop_self_heals_under_scheduler_saturation PASSED [ 22%]
+tests_hardware/flash/test_bus_electrical_timing.py::test_timer_init_raises_enomem_when_real_alarm_pool_is_exhausted PASSED [ 23%]
+tests_hardware/flash/test_bus_electrical_timing.py::test_scd30_real_irq_edge_drives_a_real_read PASSED [ 24%]
+tests_hardware/flash/test_bus_electrical_timing.py::test_single_precision_float_boundary_at_2pow24 PASSED [ 25%]
+tests_hardware/flash/test_bus_electrical_timing.py::test_a_malformed_country_code_reaction_is_recorded PASSED [ 26%]
+tests_hardware/flash/test_chip_conformance.py::test_scd30_matches_its_twin_fake FAILED [ 27%]
+tests_hardware/flash/test_chip_conformance.py::test_sgp40_matches_its_twin_fake FAILED [ 28%]
+tests_hardware/flash/test_chip_conformance.py::test_bmp3xx_matches_its_twin_fake FAILED [ 30%]
+tests_hardware/flash/test_chip_conformance.py::test_fram_matches_its_twin_fake FAILED [ 31%]
+tests_hardware/flash/test_chip_conformance.py::test_isl29125_matches_its_twin_fake PASSED [ 32%]
+tests_hardware/flash/test_fram_storage.py::test_fram_chunk_write_read_roundtrips_against_the_real_chip PASSED [ 33%]
+tests_hardware/flash/test_fram_storage.py::test_sgp40_voc_state_backs_up_to_and_restores_from_the_real_chip PASSED [ 34%]
+tests_hardware/flash/test_fram_storage.py::test_error_log_history_persists_in_the_real_chip_across_a_simulated_reboot PASSED [ 35%]
+tests_hardware/flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write[1] PASSED [ 36%]
+tests_hardware/flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write[2] PASSED [ 37%]
+tests_hardware/flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write[3] PASSED [ 38%]
+tests_hardware/flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write[4] PASSED [ 40%]
+tests_hardware/flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write[5] PASSED [ 41%]
+tests_hardware/flash/test_fram_storage.py::test_error_log_reset_during_the_boot_window_is_persisted_and_not_undone PASSED [ 42%]
+tests_hardware/flash/test_fram_storage.py::test_write_protection_actually_gates_a_real_write_and_a_real_read PASSED [ 43%]
+tests_hardware/flash/test_fram_storage.py::test_storage_pause_gates_the_real_chip_and_the_real_auto_unpause_timer_fires PASSED [ 44%]
+tests_hardware/flash/test_fram_storage.py::test_fram_command_hold_stays_under_the_uart_poll_floor PASSED [ 45%]
+tests_hardware/flash/test_fram_storage.py::test_both_blocks_left_busy_lock_the_real_chunk_until_it_is_rewritten PASSED [ 46%]
+tests_hardware/flash/test_fram_storage.py::test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build PASSED [ 47%]
+tests_hardware/flash/test_heap_layout.py::test_the_live_arm_keeps_the_boot_survivors_under_the_high_band PASSED [ 48%]
+tests_hardware/flash/test_heap_layout.py::test_the_suppressed_arm_breaks_the_high_band PASSED [ 50%]
+tests_hardware/flash/test_memory_stress.py::test_real_gc_heap_headroom_survives_a_full_system_build FAILED [ 51%]
+tests_hardware/flash/test_memory_stress.py::test_routine_no_yield_stretches_stay_under_the_gc_term FAILED [ 52%]
+tests_hardware/flash/test_memory_stress.py::test_loop_lag_under_combined_load_stays_under_the_uart_reply_budget SKIPPED [ 53%]
+tests_hardware/flash/test_memory_stress.py::test_c_stack_peak_is_within_half_the_limit FAILED [ 54%]
+tests_hardware/flash/test_modlwip_listener_close.py::test_closing_a_listener_and_a_failed_listen_leave_the_pcb_pools_as_they_were PASSED [ 55%]
+tests_hardware/flash/test_reboot_persistence.py::test_boot_import_mechanism_actually_boots_the_real_system PASSED [ 56%]
+tests_hardware/flash/test_sensor_accuracy.py::test_scd30_real_reading_is_within_datasheet_plausible_bounds PASSED [ 57%]
+tests_hardware/flash/test_sensor_accuracy.py::test_scd30_frc_window_sums_hold_in_float32 PASSED [ 58%]
+tests_hardware/flash/test_sensor_accuracy.py::test_bmp3xx_real_reading_is_within_datasheet_plausible_bounds PASSED [ 60%]
+tests_hardware/flash/test_sensor_accuracy.py::test_sgp40_voc_algorithm_produces_plausible_and_stable_results PASSED [ 61%]
+tests_hardware/flash/test_sensor_accuracy.py::test_isl29125_real_reading_is_within_datasheet_plausible_bounds PASSED [ 62%]
+tests_hardware/flash/test_sensor_accuracy.py::test_isl29125_survives_recombined_realistic_lighting_scenarios SKIPPED [ 63%]
+tests_hardware/flash/test_system_commands.py::test_fram_erase_blanks_the_chip_and_every_logger_restarts_empty FAILED [ 64%]
+tests_hardware/flash/test_system_commands.py::test_refused_commands_change_nothing_and_never_stop_the_feed PASSED [ 65%]
+tests_hardware/flash/test_system_commands.py::test_an_erase_with_a_write_and_a_bus_session_in_flight_or_a_pause_still_resets_attributed[loads] FAILED [ 66%]
+tests_hardware/flash/test_system_commands.py::test_an_erase_with_a_write_and_a_bus_session_in_flight_or_a_pause_still_resets_attributed[mempause] FAILED [ 67%]
+tests_hardware/flash/test_system_commands.py::test_a_reboot_with_storage_paused_still_resets_attributed PASSED [ 68%]
+tests_hardware/flash/test_system_commands.py::test_a_reset_mid_erase_leaves_every_chunk_old_or_blank[50] FAILED [ 70%]
+tests_hardware/flash/test_system_commands.py::test_a_reset_mid_erase_leaves_every_chunk_old_or_blank[150] FAILED [ 71%]
+tests_hardware/flash/test_system_commands.py::test_a_reset_mid_erase_leaves_every_chunk_old_or_blank[250] FAILED [ 72%]
+tests_hardware/flash/test_system_commands.py::test_bootloader_command_shuts_down_then_enters_bootsel FAILED [ 73%]
+tests_hardware/flash/test_task_supervisor.py::test_the_supervisor_restarts_a_real_dead_task FAILED [ 74%]
+tests_hardware/flash/test_toolchain_flash_boot.py::test_mpremote_connection_is_stable_across_repeated_calls FAILED [ 75%]
+tests_hardware/flash/test_toolchain_flash_boot.py::test_env_tier_flash_recurring_run_is_idempotent SKIPPED [ 76%]
+tests_hardware/flash/test_toolchain_flash_boot.py::test_real_uf2_reflash_and_boot_smoke_test SKIPPED [ 77%]
+tests_hardware/flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[none] FAILED [ 78%]
+tests_hardware/flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[crc16] FAILED [ 80%]
+tests_hardware/flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[cobs] FAILED [ 81%]
+tests_hardware/flash/test_uart_crossover.py::test_silence_and_desync_recover_within_the_resync_bound_and_a_mismatch_fails_loudly[none] FAILED [ 82%]
+tests_hardware/flash/test_uart_crossover.py::test_silence_and_desync_recover_within_the_resync_bound_and_a_mismatch_fails_loudly[crc16] FAILED [ 83%]
+tests_hardware/flash/test_uart_crossover.py::test_the_shipped_driver_never_holds_the_loop_for_a_frame_still_arriving FAILED [ 84%]
+tests_hardware/flash/test_uart_crossover.py::test_an_idle_listener_polls_at_the_idle_rate_not_the_transaction_rate FAILED [ 85%]
+tests_hardware/flash/test_uart_crossover.py::test_comm_hazards_are_serialised_refused_or_recovered[none] FAILED [ 86%]
+tests_hardware/flash/test_uart_crossover.py::test_comm_hazards_are_serialised_refused_or_recovered[crc16] FAILED [ 87%]
+tests_hardware/flash/test_uart_crossover.py::test_the_link_keeps_transferring_while_every_other_subsystem_is_busy[none] FAILED [ 88%]
+tests_hardware/flash/test_uart_crossover.py::test_the_link_keeps_transferring_while_every_other_subsystem_is_busy[crc16] FAILED [ 90%]
+tests_hardware/flash/test_uart_crossover.py::test_no_frame_is_lost_while_interrupts_are_off[none] FAILED [ 91%]
+tests_hardware/flash/test_uart_crossover.py::test_no_frame_is_lost_while_interrupts_are_off[crc16] FAILED [ 92%]
+tests_hardware/flash/test_uart_crossover.py::test_a_soft_reset_during_traffic_leaves_no_running_ring[none] FAILED [ 93%]
+tests_hardware/flash/test_uart_crossover.py::test_a_soft_reset_during_traffic_leaves_no_running_ring[crc16] FAILED [ 94%]
+tests_hardware/flash/test_uart_crossover.py::test_a_break_mid_frame_fails_that_transaction_only[none] FAILED [ 95%]
+tests_hardware/flash/test_uart_crossover.py::test_a_break_mid_frame_fails_that_transaction_only[crc16] FAILED [ 96%]
+tests_hardware/flash/test_unretrieved_task_exception_handler.py::test_the_unretrieved_exception_report_is_allocation_free_and_retains_nothing_on_real_hardware FAILED [ 97%]
+tests_hardware/flash/test_watchdog_starvation.py::test_watchdog_starvation_triggers_a_real_hardware_reset FAILED [ 98%]
+tests_hardware/flash/test_watchdog_starvation.py::test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm FAILED [100%]
+tests_hardware/flash/test_watchdog_starvation.py::test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm ERROR [100%]
+
+==================================== ERRORS ====================================
+_ ERROR at teardown of test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm _
+  + Exception Group Traceback (most recent call last):
+  |   File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/_pytest/runner.py", line 361, in from_call
+  |     result: TResult | None = func()
+  |                              ~~~~^^
+  |   File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/_pytest/runner.py", line 250, in <lambda>
+  |     lambda: runtest_hook(item=item, **kwds),
+  |             ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  |   File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/pluggy/_hooks.py", line 512, in __call__
+  |     return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+  |            ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/pluggy/_manager.py", line 120, in _hookexec
+  |     return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+  |            ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/pluggy/_callers.py", line 167, in _multicall
+  |     raise exception
+  |   File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/pluggy/_callers.py", line 139, in _multicall
+  |     teardown.throw(exception)
+  |     ~~~~~~~~~~~~~~^^^^^^^^^^^
+  |   File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/_pytest/logging.py", line 873, in pytest_runtest_teardown
+  |     yield
+  |   File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/pluggy/_callers.py", line 139, in _multicall
+  |     teardown.throw(exception)
+  |     ~~~~~~~~~~~~~~^^^^^^^^^^^
+  |   File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/_pytest/capture.py", line 905, in pytest_runtest_teardown
+  |     return (yield)
+  |             ^^^^^
+  |   File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/pluggy/_callers.py", line 121, in _multicall
+  |     res = hook_impl.function(*args)
+  |   File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/_pytest/runner.py", line 199, in pytest_runtest_teardown
+  |     item.session._setupstate.teardown_exact(nextitem)
+  |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  |   File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/_pytest/runner.py", line 581, in teardown_exact
+  |     raise BaseExceptionGroup("errors during test teardown", exceptions[::-1])
+  | ExceptionGroup: errors during test teardown (2 sub-exceptions)
+  +-+---------------- 1 ----------------
+    | ExceptionGroup: errors while tearing down <Session  exitstatus=<ExitCode.OK: 0> testsfailed=39 testscollected=90> (2 sub-exceptions)
+    +-+---------------- 1 ----------------
+      | Traceback (most recent call last):
+      |   File "/usr/lib/python3.13/urllib/request.py", line 1319, in do_open
+      |     h.request(req.get_method(), req.selector, req.data, headers,
+      |     ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |               encode_chunked=req.has_header('Transfer-encoding'))
+      |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |   File "/usr/lib/python3.13/http/client.py", line 1367, in request
+      |     self._send_request(method, url, body, headers, encode_chunked)
+      |     ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |   File "/usr/lib/python3.13/http/client.py", line 1413, in _send_request
+      |     self.endheaders(body, encode_chunked=encode_chunked)
+      |     ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |   File "/usr/lib/python3.13/http/client.py", line 1362, in endheaders
+      |     self._send_output(message_body, encode_chunked=encode_chunked)
+      |     ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |   File "/usr/lib/python3.13/http/client.py", line 1122, in _send_output
+      |     self.send(msg)
+      |     ~~~~~~~~~^^^^^
+      |   File "/usr/lib/python3.13/http/client.py", line 1066, in send
+      |     self.connect()
+      |     ~~~~~~~~~~~~^^
+      |   File "/usr/lib/python3.13/http/client.py", line 1032, in connect
+      |     self.sock = self._create_connection(
+      |                 ~~~~~~~~~~~~~~~~~~~~~~~^
+      |         (self.host,self.port), self.timeout, self.source_address)
+      |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |   File "/usr/lib/python3.13/socket.py", line 864, in create_connection
+      |     raise exceptions[0]
+      |   File "/usr/lib/python3.13/socket.py", line 849, in create_connection
+      |     sock.connect(sa)
+      |     ~~~~~~~~~~~~^^^^
+      | TimeoutError: timed out
+      | 
+      | During handling of the above exception, another exception occurred:
+      | 
+      | Traceback (most recent call last):
+      |   File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/_pytest/runner.py", line 568, in teardown_exact
+      |     fin()
+      |     ~~~^^
+      |   File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/_pytest/fixtures.py", line 1166, in finish
+      |     raise exceptions[0]
+      |   File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/_pytest/fixtures.py", line 1156, in finish
+      |     fin()
+      |     ~~~^^
+      |   File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/_pytest/fixtures.py", line 1014, in _teardown_yield_fixture
+      |     next(it)
+      |     ~~~~^^^^
+      |   File "/home/nico/programming/sensors-bench/tests_hardware/conftest.py", line 494, in standard_state
+      |     error_log_helpers.save_errcount(dut_ip, "session-end")
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+      |   File "/home/nico/programming/sensors-bench/tests_hardware/error_log_helpers.py", line 270, in save_errcount
+      |     return _saved_status(dut_ip, reason)[0]
+      |            ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+      |   File "/home/nico/programming/sensors-bench/tests_hardware/error_log_helpers.py", line 92, in _saved_status
+      |     body, status = _status(dut_ip)
+      |                    ~~~~~~~^^^^^^^^
+      |   File "/home/nico/programming/sensors-bench/tests_hardware/error_log_helpers.py", line 79, in _status
+      |     res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_ERRCOUNT_TIMEOUT_S)
+      |   File "/home/nico/programming/sensors-bench/tests_hardware/http_client.py", line 94, in fetch
+      |     opened = urllib.request.urlopen(request, timeout=timeout_s)
+      |   File "/usr/lib/python3.13/urllib/request.py", line 189, in urlopen
+      |     return opener.open(url, data, timeout)
+      |            ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+      |   File "/usr/lib/python3.13/urllib/request.py", line 489, in open
+      |     response = self._open(req, data)
+      |   File "/usr/lib/python3.13/urllib/request.py", line 506, in _open
+      |     result = self._call_chain(self.handle_open, protocol, protocol +
+      |                               '_open', req)
+      |   File "/usr/lib/python3.13/urllib/request.py", line 466, in _call_chain
+      |     result = func(*args)
+      |   File "/usr/lib/python3.13/urllib/request.py", line 1348, in http_open
+      |     return self.do_open(http.client.HTTPConnection, req)
+      |            ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |   File "/usr/lib/python3.13/urllib/request.py", line 1322, in do_open
+      |     raise URLError(err)
+      | urllib.error.URLError: <urlopen error timed out>
+      +---------------- 2 ----------------
+      | Traceback (most recent call last):
+      |   File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/_pytest/runner.py", line 568, in teardown_exact
+      |     fin()
+      |     ~~~^^
+      |   File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/_pytest/fixtures.py", line 1166, in finish
+      |     raise exceptions[0]
+      |   File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/_pytest/fixtures.py", line 1156, in finish
+      |     fin()
+      |     ~~~^^
+      |   File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/_pytest/fixtures.py", line 1014, in _teardown_yield_fixture
+      |     next(it)
+      |     ~~~~^^^^
+      |   File "/home/nico/programming/sensors-bench/tests_hardware/flash/conftest.py", line 43, in leave_board_serving
+      |     board.hard_reset()
+      |     ~~~~~~~~~~~~~~~~^^
+      |   File "/home/nico/programming/sensors-bench/tests_hardware/harness.py", line 897, in hard_reset
+      |     raise HardwareTestFailureError(f"mpremote reset failed (exit {result.returncode}):\n{result.stderr}")
+      | harness.HardwareTestFailureError: mpremote reset failed (exit 1):
+      | mpremote: failed to access /dev/no-pico-serial-device-detected (it may be in use by another program)
+      | 
+      +------------------------------------
+    +---------------- 2 ----------------
+    | Traceback (most recent call last):
+    |   File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/_pytest/runner.py", line 568, in teardown_exact
+    |     fin()
+    |     ~~~^^
+    |   File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/_pytest/fixtures.py", line 1166, in finish
+    |     raise exceptions[0]
+    |   File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/_pytest/fixtures.py", line 1156, in finish
+    |     fin()
+    |     ~~~^^
+    |   File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/_pytest/fixtures.py", line 1014, in _teardown_yield_fixture
+    |     next(it)
+    |     ~~~~^^^^
+    |   File "/home/nico/programming/sensors-bench/tests_hardware/flash/test_watchdog_starvation.py", line 33, in closing_reset
+    |     board.hard_reset()
+    |     ~~~~~~~~~~~~~~~~^^
+    |   File "/home/nico/programming/sensors-bench/tests_hardware/harness.py", line 897, in hard_reset
+    |     raise HardwareTestFailureError(f"mpremote reset failed (exit {result.returncode}):\n{result.stderr}")
+    | harness.HardwareTestFailureError: mpremote reset failed (exit 1):
+    | mpremote: failed to access /dev/no-pico-serial-device-detected (it may be in use by another program)
+    | 
+    +------------------------------------
+=================================== FAILURES ===================================
+___________ test_a_held_sda_line_is_cleared_and_every_device_answers ___________
+
+board = <harness.Board object at 0x7f7ffc4d70>
+result_note = <function result_note.<locals>._note at 0x7f7f305260>
+
+    def test_a_held_sda_line_is_cleared_and_every_device_answers(board: Board, result_note: _ResultNote) -> None:
+        # A real held SDA, cleared by the runtime rung and by the boot-time clear; no device register is written.
+        facts = _run(board, "i2c_held_sda_recovery.py", _SHORT_SCRIPT_TIMEOUT_S, bounds=True)
+        assert facts["held_device"] is not None, "no discovered device answers a pointer read with a 0 first bit - nothing to hold"
+        runtime, boot = facts["runtime_clear"], facts["boot_clear"]
+        assert isinstance(runtime, dict) and isinstance(boot, dict), facts
+        result_note(f"held {facts['held_device']}, runtime clear {runtime['clear_ms']} ms")
+        assert runtime["held"] is True, f"the bit-banged read left SDA high - no held line was made: {runtime}"
+>       assert runtime["stuck_errno"] in (errno.ETIMEDOUT, errno.EIO), f"a transfer on the held bus gave {runtime['stuck_errno']}, not ETIMEDOUT or EIO"
+E       AssertionError: a transfer on the held bus gave None, not ETIMEDOUT or EIO
+E       assert None in (110, 5)
+
+tests_hardware/flash/test_bus_concurrency.py:263: AssertionError
+__________________ test_bmp3xx_alone_survives_a_general_call ___________________
+
+board = <harness.Board object at 0x7f7ffc4d70>
+result_note = <function result_note.<locals>._note at 0x7f7ef2ae80>
+
+    def test_bmp3xx_alone_survives_a_general_call(board: Board, result_note: _ResultNote) -> None:
+        # A lone BMP3xx through general-call resets: volatile registers only, restored by a soft reset at the end.
+        facts = _run(board, "bmp3xx_alone_survives_a_general_call.py", _SHORT_SCRIPT_TIMEOUT_S, bounds=True)
+        result_note(f"naks={facts['naks']} devices_on_bus={facts['devices_on_bus']}")
+        assert _count(facts, "broadcasts") >= _count(facts, "broadcasts_planned"), f"{facts['broadcasts']} of {facts['broadcasts_planned']} broadcasts sent"
+        assert _count(facts, "reads") > 0, "the reader completed no read"
+>       assert facts["before"] == facts["after"], f"the BMP3xx state changed through the general calls: before {facts['before']}, after {facts['after']}"
+E       AssertionError: the BMP3xx state changed through the general calls: before {'pwr_ctrl': 0, 'snapshot': [8, 2, 3], 'chip_id': 80}, after {'pwr_ctrl': 3, 'snapshot': [8, 2, 3], 'chip_id': 80}
+E       assert {'pwr_ctrl': ...'chip_id': 80} == {'pwr_ctrl': ...'chip_id': 80}
+E         
+E         Omitting 2 identical items, use -vv to show
+E         Differing items:
+E         {'pwr_ctrl': 0} != {'pwr_ctrl': 3}
+E         
+E         Full diff:
+E           {...
+E         
+E         ...Full output truncated (11 lines hidden), use '-vv' to show
+
+tests_hardware/flash/test_bus_concurrency.py:298: AssertionError
+__________ test_fram_erase_racing_a_chunk_write_leaves_no_torn_chunk ___________
+
+board = <harness.Board object at 0x7f7ffc4d70>
+request = <FixtureRequest for <Function test_fram_erase_racing_a_chunk_write_leaves_no_torn_chunk>>
+result_note = <function result_note.<locals>._note at 0x7f7f3077e0>
+
+    def test_fram_erase_racing_a_chunk_write_leaves_no_torn_chunk(board: Board, request: pytest.FixtureRequest, result_note: _ResultNote) -> None:
+        # The erase blanks the FRAM logs: the raw dump is saved first, then again after the production boot.
+        save_fram_raw(board, "erase-racing-a-chunk-write")
+        try:
+            out = board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "system_command_fram_erase.py", timeout_s=_LONG_SCRIPT_TIMEOUT_S, STATE="loads")
+            facts = parse_facts(out, allow_missing_done=True)
+>           assert "ERASE START" in out.splitlines() and "failure" not in facts, f"the erase never started under the logger writes:\n{out}"
+E           AssertionError: the erase never started under the logger writes:
+E             FACT state="loads"
+E             FACT layout={"allocated": 1140, "size": 262144}
+E             FACT seeded=["BMP3XX", "CFGMGR_BMP3XX", "CFGMGR_ISL29125", "CFGMGR_NOTIFY", "CFGMGR_NTP", "CFGMGR_SGP40", "CFGMGR_SYSTEM", "CFGMGR_WIFI", "DNSSRV", "ISL29125", "NEOPIXEL", "NOTIFY", "NTP", "SCD30", "SGP40", "SYSTEM", "UART_init", "UART_resp", "WEBSERVER", "WIFI"]
+E             FACT seeded_system={"ErrCount": 3, "ErrType": ["N", "N", "N", "N", "N", "N", "N", "E", "E", "E"], "ErrNum": [0, 0, 0, 0, 0, 0, 0, 125, 126, 127]}
+E             
+E           assert ('ERASE START' in ['FACT state="loads"', 'FACT layout={"allocated": 1140, "size": 262144}', 'FACT seeded=["BMP3XX", "CFGMGR_BMP3XX", "CFGMGR_ISL29125", "CFGMGR_NOTIFY", "CFGMGR_NTP", "CFGMGR_SGP40", "CFGMGR_SYSTEM", "CFGMGR_WIFI", "DNSSRV", "ISL29125", "NEOPIXEL", "NOTIFY", "NTP", "SCD30", "SGP40", "SYSTEM", "UART_init", "UART_resp", "WEBSERVER", "WIFI"]', 'FACT seeded_system={"ErrCount": 3, "ErrType": ["N", "N", "N", "N", "N", "N", "N", "E", "E", "E"], "ErrNum": [0, 0, 0, 0, 0, 0, 0, 125, 126, 127]}'])
+E            +  where ['FACT state="loads"', 'FACT layout={"allocated": 1140, "size": 262144}', 'FACT seeded=["BMP3XX", "CFGMGR_BMP3XX", "CFGMGR_ISL29125", "CFGMGR_NOTIFY", "CFGMGR_NTP", "CFGMGR_SGP40", "CFGMGR_SYSTEM", "CFGMGR_WIFI", "DNSSRV", "ISL29125", "NEOPIXEL", "NOTIFY", "NTP", "SCD30", "SGP40", "SYSTEM", "UART_init", "UART_resp", "WEBSERVER", "WIFI"]', 'FACT seeded_system={"ErrCount": 3, "ErrType": ["N", "N", "N", "N", "N", "N", "N", "E", "E", "E"], "ErrNum": [0, 0, 0, 0, 0, 0, 0, 125, 126, 127]}'] = <built-in method splitlines of str object at 0x29eb0fa0>()
+E            +    where <built-in method splitlines of str object at 0x29eb0fa0> = 'FACT state="loads"\nFACT layout={"allocated": 1140, "size": 262144}\nFACT seeded=["BMP3XX", "CFGMGR_BMP3XX", "CFGMGR_ISL29125", "CFGMGR_NOTIFY", "CFGMGR_NTP", "CFGMGR_SGP40", "CFGMGR_SYSTEM", "CFGMGR_WIFI", "DNSSRV", "ISL29125", "NEOPIXEL", "NOTIFY", "NTP", "SCD30", "SGP40", "SYSTEM", "UART_init", "UART_resp", "WEBSERVER", "WIFI"]\nFACT seeded_system={"ErrCount": 3, "ErrType": ["N", "N", "N", "N", "N", "N", "N", "E", "E", "E"], "ErrNum": [0, 0, 0, 0, 0, 0, 0, 125, 126, 127]}\n'.splitlines
+
+tests_hardware/flash/test_bus_concurrency.py:368: AssertionError
+_______________________ test_scd30_matches_its_twin_fake _______________________
+
+board = <harness.Board object at 0x7f7ffc4d70>
+scd30_measuring = 'already measuring (no write)'
+
+    def test_scd30_matches_its_twin_fake(board: Board, scd30_measuring: str) -> None:
+        _, divergences = _conformance(board, SCD30)
+>       assert not divergences, "the SCD30 fake diverges from the chip:\n" + "\n".join(divergences)
+E       AssertionError: the SCD30 fake diverges from the chip:
+E         gc.threshold(-1) C03_read_before_a_command: real chip 'dddddd', twin '000000'
+E         gc.threshold(32768) C03_read_before_a_command: real chip 'dddddd', twin '000000'
+E       assert not ["gc.threshold(-1) C03_read_before_a_command: real chip 'dddddd', twin '000000'", "gc.threshold(32768) C03_read_before_a_command: real chip 'dddddd', twin '000000'"]
+
+tests_hardware/flash/test_chip_conformance.py:143: AssertionError
+_______________________ test_sgp40_matches_its_twin_fake _______________________
+
+board = <harness.Board object at 0x7f7ffc4d70>
+
+    def test_sgp40_matches_its_twin_fake(board: Board) -> None:
+        _, divergences = _conformance(board, SGP40)
+>       assert not divergences, "the SGP40 fake diverges from the chip:\n" + "\n".join(divergences)
+E       AssertionError: the SGP40 fake diverges from the chip:
+E         gc.threshold(-1) A02_serial_stable: real chip 'yes', twin 'no'
+E         gc.threshold(32768) A02_serial_stable: real chip 'yes', twin 'no'
+E       assert not ["gc.threshold(-1) A02_serial_stable: real chip 'yes', twin 'no'", "gc.threshold(32768) A02_serial_stable: real chip 'yes', twin 'no'"]
+
+tests_hardware/flash/test_chip_conformance.py:148: AssertionError
+______________________ test_bmp3xx_matches_its_twin_fake _______________________
+
+board = <harness.Board object at 0x7f7ffc4d70>
+result_note = <function result_note.<locals>._note at 0x7f7ef4bf60>
+
+    def test_bmp3xx_matches_its_twin_fake(board: Board, result_note: _ResultNote) -> None:
+        real, divergences = _conformance(board, BMP3XX)
+        result_note(f"chip id {real.get('A01_chip_id')}, calibration block {real.get('A02_calibration')}")
+>       assert not divergences, "the BMP3xx fake diverges from the chip:\n" + "\n".join(divergences)
+E       AssertionError: the BMP3xx fake diverges from the chip:
+E         gc.threshold(-1) B03_pwr_ctrl_during_forced: real chip '13', twin '00'
+E         gc.threshold(-1) B05_pwr_ctrl_after_conversion: real chip '03', twin '00'
+E         gc.threshold(-1) B07_status_after_data_read: real chip '10', twin '70'
+E         gc.threshold(-1) C02_osr_config_after_softreset: real chip '0000', twin '0200'
+E         gc.threshold(32768) B03_pwr_ctrl_during_forced: real chip '13', twin '00'
+E         gc.threshold(32768) B05_pwr_ctrl_after_conversion: real chip '03', twin '00'
+E         gc.threshold(32768) B07_status_after_data_read: real chip '10', twin '70'
+E         gc.threshold(32768) C02_osr_config_after_softreset: real chip '0000', twin '0200'
+E       assert not ["gc.threshold(-1) B03_pwr_ctrl_during_forced: real chip '13', twin '00'", "gc.threshold(-1) B05_pwr_ctrl_after_conversion: real chip '03', twin '00'", "gc.threshold(-1) B07_status_after_data_read: real chip '10', twin '70'", "gc.threshold(-1) C02_osr_config_after_softreset: real chip '0000', twin '0200'", "gc.threshold(32768) B03_pwr_ctrl_during_forced: real chip '13', twin '00'", "gc.threshold(32768) B05_pwr_ctrl_after_conversion: real chip '03', twin '00'", ...]
+
+tests_hardware/flash/test_chip_conformance.py:154: AssertionError
+_______________________ test_fram_matches_its_twin_fake ________________________
+
+board = <harness.Board object at 0x7f7ffc4d70>
+
+    def test_fram_matches_its_twin_fake(board: Board) -> None:
+        _, divergences = _conformance(board, FRAM)
+>       assert not divergences, "the FRAM fake diverges from the chip:\n" + "\n".join(divergences)
+E       AssertionError: the FRAM fake diverges from the chip:
+E         gc.threshold(-1) C02_wel_after_write: real chip '1', twin '0'
+E         gc.threshold(32768) C02_wel_after_write: real chip '1', twin '0'
+E       assert not ["gc.threshold(-1) C02_wel_after_write: real chip '1', twin '0'", "gc.threshold(32768) C02_wel_after_write: real chip '1', twin '0'"]
+
+tests_hardware/flash/test_chip_conformance.py:159: AssertionError
+___________ test_real_gc_heap_headroom_survives_a_full_system_build ____________
+
+board = <harness.Board object at 0x7f7ffc4d70>
+result_note = <function result_note.<locals>._note at 0x7f7eda40e0>
+
+    def test_real_gc_heap_headroom_survives_a_full_system_build(board: "Board", result_note: "Callable[[str], None]") -> None:
+        # The one memory figure no fake can produce: real 264 KB SRAM minus the firmware's own static footprint, after the
+        # bench build's object graph exists. Survivor volume and contiguity are judged on the facts, placement on the map.
+        output = board.run_isolated(DEVICE_SCRIPTS_DIR / "heap_headroom_after_full_system_build.py", timeout_s=_HEADROOM_SCRIPT_TIMEOUT_S, worst_case_allocation=WORST_CASE_ALLOCATION)
+        facts = parse_facts(output)
+        assert not crash_lines(output.splitlines()), "the headroom build crashed or failed an allocation:\n" + "\n".join(crash_lines(output.splitlines()))
+        stages, used, max_used = facts.get("gc_threshold"), facts.get("used"), facts.get("max_used")
+        largest, min_largest = facts.get("largest_block"), facts.get("min_largest_block")
+        heaps = {key: value for key, value in facts.items() if key.startswith("heap_")}
+        result_note(f"heap headroom at gc.threshold {stages}: used {used} B (max {max_used}), largest block {largest} B (min {min_largest}); {heaps}")
+>       assert isinstance(used, int) and isinstance(max_used, int) and used <= max_used, f"at gc.threshold {stages}: the built object graph holds {used} B, over {max_used} B; facts {facts}"
+E       AssertionError: at gc.threshold [-1, 32768]: the built object graph holds 128384 B, over 100000 B; facts {'heap_baseline': {'alloc': 69312, 'free': 118816, 'largest_block': 116592}, 'heap_after_build_system': {'alloc': 128384, 'free': 59760, 'largest_block': 45168}, 'heap_after_build_system_control': {'alloc': 128192, 'free': 60000, 'largest_block': 45168}, 'heap_after_build_system_production_threshold': {'alloc': 128256, 'free': 59968, 'largest_block': 45168}, 'used': 128384, 'max_used': 100000, 'largest_block': 45168, 'min_largest_block': 32768, 'gc_threshold': [-1, 32768]}
+E       assert (True and True and 128384 <= 100000)
+E        +  where True = isinstance(128384, int)
+E        +  and   True = isinstance(100000, int)
+
+tests_hardware/flash/test_memory_stress.py:110: AssertionError
+____________ test_routine_no_yield_stretches_stay_under_the_gc_term ____________
+
+board = <harness.Board object at 0x7f7ffc4d70>
+result_note = <function result_note.<locals>._note at 0x7f7eda5440>
+
+    def test_routine_no_yield_stretches_stay_under_the_gc_term(board: "Board", result_note: "Callable[[str], None]") -> None:
+        _output, facts = _run(board, "loop_stretch_timing.py", _STRETCH_SCRIPT_TIMEOUT_S)
+        bound = facts.get("routine_stall_us")
+        stretches = {key: facts.get(key) for key in ("gc_max_us", "voc_max_us", "crc_gap_max_us")}
+        result_note(f"no-yield stretches at gc.threshold {facts.get('gc_threshold')}: {stretches}, CRC total {facts.get('crc_total_us')} us (bound {bound} us)")
+        assert isinstance(bound, int), f"no routine_stall_us fact: {facts}"
+        over = {key: value for key, value in stretches.items() if not isinstance(value, int) or value > bound}
+>       assert not over, f"routine no-yield stretches over the {bound} us GC term, or missing: {over}; facts {facts}"
+E       AssertionError: routine no-yield stretches over the 21000 us GC term, or missing: {'voc_max_us': 41287}; facts {'gc_threshold': -1, 'gc_max_us': 17646, 'voc_max_us': 41287, 'crc_total_us': 182519, 'crc_gap_max_us': 1971, 'routine_stall_us': 21000}
+E       assert not {'voc_max_us': 41287}
+
+tests_hardware/flash/test_memory_stress.py:135: AssertionError
+__________________ test_c_stack_peak_is_within_half_the_limit __________________
+
+board = <harness.Board object at 0x7f7ffc4d70>
+result_note = <function result_note.<locals>._note at 0x7f7eda74c0>
+
+    def test_c_stack_peak_is_within_half_the_limit(board: "Board", result_note: "Callable[[str], None]") -> None:
+        _output, facts = _run(board, "c_stack_budget.py", _C_STACK_SCRIPT_TIMEOUT_S)
+        limit = facts.get("c_stack_limit")
+        result_note(f"C stack: chain {facts.get('chain')}, peak {facts.get('c_stack_peak', facts.get('twin_c_stack_peak'))} B of {limit} B; leaves {facts.get('leaf_peaks')}")
+        assert isinstance(limit, int) and facts.get("chain") is not None, f"no leaf of the running system recorded a stack reading: {facts}"
+        if "twin_c_stack_peak" in facts:
+            return  # the Unix port's 64-bit frames are not the board's: reported, never compared
+        peak = facts.get("c_stack_peak")
+>       assert isinstance(peak, int) and peak <= limit // 2, f"the C-stack peak {peak} B is over half the {limit} B limit (chain {facts.get('chain')}): {facts}"
+E       AssertionError: the C-stack peak 4020 B is over half the 7936 B limit (chain fram.get_values_sync): {'chain': 'fram.get_values_sync', 'leaf_peaks': {'i2c1.writeto': 2820, 'i2c0.writeto': 2420, 'fram.get_values_sync': 4020, 'fram.set_values_sync': 4020, 'i2c1.get_register_bytes': 2820, 'i2c0.get_register_bytes': 2620, 'i2c0.set_bits': 2620, 'i2c0.get_register_struct': 2620, 'i2c0.set_register_struct': 2420, 'i2c1.readfrom_into': 2820, 'i2c1.set_register_struct': 2820}, 'c_stack_peak': 4020, 'c_stack_limit': 7936}
+E       assert (True and 4020 <= (7936 // 2))
+E        +  where True = isinstance(4020, int)
+
+tests_hardware/flash/test_memory_stress.py:183: AssertionError
+_______ test_fram_erase_blanks_the_chip_and_every_logger_restarts_empty ________
+
+board = <harness.Board object at 0x7f7ffc4d70>
+request = <FixtureRequest for <Function test_fram_erase_blanks_the_chip_and_every_logger_restarts_empty>>
+result_note = <function result_note.<locals>._note at 0x7f7ee14ae0>
+
+    def test_fram_erase_blanks_the_chip_and_every_logger_restarts_empty(board: "Board", request: pytest.FixtureRequest, result_note: "Callable[[str], None]") -> None:
+        save_fram_raw(board, "before-erase")
+        try:
+            output = board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "system_command_fram_erase.py", timeout_s=_SCRIPT_TIMEOUT_S, STATE="idle")
+>           facts = _reset_facts(output, parse_facts(output, allow_missing_done=True), "system_command_fram_erase.py", "idle")
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/flash/test_system_commands.py:140: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+output = 'FACT state="idle"\nFACT layout={"allocated": 1140, "size": 262144}\n'
+facts = {'state': 'idle', 'layout': {'allocated': 1140, 'size': 262144}}
+script = 'system_command_fram_erase.py', context = 'idle'
+
+    def _reset_facts(output: str, facts: "dict[str, object]", script: str, context: str) -> "dict[str, object]":
+        # A command script's facts streamed before its reset: the command answered Valid, and no early end.
+        _clean(output, script)
+        assert "failure" not in facts and "no_reset_after_ms" not in facts, f"{script} {context}: no reset ended the run: {facts}\n{output}"
+>       assert facts.get("answer") == "Valid", f"{script} {context}: the command was not accepted: {facts}"
+E       AssertionError: system_command_fram_erase.py idle: the command was not accepted: {'state': 'idle', 'layout': {'allocated': 1140, 'size': 262144}}
+E       assert None == 'Valid'
+E        +  where None = <built-in method get of dict object at 0x7f7ed98dc0>('answer')
+E        +    where <built-in method get of dict object at 0x7f7ed98dc0> = {'state': 'idle', 'layout': {'allocated': 1140, 'size': 262144}}.get
+
+tests_hardware/flash/test_system_commands.py:91: AssertionError
+_ test_an_erase_with_a_write_and_a_bus_session_in_flight_or_a_pause_still_resets_attributed[loads] _
+
+board = <harness.Board object at 0x7f7ffc4d70>
+request = <FixtureRequest for <Function test_an_erase_with_a_write_and_a_bus_session_in_flight_or_a_pause_still_resets_attributed[loads]>>
+result_note = <function result_note.<locals>._note at 0x7f7ed836a0>
+state = 'loads'
+
+    @pytest.mark.parametrize("state", ["loads", "mempause"])
+    def test_an_erase_with_a_write_and_a_bus_session_in_flight_or_a_pause_still_resets_attributed(board: "Board", request: pytest.FixtureRequest, result_note: "Callable[[str], None]", state: str) -> None:
+        save_fram_raw(board, f"erase-{state}")
+        try:
+            output = board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "system_command_fram_erase.py", timeout_s=_SCRIPT_TIMEOUT_S, STATE=state)
+>           _attributed_reset(board, request, result_note, (output, parse_facts(output, allow_missing_done=True)), "system_command_fram_erase.py", _RR_FRAM_ERASED)
+
+tests_hardware/flash/test_system_commands.py:195: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/flash/test_system_commands.py:71: in _attributed_reset
+    facts = _reset_facts(*run, script, "state run")
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+output = 'FACT state="loads"\nFACT layout={"allocated": 1140, "size": 262144}\nFACT seeded=["BMP3XX", "CFGMGR_BMP3XX", "CFGMGR_..."ErrType": ["N", "N", "N", "N", "E", "E", "E", "E", "E", "E"], "ErrNum": [0, 0, 0, 0, 125, 126, 127, 125, 126, 127]}\n'
+facts = {'state': 'loads', 'layout': {'allocated': 1140, 'size': 262144}, 'seeded': ['BMP3XX', 'CFGMGR_BMP3XX', 'CFGMGR_ISL291...seeded_system': {'ErrCount': 6, 'ErrType': ['N', 'N', 'N', 'N', 'E', 'E', ...], 'ErrNum': [0, 0, 0, 0, 125, 126, ...]}}
+script = 'system_command_fram_erase.py', context = 'state run'
+
+    def _reset_facts(output: str, facts: "dict[str, object]", script: str, context: str) -> "dict[str, object]":
+        # A command script's facts streamed before its reset: the command answered Valid, and no early end.
+        _clean(output, script)
+        assert "failure" not in facts and "no_reset_after_ms" not in facts, f"{script} {context}: no reset ended the run: {facts}\n{output}"
+>       assert facts.get("answer") == "Valid", f"{script} {context}: the command was not accepted: {facts}"
+E       AssertionError: system_command_fram_erase.py state run: the command was not accepted: {'state': 'loads', 'layout': {'allocated': 1140, 'size': 262144}, 'seeded': ['BMP3XX', 'CFGMGR_BMP3XX', 'CFGMGR_ISL29125', 'CFGMGR_NOTIFY', 'CFGMGR_NTP', 'CFGMGR_SGP40', 'CFGMGR_SYSTEM', 'CFGMGR_WIFI', 'DNSSRV', 'ISL29125', 'NEOPIXEL', 'NOTIFY', 'NTP', 'SCD30', 'SGP40', 'SYSTEM', 'UART_init', 'UART_resp', 'WEBSERVER', 'WIFI'], 'seeded_system': {'ErrCount': 6, 'ErrType': ['N', 'N', 'N', 'N', 'E', 'E', 'E', 'E', 'E', 'E'], 'ErrNum': [0, 0, 0, 0, 125, 126, 127, 125, 126, 127]}}
+E       assert None == 'Valid'
+E        +  where None = <built-in method get of dict object at 0x7f7edfde00>('answer')
+E        +    where <built-in method get of dict object at 0x7f7edfde00> = {'state': 'loads', 'layout': {'allocated': 1140, 'size': 262144}, 'seeded': ['BMP3XX', 'CFGMGR_BMP3XX', 'CFGMGR_ISL29125', 'CFGMGR_NOTIFY', 'CFGMGR_NTP', 'CFGMGR_SGP40', ...], 'seeded_system': {'ErrCount': 6, 'ErrType': ['N', 'N', 'N', 'N', 'E', 'E', ...], 'ErrNum': [0, 0, 0, 0, 125, 126, ...]}}.get
+
+tests_hardware/flash/test_system_commands.py:91: AssertionError
+_ test_an_erase_with_a_write_and_a_bus_session_in_flight_or_a_pause_still_resets_attributed[mempause] _
+
+board = <harness.Board object at 0x7f7ffc4d70>
+request = <FixtureRequest for <Function test_an_erase_with_a_write_and_a_bus_session_in_flight_or_a_pause_still_resets_attributed[mempause]>>
+result_note = <function result_note.<locals>._note at 0x7f7edac040>
+state = 'mempause'
+
+    @pytest.mark.parametrize("state", ["loads", "mempause"])
+    def test_an_erase_with_a_write_and_a_bus_session_in_flight_or_a_pause_still_resets_attributed(board: "Board", request: pytest.FixtureRequest, result_note: "Callable[[str], None]", state: str) -> None:
+        save_fram_raw(board, f"erase-{state}")
+        try:
+            output = board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "system_command_fram_erase.py", timeout_s=_SCRIPT_TIMEOUT_S, STATE=state)
+>           _attributed_reset(board, request, result_note, (output, parse_facts(output, allow_missing_done=True)), "system_command_fram_erase.py", _RR_FRAM_ERASED)
+
+tests_hardware/flash/test_system_commands.py:195: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/flash/test_system_commands.py:71: in _attributed_reset
+    facts = _reset_facts(*run, script, "state run")
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+output = 'FACT state="mempause"\nFACT layout={"allocated": 1140, "size": 262144}\nFACT seeded=["BMP3XX", "CFGMGR_BMP3XX", "CFGM...pe": ["N", "E", "E", "E", "E", "E", "E", "E", "E", "E"], "ErrNum": [0, 125, 126, 127, 125, 126, 127, 125, 126, 127]}\n'
+facts = {'state': 'mempause', 'layout': {'allocated': 1140, 'size': 262144}, 'seeded': ['BMP3XX', 'CFGMGR_BMP3XX', 'CFGMGR_ISL..._system': {'ErrCount': 9, 'ErrType': ['N', 'E', 'E', 'E', 'E', 'E', ...], 'ErrNum': [0, 125, 126, 127, 125, 126, ...]}}
+script = 'system_command_fram_erase.py', context = 'state run'
+
+    def _reset_facts(output: str, facts: "dict[str, object]", script: str, context: str) -> "dict[str, object]":
+        # A command script's facts streamed before its reset: the command answered Valid, and no early end.
+        _clean(output, script)
+        assert "failure" not in facts and "no_reset_after_ms" not in facts, f"{script} {context}: no reset ended the run: {facts}\n{output}"
+>       assert facts.get("answer") == "Valid", f"{script} {context}: the command was not accepted: {facts}"
+E       AssertionError: system_command_fram_erase.py state run: the command was not accepted: {'state': 'mempause', 'layout': {'allocated': 1140, 'size': 262144}, 'seeded': ['BMP3XX', 'CFGMGR_BMP3XX', 'CFGMGR_ISL29125', 'CFGMGR_NOTIFY', 'CFGMGR_NTP', 'CFGMGR_SGP40', 'CFGMGR_SYSTEM', 'CFGMGR_WIFI', 'DNSSRV', 'ISL29125', 'NEOPIXEL', 'NOTIFY', 'NTP', 'SCD30', 'SGP40', 'SYSTEM', 'UART_init', 'UART_resp', 'WEBSERVER', 'WIFI'], 'seeded_system': {'ErrCount': 9, 'ErrType': ['N', 'E', 'E', 'E', 'E', 'E', 'E', 'E', 'E', 'E'], 'ErrNum': [0, 125, 126, 127, 125, 126, 127, 125, 126, 127]}}
+E       assert None == 'Valid'
+E        +  where None = <built-in method get of dict object at 0x7f7ecd1840>('answer')
+E        +    where <built-in method get of dict object at 0x7f7ecd1840> = {'state': 'mempause', 'layout': {'allocated': 1140, 'size': 262144}, 'seeded': ['BMP3XX', 'CFGMGR_BMP3XX', 'CFGMGR_ISL29125', 'CFGMGR_NOTIFY', 'CFGMGR_NTP', 'CFGMGR_SGP40', ...], 'seeded_system': {'ErrCount': 9, 'ErrType': ['N', 'E', 'E', 'E', 'E', 'E', ...], 'ErrNum': [0, 125, 126, 127, 125, 126, ...]}}.get
+
+tests_hardware/flash/test_system_commands.py:91: AssertionError
+__________ test_a_reset_mid_erase_leaves_every_chunk_old_or_blank[50] __________
+
+board = <harness.Board object at 0x7f7ffc4d70>
+request = <FixtureRequest for <Function test_a_reset_mid_erase_leaves_every_chunk_old_or_blank[50]>>
+result_note = <function result_note.<locals>._note at 0x7f7ed82660>
+after_ms = 50
+
+    @pytest.mark.parametrize("after_ms", _MID_ERASE_RESETS_MS)
+    def test_a_reset_mid_erase_leaves_every_chunk_old_or_blank(board: "Board", request: pytest.FixtureRequest, result_note: "Callable[[str], None]", after_ms: int) -> None:
+        save_fram_raw(board, f"mid-erase-{after_ms}")
+        try:
+            output = board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "system_command_fram_erase.py", timeout_s=_SCRIPT_TIMEOUT_S, STATE=f"reset_after_{after_ms}")
+            _clean(output, "system_command_fram_erase.py")
+            facts = parse_facts(output, allow_missing_done=True)
+>           assert "ERASE START" in output.splitlines() and "erase" not in facts, f"the reset did not land inside the erase: {facts}\n{output}"
+E           AssertionError: the reset did not land inside the erase: {'state': 'reset_after_50', 'layout': {'allocated': 1140, 'size': 262144}, 'seeded': ['BMP3XX', 'CFGMGR_BMP3XX', 'CFGMGR_ISL29125', 'CFGMGR_NOTIFY', 'CFGMGR_NTP', 'CFGMGR_SGP40', 'CFGMGR_SYSTEM', 'CFGMGR_WIFI', 'DNSSRV', 'ISL29125', 'NEOPIXEL', 'NOTIFY', 'NTP', 'SCD30', 'SGP40', 'SYSTEM', 'UART_init', 'UART_resp', 'WEBSERVER', 'WIFI'], 'seeded_system': {'ErrCount': 14, 'ErrType': ['E', 'E', 'E', 'E', 'E', 'E', 'E', 'E', 'E', 'E'], 'ErrNum': [125, 126, 127, 125, 126, 127, 126, 125, 126, 127]}}
+E             FACT state="reset_after_50"
+E             FACT layout={"allocated": 1140, "size": 262144}
+E             FACT seeded=["BMP3XX", "CFGMGR_BMP3XX", "CFGMGR_ISL29125", "CFGMGR_NOTIFY", "CFGMGR_NTP", "CFGMGR_SGP40", "CFGMGR_SYSTEM", "CFGMGR_WIFI", "DNSSRV", "ISL29125", "NEOPIXEL", "NOTIFY", "NTP", "SCD30", "SGP40", "SYSTEM", "UART_init", "UART_resp", "WEBSERVER", "WIFI"]
+E             FACT seeded_system={"ErrCount": 14, "ErrType": ["E", "E", "E", "E", "E", "E", "E", "E", "E", "E"], "ErrNum": [125, 126, 127, 125, 126, 127, 126, 125, 126, 127]}
+E             
+E           assert ('ERASE START' in ['FACT state="reset_after_50"', 'FACT layout={"allocated": 1140, "size": 262144}', 'FACT seeded=["BMP3XX", "CFGMGR_BMP3XX", "CFGMGR_ISL29125", "CFGMGR_NOTIFY", "CFGMGR_NTP", "CFGMGR_SGP40", "CFGMGR_SYSTEM", "CFGMGR_WIFI", "DNSSRV", "ISL29125", "NEOPIXEL", "NOTIFY", "NTP", "SCD30", "SGP40", "SYSTEM", "UART_init", "UART_resp", "WEBSERVER", "WIFI"]', 'FACT seeded_system={"ErrCount": 14, "ErrType": ["E", "E", "E", "E", "E", "E", "E", "E", "E", "E"], "ErrNum": [125, 126, 127, 125, 126, 127, 126, 125, 126, 127]}'])
+E            +  where ['FACT state="reset_after_50"', 'FACT layout={"allocated": 1140, "size": 262144}', 'FACT seeded=["BMP3XX", "CFGMGR_BMP3XX", "CFGMGR_ISL29125", "CFGMGR_NOTIFY", "CFGMGR_NTP", "CFGMGR_SGP40", "CFGMGR_SYSTEM", "CFGMGR_WIFI", "DNSSRV", "ISL29125", "NEOPIXEL", "NOTIFY", "NTP", "SCD30", "SGP40", "SYSTEM", "UART_init", "UART_resp", "WEBSERVER", "WIFI"]', 'FACT seeded_system={"ErrCount": 14, "ErrType": ["E", "E", "E", "E", "E", "E", "E", "E", "E", "E"], "ErrNum": [125, 126, 127, 125, 126, 127, 126, 125, 126, 127]}'] = <built-in method splitlines of str object at 0x299220c0>()
+E            +    where <built-in method splitlines of str object at 0x299220c0> = 'FACT state="reset_after_50"\nFACT layout={"allocated": 1140, "size": 262144}\nFACT seeded=["BMP3XX", "CFGMGR_BMP3XX", "CFGMGR_ISL29125", "CFGMGR_NOTIFY", "CFGMGR_NTP", "CFGMGR_SGP40", "CFGMGR_SYSTEM", "CFGMGR_WIFI", "DNSSRV", "ISL29125", "NEOPIXEL", "NOTIFY", "NTP", "SCD30", "SGP40", "SYSTEM", "UART_init", "UART_resp", "WEBSERVER", "WIFI"]\nFACT seeded_system={"ErrCount": 14, "ErrType": ["E", "E", "E", "E", "E", "E", "E", "E", "E", "E"], "ErrNum": [125, 126, 127, 125, 126, 127, 126, 125, 126, 127]}\n'.splitlines
+
+tests_hardware/flash/test_system_commands.py:242: AssertionError
+_________ test_a_reset_mid_erase_leaves_every_chunk_old_or_blank[150] __________
+
+board = <harness.Board object at 0x7f7ffc4d70>
+request = <FixtureRequest for <Function test_a_reset_mid_erase_leaves_every_chunk_old_or_blank[150]>>
+result_note = <function result_note.<locals>._note at 0x7f7ef2a660>
+after_ms = 150
+
+    @pytest.mark.parametrize("after_ms", _MID_ERASE_RESETS_MS)
+    def test_a_reset_mid_erase_leaves_every_chunk_old_or_blank(board: "Board", request: pytest.FixtureRequest, result_note: "Callable[[str], None]", after_ms: int) -> None:
+        save_fram_raw(board, f"mid-erase-{after_ms}")
+        try:
+            output = board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "system_command_fram_erase.py", timeout_s=_SCRIPT_TIMEOUT_S, STATE=f"reset_after_{after_ms}")
+            _clean(output, "system_command_fram_erase.py")
+            facts = parse_facts(output, allow_missing_done=True)
+>           assert "ERASE START" in output.splitlines() and "erase" not in facts, f"the reset did not land inside the erase: {facts}\n{output}"
+E           AssertionError: the reset did not land inside the erase: {'state': 'reset_after_150', 'layout': {'allocated': 1140, 'size': 262144}, 'seeded': ['BMP3XX', 'CFGMGR_BMP3XX', 'CFGMGR_ISL29125', 'CFGMGR_NOTIFY', 'CFGMGR_NTP', 'CFGMGR_SGP40', 'CFGMGR_SYSTEM', 'CFGMGR_WIFI', 'DNSSRV', 'ISL29125', 'NEOPIXEL', 'NOTIFY', 'NTP', 'SCD30', 'SGP40', 'SYSTEM', 'UART_init', 'UART_resp', 'WEBSERVER', 'WIFI'], 'seeded_system': {'ErrCount': 20, 'ErrType': ['E', 'E', 'E', 'E', 'E', 'E', 'E', 'E', 'E', 'E'], 'ErrNum': [126, 125, 126, 127, 125, 126, 127, 125, 126, 127]}}
+E             FACT state="reset_after_150"
+E             FACT layout={"allocated": 1140, "size": 262144}
+E             FACT seeded=["BMP3XX", "CFGMGR_BMP3XX", "CFGMGR_ISL29125", "CFGMGR_NOTIFY", "CFGMGR_NTP", "CFGMGR_SGP40", "CFGMGR_SYSTEM", "CFGMGR_WIFI", "DNSSRV", "ISL29125", "NEOPIXEL", "NOTIFY", "NTP", "SCD30", "SGP40", "SYSTEM", "UART_init", "UART_resp", "WEBSERVER", "WIFI"]
+E             FACT seeded_system={"ErrCount": 20, "ErrType": ["E", "E", "E", "E", "E", "E", "E", "E", "E", "E"], "ErrNum": [126, 125, 126, 127, 125, 126, 127, 125, 126, 127]}
+E             
+E           assert ('ERASE START' in ['FACT state="reset_after_150"', 'FACT layout={"allocated": 1140, "size": 262144}', 'FACT seeded=["BMP3XX", "CFGMGR_BMP3XX", "CFGMGR_ISL29125", "CFGMGR_NOTIFY", "CFGMGR_NTP", "CFGMGR_SGP40", "CFGMGR_SYSTEM", "CFGMGR_WIFI", "DNSSRV", "ISL29125", "NEOPIXEL", "NOTIFY", "NTP", "SCD30", "SGP40", "SYSTEM", "UART_init", "UART_resp", "WEBSERVER", "WIFI"]', 'FACT seeded_system={"ErrCount": 20, "ErrType": ["E", "E", "E", "E", "E", "E", "E", "E", "E", "E"], "ErrNum": [126, 125, 126, 127, 125, 126, 127, 125, 126, 127]}'])
+E            +  where ['FACT state="reset_after_150"', 'FACT layout={"allocated": 1140, "size": 262144}', 'FACT seeded=["BMP3XX", "CFGMGR_BMP3XX", "CFGMGR_ISL29125", "CFGMGR_NOTIFY", "CFGMGR_NTP", "CFGMGR_SGP40", "CFGMGR_SYSTEM", "CFGMGR_WIFI", "DNSSRV", "ISL29125", "NEOPIXEL", "NOTIFY", "NTP", "SCD30", "SGP40", "SYSTEM", "UART_init", "UART_resp", "WEBSERVER", "WIFI"]', 'FACT seeded_system={"ErrCount": 20, "ErrType": ["E", "E", "E", "E", "E", "E", "E", "E", "E", "E"], "ErrNum": [126, 125, 126, 127, 125, 126, 127, 125, 126, 127]}'] = <built-in method splitlines of str object at 0x2952ca70>()
+E            +    where <built-in method splitlines of str object at 0x2952ca70> = 'FACT state="reset_after_150"\nFACT layout={"allocated": 1140, "size": 262144}\nFACT seeded=["BMP3XX", "CFGMGR_BMP3XX", "CFGMGR_ISL29125", "CFGMGR_NOTIFY", "CFGMGR_NTP", "CFGMGR_SGP40", "CFGMGR_SYSTEM", "CFGMGR_WIFI", "DNSSRV", "ISL29125", "NEOPIXEL", "NOTIFY", "NTP", "SCD30", "SGP40", "SYSTEM", "UART_init", "UART_resp", "WEBSERVER", "WIFI"]\nFACT seeded_system={"ErrCount": 20, "ErrType": ["E", "E", "E", "E", "E", "E", "E", "E", "E", "E"], "ErrNum": [126, 125, 126, 127, 125, 126, 127, 125, 126, 127]}\n'.splitlines
+
+tests_hardware/flash/test_system_commands.py:242: AssertionError
+_________ test_a_reset_mid_erase_leaves_every_chunk_old_or_blank[250] __________
+
+board = <harness.Board object at 0x7f7ffc4d70>
+request = <FixtureRequest for <Function test_a_reset_mid_erase_leaves_every_chunk_old_or_blank[250]>>
+result_note = <function result_note.<locals>._note at 0x7f7eda49a0>
+after_ms = 250
+
+    @pytest.mark.parametrize("after_ms", _MID_ERASE_RESETS_MS)
+    def test_a_reset_mid_erase_leaves_every_chunk_old_or_blank(board: "Board", request: pytest.FixtureRequest, result_note: "Callable[[str], None]", after_ms: int) -> None:
+        save_fram_raw(board, f"mid-erase-{after_ms}")
+        try:
+            output = board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "system_command_fram_erase.py", timeout_s=_SCRIPT_TIMEOUT_S, STATE=f"reset_after_{after_ms}")
+            _clean(output, "system_command_fram_erase.py")
+            facts = parse_facts(output, allow_missing_done=True)
+>           assert "ERASE START" in output.splitlines() and "erase" not in facts, f"the reset did not land inside the erase: {facts}\n{output}"
+E           AssertionError: the reset did not land inside the erase: {'state': 'reset_after_250', 'layout': {'allocated': 1140, 'size': 262144}, 'seeded': ['BMP3XX', 'CFGMGR_BMP3XX', 'CFGMGR_ISL29125', 'CFGMGR_NOTIFY', 'CFGMGR_NTP', 'CFGMGR_SGP40', 'CFGMGR_SYSTEM', 'CFGMGR_WIFI', 'DNSSRV', 'ISL29125', 'NEOPIXEL', 'NOTIFY', 'NTP', 'SCD30', 'SGP40', 'SYSTEM', 'UART_init', 'UART_resp', 'WEBSERVER', 'WIFI'], 'seeded_system': {'ErrCount': 26, 'ErrType': ['E', 'E', 'E', 'E', 'E', 'E', 'E', 'E', 'E', 'E'], 'ErrNum': [127, 125, 126, 127, 125, 126, 127, 125, 126, 127]}}
+E             FACT state="reset_after_250"
+E             FACT layout={"allocated": 1140, "size": 262144}
+E             FACT seeded=["BMP3XX", "CFGMGR_BMP3XX", "CFGMGR_ISL29125", "CFGMGR_NOTIFY", "CFGMGR_NTP", "CFGMGR_SGP40", "CFGMGR_SYSTEM", "CFGMGR_WIFI", "DNSSRV", "ISL29125", "NEOPIXEL", "NOTIFY", "NTP", "SCD30", "SGP40", "SYSTEM", "UART_init", "UART_resp", "WEBSERVER", "WIFI"]
+E             FACT seeded_system={"ErrCount": 26, "ErrType": ["E", "E", "E", "E", "E", "E", "E", "E", "E", "E"], "ErrNum": [127, 125, 126, 127, 125, 126, 127, 125, 126, 127]}
+E             
+E           assert ('ERASE START' in ['FACT state="reset_after_250"', 'FACT layout={"allocated": 1140, "size": 262144}', 'FACT seeded=["BMP3XX", "CFGMGR_BMP3XX", "CFGMGR_ISL29125", "CFGMGR_NOTIFY", "CFGMGR_NTP", "CFGMGR_SGP40", "CFGMGR_SYSTEM", "CFGMGR_WIFI", "DNSSRV", "ISL29125", "NEOPIXEL", "NOTIFY", "NTP", "SCD30", "SGP40", "SYSTEM", "UART_init", "UART_resp", "WEBSERVER", "WIFI"]', 'FACT seeded_system={"ErrCount": 26, "ErrType": ["E", "E", "E", "E", "E", "E", "E", "E", "E", "E"], "ErrNum": [127, 125, 126, 127, 125, 126, 127, 125, 126, 127]}'])
+E            +  where ['FACT state="reset_after_250"', 'FACT layout={"allocated": 1140, "size": 262144}', 'FACT seeded=["BMP3XX", "CFGMGR_BMP3XX", "CFGMGR_ISL29125", "CFGMGR_NOTIFY", "CFGMGR_NTP", "CFGMGR_SGP40", "CFGMGR_SYSTEM", "CFGMGR_WIFI", "DNSSRV", "ISL29125", "NEOPIXEL", "NOTIFY", "NTP", "SCD30", "SGP40", "SYSTEM", "UART_init", "UART_resp", "WEBSERVER", "WIFI"]', 'FACT seeded_system={"ErrCount": 26, "ErrType": ["E", "E", "E", "E", "E", "E", "E", "E", "E", "E"], "ErrNum": [127, 125, 126, 127, 125, 126, 127, 125, 126, 127]}'] = <built-in method splitlines of str object at 0x299200d0>()
+E            +    where <built-in method splitlines of str object at 0x299200d0> = 'FACT state="reset_after_250"\nFACT layout={"allocated": 1140, "size": 262144}\nFACT seeded=["BMP3XX", "CFGMGR_BMP3XX", "CFGMGR_ISL29125", "CFGMGR_NOTIFY", "CFGMGR_NTP", "CFGMGR_SGP40", "CFGMGR_SYSTEM", "CFGMGR_WIFI", "DNSSRV", "ISL29125", "NEOPIXEL", "NOTIFY", "NTP", "SCD30", "SGP40", "SYSTEM", "UART_init", "UART_resp", "WEBSERVER", "WIFI"]\nFACT seeded_system={"ErrCount": 26, "ErrType": ["E", "E", "E", "E", "E", "E", "E", "E", "E", "E"], "ErrNum": [127, 125, 126, 127, 125, 126, 127, 125, 126, 127]}\n'.splitlines
+
+tests_hardware/flash/test_system_commands.py:242: AssertionError
+____________ test_bootloader_command_shuts_down_then_enters_bootsel ____________
+
+board = <harness.Board object at 0x7f7ffc4d70>
+request = <FixtureRequest for <Function test_bootloader_command_shuts_down_then_enters_bootsel>>
+result_note = <function result_note.<locals>._note at 0x7f7ef2b060>
+
+    def test_bootloader_command_shuts_down_then_enters_bootsel(board: "Board", request: pytest.FixtureRequest, result_note: "Callable[[str], None]") -> None:
+        save_fram_raw(board, "bootloader")
+        try:
+            output = board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "system_command_reboot.py", timeout_s=_SCRIPT_TIMEOUT_S, COMMAND="bootloader", STATE="idle")
+            facts = _reset_facts(output, parse_facts(output, allow_missing_done=True), "system_command_reboot.py", "bootloader")
+            steps = [next((n for n, line in enumerate(output.splitlines()) if step in line), -1) for step in _STEP_LINES]
+            assert -1 not in steps and steps == sorted(steps), f"the shutdown's step lines are missing or out of order ({steps}):\n{output}"
+            reset = facts.get("reset")
+            # No code of its own: the record keeps its acceptance's 9, which BOOTSEL then loses.
+            assert isinstance(reset, dict) and reset.get("code") == _RR_COMMAND_INCOMPLETE, f"the bootloader command armed {reset}: {facts}"
+            result_note(f"bootloader: {reset}")
+            if request.config.getoption("--twin"):
+                return
+            # picotool answers only a BOOTSEL device: its reboot proves the bootloader was entered; no load, no flash write.
+            reboot = subprocess.run(["sudo", "picotool", "reboot"], capture_output=True, text=True, timeout=_PICOTOOL_TIMEOUT_S, check=False)  # sudo and picotool from the bench host's PATH
+            if reboot.returncode != 0:
+>               raise HardwareTestFailureError(f"picotool reboot found no BOOTSEL device (exit {reboot.returncode}):\n{reboot.stdout}\n{reboot.stderr}")
+E               harness.HardwareTestFailureError: picotool reboot found no BOOTSEL device (exit 249):
+E               No accessible RP-series devices in BOOTSEL mode were found.
+
+tests_hardware/flash/test_system_commands.py:277: HardwareTestFailureError
+
+During handling of the above exception, another exception occurred:
+
+board = <harness.Board object at 0x7f7ffc4d70>
+request = <FixtureRequest for <Function test_bootloader_command_shuts_down_then_enters_bootsel>>
+result_note = <function result_note.<locals>._note at 0x7f7ef2b060>
+
+    def test_bootloader_command_shuts_down_then_enters_bootsel(board: "Board", request: pytest.FixtureRequest, result_note: "Callable[[str], None]") -> None:
+        save_fram_raw(board, "bootloader")
+        try:
+            output = board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "system_command_reboot.py", timeout_s=_SCRIPT_TIMEOUT_S, COMMAND="bootloader", STATE="idle")
+            facts = _reset_facts(output, parse_facts(output, allow_missing_done=True), "system_command_reboot.py", "bootloader")
+            steps = [next((n for n, line in enumerate(output.splitlines()) if step in line), -1) for step in _STEP_LINES]
+            assert -1 not in steps and steps == sorted(steps), f"the shutdown's step lines are missing or out of order ({steps}):\n{output}"
+            reset = facts.get("reset")
+            # No code of its own: the record keeps its acceptance's 9, which BOOTSEL then loses.
+            assert isinstance(reset, dict) and reset.get("code") == _RR_COMMAND_INCOMPLETE, f"the bootloader command armed {reset}: {facts}"
+            result_note(f"bootloader: {reset}")
+            if request.config.getoption("--twin"):
+                return
+            # picotool answers only a BOOTSEL device: its reboot proves the bootloader was entered; no load, no flash write.
+            reboot = subprocess.run(["sudo", "picotool", "reboot"], capture_output=True, text=True, timeout=_PICOTOOL_TIMEOUT_S, check=False)  # sudo and picotool from the bench host's PATH
+            if reboot.returncode != 0:
+                raise HardwareTestFailureError(f"picotool reboot found no BOOTSEL device (exit {reboot.returncode}):\n{reboot.stdout}\n{reboot.stderr}")
+            after = _after_boot(board, request, result_note)
+            assert after is not None and after.get("reason") == _RR_WATCHDOG, f"the boot after BOOTSEL read {after}, not {_RR_WATCHDOG}"
+        finally:
+>           board.exec(_REMOVE_SCRATCH)
+
+tests_hardware/flash/test_system_commands.py:281: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <harness.Board object at 0x7f7ffc4d70>
+expr = "import os\nif 'hwtest-scratch' in os.listdir():\n    for n in os.listdir('hwtest-scratch/'):\n        os.remove('hwtest-scratch/' + n)\n    os.rmdir('hwtest-scratch/')\n"
+timeout_s = None
+
+    def exec(self, expr: str, timeout_s: "float | None" = None) -> str:
+        # `mpremote exec "<expr>"`: its Ctrl-C stops main.py, then the auto soft reset (Ctrl-D in the raw REPL) runs it in
+        # a fresh interpreter that holds no firmware module - exec_live() reads the running firmware, tail_log() watches it.
+        result = self._mpremote("exec", expr, timeout_s=timeout_s)
+        if result.returncode != 0:
+            # Both streams included: a device-side traceback prints on mpremote's stdout, not
+            # stderr, and would otherwise be silently dropped.
+>           raise HardwareTestFailureError(f"mpremote exec {expr!r} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+E           harness.HardwareTestFailureError: mpremote exec "import os\nif 'hwtest-scratch' in os.listdir():\n    for n in os.listdir('hwtest-scratch/'):\n        os.remove('hwtest-scratch/' + n)\n    os.rmdir('hwtest-scratch/')\n" failed (exit 1):
+E           stdout:
+E           
+E           stderr:
+E           mpremote: failed to access /dev/no-pico-serial-device-detected (it may be in use by another program)
+
+tests_hardware/harness.py:874: HardwareTestFailureError
+________________ test_the_supervisor_restarts_a_real_dead_task _________________
+
+board = <harness.Board object at 0x7f7ffc4d70>
+
+    def test_the_supervisor_restarts_a_real_dead_task(board: "Board") -> None:
+>       output = board.run_isolated(DEVICE_SCRIPTS_DIR / "system_service_restarts_a_real_dead_task.py", timeout_s=_SCRIPT_TIMEOUT_S, mode="restart")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/flash/test_task_supervisor.py:20: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <harness.Board object at 0x7f7ffc4d70>
+script_path = PosixPath('/home/nico/programming/sensors-bench/tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py')
+soft_reset_after = True, timeout_s = 15.0, allow_recovery = True
+extras = {'mode': 'restart'}
+
+    def run_isolated(self, script_path: "str | Path", *, soft_reset_after: bool = True, timeout_s: "float | None" = None, allow_recovery: bool = True, **extras: object) -> str:
+        # Isolated-driver mode: the rendered script (render_device_script()) run once against the real frozen src/
+        # drivers under a re-armed watchdog; then, when asked, a separate soft reset whose failure never re-runs it.
+        # allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured.
+        rendered = render_device_script(Path(script_path), **extras)
+        result = self._mpremote("exec", _ARM_WATCHDOG, "run", str(rendered), timeout_s=timeout_s, allow_recovery=allow_recovery, retry_if_started=False)
+        if result.returncode != 0:
+            # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
+            # stderr - both are included here for the same reason.
+>           raise HardwareTestFailureError(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+E           harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py failed (exit 1):
+E           stdout:
+E           
+E           stderr:
+E           mpremote: failed to access /dev/no-pico-serial-device-detected (it may be in use by another program)
+
+tests_hardware/harness.py:908: HardwareTestFailureError
+___________ test_mpremote_connection_is_stable_across_repeated_calls ___________
+
+board = <harness.Board object at 0x7f7ffc4d70>
+
+    def test_mpremote_connection_is_stable_across_repeated_calls(board: "Board") -> None:
+        failures = [i for i in range(_REACHABILITY_CALLS) if not board.is_reachable()]
+>       assert not failures, f"mpremote connection failed on attempt(s) {failures} out of {_REACHABILITY_CALLS:g} consecutive calls to {board.device}"
+E       AssertionError: mpremote connection failed on attempt(s) [0, 1, 2, 3, 4] out of 5 consecutive calls to /dev/no-pico-serial-device-detected
+E       assert not [0, 1, 2, 3, 4]
+
+tests_hardware/flash/test_toolchain_flash_boot.py:24: AssertionError
+_______ test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[none] ________
+
+board = <harness.Board object at 0x7f7ffc4d70>, crc_mode = 'none'
+
+    @pytest.mark.parametrize("crc_mode", [*_CRC_MODES, "cobs"])
+    def test_get_and_set_and_a_multi_chunk_train_cross_the_jumper(board: Board, crc_mode: str) -> None:
+        # One Python instance as initiator and one as responder interoperating is a required property of this protocol, and
+        # the jumper is where it is physically true; the maximum train each way, and an over-cap train refused unallocated.
+>       facts = _run_or_fail(board, "uart_crossover_exchange.py", _SCRIPT_TIMEOUT_S, crc_mode=crc_mode)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/flash/test_uart_crossover.py:98: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/flash/test_uart_crossover.py:84: in _run_or_fail
+    output = board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode) if state is None else board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode, STATE=state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <harness.Board object at 0x7f7ffc4d70>
+script_path = PosixPath('/home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_crossover_exchange.py')
+soft_reset_after = True, timeout_s = 120.0, allow_recovery = True
+extras = {'CRC_MODE': 'none'}
+
+    def run_isolated(self, script_path: "str | Path", *, soft_reset_after: bool = True, timeout_s: "float | None" = None, allow_recovery: bool = True, **extras: object) -> str:
+        # Isolated-driver mode: the rendered script (render_device_script()) run once against the real frozen src/
+        # drivers under a re-armed watchdog; then, when asked, a separate soft reset whose failure never re-runs it.
+        # allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured.
+        rendered = render_device_script(Path(script_path), **extras)
+        result = self._mpremote("exec", _ARM_WATCHDOG, "run", str(rendered), timeout_s=timeout_s, allow_recovery=allow_recovery, retry_if_started=False)
+        if result.returncode != 0:
+            # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
+            # stderr - both are included here for the same reason.
+>           raise HardwareTestFailureError(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+E           harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_crossover_exchange.py failed (exit 1):
+E           stdout:
+E           
+E           stderr:
+E           mpremote: failed to access /dev/no-pico-serial-device-detected (it may be in use by another program)
+
+tests_hardware/harness.py:908: HardwareTestFailureError
+_______ test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[crc16] _______
+
+board = <harness.Board object at 0x7f7ffc4d70>, crc_mode = 'crc16'
+
+    @pytest.mark.parametrize("crc_mode", [*_CRC_MODES, "cobs"])
+    def test_get_and_set_and_a_multi_chunk_train_cross_the_jumper(board: Board, crc_mode: str) -> None:
+        # One Python instance as initiator and one as responder interoperating is a required property of this protocol, and
+        # the jumper is where it is physically true; the maximum train each way, and an over-cap train refused unallocated.
+>       facts = _run_or_fail(board, "uart_crossover_exchange.py", _SCRIPT_TIMEOUT_S, crc_mode=crc_mode)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/flash/test_uart_crossover.py:98: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/flash/test_uart_crossover.py:84: in _run_or_fail
+    output = board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode) if state is None else board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode, STATE=state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <harness.Board object at 0x7f7ffc4d70>
+script_path = PosixPath('/home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_crossover_exchange.py')
+soft_reset_after = True, timeout_s = 120.0, allow_recovery = True
+extras = {'CRC_MODE': 'crc16'}
+
+    def run_isolated(self, script_path: "str | Path", *, soft_reset_after: bool = True, timeout_s: "float | None" = None, allow_recovery: bool = True, **extras: object) -> str:
+        # Isolated-driver mode: the rendered script (render_device_script()) run once against the real frozen src/
+        # drivers under a re-armed watchdog; then, when asked, a separate soft reset whose failure never re-runs it.
+        # allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured.
+        rendered = render_device_script(Path(script_path), **extras)
+        result = self._mpremote("exec", _ARM_WATCHDOG, "run", str(rendered), timeout_s=timeout_s, allow_recovery=allow_recovery, retry_if_started=False)
+        if result.returncode != 0:
+            # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
+            # stderr - both are included here for the same reason.
+>           raise HardwareTestFailureError(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+E           harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_crossover_exchange.py failed (exit 1):
+E           stdout:
+E           
+E           stderr:
+E           mpremote: failed to access /dev/no-pico-serial-device-detected (it may be in use by another program)
+
+tests_hardware/harness.py:908: HardwareTestFailureError
+_______ test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[cobs] ________
+
+board = <harness.Board object at 0x7f7ffc4d70>, crc_mode = 'cobs'
+
+    @pytest.mark.parametrize("crc_mode", [*_CRC_MODES, "cobs"])
+    def test_get_and_set_and_a_multi_chunk_train_cross_the_jumper(board: Board, crc_mode: str) -> None:
+        # One Python instance as initiator and one as responder interoperating is a required property of this protocol, and
+        # the jumper is where it is physically true; the maximum train each way, and an over-cap train refused unallocated.
+>       facts = _run_or_fail(board, "uart_crossover_exchange.py", _SCRIPT_TIMEOUT_S, crc_mode=crc_mode)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/flash/test_uart_crossover.py:98: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/flash/test_uart_crossover.py:84: in _run_or_fail
+    output = board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode) if state is None else board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode, STATE=state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <harness.Board object at 0x7f7ffc4d70>
+script_path = PosixPath('/home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_crossover_exchange.py')
+soft_reset_after = True, timeout_s = 120.0, allow_recovery = True
+extras = {'CRC_MODE': 'cobs'}
+
+    def run_isolated(self, script_path: "str | Path", *, soft_reset_after: bool = True, timeout_s: "float | None" = None, allow_recovery: bool = True, **extras: object) -> str:
+        # Isolated-driver mode: the rendered script (render_device_script()) run once against the real frozen src/
+        # drivers under a re-armed watchdog; then, when asked, a separate soft reset whose failure never re-runs it.
+        # allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured.
+        rendered = render_device_script(Path(script_path), **extras)
+        result = self._mpremote("exec", _ARM_WATCHDOG, "run", str(rendered), timeout_s=timeout_s, allow_recovery=allow_recovery, retry_if_started=False)
+        if result.returncode != 0:
+            # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
+            # stderr - both are included here for the same reason.
+>           raise HardwareTestFailureError(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+E           harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_crossover_exchange.py failed (exit 1):
+E           stdout:
+E           
+E           stderr:
+E           mpremote: failed to access /dev/no-pico-serial-device-detected (it may be in use by another program)
+
+tests_hardware/harness.py:908: HardwareTestFailureError
+_ test_silence_and_desync_recover_within_the_resync_bound_and_a_mismatch_fails_loudly[none] _
+
+board = <harness.Board object at 0x7f7ffc4d70>, crc_mode = 'none'
+
+    @pytest.mark.parametrize("crc_mode", _CRC_MODES)
+    def test_silence_and_desync_recover_within_the_resync_bound_and_a_mismatch_fails_loudly(board: Board, crc_mode: str) -> None:
+        # The two faults the link recovers from, timed against the protocol's resync bound, and a payload_size mismatch,
+        # which no peer negotiates (J.6): it fails with a logged error rather than delivering a wrong-length payload.
+>       facts = _run_or_fail(board, "uart_crossover_recovery.py", _LONG_SCRIPT_TIMEOUT_S, crc_mode=crc_mode)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/flash/test_uart_crossover.py:113: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/flash/test_uart_crossover.py:84: in _run_or_fail
+    output = board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode) if state is None else board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode, STATE=state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <harness.Board object at 0x7f7ffc4d70>
+script_path = PosixPath('/home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_crossover_recovery.py')
+soft_reset_after = True, timeout_s = 180.0, allow_recovery = True
+extras = {'CRC_MODE': 'none'}
+
+    def run_isolated(self, script_path: "str | Path", *, soft_reset_after: bool = True, timeout_s: "float | None" = None, allow_recovery: bool = True, **extras: object) -> str:
+        # Isolated-driver mode: the rendered script (render_device_script()) run once against the real frozen src/
+        # drivers under a re-armed watchdog; then, when asked, a separate soft reset whose failure never re-runs it.
+        # allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured.
+        rendered = render_device_script(Path(script_path), **extras)
+        result = self._mpremote("exec", _ARM_WATCHDOG, "run", str(rendered), timeout_s=timeout_s, allow_recovery=allow_recovery, retry_if_started=False)
+        if result.returncode != 0:
+            # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
+            # stderr - both are included here for the same reason.
+>           raise HardwareTestFailureError(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+E           harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_crossover_recovery.py failed (exit 1):
+E           stdout:
+E           
+E           stderr:
+E           mpremote: failed to access /dev/no-pico-serial-device-detected (it may be in use by another program)
+
+tests_hardware/harness.py:908: HardwareTestFailureError
+_ test_silence_and_desync_recover_within_the_resync_bound_and_a_mismatch_fails_loudly[crc16] _
+
+board = <harness.Board object at 0x7f7ffc4d70>, crc_mode = 'crc16'
+
+    @pytest.mark.parametrize("crc_mode", _CRC_MODES)
+    def test_silence_and_desync_recover_within_the_resync_bound_and_a_mismatch_fails_loudly(board: Board, crc_mode: str) -> None:
+        # The two faults the link recovers from, timed against the protocol's resync bound, and a payload_size mismatch,
+        # which no peer negotiates (J.6): it fails with a logged error rather than delivering a wrong-length payload.
+>       facts = _run_or_fail(board, "uart_crossover_recovery.py", _LONG_SCRIPT_TIMEOUT_S, crc_mode=crc_mode)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/flash/test_uart_crossover.py:113: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/flash/test_uart_crossover.py:84: in _run_or_fail
+    output = board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode) if state is None else board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode, STATE=state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <harness.Board object at 0x7f7ffc4d70>
+script_path = PosixPath('/home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_crossover_recovery.py')
+soft_reset_after = True, timeout_s = 180.0, allow_recovery = True
+extras = {'CRC_MODE': 'crc16'}
+
+    def run_isolated(self, script_path: "str | Path", *, soft_reset_after: bool = True, timeout_s: "float | None" = None, allow_recovery: bool = True, **extras: object) -> str:
+        # Isolated-driver mode: the rendered script (render_device_script()) run once against the real frozen src/
+        # drivers under a re-armed watchdog; then, when asked, a separate soft reset whose failure never re-runs it.
+        # allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured.
+        rendered = render_device_script(Path(script_path), **extras)
+        result = self._mpremote("exec", _ARM_WATCHDOG, "run", str(rendered), timeout_s=timeout_s, allow_recovery=allow_recovery, retry_if_started=False)
+        if result.returncode != 0:
+            # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
+            # stderr - both are included here for the same reason.
+>           raise HardwareTestFailureError(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+E           harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_crossover_recovery.py failed (exit 1):
+E           stdout:
+E           
+E           stderr:
+E           mpremote: failed to access /dev/no-pico-serial-device-detected (it may be in use by another program)
+
+tests_hardware/harness.py:908: HardwareTestFailureError
+___ test_the_shipped_driver_never_holds_the_loop_for_a_frame_still_arriving ____
+
+board = <harness.Board object at 0x7f7ffc4d70>
+
+    def test_the_shipped_driver_never_holds_the_loop_for_a_frame_still_arriving(board: Board) -> None:
+        # SPECIFICATION.md Part F.5.8 through asy_uart_driver itself: readiness comes before the whole frame is in the ring
+        # (the hazard's precondition), the driver's own synchronous copies stay short, and the unclamped control stalls.
+>       facts = _run_or_fail(board, "uart_driver_read_never_blocks_the_loop.py", _SCRIPT_TIMEOUT_S)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/flash/test_uart_crossover.py:132: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/flash/test_uart_crossover.py:84: in _run_or_fail
+    output = board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode) if state is None else board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode, STATE=state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <harness.Board object at 0x7f7ffc4d70>
+script_path = PosixPath('/home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py')
+soft_reset_after = True, timeout_s = 120.0, allow_recovery = True
+extras = {'CRC_MODE': 'none'}
+
+    def run_isolated(self, script_path: "str | Path", *, soft_reset_after: bool = True, timeout_s: "float | None" = None, allow_recovery: bool = True, **extras: object) -> str:
+        # Isolated-driver mode: the rendered script (render_device_script()) run once against the real frozen src/
+        # drivers under a re-armed watchdog; then, when asked, a separate soft reset whose failure never re-runs it.
+        # allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured.
+        rendered = render_device_script(Path(script_path), **extras)
+        result = self._mpremote("exec", _ARM_WATCHDOG, "run", str(rendered), timeout_s=timeout_s, allow_recovery=allow_recovery, retry_if_started=False)
+        if result.returncode != 0:
+            # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
+            # stderr - both are included here for the same reason.
+>           raise HardwareTestFailureError(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+E           harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py failed (exit 1):
+E           stdout:
+E           
+E           stderr:
+E           mpremote: failed to access /dev/no-pico-serial-device-detected (it may be in use by another program)
+
+tests_hardware/harness.py:908: HardwareTestFailureError
+____ test_an_idle_listener_polls_at_the_idle_rate_not_the_transaction_rate _____
+
+board = <harness.Board object at 0x7f7ffc4d70>
+
+    def test_an_idle_listener_polls_at_the_idle_rate_not_the_transaction_rate(board: Board) -> None:
+        # SPECIFICATION.md Part F.5.9. Counted, never timed: a poll-round count is a property of the code, while throughput
+        # on this board moves with heap state (Part E.7).
+>       facts = _run_or_fail(board, "uart_idle_poll_rate.py", _LONG_SCRIPT_TIMEOUT_S)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/flash/test_uart_crossover.py:148: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/flash/test_uart_crossover.py:84: in _run_or_fail
+    output = board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode) if state is None else board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode, STATE=state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <harness.Board object at 0x7f7ffc4d70>
+script_path = PosixPath('/home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_idle_poll_rate.py')
+soft_reset_after = True, timeout_s = 180.0, allow_recovery = True
+extras = {'CRC_MODE': 'none'}
+
+    def run_isolated(self, script_path: "str | Path", *, soft_reset_after: bool = True, timeout_s: "float | None" = None, allow_recovery: bool = True, **extras: object) -> str:
+        # Isolated-driver mode: the rendered script (render_device_script()) run once against the real frozen src/
+        # drivers under a re-armed watchdog; then, when asked, a separate soft reset whose failure never re-runs it.
+        # allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured.
+        rendered = render_device_script(Path(script_path), **extras)
+        result = self._mpremote("exec", _ARM_WATCHDOG, "run", str(rendered), timeout_s=timeout_s, allow_recovery=allow_recovery, retry_if_started=False)
+        if result.returncode != 0:
+            # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
+            # stderr - both are included here for the same reason.
+>           raise HardwareTestFailureError(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+E           harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_idle_poll_rate.py failed (exit 1):
+E           stdout:
+E           
+E           stderr:
+E           mpremote: failed to access /dev/no-pico-serial-device-detected (it may be in use by another program)
+
+tests_hardware/harness.py:908: HardwareTestFailureError
+_________ test_comm_hazards_are_serialised_refused_or_recovered[none] __________
+
+board = <harness.Board object at 0x7f7ffc4d70>, crc_mode = 'none'
+result_note = <function result_note.<locals>._note at 0x7f7ee0d940>
+
+    @pytest.mark.parametrize("crc_mode", _CRC_MODES)
+    def test_comm_hazards_are_serialised_refused_or_recovered(board: Board, crc_mode: str, result_note: _ResultNote) -> None:
+        # H1a two initiations on one instance, H1b clear()/cancel_read_timeout() racing a transaction, H2 both ends
+        # transmitting (out of contract, J.2), H3 the first-chunk boundary values, and a stalled TX whose cause is recorded.
+>       facts = _run_or_fail(board, "uart_comm_hazards.py", _HAZARDS_TIMEOUT_S, crc_mode=crc_mode)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/flash/test_uart_crossover.py:164: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/flash/test_uart_crossover.py:84: in _run_or_fail
+    output = board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode) if state is None else board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode, STATE=state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <harness.Board object at 0x7f7ffc4d70>
+script_path = PosixPath('/home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_comm_hazards.py')
+soft_reset_after = True, timeout_s = 120.0, allow_recovery = True
+extras = {'CRC_MODE': 'none'}
+
+    def run_isolated(self, script_path: "str | Path", *, soft_reset_after: bool = True, timeout_s: "float | None" = None, allow_recovery: bool = True, **extras: object) -> str:
+        # Isolated-driver mode: the rendered script (render_device_script()) run once against the real frozen src/
+        # drivers under a re-armed watchdog; then, when asked, a separate soft reset whose failure never re-runs it.
+        # allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured.
+        rendered = render_device_script(Path(script_path), **extras)
+        result = self._mpremote("exec", _ARM_WATCHDOG, "run", str(rendered), timeout_s=timeout_s, allow_recovery=allow_recovery, retry_if_started=False)
+        if result.returncode != 0:
+            # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
+            # stderr - both are included here for the same reason.
+>           raise HardwareTestFailureError(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+E           harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_comm_hazards.py failed (exit 1):
+E           stdout:
+E           
+E           stderr:
+E           mpremote: failed to access /dev/no-pico-serial-device-detected (it may be in use by another program)
+
+tests_hardware/harness.py:908: HardwareTestFailureError
+_________ test_comm_hazards_are_serialised_refused_or_recovered[crc16] _________
+
+board = <harness.Board object at 0x7f7ffc4d70>, crc_mode = 'crc16'
+result_note = <function result_note.<locals>._note at 0x7f7ee0d080>
+
+    @pytest.mark.parametrize("crc_mode", _CRC_MODES)
+    def test_comm_hazards_are_serialised_refused_or_recovered(board: Board, crc_mode: str, result_note: _ResultNote) -> None:
+        # H1a two initiations on one instance, H1b clear()/cancel_read_timeout() racing a transaction, H2 both ends
+        # transmitting (out of contract, J.2), H3 the first-chunk boundary values, and a stalled TX whose cause is recorded.
+>       facts = _run_or_fail(board, "uart_comm_hazards.py", _HAZARDS_TIMEOUT_S, crc_mode=crc_mode)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/flash/test_uart_crossover.py:164: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/flash/test_uart_crossover.py:84: in _run_or_fail
+    output = board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode) if state is None else board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode, STATE=state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <harness.Board object at 0x7f7ffc4d70>
+script_path = PosixPath('/home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_comm_hazards.py')
+soft_reset_after = True, timeout_s = 120.0, allow_recovery = True
+extras = {'CRC_MODE': 'crc16'}
+
+    def run_isolated(self, script_path: "str | Path", *, soft_reset_after: bool = True, timeout_s: "float | None" = None, allow_recovery: bool = True, **extras: object) -> str:
+        # Isolated-driver mode: the rendered script (render_device_script()) run once against the real frozen src/
+        # drivers under a re-armed watchdog; then, when asked, a separate soft reset whose failure never re-runs it.
+        # allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured.
+        rendered = render_device_script(Path(script_path), **extras)
+        result = self._mpremote("exec", _ARM_WATCHDOG, "run", str(rendered), timeout_s=timeout_s, allow_recovery=allow_recovery, retry_if_started=False)
+        if result.returncode != 0:
+            # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
+            # stderr - both are included here for the same reason.
+>           raise HardwareTestFailureError(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+E           harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_comm_hazards.py failed (exit 1):
+E           stdout:
+E           
+E           stderr:
+E           mpremote: failed to access /dev/no-pico-serial-device-detected (it may be in use by another program)
+
+tests_hardware/harness.py:908: HardwareTestFailureError
+__ test_the_link_keeps_transferring_while_every_other_subsystem_is_busy[none] __
+
+board = <harness.Board object at 0x7f7ffc4d70>, crc_mode = 'none'
+
+    @pytest.mark.parametrize("crc_mode", _CRC_MODES)
+    def test_the_link_keeps_transferring_while_every_other_subsystem_is_busy(board: Board, crc_mode: str) -> None:
+        # The realistic worst case for a stop-and-wait link sharing one core, asserted both ways: the link keeps progressing
+        # with echo-checked multi-chunk SETs, and it did not do so by starving anything else.
+>       facts = _run_or_fail(board, "uart_link_under_concurrent_system_load.py", _LONG_SCRIPT_TIMEOUT_S, crc_mode=crc_mode)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/flash/test_uart_crossover.py:188: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/flash/test_uart_crossover.py:84: in _run_or_fail
+    output = board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode) if state is None else board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode, STATE=state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <harness.Board object at 0x7f7ffc4d70>
+script_path = PosixPath('/home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py')
+soft_reset_after = True, timeout_s = 180.0, allow_recovery = True
+extras = {'CRC_MODE': 'none'}
+
+    def run_isolated(self, script_path: "str | Path", *, soft_reset_after: bool = True, timeout_s: "float | None" = None, allow_recovery: bool = True, **extras: object) -> str:
+        # Isolated-driver mode: the rendered script (render_device_script()) run once against the real frozen src/
+        # drivers under a re-armed watchdog; then, when asked, a separate soft reset whose failure never re-runs it.
+        # allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured.
+        rendered = render_device_script(Path(script_path), **extras)
+        result = self._mpremote("exec", _ARM_WATCHDOG, "run", str(rendered), timeout_s=timeout_s, allow_recovery=allow_recovery, retry_if_started=False)
+        if result.returncode != 0:
+            # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
+            # stderr - both are included here for the same reason.
+>           raise HardwareTestFailureError(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+E           harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py failed (exit 1):
+E           stdout:
+E           
+E           stderr:
+E           mpremote: failed to access /dev/no-pico-serial-device-detected (it may be in use by another program)
+
+tests_hardware/harness.py:908: HardwareTestFailureError
+_ test_the_link_keeps_transferring_while_every_other_subsystem_is_busy[crc16] __
+
+board = <harness.Board object at 0x7f7ffc4d70>, crc_mode = 'crc16'
+
+    @pytest.mark.parametrize("crc_mode", _CRC_MODES)
+    def test_the_link_keeps_transferring_while_every_other_subsystem_is_busy(board: Board, crc_mode: str) -> None:
+        # The realistic worst case for a stop-and-wait link sharing one core, asserted both ways: the link keeps progressing
+        # with echo-checked multi-chunk SETs, and it did not do so by starving anything else.
+>       facts = _run_or_fail(board, "uart_link_under_concurrent_system_load.py", _LONG_SCRIPT_TIMEOUT_S, crc_mode=crc_mode)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/flash/test_uart_crossover.py:188: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/flash/test_uart_crossover.py:84: in _run_or_fail
+    output = board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode) if state is None else board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode, STATE=state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <harness.Board object at 0x7f7ffc4d70>
+script_path = PosixPath('/home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py')
+soft_reset_after = True, timeout_s = 180.0, allow_recovery = True
+extras = {'CRC_MODE': 'crc16'}
+
+    def run_isolated(self, script_path: "str | Path", *, soft_reset_after: bool = True, timeout_s: "float | None" = None, allow_recovery: bool = True, **extras: object) -> str:
+        # Isolated-driver mode: the rendered script (render_device_script()) run once against the real frozen src/
+        # drivers under a re-armed watchdog; then, when asked, a separate soft reset whose failure never re-runs it.
+        # allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured.
+        rendered = render_device_script(Path(script_path), **extras)
+        result = self._mpremote("exec", _ARM_WATCHDOG, "run", str(rendered), timeout_s=timeout_s, allow_recovery=allow_recovery, retry_if_started=False)
+        if result.returncode != 0:
+            # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
+            # stderr - both are included here for the same reason.
+>           raise HardwareTestFailureError(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+E           harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py failed (exit 1):
+E           stdout:
+E           
+E           stderr:
+E           mpremote: failed to access /dev/no-pico-serial-device-detected (it may be in use by another program)
+
+tests_hardware/harness.py:908: HardwareTestFailureError
+_____________ test_no_frame_is_lost_while_interrupts_are_off[none] _____________
+
+board = <harness.Board object at 0x7f7ffc4d70>, crc_mode = 'none'
+result_note = <function result_note.<locals>._note at 0x7f7ee214e0>
+
+    @pytest.mark.parametrize("crc_mode", _CRC_MODES)
+    def test_no_frame_is_lost_while_interrupts_are_off(board: Board, crc_mode: str, result_note: _ResultNote) -> None:
+        # Interrupts held off for the flash windows while the other UART streams through DMA: within the ring's bound no
+        # frame is lost and no overrun shows; past it the overrun is reported and every frame after the resync is intact.
+        _ring_holds_the_flash_window()
+>       facts = _run_or_fail(board, "uart_dma_ring_interrupts_off.py", _LONG_SCRIPT_TIMEOUT_S, crc_mode=crc_mode)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/flash/test_uart_crossover.py:217: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/flash/test_uart_crossover.py:84: in _run_or_fail
+    output = board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode) if state is None else board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode, STATE=state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <harness.Board object at 0x7f7ffc4d70>
+script_path = PosixPath('/home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py')
+soft_reset_after = True, timeout_s = 180.0, allow_recovery = True
+extras = {'CRC_MODE': 'none'}
+
+    def run_isolated(self, script_path: "str | Path", *, soft_reset_after: bool = True, timeout_s: "float | None" = None, allow_recovery: bool = True, **extras: object) -> str:
+        # Isolated-driver mode: the rendered script (render_device_script()) run once against the real frozen src/
+        # drivers under a re-armed watchdog; then, when asked, a separate soft reset whose failure never re-runs it.
+        # allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured.
+        rendered = render_device_script(Path(script_path), **extras)
+        result = self._mpremote("exec", _ARM_WATCHDOG, "run", str(rendered), timeout_s=timeout_s, allow_recovery=allow_recovery, retry_if_started=False)
+        if result.returncode != 0:
+            # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
+            # stderr - both are included here for the same reason.
+>           raise HardwareTestFailureError(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+E           harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py failed (exit 1):
+E           stdout:
+E           
+E           stderr:
+E           mpremote: failed to access /dev/no-pico-serial-device-detected (it may be in use by another program)
+
+tests_hardware/harness.py:908: HardwareTestFailureError
+____________ test_no_frame_is_lost_while_interrupts_are_off[crc16] _____________
+
+board = <harness.Board object at 0x7f7ffc4d70>, crc_mode = 'crc16'
+result_note = <function result_note.<locals>._note at 0x7f7ee223e0>
+
+    @pytest.mark.parametrize("crc_mode", _CRC_MODES)
+    def test_no_frame_is_lost_while_interrupts_are_off(board: Board, crc_mode: str, result_note: _ResultNote) -> None:
+        # Interrupts held off for the flash windows while the other UART streams through DMA: within the ring's bound no
+        # frame is lost and no overrun shows; past it the overrun is reported and every frame after the resync is intact.
+        _ring_holds_the_flash_window()
+>       facts = _run_or_fail(board, "uart_dma_ring_interrupts_off.py", _LONG_SCRIPT_TIMEOUT_S, crc_mode=crc_mode)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/flash/test_uart_crossover.py:217: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/flash/test_uart_crossover.py:84: in _run_or_fail
+    output = board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode) if state is None else board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode, STATE=state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <harness.Board object at 0x7f7ffc4d70>
+script_path = PosixPath('/home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py')
+soft_reset_after = True, timeout_s = 180.0, allow_recovery = True
+extras = {'CRC_MODE': 'crc16'}
+
+    def run_isolated(self, script_path: "str | Path", *, soft_reset_after: bool = True, timeout_s: "float | None" = None, allow_recovery: bool = True, **extras: object) -> str:
+        # Isolated-driver mode: the rendered script (render_device_script()) run once against the real frozen src/
+        # drivers under a re-armed watchdog; then, when asked, a separate soft reset whose failure never re-runs it.
+        # allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured.
+        rendered = render_device_script(Path(script_path), **extras)
+        result = self._mpremote("exec", _ARM_WATCHDOG, "run", str(rendered), timeout_s=timeout_s, allow_recovery=allow_recovery, retry_if_started=False)
+        if result.returncode != 0:
+            # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
+            # stderr - both are included here for the same reason.
+>           raise HardwareTestFailureError(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+E           harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py failed (exit 1):
+E           stdout:
+E           
+E           stderr:
+E           mpremote: failed to access /dev/no-pico-serial-device-detected (it may be in use by another program)
+
+tests_hardware/harness.py:908: HardwareTestFailureError
+________ test_a_soft_reset_during_traffic_leaves_no_running_ring[none] _________
+
+board = <harness.Board object at 0x7f7ffc4d70>, crc_mode = 'none'
+
+    @pytest.mark.parametrize("crc_mode", _CRC_MODES)
+    def test_a_soft_reset_during_traffic_leaves_no_running_ring(board: Board, crc_mode: str) -> None:
+        # The harness's trailing soft reset lands while frames stream into the ring; afterwards the same DMA channels are
+        # free and a fresh buffer stays untouched (the rp2.DMA finaliser and soft reset, ports/rp2/rp2_dma.c at v1.29.0).
+>       before = _run_or_fail(board, "uart_dma_ring_interrupts_off.py", _SCRIPT_TIMEOUT_S, crc_mode=crc_mode, state="soft_reset")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/flash/test_uart_crossover.py:240: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/flash/test_uart_crossover.py:84: in _run_or_fail
+    output = board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode) if state is None else board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode, STATE=state)
+                                                                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <harness.Board object at 0x7f7ffc4d70>
+script_path = PosixPath('/home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py')
+soft_reset_after = True, timeout_s = 120.0, allow_recovery = True
+extras = {'CRC_MODE': 'none', 'STATE': 'soft_reset'}
+
+    def run_isolated(self, script_path: "str | Path", *, soft_reset_after: bool = True, timeout_s: "float | None" = None, allow_recovery: bool = True, **extras: object) -> str:
+        # Isolated-driver mode: the rendered script (render_device_script()) run once against the real frozen src/
+        # drivers under a re-armed watchdog; then, when asked, a separate soft reset whose failure never re-runs it.
+        # allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured.
+        rendered = render_device_script(Path(script_path), **extras)
+        result = self._mpremote("exec", _ARM_WATCHDOG, "run", str(rendered), timeout_s=timeout_s, allow_recovery=allow_recovery, retry_if_started=False)
+        if result.returncode != 0:
+            # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
+            # stderr - both are included here for the same reason.
+>           raise HardwareTestFailureError(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+E           harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py failed (exit 1):
+E           stdout:
+E           
+E           stderr:
+E           mpremote: failed to access /dev/no-pico-serial-device-detected (it may be in use by another program)
+
+tests_hardware/harness.py:908: HardwareTestFailureError
+________ test_a_soft_reset_during_traffic_leaves_no_running_ring[crc16] ________
+
+board = <harness.Board object at 0x7f7ffc4d70>, crc_mode = 'crc16'
+
+    @pytest.mark.parametrize("crc_mode", _CRC_MODES)
+    def test_a_soft_reset_during_traffic_leaves_no_running_ring(board: Board, crc_mode: str) -> None:
+        # The harness's trailing soft reset lands while frames stream into the ring; afterwards the same DMA channels are
+        # free and a fresh buffer stays untouched (the rp2.DMA finaliser and soft reset, ports/rp2/rp2_dma.c at v1.29.0).
+>       before = _run_or_fail(board, "uart_dma_ring_interrupts_off.py", _SCRIPT_TIMEOUT_S, crc_mode=crc_mode, state="soft_reset")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/flash/test_uart_crossover.py:240: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/flash/test_uart_crossover.py:84: in _run_or_fail
+    output = board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode) if state is None else board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode, STATE=state)
+                                                                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <harness.Board object at 0x7f7ffc4d70>
+script_path = PosixPath('/home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py')
+soft_reset_after = True, timeout_s = 120.0, allow_recovery = True
+extras = {'CRC_MODE': 'crc16', 'STATE': 'soft_reset'}
+
+    def run_isolated(self, script_path: "str | Path", *, soft_reset_after: bool = True, timeout_s: "float | None" = None, allow_recovery: bool = True, **extras: object) -> str:
+        # Isolated-driver mode: the rendered script (render_device_script()) run once against the real frozen src/
+        # drivers under a re-armed watchdog; then, when asked, a separate soft reset whose failure never re-runs it.
+        # allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured.
+        rendered = render_device_script(Path(script_path), **extras)
+        result = self._mpremote("exec", _ARM_WATCHDOG, "run", str(rendered), timeout_s=timeout_s, allow_recovery=allow_recovery, retry_if_started=False)
+        if result.returncode != 0:
+            # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
+            # stderr - both are included here for the same reason.
+>           raise HardwareTestFailureError(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+E           harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py failed (exit 1):
+E           stdout:
+E           
+E           stderr:
+E           mpremote: failed to access /dev/no-pico-serial-device-detected (it may be in use by another program)
+
+tests_hardware/harness.py:908: HardwareTestFailureError
+___________ test_a_break_mid_frame_fails_that_transaction_only[none] ___________
+
+board = <harness.Board object at 0x7f7ffc4d70>, crc_mode = 'none'
+result_note = <function result_note.<locals>._note at 0x7f7ee222a0>
+
+    @pytest.mark.parametrize("crc_mode", _CRC_MODES)
+    def test_a_break_mid_frame_fails_that_transaction_only(board: Board, crc_mode: str, result_note: _ResultNote) -> None:
+>       facts = _run_or_fail(board, "uart_dma_ring_interrupts_off.py", _SCRIPT_TIMEOUT_S, crc_mode=crc_mode, state="break")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/flash/test_uart_crossover.py:250: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/flash/test_uart_crossover.py:84: in _run_or_fail
+    output = board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode) if state is None else board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode, STATE=state)
+                                                                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <harness.Board object at 0x7f7ffc4d70>
+script_path = PosixPath('/home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py')
+soft_reset_after = True, timeout_s = 120.0, allow_recovery = True
+extras = {'CRC_MODE': 'none', 'STATE': 'break'}
+
+    def run_isolated(self, script_path: "str | Path", *, soft_reset_after: bool = True, timeout_s: "float | None" = None, allow_recovery: bool = True, **extras: object) -> str:
+        # Isolated-driver mode: the rendered script (render_device_script()) run once against the real frozen src/
+        # drivers under a re-armed watchdog; then, when asked, a separate soft reset whose failure never re-runs it.
+        # allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured.
+        rendered = render_device_script(Path(script_path), **extras)
+        result = self._mpremote("exec", _ARM_WATCHDOG, "run", str(rendered), timeout_s=timeout_s, allow_recovery=allow_recovery, retry_if_started=False)
+        if result.returncode != 0:
+            # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
+            # stderr - both are included here for the same reason.
+>           raise HardwareTestFailureError(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+E           harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py failed (exit 1):
+E           stdout:
+E           
+E           stderr:
+E           mpremote: failed to access /dev/no-pico-serial-device-detected (it may be in use by another program)
+
+tests_hardware/harness.py:908: HardwareTestFailureError
+__________ test_a_break_mid_frame_fails_that_transaction_only[crc16] ___________
+
+board = <harness.Board object at 0x7f7ffc4d70>, crc_mode = 'crc16'
+result_note = <function result_note.<locals>._note at 0x7f7ee60040>
+
+    @pytest.mark.parametrize("crc_mode", _CRC_MODES)
+    def test_a_break_mid_frame_fails_that_transaction_only(board: Board, crc_mode: str, result_note: _ResultNote) -> None:
+>       facts = _run_or_fail(board, "uart_dma_ring_interrupts_off.py", _SCRIPT_TIMEOUT_S, crc_mode=crc_mode, state="break")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/flash/test_uart_crossover.py:250: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/flash/test_uart_crossover.py:84: in _run_or_fail
+    output = board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode) if state is None else board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode, STATE=state)
+                                                                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <harness.Board object at 0x7f7ffc4d70>
+script_path = PosixPath('/home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py')
+soft_reset_after = True, timeout_s = 120.0, allow_recovery = True
+extras = {'CRC_MODE': 'crc16', 'STATE': 'break'}
+
+    def run_isolated(self, script_path: "str | Path", *, soft_reset_after: bool = True, timeout_s: "float | None" = None, allow_recovery: bool = True, **extras: object) -> str:
+        # Isolated-driver mode: the rendered script (render_device_script()) run once against the real frozen src/
+        # drivers under a re-armed watchdog; then, when asked, a separate soft reset whose failure never re-runs it.
+        # allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured.
+        rendered = render_device_script(Path(script_path), **extras)
+        result = self._mpremote("exec", _ARM_WATCHDOG, "run", str(rendered), timeout_s=timeout_s, allow_recovery=allow_recovery, retry_if_started=False)
+        if result.returncode != 0:
+            # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
+            # stderr - both are included here for the same reason.
+>           raise HardwareTestFailureError(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+E           harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py failed (exit 1):
+E           stdout:
+E           
+E           stderr:
+E           mpremote: failed to access /dev/no-pico-serial-device-detected (it may be in use by another program)
+
+tests_hardware/harness.py:908: HardwareTestFailureError
+_ test_the_unretrieved_exception_report_is_allocation_free_and_retains_nothing_on_real_hardware _
+
+board = <harness.Board object at 0x7f7ffc4d70>
+result_note = <function result_note.<locals>._note at 0x7f7ee60c20>
+
+    def test_the_unretrieved_exception_report_is_allocation_free_and_retains_nothing_on_real_hardware(board: "Board", result_note: "Callable[[str], None]") -> None:
+>       output = board.run_isolated(DEVICE_SCRIPTS_DIR / "unretrieved_task_exception_handler.py", timeout_s=_SCRIPT_TIMEOUT_S)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/flash/test_unretrieved_task_exception_handler.py:20: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <harness.Board object at 0x7f7ffc4d70>
+script_path = PosixPath('/home/nico/programming/sensors-bench/tests_hardware/device_scripts/unretrieved_task_exception_handler.py')
+soft_reset_after = True, timeout_s = 30.0, allow_recovery = True, extras = {}
+
+    def run_isolated(self, script_path: "str | Path", *, soft_reset_after: bool = True, timeout_s: "float | None" = None, allow_recovery: bool = True, **extras: object) -> str:
+        # Isolated-driver mode: the rendered script (render_device_script()) run once against the real frozen src/
+        # drivers under a re-armed watchdog; then, when asked, a separate soft reset whose failure never re-runs it.
+        # allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured.
+        rendered = render_device_script(Path(script_path), **extras)
+        result = self._mpremote("exec", _ARM_WATCHDOG, "run", str(rendered), timeout_s=timeout_s, allow_recovery=allow_recovery, retry_if_started=False)
+        if result.returncode != 0:
+            # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
+            # stderr - both are included here for the same reason.
+>           raise HardwareTestFailureError(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+E           harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/unretrieved_task_exception_handler.py failed (exit 1):
+E           stdout:
+E           
+E           stderr:
+E           mpremote: failed to access /dev/no-pico-serial-device-detected (it may be in use by another program)
+
+tests_hardware/harness.py:908: HardwareTestFailureError
+___________ test_watchdog_starvation_triggers_a_real_hardware_reset ____________
+
+board = <harness.Board object at 0x7f7ffc4d70>
+
+    def test_watchdog_starvation_triggers_a_real_hardware_reset(board: "Board", closing_reset: None) -> None:
+        del closing_reset
+        start = time.monotonic()
+        # The run ends in the reset, so the output printed before it is the outcome; a script that kept running would
+        # time out instead and fail here.
+>       output = board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "watchdog_starvation_reset.py", timeout_s=_SCRIPT_TIMEOUT_S)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/flash/test_watchdog_starvation.py:42: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <harness.Board object at 0x7f7ffc4d70>
+script_path = PosixPath('/home/nico/programming/sensors-bench/tests_hardware/device_scripts/watchdog_starvation_reset.py')
+timeout_s = 15.0, hold_unread_s = None, extras = {}
+
+    def run_isolated_expect_reset(self, script_path: "str | Path", *, timeout_s: "float | None" = None, hold_unread_s: "float | None" = None, **extras: object) -> str:
+        # For a script that ends in a real machine.reset(): the device dropping off is the outcome, so the stdout it got
+        # out first is returned (parse_facts(..., allow_missing_done=True)). With hold_unread_s the console is held open
+        # unread until then or until the board drops off, and "" is returned: its outcome is read from /status after.
+        rendered = render_device_script(Path(script_path), **extras)
+        args = ["exec", _ARM_WATCHDOG, "run", *(["--no-follow"] if hold_unread_s is not None else []), str(rendered)]
+        result = self._mpremote(*args, timeout_s=timeout_s, retry_if_started=False)
+        if result.returncode != 0 and _never_started(result):
+>           raise HardwareTestFailureError(f"mpremote never reached the board, so {Path(script_path).name} never ran (exit {result.returncode}): {result.stderr.strip()}")
+E           harness.HardwareTestFailureError: mpremote never reached the board, so watchdog_starvation_reset.py never ran (exit 1): mpremote: failed to access /dev/no-pico-serial-device-detected (it may be in use by another program)
+
+tests_hardware/harness.py:923: HardwareTestFailureError
+__ test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm ___
+
+board = <harness.Board object at 0x7f7ffc4d70>
+
+    def test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm(board: "Board", closing_reset: None) -> None:
+        # SystemService._reboot()'s fallback on silicon: with the alarm pool exhausted the reset timer cannot arm, so the
+        # supervisor's own feed_watchdog() must stop feeding and the watchdog resets the board.
+        del closing_reset
+>       wait_until(board.is_device_present, timeout_s=_DEVICE_PRESENT_TIMEOUT_S, poll_interval_s=_DEVICE_PRESENT_POLL_S, description="board present before the fallback run")
+
+tests_hardware/flash/test_watchdog_starvation.py:56: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+check_fn = <bound method Board.is_device_present of <harness.Board object at 0x7f7ffc4d70>>
+timeout_s = 15.0, poll_interval_s = 0.3
+description = 'board present before the fallback run'
+
+    def wait_until(
+        check_fn: "Callable[[], bool]",
+        timeout_s: float,
+        poll_interval_s: float = _WAIT_UNTIL_POLL_S,
+        description: str = "condition",
+    ) -> bool:
+        # Bounded poll-until-condition wait, test-harness-only (never used to change src/'s own real
+        # timing - SPECIFICATION.md Part F.3). Polls `check_fn()` until truthy or `timeout_s` elapses,
+        # treating a raising check as not-yet-ready; always returns True or raises TimeoutError.
+        deadline = time.monotonic() + timeout_s
+        last_exc: BaseException | None = None
+        while time.monotonic() < deadline:
+            try:
+                if check_fn():
+                    return True
+            except Exception as exc:
+                last_exc = exc
+            time.sleep(min(poll_interval_s, max(deadline - time.monotonic(), 0.0)))
+        try:
+            if check_fn():
+                return True
+        except Exception as exc:
+            last_exc = exc
+        detail = f" (last error: {last_exc!r})" if last_exc is not None else ""
+>       raise TimeoutError(f"timed out after {timeout_s}s waiting for: {description}{detail}")
+E       TimeoutError: timed out after 15.0s waiting for: board present before the fallback run
+
+tests_hardware/harness.py:748: TimeoutError
+=========================== short test summary info ============================
+FAILED tests_hardware/flash/test_bus_concurrency.py::test_a_held_sda_line_is_cleared_and_every_device_answers
+FAILED tests_hardware/flash/test_bus_concurrency.py::test_bmp3xx_alone_survives_a_general_call
+FAILED tests_hardware/flash/test_bus_concurrency.py::test_fram_erase_racing_a_chunk_write_leaves_no_torn_chunk
+FAILED tests_hardware/flash/test_chip_conformance.py::test_scd30_matches_its_twin_fake
+FAILED tests_hardware/flash/test_chip_conformance.py::test_sgp40_matches_its_twin_fake
+FAILED tests_hardware/flash/test_chip_conformance.py::test_bmp3xx_matches_its_twin_fake
+FAILED tests_hardware/flash/test_chip_conformance.py::test_fram_matches_its_twin_fake
+FAILED tests_hardware/flash/test_memory_stress.py::test_real_gc_heap_headroom_survives_a_full_system_build
+FAILED tests_hardware/flash/test_memory_stress.py::test_routine_no_yield_stretches_stay_under_the_gc_term
+FAILED tests_hardware/flash/test_memory_stress.py::test_c_stack_peak_is_within_half_the_limit
+FAILED tests_hardware/flash/test_system_commands.py::test_fram_erase_blanks_the_chip_and_every_logger_restarts_empty
+FAILED tests_hardware/flash/test_system_commands.py::test_an_erase_with_a_write_and_a_bus_session_in_flight_or_a_pause_still_resets_attributed[loads]
+FAILED tests_hardware/flash/test_system_commands.py::test_an_erase_with_a_write_and_a_bus_session_in_flight_or_a_pause_still_resets_attributed[mempause]
+FAILED tests_hardware/flash/test_system_commands.py::test_a_reset_mid_erase_leaves_every_chunk_old_or_blank[50]
+FAILED tests_hardware/flash/test_system_commands.py::test_a_reset_mid_erase_leaves_every_chunk_old_or_blank[150]
+FAILED tests_hardware/flash/test_system_commands.py::test_a_reset_mid_erase_leaves_every_chunk_old_or_blank[250]
+FAILED tests_hardware/flash/test_system_commands.py::test_bootloader_command_shuts_down_then_enters_bootsel
+FAILED tests_hardware/flash/test_task_supervisor.py::test_the_supervisor_restarts_a_real_dead_task
+FAILED tests_hardware/flash/test_toolchain_flash_boot.py::test_mpremote_connection_is_stable_across_repeated_calls
+FAILED tests_hardware/flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[none]
+FAILED tests_hardware/flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[crc16]
+FAILED tests_hardware/flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[cobs]
+FAILED tests_hardware/flash/test_uart_crossover.py::test_silence_and_desync_recover_within_the_resync_bound_and_a_mismatch_fails_loudly[none]
+FAILED tests_hardware/flash/test_uart_crossover.py::test_silence_and_desync_recover_within_the_resync_bound_and_a_mismatch_fails_loudly[crc16]
+FAILED tests_hardware/flash/test_uart_crossover.py::test_the_shipped_driver_never_holds_the_loop_for_a_frame_still_arriving
+FAILED tests_hardware/flash/test_uart_crossover.py::test_an_idle_listener_polls_at_the_idle_rate_not_the_transaction_rate
+FAILED tests_hardware/flash/test_uart_crossover.py::test_comm_hazards_are_serialised_refused_or_recovered[none]
+FAILED tests_hardware/flash/test_uart_crossover.py::test_comm_hazards_are_serialised_refused_or_recovered[crc16]
+FAILED tests_hardware/flash/test_uart_crossover.py::test_the_link_keeps_transferring_while_every_other_subsystem_is_busy[none]
+FAILED tests_hardware/flash/test_uart_crossover.py::test_the_link_keeps_transferring_while_every_other_subsystem_is_busy[crc16]
+FAILED tests_hardware/flash/test_uart_crossover.py::test_no_frame_is_lost_while_interrupts_are_off[none]
+FAILED tests_hardware/flash/test_uart_crossover.py::test_no_frame_is_lost_while_interrupts_are_off[crc16]
+FAILED tests_hardware/flash/test_uart_crossover.py::test_a_soft_reset_during_traffic_leaves_no_running_ring[none]
+FAILED tests_hardware/flash/test_uart_crossover.py::test_a_soft_reset_during_traffic_leaves_no_running_ring[crc16]
+FAILED tests_hardware/flash/test_uart_crossover.py::test_a_break_mid_frame_fails_that_transaction_only[none]
+FAILED tests_hardware/flash/test_uart_crossover.py::test_a_break_mid_frame_fails_that_transaction_only[crc16]
+FAILED tests_hardware/flash/test_unretrieved_task_exception_handler.py::test_the_unretrieved_exception_report_is_allocation_free_and_retains_nothing_on_real_hardware
+FAILED tests_hardware/flash/test_watchdog_starvation.py::test_watchdog_starvation_triggers_a_real_hardware_reset
+FAILED tests_hardware/flash/test_watchdog_starvation.py::test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm
+ERROR tests_hardware/flash/test_watchdog_starvation.py::test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm
+= 39 failed, 47 passed, 4 skipped, 17 deselected, 1 error in 1311.54s (0:21:51) =
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+Not covered: 14 test(s) deselected by a wear gate; --allow-persistence-write would select them.
+== Summary: run_flash_hardware_suite ==
+Commit: fd00dd1d
+Levels: L3
+Counts (tests): passed 47 · failed 39 · skipped 4 · deselected 17 · retried 0 · recovered 314 · vacuous 0
+Failed:
+  - tests_hardware/flash/test_bus_concurrency.py::test_a_held_sda_line_is_cleared_and_every_device_answers: failed in call: AssertionError: a transfer on the held bus gave None, not ETIMEDOUT or EIO
+  - tests_hardware/flash/test_bus_concurrency.py::test_bmp3xx_alone_survives_a_general_call: failed in call: AssertionError: the BMP3xx state changed through the general calls: before {'pwr_ctrl': 0, 'snapshot': [8, 2, 3], 'chip_id': 80}, after {'pwr_ctrl': 3, 'snapshot': [8, 2, 3], 'chip_id': 80}
+  - tests_hardware/flash/test_bus_concurrency.py::test_fram_erase_racing_a_chunk_write_leaves_no_torn_chunk: failed in call: AssertionError: the erase never started under the logger writes:
+  - tests_hardware/flash/test_chip_conformance.py::test_scd30_matches_its_twin_fake: failed in call: AssertionError: the SCD30 fake diverges from the chip:
+  - tests_hardware/flash/test_chip_conformance.py::test_sgp40_matches_its_twin_fake: failed in call: AssertionError: the SGP40 fake diverges from the chip:
+  - tests_hardware/flash/test_chip_conformance.py::test_bmp3xx_matches_its_twin_fake: failed in call: AssertionError: the BMP3xx fake diverges from the chip:
+  - tests_hardware/flash/test_chip_conformance.py::test_fram_matches_its_twin_fake: failed in call: AssertionError: the FRAM fake diverges from the chip:
+  - tests_hardware/flash/test_memory_stress.py::test_real_gc_heap_headroom_survives_a_full_system_build: failed in call: AssertionError: at gc.threshold [-1, 32768]: the built object graph holds 128384 B, over 100000 B; facts {'heap_baseline': {'alloc': 69312, 'free': 118816, 'largest_block': 116592}, 'heap_after_build_system': {'alloc': 128384, 'free': 59760, 'largest_block': 45168}, 'heap_after_build_system_control': {'alloc': 128192, 'free': 60000, 'largest_block': 45168}, 'heap_after_build_system_production_threshold': {'alloc': 128256, 'free': 59968, 'largest_block': 45168}, 'used': 128384, 'max_used': 100000, 'largest_block': 45168, 'min_largest_block': 32768, 'gc_threshold': [-1, 32768]}
+  - tests_hardware/flash/test_memory_stress.py::test_routine_no_yield_stretches_stay_under_the_gc_term: failed in call: AssertionError: routine no-yield stretches over the 21000 us GC term, or missing: {'voc_max_us': 41287}; facts {'gc_threshold': -1, 'gc_max_us': 17646, 'voc_max_us': 41287, 'crc_total_us': 182519, 'crc_gap_max_us': 1971, 'routine_stall_us': 21000}
+  - tests_hardware/flash/test_memory_stress.py::test_c_stack_peak_is_within_half_the_limit: failed in call: AssertionError: the C-stack peak 4020 B is over half the 7936 B limit (chain fram.get_values_sync): {'chain': 'fram.get_values_sync', 'leaf_peaks': {'i2c1.writeto': 2820, 'i2c0.writeto': 2420, 'fram.get_values_sync': 4020, 'fram.set_values_sync': 4020, 'i2c1.get_register_bytes': 2820, 'i2c0.get_register_bytes': 2620, 'i2c0.set_bits': 2620, 'i2c0.get_register_struct': 2620, 'i2c0.set_register_struct': 2420, 'i2c1.readfrom_into': 2820, 'i2c1.set_register_struct': 2820}, 'c_stack_peak': 4020, 'c_stack_limit': 7936}
+  - tests_hardware/flash/test_system_commands.py::test_fram_erase_blanks_the_chip_and_every_logger_restarts_empty: failed in call: AssertionError: system_command_fram_erase.py idle: the command was not accepted: {'state': 'idle', 'layout': {'allocated': 1140, 'size': 262144}}
+  - tests_hardware/flash/test_system_commands.py::test_an_erase_with_a_write_and_a_bus_session_in_flight_or_a_pause_still_resets_attributed[loads]: failed in call: AssertionError: system_command_fram_erase.py state run: the command was not accepted: {'state': 'loads', 'layout': {'allocated': 1140, 'size': 262144}, 'seeded': ['BMP3XX', 'CFGMGR_BMP3XX', 'CFGMGR_ISL29125', 'CFGMGR_NOTIFY', 'CFGMGR_NTP', 'CFGMGR_SGP40', 'CFGMGR_SYSTEM', 'CFGMGR_WIFI', 'DNSSRV', 'ISL29125', 'NEOPIXEL', 'NOTIFY', 'NTP', 'SCD30', 'SGP40', 'SYSTEM', 'UART_init', 'UART_resp', 'WEBSERVER', 'WIFI'], 'seeded_system': {'ErrCount': 6, 'ErrType': ['N', 'N', 'N', 'N', 'E', 'E', 'E', 'E', 'E', 'E'], 'ErrNum': [0, 0, 0, 0, 125, 126, 127, 125, 126, 127]}}
+  - tests_hardware/flash/test_system_commands.py::test_an_erase_with_a_write_and_a_bus_session_in_flight_or_a_pause_still_resets_attributed[mempause]: failed in call: AssertionError: system_command_fram_erase.py state run: the command was not accepted: {'state': 'mempause', 'layout': {'allocated': 1140, 'size': 262144}, 'seeded': ['BMP3XX', 'CFGMGR_BMP3XX', 'CFGMGR_ISL29125', 'CFGMGR_NOTIFY', 'CFGMGR_NTP', 'CFGMGR_SGP40', 'CFGMGR_SYSTEM', 'CFGMGR_WIFI', 'DNSSRV', 'ISL29125', 'NEOPIXEL', 'NOTIFY', 'NTP', 'SCD30', 'SGP40', 'SYSTEM', 'UART_init', 'UART_resp', 'WEBSERVER', 'WIFI'], 'seeded_system': {'ErrCount': 9, 'ErrType': ['N', 'E', 'E', 'E', 'E', 'E', 'E', 'E', 'E', 'E'], 'ErrNum': [0, 125, 126, 127, 125, 126, 127, 125, 126, 127]}}
+  - tests_hardware/flash/test_system_commands.py::test_a_reset_mid_erase_leaves_every_chunk_old_or_blank[50]: failed in call: AssertionError: the reset did not land inside the erase: {'state': 'reset_after_50', 'layout': {'allocated': 1140, 'size': 262144}, 'seeded': ['BMP3XX', 'CFGMGR_BMP3XX', 'CFGMGR_ISL29125', 'CFGMGR_NOTIFY', 'CFGMGR_NTP', 'CFGMGR_SGP40', 'CFGMGR_SYSTEM', 'CFGMGR_WIFI', 'DNSSRV', 'ISL29125', 'NEOPIXEL', 'NOTIFY', 'NTP', 'SCD30', 'SGP40', 'SYSTEM', 'UART_init', 'UART_resp', 'WEBSERVER', 'WIFI'], 'seeded_system': {'ErrCount': 14, 'ErrType': ['E', 'E', 'E', 'E', 'E', 'E', 'E', 'E', 'E', 'E'], 'ErrNum': [125, 126, 127, 125, 126, 127, 126, 125, 126, 127]}}
+  - tests_hardware/flash/test_system_commands.py::test_a_reset_mid_erase_leaves_every_chunk_old_or_blank[150]: failed in call: AssertionError: the reset did not land inside the erase: {'state': 'reset_after_150', 'layout': {'allocated': 1140, 'size': 262144}, 'seeded': ['BMP3XX', 'CFGMGR_BMP3XX', 'CFGMGR_ISL29125', 'CFGMGR_NOTIFY', 'CFGMGR_NTP', 'CFGMGR_SGP40', 'CFGMGR_SYSTEM', 'CFGMGR_WIFI', 'DNSSRV', 'ISL29125', 'NEOPIXEL', 'NOTIFY', 'NTP', 'SCD30', 'SGP40', 'SYSTEM', 'UART_init', 'UART_resp', 'WEBSERVER', 'WIFI'], 'seeded_system': {'ErrCount': 20, 'ErrType': ['E', 'E', 'E', 'E', 'E', 'E', 'E', 'E', 'E', 'E'], 'ErrNum': [126, 125, 126, 127, 125, 126, 127, 125, 126, 127]}}
+  - tests_hardware/flash/test_system_commands.py::test_a_reset_mid_erase_leaves_every_chunk_old_or_blank[250]: failed in call: AssertionError: the reset did not land inside the erase: {'state': 'reset_after_250', 'layout': {'allocated': 1140, 'size': 262144}, 'seeded': ['BMP3XX', 'CFGMGR_BMP3XX', 'CFGMGR_ISL29125', 'CFGMGR_NOTIFY', 'CFGMGR_NTP', 'CFGMGR_SGP40', 'CFGMGR_SYSTEM', 'CFGMGR_WIFI', 'DNSSRV', 'ISL29125', 'NEOPIXEL', 'NOTIFY', 'NTP', 'SCD30', 'SGP40', 'SYSTEM', 'UART_init', 'UART_resp', 'WEBSERVER', 'WIFI'], 'seeded_system': {'ErrCount': 26, 'ErrType': ['E', 'E', 'E', 'E', 'E', 'E', 'E', 'E', 'E', 'E'], 'ErrNum': [127, 125, 126, 127, 125, 126, 127, 125, 126, 127]}}
+  - tests_hardware/flash/test_system_commands.py::test_bootloader_command_shuts_down_then_enters_bootsel: failed in call: harness.HardwareTestFailureError: mpremote exec "import os\nif 'hwtest-scratch' in os.listdir():\n    for n in os.listdir('hwtest-scratch/'):\n        os.remove('hwtest-scratch/' + n)\n    os.rmdir('hwtest-scratch/')\n" failed (exit 1):
+  - tests_hardware/flash/test_task_supervisor.py::test_the_supervisor_restarts_a_real_dead_task: failed in call: harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py failed (exit 1):
+  - tests_hardware/flash/test_toolchain_flash_boot.py::test_mpremote_connection_is_stable_across_repeated_calls: failed in call: AssertionError: mpremote connection failed on attempt(s) [0, 1, 2, 3, 4] out of 5 consecutive calls to /dev/no-pico-serial-device-detected
+  - tests_hardware/flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[none]: failed in call: harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_crossover_exchange.py failed (exit 1):
+  - tests_hardware/flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[crc16]: failed in call: harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_crossover_exchange.py failed (exit 1):
+  - tests_hardware/flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[cobs]: failed in call: harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_crossover_exchange.py failed (exit 1):
+  - tests_hardware/flash/test_uart_crossover.py::test_silence_and_desync_recover_within_the_resync_bound_and_a_mismatch_fails_loudly[none]: failed in call: harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_crossover_recovery.py failed (exit 1):
+  - tests_hardware/flash/test_uart_crossover.py::test_silence_and_desync_recover_within_the_resync_bound_and_a_mismatch_fails_loudly[crc16]: failed in call: harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_crossover_recovery.py failed (exit 1):
+  - tests_hardware/flash/test_uart_crossover.py::test_the_shipped_driver_never_holds_the_loop_for_a_frame_still_arriving: failed in call: harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py failed (exit 1):
+  - tests_hardware/flash/test_uart_crossover.py::test_an_idle_listener_polls_at_the_idle_rate_not_the_transaction_rate: failed in call: harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_idle_poll_rate.py failed (exit 1):
+  - tests_hardware/flash/test_uart_crossover.py::test_comm_hazards_are_serialised_refused_or_recovered[none]: failed in call: harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_comm_hazards.py failed (exit 1):
+  - tests_hardware/flash/test_uart_crossover.py::test_comm_hazards_are_serialised_refused_or_recovered[crc16]: failed in call: harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_comm_hazards.py failed (exit 1):
+  - tests_hardware/flash/test_uart_crossover.py::test_the_link_keeps_transferring_while_every_other_subsystem_is_busy[none]: failed in call: harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py failed (exit 1):
+  - tests_hardware/flash/test_uart_crossover.py::test_the_link_keeps_transferring_while_every_other_subsystem_is_busy[crc16]: failed in call: harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py failed (exit 1):
+  - tests_hardware/flash/test_uart_crossover.py::test_no_frame_is_lost_while_interrupts_are_off[none]: failed in call: harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py failed (exit 1):
+  - tests_hardware/flash/test_uart_crossover.py::test_no_frame_is_lost_while_interrupts_are_off[crc16]: failed in call: harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py failed (exit 1):
+  - tests_hardware/flash/test_uart_crossover.py::test_a_soft_reset_during_traffic_leaves_no_running_ring[none]: failed in call: harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py failed (exit 1):
+  - tests_hardware/flash/test_uart_crossover.py::test_a_soft_reset_during_traffic_leaves_no_running_ring[crc16]: failed in call: harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py failed (exit 1):
+  - tests_hardware/flash/test_uart_crossover.py::test_a_break_mid_frame_fails_that_transaction_only[none]: failed in call: harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py failed (exit 1):
+  - tests_hardware/flash/test_uart_crossover.py::test_a_break_mid_frame_fails_that_transaction_only[crc16]: failed in call: harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py failed (exit 1):
+  - tests_hardware/flash/test_unretrieved_task_exception_handler.py::test_the_unretrieved_exception_report_is_allocation_free_and_retains_nothing_on_real_hardware: failed in call: harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/unretrieved_task_exception_handler.py failed (exit 1):
+  - tests_hardware/flash/test_watchdog_starvation.py::test_watchdog_starvation_triggers_a_real_hardware_reset: failed in call: harness.HardwareTestFailureError: mpremote never reached the board, so watchdog_starvation_reset.py never ran (exit 1): mpremote: failed to access /dev/no-pico-serial-device-detected (it may be in use by another program)
+  - tests_hardware/flash/test_watchdog_starvation.py::test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm: failed in call: TimeoutError: timed out after 15.0s waiting for: board present before the fallback run
+Skipped:
+  - tests_hardware/flash/test_memory_stress.py::test_loop_lag_under_combined_load_stays_under_the_uart_reply_budget: silicon runs this instrument in bench/test_memory_stress_bench.py: only the bench network reaches the script's server on the board
+  - tests_hardware/flash/test_sensor_accuracy.py::test_isl29125_survives_recombined_realistic_lighting_scenarios: needs the NeoPixel-aimed-at-the-ISL29125 rig - pass --allow-neopixel-sweep once it is set up (tests_hardware/README.md's rig section) (gate --allow-neopixel-sweep not given)
+  - tests_hardware/flash/test_toolchain_flash_boot.py::test_env_tier_flash_recurring_run_is_idempotent: a full toolchain re-verification: network fetches and ~8 min of builds; pass --allow-toolchain-reverify (gate --allow-toolchain-reverify not given)
+  - tests_hardware/flash/test_toolchain_flash_boot.py::test_real_uf2_reflash_and_boot_smoke_test: this IS a real flash cycle - pass --allow-flash-cycle to deliberately run it (gate --allow-flash-cycle not given)
+Deselected:
+  - tests_hardware/flash/test_bus_concurrency.py::test_scd30_same_device_read_write_concurrency: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_scd30_config_write_does_not_disturb_concurrent_sibling_reads: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_chip_conformance.py::test_scd30_argument_reaction_is_recorded: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_config_float_round_trip.py::test_config_floats_round_trip_unchanged: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_memory_stress.py::test_flash_write_loop_gap_is_recorded: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_reboot_persistence.py::test_config_value_survives_a_genuine_hard_reset: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_sensor_accuracy.py::test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_config_reset_deletes_every_config_file_and_reboots: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_a_hung_shutdown_step_ends_in_a_watchdog_reset[resetconfig]: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_a_hung_shutdown_step_ends_in_a_watchdog_reset[reboot]: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_a_real_config_write_during_traffic_loses_no_frame[none]: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_a_real_config_write_during_traffic_loses_no_frame[crc16]: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_link_transactions_during_config_writes_are_recorded[none]: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_link_transactions_during_config_writes_are_recorded[crc16]: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_bus_electrical_timing.py::test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_memory_stress.py::test_single_core_timing_headroom_holds_under_normal_full_task_load: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_sensor_accuracy.py::test_sgp40_sample_cadence: by runner selection (-m), not covered by this run
+Passed only on retry: none
+Recovery passes:
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.3s, retried
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 2: 'may be in use by another program' after 1.3s, retried
+  - mpremote: mpremote attempt 3: 'may be in use by another program' after 2.2s, retried
+  - mpremote: mpremote attempt 4: 'may be in use by another program' after 3.1s, retried
+  - mpremote: mpremote attempt 5: 'may be in use by another program' after 4.0s, retried
+  - mpremote: mpremote attempt 6: 'may be in use by another program' after 4.9s, retried
+  - mpremote: mpremote attempt 7: 'may be in use by another program' after 5.7s, retried
+  - mpremote: mpremote attempt 8: 'may be in use by another program' after 6.6s, retried
+  - mpremote: mpremote attempt 9: 'may be in use by another program' after 7.5s, retried
+  - mpremote: mpremote attempt 10: 'may be in use by another program' after 8.3s, retried
+  - mpremote: mpremote attempt 11: 'may be in use by another program' after 9.2s, retried
+  - mpremote: mpremote attempt 12: node moved, now /dev/no-pico-serial-device-detected (10.0s)
+  - mpremote: mpremote attempt 13: 'may be in use by another program' after 10.4s, retried
+  - mpremote: mpremote attempt 14: 'may be in use by another program' after 11.3s, retried
+  - mpremote: mpremote attempt 15: 'may be in use by another program' after 12.3s, retried
+  - mpremote: mpremote attempt 16: 'may be in use by another program' after 13.1s, retried
+  - mpremote: mpremote attempt 17: 'may be in use by another program' after 14.0s, retried
+  - mpremote: mpremote attempt 18: 'may be in use by another program' after 14.8s, retried
+  - mpremote: mpremote attempt 19: 'may be in use by another program' after 15.7s, retried
+  - mpremote: mpremote attempt 20: 'may be in use by another program' after 16.5s, retried
+  - mpremote: mpremote attempt 21: 'may be in use by another program' after 17.4s, retried
+  - mpremote: mpremote attempt 22: 'may be in use by another program' after 18.3s, retried
+  - mpremote: mpremote attempt 23: 'may be in use by another program' after 19.1s, retried
+  - mpremote: mpremote attempt 24: 'may be in use by another program' after 20.0s, retried
+  - mpremote: mpremote attempt 25: USB rebind - no /sys/class/tty/no-pico-serial-device-detected/device to rebind (20.9s)
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 2: 'may be in use by another program' after 1.2s, retried
+  - mpremote: mpremote attempt 3: 'may be in use by another program' after 2.1s, retried
+  - mpremote: mpremote attempt 4: 'may be in use by another program' after 3.0s, retried
+  - mpremote: mpremote attempt 5: 'may be in use by another program' after 3.8s, retried
+  - mpremote: mpremote attempt 6: 'may be in use by another program' after 4.7s, retried
+  - mpremote: mpremote attempt 7: 'may be in use by another program' after 5.5s, retried
+  - mpremote: mpremote attempt 8: 'may be in use by another program' after 6.4s, retried
+  - mpremote: mpremote attempt 9: 'may be in use by another program' after 7.2s, retried
+  - mpremote: mpremote attempt 10: 'may be in use by another program' after 8.1s, retried
+  - mpremote: mpremote attempt 11: 'may be in use by another program' after 9.0s, retried
+  - mpremote: mpremote attempt 12: 'may be in use by another program' after 9.8s, retried
+  - mpremote: mpremote attempt 13: USB rebind - no /sys/class/tty/no-pico-serial-device-detected/device to rebind (10.7s)
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 2: 'may be in use by another program' after 1.2s, retried
+  - mpremote: mpremote attempt 3: 'may be in use by another program' after 2.1s, retried
+  - mpremote: mpremote attempt 4: 'may be in use by another program' after 2.9s, retried
+  - mpremote: mpremote attempt 5: 'may be in use by another program' after 3.8s, retried
+  - mpremote: mpremote attempt 6: 'may be in use by another program' after 4.7s, retried
+  - mpremote: mpremote attempt 7: 'may be in use by another program' after 5.5s, retried
+  - mpremote: mpremote attempt 8: 'may be in use by another program' after 6.4s, retried
+  - mpremote: mpremote attempt 9: 'may be in use by another program' after 7.2s, retried
+  - mpremote: mpremote attempt 10: 'may be in use by another program' after 8.1s, retried
+  - mpremote: mpremote attempt 11: 'may be in use by another program' after 8.9s, retried
+  - mpremote: mpremote attempt 12: 'may be in use by another program' after 9.8s, retried
+  - mpremote: mpremote attempt 13: USB rebind - no /sys/class/tty/no-pico-serial-device-detected/device to rebind (10.7s)
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 2: 'may be in use by another program' after 1.2s, retried
+  - mpremote: mpremote attempt 3: 'may be in use by another program' after 2.1s, retried
+  - mpremote: mpremote attempt 4: 'may be in use by another program' after 2.9s, retried
+  - mpremote: mpremote attempt 5: 'may be in use by another program' after 3.8s, retried
+  - mpremote: mpremote attempt 6: 'may be in use by another program' after 4.7s, retried
+  - mpremote: mpremote attempt 7: 'may be in use by another program' after 5.5s, retried
+  - mpremote: mpremote attempt 8: 'may be in use by another program' after 6.5s, retried
+  - mpremote: mpremote attempt 9: 'may be in use by another program' after 7.4s, retried
+  - mpremote: mpremote attempt 10: 'may be in use by another program' after 8.2s, retried
+  - mpremote: mpremote attempt 11: 'may be in use by another program' after 9.1s, retried
+  - mpremote: mpremote attempt 12: USB rebind - no /sys/class/tty/no-pico-serial-device-detected/device to rebind (10.0s)
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 2: 'may be in use by another program' after 1.3s, retried
+  - mpremote: mpremote attempt 3: 'may be in use by another program' after 2.1s, retried
+  - mpremote: mpremote attempt 4: 'may be in use by another program' after 3.0s, retried
+  - mpremote: mpremote attempt 5: 'may be in use by another program' after 3.9s, retried
+  - mpremote: mpremote attempt 6: 'may be in use by another program' after 4.8s, retried
+  - mpremote: mpremote attempt 7: 'may be in use by another program' after 5.7s, retried
+  - mpremote: mpremote attempt 8: 'may be in use by another program' after 6.5s, retried
+  - mpremote: mpremote attempt 9: 'may be in use by another program' after 7.4s, retried
+  - mpremote: mpremote attempt 10: 'may be in use by another program' after 8.2s, retried
+  - mpremote: mpremote attempt 11: 'may be in use by another program' after 9.1s, retried
+  - mpremote: mpremote attempt 12: USB rebind - no /sys/class/tty/no-pico-serial-device-detected/device to rebind (10.0s)
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 2: 'may be in use by another program' after 1.2s, retried
+  - mpremote: mpremote attempt 3: 'may be in use by another program' after 2.1s, retried
+  - mpremote: mpremote attempt 4: 'may be in use by another program' after 2.9s, retried
+  - mpremote: mpremote attempt 5: 'may be in use by another program' after 3.8s, retried
+  - mpremote: mpremote attempt 6: 'may be in use by another program' after 4.7s, retried
+  - mpremote: mpremote attempt 7: 'may be in use by another program' after 5.6s, retried
+  - mpremote: mpremote attempt 8: 'may be in use by another program' after 6.5s, retried
+  - mpremote: mpremote attempt 9: 'may be in use by another program' after 7.4s, retried
+  - mpremote: mpremote attempt 10: 'may be in use by another program' after 8.2s, retried
+  - mpremote: mpremote attempt 11: 'may be in use by another program' after 9.1s, retried
+  - mpremote: mpremote attempt 12: 'may be in use by another program' after 10.0s, retried
+  - mpremote: mpremote attempt 13: USB rebind - no /sys/class/tty/no-pico-serial-device-detected/device to rebind (10.8s)
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 2: 'may be in use by another program' after 1.2s, retried
+  - mpremote: mpremote attempt 3: 'may be in use by another program' after 2.1s, retried
+  - mpremote: mpremote attempt 4: 'may be in use by another program' after 2.9s, retried
+  - mpremote: mpremote attempt 5: 'may be in use by another program' after 3.8s, retried
+  - mpremote: mpremote attempt 6: 'may be in use by another program' after 4.7s, retried
+  - mpremote: mpremote attempt 7: 'may be in use by another program' after 5.6s, retried
+  - mpremote: mpremote attempt 8: 'may be in use by another program' after 6.4s, retried
+  - mpremote: mpremote attempt 9: 'may be in use by another program' after 7.3s, retried
+  - mpremote: mpremote attempt 10: 'may be in use by another program' after 8.1s, retried
+  - mpremote: mpremote attempt 11: 'may be in use by another program' after 9.0s, retried
+  - mpremote: mpremote attempt 12: 'may be in use by another program' after 9.9s, retried
+  - mpremote: mpremote attempt 13: USB rebind - no /sys/class/tty/no-pico-serial-device-detected/device to rebind (10.8s)
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 2: 'may be in use by another program' after 1.2s, retried
+  - mpremote: mpremote attempt 3: 'may be in use by another program' after 2.1s, retried
+  - mpremote: mpremote attempt 4: 'may be in use by another program' after 3.0s, retried
+  - mpremote: mpremote attempt 5: 'may be in use by another program' after 3.9s, retried
+  - mpremote: mpremote attempt 6: 'may be in use by another program' after 4.8s, retried
+  - mpremote: mpremote attempt 7: 'may be in use by another program' after 5.6s, retried
+  - mpremote: mpremote attempt 8: 'may be in use by another program' after 6.5s, retried
+  - mpremote: mpremote attempt 9: 'may be in use by another program' after 7.3s, retried
+  - mpremote: mpremote attempt 10: 'may be in use by another program' after 8.2s, retried
+  - mpremote: mpremote attempt 11: 'may be in use by another program' after 9.1s, retried
+  - mpremote: mpremote attempt 12: 'may be in use by another program' after 9.9s, retried
+  - mpremote: mpremote attempt 13: USB rebind - no /sys/class/tty/no-pico-serial-device-detected/device to rebind (10.8s)
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 2: 'may be in use by another program' after 1.2s, retried
+  - mpremote: mpremote attempt 3: 'may be in use by another program' after 2.1s, retried
+  - mpremote: mpremote attempt 4: 'may be in use by another program' after 3.0s, retried
+  - mpremote: mpremote attempt 5: 'may be in use by another program' after 3.8s, retried
+  - mpremote: mpremote attempt 6: 'may be in use by another program' after 4.7s, retried
+  - mpremote: mpremote attempt 7: 'may be in use by another program' after 5.6s, retried
+  - mpremote: mpremote attempt 8: 'may be in use by another program' after 6.4s, retried
+  - mpremote: mpremote attempt 9: 'may be in use by another program' after 7.3s, retried
+  - mpremote: mpremote attempt 10: 'may be in use by another program' after 8.4s, retried
+  - mpremote: mpremote attempt 11: 'may be in use by another program' after 9.3s, retried
+  - mpremote: mpremote attempt 12: USB rebind - no /sys/class/tty/no-pico-serial-device-detected/device to rebind (10.2s)
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 2: 'may be in use by another program' after 1.2s, retried
+  - mpremote: mpremote attempt 3: 'may be in use by another program' after 2.1s, retried
+  - mpremote: mpremote attempt 4: 'may be in use by another program' after 3.0s, retried
+  - mpremote: mpremote attempt 5: 'may be in use by another program' after 3.9s, retried
+  - mpremote: mpremote attempt 6: 'may be in use by another program' after 4.8s, retried
+  - mpremote: mpremote attempt 7: 'may be in use by another program' after 5.7s, retried
+  - mpremote: mpremote attempt 8: 'may be in use by another program' after 6.6s, retried
+  - mpremote: mpremote attempt 9: 'may be in use by another program' after 7.5s, retried
+  - mpremote: mpremote attempt 10: 'may be in use by another program' after 8.5s, retried
+  - mpremote: mpremote attempt 11: 'may be in use by another program' after 9.3s, retried
+  - mpremote: mpremote attempt 12: USB rebind - no /sys/class/tty/no-pico-serial-device-detected/device to rebind (10.2s)
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 2: 'may be in use by another program' after 1.2s, retried
+  - mpremote: mpremote attempt 3: 'may be in use by another program' after 2.1s, retried
+  - mpremote: mpremote attempt 4: 'may be in use by another program' after 3.0s, retried
+  - mpremote: mpremote attempt 5: 'may be in use by another program' after 3.9s, retried
+  - mpremote: mpremote attempt 6: 'may be in use by another program' after 4.8s, retried
+  - mpremote: mpremote attempt 7: 'may be in use by another program' after 5.6s, retried
+  - mpremote: mpremote attempt 8: 'may be in use by another program' after 6.5s, retried
+  - mpremote: mpremote attempt 9: 'may be in use by another program' after 7.4s, retried
+  - mpremote: mpremote attempt 10: 'may be in use by another program' after 8.3s, retried
+  - mpremote: mpremote attempt 11: 'may be in use by another program' after 9.1s, retried
+  - mpremote: mpremote attempt 12: USB rebind - no /sys/class/tty/no-pico-serial-device-detected/device to rebind (10.0s)
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 2: 'may be in use by another program' after 1.3s, retried
+  - mpremote: mpremote attempt 3: 'may be in use by another program' after 2.2s, retried
+  - mpremote: mpremote attempt 4: 'may be in use by another program' after 3.1s, retried
+  - mpremote: mpremote attempt 5: 'may be in use by another program' after 4.0s, retried
+  - mpremote: mpremote attempt 6: 'may be in use by another program' after 4.8s, retried
+  - mpremote: mpremote attempt 7: 'may be in use by another program' after 5.7s, retried
+  - mpremote: mpremote attempt 8: 'may be in use by another program' after 6.6s, retried
+  - mpremote: mpremote attempt 9: 'may be in use by another program' after 7.5s, retried
+  - mpremote: mpremote attempt 10: 'may be in use by another program' after 8.4s, retried
+  - mpremote: mpremote attempt 11: 'may be in use by another program' after 9.3s, retried
+  - mpremote: mpremote attempt 12: USB rebind - no /sys/class/tty/no-pico-serial-device-detected/device to rebind (10.2s)
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 2: 'may be in use by another program' after 1.2s, retried
+  - mpremote: mpremote attempt 3: 'may be in use by another program' after 2.1s, retried
+  - mpremote: mpremote attempt 4: 'may be in use by another program' after 2.9s, retried
+  - mpremote: mpremote attempt 5: 'may be in use by another program' after 3.8s, retried
+  - mpremote: mpremote attempt 6: 'may be in use by another program' after 4.6s, retried
+  - mpremote: mpremote attempt 7: 'may be in use by another program' after 5.5s, retried
+  - mpremote: mpremote attempt 8: 'may be in use by another program' after 6.4s, retried
+  - mpremote: mpremote attempt 9: 'may be in use by another program' after 7.3s, retried
+  - mpremote: mpremote attempt 10: 'may be in use by another program' after 8.2s, retried
+  - mpremote: mpremote attempt 11: 'may be in use by another program' after 9.1s, retried
+  - mpremote: mpremote attempt 12: 'may be in use by another program' after 10.0s, retried
+  - mpremote: mpremote attempt 13: USB rebind - no /sys/class/tty/no-pico-serial-device-detected/device to rebind (10.9s)
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 2: 'may be in use by another program' after 1.3s, retried
+  - mpremote: mpremote attempt 3: 'may be in use by another program' after 2.1s, retried
+  - mpremote: mpremote attempt 4: 'may be in use by another program' after 3.0s, retried
+  - mpremote: mpremote attempt 5: 'may be in use by another program' after 3.9s, retried
+  - mpremote: mpremote attempt 6: 'may be in use by another program' after 4.8s, retried
+  - mpremote: mpremote attempt 7: 'may be in use by another program' after 5.7s, retried
+  - mpremote: mpremote attempt 8: 'may be in use by another program' after 6.7s, retried
+  - mpremote: mpremote attempt 9: 'may be in use by another program' after 7.6s, retried
+  - mpremote: mpremote attempt 10: 'may be in use by another program' after 8.6s, retried
+  - mpremote: mpremote attempt 11: 'may be in use by another program' after 9.5s, retried
+  - mpremote: mpremote attempt 12: USB rebind - no /sys/class/tty/no-pico-serial-device-detected/device to rebind (10.4s)
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 2: 'may be in use by another program' after 1.3s, retried
+  - mpremote: mpremote attempt 3: 'may be in use by another program' after 2.3s, retried
+  - mpremote: mpremote attempt 4: 'may be in use by another program' after 3.3s, retried
+  - mpremote: mpremote attempt 5: 'may be in use by another program' after 4.3s, retried
+  - mpremote: mpremote attempt 6: 'may be in use by another program' after 5.2s, retried
+  - mpremote: mpremote attempt 7: 'may be in use by another program' after 6.1s, retried
+  - mpremote: mpremote attempt 8: 'may be in use by another program' after 7.0s, retried
+  - mpremote: mpremote attempt 9: 'may be in use by another program' after 7.8s, retried
+  - mpremote: mpremote attempt 10: 'may be in use by another program' after 8.6s, retried
+  - mpremote: mpremote attempt 11: 'may be in use by another program' after 9.5s, retried
+  - mpremote: mpremote attempt 12: USB rebind - no /sys/class/tty/no-pico-serial-device-detected/device to rebind (10.3s)
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.3s, retried
+  - mpremote: mpremote attempt 2: 'may be in use by another program' after 1.2s, retried
+  - mpremote: mpremote attempt 3: 'may be in use by another program' after 2.0s, retried
+  - mpremote: mpremote attempt 4: 'may be in use by another program' after 2.9s, retried
+  - mpremote: mpremote attempt 5: 'may be in use by another program' after 3.8s, retried
+  - mpremote: mpremote attempt 6: 'may be in use by another program' after 4.7s, retried
+  - mpremote: mpremote attempt 7: 'may be in use by another program' after 5.5s, retried
+  - mpremote: mpremote attempt 8: 'may be in use by another program' after 6.3s, retried
+  - mpremote: mpremote attempt 9: 'may be in use by another program' after 7.2s, retried
+  - mpremote: mpremote attempt 10: 'may be in use by another program' after 8.0s, retried
+  - mpremote: mpremote attempt 11: 'may be in use by another program' after 8.9s, retried
+  - mpremote: mpremote attempt 12: 'may be in use by another program' after 9.8s, retried
+  - mpremote: mpremote attempt 13: USB rebind - no /sys/class/tty/no-pico-serial-device-detected/device to rebind (10.7s)
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.3s, retried
+  - mpremote: mpremote attempt 2: 'may be in use by another program' after 1.2s, retried
+  - mpremote: mpremote attempt 3: 'may be in use by another program' after 2.0s, retried
+  - mpremote: mpremote attempt 4: 'may be in use by another program' after 2.9s, retried
+  - mpremote: mpremote attempt 5: 'may be in use by another program' after 3.8s, retried
+  - mpremote: mpremote attempt 6: 'may be in use by another program' after 4.6s, retried
+  - mpremote: mpremote attempt 7: 'may be in use by another program' after 5.5s, retried
+  - mpremote: mpremote attempt 8: 'may be in use by another program' after 6.3s, retried
+  - mpremote: mpremote attempt 9: 'may be in use by another program' after 7.2s, retried
+  - mpremote: mpremote attempt 10: 'may be in use by another program' after 8.0s, retried
+  - mpremote: mpremote attempt 11: 'may be in use by another program' after 8.9s, retried
+  - mpremote: mpremote attempt 12: 'may be in use by another program' after 9.7s, retried
+  - mpremote: mpremote attempt 13: USB rebind - no /sys/class/tty/no-pico-serial-device-detected/device to rebind (10.7s)
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 2: 'may be in use by another program' after 1.2s, retried
+  - mpremote: mpremote attempt 3: 'may be in use by another program' after 2.1s, retried
+  - mpremote: mpremote attempt 4: 'may be in use by another program' after 3.0s, retried
+  - mpremote: mpremote attempt 5: 'may be in use by another program' after 3.8s, retried
+  - mpremote: mpremote attempt 6: 'may be in use by another program' after 4.7s, retried
+  - mpremote: mpremote attempt 7: 'may be in use by another program' after 5.6s, retried
+  - mpremote: mpremote attempt 8: 'may be in use by another program' after 6.4s, retried
+  - mpremote: mpremote attempt 9: 'may be in use by another program' after 7.4s, retried
+  - mpremote: mpremote attempt 10: 'may be in use by another program' after 8.2s, retried
+  - mpremote: mpremote attempt 11: 'may be in use by another program' after 9.1s, retried
+  - mpremote: mpremote attempt 12: USB rebind - no /sys/class/tty/no-pico-serial-device-detected/device to rebind (10.1s)
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 2: 'may be in use by another program' after 1.3s, retried
+  - mpremote: mpremote attempt 3: 'may be in use by another program' after 2.2s, retried
+  - mpremote: mpremote attempt 4: 'may be in use by another program' after 3.1s, retried
+  - mpremote: mpremote attempt 5: 'may be in use by another program' after 4.0s, retried
+  - mpremote: mpremote attempt 6: 'may be in use by another program' after 4.9s, retried
+  - mpremote: mpremote attempt 7: 'may be in use by another program' after 5.8s, retried
+  - mpremote: mpremote attempt 8: 'may be in use by another program' after 6.7s, retried
+  - mpremote: mpremote attempt 9: 'may be in use by another program' after 7.6s, retried
+  - mpremote: mpremote attempt 10: 'may be in use by another program' after 8.5s, retried
+  - mpremote: mpremote attempt 11: 'may be in use by another program' after 9.5s, retried
+  - mpremote: mpremote attempt 12: USB rebind - no /sys/class/tty/no-pico-serial-device-detected/device to rebind (10.4s)
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 2: 'may be in use by another program' after 1.3s, retried
+  - mpremote: mpremote attempt 3: 'may be in use by another program' after 2.2s, retried
+  - mpremote: mpremote attempt 4: 'may be in use by another program' after 3.1s, retried
+  - mpremote: mpremote attempt 5: 'may be in use by another program' after 4.0s, retried
+  - mpremote: mpremote attempt 6: 'may be in use by another program' after 4.9s, retried
+  - mpremote: mpremote attempt 7: 'may be in use by another program' after 5.8s, retried
+  - mpremote: mpremote attempt 8: 'may be in use by another program' after 6.8s, retried
+  - mpremote: mpremote attempt 9: 'may be in use by another program' after 7.7s, retried
+  - mpremote: mpremote attempt 10: 'may be in use by another program' after 8.6s, retried
+  - mpremote: mpremote attempt 11: 'may be in use by another program' after 9.4s, retried
+  - mpremote: mpremote attempt 12: USB rebind - no /sys/class/tty/no-pico-serial-device-detected/device to rebind (10.2s)
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.3s, retried
+  - mpremote: mpremote attempt 2: 'may be in use by another program' after 1.2s, retried
+  - mpremote: mpremote attempt 3: 'may be in use by another program' after 2.1s, retried
+  - mpremote: mpremote attempt 4: 'may be in use by another program' after 2.9s, retried
+  - mpremote: mpremote attempt 5: 'may be in use by another program' after 3.8s, retried
+  - mpremote: mpremote attempt 6: 'may be in use by another program' after 4.7s, retried
+  - mpremote: mpremote attempt 7: 'may be in use by another program' after 5.5s, retried
+  - mpremote: mpremote attempt 8: 'may be in use by another program' after 6.4s, retried
+  - mpremote: mpremote attempt 9: 'may be in use by another program' after 7.2s, retried
+  - mpremote: mpremote attempt 10: 'may be in use by another program' after 8.1s, retried
+  - mpremote: mpremote attempt 11: 'may be in use by another program' after 9.0s, retried
+  - mpremote: mpremote attempt 12: 'may be in use by another program' after 9.9s, retried
+  - mpremote: mpremote attempt 13: USB rebind - no /sys/class/tty/no-pico-serial-device-detected/device to rebind (10.8s)
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 2: 'may be in use by another program' after 1.2s, retried
+  - mpremote: mpremote attempt 3: 'may be in use by another program' after 2.1s, retried
+  - mpremote: mpremote attempt 4: 'may be in use by another program' after 2.9s, retried
+  - mpremote: mpremote attempt 5: 'may be in use by another program' after 3.8s, retried
+  - mpremote: mpremote attempt 6: 'may be in use by another program' after 4.6s, retried
+  - mpremote: mpremote attempt 7: 'may be in use by another program' after 5.5s, retried
+  - mpremote: mpremote attempt 8: 'may be in use by another program' after 6.4s, retried
+  - mpremote: mpremote attempt 9: 'may be in use by another program' after 7.2s, retried
+  - mpremote: mpremote attempt 10: 'may be in use by another program' after 8.1s, retried
+  - mpremote: mpremote attempt 11: 'may be in use by another program' after 9.0s, retried
+  - mpremote: mpremote attempt 12: 'may be in use by another program' after 9.9s, retried
+  - mpremote: mpremote attempt 13: USB rebind - no /sys/class/tty/no-pico-serial-device-detected/device to rebind (10.8s)
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+  - mpremote: mpremote attempt 2: 'may be in use by another program' after 1.3s, retried
+  - mpremote: mpremote attempt 3: 'may be in use by another program' after 2.2s, retried
+  - mpremote: mpremote attempt 4: 'may be in use by another program' after 3.1s, retried
+  - mpremote: mpremote attempt 5: 'may be in use by another program' after 4.0s, retried
+  - mpremote: mpremote attempt 6: 'may be in use by another program' after 4.8s, retried
+  - mpremote: mpremote attempt 7: 'may be in use by another program' after 5.8s, retried
+  - mpremote: mpremote attempt 8: 'may be in use by another program' after 6.7s, retried
+  - mpremote: mpremote attempt 9: 'may be in use by another program' after 7.7s, retried
+  - mpremote: mpremote attempt 10: 'may be in use by another program' after 8.5s, retried
+  - mpremote: mpremote attempt 11: 'may be in use by another program' after 9.4s, retried
+  - mpremote: mpremote attempt 12: USB rebind - no /sys/class/tty/no-pico-serial-device-detected/device to rebind (10.3s)
+Notes:
+  - tests_hardware/flash/test_bus_concurrency.py::test_isl29125_real_irq_edge_beats_the_periodic_fallback: config1_restart={'before': [9, 12, 3], 'immediately': [9, 12, 3], 'after_one_cycle': [204, 296, 52], 'restarted': True}
+  - tests_hardware/flash/test_bus_concurrency.py::test_bus_topology_autodetect_address_and_reserved_range_sweep: addresses={'i2c1': [68, 89, 97], 'i2c0': [24, 119]} unknown_addresses={'i2c1': [], 'i2c0': [24]}
+  - tests_hardware/flash/test_bus_concurrency.py::test_a_held_sda_line_is_cleared_and_every_device_answers: held {'register': 0, 'bus': 'i2c0', 'device': 'bmp3xx'}, runtime clear 2 ms
+  - tests_hardware/flash/test_bus_concurrency.py::test_every_chip_setup_resets_it_once_after_a_read_identified_it: set up ['bmp3xx', 'isl29125', 'scd30', 'sgp40']
+  - tests_hardware/flash/test_bus_concurrency.py::test_bmp3xx_alone_survives_a_general_call: naks=10 devices_on_bus=[24, 119]
+  - tests_hardware/flash/test_bus_electrical_timing.py::test_timer_init_raises_enomem_when_real_alarm_pool_is_exhausted: constructed=16: the alarms free beside the image's other pool users
+  - tests_hardware/flash/test_bus_electrical_timing.py::test_a_malformed_country_code_reaction_is_recorded: country_before=XX reactions=[{'radio_on': True, 'value': 'ZZ', 'readback': 'ZZ', 'set': True, 'scan_count': 7}, {'radio_on': True, 'value': '12', 'readback': '12', 'set': True, 'scan_count': 2}, {'radio_on': True, 'value': '\x01\x02', 'readback': '\x01\x02', 'set': True, 'scan_count': 8}]
+  - tests_hardware/flash/test_chip_conformance.py::test_bmp3xx_matches_its_twin_fake: chip id 50, calibration block 0e6cc84af4f30087f71efd0c625c75f3038e3e1ac5
+  - tests_hardware/flash/test_chip_conformance.py::test_isl29125_matches_its_twin_fake: 12-bit conversion cycle series 7,8,7,7,8,7,7,7 ms, PRST4 1067 ms (rgb_cycles)
+  - tests_hardware/flash/test_fram_storage.py::test_fram_chunk_write_read_roundtrips_against_the_real_chip: FRAM part RDID 047f4803
+  - tests_hardware/flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write[1]: seam 1, nonce 24: seeded ([125, 127])
+  - tests_hardware/flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write[2]: seam 2, nonce 8: seeded ([127, 125])
+  - tests_hardware/flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write[3]: seam 3, nonce 12: seeded ([125, 126])
+  - tests_hardware/flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write[4]: seam 4, nonce 11: seeded ([127, 125, 126])
+  - tests_hardware/flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write[5]: seam 5, nonce 13: empty ([])
+  - tests_hardware/flash/test_fram_storage.py::test_fram_command_hold_stays_under_the_uart_poll_floor: FRAM hold: write 2742 us, read 644 us, block 16343 us (floor 6944 us, budget 25000 us)
+  - tests_hardware/flash/test_fram_storage.py::test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build: FRAM allocated 1140 of 262144 B; RAM-only by design: ['scd30.CFGMGR_SCD30']
+  - tests_hardware/flash/test_heap_layout.py::test_the_live_arm_keeps_the_boot_survivors_under_the_high_band: collects arm on dev image with no record at build/firmware-dev.json: 0 new blocks above the 32768 B high band (bound 32); counts {'starter_collects': 23, 'batch_collects': 14}, boot {'starter_loop_ms': 1546, 'build_system_ms': 3883, 'settle_ms': 4000, 'start_timers_ms': 521}, gc.threshold [-1, 32768]
+  - tests_hardware/flash/test_heap_layout.py::test_the_suppressed_arm_breaks_the_high_band: suppressed arm on dev image with no record at build/firmware-dev.json: 80 new blocks above the 32768 B high band (bound 32); counts {'starter_collects': 23, 'batch_collects': 14}, boot {'starter_loop_ms': 1017, 'build_system_ms': 2240, 'settle_ms': 4000, 'start_timers_ms': 527}, gc.threshold [-1, 32768]
+  - tests_hardware/flash/test_memory_stress.py::test_real_gc_heap_headroom_survives_a_full_system_build: heap headroom at gc.threshold [-1, 32768]: used 128384 B (max 100000), largest block 45168 B (min 32768); {'heap_baseline': {'alloc': 69312, 'free': 118816, 'largest_block': 116592}, 'heap_after_build_system': {'alloc': 128384, 'free': 59760, 'largest_block': 45168}, 'heap_after_build_system_control': {'alloc': 128192, 'free': 60000, 'largest_block': 45168}, 'heap_after_build_system_production_threshold': {'alloc': 128256, 'free': 59968, 'largest_block': 45168}}
+  - tests_hardware/flash/test_memory_stress.py::test_routine_no_yield_stretches_stay_under_the_gc_term: no-yield stretches at gc.threshold -1: {'gc_max_us': 17646, 'voc_max_us': 41287, 'crc_gap_max_us': 1971}, CRC total 182519 us (bound 21000 us)
+  - tests_hardware/flash/test_memory_stress.py::test_c_stack_peak_is_within_half_the_limit: C stack: chain fram.get_values_sync, peak 4020 B of 7936 B; leaves {'i2c1.writeto': 2820, 'i2c0.writeto': 2420, 'fram.get_values_sync': 4020, 'fram.set_values_sync': 4020, 'i2c1.get_register_bytes': 2820, 'i2c0.get_register_bytes': 2620, 'i2c0.set_bits': 2620, 'i2c0.get_register_struct': 2620, 'i2c0.set_register_struct': 2420, 'i2c1.readfrom_into': 2820, 'i2c1.set_register_struct': 2820}
+  - tests_hardware/flash/test_modlwip_listener_close.py::test_closing_a_listener_and_a_failed_listen_leave_the_pcb_pools_as_they_were: pools {'listen': [72, 8, 536924418, 536903312], 'conn': [196, 9, 536924997, 536903308]}; free slots before/after/end {'listen': [[7, 6, 5, 4, 3, 2, 1, 0], [7, 6, 5, 4, 3, 2, 1, 0], [7, 6, 5, 4, 3, 2, 1, 0]], 'conn': [[8, 7, 6, 5, 4, 3, 2, 1, 0], [8, 7, 6, 5, 4, 3, 2, 1, 0], [7, 8, 6, 5, 4, 3, 2, 1, 0]]}; the slots the sockets took {'listen': 7, 'conn': 8}; changed words {'first': [], 'total': 0}
+  - tests_hardware/flash/test_sensor_accuracy.py::test_scd30_frc_window_sums_hold_in_float32: frc float32 sums {'id': 11342100.0, 'd': 12600.0, 'd2': 147000.0} vs double {'d': 12600.0, 'd2': 147000.0, 'id': 11342100.0}: relative errors {'d': 0.0, 'd2': 0.0, 'id': 0.0}
+  - tests_hardware/flash/test_system_commands.py::test_a_reboot_with_storage_paused_still_resets_attributed: system_command_reboot.py mempause: {'code': 3, 'feeds': 55, 'max_gap_ms': 1857, 'bus': [61, 0]}
+  - tests_hardware/flash/test_system_commands.py::test_a_reboot_with_storage_paused_still_resets_attributed: after the boot: ResetReason 3
+  - tests_hardware/flash/test_system_commands.py::test_bootloader_command_shuts_down_then_enters_bootsel: bootloader: {'code': 9, 'feeds': 55, 'max_gap_ms': 1804, 'bus': [15, 0]}
+  - session (standard_state): vl805_firmware: not read (no VL805 CURRENT line, exit 1)
+  - session (scd30_measuring): already measuring (no write)
+Checked nothing: none
+Result: FAIL (pytest exited 1)
+Exit code: 1
+== step 4g end rc=1 2026-11-05 10:40:21 1321s load 1.82 1.56 0.95
+== read-across: GET /status after step 4g
+SUM status not read: no JSON answer
 ```
 <!-- end step -->
 
