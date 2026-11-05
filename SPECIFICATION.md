@@ -4022,6 +4022,7 @@ FRAM driver's session and bus locks (levels 3, 2, 1).
 | `UDPSocket._connect_lock` | — | the socket object, its connect against its disconnect | nothing (the class has no logger) |
 | `NeopixelDriver._overlay_lock` | — | the pixel and its `write()` | nothing |
 | `SystemService._command_lock` | — | the system-command gate: one command's acceptance, preflight or refusal at a time, so two commands at once see each other's outcome (A.8); held only up to the shutdown sequence's `create_task()`, so never while the sequence takes a store's `owner_lock` | nothing |
+| `WebserverService._status_lock` | — | one `GET /status` build, so concurrent requests hold one response's pieces at a time (I.3) | what the status sources and error-count readers take, a FRAM-backed log write included |
 | `SensorReader._data_lock` | leaf | the last sample | nothing |
 <!-- locks:end -->
 

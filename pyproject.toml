@@ -328,10 +328,7 @@ max-returns = 10
 "tests_hardware/conftest.py" = ["S607"]
 "tests_hardware/twin_board.py" = ["S603"]
 "tests_hardware/bench/test_hotspot_role_reversal.py" = ["S603", "S607"]
-"tests_hardware/bench/test_reset_reasons.py" = ["S607"]
-"tests_hardware/bench/test_system_commands_over_rest.py" = ["S607"]
 "tests_hardware/bench/test_uart_link_crc16.py" = ["S603"]
-"tests_hardware/flash/test_system_commands.py" = ["S607"]
 "tests_hardware/flash/test_toolchain_flash_boot.py" = ["S603", "S607"]
 "tests_hardware/manual/manual_toolchain.py" = ["S603", "S607"]
 # S310: a fixed `http://` URL this module builds from a bench-LAN host/port pair; no attacker-supplied scheme exists.

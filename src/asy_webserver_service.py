@@ -244,6 +244,13 @@ class _PieceWriter:
             self._size = 0
 
 
+def _drained(pieces: list[bytes]) -> "Iterator[bytes]":
+    # The body's iterator: each piece leaves the list as it is written, so no written piece stays held (Part I.3).
+    pieces.reverse()
+    while pieces:
+        yield pieces.pop()
+
+
 def _index_by_name(items: "Iterable[_Named]") -> "dict[str, _Named]":
     # Last-registration-wins, by construction (owner, 2026-08-12; SPEC A.8): the
     # simplest per-item loop already behaves this way; no dedup/guard code on top (agent, 2026-08-12).
@@ -970,13 +977,6 @@ class WebserverService:
 
     async def setup(self) -> None:
         await self.pr.setup()  # the logger is set up in the boot batch, never by the serve task
-
-
-def _drained(pieces: list[bytes]) -> "Iterator[bytes]":
-    # The body's iterator: each piece leaves the list as it is written, so no written piece stays held (Part I.3).
-    pieces.reverse()
-    while pieces:
-        yield pieces.pop()
 
 
 def _pieces_response(pieces: list[bytes]) -> Response:

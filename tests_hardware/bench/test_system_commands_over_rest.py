@@ -63,8 +63,8 @@ def _join_hotspot(bench: "BenchBridge", ssid: str) -> None:
 
 
 def _kicked(board: "Board", bench: "BenchBridge", answers: "dict[str, str]") -> "tuple[dict[str, str], float]":
-    # The answers by word and when they came, returned once an accepted shutdown has taken the board off USB (its reset,
-    # or BOOTSEL) and the stale station entry that leaves is kicked; with none accepted, at once.
+    # The answers by word and when they came, returned once a shutdown answered Valid has taken the board off USB (its
+    # reset, or BOOTSEL) and the stale station entry that leaves is kicked; with no such answer, at once.
     replied = time.monotonic()
     if "Valid" in (answers.get(word) for word in _SHUTDOWN_WORDS):
         kick_after_reset(board, bench, _SERVING_TIMEOUT_S)
