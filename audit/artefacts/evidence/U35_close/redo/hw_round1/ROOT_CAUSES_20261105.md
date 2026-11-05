@@ -203,3 +203,37 @@ Run by hand after `scripts/test.sh`, each stage even if an earlier one fails, wi
 **The image record reads dirty.** I edited this file in `audit/` while the image built. No file outside `audit/` differs between `b7533307` and the head, so the firmware is `b7533307`'s.
 
 **Plan unless you change it:** the final 4a now, no board. `PER_FILE_TIMEOUT_S=900`, which `scripts/_run_lower_levels.sh` applies to both GC stages since they share the variable. Device mask off, to check your `--twin` fix under real conditions. A `STOP` at 20:45 UTC keeps it inside the window; the full stage list may not fit (about 4 hours at today's times), so the rest of the twins go to day 2. `run 5` stays on day 2, because its 66 prerequisite flash writes would be spent again if the `/status` result (item 12) leads to a new image.
+
+## 14. Answers to the lead's 17:34 UTC asks (17:40-18:02 UTC, no flash write, nothing cleared)
+
+**Record of the 4a setting:** the final 4a (started 17:17 UTC on `b7533307`) runs with `PER_FILE_TIMEOUT_S=900`, Node 24.22.2 and no device mask.
+
+**Loop lag under `/status` load, measured once.** `heap_probe/lag_probe.py`: the frozen firmware under `mpremote run`, threshold 32768, one extra task timing `sleep_ms(10)`; 3 readers, 60 s. 4a was running (load about 8), which slows the readers, not the board.
+
+| Window | Ticks | Lag over 200 ms | Over 925 ms | Largest lag |
+|---|---|---|---|---|
+| Idle, 60 s | 4,920 | 0 | 0 | 87 ms |
+| Load, 70 s | 1,676 | 26 | 14 | 2,625 ms |
+| After, 30 s | 2,460 | 0 | 0 | 85 ms |
+
+- 925 ms is `con.uart_reply` on `dev`, so the loop alone can use up the link's reply budget under this load. That fits the `no ACK` failures. Inferred: this session logged only 2 UART errors in the load window, so most long stalls hit no transfer waiting for a reply.
+- A lag is a whole turn of the task queue, so this doesn't separate one long stretch from many tasks. I didn't locate the stall. Your 5 config reads per `/status` is the first place to look.
+- `test_loop_lag_under_combined_load…` runs in step 5 and may fail on this.
+
+**`/status` failures, 6 more runs:**
+
+| Boot path | Runs | 200 | 500 | Failed allocation |
+|---|---|---|---|---|
+| Through the 8-minute hotspot, 16:39 | 3 | 153 | 3 | 250 B |
+| Through the hotspot, 17:54 (uptime 596 s on) | 3 | 150 | 2 | 256 B, 251 B |
+| Joined directly, 17:40 (uptime 1,620 s on) | 3 | 156 | 0 | none |
+
+Lead only: 5 of 309 against 0 of 156 is weak given so few failures, and the direct session is one boot at a later uptime. Lowest `MemFree` sampled through the hotspot at 17:54: 5,584-10,544 B. UART errors appear on both paths (7, 7, 4 direct; 10, 7, 10 hotspot).
+
+**The 16:44:30 reset:**
+- **Reset reason: lost.** The board was off the network until my probes at 16:48:53-16:49:25, and each replaced it. `/status` at 16:50:40 reads 21, from those probes.
+- **SYSTEM log:** counter 0 at 16:43 and in `errcount-session-start.json` at 16:50:40, so no SYSTEM entry from around then. The `archive/.../20261105T164404Z` record has no recovery event, as the `Board` was dropped at the skip.
+- **Likely the harness's own reset.** Inferred from timing: pytest ran 26.15 s from about 16:44:04. `_mpremote`'s 10 s limit, then `_interrupt_after_timeout`'s Ctrl-C and `mpremote reset` (15 s limit), lands at 16:44:30. So the question is why `exec` took over 10 s, when it normally takes 0.4 s.
+- **Repeat, one try:** 3 load runs, 57 s idle, the same `exec`: 0.38 s, rc 0. The board reset 8 s later (the watchdog, as the product was stopped) and reads `ResetReason` 21. That session had no 500s, so it wasn't quite the same state.
+
+**FRAM holds test data now.** `SYSTEM` reads counter 18 with `E125`/`E126`, seeded by 4b's erase scripts, because two erase runs ended without the reset. Treat those as test data in step 5's record. Nothing cleared.
