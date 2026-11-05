@@ -1,6 +1,6 @@
 # Round 1 bench hand-back
 
-Rebuilt by `round1.py` after every step, last 2026-11-05 10:50 UTC. Each verdict is its step's newest run; after step 4a a passing pytest step reads NOT CLEAN (lower levels skipped).
+Rebuilt by `round1.py` after every step, last 2026-11-05 10:51 UTC. Each verdict is its step's newest run; after step 4a a passing pytest step reads NOT CLEAN (lower levels skipped).
 
 | step | name | verdict | ResetReason after | started (UTC) | took | host load at end | FC/FS/NVM/pre |
 |---|---|---|---|---|---|---|---|
@@ -9,7 +9,7 @@ Rebuilt by `round1.py` after every step, last 2026-11-05 10:50 UTC. Each verdict
 | 4a | lower_levels | rc=1; FAIL; failed: scenarios[dev], tests/test_digital_twin_bus_hazard_concurrency.py, tests/test_digital_twin_wifi_modes.py, tests/test_digital_twin_uart_link.py, tests/test_digital_twin_sensortask_integration.py[dev] and 16 more |  | 2026-11-05 08:15:05 | 1h00 | 0.92 | 0/0/0/0 |
 | 3g | gc_control_image | rc=0 | 2 | 2026-11-05 09:23:57 | 0h00 | 0.97 | 1/0/0/0 |
 | 4g | flash_tier_gc_control | rc=1; FAIL (pytest exited 1); failed: flash/test_task_supervisor.py::test_the_supervisor_restarts_a_real_dead_task, flash/test_toolchain_flash_boot.py::test_mpremote_connection_is_stable_across_repeated_calls, flash/test_toolchain_flash_boot.py::test_env_tier_flash_recurring_run_is_idempotent, flash/test_toolchain_flash_boot.py::test_real_uf2_reflash_and_boot_smoke_test, flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[none] and 20 more | 21 | 2026-11-05 10:48:45 | 0h01 | 0.83 | 0/0/1/136 |
-| 5g | bench_tier_gc_control | rc=1; FAIL; failed: bench/test_boot_order_and_triggers.py::test_webserver_answers_before_the_first_ntp_sync_completes, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_crashes, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_light_network_degradation, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_real_wifi_flapping and 98 more |  | 2026-11-05 10:43:29 | 0h00 | 1.52 | 0/0/0/66 |
+| 5g | bench_tier_gc_control | rc=1; FAIL (pytest exited 1); failed: bench/test_boot_order_and_triggers.py::test_webserver_answers_before_the_first_ntp_sync_completes, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_crashes, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_light_network_degradation, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_real_wifi_flapping and 101 more | 21 | 2026-11-05 10:50:05 | 0h01 | 0.72 | 0/0/0/66 |
 | 3 | final_image | not run |  |  |  |  | 1/0/0/0 |
 | 4b | flash_tier | not run |  |  |  |  | 0/0/0/136 |
 | 5 | bench_tier | not run |  |  |  |  | 0/0/0/66 |
@@ -6352,6 +6352,196 @@ Exit code: 1
 == step 5g end rc=1 2026-11-05 10:43:39 10s load 1.52 1.47 1.03
 == read-across: GET /status after step 5g
 SUM status not read: no JSON answer
+== step 5g start 2026-11-05 10:50:05 1793875805 load 0.70 0.88 0.88
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+== Marker selection: -m "not soak_duration and not multi_day_rollover"
+============================= test session starts ==============================
+platform linux -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0 -- /home/nico/programming/sensors-bench/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/nico/programming/sensors-bench
+configfile: pyproject.toml
+plugins: platformdirs-4.12.3
+collecting ... collected 127 items / 22 deselected / 105 selected
+
+tests_hardware/bench/test_boot_order_and_triggers.py::test_webserver_answers_before_the_first_ntp_sync_completes 
+board not in the standard state:
+  - scratch files: read hwtest-scratch, the standard state holds none - --repair-standard-state repairs it (a listed prerequisite write)
+
+====================== 22 deselected in 62.44s (0:01:02) =======================
+! _pytest.outcomes.Exit: board not in the standard state:
+  - scratch files: read hwtest-scratch, the standard state holds none - --repair-standard-state repairs it (a listed prerequisite write) !
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+Not covered: 17 test(s) deselected by a wear gate; --allow-persistence-write would select them.
+== Summary: run_bench_hardware_suite ==
+Commit: 69cb9c3b
+Levels: L4
+Counts (tests): passed 0 · failed 106 · skipped 0 · deselected 22 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_hardware/bench/test_boot_order_and_triggers.py::test_webserver_answers_before_the_first_ntp_sync_completes: no verdict
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_crashes: no verdict
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_light_network_degradation: no verdict
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry: no verdict
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_real_wifi_flapping: no verdict
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_fram_erase_under_api_load: no verdict
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_reboot_under_api_load: no verdict
+  - tests_hardware/bench/test_end_to_end_timing.py::test_real_reboot_sequencing_via_rest_completes_cleanly: no verdict
+  - tests_hardware/bench/test_end_to_end_timing.py::test_real_concurrent_client_burst_does_not_crash_the_webserver: no verdict
+  - tests_hardware/bench/test_end_to_end_timing.py::test_cold_boot_to_first_http_response_latency_is_sane: no verdict
+  - tests_hardware/bench/test_heap_under_connection_ceiling.py::test_heap_at_peak_while_a_full_ceiling_is_held: no verdict
+  - tests_hardware/bench/test_heap_under_connection_ceiling.py::test_report_the_boards_own_connection_wall: no verdict
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_dut_enters_hotspot_mode_after_ssid_cleared: no verdict
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_hotspot_ssid_matches_configured_hostname: no verdict
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_the_dut_accepts_the_toml_hotspot_password: no verdict
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_bench_radio_associates_within_bounded_window: no verdict
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_bench_radio_receives_a_valid_dhcp_lease: no verdict
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_leased_ip_falls_within_the_aps_own_subnet: no verdict
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_repeated_associate_disassociate_cycles_dont_wedge_the_dhcp_server: no verdict
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_arbitrary_hostname_resolves_to_the_aps_own_ip: no verdict
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_devices_own_hostname_resolves_the_same_way: no verdict
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_genuine_root_domain_query_is_answered_correctly: no verdict
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_an_aaaa_query_gets_an_empty_answer: no verdict
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_malformed_truncated_packet_is_silently_dropped: no verdict
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_spoofed_off_subnet_source_address_is_ignored: no verdict
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_dns_flood_leaves_captive_dns_serving_and_it_recovers: no verdict
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_every_get_endpoint_reachable_and_shaped_over_the_hotspot_link: no verdict
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_real_static_website_content_serves_over_the_hotspot_link: no verdict
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_nonsense_path_redirects_to_root_over_the_hotspot_link: no verdict
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link: no verdict
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_malformed_http_request_over_real_wireless_degrades_cleanly: no verdict
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_rapid_associate_disassociate_churn_doesnt_wedge_station_management: no verdict
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_invalid_credentials_rejected_without_triggering_reconnect: no verdict
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_the_role_flips_back_and_the_board_is_sta_connected_on_the_bridge: no verdict
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_the_uart_link_across_the_mode_switch_is_recorded: no verdict
+  - tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot: no verdict
+  - tests_hardware/bench/test_memory_stress_bench.py::test_loop_lag_under_http_load_on_every_route_stays_under_the_smallest_hard_consumer: no verdict
+  - tests_hardware/bench/test_modlwip_send_stall.py::test_no_send_stall_with_the_override: no verdict
+  - tests_hardware/bench/test_modlwip_send_stall.py::test_send_stall_on_the_unpatched_image: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_real_wifi_outage_and_recovery_while_in_normal_sta_mode: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_real_wifi_flaps_repeatedly_without_wedging_the_system: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_rest_stays_reachable_and_recovers_under_sustained_packet_loss_and_latency: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_rest_answers_first_try_under_light_realistic_wifi_congestion: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_rest_stays_reachable_and_recovers_under_real_packet_corruption: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_rest_stays_reachable_under_duplicated_and_reordered_packets: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_ntp_server_sends_garbage_instead_of_a_valid_response: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_dns_server_sends_garbage_instead_of_a_valid_response: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_connections_at_and_above_the_real_socket_limit_degrade_cleanly: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_get_nonsense_path_is_shaped_404_over_the_normal_network: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_put_malformed_raw_request_is_rejected_cleanly_over_the_normal_network: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_put_oversized_body_is_rejected_with_413_over_the_normal_network: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_put_body_cap_boundary_is_exact_over_the_normal_network: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_put_the_band_that_used_to_be_accepted_is_now_rejected_over_the_normal_network: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_an_oversized_body_is_refused_before_it_is_read: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_put_nonsense_field_values_are_marked_invalid_not_crashed: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_slowloris_style_partial_request_is_reclaimed_by_the_outer_timeout: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_abrupt_disconnect_mid_response_does_not_hang_the_server: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one: no verdict
+  - tests_hardware/bench/test_network_resilience.py::test_openhab_case_two_pollers_and_an_open_website_are_all_served: no verdict
+  - tests_hardware/bench/test_reset_reasons.py::test_a_harness_hard_reset_reads_as_watchdog_without_a_record: no verdict
+  - tests_hardware/bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed: no verdict
+  - tests_hardware/bench/test_reset_reasons.py::test_the_supervisor_escalation_reboot_is_attributed[escalate]: no verdict
+  - tests_hardware/bench/test_reset_reasons.py::test_the_supervisor_escalation_reboot_is_attributed[hold_console]: no verdict
+  - tests_hardware/bench/test_reset_reasons.py::test_the_starved_watchdog_fallback_is_attributed: no verdict
+  - tests_hardware/bench/test_reset_reasons.py::test_an_invalid_record_reads_as_unknown: no verdict
+  - tests_hardware/bench/test_reset_reasons.py::test_an_incomplete_command_is_attributed: no verdict
+  - tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[1]: no verdict
+  - tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[2]: no verdict
+  - tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[3]: no verdict
+  - tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[4]: no verdict
+  - tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[5]: no verdict
+  - tests_hardware/bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed: no verdict
+  - tests_hardware/bench/test_reset_reasons.py::test_a_console_interrupt_is_attributed: no verdict
+  - tests_hardware/bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed[exception]: no verdict
+  - tests_hardware/bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed[base]: no verdict
+  - tests_hardware/bench/test_rest_endpoints_over_sta.py::test_real_static_website_content_serves_over_the_normal_bridge_network: no verdict
+  - tests_hardware/bench/test_rest_endpoints_over_sta.py::test_measurements_endpoint_returns_plausible_values_for_every_real_sensor: no verdict
+  - tests_hardware/bench/test_rest_endpoints_over_sta.py::test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot: no verdict
+  - tests_hardware/bench/test_sensor_config_push_over_real_hardware.py::test_notification_pause_time_push_counts_down_over_real_rest: no verdict
+  - tests_hardware/bench/test_sensor_config_push_over_real_hardware.py::test_sgp40_reset_voc_command_push_over_real_rest: no verdict
+  - tests_hardware/bench/test_sensor_config_push_over_real_hardware.py::test_isl29125_calibrate_command_push_over_real_rest: no verdict
+  - tests_hardware/bench/test_serving_heap_at_default_gc.py::test_every_source_and_route_fits_a_small_free_run: no verdict
+  - tests_hardware/bench/test_serving_heap_at_default_gc.py::test_serving_sweep_at_the_reactive_default: no verdict
+  - tests_hardware/bench/test_system_commands_over_rest.py::test_fram_erase_over_rest_blanks_every_error_log: no verdict
+  - tests_hardware/bench/test_system_commands_over_rest.py::test_near_miss_action_words_do_nothing_over_rest: no verdict
+  - tests_hardware/bench/test_system_commands_over_rest.py::test_erase_reboot_and_mempause_at_once: no verdict
+  - tests_hardware/bench/test_system_commands_over_rest.py::test_reboot_and_bootloader_at_once: no verdict
+  - tests_hardware/bench/test_uart_link_crc16.py::test_the_link_suite_runs_on_a_crc16_image: no verdict
+  - tests_hardware/bench/test_uart_link_under_api_load.py::test_the_link_stays_healthy_while_the_api_is_hammered: no verdict
+  - tests_hardware/bench/test_uart_link_under_api_load.py::test_real_transfers_complete_while_the_api_is_hammered: no verdict
+  - tests_hardware/bench/test_uart_link_under_api_load.py::test_an_api_overload_does_not_corrupt_the_link_or_the_reverse: no verdict
+  - tests_hardware/bench/test_uart_link_under_api_load.py::test_a_multi_chunk_set_echoes_intact_under_serving_load: no verdict
+  - tests_hardware/bench/test_uart_link_under_api_load.py::test_a_hazard_run_under_the_readers_load_reports_every_verdict: no verdict
+  - tests_hardware/bench/test_wifi_networking.py::test_real_sta_connect_reaches_established_after_a_hard_reset: no verdict
+  - tests_hardware/bench/test_wifi_networking.py::test_real_ntp_sync_succeeds_over_genuine_udp: no verdict
+  - tests_hardware/bench/test_wifi_networking.py::test_real_dns_resolution_succeeds_over_genuine_udp: no verdict
+  - tests_hardware/bench/test_wifi_networking.py::test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing: no verdict
+  - tests_hardware/bench/test_wifi_radio_reinit.py::test_the_radio_reinit_rung_restores_the_link: no verdict
+  - run: no test passed - real hardware is expected to be attached and reachable for the whole run
+Skipped: none
+Deselected:
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_scd30_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_end_to_end_timing.py::test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_representative_put_round_trips_over_the_hotspot_link: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_a_wrong_password_over_the_hotspot_reopens_the_hotspot: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_real_credentials_put_succeeds_and_confirms_accepted_values: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_garbage_ssid_via_rest_config_is_handled_gracefully: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_a_flash_write_holding_interrupts_off_keeps_the_wifi_link: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_rest_endpoints_over_sta.py::test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_sensor_config_push_over_real_hardware.py::test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_sensor_config_push_over_real_hardware.py::test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_sensor_config_push_over_real_hardware.py::test_scd30_altitude_takes_effect_while_ambient_pressure_is_zero: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_system_commands_over_rest.py::test_config_reset_over_rest_brings_back_the_defaults: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_boot_order_and_triggers.py::test_bus_triggers_keep_their_minimum_spacing: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_memory_stress_bench.py::test_http_soak_stays_live: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_scd30_frc_readiness_baseline.py::test_scd30_frc_readiness_baseline: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_ticks_ms_rollover.py::test_ticks_ms_rollover_is_survived: by runner selection (-m), not covered by this run
+Passed only on retry: none
+Recovery passes: none
+Notes:
+  - session (standard_state): vl805_firmware: not read (no VL805 CURRENT line, exit 1)
+Checked nothing: none
+Result: FAIL (pytest exited 1)
+Exit code: 1
+== step 5g end rc=1 2026-11-05 10:51:15 70s load 0.72 0.87 0.88
+== read-across: GET /status after step 5g
+SUM status system={"BootSignature": 1793875864, "ConfigFaults": [], "LastTaskEnd": null, "LocalTime": {"Hour": 11, "MDay": 5, "Minute": 51, "Month": 11, "Second": 16, "Weekday": 3, "Year": 2026, "Yearday": 309}, "MemFree": 18336, "MemPaused": false, "ResetReason": 21, "SysUptime": 21, "TimeStale": false, "UTCTime": {"Hour": 10, "MDay": 5, "Minute": 51, "Month": 11, "Second": 16, "Weekday": 3, "Year": 2026, "Yearday": 309}, "UnixTime": 1793875876}
+SUM status sensors={"SGP40": {"BackupTS": null, "RestoreTS": 1793873853}, "UARTLINK": {"Failures": 0, "Transfers": 12}, "UART_init": {"Last": null, "Pending": false, "Runs": 0}}
+SUM errcount BMP3XX {"history":[{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127}],"counter":30}
+SUM errcount CFGMGR_BMP3XX {"history":[{"type":"E","num":127},{"type":"W","num":22},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"W","num":22},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"W","num":22}],"counter":49}
+SUM errcount CFGMGR_ISL29125 {"history":[{"type":"E","num":127},{"type":"W","num":22},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"W","num":22},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"W","num":22}],"counter":49}
+SUM errcount CFGMGR_NOTIFY {"history":[{"type":"E","num":127},{"type":"W","num":22},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"W","num":22},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"W","num":22}],"counter":49}
+SUM errcount CFGMGR_NTP {"history":[{"type":"E","num":127},{"type":"W","num":22},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"W","num":22},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"W","num":22}],"counter":44}
+SUM errcount CFGMGR_SCD30 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_SGP40 {"history":[{"type":"E","num":127},{"type":"W","num":22},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"W","num":22},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"W","num":22}],"counter":44}
+SUM errcount CFGMGR_SYSTEM {"history":[{"type":"E","num":127},{"type":"W","num":22},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"W","num":22},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"W","num":22}],"counter":44}
+SUM errcount CFGMGR_WIFI {"history":[{"type":"E","num":127},{"type":"W","num":22},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"W","num":22},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"W","num":22}],"counter":44}
+SUM errcount DNSSRV {"history":[{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127}],"counter":27}
+SUM errcount FRAM {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount ISL29125 {"history":[{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127}],"counter":30}
+SUM errcount NEOPIXEL {"history":[{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127}],"counter":27}
+SUM errcount NOTIFY {"history":[{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127}],"counter":30}
+SUM errcount NTP {"history":[{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127}],"counter":27}
+SUM errcount SCD30 {"history":[{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127}],"counter":27}
+SUM errcount SGP40 {"history":[{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127}],"counter":27}
+SUM errcount SYSTEM {"history":[{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":125},{"type":"E","num":126}],"counter":42}
+SUM errcount UART_init {"history":[{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127}],"counter":32}
+SUM errcount UART_resp {"history":[{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127}],"counter":31}
+SUM errcount WEBSERVER {"history":[{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127}],"counter":28}
+SUM errcount WIFI {"history":[{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127}],"counter":27}
 ```
 <!-- end step -->
 
