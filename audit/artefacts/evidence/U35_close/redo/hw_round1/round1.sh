@@ -16,6 +16,7 @@ UF2=build/firmware-dev.uf2
 WEAR=$H/WEAR.txt
 WEAR_IDS=" 7f 7b 8f 8b 10b 15 "  # the opt-in wear steps, one per tier: once cleared, each runs until it passes once
 SLICE_S=${SLICE_S:-540}  # one FRAM slice: with its start-up, under 10 minutes (October's)
+FLASHED_S=720  # /system after a flash: a stale AP entry the kick missed, then dev's 8-minute hotspot (9.5 min measured)
 FLOOR="not soak_duration and not multi_day_rollover"
 HOTSPOT=tests_hardware/bench/test_hotspot_role_reversal.py
 DUTARG=()
@@ -104,8 +105,13 @@ from harness import render_device_script; print(render_device_script(Path('tests
 flash() {  # one flash cycle of $1, else the final image (October's): the bootloader, then picotool until BOOTSEL
   saved || { echo "SUM flash refused: step 1's raw FRAM dump is not in logs/1.log"; return 1; }  # a boot writes FRAM
   timeout 15 "$MPC" bootloader
-  for i in 1 2 3 4 5; do sleep 3; sudo picotool load -x -v "${1:-$UF2}" && return 0; echo "picotool attempt $i failed"; done
+  for i in 1 2 3 4 5; do sleep 3; sudo picotool load -x -v "${1:-$UF2}" && { kick; return 0; }; echo "picotool attempt $i failed"; done
   return 1
+}
+
+kick() {  # kick_after_reset()'s call once the board has left USB: the AP's stale entry goes before the image joins
+  uv run --no-sync python -c "import sys; sys.path.insert(0, 'tests_hardware')
+from bench_control import BenchBridge; BenchBridge().kick_all_stations()" || echo "kick failed: /system waits"
 }
 
 evidence() {  # row 1: /status if the product answers (it touches nothing), then the raw FRAM on the image as found
@@ -125,12 +131,12 @@ host() {  # row 2: env --tier bench once more (no password or SSID line reaches 
 
 final_image() {  # row 3: the final dev image built and flashed (FC 1), then /system's BuildDate against its record
   uv run --no-sync scripts/build_firmware.py dev 2>&1 | tail -n 40
-  [ "${PIPESTATUS[0]}" = 0 ] && flash && py get system 180 "${UF2%.uf2}.json"
+  [ "${PIPESTATUS[0]}" = 0 ] && flash && py get system "$FLASHED_S" "${UF2%.uf2}.json"
 }
 
 gc_image() {  # 3g: the GC control image flashed (FC 1, the owner's planned prerequisite), then its BuildDate checked
   if [ -z "${GC_CONTROL_IMAGE:-}" ]; then echo "NOTE GC_CONTROL_IMAGE unset: owed"; return 0; fi
-  flash "$GC_CONTROL_IMAGE" && py get system 180 "${GC_CONTROL_IMAGE%.uf2}.json"
+  flash "$GC_CONTROL_IMAGE" && py get system "$FLASHED_S" "${GC_CONTROL_IMAGE%.uf2}.json"
 }
 
 bench() {  # the bench runner's own L4 line: the runner re-runs L3 under set -e and stops at its known FAILs
@@ -198,7 +204,7 @@ rollover() {  # row 15: the tick-offset image's two hours (FC 1), then the final
   local r
   scripts/run_bench_rollover_test.sh "${DUTARG[@]}"
   r=$?
-  py get system 180 "${UF2%.uf2}.json" || { flash && py get system 180 "${UF2%.uf2}.json"; } || r=1
+  py get system 180 "${UF2%.uf2}.json" || { flash && py get system "$FLASHED_S" "${UF2%.uf2}.json"; } || r=1
   return "$r"
 }
 
