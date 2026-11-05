@@ -302,7 +302,11 @@ One driver, or a partial closure, at a time, against the `dev` image already on 
 - `--dut-ip ADDR` - the DUT's last known address on the bench network: the session then saves
   `GET /status` (the FRAM-backed `errcount` and the in-RAM reset reason) before anything resets the
   board. Without it the session notes that nothing was saved over REST and starts from the raw FRAM
-  dump alone.
+  dump alone. To find the address without disturbing the running system (an `exec` stops `main.py`):
+  the firmware sets `network.hostname()` from the `Hostname` setting (`devices/dev.toml`'s `hostname`
+  until changed) before it connects, and rp2's lwIP sends it in the DHCP request and answers mDNS for
+  it (`extmod/lwip-include/lwipopts_common.h`, `extmod/cyw43_config_common.h`, v1.29.0): the
+  router's lease list names it, and an mDNS query for `<hostname>.local` returns it.
 - `--image-record PATH` - the image record of the build on the board (default
   `build/firmware-<bench device>.json`, beside its `.uf2`); "Verify the image" below.
 - `BENCH_AP_PASSWORD` - optional. `tests_hardware/bench/test_hotspot_role_reversal.py`'s stage-6
@@ -424,6 +428,24 @@ the image record (`--image-record`, default beside the `.uf2`) and compares it w
 `--allow-multi-day-rollover`. A mismatch stops the session naming each deviation and the reflash
 that fixes it; a record from a dirty tree is reported as a local-only image to revert after the
 round. A test that reflashes mid-session runs the same comparison (`check_image()`).
+
+## How a round runs
+
+A round starts only with the owner's go-ahead in that session's own conversation (CLAUDE.md). Its plan
+names the order, each row's expected outcome and wear, and the twin parameter the row confirms; the
+results correct the twin until the two agree (owner, 2026-09-25, paraphrase).
+
+1. Save the logs before anything writes: the session saves `GET /status` (with `--dut-ip`) and the
+   raw FRAM dump itself ("The session's own state"); a step by hand does the same first (CLAUDE.md).
+2. Build and flash `dev`'s own image of the tree under test: a device's result counts only from its
+   own build on its own hardware (CLAUDE.md). An image from a dirty tree is local-only, reverted after
+   the round ("Verify the image").
+3. Flash tier, then bench tier (each runs L0-L2 first, "Running"), reading each verdict's deselected
+   count, not only "clean".
+4. The gated run (`--allow-persistence-write`) only after a clean default run, so a gated failure is
+   the gated test's own (owner, 2026-09-22, paraphrase).
+5. An unanticipated red stops the round and is reported; an ad-hoc script caps its retries and runs
+   under `timeout` ("Bench traps").
 
 ## The bench log check
 
@@ -1002,10 +1024,11 @@ fixture's teardown restores the SSID (stage 7) and the bridge (stage 8).
   `test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt`. The second case is two
   `hotspot_time_min` windows long (16 min on `dev`) plus its streaks; it writes nothing and runs on
   the real-credentials test's write, so it needs the whole module in one run with
-  `--allow-persistence-write` and a `--soak-duration` covering both windows (`long` on `dev`), and
-  skips otherwise. A candidate invocation, not yet run on hardware:
-  `scripts/run_bench_soak_tests.sh --duration long --allow-persistence-write -m role_reversal`
-  (pytest takes the last `-m`).
+  `--allow-persistence-write` and a `--soak-duration` covering both windows (`long` on `dev`): it
+  skips without that duration and fails without that write. The soak runner cannot give it the
+  module, since its `soak_duration` floor narrows any `-m` to this case alone; the module runs whole
+  through the runners' wrapper (not yet run on hardware):
+  `scripts/_require_clean_hardware_run.sh --runner run_bench_soak_tests_hotspot --levels "soak duration long (not a level)" tests_hardware/bench/test_hotspot_role_reversal.py --soak-duration long --allow-persistence-write`.
 - **The role-reversal repair**, for a board still unreachable after the fixture gave up (the
   message says "stranded in hotspot mode"): first `.venv/bin/python tests_hardware/kick_then_reset.py`
   ("Bench traps"). With the SSID still empty the board returns to its hotspot, so the SSID goes back
@@ -1230,8 +1253,8 @@ a live question:
   configuration invalid, the *real*, valid `dev`-native configuration has since been directly
   confirmed working. `src/`'s own `is_hotspot_active()`/`_StaticRoutes.serve()` logic was already
   proven correct against the real Unix-port interpreter; this closes the one remaining "never run on
-  real rp2/lwIP" gap. Per CLAUDE.md's hard rule, `wozi` is never physically flashed — this dev-bench
-  result is the real, complete verification, valid for `wozi` too.
+  real rp2/lwIP" gap. This dev-bench result holds for the mechanism every device shares (CLAUDE.md:
+  a device's result counts only from its own build on its own hardware).
   **Pitfall found investigating this, still worth keeping**: don't reach for `mpremote exec()` to
   inspect live state — per the liveness-polling finding above, `exec()` soft-resets the board and
   wipes the very live state you're trying to observe. Use a passive method (a second REST/
@@ -2051,7 +2074,7 @@ there means "everything that ran, passed", not "everything ran".
 
 `flash/test_fram_storage.py::test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build`
 (device script `fram_capacity_after_full_system_build.py`) is the real-hardware leg of the capacity
-backstop of CLAUDE.md's implicit-FRAM-wiring rule: a shipped firmware asking for more FRAM than its
+backstop of the implicit FRAM-wiring rule (SPECIFICATION.md A.7): a shipped firmware asking for more FRAM than its
 chip has must fail a test before it is flashed, not print once at boot. The script builds the bench
 device's generated system over the scratch config directory `hwtest-scratch/` and runs its setup
 list as `main()` does, then reports every logger of every FRAM-wired module that holds a real

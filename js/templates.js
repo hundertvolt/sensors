@@ -580,8 +580,8 @@ function paintErrcountRow(rowWrapper, group, state) {
         empty.textContent = "No history recorded.";
         list.replaceChildren(empty);
     } else {
-        // No pagination or truncation - realistic history depth is well under
-        // 20 entries (owner, 2026-08-21), so the whole array just renders.
+        // No pagination or truncation (owner, 2026-08-21, paraphrase: a history stays well under 20
+        // entries); each logger holds 10 (asy_print_log.py's DEFAULT_LOG), so the whole array renders.
         list.replaceChildren(...state.history.map((item) => buildHistoryEntry(list, group, item)));
     }
 }

@@ -6,7 +6,7 @@ Exercises how a genuine hardware fault on one driver (SCD30) does NOT propagate 
 error accounting: each module logs through its own `self.pr` (SPECIFICATION.md Part C.7).
 """
 # Each NotificationSignal below holds a direct (source, field) reference to the same scd_reader instance
-# (SPECIFICATION.md Part C.14.2), mirroring the generated device modules' real registration shape.
+# (SPECIFICATION.md Part C.14.3), mirroring the generated device modules' real registration shape.
 #
 # Only tests/neopixel.py's fake write surface and tests/machine.py's fake I2C bus are mocked; every layer
 # above the raw I2C transaction - the driver's protocol and error handling, the notify poll loop, gating,
@@ -101,7 +101,7 @@ def _make_scd_reader() -> "tuple[SCD30_Reader, FakeI2C]":
 
 
 def _make_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, NotificationService]":
-    # A ValueRef(source, field) reference (SPECIFICATION.md Part C.14.2), same SCD30_Reader instance
+    # A ValueRef(source, field) reference (SPECIFICATION.md Part C.14.3), same SCD30_Reader instance
     # backing both WarnCO2 and WarnHum in the real wiring (one sensor, two notification signals off
     # its own .CO2/.Hum fields) - the registration shape the generated build_system() emits.
     pixel = NeopixelDriver(0, neopixel_freq=100)
